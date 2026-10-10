@@ -13,7 +13,7 @@ from __future__ import annotations
 import unittest
 
 from apps.calepinage.services.batterie import (
-    STRATEGIES, StrategieInvalide, simuler_batterie, tranches_horaires,
+    STRATEGIES, StrategieInvalide, simuler_batterie,
 )
 
 #: Une journée : consommation à plat, production diurne excédentaire.
@@ -130,12 +130,8 @@ class DecalageTest(unittest.TestCase):
                              heures_charge=[12], heures_decharge=[12], **PARC)
         self.assertEqual(refus.exception.champ, 'heures_decharge')
 
-    def test_les_tranches_de_reference_sont_OFFERTES_pas_appliquees(self):
-        """Elles servent à PROPOSER des heures, jamais à en choisir."""
-        tranches = tranches_horaires()
-        self.assertEqual(len(tranches), 24)
-        self.assertIn('pointe', tranches)
-        # …et elles ne dispensent PAS de saisir les heures :
+    def test_aucune_grille_de_reference_ne_dispense_de_saisir_les_heures(self):
+        """Les heures sont SAISIES : jamais choisies à la place de l'utilisateur."""
         with self.assertRaises(StrategieInvalide):
             simuler_batterie(CONSO, PROD, strategie='decalage', **PARC)
 

@@ -158,12 +158,12 @@ class MaintenanceWindowPermissionTest(TestCase):
             'description': 'Test',
         }
         resp = self._client(self.directeur).post(
-            '/api/django/core/maintenance-windows/', payload)
+            '/api/django/core/maintenance-windows/', payload, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_non_directeur_cannot_create_window(self):
         resp = self._client(self.commercial).post(
-            '/api/django/core/maintenance-windows/', {})
+            '/api/django/core/maintenance-windows/', {}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_non_superuser_directeur_cannot_target_another_company(self):
@@ -176,7 +176,7 @@ class MaintenanceWindowPermissionTest(TestCase):
             'description': 'Tentative cross-tenant.',
         }
         resp = self._client(self.directeur).post(
-            '/api/django/core/maintenance-windows/', payload)
+            '/api/django/core/maintenance-windows/', payload, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['company'], self.company.id)
 

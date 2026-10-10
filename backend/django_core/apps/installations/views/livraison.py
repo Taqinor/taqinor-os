@@ -25,6 +25,7 @@ from ..services import (
     ExpeditionImpossible, ventiler_stock_livraison,
     contre_transferer_stock_livraison, generer_retour_livraison,
 )
+from . import _openapi as oa
 
 #: ACHT20 — message unique d'une livraison expédiée (lignes et en-tête figés).
 MESSAGE_LIVRAISON_FIGEE = (
@@ -71,7 +72,8 @@ def _exiger_transition_livraison(liv, cible):
         f"{_VERBES_LIVRAISON.get(cible, 'changer son statut')}.")})
 
 
-class LivraisonViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('mode_acheminement'), p1=oa.qs('statut'), p2=oa.qd('date_prevue'), p3=oa.qi('depot'), p4=oa.qi('installation'))
+class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG329 — livraisons planifiées. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `installation`, `statut`, `depot`,
     `date_prevue`."""
@@ -172,6 +174,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             livraison_client_notify.notify_livraison_transition(
                 liv, 'livree', request=request)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def expedier(self, request, pk=None):
         """FG329 — passe la livraison en transit. YSTCK5 : ventile le stock
@@ -194,6 +197,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         self._notify_client(liv, Livraison.Statut.EN_TRANSIT, request)
         return Response(self.get_serializer(liv).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def livrer(self, request, pk=None):
         """FG329 — marque la livraison livrée. XSTK22 : notifie le client
@@ -222,6 +226,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             liv.save(update_fields=['notifie_livree_le'])
         return Response(self.get_serializer(liv).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def annuler(self, request, pk=None):
         """FG329 — annule la livraison. YSTCK5 : contre-transfert van → dépôt
@@ -234,6 +239,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             pass
         return self._set_statut(request, Livraison.Statut.ANNULEE)
 
+    @oa.extend_schema(request=oa.body('GenererRetourLivraisonRequete', motif=oa.s()), responses={201: RetourLivraisonSerializer})
     @action(detail=True, methods=['post'], url_path='generer-retour',
             permission_classes=[IsResponsableOrAdmin])
     def generer_retour(self, request, pk=None):
@@ -256,6 +262,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             RetourLivraisonSerializer(retour).data,
             status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='bon-livraison',
             permission_classes=[IsAnyRole])
     def bon_livraison(self, request, pk=None):
@@ -270,6 +277,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             f'inline; filename="bon-livraison-{liv.id}.pdf"')
         return resp
 
+    @oa.extend_schema(parameters=[oa.qi('client', required=True)], responses=oa.LIST)
     @action(detail=False, methods=['get'], url_path='portail',
             permission_classes=[IsAnyRole])
     def portail(self, request):
@@ -288,7 +296,8 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             selectors.livraisons_client_portail(company, client_id))
 
 
-class LivraisonLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('livraison'))
+class LivraisonLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG329 — lignes de livraison. Pas de `company` propre : scope via la
     livraison parente. Filtrable par `livraison`. Lecture tout rôle, écriture
     responsable/admin."""

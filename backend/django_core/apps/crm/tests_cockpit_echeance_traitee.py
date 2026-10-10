@@ -27,7 +27,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import controle_suivi as cs
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -112,7 +112,7 @@ class LEcheanceDuTraitementTests(_Base):
 
         suivi.refresh_from_db()
         self.assertEqual(suivi.statut, FAIT)
-        self.assertEqual(suivi.outcome, services.OUTCOME_VISITE_ACCEPTEE)
+        self.assertEqual(suivi.outcome, cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertEqual(suivi.note, 'RDV pris pour lundi')
         self.assertEqual(
             (suivi.due_at, suivi.due_date, suivi.due_initial_at), origine)
@@ -143,7 +143,7 @@ class LEcheanceDuTraitementTests(_Base):
         [ligne] = [ligne for ligne in controle['par_type']
                    if ligne['type_etape'] == st.TYPE_SUIVI_APPEL]
         self.assertEqual(ligne['reponses'],
-                         [{'cle': services.OUTCOME_VISITE_ACCEPTEE, 'n': 1}])
+                         [{'cle': cadence_reperes.OUTCOME_VISITE_ACCEPTEE, 'n': 1}])
         [case] = [case for case in controle['jours']
                   if case['date'] == AUJOURDHUI.isoformat()]
         self.assertEqual((case['du'], case['a_temps'], case['etat']),

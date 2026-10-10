@@ -30,6 +30,10 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core import platform
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co_filter(user):
@@ -324,6 +328,17 @@ _SEARCH_SPECS = [
 ]
 
 
+_SEARCH_GLOBAL_SEARCH_REPONSE = inline_serializer('SearchGlobalSearchReponse', {
+    'query': drf_serializers.JSONField(allow_null=True),
+    'groups': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('q', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _SEARCH_GLOBAL_SEARCH_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def global_search(request):
@@ -389,6 +404,18 @@ def global_search(request):
     return Response({'query': q, 'groups': groups})
 
 
+_SEARCH_NOTIFICATIONS_REPONSE = inline_serializer('SearchNotificationsReponse', {
+    'total': drf_serializers.JSONField(allow_null=True),
+    'activites_en_retard': drf_serializers.JSONField(allow_null=True),
+    'garanties_expirantes': drf_serializers.JSONField(allow_null=True),
+    'factures_impayees': drf_serializers.JSONField(allow_null=True),
+    'contrats_a_renouveler': drf_serializers.JSONField(allow_null=True),
+    'visites_dues': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    responses={200: _SEARCH_NOTIFICATIONS_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def notifications(request):

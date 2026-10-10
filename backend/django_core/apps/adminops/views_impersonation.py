@@ -15,9 +15,13 @@ from __future__ import annotations
 
 import logging
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -60,6 +64,11 @@ def _journaliser(demande, user, action, detail):
         logger.debug('adminops: audit impersonation échoué', exc_info=True)
 
 
+class ImpersonationDemandeSerializer(drf_serializers.Serializer):
+    motif = drf_serializers.CharField()
+    utilisateur_cible = drf_serializers.IntegerField()
+
+
 class ImpersonationDemandeView(APIView):
     """POST — le support DEMANDE une session (NTADM32) ; GET — ses demandes.
 
@@ -67,12 +76,16 @@ class ImpersonationDemandeView(APIView):
 
     permission_classes = [IsTaqinorSupport]
     serializer_class = SessionImpersonationSerializer
+    parser_classes = [JSONParser]
 
+    @extend_schema(responses=SessionImpersonationSerializer(many=True))
     def get(self, request):
         qs = SessionImpersonation.objects.filter(
             initiee_par=request.user).order_by('-created_at', '-id')
         return Response(SessionImpersonationSerializer(qs, many=True).data)
 
+    @extend_schema(request=ImpersonationDemandeSerializer,
+                   responses={201: SessionImpersonationSerializer})
     def post(self, request):
         from authentication.models import CustomUser
 
@@ -110,10 +123,12 @@ class ImpersonationCiblesView(APIView):
 
     permission_classes = [IsTaqinorSupport]
 
-    @extend_schema(responses=inline_serializer('ImpersonationCibles', {
-        'societes': drf_serializers.JSONField(),
-        'utilisateurs': drf_serializers.JSONField(),
-    }))
+    @extend_schema(
+        parameters=[OpenApiParameter('societe', OpenApiTypes.INT, required=False)],
+        responses=inline_serializer('ImpersonationCibles', {
+            'societes': drf_serializers.JSONField(),
+            'utilisateurs': drf_serializers.JSONField(),
+        }))
     def get(self, request):
         from authentication.models import Company, CustomUser
 
@@ -148,6 +163,7 @@ class ImpersonationEnAttenteView(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = SessionImpersonationSerializer
 
+    @extend_schema(responses=SessionImpersonationSerializer(many=True))
     def get(self, request):
         if not _est_administrateur(request.user):
             return Response({'detail': "Réservé à l'Administrateur."},
@@ -162,6 +178,7 @@ class _ActionConsentementView(APIView):
 
     permission_classes = [IsAuthenticated]
     serializer_class = SessionImpersonationSerializer
+    parser_classes = [JSONParser]
 
     def _charger(self, request, pk):
         demande = SessionImpersonation.objects.filter(pk=pk).first()
@@ -182,6 +199,7 @@ class _ActionConsentementView(APIView):
 class ImpersonationConsentirView(_ActionConsentementView):
     """POST — « Autoriser » : SEULE porte vers une session exploitable."""
 
+    @extend_schema(request=None, responses=SessionImpersonationSerializer)
     def post(self, request, pk):
         demande, erreur = self._charger(request, pk)
         if erreur is not None:
@@ -202,6 +220,7 @@ class ImpersonationConsentirView(_ActionConsentementView):
 class ImpersonationRefuserView(_ActionConsentementView):
     """POST — « Refuser » : définitif, plus aucun consentement possible."""
 
+    @extend_schema(request=None, responses=SessionImpersonationSerializer)
     def post(self, request, pk):
         demande, erreur = self._charger(request, pk)
         if erreur is not None:
@@ -225,6 +244,11 @@ class ImpersonationDemarrerView(APIView):
     permission_classes = [IsTaqinorSupport]
     serializer_class = SessionImpersonationSerializer
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ImpersonationDemarree', {
+            'access': drf_serializers.CharField(),
+            'session': SessionImpersonationSerializer(),
+        }))
     def post(self, request, pk):
         demande = SessionImpersonation.objects.filter(pk=pk).first()
         if demande is None:
@@ -253,6 +277,7 @@ class ImpersonationTerminerView(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = SessionImpersonationSerializer
 
+    @extend_schema(request=None, responses=SessionImpersonationSerializer)
     def post(self, request, pk):
         demande = SessionImpersonation.objects.filter(pk=pk).first()
         if demande is None:
@@ -282,6 +307,14 @@ class ImpersonationSessionActiveView(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = SessionImpersonationSerializer
 
+    @extend_schema(responses=inline_serializer('ImpersonationSessionActive', {
+        'active': drf_serializers.BooleanField(),
+        'id': drf_serializers.IntegerField(required=False),
+        'support_nom': drf_serializers.CharField(required=False),
+        'motif': drf_serializers.CharField(required=False),
+        'expire_le': drf_serializers.DateTimeField(required=False),
+        'message': drf_serializers.CharField(required=False),
+    }))
     def get(self, request):
         session = impersonation_service.session_depuis_requete(request)
         if session is None:

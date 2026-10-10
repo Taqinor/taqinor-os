@@ -33,6 +33,7 @@ from ..serializers import (
     ProjetDevisSerializer, ProjetTicketSerializer,
     BudgetProjetSerializer, BudgetEngagementSerializer,
 )
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -84,7 +85,8 @@ def _check_projet_tenant(serializer, company):
     _check_tenant(serializer, company, 'projet')
 
 
-class ProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('client'), p1=oa.qs('statut'))
+class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — programme/projet multi-chantiers (ferme à 4 forages, toiture par
     tranches). Lecture tout rôle, écriture responsable/admin. Référence et
     société posées côté serveur. Filtrable par `statut` et `client`."""
@@ -156,18 +158,21 @@ class ProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
             serializer_class(obj).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
+    @oa.extend_schema(request=oa.body('AttacherChantierRequete', installation=oa.i(True)), responses={200: ProjetChantierSerializer, 201: ProjetChantierSerializer})
     @action(detail=True, methods=['post'])
     def attacher_chantier(self, request, pk=None):
         """FG291 — rattache un chantier (`installation`) au programme."""
         return self._attach(
             request, ProjetChantier, 'installation', ProjetChantierSerializer)
 
+    @oa.extend_schema(request=oa.body('AttacherDevisRequete', devis=oa.i(True)), responses={200: ProjetDevisSerializer, 201: ProjetDevisSerializer})
     @action(detail=True, methods=['post'])
     def attacher_devis(self, request, pk=None):
         """FG291 — rattache un devis (`devis`) au programme (statut intact)."""
         return self._attach(
             request, ProjetDevis, 'devis', ProjetDevisSerializer)
 
+    @oa.extend_schema(request=oa.body('AttacherTicketRequete', ticket=oa.i(True)), responses={200: ProjetTicketSerializer, 201: ProjetTicketSerializer})
     @action(detail=True, methods=['post'])
     def attacher_ticket(self, request, pk=None):
         """FG291 — rattache un ticket SAV (`ticket`) au programme (statut
@@ -175,6 +180,7 @@ class ProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
         return self._attach(
             request, ProjetTicket, 'ticket', ProjetTicketSerializer)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'],
             permission_classes=[IsResponsableOrAdmin])
     def pnl(self, request, pk=None):
@@ -187,7 +193,8 @@ class ProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
         return Response(projet_pnl(projet))
 
 
-class ProjetChantierViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('projet'))
+class ProjetChantierViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — rattachements chantier↔programme. Filtrable par `projet`."""
     queryset = ProjetChantier.objects.select_related(
         'projet', 'installation').all()
@@ -218,7 +225,8 @@ class ProjetChantierViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelV
         serializer.save(company=company)
 
 
-class ProjetDevisViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('projet'))
+class ProjetDevisViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — rattachements devis↔programme (string-FK, statut intact)."""
     queryset = ProjetDevis.objects.select_related('projet', 'devis').all()
     serializer_class = ProjetDevisSerializer
@@ -248,7 +256,8 @@ class ProjetDevisViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelView
         serializer.save(company=company)
 
 
-class ProjetTicketViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('projet'))
+class ProjetTicketViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — rattachements ticket SAV↔programme (string-FK, statut intact)."""
     queryset = ProjetTicket.objects.select_related('projet', 'ticket').all()
     serializer_class = ProjetTicketSerializer
@@ -301,7 +310,8 @@ def _check_tache_links_same_projet(serializer, instance=None):
                 {field: 'Doit appartenir au même programme.'})
 
 
-class ProjetTacheViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('assigne'), p1=oa.qi('parent'), p2=oa.qi('projet'), p3=oa.qs('statut'))
+class ProjetTacheViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG292 — tâches & sous-tâches de programme avec dépendances. Lecture tout
     rôle, écriture responsable/admin. Société posée côté serveur. Le programme,
     le parent, le prédécesseur et l'assigné sont validés tenant. Les cycles
@@ -372,7 +382,8 @@ class ProjetTacheViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelView
 
 # ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
 
-class BudgetProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('projet'))
+class BudgetProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG294 — budget d'un programme + synthèse vs réel.
 
     CRUD du budget (enveloppes par catégorie, tarif main-d'œuvre, seuil
@@ -407,6 +418,7 @@ class BudgetProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelVie
         _check_projet_tenant(serializer, company)
         serializer.save(company=company)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'])
     def synthese(self, request, pk=None):
         """FG294 — budget vs réel (engagé/dépensé) + alerte de dépassement."""
@@ -414,7 +426,8 @@ class BudgetProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelVie
         return Response(budget_projet_synthese(budget))
 
 
-class BudgetEngagementViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('budget'))
+class BudgetEngagementViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
     à un budget de programme. INTERNE (responsable/admin). La société est posée
     côté serveur ; le budget et l'objet stock rattaché sont validés tenant. Les

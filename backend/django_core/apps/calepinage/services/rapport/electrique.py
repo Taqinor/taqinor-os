@@ -40,7 +40,7 @@ from . import nombre_tel_que_servi
 
 __all__ = [
     'CSS_SECTION', 'MOTIF_SCHEMA_INDISPONIBLE', 'MENTION_NON_VERIFIABLE',
-    'html_de_section', 'html_table_verdicts', 'bloc_schema_unifilaire',
+    'html_de_section', 'bloc_schema_unifilaire',
     'html_motif_schema', 'motif_du_schema', 'rendre_rapport_avec_schema',
 ]
 
@@ -112,7 +112,7 @@ def _table_onduleurs(onduleurs, langue):
         entete, ''.join(lignes))
 
 
-def html_table_verdicts(verdicts, langue='fr'):
+def _html_table_verdicts(verdicts, langue='fr'):
     """La table des verdicts, ``bloquant``/``conforme``/``source``/``detail``
     SERVIS TELS QUELS — un ``conforme: null`` imprime ``« non vérifiable »``,
     jamais « OK » et jamais une valeur devinée (vocabulaire du moteur,
@@ -168,7 +168,7 @@ def html_de_section(contexte):
         blocs.append('<h3>Onduleurs</h3>')
         blocs.append(_table_onduleurs(onduleurs, langue))
     verdicts = electrique.get('verdicts')
-    table_verdicts = html_table_verdicts(verdicts, langue)
+    table_verdicts = _html_table_verdicts(verdicts, langue)
     if table_verdicts:
         blocs.append('<h3>Verdicts</h3>')
         blocs.append(table_verdicts)

@@ -7,7 +7,9 @@ from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
@@ -86,9 +88,51 @@ def _qr_data_uri(target):
 
 
 READ_ACTIONS = ['list', 'retrieve']
+
+# ENF9 — petits schémas inline partagés par les @extend_schema des actions.
+_CharF = drf_serializers.CharField
+
+
+def _sch(name, fields, extra=False, null=False, many=False):
+    """Sérialiseur inline pour la documentation OpenAPI (``extra`` : objet
+    à propriétés libres, ``fields`` ne liste alors que le minimum)."""
+    return inline_serializer(name, fields, many=many, allow_null=null)
+
+
+_CreerLeadReponse = _sch('SavCreerLeadReponse', {
+    'lead_id': drf_serializers.IntegerField(),
+    'created': drf_serializers.BooleanField(),
+})
+
+_RegistreGaranties = _sch('SavRegistreGaranties', {
+    'today': drf_serializers.DateField(),
+    'expiring_soon_days': drf_serializers.IntegerField(),
+    'parcs': _sch('SavRegistreParc', {
+        'installation': drf_serializers.IntegerField(allow_null=True),
+        'installation_nom': _CharF(allow_blank=True),
+        'client_nom': _CharF(allow_blank=True),
+        'prochaine_echeance': drf_serializers.DateField(allow_null=True),
+        'items': drf_serializers.ListField(child=drf_serializers.DictField()),
+        'alertes': drf_serializers.DictField(
+            child=drf_serializers.IntegerField()),
+    }, many=True),
+    'totaux': drf_serializers.DictField(child=drf_serializers.IntegerField()),
+})
+
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('produit', OpenApiTypes.INT, required=False),
+        OpenApiParameter('marque', OpenApiTypes.STR, required=False),
+        OpenApiParameter('installation', OpenApiTypes.INT, required=False),
+        OpenApiParameter('client', OpenApiTypes.INT, required=False),
+        OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('garantie', OpenApiTypes.STR, required=False, enum=['non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie', 'legale_uniquement']),
+        OpenApiParameter('categorie', OpenApiTypes.INT, required=False),
+        OpenApiParameter('rebut', OpenApiTypes.STR, required=False, enum=['only', 'tous']),
+    ]))
 class EquipementViewSet(CompanyScopedModelViewSet):
     """Parc d'équipements (n° de série + horloges de garantie). Tout est scopé
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
@@ -272,6 +316,9 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         if update_fields:
             inst.save(update_fields=update_fields)
 
+    @extend_schema(
+        request=_sch('SavMettreAuRebutRequete', {'motif': _CharF()}),
+        responses=EquipementSerializer)
     @action(detail=True, methods=['post'], url_path='mettre-au-rebut',
             permission_classes=[IsResponsableOrAdmin])
     def mettre_au_rebut(self, request, pk=None):
@@ -295,6 +342,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             EquipementSerializer(
                 equipement, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=EquipementSerializer)
     @action(detail=True, methods=['post'], url_path='reactiver-rebut',
             permission_classes=[IsResponsableOrAdmin])
     def reactiver_rebut(self, request, pk=None):
@@ -311,6 +359,8 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             EquipementSerializer(
                 equipement, context={'request': request}).data)
 
+    @extend_schema(responses=_sch('SavPartageQrReponse', {
+        'url': _CharF(), 'qr': _CharF(allow_null=True)}))
     @action(detail=True, methods=['get'], url_path='partage-qr',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
     def partage_qr(self, request, pk=None):
@@ -330,6 +380,17 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             f'/e/{equipement.ensure_public_token()}')
         return Response({'url': url, 'qr': _qr_data_uri(url)})
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('ids', OpenApiTypes.STR, required=False,
+                             description='Identifiants séparés par des virgules.'),
+            OpenApiParameter('public', OpenApiTypes.STR, required=False,
+                             enum=['0', '1', 'true', 'false'],
+                             description="'1'/'true' : QR de l'URL publique."),
+            OpenApiParameter('symbology', OpenApiTypes.STR, required=False,
+                             enum=['qr', 'code128']),
+        ],
+        responses={(200, 'text/html'): OpenApiTypes.STR})
     @action(detail=False, methods=['get'], url_path='etiquettes',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
     def etiquettes(self, request):
@@ -399,6 +460,11 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         html = render_labels_html(items, symbology=symbology)
         return HR(html, content_type='text/html; charset=utf-8')
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'jours', OpenApiTypes.INT, required=False,
+            description="Seuil « expire bientôt » en jours.")],
+        responses=_RegistreGaranties)
     @action(detail=False, methods=['get'], url_path='registre-garanties',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
     def registre_garanties(self, request):
@@ -420,6 +486,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         data = warranty_registry(self.get_queryset(), expiring_soon_days=jours)
         return Response(data)
 
+    @extend_schema(responses=_sch('SavFiabiliteEquipement', {}, extra=True))
     @action(detail=True, methods=['get'], url_path='fiabilite',
             permission_classes=[IsAnyRole])
     def fiabilite(self, request, pk=None):
@@ -440,6 +507,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         data = fiabilite_equipement(equipement, include_couts=include_couts)
         return Response(data)
 
+    @extend_schema(responses=_sch('SavEstimationsMaintenance', {}, extra=True))
     @action(detail=True, methods=['get'], url_path='estimations-maintenance',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
     def estimations_maintenance(self, request, pk=None):
@@ -459,6 +527,17 @@ class EquipementViewSet(CompanyScopedModelViewSet):
                 data[champ] = data[champ].isoformat()
         return Response(data)
 
+    @extend_schema(
+        methods=['GET'], request=None,
+        responses=EquipementDowntimeSerializer(many=True))
+    @extend_schema(
+        methods=['POST'],
+        request=_sch('SavDowntimeRequete', {
+            'debut': drf_serializers.DateTimeField(required=False),
+            'ticket': drf_serializers.IntegerField(required=False),
+            'motif': _CharF(required=False, allow_blank=True),
+        }),
+        responses={201: EquipementDowntimeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='downtime',
             permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
     def downtime(self, request, pk=None):
@@ -504,6 +583,10 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         return Response(
             EquipementDowntimeSerializer(dt).data, status=201)
 
+    @extend_schema(
+        request=_sch('SavCloturerDowntimeRequete', {
+            'fin': drf_serializers.DateTimeField(required=False)}),
+        responses=EquipementDowntimeSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'downtime/(?P<downtime_id>[^/.]+)/cloturer',
             permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
@@ -522,6 +605,12 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         dt.clore(fin=fin)
         return Response(EquipementDowntimeSerializer(dt).data)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('debut', OpenApiTypes.DATE, required=False),
+            OpenApiParameter('fin', OpenApiTypes.DATE, required=False),
+        ],
+        responses=_sch('SavDisponibiliteEquipement', {}, extra=True))
     @action(detail=True, methods=['get'], url_path='disponibilite',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
     def disponibilite(self, request, pk=None):
@@ -553,6 +642,21 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             equipement, debut_periode=debut_periode, fin_periode=fin_periode)
         return Response(data)
 
+    @extend_schema(
+        methods=['GET'], request=None,
+        responses=ReleveCompteurEquipementSerializer(many=True))
+    @extend_schema(
+        methods=['POST'],
+        request=_sch('SavReleveCompteurRequete', {
+            'type': _CharF(),
+            'valeur': drf_serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+            'date': drf_serializers.DateField(required=False),
+        }),
+        responses={201: _sch('SavReleveCompteurReponse', {
+            'ticket_genere': _sch('SavReleveTicketGenere', {
+                'id': drf_serializers.IntegerField(),
+                'reference': _CharF()}, null=True)}, extra=True)})
     @action(detail=True, methods=['get', 'post'], url_path='releves-compteur',
             permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
     def releves_compteur(self, request, pk=None):
@@ -644,6 +748,20 @@ class TicketEnDoubleError(APIException):
     default_code = 'ticket_en_double'
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('type', OpenApiTypes.STR, required=False),
+        OpenApiParameter('priorite', OpenApiTypes.STR, required=False),
+        OpenApiParameter('technicien', OpenApiTypes.INT, required=False),
+        OpenApiParameter('client', OpenApiTypes.INT, required=False),
+        OpenApiParameter('installation', OpenApiTypes.INT, required=False),
+        OpenApiParameter('equipement', OpenApiTypes.INT, required=False),
+        OpenApiParameter('categorie', OpenApiTypes.INT, required=False),
+        OpenApiParameter('equipe', OpenApiTypes.INT, required=False),
+        OpenApiParameter('ouvert', OpenApiTypes.STR, required=False, enum=['tous']),
+        OpenApiParameter('annule', OpenApiTypes.STR, required=False, enum=['only', 'sans']),
+    ]))
 class TicketViewSet(CompanyScopedModelViewSet):
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
     en ordre d'entonnoir), indépendant des étapes lead / statuts de document.
@@ -1046,6 +1164,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         except sav_services.TransitionTicketRefusee as exc:
             raise ValidationError(exc.detail)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='planifier',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def planifier(self, request, pk=None):
@@ -1055,6 +1174,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='demarrer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def demarrer(self, request, pk=None):
@@ -1064,6 +1184,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=_sch('SavResoudreRequete', {
+        'canal_resolution': _CharF(required=False)}))
     @action(detail=True, methods=['post'], url_path='resoudre',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def resoudre(self, request, pk=None):
@@ -1084,6 +1206,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='cloturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def cloturer(self, request, pk=None):
@@ -1093,6 +1216,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='reouvrir',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def reouvrir(self, request, pk=None):
@@ -1107,6 +1231,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=_sch('SavReplanifierRequete', {
+        'date_tournee': drf_serializers.DateField()}))
     @action(detail=True, methods=['post'], url_path='replanifier',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def replanifier(self, request, pk=None):
@@ -1138,6 +1264,24 @@ class TicketViewSet(CompanyScopedModelViewSet):
         'annuler': None,  # pas de valeur — motif optionnel.
     }
 
+    @extend_schema(
+        request=_sch('SavActionsGroupeesRequete', {
+            'ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField(), allow_empty=False),
+            'operation': _CharF(),
+            'statut': _CharF(required=False),
+            'technicien': drf_serializers.IntegerField(
+                required=False, allow_null=True),
+            'priorite': _CharF(required=False),
+            'motif': _CharF(required=False, allow_blank=True),
+        }),
+        responses=_sch('SavActionsGroupeesReponse', {
+            'traites': drf_serializers.ListField(
+                child=drf_serializers.IntegerField()),
+            'echecs': drf_serializers.ListField(child=drf_serializers.DictField()),
+            'nb_traites': drf_serializers.IntegerField(),
+            'nb_echecs': drf_serializers.IntegerField(),
+        }))
     @action(detail=False, methods=['post'], url_path='actions-groupees',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def actions_groupees(self, request):
@@ -1234,6 +1378,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'nb_traites': len(traites), 'nb_echecs': len(echecs),
         })
 
+    @extend_schema(responses=TicketActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def historique(self, request, pk=None):
@@ -1241,6 +1386,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketActivitySerializer(ticket.activites.all(), many=True).data)
 
+    @extend_schema(
+        parameters=[OpenApiParameter('limit', OpenApiTypes.INT, required=False)],
+        responses=_sch('SavSimilairesReponse', {
+            'results': drf_serializers.ListField(child=drf_serializers.DictField())}))
     @action(detail=True, methods=['get'], url_path='similaires',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def similaires(self, request, pk=None):
@@ -1255,6 +1404,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         data = tickets_similaires(ticket, limit=max(1, limit))
         return Response({'results': data})
 
+    @extend_schema(responses=_sch('SavPiecesCompatiblesReponse', {
+        'results': drf_serializers.ListField(child=drf_serializers.DictField())}))
     @action(detail=True, methods=['get'], url_path='pieces-compatibles',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def pieces_compatibles(self, request, pk=None):
@@ -1270,6 +1421,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
             ticket.company, ticket.equipement.produit_id)
         return Response({'results': data})
 
+    @extend_schema(
+        methods=['GET'], request=None,
+        responses=TicketActiviteAFaireSerializer(many=True))
+    @extend_schema(
+        methods=['POST'], request=TicketActiviteAFaireSerializer,
+        responses={201: TicketActiviteAFaireSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='activites',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def activites(self, request, pk=None):
@@ -1281,7 +1438,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             qs = ticket.activites_a_faire.select_related('assigne')
             return Response(
                 TicketActiviteAFaireSerializer(qs, many=True).data)
-        serializer = TicketActiviteAFaireSerializer(data=request.data)
+        # ENF17 — la requête en contexte borne ``assigne`` à la société
+        # (``same_company_fields``) : un id d'ailleurs = un id absent (400).
+        serializer = TicketActiviteAFaireSerializer(
+            data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         assigne = serializer.validated_data.get('assigne')
         if assigne is not None and assigne.company_id != ticket.company_id:
@@ -1294,6 +1454,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             TicketActiviteAFaireSerializer(instance).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=TicketActiviteAFaireSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/cocher',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1310,6 +1471,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
             act.save(update_fields=['fait', 'fait_le'])
         return Response(TicketActiviteAFaireSerializer(act).data)
 
+    @extend_schema(
+        request=_sch('SavNoterRequete', {
+            'body': _CharF(required=False, allow_blank=True),
+            'reponse_type_id': drf_serializers.IntegerField(required=False),
+            'visible_client': drf_serializers.BooleanField(required=False),
+        }),
+        responses={201: TicketActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def noter(self, request, pk=None):
@@ -1388,6 +1556,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(TicketActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def annuler(self, request, pk=None):
@@ -1404,6 +1573,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='reactiver',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def reactiver(self, request, pk=None):
@@ -1416,6 +1586,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=_sch('SavSuivreReponse', {
+        'suivi': drf_serializers.BooleanField()}))
     @action(detail=True, methods=['post'], url_path='suivre',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def suivre(self, request, pk=None):
@@ -1426,6 +1598,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response({'suivi': True})
 
     @suivre.mapping.delete
+    @extend_schema(request=None, responses=_sch('SavNePlusSuivreReponse', {
+        'suivi': drf_serializers.BooleanField()}))
     def ne_plus_suivre(self, request, pk=None):
         """ZSAV9 — Se désabonner des notifications de ce ticket (idempotent)."""
         ticket = self.get_object()
@@ -1433,6 +1607,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             ticket=ticket, user=request.user).delete()
         return Response({'suivi': False})
 
+    @extend_schema(request=_sch('SavPremierReponseRequete', {
+        'at': drf_serializers.DateTimeField(required=False)}))
     @action(detail=True, methods=['post'], url_path='premier-reponse',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def premier_reponse(self, request, pk=None):
@@ -1458,6 +1634,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=_sch('SavReaffecterEquipeRequete', {
+        'equipe': drf_serializers.IntegerField(required=False, allow_null=True),
+        'equipe_id': drf_serializers.IntegerField(required=False, allow_null=True),
+    }))
     @action(detail=True, methods=['post'], url_path='reaffecter-equipe',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def reaffecter_equipe(self, request, pk=None):
@@ -1484,6 +1664,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(
+        request=_sch('SavLogAppelRequete', {
+            'issue': _CharF(required=False, allow_blank=True),
+            'duree_minutes': drf_serializers.IntegerField(
+                required=False, min_value=0),
+            'notes': _CharF(required=False, allow_blank=True),
+        }),
+        responses={201: _sch('SavLogAppelReponse', {
+            'id': drf_serializers.IntegerField(),
+            'kind': _CharF(),
+            'body': _CharF(),
+            'issue': _CharF(allow_blank=True, allow_null=True),
+            'duree_minutes': drf_serializers.IntegerField(allow_null=True),
+            'created_at': drf_serializers.DateTimeField(),
+        })})
     @action(detail=True, methods=['post'], url_path='log-appel',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def log_appel(self, request, pk=None):
@@ -1540,6 +1735,19 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'created_at': entree.created_at,
         }, status=201)
 
+    @extend_schema(
+        request=_sch('SavRepondreEmailRequete', {
+            'corps': _CharF(),
+            'sujet': _CharF(required=False, allow_blank=True),
+            'destinataire': _CharF(required=False, allow_blank=True),
+        }),
+        responses={201: _sch('SavRepondreEmailReponse', {
+            'id': drf_serializers.IntegerField(),
+            'message_id': _CharF(allow_blank=True, allow_null=True),
+            'thread_root': _CharF(allow_blank=True, allow_null=True),
+            'destinataire': _CharF(allow_blank=True, allow_null=True),
+            'sujet': _CharF(allow_blank=True, allow_null=True),
+        })})
     @action(detail=True, methods=['post'], url_path='repondre-email',
             permission_classes=[
                 HasPermissionOrLegacy('sav_repondre_client_externe')])
@@ -1581,6 +1789,17 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'destinataire': ligne.destinataire, 'sujet': ligne.sujet,
         }, status=201)
 
+    @extend_schema(responses=_sch('SavEmailLigne', {
+        'id': drf_serializers.IntegerField(),
+        'direction': _CharF(),
+        'message_id': _CharF(allow_blank=True, allow_null=True),
+        'thread_root': _CharF(allow_blank=True, allow_null=True),
+        'expediteur': _CharF(allow_blank=True, allow_null=True),
+        'destinataire': _CharF(allow_blank=True, allow_null=True),
+        'sujet': _CharF(allow_blank=True, allow_null=True),
+        'corps': _CharF(allow_blank=True, allow_null=True),
+        'date_reception': drf_serializers.DateTimeField(allow_null=True),
+    }, many=True))
     @action(detail=True, methods=['get'], url_path='emails',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def emails(self, request, pk=None):
@@ -1597,6 +1816,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'date_reception': ligne.date_reception,
         } for ligne in lignes])
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def rapport_pdf(self, request, pk=None):
@@ -1628,6 +1848,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="fiche-ticket-{ticket.reference}.pdf"')
         return resp
 
+    @extend_schema(
+        methods=['GET'], request=None,
+        responses=PieceConsommeeSerializer(many=True))
+    @extend_schema(
+        methods=['POST'],
+        request=_sch('SavPieceConsommeeRequete', {
+            'produit': drf_serializers.IntegerField(),
+            'quantite': drf_serializers.DecimalField(
+                max_digits=12, decimal_places=2, required=False),
+            'decrement': drf_serializers.BooleanField(required=False),
+        }),
+        responses={201: PieceConsommeeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def pieces(self, request, pk=None):
@@ -1693,6 +1925,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             PieceConsommeeSerializer(piece).data, status=201)
 
+    @extend_schema(request=None, responses={204: None})
     @action(detail=True, methods=['delete'],
             url_path=r'pieces/(?P<piece_id>[^/.]+)',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1730,6 +1963,22 @@ class TicketViewSet(CompanyScopedModelViewSet):
             piece.delete()
         return Response(status=204)
 
+    @extend_schema(
+        methods=['GET'], request=None,
+        responses=PieceRetireeSerializer(many=True))
+    @extend_schema(
+        methods=['POST'],
+        request=_sch('SavPieceRetireeRequete', {
+            'produit': drf_serializers.IntegerField(),
+            'quantite': drf_serializers.DecimalField(
+                max_digits=12, decimal_places=2, required=False),
+            'numero_serie': _CharF(required=False, allow_blank=True),
+            'destination': _CharF(required=False),
+            'operation': _CharF(required=False),
+            'serie_neuve': _CharF(required=False, allow_blank=True),
+            'produit_neuf': drf_serializers.IntegerField(required=False),
+        }),
+        responses={201: PieceRetireeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def pieces_retirees(self, request, pk=None):
@@ -1840,6 +2089,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         }
         return Response(data, status=201)
 
+    @extend_schema(responses=_sch('SavPiecesUnifiees', {}, extra=True))
     @action(detail=True, methods=['get'], url_path='pieces-unifiees',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def pieces_unifiees(self, request, pk=None):
@@ -1850,6 +2100,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         return Response(_pieces_unifiees(ticket))
 
+    @extend_schema(
+        request=_sch('SavFacturerRequeteA', {
+            'override': drf_serializers.BooleanField(required=False)}),
+        responses={201: _sch('SavFacturerReponseA', {
+            'facture_id': drf_serializers.IntegerField(),
+            'facture_reference': _CharF(),
+            'couverture': _CharF(),
+            'sous_garantie': drf_serializers.BooleanField(),
+        })})
     @action(detail=True, methods=['post'], url_path='generer-facture',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def generer_facture(self, request, pk=None):
@@ -1865,6 +2124,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # ASAV2 — alias de ``facturer`` : même service de décision.
         return self._facturer_ticket(request, self.get_object())
 
+    @extend_schema(
+        request=_sch('SavFacturerRequeteB', {
+            'override': drf_serializers.BooleanField(required=False)}),
+        responses={201: _sch('SavFacturerReponseB', {
+            'facture_id': drf_serializers.IntegerField(),
+            'facture_reference': _CharF(),
+            'couverture': _CharF(),
+            'sous_garantie': drf_serializers.BooleanField(),
+        })})
     @action(detail=True, methods=['post'], url_path='facturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def facturer(self, request, pk=None):
@@ -1911,6 +2179,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'sous_garantie': sous_garantie,
         }, status=201)
 
+    @extend_schema(
+        request=_sch('SavPlanifierInterventionRequete', {
+            'type_intervention': _CharF(required=False)}),
+        responses={201: _sch('SavPlanifierInterventionReponse', {
+            'intervention_id': drf_serializers.IntegerField(),
+            'ticket_statut': _CharF(),
+        })})
     @action(detail=True, methods=['post'], url_path='planifier-intervention',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def planifier_intervention(self, request, pk=None):
@@ -1961,6 +2236,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'ticket_statut': ticket.statut,
         }, status=201)
 
+    @extend_schema(
+        methods=['GET'], request=None,
+        responses=PretEquipementSerializer(many=True))
+    @extend_schema(
+        methods=['POST'],
+        request=_sch('SavPretEquipementRequete', {
+            'produit': drf_serializers.IntegerField(),
+            'date_sortie': drf_serializers.DateField(required=False),
+            'date_retour_prevue': drf_serializers.DateField(required=False),
+            'numero_serie': _CharF(required=False, allow_blank=True),
+        }),
+        responses={201: PretEquipementSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def prets_equipement(self, request, pk=None):
@@ -2012,6 +2299,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             f'{date_retour_prevue or "non renseigné"}).')
         return Response(PretEquipementSerializer(pret).data, status=201)
 
+    @extend_schema(
+        request=_sch('SavRetournerPretRequete', {
+            'date_retour_reelle': drf_serializers.DateField(required=False)}),
+        responses=PretEquipementSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'prets-equipement/(?P<pret_id>[^/.]+)/retourner',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2041,6 +2332,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             f'Prêt équipement {pret.produit.nom} retourné.')
         return Response(PretEquipementSerializer(pret).data, status=200)
 
+    @extend_schema(responses=_sch('SavTriageIa', {}, extra=True))
     @action(detail=True, methods=['get'], url_path='triage-ia',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def triage_ia(self, request, pk=None):
@@ -2054,6 +2346,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
             company=ticket.company, description=ticket.description)
         return Response(result)
 
+    @extend_schema(
+        request=None,
+        responses={200: _CreerLeadReponse, 201: _CreerLeadReponse})
     @action(detail=True, methods=['post'], url_path='creer-lead',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def creer_lead(self, request, pk=None):
@@ -2083,6 +2378,24 @@ class TicketViewSet(CompanyScopedModelViewSet):
             {'lead_id': lead.id, 'created': created},
             status=201 if created else 200)
 
+    @extend_schema(
+        methods=['GET'], request=None,
+        responses=TicketChecklistItemSerializer(many=True))
+    @extend_schema(
+        methods=['POST'],
+        request=_sch('SavChecklistInitRequete', {
+            'template_id': drf_serializers.IntegerField()}),
+        responses={
+            200: TicketChecklistItemSerializer(many=True),
+            201: TicketChecklistItemSerializer(many=True)})
+    @extend_schema(
+        methods=['PATCH'],
+        request=_sch('SavChecklistMajRequete', {
+            'cle': _CharF(),
+            'coche': drf_serializers.BooleanField(required=False),
+            'note': _CharF(required=False, allow_blank=True, allow_null=True),
+        }),
+        responses=TicketChecklistItemSerializer)
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2144,6 +2457,20 @@ class TicketViewSet(CompanyScopedModelViewSet):
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
 
+    @extend_schema(
+        methods=['GET'], request=None, responses=TicketWorksheetSerializer)
+    @extend_schema(
+        methods=['POST'],
+        request=_sch('SavWorksheetInitRequete', {
+            'modele_id': drf_serializers.IntegerField()}),
+        responses={200: TicketWorksheetSerializer, 201: TicketWorksheetSerializer})
+    @extend_schema(
+        methods=['PATCH'],
+        request=_sch('SavWorksheetMajRequete', {
+            'valeurs': drf_serializers.DictField(required=False),
+            'complete': drf_serializers.BooleanField(required=False),
+        }),
+        responses=TicketWorksheetSerializer)
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='worksheet',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2205,6 +2532,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response({'detail': str(exc)}, status=400)
         return Response(TicketWorksheetSerializer(worksheet).data)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='attente-client',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def attente_client(self, request, pk=None):
@@ -2220,6 +2548,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='reprendre',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def reprendre(self, request, pk=None):
@@ -2238,6 +2567,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @extend_schema(request=_sch('SavFusionnerRequete', {
+        'doublon_id': drf_serializers.IntegerField()}), responses=_sch(
+            'SavFusionnerReponse', {}, extra=True))
     @action(detail=True, methods=['post'], url_path='fusionner',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def fusionner(self, request, pk=None):
@@ -2338,6 +2670,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 erreurs[i] = {'produit_id': [message]}
         return erreurs
 
+    @extend_schema(
+        request=_sch('SavCreerDevisRequete', {
+            'client_id': drf_serializers.IntegerField(required=False),
+            'lignes': drf_serializers.ListField(
+                child=drf_serializers.DictField(), required=False),
+        }),
+        responses={201: _sch('SavCreerDevisReponse', {
+            'devis_id': drf_serializers.IntegerField(),
+            'devis_reference': _CharF(),
+        })})
     @action(detail=True, methods=['post'], url_path='creer-devis',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def creer_devis(self, request, pk=None):
@@ -2408,6 +2750,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             {'devis_id': devis.id, 'devis_reference': devis.reference},
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=_sch('SavLienClientReponse', {
+        'token': _CharF(), 'url': _CharF()}))
     @action(detail=True, methods=['get'], url_path='lien-client',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def lien_client(self, request, pk=None):
@@ -2428,6 +2772,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(responses=SavSlaSettingsSerializer))
 class SavSlaSettingsViewSet(CompanyScopedModelViewSet):
     """Réglages SLA SAV par société (FG81). Singleton : list renvoie l'unique
     enregistrement ; écriture responsable/admin."""
@@ -2446,6 +2791,7 @@ class SavSlaSettingsViewSet(CompanyScopedModelViewSet):
         obj = SavSlaSettings.get(company)
         return Response(self.get_serializer(obj).data)
 
+    @extend_schema(responses={200: SavSlaSettingsSerializer})
     def create(self, request, *args, **kwargs):
         """Upsert du singleton (PATCH-like via POST)."""
         company = request.user.company
@@ -2493,6 +2839,12 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
 
 # ── FG83 — Réclamation garantie fournisseur ───────────────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('equipement', OpenApiTypes.INT, required=False),
+        OpenApiParameter('ticket', OpenApiTypes.INT, required=False),
+        OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+    ]))
 class WarrantyClaimViewSet(CompanyScopedModelViewSet):
     """Réclamations garantie fournisseur / flux RMA (FG83).
     Lecture tout rôle ; écriture responsable/admin."""
@@ -2580,6 +2932,11 @@ class WarrantyClaimViewSet(CompanyScopedModelViewSet):
 
 # ── FG87 — Base de connaissances SAV ─────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('produit', OpenApiTypes.INT, required=False),
+        OpenApiParameter('categorie', OpenApiTypes.STR, required=False),
+    ]))
 class KbArticleViewSet(CompanyScopedModelViewSet):
     """Articles de la base de connaissances SAV (FG87).
     Cherchables par texte libre + filtrables par produit/catégorie."""
@@ -2613,6 +2970,12 @@ class KbArticleViewSet(CompanyScopedModelViewSet):
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('gravite', OpenApiTypes.STR, required=False),
+        OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('equipement', OpenApiTypes.INT, required=False),
+    ]))
 class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
     """Alarmes / défauts onduleur (FG280) — DISTINCTES du ticket SAV.
 
@@ -2670,6 +3033,7 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         super().perform_update(serializer)
 
+    @extend_schema(request=None, responses=AlarmeOnduleurSerializer)
     @action(detail=True, methods=['post'], url_path='acquitter',
             permission_classes=[IsResponsableOrAdmin])
     def acquitter(self, request, pk=None):
@@ -2687,6 +3051,10 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
                 'date_modification'])
         return Response(AlarmeOnduleurSerializer(alarme).data)
 
+    @extend_schema(
+        request=_sch('SavEscaladerRequete', {
+            'ticket': drf_serializers.IntegerField(required=False)}),
+        responses=AlarmeOnduleurSerializer)
     @action(detail=True, methods=['post'], url_path='escalader',
             permission_classes=[IsResponsableOrAdmin])
     def escalader(self, request, pk=None):
@@ -2749,6 +3117,10 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
 
 # ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('archived', OpenApiTypes.STR, required=False, enum=['1']),
+    ]))
 class CauseDefaillanceViewSet(CompanyScopedModelViewSet):
     """Référentiel des causes de panne (XSAV14). Lecture tout rôle, écriture
     responsable/admin (édité dans Paramètres).
@@ -2775,6 +3147,10 @@ class CauseDefaillanceViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('archived', OpenApiTypes.STR, required=False, enum=['1']),
+    ]))
 class RemedeDefaillanceViewSet(CompanyScopedModelViewSet):
     """Référentiel des remèdes de panne (XSAV14). Lecture tout rôle, écriture
     responsable/admin (édité dans Paramètres)."""
@@ -2797,6 +3173,10 @@ class RemedeDefaillanceViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('actif', OpenApiTypes.STR, required=False, enum=['0']),
+    ]))
 class CategorieTicketViewSet(CompanyScopedModelViewSet):
     """ZSAV2 — Référentiel de catégorie de ticket (au-delà de correctif/
     préventif). Lecture tout rôle, écriture responsable/admin (édité dans
@@ -2824,6 +3204,10 @@ class CategorieTicketViewSet(CompanyScopedModelViewSet):
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('actif', OpenApiTypes.STR, required=False, enum=['0']),
+    ]))
 class EquipeMaintenanceViewSet(CompanyScopedModelViewSet):
     """ZMFG1 — CRUD équipe de maintenance, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
@@ -2886,6 +3270,12 @@ class WorksheetMaintenanceModeleViewSet(CompanyScopedModelViewSet):
 
 # ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('archived', OpenApiTypes.STR, required=False, enum=['1']),
+        OpenApiParameter('canal', OpenApiTypes.STR, required=False),
+        OpenApiParameter('ticket', OpenApiTypes.INT, required=False),
+    ]))
 class ReponseTypeViewSet(CompanyScopedModelViewSet):
     """CRUD des réponses types (macros) SAV, company-scoped (Paramètres)."""
     queryset = ReponseType.objects.all()
@@ -2944,6 +3334,10 @@ class ReponseTypeViewSet(CompanyScopedModelViewSet):
 
 # ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('produit_equipement', OpenApiTypes.INT, required=False),
+    ]))
 class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
     """CRUD du mapping pièce compatible <-> modèle d'équipement (XSAV25)."""
     queryset = CompatibilitePiece.objects.select_related(
@@ -2980,6 +3374,11 @@ class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
 
 # ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('ordering', OpenApiTypes.STR, required=False, enum=['impact', '-impact']),
+    ]))
 class ProblemeViewSet(CompanyScopedModelViewSet):
     """NTSRV16 — CRUD des problèmes + rattachement/détachement des incidents.
 
@@ -3168,6 +3567,12 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         } for ligne in lignes]})
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter('fenetre_jours', OpenApiTypes.INT, required=False,
+                             description='Fenêtre en jours (défaut 30).'),
+            OpenApiParameter('seuil', OpenApiTypes.INT, required=False,
+                             description="Nombre d'occurrences (défaut 3)."),
+        ],
         responses=inline_serializer('SavProblemeRegroupementsResponse', {
             'fenetre_jours': drf_serializers.IntegerField(),
             'seuil': drf_serializers.IntegerField(),

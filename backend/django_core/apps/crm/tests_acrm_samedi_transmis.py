@@ -19,7 +19,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import cadence_temps, horaires, services, stages
+from apps.crm import cadence_temps, horaires, stages, cadence_plan
 from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.roles.models import Role
@@ -64,7 +64,7 @@ class SamediTransmisTests(TestCase):
 
     def _materialiser_barreau_2(self):
         with frozen(VENDREDI_SOIR):
-            services.initialiser_plan_relance(
+            cadence_plan.initialiser_plan_relance(
                 self.lead, self.user, cadence='contact')
             touche = (RelanceEtape.objects
                       .filter(lead=self.lead, cadence='contact')
@@ -73,7 +73,7 @@ class SamediTransmisTests(TestCase):
                 statut=RelanceEtape.Statut.FAIT, traite_le=VENDREDI_SOIR,
                 cadence_depart=VENDREDI_SOIR)
             touche.refresh_from_db()
-            suivante = services.materialiser_touche_suivante(
+            suivante = cadence_plan.materialiser_touche_suivante(
                 touche, self.user)
         self.assertIsNotNone(suivante)
         self.assertEqual(suivante.ordre, self.barreau.ordre)
@@ -104,7 +104,7 @@ class SamediTransmisTests(TestCase):
         suivante = self._materialiser_barreau_2()
         with frozen(VENDREDI_SOIR):
             partition = dict(
-                (g.ordre, e) for g, e in services.calculer_echeances_cadence(
+                (g.ordre, e) for g, e in cadence_plan.calculer_echeances_cadence(
                     self.lead, 'contact', VENDREDI_SOIR))
         self.assertEqual(_jour(partition[self.barreau.ordre]),
                          _jour(suivante.due_at))

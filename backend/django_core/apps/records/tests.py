@@ -1,8 +1,10 @@
 """Tests activités planifiées + pièces jointes (génériques)."""
 from datetime import date, timedelta
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -12,6 +14,8 @@ from apps.crm.models import Lead, LeadActivity
 from apps.records.models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
 )
+from apps.records.openapi import CibleModelFieldExtension, cibles_autorisees
+from apps.records.serializers import AttachmentSerializer, TaggedItemSerializer
 
 User = get_user_model()
 
@@ -108,7 +112,8 @@ class TestActivities(TestCase):
             'model': 'crm.lead', 'id': other_lead.id,
             'activity_type': self.type_appel.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ENF7 — une cible hors société est « introuvable » (404), sans fuite.
+        self.assertEqual(resp.status_code, 404)
 
     def test_snooze_is_non_destructive_and_excludes_from_mine(self):
         # VX85(a) — « ⏰ Plus tard » pose `snoozed_until` SANS toucher
@@ -598,12 +603,12 @@ class TestResolveTargetErrors(TestCase):
         with self.assertRaises(ValueError):
             resolve_target('crm.lead', 'pas-un-entier', self.company)
 
-    def test_create_activity_nonexistent_target_is_400_not_500(self):
+    def test_create_activity_nonexistent_target_is_404_not_500(self):
         resp = self.api.post('/api/django/records/activities/', {
             'model': 'crm.lead', 'id': 999999,
             'activity_type': self.type_appel.id, 'summary': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
 
     def test_create_activity_bad_type_id_is_400_not_500(self):
         resp = self.api.post('/api/django/records/activities/', {
@@ -797,14 +802,14 @@ class TestComments(TestCase):
         self.assertFalse(Comment.objects.filter(id=cmt_id).exists())
 
     def test_cross_company_target_rejected(self):
-        """Commenter un enregistrement étranger → 400."""
+        """Commenter un enregistrement étranger → 404 (ENF7)."""
         other = Company.objects.create(nom='Other Cmt', slug='other-cmt')
         other_lead = Lead.objects.create(company=other, nom='Prospect autre')
         res = self.api.post('/api/django/records/comments/', {
             'model': 'crm.lead', 'id': other_lead.id,
             'body': 'Commentaire interdit.',
         }, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
 
     def test_company_scoped_listing(self):
         """Un utilisateur ne voit que les commentaires de sa société."""
@@ -909,13 +914,13 @@ class TestTags(TestCase):
         self.assertEqual(TaggedItem.objects.count(), 0)
 
     def test_foreign_tag_rejected(self):
-        """Appliquer un tag d'une autre société → 400."""
+        """Appliquer un tag d'une autre société → 404 (ENF7)."""
         other = Company.objects.create(nom='Other T2', slug='other-t2')
         foreign_tag = Tag.objects.create(company=other, nom='Tag Étranger')
         res = self.api.post('/api/django/records/tagged-items/', {
             'model': 'crm.lead', 'id': self.lead.id, 'tag': foreign_tag.id,
         }, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
 
     def test_tag_search_filter(self):
         """Le filtre ?q= sur /records/tags/ filtre par nom (insensible à la casse)."""
@@ -1257,3 +1262,116 @@ class TestFollowers(TestCase):
             object_id=self.lead.id, user=self.other)
         self.assertTrue(records_services.is_following(
             content_type=_ct_lead(), object_id=self.lead.id, user=self.other))
+
+
+# ENF7 — contrat OpenAPI exact de ``records`` : statuts et parseurs réels.
+# * une cible incomplète (``model`` sans ``id``) ou introuvable est un 404, pas un
+#   400 (le corps est conforme au schéma) ;
+# * seul le dépôt de pièce jointe est multipart ; le reste n'accepte que le JSON
+#   (décision D2) ;
+# * le schéma énumère les cibles autorisées (``CibleModelField``).
+class Enf7ContratTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(nom='ENF7 Records')
+        self.user = User.objects.create_user(
+            username='enf7_rec', password='pw', company=self.company,
+            role_legacy='admin')
+        self.type = ActivityType.objects.create(
+            company=self.company, nom='Appel', icone='📞')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_cible_incomplete_est_404(self):
+        resp = self.api.post('/api/django/records/activities/', {
+            'model': 'crm.lead', 'activity_type': self.type.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
+        resp = self.api.post('/api/django/records/activities/', {
+            'id': 5, 'activity_type': self.type.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
+
+    def test_type_de_cible_non_autorise_reste_400(self):
+        resp = self.api.post('/api/django/records/comments/', {
+            'model': 'auth.user', 'id': 1, 'body': 'x',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+
+    def test_json_seul_hors_depot_de_fichier(self):
+        resp = self.api.post(
+            '/api/django/records/tags/', {'nom': 'T'}, format='multipart')
+        self.assertEqual(resp.status_code, 415, getattr(resp, 'data', resp))
+        resp = self.api.post(
+            '/api/django/records/tags/', {'nom': 'T'}, format='json')
+        self.assertEqual(resp.status_code, 201, getattr(resp, 'data', resp))
+
+    def test_enum_des_cibles_dans_le_schema(self):
+        cibles = cibles_autorisees()
+        self.assertIn('crm.lead', cibles)
+        schema = CibleModelFieldExtension(None).map_serializer_field(
+            None, 'request')
+        self.assertEqual(schema['enum'], cibles)
+
+# ── ENF17 — FK des sérialiseurs records bornées société ─────────────────
+# ``TaggedItemSerializer.tag`` : le PUT/PATCH générique du TaggedItemViewSet
+# re-pointait une association vers le tag d'une AUTRE société ; désormais
+# id d'ailleurs = id absent (400). ``AttachmentSerializer.uploaded_by`` :
+# faux positif de la garde (sérialiseur entièrement en lecture).
+
+
+ID_ABSENT = 99999999
+
+
+class TaggedItemTagBorneTests(TestCase):
+    def setUp(self):
+        self.co_a = Company.objects.create(nom='enf17-rec-a', slug='enf17-rec-a')
+        self.co_b = Company.objects.create(nom='enf17-rec-b', slug='enf17-rec-b')
+        self.resp_a = User.objects.create_user(
+            username='enf17-rec-resp-a', password='x',
+            role_legacy='responsable', company=self.co_a)
+        self.lead_a = Lead.objects.create(company=self.co_a, nom='Lead A')
+        self.tag_a = Tag.objects.create(company=self.co_a, nom='Tag A')
+        self.tag_a2 = Tag.objects.create(company=self.co_a, nom='Tag A2')
+        self.tag_b = Tag.objects.create(company=self.co_b, nom='TAG-B-SECRET')
+        self.item = TaggedItem.objects.create(
+            tag=self.tag_a, content_type=ContentType.objects.get_for_model(Lead),
+            object_id=self.lead_a.id)
+        self.ctx = {'request': SimpleNamespace(user=self.resp_a)}
+
+    def test_serializer_tag_etranger_comme_absent(self):
+        ser = TaggedItemSerializer(data={'tag': self.tag_b.pk}, partial=True,
+                                   context=self.ctx)
+        self.assertFalse(ser.is_valid())
+        self.assertEqual(ser.errors['tag'][0].code, 'does_not_exist')
+        absent = TaggedItemSerializer(data={'tag': ID_ABSENT}, partial=True,
+                                      context=self.ctx)
+        self.assertFalse(absent.is_valid())
+        self.assertEqual(
+            str(ser.errors['tag'][0]).replace(str(self.tag_b.pk), '<ID>'),
+            str(absent.errors['tag'][0]).replace(str(ID_ABSENT), '<ID>'))
+        champ = TaggedItemSerializer(context=self.ctx).fields['tag']
+        self.assertEqual(champ.to_internal_value(self.tag_a2.pk), self.tag_a2)
+
+    def test_patch_tag_etranger_400(self):
+        api = auth(self.resp_a)
+        url = f'/api/django/records/tagged-items/{self.item.pk}/'
+        r = api.patch(url, {'tag': self.tag_b.pk}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('tag', r.data)
+        self.assertNotIn('TAG-B-SECRET', str(r.data))
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.tag_id, self.tag_a.pk)
+        r_ok = api.patch(url, {'tag': self.tag_a2.pk}, format='json')
+        self.assertEqual(r_ok.status_code, 200, r_ok.data)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.tag_id, self.tag_a2.pk)
+
+
+class AttachmentUploadedByLectureSeuleTests(TestCase):
+    def test_uploaded_by_en_lecture_seule(self):
+        champs = AttachmentSerializer().fields
+        self.assertTrue(champs['uploaded_by'].read_only)
+        # Rien n'est inscriptible sur ce sérialiseur (pièce posée par l'upload).
+        self.assertEqual(
+            [nom for nom, champ in champs.items() if not champ.read_only], [])

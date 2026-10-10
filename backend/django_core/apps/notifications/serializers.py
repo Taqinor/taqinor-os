@@ -1,8 +1,11 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+
+from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
     Annonce,
-    AnnonceLecture,
     Holiday,
     MessageAccueil,
     Notification,
@@ -28,6 +31,8 @@ class NotificationSerializer(serializers.ModelSerializer):
     # vide si non classée (comportement historique).
     reason_label = serializers.CharField(
         source='get_reason_display', read_only=True, default='')
+    # ENF8 — ``reason`` vaut '' quand non classée : pas une valeur d'énum.
+    reason = serializers.CharField(read_only=True)
 
     class Meta:
         model = Notification
@@ -43,14 +48,17 @@ class NotificationSerializer(serializers.ModelSerializer):
             'reason', 'reason_label',
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_severity(self, obj):
         from . import severity as severity_module
         return severity_module.severity_of(obj.event_type)
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_category(self, obj):
         from . import severity as severity_module
         return severity_module.category_of(obj.event_type)
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_is_action(self, obj):
         from . import severity as severity_module
         return severity_module.is_action(obj.event_type)
@@ -72,8 +80,11 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         return value
 
 
-class NotificationRoutingRuleSerializer(serializers.ModelSerializer):
+class NotificationRoutingRuleSerializer(SameCompanyFKSerializerMixin,
+                                        serializers.ModelSerializer):
     """FG4 — Serializer des règles de routage (admin seulement)."""
+    # ENF17 — l'utilisateur ciblé d'une AUTRE société = id absent (400).
+    same_company_fields = ('target_user',)
     event_label = serializers.CharField(
         source='get_event_type_display', read_only=True)
     target_role_label = serializers.CharField(
@@ -175,9 +186,11 @@ class AnnonceSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_is_expiree(self, obj):
         return obj.is_expiree()
 
+    @extend_schema_field(OpenApiTypes.INT)
     def get_lus_count(self, obj):
         return obj.lectures.count()
 
@@ -218,20 +231,3 @@ class MessageAccueilSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError('Le corps du message est requis.')
         return value
-
-
-class AnnonceLectureSerializer(serializers.ModelSerializer):
-    """XKB6 — Accusé de lecture obligatoire."""
-    utilisateur_username = serializers.CharField(
-        source='utilisateur.username', read_only=True)
-
-    class Meta:
-        model = AnnonceLecture
-        fields = [
-            'id', 'annonce', 'utilisateur', 'utilisateur_username',
-            'date_lecture', 'relances_envoyees', 'derniere_relance_le',
-        ]
-        read_only_fields = [
-            'id', 'utilisateur', 'utilisateur_username', 'date_lecture',
-            'relances_envoyees', 'derniere_relance_le',
-        ]

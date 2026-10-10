@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 from apps.crm.models import Apporteur, DealEnregistre, Lead
-from apps.crm.services import resolve_client_for_lead
+from apps.crm.clients_identite import resolve_client_for_lead
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from core.events import devis_accepted

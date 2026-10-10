@@ -22,6 +22,8 @@ statut ne bouge, aucun montant n'apparaît.
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -33,6 +35,10 @@ from ..services.reprise_visite import (
 __all__ = ['releve_visite']
 
 
+@extend_schema(
+    methods=['POST'],
+    request=inline_serializer('CalepinageRepriseVisiteRequete', {
+        'remplacer': drf_serializers.BooleanField(required=False)}))
 @action(detail=True, methods=['get', 'post'], url_path='releve-visite',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def releve_visite(self, request, pk=None):

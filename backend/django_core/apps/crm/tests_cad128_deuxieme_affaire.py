@@ -22,8 +22,10 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    CADENCE_DEUXIEME_AFFAIRE, demarrer_cadence_contact, homonymes_signes,
+from apps.crm.cadence_plan import (
+    CADENCE_DEUXIEME_AFFAIRE,
+    demarrer_cadence_contact,
+    homonymes_signes,
 )
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS

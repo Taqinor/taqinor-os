@@ -33,7 +33,7 @@ from apps.calepinage.services import (
 )
 from apps.calepinage.services.chaines import bloc_pose
 from apps.calepinage.services.documents.presentation_compacte import (
-    construire_presentation,
+    _construire_presentation,
 )
 from apps.calepinage.services.electrique import (
     conception_du_calepinage, resultat_calepinage,
@@ -84,7 +84,7 @@ def _lecteurs(layout, resultat):
     pivot.resultat = resultat
     lus = {}
 
-    totaux = construire_presentation(
+    totaux = _construire_presentation(
         SimpleNamespace(company=None, pk=None, titre='QA-CAL-RT',
                         roof_layout=layout, resultat=None, layout_hash='',
                         version_moteur=''),
@@ -93,16 +93,16 @@ def _lecteurs(layout, resultat):
     lus['presentation_compacte'] = (totaux['total_modules'],
                                     totaux['total_kwc'])
 
-    infos = reglementaire.infos_du_calepinage(
+    infos = reglementaire._infos_du_calepinage(
         SimpleNamespace(company=None, client=None, roof_layout=layout),
         resultat=resultat)
     lus['reglementaire'] = (infos['nombre_modules'], infos['puissance_kwc'])
 
-    prevus, _source = asbuilt.pans_prevus(
+    prevus, _source = asbuilt._pans_prevus(
         SimpleNamespace(roof_layout=layout))
     lus['asbuilt'] = (sum(p['modules'] for p in prevus), ...)
 
-    masse = lestage.masse_du_layout(layout)
+    masse = lestage._masse_du_layout(layout)
     lus['lestage'] = (masse['total_modules'], ...)
 
     lus['journal'] = (int(journal._modules(layout)), ...)

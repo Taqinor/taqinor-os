@@ -23,10 +23,12 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from apps.crm import exports, services
+from apps.crm import leads_doublons
+from apps.crm import leads_score
 from apps.crm.management.commands import import_odoo_leads as odoo
 from apps.crm.models import Lead, Playbook
 from apps.crm.serializers import PlaybookSerializer
-from apps.crm.services import normalize_phone
+from apps.crm.leads_doublons import normalize_phone
 from authentication.models import Company
 
 #: ``backend/django_core`` — racine du code Python de l'ERP.
@@ -41,7 +43,7 @@ class RoundRobinMortTests(TestCase):
     def test_le_round_robin_reellement_utilise_survit(self):
         """XMKT21 en a un VRAI, appelé au franchissement du seuil MQL : on ne
         supprime pas les deux."""
-        self.assertTrue(hasattr(services, '_next_round_robin_commercial'))
+        self.assertTrue(hasattr(leads_score, '_next_round_robin_commercial'))
 
     def test_plus_aucune_reference_dans_le_depot(self):
         restes = []
@@ -127,7 +129,7 @@ class MappingsOdooTests(TestCase):
         self.assertEqual(lead.telephone, '0612000902')
         self.assertEqual(lead.phone_normalise, normalize_phone('0612000902'))
         self.assertEqual(
-            [autre.pk for autre in services.find_duplicates_by_contact(
+            [autre.pk for autre in leads_doublons.find_duplicates_by_contact(
                 self.company, phone='0612000902')],
             [lead.pk])
 

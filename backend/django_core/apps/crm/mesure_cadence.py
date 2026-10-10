@@ -417,8 +417,8 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
     from . import cadence_temps, horaires, stages
     from .models import Lead, LeadActivity, RelanceEtape
     # AGR520 — l'étiquette « En attente d'un accord » : source unique.
-    from .services import (
-        RAISONS_ATTENTE, TAG_ATTENTE_ACCORD, _lead_porte_tag)
+    from .cadence_messages import RAISONS_ATTENTE, TAG_ATTENTE_ACCORD
+    from .cadence_reperes import _lead_porte_tag
     from .suite_touche import q_barreau
 
     depuis = timezone.now() - datetime.timedelta(days=int(jours))

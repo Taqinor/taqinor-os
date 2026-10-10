@@ -108,8 +108,8 @@ CLE_ZONE_DOCUMENT = 'zoneLestage'
 __all__ = [
     'SECTION', 'PARAMETRES', 'NOMBRES_DE_FORME', 'CLE_ZONES',
     'CLE_ZONE_PAR_DEFAUT', 'PARAMETRES_DE_SITE', 'CLE_ZONE_DOCUMENT',
-    'normaliser_section_lestage', 'feuille_de_lestage',
-    '_surface_module_m2', 'masse_du_layout', 'masse_et_lestage',
+    'normaliser_section_lestage',
+    '_surface_module_m2', 'masse_et_lestage',
 ]
 
 
@@ -341,8 +341,8 @@ def _mention_impression(section, societe):
             % (nom, ' ; '.join(references)))
 
 
-def feuille_de_lestage(section, *, surface_module_m2=None,
-                       masse_module_kg=None, societe=''):
+def _feuille_de_lestage(section, *, surface_module_m2=None,
+                        masse_module_kg=None, societe=''):
     """La feuille de lestage d'UN module, paramètres saisis + résultats.
 
     Args:
@@ -498,8 +498,8 @@ def _mention_pan(masse, surface):
     return ''
 
 
-def masse_du_layout(layout, *, poids_module_kg=None,
-                    designation_module='', section=None):
+def _masse_du_layout(layout, *, poids_module_kg=None,
+                     designation_module='', section=None):
     """La masse POSÉE, pan par pan, et la surcharge par m² de pan.
 
     Args:
@@ -632,9 +632,9 @@ def masse_et_lestage(calepinage, *, produit_module_id=None, layout=None):
             designation = getattr(produit, 'nom', '') or ''
 
     societe = getattr(company, 'nom', '') or ''
-    masse = masse_du_layout(layout, poids_module_kg=cotes.get('poids_kg'),
-                            designation_module=designation, section=section)
-    feuille = feuille_de_lestage(
+    masse = _masse_du_layout(layout, poids_module_kg=cotes.get('poids_kg'),
+                             designation_module=designation, section=section)
+    feuille = _feuille_de_lestage(
         section, surface_module_m2=_surface_module_m2(cotes),
         masse_module_kg=cotes.get('poids_kg'), societe=societe)
     if zone is not None:

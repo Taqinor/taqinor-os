@@ -1,6 +1,12 @@
+from drf_spectacular.utils import extend_schema_view
+from ..openapi_params import qstr
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.exceptions import ValidationError  # noqa: F401
@@ -70,6 +76,8 @@ def _refus_si_rejete(paiement):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qstr('remisable', desc='1/true : seulement les paiements remisables en banque.')]))
 class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     """Lecture seule des paiements (l'enregistrement passe par la facture) —
     XFAC1 ajoute deux actions d'écriture pour les AVANCES non affectées
@@ -216,6 +224,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             'facture_cible': _facture(cible),
         })
 
+    @extend_schema(parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=False)], responses=PaiementSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='avances-non-affectees')
     def avances_non_affectees(self, request):
         """XFAC1 — avances (paiements sans facture) encore disponibles,
@@ -230,6 +239,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         rows = [p for p in qs if p.montant_disponible > 0]
         return Response(PaiementSerializer(rows, many=True).data)
 
+    @extend_schema(request=D.EnregistrerAvanceRequest, responses={201: PaiementSerializer})
     @action(detail=False, methods=['post'], url_path='enregistrer-avance')
     def enregistrer_avance(self, request):
         """XFAC1 — enregistre un règlement reçu SANS facture (avance/acompte à
@@ -267,6 +277,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             PaiementSerializer(paiement).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.VentilerRequest, responses={201: AffectationPaiementSerializer})
     @action(detail=True, methods=['post'], url_path='ventiler')
     def ventiler(self, request, pk=None):
         """XFAC1 — ventile une avance non affectée sur UNE facture ouverte du
@@ -336,6 +347,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                 pk=facture.pk)).data,
         }, status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=RetenueSubieSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='attestations-ras-en-attente')
     def attestations_ras_en_attente(self, request):
         """XFAC4 — état des attestations RAS à recevoir (non reçues)."""

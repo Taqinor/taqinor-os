@@ -57,8 +57,8 @@ from html import escape
 
 __all__ = [
     'CODE_DOCUMENT', 'MOTIF_SANS_MATRICE', 'LIBELLE_METHODE_ACCES',
-    'RapportOmbrageRefuse', 'construire_rapport_ombrage',
-    'html_du_rapport_ombrage', 'rendre_rapport_ombrage',
+    'RapportOmbrageRefuse',
+    'rendre_rapport_ombrage',
 ]
 
 CODE_DOCUMENT = 'rapport_ombrage'
@@ -159,9 +159,9 @@ def _bloc_pan(pan_pose, acces_module, ombrage_par_pan, production_par_pan,
     }
 
 
-def construire_rapport_ombrage(calepinage, *, langue=None, resultat=None,
-                               site=None, identite=None, styles=None,
-                               etat=None):
+def _construire_rapport_ombrage(calepinage, *, langue=None, resultat=None,
+                                site=None, identite=None, styles=None,
+                                etat=None):
     """Le rapport, prêt à mettre en page — aucune grandeur recalculée.
 
     ``resultat``/``site``/``identite``/``styles``/``etat`` : déjà lus par
@@ -431,12 +431,12 @@ def _table_horizon(horizon):
             '<th>Hauteur (°)</th></tr>%s</table>' % lignes)
 
 
-def html_du_rapport_ombrage(calepinage, **options):
+def _html_du_rapport_ombrage(calepinage, **options):
     """L'UNIQUE mise en page du rapport d'ombrage."""
     from .documents.gabarit_document import document_html, page_de_garde_html
     from .documents.libelles_document import libelle, libelles_de_garde
 
-    rapport = construire_rapport_ombrage(calepinage, **options)
+    rapport = _construire_rapport_ombrage(calepinage, **options)
     langue = rapport['langue']
 
     corps = [page_de_garde_html(
@@ -479,6 +479,6 @@ def rendre_rapport_ombrage(calepinage, *, company=None, **options):
     """Octets PDF du rapport d'ombrage, via ``core.pdf.render_pdf`` (ARC11)."""
     from core.pdf import render_pdf
 
-    return render_pdf(html=html_du_rapport_ombrage(calepinage, **options),
+    return render_pdf(html=_html_du_rapport_ombrage(calepinage, **options),
                       company=company or getattr(calepinage, 'company',
                                                  None))

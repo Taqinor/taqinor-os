@@ -23,7 +23,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, mesure_cadence, stages
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
-from apps.crm.services import RAISONS_ATTENTE
+from apps.crm.cadence_messages import RAISONS_ATTENTE
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.ventes.models import Devis

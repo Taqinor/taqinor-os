@@ -28,7 +28,7 @@ import unittest
 from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import (
     MENTION_NON_SOURCEE, SOURCE_SAISIE, TemperaturesSite,
-    verdicts_electriques,
+    _verdicts_electriques,
 )
 from core.electrique.chaines import (
     _verdicts_tension, concevoir_chaines, fenetre_admissible,
@@ -225,7 +225,7 @@ class VerdictsServisTest(unittest.TestCase):
     def test_les_trois_cles_sont_toujours_presentes(self):
         conception = self._conception(TemperaturesSite(
             froid_c=FROID, chaud_c=CHAUD, source=SOURCE_SAISIE))
-        verdicts = verdicts_electriques(conception)
+        verdicts = _verdicts_electriques(conception)
         self.assertTrue(verdicts)
         for verdict in verdicts:
             with self.subTest(code=verdict['code']):
@@ -236,7 +236,7 @@ class VerdictsServisTest(unittest.TestCase):
     def test_les_verdicts_de_tension_citent_leur_temperature_et_sa_source(self):
         conception = self._conception(TemperaturesSite(
             froid_c=FROID, chaud_c=CHAUD, source=SOURCE_SAISIE))
-        par_code = {v['code']: v for v in verdicts_electriques(conception)}
+        par_code = {v['code']: v for v in _verdicts_electriques(conception)}
         attendu = {'voc_cold_under_vmax': FROID,
                    'vmp_cold_under_mppt_max': FROID,
                    'vmp_hot_over_mppt_min': CHAUD}
@@ -251,7 +251,7 @@ class VerdictsServisTest(unittest.TestCase):
         conception = self._conception(TemperaturesSite(
             froid_c=FROID, chaud_c=CHAUD, source=None,
             mention=MENTION_NON_SOURCEE))
-        par_code = {v['code']: v for v in verdicts_electriques(conception)}
+        par_code = {v['code']: v for v in _verdicts_electriques(conception)}
         for code in ('voc_cold_under_vmax', 'vmp_cold_under_mppt_max',
                      'vmp_hot_over_mppt_min'):
             with self.subTest(code=code):
@@ -262,7 +262,7 @@ class VerdictsServisTest(unittest.TestCase):
     def test_le_verdict_de_courant_reste_neutre(self):
         conception = self._conception(TemperaturesSite(
             froid_c=FROID, chaud_c=CHAUD, source=SOURCE_SAISIE))
-        par_code = {v['code']: v for v in verdicts_electriques(conception)}
+        par_code = {v['code']: v for v in _verdicts_electriques(conception)}
         self.assertIsNone(par_code['courant_par_entree_mppt']['temperature_c'])
         self.assertIsNone(par_code['ratio_dc_ac']['temperature_c'])
 

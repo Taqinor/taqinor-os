@@ -20,7 +20,7 @@ Ce que la section imprime — LUE, jamais recalculée
 * altitude et fuseau, chacun avec sa source : ``resultat['meteo']['point']
   ['altitude_m']`` vient de LA MÊME réponse PVGIS que l'irradiance
   (``services/pvgis_serie.py::_bloc_meteo`` lit ``inputs.location.elevation``
-  — exactement ce que ``services/site.py::altitude_pvgis`` lit ailleurs), sa
+  — exactement ce que ``services/site.py::_altitude_pvgis`` lit ailleurs), sa
   source publiée est donc ``site.SOURCE_PVGIS`` ; le fuseau
   (``meteo.heure.fuseau_site``) n'entre dans le résultat qu'après avoir été
   validé contre la base IANA (``services/site.py::fuseau_du_site``), dont ce

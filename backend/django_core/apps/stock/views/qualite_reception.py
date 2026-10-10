@@ -6,6 +6,7 @@ magasinier doit savoir ce qu'il devra contrôler), écriture responsable/admin.
 from drf_spectacular.utils import (
     extend_schema, extend_schema_serializer, inline_serializer,
 )
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -73,6 +74,8 @@ class PlanEchantillonnageViewSet(CompanyScopedModelViewSet):
     serializer_class = PlanEchantillonnageSerializer
     ordering = ['categorie_id', 'id']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
         # chaque action est listée explicitement ici.
@@ -134,7 +137,7 @@ class ControleReceptionActionsMixin:
                          if controle else None),
         })
 
-    @extend_schema(request=None, responses={
+    @extend_schema(request=inline_serializer('ControleQualiteCorps', {'resultat': serializers.ChoiceField(choices=['conforme', 'non_conforme']), 'unites_controlees': serializers.IntegerField(required=False), 'observation': serializers.CharField(required=False, allow_blank=True)}), responses={
         200: ControleReceptionSerializer,
     })
     @action(detail=True, methods=['post'], url_path='controle-qualite',

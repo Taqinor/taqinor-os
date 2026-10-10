@@ -79,6 +79,42 @@ class OpenAPISchemaGenerationTests(TestCase):
         self.assertEqual(schemes['cookieJWT']['name'], 'access_token')
         self.assertEqual(schemes['publicApiKey']['in'], 'header')
 
+    def test_bearer_jwt_declare_en_alternative_du_cookie(self):
+        """ENF2 (C4) — le Bearer accepté par `CookieJWTAuthentication` est
+        un schéma déclaré, en OU avec le cookie (jamais un ET)."""
+        schemes = self.schema['components']['securitySchemes']
+        self.assertEqual(schemes['bearerJWT']['type'], 'http')
+        self.assertEqual(schemes['bearerJWT']['scheme'], 'bearer')
+        op = self.schema['paths']['/api/django/stock/marques/']['get']
+        self.assertIn({'cookieJWT': []}, op['security'])
+        self.assertIn({'bearerJWT': []}, op['security'])
+
+    def test_enveloppe_erreur_declaree_sur_chaque_operation(self):
+        """ENF2 (C2) — documenté == réel : 400/404/429/500 partout,
+        401/403 si authentifiée, 409 sur une écriture."""
+        self.assertIn('ErreurApi', self.schema['components']['schemas'])
+        ref = '#/components/schemas/ErreurApi'
+        liste = self.schema['paths']['/api/django/stock/marques/']
+        for code in ('400', '401', '403', '404', '429', '500'):
+            reponse = liste['get']['responses'][code]
+            self.assertEqual(
+                reponse['content']['application/json']['schema']['$ref'], ref)
+        self.assertNotIn('409', liste['get']['responses'])
+        self.assertIn('409', liste['post']['responses'])
+        for chemin, item in self.schema['paths'].items():
+            for methode, op in item.items():
+                if not isinstance(op, dict) or 'responses' not in op:
+                    continue
+                for code in ('400', '404', '429', '500'):
+                    self.assertIn(code, op['responses'], f'{methode} {chemin}')
+
+    def test_lien_public_a_jeton_sans_authentification_ni_401(self):
+        """ENF2 (C5) — une route publique à jeton n'exige ni ne déclare
+        aucun justificatif : pas de 401 documenté."""
+        op = self.schema['paths']['/api/django/public/sav/ticket/{token}/']['get']
+        self.assertFalse(any(op.get('security') or []))
+        self.assertNotIn('401', op['responses'])
+
 
 class OpenAPIDocsEndpointsTests(TestCase):
     """Les 3 endpoints (schema/docs/redoc) existent et exigent une session."""

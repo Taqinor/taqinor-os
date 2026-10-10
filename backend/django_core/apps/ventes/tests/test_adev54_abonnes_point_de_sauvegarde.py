@@ -36,7 +36,7 @@ BEST_EFFORT = {
     'apps.crm.receivers._calculer_commission_deal_on_devis_accepted':
         'apps.crm.models.DealEnregistre',
     'apps.crm.receivers._arreter_cadence_on_devis_accepted':
-        'apps.crm.services.arreter_cadence',
+        'apps.crm.cadence_plan.arreter_cadence',
 }
 
 #: abonnés OBLIGATOIRES — une erreur y annule la signature (inchangé).

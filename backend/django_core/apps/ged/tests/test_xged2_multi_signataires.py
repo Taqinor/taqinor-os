@@ -314,7 +314,7 @@ class ScopingApiTests(XGed2Base):
         resp = self.client.post(
             f'/api/django/ged/signataire/{bob.token}/',
             {'action': 'signer', 'consentement': True,
-             'signature_texte': 'Bob'}, format='json')
+             'signature_texte': 'Bob'}, content_type='application/json')
         self.assertEqual(resp.status_code, 403)
 
     def test_public_signataire_unknown_token_404(self):

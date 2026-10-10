@@ -141,6 +141,28 @@ class TenantMixin:
     def get_queryset(self):
         return company_qs(super().get_queryset(), self.request.user)
 
+    def initial(self, request, *args, **kwargs):
+        # ENF2 (C6) — unicité PAR SOCIÉTÉ contrôlée AVANT l'écriture : DRF ne
+        # peut pas générer ce validateur lui-même (``company`` n'est jamais un
+        # champ du serializer). Un doublon répond 409 ``unique_conflict`` au
+        # lieu d'un IntegrityError 500. Voir ``core.unicite``.
+        # Branché sur l'INSTANCE, pour la requête d'écriture en cours
+        # seulement : surcharger ``get_serializer`` au niveau de la classe
+        # ferait appeler à drf-spectacular le chemin complet (contexte de
+        # requête réel) au lieu de ``get_serializer_class()``.
+        super().initial(request, *args, **kwargs)
+        origine = getattr(self, 'get_serializer', None)
+        if origine is None or request.method not in ('POST', 'PUT', 'PATCH'):
+            return
+        from core.unicite import brancher_unicite_societe
+
+        def get_serializer(*a, **kw):
+            serializer = origine(*a, **kw)
+            brancher_unicite_societe(serializer, request)
+            return serializer
+
+        self.get_serializer = get_serializer
+
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 

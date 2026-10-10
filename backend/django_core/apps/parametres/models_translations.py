@@ -36,7 +36,7 @@ class TranslationOverride(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='translation_overrides',
     )
     # Langue d'interface visée (fr / en / ar) — les 3 locales du cadre N93.

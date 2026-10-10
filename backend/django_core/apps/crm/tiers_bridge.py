@@ -65,7 +65,7 @@ def mirror_client_to_tiers(sender, instance, **kwargs):
         # FLAG OFF (le défaut, et l'état de la prod) : le service renvoie
         # False sans écrire ni requêter — comportement byte-identique à
         # aujourd'hui. Best-effort : il n'échoue jamais.
-        from apps.crm.services import ecrire_identite_client
+        from apps.crm.clients_identite import ecrire_identite_client
         ecrire_identite_client(client)
     except Exception:
         # Le pont ne doit jamais casser une écriture Client existante — mais

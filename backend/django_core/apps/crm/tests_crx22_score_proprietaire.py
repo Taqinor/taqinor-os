@@ -26,8 +26,9 @@ from apps.crm.models import Lead
 from apps.crm.scoring import compute_score, score_label, score_reasons
 from apps.crm.selectors import leads_chauds_non_contactes
 from apps.crm.serializers import LeadSerializer
-from apps.crm.services import (
-    DELAI_SCORE_OBSOLETE_JOURS, recalculer_scores_obsoletes,
+from apps.crm.leads_score import (
+    DELAI_SCORE_OBSOLETE_JOURS,
+    recalculer_scores_obsoletes,
     recompute_lead_score,
 )
 from apps.roles.models import Role

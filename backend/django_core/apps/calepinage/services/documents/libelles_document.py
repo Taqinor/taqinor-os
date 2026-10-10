@@ -34,7 +34,7 @@ from __future__ import annotations
 __all__ = [
     'LANGUES_SERVIES', 'LANGUE_DE_REPLI', 'LIBELLES', 'LibelleInconnu',
     'libelle', 'langue_servie', 'resolution_langue', 'langue_du_document',
-    'mention_de_repli', 'libelles_de_garde',
+    'libelles_de_garde',
 ]
 
 #: Les langues RÉELLEMENT servies par les documents du module.
@@ -132,7 +132,7 @@ def libelle(code, langue='fr'):
     return entree[langue_servie(langue)]
 
 
-def mention_de_repli(resolution):
+def _mention_de_repli(resolution):
     """La phrase du pied quand la langue demandée n'est pas servie, ou ``''``.
 
     Elle est écrite dans la langue SERVIE (le français) : c'est celle que le
@@ -175,7 +175,7 @@ def resolution_langue(calepinage=None, langue_explicite=None):
     langue = langue_servie(demandee)
     resolution = {'langue': langue, 'demandee': demandee,
                   'repli': langue != demandee}
-    resolution['mention'] = mention_de_repli(resolution)
+    resolution['mention'] = _mention_de_repli(resolution)
     return resolution
 
 

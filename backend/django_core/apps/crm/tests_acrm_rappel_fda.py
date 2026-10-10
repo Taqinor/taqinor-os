@@ -20,7 +20,7 @@ from core.dates import aujourd_hui_local
 
 from apps.crm import selectors
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import CLE_RAPPEL_FDA
+from apps.crm.cadence_filet import CLE_RAPPEL_FDA
 
 User = get_user_model()
 

@@ -41,7 +41,7 @@ class TechnicienCannotToggleDemoSettingsTest(TestCase):
     def test_technicien_gets_403_on_mode_presentation_toggle(self):
         r = self._client(self.technicien).patch(
             f'/api/django/companies/{self.company.id}/',
-            {'mode_presentation_actif': True})
+            {'mode_presentation_actif': True}, format='json')
         self.assertEqual(r.status_code, 403)
         self.company.refresh_from_db()
         self.assertFalse(self.company.mode_presentation_actif)
@@ -49,7 +49,7 @@ class TechnicienCannotToggleDemoSettingsTest(TestCase):
     def test_technicien_gets_403_on_tours_actifs_toggle(self):
         r = self._client(self.technicien).patch(
             f'/api/django/companies/{self.company.id}/',
-            {'tours_actifs': False})
+            {'tours_actifs': False}, format='json')
         self.assertEqual(r.status_code, 403)
         self.company.refresh_from_db()
         self.assertTrue(self.company.tours_actifs)
@@ -70,5 +70,5 @@ class TechnicienCannotToggleDemoSettingsTest(TestCase):
         # Discrimine bien is_staff (pas juste « personne n'entre jamais »).
         r = self._client(self.admin).patch(
             f'/api/django/companies/{self.company.id}/',
-            {'mode_presentation_actif': True})
+            {'mode_presentation_actif': True}, format='json')
         self.assertEqual(r.status_code, 200)

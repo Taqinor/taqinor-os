@@ -24,7 +24,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_plan
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, q_etape
 from apps.crm.models import Lead, RelanceEtape
@@ -37,11 +38,11 @@ User = get_user_model()
 GEL = datetime.datetime(2026, 9, 23, 10, 0, tzinfo=horaires.CASABLANCA)
 A_FAIRE = RelanceEtape.Statut.A_FAIRE
 FAIT = RelanceEtape.Statut.FAIT
-CADENCE = services.CADENCE_DEUXIEME_AFFAIRE
+CADENCE = cadence_plan.CADENCE_DEUXIEME_AFFAIRE
 ORDRES = frozenset(e['ordre'] for e in CADENCES_DEFAUT[CADENCE])
 DERNIER = max(ORDRES)
 PREMIER = min(ORDRES)
-TAG = services._CLOTURE_TAG_DEUXIEME_AFFAIRE
+TAG = cadence_reperes._CLOTURE_TAG_DEUXIEME_AFFAIRE
 
 _seq = itertools.count(1)
 
@@ -95,7 +96,7 @@ class PromessesTests(SimpleTestCase):
     def test_l_etiquette_de_cloture_est_dans_le_catalogue_des_etiquettes(self):
         # Un seul libellé : celui que le moteur pose est celui que Paramètres → CRM seede.
         self.assertIn(TAG, _DEFAULT_TAGS)
-        self.assertNotEqual(TAG, services._CLOTURE_TAG_INJOIGNABLE)
+        self.assertNotEqual(TAG, cadence_reperes._CLOTURE_TAG_INJOIGNABLE)
 
 
 class DeuxiemeAffaireFroidApiTests(TestCase):
@@ -146,7 +147,7 @@ class DeuxiemeAffaireFroidApiTests(TestCase):
         self.assertEqual(lead.stage, stages.COLD)
         self.assertFalse(lead.perdu, 'le Froid est un parking, jamais une perte')
         self.assertIn(TAG, lead.tags or '')
-        self.assertNotIn(services._CLOTURE_TAG_INJOIGNABLE, lead.tags or '')
+        self.assertNotIn(cadence_reperes._CLOTURE_TAG_INJOIGNABLE, lead.tags or '')
         ouvertes = self._ouvertes(lead)
         self.assertTrue(ouvertes, 'aucun réveil programmé')
         self.assertEqual({e.cadence for e in ouvertes}, {'reveil'})

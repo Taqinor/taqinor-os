@@ -31,7 +31,7 @@ le champ « otp ».
 </p>
 {% endif %}
 
-<form action="{{ app_path }}" method="post" id="login-form">{% csrf_token %}
+<form action="{{ app_path }}" method="post" id="login-form">
   <div class="form-row">
     {{ form.username.errors }}
     {{ form.username.label_tag }} {{ form.username }}
@@ -48,6 +48,7 @@ le champ « otp ».
   <div class="submit-row">
     <input type="submit" value="{% translate 'Log in' %}">
   </div>
+  {% csrf_token %}
 </form>
 
 </div>

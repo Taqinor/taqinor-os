@@ -44,7 +44,7 @@ from html import escape
 
 __all__ = [
     'CLES_INTERDITES', 'NoteRefusee', 'CLES_VERDICT', 'CLES_MARGES',
-    'construire_note_calcul', 'verdict_de_preuve', 'html_de_note_calcul',
+    'verdict_de_preuve',
     'rendre_note_calcul',
     'motif_note_indisponible',
 ]
@@ -290,8 +290,8 @@ def motif_note_indisponible(calepinage):
     return None
 
 
-def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
-                           stocke=None, etat=None):
+def _construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
+                            stocke=None, etat=None):
     """Le résultat SERVI -> la note, prête à mettre en page.
 
     ``resultat`` est le résultat servi (``_resultat_servi_et_stocke``) ;
@@ -544,7 +544,7 @@ def _garde_de_note(note):
                               note.get('styles') or {})
 
 
-def html_de_note_calcul(note, *, garde=True):
+def _html_de_note_calcul(note, *, garde=True):
     """La note en HTML autonome (aucune police distante).
 
     CALX295 — la note s'ouvre sur une page de GARDE (société, projet, client,
@@ -710,7 +710,7 @@ def rendre_note_calcul(calepinage, *, company=None, site=None, identite=None,
     from .documents.gabarit_document import etat_de_conception
 
     servi, stocke = _resultat_servi_et_stocke(calepinage)
-    note = construire_note_calcul(servi, site=site, identite=identite,
-                                  styles=styles, stocke=stocke,
-                                  etat=etat_de_conception(calepinage))
-    return render_pdf(html=html_de_note_calcul(note), company=company)
+    note = _construire_note_calcul(servi, site=site, identite=identite,
+                                   styles=styles, stocke=stocke,
+                                   etat=etat_de_conception(calepinage))
+    return render_pdf(html=_html_de_note_calcul(note), company=company)

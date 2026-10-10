@@ -79,7 +79,6 @@ ignore_imports =
 # `X.models -> Y.models` reste détecté.
     apps.facturation.totaux -> apps.ventes.selectors
     apps.sav.models -> apps.sav.selectors
-    apps.crm.models -> apps.crm.services
 # ODX17 — `apps.ventes.models` ends with a transitional RE-EXPORT shim
 # (`from apps.facturation.models import Facture, ...`, kept until ODX22 so all
 # existing callers of `apps.ventes.models.Facture` keep working). That single

@@ -30,7 +30,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CADENCE_DE_LA_CLE, CLE_DEVIS, CLE_PLANIFIER)
@@ -68,7 +68,7 @@ def _formes(etape_table):
             defaut = barreau_par_defaut(gabarit, cle)
             cadence = ('apres_devis' if gabarit == Cadence.VISITE
                        else 'generique')
-            canal = services._canal_configure(defaut)
+            canal = cadence_reperes._canal_configure(defaut)
             yield cadence, canal, 'Libellé renommé', cle
             yield cadence, canal, defaut['libelle'], ''
             for libelle in reconnaissance.get('libelles', ()):
@@ -164,10 +164,10 @@ class SegmentsTests(_Base):
         self.retard = self._etape(_a(-2))
         self.aujourdhui = self._etape(_a(0, 15))
         self.tache_demain = self._etape(
-            _a(1), cadence='generique', libelle=services.QUESTION_PRIX_LIBELLE)
+            _a(1), cadence='generique', libelle=cadence_reperes.QUESTION_PRIX_LIBELLE)
         self.tache_future = self._devis(_a(2))
         self.tache_lointaine = self._etape(
-            _a(20), cadence=services.VISITE_CADENCE, cle=CLE_PLANIFIER,
+            _a(20), cadence=cadence_reperes.VISITE_CADENCE, cle=CLE_PLANIFIER,
             libelle='Planifier la visite')
         self.demain = self._etape(_a(1))
         self.semaine = self._etape(_a(6), cadence='apres_devis')
@@ -211,7 +211,7 @@ class OrdreTests(_Base):
         tache_loin = self._devis(_a(9))
         aujourdhui = self._etape(_a(0, 15), lead=self._lead())
         tache_demain = self._etape(
-            _a(1), cadence='generique', libelle=services.QUESTION_PRIX_LIBELLE)
+            _a(1), cadence='generique', libelle=cadence_reperes.QUESTION_PRIX_LIBELLE)
         # La plus ancienne d'abord — même SANS heure (d'avant MRY5) : avant
         # ce correctif, `due_at` passait en premier et la reléguait derrière
         # les tâches à venir.

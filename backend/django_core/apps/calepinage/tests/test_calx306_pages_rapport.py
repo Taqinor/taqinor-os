@@ -39,7 +39,7 @@ from types import SimpleNamespace
 
 from django.test import tag
 
-from apps.calepinage.services.rapport.mise_en_page import html_du_sommaire
+from apps.calepinage.services.rapport.mise_en_page import _html_du_sommaire
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 
@@ -69,7 +69,7 @@ class SectionOmiseTest(unittest.TestCase):
         sections = [s for s in SECTIONS if s['code'] != 'systeme']
         pages = {'garde': 1, 'sommaire': 1, 'site_meteo': 2,
                  'systeme': 3, 'production': 2}
-        html = html_du_sommaire(_rapport(sections), pages)
+        html = _html_du_sommaire(_rapport(sections), pages)
         self.assertNotIn('Système', html)
         self.assertIn('Site et source météo', html)
         self.assertIn('Production', html)
@@ -80,7 +80,7 @@ class SectionSansCompteTest(unittest.TestCase):
         # 'systeme' et 'production' n'ont PAS de compte publié : leur rendu
         # a manqué — elles ne paraissent pas avec un numéro deviné.
         pages = {'garde': 1, 'sommaire': 1, 'site_meteo': 2}
-        html = html_du_sommaire(_rapport(SECTIONS), pages)
+        html = _html_du_sommaire(_rapport(SECTIONS), pages)
         self.assertIn('Site et source météo', html)
         self.assertNotIn('Système', html)
         self.assertNotIn('Production', html)
@@ -96,7 +96,7 @@ class ArithmetiqueDesNumerosTest(unittest.TestCase):
                 {'garde': 1, 'sommaire': 1, 'site_meteo': 1},
         ):
             with self.subTest(pages=pages):
-                html = html_du_sommaire(_rapport(SECTIONS), pages)
+                html = _html_du_sommaire(_rapport(SECTIONS), pages)
                 total = sum(pages.values())
                 brutes = re.findall(r'<td>(\d+)</td>', html)
                 numeros = [int(n) for n in brutes]
@@ -108,7 +108,7 @@ class ArithmetiqueDesNumerosTest(unittest.TestCase):
             self):
         pages = {'garde': 1, 'sommaire': 1, 'site_meteo': 2, 'systeme': 1,
                  'production': 4}
-        html = html_du_sommaire(_rapport(SECTIONS), pages)
+        html = _html_du_sommaire(_rapport(SECTIONS), pages)
         premiere = int(re.search(r'<td>(\d+)</td>', html).group(1))
         self.assertEqual(premiere, pages['garde'] + pages['sommaire'] + 1)
 
@@ -116,14 +116,14 @@ class ArithmetiqueDesNumerosTest(unittest.TestCase):
             self):
         pages = {'garde': 1, 'sommaire': 2, 'site_meteo': 2, 'systeme': 1,
                  'production': 4}
-        html = html_du_sommaire(_rapport(SECTIONS), pages)
+        html = _html_du_sommaire(_rapport(SECTIONS), pages)
         premiere = int(re.search(r'<td>(\d+)</td>', html).group(1))
         self.assertEqual(premiere, 4)  # 1 (garde) + 2 (sommaire) + 1
 
     def test_les_numeros_cumulent_le_compte_des_sections_precedentes(self):
         pages = {'garde': 1, 'sommaire': 1, 'site_meteo': 2, 'systeme': 1,
                  'production': 4}
-        html = html_du_sommaire(_rapport(SECTIONS), pages)
+        html = _html_du_sommaire(_rapport(SECTIONS), pages)
         numeros = [int(n) for n in re.findall(r'<td>(\d+)</td>', html)]
         # site_meteo (3), systeme (3+2=5), production (5+1=6).
         self.assertEqual(numeros, [3, 5, 6])
@@ -132,11 +132,11 @@ class ArithmetiqueDesNumerosTest(unittest.TestCase):
 class GardeEtVideTest(unittest.TestCase):
     def test_la_garde_n_a_pas_sa_propre_ligne(self):
         pages = {'garde': 1, 'sommaire': 1, 'site_meteo': 2}
-        html = html_du_sommaire(_rapport(SECTIONS), pages)
+        html = _html_du_sommaire(_rapport(SECTIONS), pages)
         self.assertNotIn('Page de garde', html)
 
     def test_sans_aucune_section_retenue_le_sommaire_est_vide(self):
-        html = html_du_sommaire(_rapport([SECTIONS[0]]), {'garde': 1})
+        html = _html_du_sommaire(_rapport([SECTIONS[0]]), {'garde': 1})
         self.assertEqual(html, '')
 
 
@@ -164,12 +164,12 @@ class RenduReelPaginationTest(unittest.TestCase):
     def test_le_total_de_pages_egale_la_somme_publiee(self):
         from apps.calepinage.services.pack_technique import compter_pages
         from apps.calepinage.services.rapport.mise_en_page import (
-            html_de_rapport_pagine, pages_attendues,
+            html_de_rapport_pagine, _pages_attendues,
         )
         from core.pdf import render_pdf
 
         rapport = self._rapport_construit()
-        pages = pages_attendues(rapport)
+        pages = _pages_attendues(rapport)
         octets = render_pdf(html=html_de_rapport_pagine(rapport))
         self.assertEqual(compter_pages(octets), sum(pages.values()))
 

@@ -15,11 +15,12 @@ from ..models import FicheInterventionTemplate, FicheInterventionChamp
 from ..serializers import (
     FicheInterventionTemplateSerializer, FicheInterventionChampSerializer,
 )
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class FicheInterventionTemplateViewSet(UsageGuardedDestroyMixin,
+class FicheInterventionTemplateViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
                                        CompanyScopedModelViewSet):
     """ZFSM1 — gabarits de fiche d'intervention (Paramètres → Chantiers).
     Lecture tout rôle, écriture admin. Un gabarit par `type_intervention` et
@@ -46,7 +47,8 @@ class FicheInterventionTemplateViewSet(UsageGuardedDestroyMixin,
         return None
 
 
-class FicheInterventionChampViewSet(UsageGuardedDestroyMixin,
+@oa.listing(p0=oa.qi('template'))
+class FicheInterventionChampViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
                                     CompanyScopedModelViewSet):
     """ZFSM1 — champs d'un gabarit de fiche d'intervention. Lecture tout rôle,
     écriture admin. Filtrable via ?template=<id>."""

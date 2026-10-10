@@ -51,11 +51,11 @@ class MonitoringConfig(models.Model):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='monitoring_configs')
     # Un chantier (système installé) ↔ une configuration de supervision.
     installation = models.OneToOneField(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: MonitoringConfig est le détail de Installation — n'existe pas sans lui
         related_name='monitoring_config')
     # Clé du fournisseur dans le registre. 'noop' = aucun (saisie manuelle).
     provider = models.CharField(max_length=40, default='noop')
@@ -107,10 +107,10 @@ class ProductionReading(models.Model):
         IMPORT = 'import', 'Import CSV'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='production_readings')
     installation = models.ForeignKey(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: ProductionReading est le détail de Installation — n'existe pas sans lui
         related_name='production_readings')
     # Date du relevé (jour). `period_days` = nombre de jours couverts (1 = jour,
     # 30 ≈ mois…) pour interpréter l'énergie sur la bonne fenêtre.
@@ -160,10 +160,10 @@ class CleaningEvent(models.Model):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='cleaning_events')
     installation = models.ForeignKey(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: CleaningEvent est le détail de Installation — n'existe pas sans lui
         related_name='cleaning_events')
     date = models.DateField()
     note = models.TextField(blank=True, default='')
@@ -194,7 +194,7 @@ class MonitoringSettings(models.Model):
     """
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='monitoring_settings')
     underperf_threshold_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=20)
@@ -223,10 +223,10 @@ class UnderperformanceFlag(models.Model):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='underperformance_flags')
     installation = models.ForeignKey(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: UnderperformanceFlag est le détail de Installation — n'existe pas sans lui
         related_name='underperformance_flags')
     # Performance mesurée vs attendue (ratio % au moment du flag), pour info.
     ratio_pct = models.DecimalField(
@@ -285,10 +285,10 @@ class SlaDisponibilite(TenantModel):
     # related_name PRÉ-EXISTANTS de ce champ sont conservés à l'identique,
     # donc redéclarés ici (le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='sla_disponibilites')
     installation = models.OneToOneField(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: SlaDisponibilite est le détail de Installation — n'existe pas sans lui
         related_name='sla_disponibilite')
     # CIQ644 — SANS défaut : le 98 % pré-rempli était un engagement
     # contractuel que personne n'avait décidé. Une ligne sans taux est refusée
@@ -342,7 +342,7 @@ class CertificatCarbone(TenantModel):
     # nullabilité et le related_name PRÉ-EXISTANTS sont conservés (redéclarés
     # ici, le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='certificats_carbone')
     installation_id = models.PositiveIntegerField(
         null=True, blank=True,
@@ -434,7 +434,7 @@ class AbonnementMonitoring(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='abonnements_monitoring',
         verbose_name='Société',
     )

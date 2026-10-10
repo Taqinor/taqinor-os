@@ -103,7 +103,8 @@ class TestSerieEntrepot(TestCase):
         resp = self.api.post(f'{BASE}/series-entrepot/', {
             'produit': self.produit.id, 'numero_serie': 'SN-DUP',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # ENF2 : doublon par société → 409 unique_conflict.
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_cycle_reserver_sortir(self):
         s = SerieEntrepot.objects.create(

@@ -26,8 +26,8 @@ from authentication.models import Company
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import JOURNAL_TYPES, journal_relance
-from apps.crm.services import (
-    annuler_touche_relance, initialiser_plan_relance, marquer_etape_relance)
+from apps.crm.cadence_touche import annuler_touche_relance, marquer_etape_relance
+from apps.crm.cadence_plan import initialiser_plan_relance
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -165,7 +165,7 @@ class CausesTests(_Base):
         self.assertIn(self.acteur.username, annulations[0]['titre'])
 
     def test_le_message_ouvert_est_une_ligne(self):
-        from apps.crm.services import journaliser_whatsapp_ouvert
+        from apps.crm.cadence_reperes import journaliser_whatsapp_ouvert
 
         message = next(
             (e for e in self.etapes

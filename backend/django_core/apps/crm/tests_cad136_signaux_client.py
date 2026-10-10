@@ -35,7 +35,8 @@ from django.test import SimpleTestCase, TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, questionnaire, services, stages
+from apps.crm import horaires, questionnaire, stages, cadence_signaux
+from apps.crm import cadence_reperes
 from apps.crm.intake_photo import attach_capture_photo, est_photo_de_facture
 from apps.crm.models import Lead, QuestionnaireLien, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -48,7 +49,7 @@ MERCREDI_10H = datetime.datetime(2026, 9, 23, 10, 0, tzinfo=horaires.CASABLANCA)
 FAUX_JPEG_B64 = base64.b64encode(b'\xff\xd8\xff\xe0' + b'0' * 120).decode()
 FAUX_META = {'file_key': 'attachments/cad136.jpg', 'filename': 'facture.jpg',
              'size': 124, 'mime': 'image/jpeg'}
-LIBELLE_QUESTIONNAIRE = services.TOUCHES_SIGNAL[services.SIGNAL_QUESTIONNAIRE]
+LIBELLE_QUESTIONNAIRE = cadence_signaux.TOUCHES_SIGNAL[cadence_signaux.SIGNAL_QUESTIONNAIRE]
 
 
 class SignauxClientTests(TestCase):
@@ -65,8 +66,8 @@ class SignauxClientTests(TestCase):
 
     def test_le_questionnaire_notifie_le_responsable(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(
-                self.lead, services.SIGNAL_QUESTIONNAIRE,
+            cadence_signaux.notifier_signal_client(
+                self.lead, cadence_signaux.SIGNAL_QUESTIONNAIRE,
                 detail='Section « Toiture » renseignée.')
         self.assertTrue(notifier.called)
         self.assertIn(self.acteur, list(notifier.call_args.args[0]))
@@ -74,16 +75,16 @@ class SignauxClientTests(TestCase):
 
     def test_la_photo_notifie_le_responsable(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(
-                self.lead, services.SIGNAL_PHOTO_FACTURE)
+            cadence_signaux.notifier_signal_client(
+                self.lead, cadence_signaux.SIGNAL_PHOTO_FACTURE)
         self.assertTrue(notifier.called)
         self.assertIn(self.acteur, list(notifier.call_args.args[0]))
 
     def test_la_photo_appelle_la_production_pas_une_relance(self):
         """Nuance du round 2 : « préparer le devis », jamais « relancer »."""
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(
-                self.lead, services.SIGNAL_PHOTO_FACTURE)
+            cadence_signaux.notifier_signal_client(
+                self.lead, cadence_signaux.SIGNAL_PHOTO_FACTURE)
         corps = notifier.call_args.kwargs['body']
         self.assertIn('PRÉPARER LE DEVIS', corps)
         self.assertIn('production', corps)
@@ -91,39 +92,39 @@ class SignauxClientTests(TestCase):
 
     def test_le_detail_est_repris_sans_rien_inventer(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(
-                self.lead, services.SIGNAL_QUESTIONNAIRE,
+            cadence_signaux.notifier_signal_client(
+                self.lead, cadence_signaux.SIGNAL_QUESTIONNAIRE,
                 detail='Section « Toiture » renseignée.')
         self.assertIn('Section « Toiture » renseignée.',
                       notifier.call_args.kwargs['body'])
 
     def test_un_signal_inconnu_ne_notifie_rien(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(self.lead, 'inconnu')
+            cadence_signaux.notifier_signal_client(self.lead, 'inconnu')
         self.assertFalse(notifier.called)
 
     def test_un_lead_sans_societe_ne_notifie_rien(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(
-                Lead(nom='Sans société'), services.SIGNAL_QUESTIONNAIRE)
+            cadence_signaux.notifier_signal_client(
+                Lead(nom='Sans société'), cadence_signaux.SIGNAL_QUESTIONNAIRE)
         self.assertFalse(notifier.called)
 
     def test_aucun_type_devenement_neuf(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(
-                self.lead, services.SIGNAL_PHOTO_FACTURE)
+            cadence_signaux.notifier_signal_client(
+                self.lead, cadence_signaux.SIGNAL_PHOTO_FACTURE)
         self.assertEqual(notifier.call_args.args[1], 'devis_opened')
 
     def test_une_cloche_en_panne_ne_fait_rien_retomber(self):
         with patch('apps.notifications.services.notify_many',
                    side_effect=RuntimeError('cloche indisponible')):
-            services.notifier_signal_client(
-                self.lead, services.SIGNAL_QUESTIONNAIRE)
+            cadence_signaux.notifier_signal_client(
+                self.lead, cadence_signaux.SIGNAL_QUESTIONNAIRE)
 
     def test_le_lien_mene_a_la_fiche_du_lead(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_client(
-                self.lead, services.SIGNAL_QUESTIONNAIRE)
+            cadence_signaux.notifier_signal_client(
+                self.lead, cadence_signaux.SIGNAL_QUESTIONNAIRE)
         self.assertEqual(notifier.call_args.kwargs['link'],
                          f'/crm/leads/{self.lead.pk}')
 
@@ -204,13 +205,13 @@ class GestesDansLaFileTests(TestCase):
         self.assertTrue(notifier.called)
         etapes = list(RelanceEtape.objects.filter(lead=self.lead))
         self.assertEqual([e.libelle for e in etapes],
-                         [services.FILET_JOINT_LIBELLE])
+                         [cadence_reperes.FILET_JOINT_LIBELLE])
         etape = etapes[0]
         self.assertEqual(etape.statut, RelanceEtape.Statut.A_FAIRE)
         # Tâche de production : la cadence hors protocole, jamais un barreau
         # de relance, jamais une touche signal.
         self.assertEqual(etape.cadence, 'generique')
-        self.assertNotIn(etape.libelle, services.TOUCHES_SIGNAL.values())
+        self.assertNotIn(etape.libelle, cadence_signaux.TOUCHES_SIGNAL.values())
         # Demain, au prochain créneau d'appel (même délai que le filet
         # « client joint » et que la pièce reçue sur WhatsApp).
         self.assertEqual(etape.due_date,
@@ -222,7 +223,7 @@ class GestesDansLaFileTests(TestCase):
         self._photo(self.lead)
         self._photo(self.lead)
         self.assertEqual(RelanceEtape.objects.filter(
-            lead=self.lead, libelle=services.FILET_JOINT_LIBELLE).count(), 1)
+            lead=self.lead, libelle=cadence_reperes.FILET_JOINT_LIBELLE).count(), 1)
 
     def test_une_photo_de_compteur_ne_pose_rien(self):
         self._photo(self.lead, photoFilename='questionnaire-compteur.jpg')

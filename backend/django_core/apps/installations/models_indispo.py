@@ -38,18 +38,18 @@ class IndisponibiliteRessource(models.Model):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_indispos')
     # Cible TECHNICIEN (nullable) — un utilisateur indisponible.
     technicien = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée de suivi/planning du technicien — sans objet sans lui (IndisponibiliteRessource)
         null=True, blank=True,
         related_name='installations_indispos')
     # Cible CAMIONNETTE (nullable) — un emplacement de stock (dépôt/camionnette).
     # String-FK : les modèles stock ne sont jamais importés (couplage lâche).
     camionnette = models.ForeignKey(
-        'stock.EmplacementStock', on_delete=models.CASCADE,
+        'stock.EmplacementStock', on_delete=models.CASCADE,  # on_delete: IndisponibiliteRessource est le détail de EmplacementStock — n'existe pas sans lui
         null=True, blank=True,
         related_name='installations_indispos')
     # max_length=10 couvre le plus long code de Type ('formation' = 9).

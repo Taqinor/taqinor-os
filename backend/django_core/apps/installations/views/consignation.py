@@ -17,11 +17,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import MaterielConsigne
 from ..serializers import MaterielConsigneSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class MaterielConsigneViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('fournisseur'), p1=oa.qs('statut'), p2=oa.qs('type_materiel'))
+class MaterielConsigneViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG327 — matériel consigné. Lecture tout rôle, écriture responsable/admin.
     Filtrable par `statut`, `type_materiel`, `fournisseur`."""
     queryset = MaterielConsigne.objects.select_related(
@@ -66,6 +68,7 @@ class MaterielConsigneViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def retourner(self, request, pk=None):
         """FG327 — solde le lot consigné (→ retourné, pose

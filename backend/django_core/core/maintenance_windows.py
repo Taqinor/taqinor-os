@@ -24,6 +24,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
 from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import (
     SAFE_METHODS, BasePermission, IsAuthenticated,
 )
@@ -243,6 +244,7 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
     serializer_class = MaintenanceWindowSerializer
     permission_classes = [IsAuthenticated, FiabilitePermission]
     pagination_class = None
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_queryset(self):
         qs = MaintenanceWindow.objects.all().order_by('-debute_le')

@@ -79,3 +79,15 @@ class SecurityExportTests(TenantAPITestCase):
         r = self.client_as(role=CustomUser.ROLE_ADMIN).get(self.URL)
         self.assertEqual(r.status_code, 200)
         self.assertNotIn('foreign', r.content.decode('utf-8'))
+
+    def test_export_filters_by_search(self):
+        for detail in ('alerte-rouge', 'alerte-bleue'):
+            AuditLog.objects.create(
+                company=self.company, action=AuditLog.Action.SECURITY_ALERT,
+                detail=detail)
+        r = self.client_as(role=CustomUser.ROLE_ADMIN).get(
+            self.URL, {'search': 'rouge'})
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.content.decode('utf-8')
+        self.assertIn('alerte-rouge', body)
+        self.assertNotIn('alerte-bleue', body)

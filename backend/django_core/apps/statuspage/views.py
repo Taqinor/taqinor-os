@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers as drf_serializers, status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -69,6 +69,7 @@ def _statut_global(composants):
     'generated_at': drf_serializers.DateTimeField(),
 }))
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
 def public_status(request):
@@ -101,6 +102,7 @@ class PublicIncidentsView(generics.ListAPIView):
 
     serializer_class = IncidentPublicSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_classes = [StatuspagePublicThrottle]
 
     def get_queryset(self):
@@ -119,6 +121,7 @@ class PublicIncidentDetailView(generics.RetrieveAPIView):
 
     serializer_class = IncidentPublicSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_classes = [StatuspagePublicThrottle]
 
     def get_queryset(self):
@@ -277,6 +280,7 @@ def prefill_incident_depuis_log(request, pk):
             'pct': drf_serializers.FloatField(allow_null=True),
         }))))
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
 def public_uptime_90j(request):
@@ -351,6 +355,7 @@ def _envoyer_email_confirmation(abonne, request):
         'detail': drf_serializers.CharField(),
     })})
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([StatusSubscribeThrottle])
 def public_abonner(request):
@@ -378,6 +383,7 @@ def public_abonner(request):
     'detail': drf_serializers.CharField(),
 }))
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
 def public_confirmer_abonnement(request, token):
@@ -397,6 +403,7 @@ def public_confirmer_abonnement(request, token):
     'detail': drf_serializers.CharField(),
 }))
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([StatuspagePublicThrottle])
 def public_desabonner(request, token):

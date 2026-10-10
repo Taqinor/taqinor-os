@@ -24,7 +24,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.hors_reseau import (
     ETATS_PROTECTION, HorsReseauInvalide, dimensionner_hors_reseau,
-    simuler_hors_reseau,
+    _simuler_hors_reseau,
 )
 
 SOURCE = (pathlib.Path(__file__).resolve().parents[1] / 'services'
@@ -43,13 +43,13 @@ BANQUE = dict(capacite_utile_kwh=10.0, rendement_ar_pct=100.0,
 class DescenteA5PourcentTest(unittest.TestCase):
 
     def test_sans_seuils_la_banque_descend_a_5_pourcent(self):
-        resultat = simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE, **BANQUE)
+        resultat = _simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE, **BANQUE)
         self.assertAlmostEqual(resultat['etat_de_charge_kwh'][0], 0.5,
                                delta=1e-6)
 
     def test_les_seuils_arretent_la_banque_sans_jamais_passer_sous_10(self):
-        resultat = simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE,
-                                       seuils=SEUILS, **BANQUE)
+        resultat = _simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE,
+                                        seuils=SEUILS, **BANQUE)
         protection = resultat['protection']
         self.assertTrue(protection['plages_par_etat']['arret'])
         self.assertGreater(protection['heures_par_etat']['arret'], 0)
@@ -60,8 +60,8 @@ class DescenteA5PourcentTest(unittest.TestCase):
         self.assertEqual(protection['plages_par_etat']['arret'], [[1, 3]])
 
     def test_une_banque_coupee_ne_se_recharge_plus(self):
-        resultat = simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE,
-                                       seuils=SEUILS, **BANQUE)
+        resultat = _simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE,
+                                        seuils=SEUILS, **BANQUE)
         # Le soleil de la 4e heure n'entre pas : la banque est COUPÉE.
         self.assertAlmostEqual(resultat['etat_de_charge_kwh'][3], 1.0,
                                delta=1e-6)
@@ -70,8 +70,8 @@ class DescenteA5PourcentTest(unittest.TestCase):
                             for texte in resultat['mentions']))
 
     def test_les_heures_par_etat_couvrent_toute_la_serie(self):
-        resultat = simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE,
-                                       seuils=SEUILS, **BANQUE)
+        resultat = _simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE,
+                                        seuils=SEUILS, **BANQUE)
         heures = resultat['protection']['heures_par_etat']
         self.assertEqual(set(heures), set(ETATS_PROTECTION))
         self.assertEqual(sum(heures.values()), resultat['heures'])
@@ -84,7 +84,7 @@ class VeilleEtEntretienTest(unittest.TestCase):
         # rien ne sort, jusqu'au soleil de la 6e heure.
         conso = [2.5] * 8
         prod = [0.0] * 5 + [5.0] + [0.0] * 2
-        resultat = simuler_hors_reseau(conso, prod, seuils=SEUILS, **BANQUE)
+        resultat = _simuler_hors_reseau(conso, prod, seuils=SEUILS, **BANQUE)
         etats = resultat['etat_de_charge_kwh']
         self.assertAlmostEqual(etats[2], 2.5, delta=1e-6)
         self.assertAlmostEqual(etats[3], 2.5, delta=1e-6)
@@ -103,7 +103,7 @@ class VeilleEtEntretienTest(unittest.TestCase):
 
     def test_l_entretien_est_compte_et_sa_source_ac_absente_est_dite(self):
         # 35 % puis 2 kWh appelés : 15 %, dans la zone d'entretien.
-        resultat = simuler_hors_reseau(
+        resultat = _simuler_hors_reseau(
             [2.0, 1.0, 1.0], [0.0, 0.0, 0.0], seuils=SEUILS,
             capacite_utile_kwh=10.0, rendement_ar_pct=100.0,
             etat_initial_kwh=3.5)
@@ -120,8 +120,8 @@ class VeilleEtEntretienTest(unittest.TestCase):
 class RefusTest(unittest.TestCase):
 
     def _simuler(self, seuils):
-        return simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE, seuils=seuils,
-                                   **BANQUE)
+        return _simuler_hors_reseau(CONSO_CHUTE, PROD_CHUTE, seuils=seuils,
+                                    **BANQUE)
 
     def test_une_veille_sous_l_arret_est_refusee_en_la_nommant(self):
         with self.assertRaises(HorsReseauInvalide) as refus:
@@ -187,13 +187,13 @@ class SansSeuilsTest(unittest.TestCase):
     }
 
     def test_la_sortie_est_terme_a_terme_celle_d_aujourd_hui(self):
-        resultat = simuler_hors_reseau(self.CONSO, self.PROD, **self.ENTREE)
+        resultat = _simuler_hors_reseau(self.CONSO, self.PROD, **self.ENTREE)
         for cle, valeur in self.AVANT.items():
             with self.subTest(cle=cle):
                 self.assertEqual(resultat[cle], valeur)
 
     def test_le_bilan_dit_qu_aucun_seuil_n_est_saisi(self):
-        resultat = simuler_hors_reseau(self.CONSO, self.PROD, **self.ENTREE)
+        resultat = _simuler_hors_reseau(self.CONSO, self.PROD, **self.ENTREE)
         protection = resultat['protection']
         self.assertIn('Aucun seuil de protection', protection['motif'])
         for cle in ('seuils', 'heures_par_etat', 'plages_par_etat',

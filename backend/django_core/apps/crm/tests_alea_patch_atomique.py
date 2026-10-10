@@ -63,7 +63,7 @@ class PatchAtomiqueTests(TestCase):
     def test_panne_score_n_echoue_pas_le_patch(self):
         touche_avant = self._etat_touche()
         chatter_avant = self._nb_chatter()
-        with mock.patch('apps.crm.services.recompute_lead_score',
+        with mock.patch('apps.crm.leads_score.recompute_lead_score',
                         side_effect=RuntimeError('score en panne')):
             with self.assertLogs('apps.crm.views', level='WARNING') as logs:
                 resp = self.api.patch(self.url, {'ville': 'Fès'},
@@ -82,7 +82,7 @@ class PatchAtomiqueTests(TestCase):
         chatter_avant = self._nb_chatter()
         relance_avant = Lead.objects.get(pk=self.lead.pk).relance_date
         j9 = (J + datetime.timedelta(days=9)).date().isoformat()
-        with mock.patch('apps.crm.services.reporter_prochaine_touche',
+        with mock.patch('apps.crm.cadence_plan.reporter_prochaine_touche',
                         side_effect=RuntimeError('report en panne')):
             resp = self.api.patch(self.url, {'relance_date': j9},
                                   format='json')

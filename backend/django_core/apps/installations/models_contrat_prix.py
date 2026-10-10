@@ -28,7 +28,7 @@ class ContratPrixFournisseur(models.Model):
         EXPIRE = 'expire', 'Expiré'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_contrats_prix')
     reference = models.CharField(max_length=50)
@@ -85,7 +85,7 @@ class ContratPrixLigne(models.Model):
     documente l'accord."""
 
     contrat = models.ForeignKey(
-        ContratPrixFournisseur, on_delete=models.CASCADE,
+        ContratPrixFournisseur, on_delete=models.CASCADE,  # on_delete: ligne de ContratPrixFournisseur — n'existe pas sans son document parent
         related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,

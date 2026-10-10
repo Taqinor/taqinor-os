@@ -19,11 +19,13 @@ from ..serializers import (
     BinLocationSerializer, BinAffectationSerializer,
     CategorieStockageSerializer, RegleRangementSerializer,
 )
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class BinLocationViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('archived'), p1=oa.qi('emplacement'))
+class BinLocationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG319 — casiers de rangement. Lecture tout rôle, écriture
     responsable/admin. Société + `created_by` posés serveur ; `emplacement`
     validé tenant. Filtrable par `emplacement`, `archived`."""
@@ -75,7 +77,7 @@ class BinLocationViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class CategorieStockageViewSet(CompanyScopedModelViewSet):
+class CategorieStockageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """ZSTK9 — catégories de stockage (capacité/compatibilité). Lecture tout
     rôle, écriture responsable/admin. Société posée serveur."""
     queryset = CategorieStockage.objects.all()
@@ -87,7 +89,8 @@ class CategorieStockageViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class RegleRangementViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('actif'), p1=oa.qi('produit'))
+class RegleRangementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """ZSTK9 — règles de rangement configurables (produit/catégorie →
     casier cible, priorité). Lecture tout rôle, écriture responsable/admin.
     Société posée serveur ; `produit`/`bin_cible` validés tenant."""
@@ -136,7 +139,8 @@ class RegleRangementViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class BinAffectationViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('bin'), p1=oa.qi('produit'))
+class BinAffectationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG319 — affectation produit ↔ casier. Société posée serveur ; `bin` et
     `produit` validés tenant. Filtrable par `bin`, `produit`."""
     queryset = BinAffectation.objects.select_related(

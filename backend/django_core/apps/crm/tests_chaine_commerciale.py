@@ -30,7 +30,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import chaine_commerciale
 from apps.parametres.models import CompanyProfile
@@ -137,7 +137,7 @@ class FormeTests(_Base):
 
         joint = self._lead('Joint')
         self._issue(joint, 'joint')
-        self._etape(joint, jour=AUJOURDHUI, libelle=services.FILET_JOINT_LIBELLE,
+        self._etape(joint, jour=AUJOURDHUI, libelle=cadence_reperes.FILET_JOINT_LIBELLE,
                     cle='devis')
         visite = self._lead('Visite',
                             visite_prevue_le=AUJOURDHUI
@@ -169,10 +169,10 @@ class JointsSansDevisTests(_Base):
         self._issue(a_jour, 'joint', le=GEL - datetime.timedelta(days=1))
         self._devis(a_jour, Devis.Statut.BROUILLON)
         self._etape(a_jour, jour=AUJOURDHUI,
-                    libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                    libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
         # Inclus : visite acceptée, prochaine étape EN RETARD.
         en_retard = self._lead('Retard')
-        self._issue(en_retard, services.OUTCOME_VISITE_ACCEPTEE)
+        self._issue(en_retard, cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self._etape(en_retard, jour=HIER, libelle='Planifier la visite',
                     cle='planifier', cadence='apres_devis')
         # Inclus : intéressé, AUCUNE prochaine étape — un trou, en tête.
@@ -208,7 +208,7 @@ class JointsSansDevisTests(_Base):
         self.assertEqual(lignes[en_retard.pk]['prochaine_le'], HIER.isoformat())
         self.assertTrue(lignes[en_retard.pk]['en_retard'])
         self.assertEqual(lignes[a_jour.pk]['prochaine_etape'],
-                         services.FILET_JOINT_LIBELLE)
+                         cadence_reperes.FILET_JOINT_LIBELLE)
         self.assertEqual(lignes[a_jour.pk]['joint_le'], HIER.isoformat())
         self.assertEqual(lignes[en_retard.pk]['joint_le'],
                          AUJOURDHUI.isoformat())
@@ -254,25 +254,25 @@ class DevisAPreparerTests(_Base):
 
     def test_definitions_exclusions_et_tri(self):
         retard = self._lead('Retard', visite_effectuee=True)
-        self._etape(retard, jour=HIER, libelle=services.FILET_JOINT_LIBELLE,
+        self._etape(retard, jour=HIER, libelle=cadence_reperes.FILET_JOINT_LIBELLE,
                     cle='devis')
         ancienne = self._lead('Ancienne')
         self._etape(ancienne, jour=DEMAIN,
-                    libelle=services._FILET_JOINT_LIBELLE_ANCIEN)
+                    libelle=cadence_reperes._FILET_JOINT_LIBELLE_ANCIEN)
         renommee = self._lead('Renommee')
         self._etape(renommee, jour=AUJOURDHUI, libelle='Faire le devis',
                     cle='devis')
         # Exclus : étape faite, autre étape, lead d'un autre, lead archivé,
         # libellé renommé SANS clé (jamais reconnu).
         faite = self._lead('Faite')
-        self._etape(faite, jour=HIER, libelle=services.FILET_JOINT_LIBELLE,
+        self._etape(faite, jour=HIER, libelle=cadence_reperes.FILET_JOINT_LIBELLE,
                     cle='devis', statut=RelanceEtape.Statut.FAIT)
         self._etape(self._lead('Autre etape'), jour=HIER,
-                    libelle=services.FILET_REFUS_LIBELLE, cle='decider_suite')
+                    libelle=cadence_reperes.FILET_REFUS_LIBELLE, cle='decider_suite')
         self._etape(self._lead('Autre', owner=self.autre), jour=HIER,
-                    libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                    libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
         self._etape(self._lead('Archive', is_archived=True), jour=HIER,
-                    libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                    libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
         self._etape(self._lead('SansCle'), jour=HIER,
                     libelle='Faire le devis')
 
@@ -297,7 +297,7 @@ class LimiteEtPorteeTests(_Base):
         for i in range(7):
             lead = self._lead(f'Devis {i}')
             self._etape(lead, jour=AUJOURDHUI + datetime.timedelta(days=i),
-                        libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                        libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
         donnees = self._chaine()
         self.assertEqual(donnees['devis_a_preparer']['total'], 7)
         self.assertEqual(len(donnees['devis_a_preparer']['leads']), 5)
@@ -310,10 +310,10 @@ class LimiteEtPorteeTests(_Base):
     def test_chacun_sa_chaine(self):
         a_moi = self._lead('Moi')
         self._etape(a_moi, jour=AUJOURDHUI,
-                    libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                    libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
         a_lui = self._lead('Lui', owner=self.autre)
         self._etape(a_lui, jour=AUJOURDHUI,
-                    libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                    libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
         self.assertEqual(
             self._ids(self._chaine()['devis_a_preparer']), [a_moi.pk])
         self.assertEqual(
@@ -330,7 +330,7 @@ class LimiteEtPorteeTests(_Base):
         RelanceEtape.objects.create(
             company=autre, lead=lead, cadence='generique', ordre=1,
             canal=RelanceEtape.Canal.APPEL,
-            libelle=services.FILET_JOINT_LIBELLE, cle='devis',
+            libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis',
             due_at=GEL, due_date=AUJOURDHUI)
         self.assertEqual(self._chaine()['devis_a_preparer']['total'], 0)
 
@@ -348,7 +348,7 @@ class PiiMasqueeTests(_Base):
             company=self.company, role=role_sans_pii)
         lead = self._lead('Masque', owner=masque)
         self._etape(lead, jour=AUJOURDHUI,
-                    libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                    libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
 
         [ligne] = self._chaine(masque)['devis_a_preparer']['leads']
 
@@ -374,7 +374,7 @@ class CoutTests(_Base):
             joint = self._lead(f'Joint {i}')
             self._issue(joint, 'joint')
             self._etape(joint, jour=AUJOURDHUI,
-                        libelle=services.FILET_JOINT_LIBELLE, cle='devis')
+                        libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
 
     def test_le_cout_ne_grimpe_pas_avec_les_dossiers(self):
         self._dossiers(1, 0)

@@ -10,6 +10,10 @@ from apps.stock.models import Produit
 from apps.crm.models import Client
 from authentication.permissions import IsResponsableOrAdmin
 from core.analytics_db import analytics_queryset
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co(user):
@@ -74,6 +78,27 @@ def _qdate(value):
         return None
 
 
+_VIEWS_DASHBOARD_REPONSE = inline_serializer('ViewsDashboardReponse', {
+    'kpis': drf_serializers.JSONField(allow_null=True),
+    'ca_mensuel': drf_serializers.JSONField(allow_null=True),
+    'top_produits': drf_serializers.JSONField(allow_null=True),
+    'statuts_factures': drf_serializers.JSONField(allow_null=True),
+    'conversion': drf_serializers.JSONField(allow_null=True),
+    'stock_alerte': drf_serializers.JSONField(allow_null=True),
+    'creances': drf_serializers.JSONField(allow_null=True),
+    'comparison': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('compare', OpenApiTypes.STR, required=False),
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
+    ],
+    responses={(200, 'application/json'): _VIEWS_DASHBOARD_REPONSE,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def dashboard(request):

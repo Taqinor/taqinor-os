@@ -42,6 +42,8 @@ jamais deux formes de référence pour un même objet.
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -78,6 +80,11 @@ def _drapeau(brut, defaut=True):
     return bool(brut)
 
 
+@extend_schema(request=inline_serializer(
+    'CalepinageDupliquerRequete', {
+        'avec_variantes': drf_serializers.BooleanField(required=False),
+        'titre': drf_serializers.CharField(required=False, allow_blank=True),
+    }))
 @action(detail=True, methods=['post'], url_path='dupliquer',
         permission_classes=[PeutGererCalepinage])
 def dupliquer(self, request, pk=None):

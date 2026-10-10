@@ -26,7 +26,8 @@ from .views_common import _audit_company
 # ``provisionner_localisation`` : profile/pays/feries_seedes/seeder_utilise).
 ONBOARDING_LOCALISATION_REQUEST = inline_serializer(
     'OnboardingLocalisationRequest', {
-        'pays': serializers.CharField(required=False),
+        'pays': serializers.ChoiceField(
+            choices=sorted(SEEDERS_FERIES_PAR_PAYS), required=False),
         'devise': serializers.CharField(required=False, allow_null=True),
         'fuseau_horaire': serializers.CharField(
             required=False, allow_null=True),

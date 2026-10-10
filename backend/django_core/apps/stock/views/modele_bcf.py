@@ -1,9 +1,14 @@
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema
+from rest_framework.parsers import JSONParser
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from rest_framework import serializers
+from ..openapi_helpers import corps
+from ..serializers import BonCommandeFournisseurSerializer  # noqa: E402
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 from apps.ventes.utils.references import create_with_reference
@@ -31,6 +36,8 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         'fournisseur').prefetch_related('lignes__produit').all()
     serializer_class = ModeleBonCommandeFournisseurSerializer
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
@@ -42,6 +49,7 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(request=corps('ModeleBcfGenererCorps', fournisseur=serializers.IntegerField(required=False)), responses={201: BonCommandeFournisseurSerializer})
     @action(detail=True, methods=['post'], url_path='generer')
     def generer(self, request, pk=None):
         """ZPUR3 — matérialise un BCF BROUILLON pré-rempli depuis les lignes

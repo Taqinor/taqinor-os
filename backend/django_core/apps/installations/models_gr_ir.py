@@ -25,7 +25,7 @@ class ReceptionNonFacturee(models.Model):
     facture. Multi-tenant : société posée côté serveur. Montants INTERNES."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_receptions_non_facturees')
     # Réception et/ou BCF d'origine (string-FK vers stock, optionnels).

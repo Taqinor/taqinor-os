@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
-from apps.crm import services, stages
+from apps.crm import stages, leads_intake
 from apps.crm.models import Client, Lead, LeadActivity
 
 User = get_user_model()
@@ -30,7 +30,7 @@ class TicketLeadTests(TestCase):
         archive = Lead.objects.create(
             company=self.company, nom='Ancien', client=self.client_c,
             stage=stages.CONTACTED, is_archived=True)
-        lead, created = services.create_lead_depuis_ticket(
+        lead, created = leads_intake.create_lead_depuis_ticket(
             company=self.company, user=self.user, client=self.client_c,
             contexte='upsell ticket')
         self.assertTrue(created)
@@ -45,7 +45,7 @@ class TicketLeadTests(TestCase):
         ouvert = Lead.objects.create(
             company=self.company, nom='Ouvert', client=self.client_c,
             stage=stages.CONTACTED)
-        lead, created = services.create_lead_depuis_ticket(
+        lead, created = leads_intake.create_lead_depuis_ticket(
             company=self.company, user=self.user, client=self.client_c,
             contexte='upsell ticket')
         self.assertFalse(created)

@@ -5,11 +5,13 @@ validation puis import effectif). Scopé société, jamais d'écriture en dry-ru
 """
 import logging
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from . import openapi_docs as D
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,8 @@ def _read_file(request):
     return f.read(), f.name, None
 
 
+@extend_schema(request={'multipart/form-data': D.ReleveDryRunRequest},
+               responses=D.ReleveDryRunResponse)
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])
@@ -60,6 +64,8 @@ def releve_dry_run(request):
     return Response(result)
 
 
+@extend_schema(request=D.ReleveCommitRequest, responses={
+    200: D.ReleveCommitResponse, 201: D.ReleveCommitResponse})
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([JSONParser, MultiPartParser, FormParser])

@@ -18,6 +18,9 @@ from core.win_probability import (
     base_probability_for_stage,
     win_probability,
 )
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co_filter(user):
@@ -230,6 +233,17 @@ def _lead_forecast_value(lead):
     return Decimal('0')
 
 
+_PIPELINE_PIPELINE_REPONSE = inline_serializer('PipelinePipelineReponse', {
+    'par_etape': drf_serializers.JSONField(allow_null=True),
+    'prevision_ponderee': drf_serializers.JSONField(allow_null=True),
+    'devis_par_statut': drf_serializers.JSONField(allow_null=True),
+    'gagnes': drf_serializers.JSONField(allow_null=True),
+    'perdus_par_motif': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    responses={200: _PIPELINE_PIPELINE_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def pipeline(request):
@@ -321,6 +335,13 @@ def pipeline(request):
 
 # FG29 — Vélocité du funnel (jours moyens par étape) ─────────────────────────
 
+_PIPELINE_FUNNEL_VELOCITY_REPONSE = inline_serializer('PipelineFunnelVelocityReponse', {
+    'velocity': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    responses={200: _PIPELINE_FUNNEL_VELOCITY_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def funnel_velocity(request):

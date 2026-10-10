@@ -35,7 +35,7 @@ calepinage``), qui reste pur (contrat import-linter mesuré).
 """
 from __future__ import annotations
 
-__all__ = ['KitDePoseRefuse', 'construire_kit_de_pose']
+__all__ = ['KitDePoseRefuse']
 
 
 class KitDePoseRefuse(ValueError):
@@ -50,7 +50,7 @@ class KitDePoseRefuse(ValueError):
 _COTES_REQUISES = ('longueur_mm', 'largeur_mm', 'puissance_wc')
 
 
-def construire_kit_de_pose(company, *, kit_id, produit_module_id=None):
+def _construire_kit_de_pose(company, *, kit_id, produit_module_id=None):
     """Le kit de pose : structures/fixations AO + cotes du module posé.
 
     Args:

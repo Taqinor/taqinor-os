@@ -12,7 +12,11 @@ Lecture tout rôle.
 """
 from datetime import date
 
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -26,6 +30,18 @@ class TourneeLivraisonView(APIView):
     aucune écriture. Société posée serveur."""
     permission_classes = [IsAnyRole]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('jour', OpenApiTypes.DATE, required=True),
+            OpenApiParameter('depart_lat', OpenApiTypes.FLOAT),
+            OpenApiParameter('depart_lng', OpenApiTypes.FLOAT),
+        ],
+        responses={200: inline_serializer('TourneeLivraisonResultat', fields={
+            'jour': serializers.CharField(),
+            'tournee': serializers.ListField(child=serializers.DictField()),
+            'sans_gps': serializers.ListField(child=serializers.DictField()),
+            'total': serializers.IntegerField(),
+        })})
     def get(self, request):
         company = request.user.company
         raw_jour = request.query_params.get('jour')

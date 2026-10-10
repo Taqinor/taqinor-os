@@ -22,11 +22,11 @@ class PreuveLivraison(models.Model):
     vectorielle/base64 légère (texte), la photo passe par `records.Attachment`."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_preuves_livraison')
     livraison = models.OneToOneField(
-        'installations.Livraison', on_delete=models.CASCADE,
+        'installations.Livraison', on_delete=models.CASCADE,  # on_delete: pièce justificative de Livraison — suit son objet parent
         related_name='preuve')
     signataire_nom = models.CharField(max_length=255, blank=True, null=True)
     signature_data = models.TextField(blank=True, null=True)

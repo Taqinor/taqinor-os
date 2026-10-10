@@ -2898,7 +2898,11 @@ def meta_lead_ads_webhook(request):
                 verify_token.encode('utf-8'),
                 str(token or '').encode('utf-8')):
             from django.http import HttpResponse
-            return HttpResponse(challenge, content_type='text/plain')
+            from django.utils.html import escape
+
+            # ENF12 (semgrep reflected-data-httpresponse) : challenge échappé
+            # (Meta envoie un jeton alphanumérique, inchangé par escape).
+            return HttpResponse(escape(challenge), content_type='text/plain')
         return JsonResponse({'detail': 'Vérification refusée.'}, status=403)
 
     # POST — notification de nouveau lead.

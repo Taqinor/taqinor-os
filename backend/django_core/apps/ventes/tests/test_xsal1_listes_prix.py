@@ -109,7 +109,7 @@ class TestListePrixViewSetTenantIsolation(TestCase):
         api = self._api_for(self.admin)
         resp = api.post('/api/django/ventes/listes-prix/', {
             'nom': 'Nouvelle liste', 'devise': 'MAD',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201)
         created = ListePrix.objects.get(id=resp.data['id'])
         self.assertEqual(created.company_id, self.company.id)
@@ -119,14 +119,14 @@ class TestListePrixViewSetTenantIsolation(TestCase):
         api = self._api_for(self.admin)
         resp = api.post('/api/django/ventes/listes-prix/', {
             'nom': 'Hack', 'company': other_company.id,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201)
         created = ListePrix.objects.get(id=resp.data['id'])
         self.assertEqual(created.company_id, self.company.id)
 
     def test_normal_role_forbidden_from_creating(self):
         api = self._api_for(self.normal)
-        resp = api.post('/api/django/ventes/listes-prix/', {'nom': 'X'})
+        resp = api.post('/api/django/ventes/listes-prix/', {'nom': 'X'}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_cross_tenant_list_hidden(self):
@@ -142,7 +142,7 @@ class TestListePrixViewSetTenantIsolation(TestCase):
         api = self._api_for(self.admin)
         resp = api.post(
             f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/',
-            {'produit': produit.id, 'prix_unitaire': '420.00'})
+            {'produit': produit.id, 'prix_unitaire': '420.00'}, format='json')
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(
             LignePrixListe.objects.filter(
@@ -162,7 +162,7 @@ class TestListePrixViewSetTenantIsolation(TestCase):
         api = self._api_for(self.admin)
         resp = api.post(
             f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/',
-            {'produit': produit_voisin.id, 'prix_unitaire': '420.00'})
+            {'produit': produit_voisin.id, 'prix_unitaire': '420.00'}, format='json')
         self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
         self.assertNotIn('Onduleur du voisin', resp.content.decode())
         self.assertFalse(
@@ -178,8 +178,8 @@ class TestListePrixViewSetTenantIsolation(TestCase):
         api = self._api_for(self.admin)
         url = f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/'
         voisin = api.post(
-            url, {'produit': produit_voisin.id, 'prix_unitaire': '1'})
-        absent = api.post(url, {'produit': 999_999_999, 'prix_unitaire': '1'})
+            url, {'produit': produit_voisin.id, 'prix_unitaire': '1'}, format='json')
+        absent = api.post(url, {'produit': 999_999_999, 'prix_unitaire': '1'}, format='json')
         self.assertEqual(voisin.status_code, absent.status_code)
         # Tout SAUF le ``request_id`` (identifiant de corrélation, unique par
         # requête par construction) : c'est le code + le message + les champs
@@ -193,5 +193,5 @@ class TestListePrixViewSetTenantIsolation(TestCase):
         api = self._api_for(self.admin)
         resp = api.post(
             f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/',
-            {'produit': 'abc', 'prix_unitaire': '1'})
+            {'produit': 'abc', 'prix_unitaire': '1'}, format='json')
         self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))

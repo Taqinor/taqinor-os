@@ -36,7 +36,7 @@ class UniteMesure(TenantModel):
     """Une unité de mesure de référence par société (code + libellé FR)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='unites_mesure_referentiel')
     # Code technique = valeur portée par ``Produit.unite_stock`` (clé de miroir).
     code = models.CharField(max_length=20)

@@ -33,7 +33,11 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import cadence_config, horaires, services, stages
+from apps.crm import cadence_config, horaires, stages, cadence_visite
+from apps.crm import cadence_touche
+from apps.crm import cadence_filet
+from apps.crm import cadence_reperes
+from apps.crm import cadence_reponses
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
@@ -160,7 +164,7 @@ class RenommerEtDecalerLeDevisTests(_Base):
 
     def test_la_piece_recue_pose_aussi_l_etape_renommee(self):
         touche = self._touche()
-        _, etape_devis = services.enregistrer_piece_recue(
+        _, etape_devis = cadence_reponses.enregistrer_piece_recue(
             touche, self.acteur, type_piece='facture')
         self.assertEqual((etape_devis.libelle, etape_devis.cle),
                          ('Faire le devis', 'devis'))
@@ -179,23 +183,23 @@ class PalierDesactiveTests(_Base):
     def test_debrief_sans_reponse_retombe_sur_le_devis(self):
         self._desactiver('dernier_appel')
         debrief = self._touche(
-            cadence='apres_devis', ordre=services.VISITE_ORDRE_DEBRIEF,
-            libelle=services.VISITE_DEBRIEF_LIBELLE, cle='debrief')
+            cadence='apres_devis', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
+            libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE, cle='debrief')
 
         resp = self._fait(debrief, outcome='non_joint')
 
         self.assertEqual(resp.status_code, 200, resp.data)
         [etape] = self._ouvertes()
         self.assertEqual(etape.cle, 'devis')
-        self.assertEqual(etape.libelle, services.FILET_JOINT_LIBELLE)
+        self.assertEqual(etape.libelle, cadence_reperes.FILET_JOINT_LIBELLE)
         self.lead.refresh_from_db()
         self.assertNotEqual(self.lead.stage, stages.COLD)
 
     def test_palier_actif_le_dernier_essai_est_pose(self):
         """Témoin : la même clôture, palier gardé → « dernier essai »."""
         debrief = self._touche(
-            cadence='apres_devis', ordre=services.VISITE_ORDRE_DEBRIEF,
-            libelle=services.VISITE_DEBRIEF_LIBELLE, cle='debrief')
+            cadence='apres_devis', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
+            libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE, cle='debrief')
 
         self._fait(debrief, outcome='non_joint')
 
@@ -205,7 +209,7 @@ class PalierDesactiveTests(_Base):
     def test_message_creneau_desactive_passe_au_dernier_essai(self):
         self._desactiver('message_creneau')
         appel = self._touche(cadence='generique', ordre=1,
-                             libelle=services.FILET_APPEL_LIBELLE,
+                             libelle=cadence_reperes.FILET_APPEL_LIBELLE,
                              cle='appel_apres_reponse')
 
         self._fait(appel, outcome='non_joint')
@@ -226,13 +230,13 @@ class PalierDesactiveTests(_Base):
     def test_l_escalier_se_lit_en_cles(self):
         tous = lambda cle: True  # noqa: E731
         aucun = lambda cle: False  # noqa: E731
-        self.assertEqual(services.prochain_palier_sans_reponse(
+        self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             'appel_apres_reponse', 'non_joint', tous), 'message_creneau')
-        self.assertEqual(services.prochain_palier_sans_reponse(
+        self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             'appel_apres_reponse', 'non_joint', aucun), None)
-        self.assertEqual(services.prochain_palier_sans_reponse(
+        self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             'devis_modifie', 'non_joint', tous), 'dernier_appel')
-        self.assertIsNone(services.prochain_palier_sans_reponse(
+        self.assertIsNone(cadence_filet.prochain_palier_sans_reponse(
             'dernier_appel', 'non_joint', tous))
 
 
@@ -244,10 +248,10 @@ class PilierSupprimeTests(_Base):
     def test_debrief_supprime_le_defaut_est_pose(self):
         _barreau(self.company, Cadence.VISITE, 'debrief').delete()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         debrief = self.lead.relance_etapes.get(cle='debrief', statut=A_FAIRE)
-        self.assertEqual(debrief.libelle, services.VISITE_DEBRIEF_LIBELLE)
+        self.assertEqual(debrief.libelle, cadence_reperes.VISITE_DEBRIEF_LIBELLE)
         self.assertEqual(debrief.due_date, datetime.date(2026, 10, 2))
 
     def test_devis_desactive_le_defaut_est_pose(self):
@@ -259,7 +263,7 @@ class PilierSupprimeTests(_Base):
 
         [etape] = self._ouvertes()
         self.assertEqual((etape.cle, etape.libelle),
-                         ('devis', services.FILET_JOINT_LIBELLE))
+                         ('devis', cadence_reperes.FILET_JOINT_LIBELLE))
 
 
 class ConfirmationAvantLaVisiteTests(_Base):
@@ -274,7 +278,7 @@ class ConfirmationAvantLaVisiteTests(_Base):
         confirmation.canal = 'appel'
         confirmation.save()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape = self.lead.relance_etapes.get(cle='confirmation',
                                              statut=A_FAIRE)
@@ -287,7 +291,7 @@ class ConfirmationAvantLaVisiteTests(_Base):
         confirmation.delai_jours = 30
         confirmation.save()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape = self.lead.relance_etapes.get(cle='confirmation',
                                              statut=A_FAIRE)
@@ -298,7 +302,7 @@ class ConfirmationAvantLaVisiteTests(_Base):
         debrief.delai_jours = 4
         debrief.save()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape = self.lead.relance_etapes.get(cle='debrief', statut=A_FAIRE)
         # Jeudi + 4 = lundi 05/10 (ouvré).
@@ -312,7 +316,7 @@ class EtapeAvantLaCleTests(_Base):
 
     def test_l_ancienne_etape_devis_vaut_devis_parti(self):
         ancienne = self._touche(cadence='generique', ordre=1,
-                                libelle=services.FILET_JOINT_LIBELLE)
+                                libelle=cadence_reperes.FILET_JOINT_LIBELLE)
         self.assertEqual(ancienne.cle, '')
 
         resp = self._fait(ancienne)
@@ -322,8 +326,8 @@ class EtapeAvantLaCleTests(_Base):
         self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
 
     def test_le_predicat(self):
-        for libelle in (services.FILET_JOINT_LIBELLE,
-                        services._FILET_JOINT_LIBELLE_ANCIEN):
+        for libelle in (cadence_reperes.FILET_JOINT_LIBELLE,
+                        cadence_reperes._FILET_JOINT_LIBELLE_ANCIEN):
             with self.subTest(libelle=libelle):
                 self.assertTrue(cadence_config.est_etape(
                     RelanceEtape(libelle=libelle), 'devis'))
@@ -332,7 +336,7 @@ class EtapeAvantLaCleTests(_Base):
             RelanceEtape(libelle='Faire le devis'), 'devis'))
         # … et la clé l'emporte sur un libellé par défaut trompeur.
         self.assertFalse(cadence_config.est_etape(
-            RelanceEtape(libelle=services.FILET_JOINT_LIBELLE,
+            RelanceEtape(libelle=cadence_reperes.FILET_JOINT_LIBELLE,
                          cle='debrief'), 'devis'))
         self.assertTrue(cadence_config.est_etape(
             RelanceEtape(libelle='Faire le devis', cle='devis'), 'devis'))
@@ -341,7 +345,7 @@ class EtapeAvantLaCleTests(_Base):
         cle = self._touche(cadence='generique', ordre=1,
                            libelle='Faire le devis', cle='devis')
         ancienne = self._touche(cadence='generique', ordre=1,
-                                libelle=services._FILET_JOINT_LIBELLE_ANCIEN)
+                                libelle=cadence_reperes._FILET_JOINT_LIBELLE_ANCIEN)
         self._touche(cadence='generique', ordre=1, libelle='Faire le devis')
         trouvees = set(self.lead.relance_etapes.filter(
             cadence_config.q_etape('devis')).values_list('pk', flat=True))
@@ -351,15 +355,15 @@ class EtapeAvantLaCleTests(_Base):
         """Le récepteur d'issue ne tient que la ligne de chatter : un débrief
         RENOMMÉ ne doit jamais démarrer le suivi de proposition (CAD2)."""
         debrief = self._touche(
-            cadence='apres_devis', ordre=services.VISITE_ORDRE_DEBRIEF,
+            cadence='apres_devis', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
             libelle='Rappeler après la visite', cle='debrief')
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             debrief, self.acteur, RelanceEtape.Statut.FAIT, outcome='joint')
         ligne = LeadActivity.objects.filter(
             lead=self.lead,
             body__startswith='Touche « Rappeler après la visite »').get()
-        self.assertTrue(services.est_cloture_d_etape_visite(ligne))
-        self.assertTrue(services.est_etape_de_visite(debrief))
+        self.assertTrue(cadence_reperes.est_cloture_d_etape_visite(ligne))
+        self.assertTrue(cadence_reperes.est_etape_de_visite(debrief))
 
 
 class DeuxSocietesTests(_Base):
@@ -378,15 +382,15 @@ class DeuxSocietesTests(_Base):
             role_legacy='responsable', company=autre)
         lead_b = self._lead(autre, acteur_b, nom='Tazi')
 
-        services.assurer_prochaine_etape_apres_succes(self.lead, self.acteur)
-        services.assurer_prochaine_etape_apres_succes(lead_b, acteur_b)
+        cadence_filet.assurer_prochaine_etape_apres_succes(self.lead, self.acteur)
+        cadence_filet.assurer_prochaine_etape_apres_succes(lead_b, acteur_b)
 
         [a] = self._ouvertes()
         [b] = self._ouvertes(lead_b)
         self.assertEqual((a.libelle, a.due_date),
                          ('Faire le devis', datetime.date(2026, 9, 25)))
         self.assertEqual((b.libelle, b.due_date),
-                         (services.FILET_JOINT_LIBELLE,
+                         (cadence_reperes.FILET_JOINT_LIBELLE,
                           datetime.date(2026, 9, 24)))
         self.assertEqual((a.cle, b.cle), ('devis', 'devis'))
         self.assertEqual(b.company_id, autre.pk)
@@ -406,7 +410,7 @@ class SamediEtDimancheDuBarreauMoteurTests(_Base):
         # Palier ACTIF (jamais désactivé ici) : « non_joint » escalade bien
         # vers `message_creneau` (`_FILET_SANS_REPONSE_PALIERS`).
         return self._touche(cadence='generique', ordre=1,
-                            libelle=services.FILET_APPEL_LIBELLE,
+                            libelle=cadence_reperes.FILET_APPEL_LIBELLE,
                             cle='appel_apres_reponse')
 
     def _message_creneau(self):

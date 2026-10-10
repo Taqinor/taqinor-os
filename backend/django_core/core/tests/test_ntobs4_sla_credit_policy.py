@@ -150,7 +150,7 @@ class SlaCreditsDusEndpointTest(TestCase):
 
     def test_marking_emis_never_creates_a_financial_document(self):
         url = f'/api/django/core/sla/credits/{self.snap.pk}/statut/'
-        resp = self._client(self.directeur).post(url, {'statut': 'emis'})
+        resp = self._client(self.directeur).post(url, {'statut': 'emis'}, format='json')
         self.assertEqual(resp.status_code, 200)
         self.snap.refresh_from_db()
         self.assertEqual(self.snap.credit_statut, SlaSnapshot.CreditStatut.EMIS)

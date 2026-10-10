@@ -22,7 +22,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires
 from apps.crm.models import Appointment, Lead
-from apps.crm.services import send_due_appointment_reminders
+from apps.crm.visites_rdv import send_due_appointment_reminders
 from apps.notifications.models import Notification
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role

@@ -1,6 +1,8 @@
 from datetime import date
 
 from django.contrib.contenttypes.models import ContentType
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -11,10 +13,19 @@ from .models import (
 )
 
 
+class CibleIntrouvable(ValueError):
+    """ENF7 — la cible est bien formée (type autorisé) mais n'existe pas (ou pas
+    dans la société de l'appelant) : les vues répondent 404 ; un type non
+    autorisé ou une forme invalide reste un ``ValueError`` simple (400)."""
+
+
 def resolve_target(model_label, object_id, company):
     """('crm.lead', 12, company) -> (ContentType, instance) ou lève ValueError.
 
     Vérifie que le modèle est autorisé ET que l'objet appartient à la société.
+    Cible inexistante ou hors société : ``CibleIntrouvable`` (sous-classe de
+    ``ValueError`` — les appelants qui rattrapent ``ValueError`` restent
+    inchangés).
     """
     try:
         app_label, model = str(model_label).lower().split('.', 1)
@@ -25,15 +36,17 @@ def resolve_target(model_label, object_id, company):
     try:
         ct = ContentType.objects.get(app_label=app_label, model=model)
     except ContentType.DoesNotExist:
-        raise ValueError('Type de cible inconnu.')
+        raise CibleIntrouvable('Type de cible inconnu.')
     # ERR56 — un `id` inexistant ou de mauvais type (ex. non numérique pour une
     # PK entière) doit produire une 400 propre, jamais un 500 : les appelants ne
     # rattrapent que ValueError, donc on convertit DoesNotExist / TypeError en
     # ValueError ici.
     try:
         obj = ct.get_object_for_this_type(pk=object_id)
-    except (ct.model_class().DoesNotExist, ValueError, TypeError):
-        raise ValueError('Cible introuvable.')
+    except ct.model_class().DoesNotExist:
+        raise CibleIntrouvable('Cible introuvable.')
+    except (ValueError, TypeError):
+        raise ValueError('Cible invalide.')
     obj_company = getattr(obj, 'company_id', None)
     # AUD416 — une cible à ``company_id IS NULL`` était traitée comme PARTAGÉE
     # entre toutes les sociétés : le ``not in (None, company.id)`` la laissait
@@ -45,9 +58,9 @@ def resolve_target(model_label, object_id, company):
     # attachaient notes et pièces jointes sans le savoir. Un objet sans société
     # n'a pas de propriétaire légitime : il est refusé pour TOUT appelant.
     if obj_company is None:
-        raise ValueError('Cible sans société — non exploitable.')
+        raise CibleIntrouvable('Cible sans société — non exploitable.')
     if company is not None and obj_company != company.id:
-        raise ValueError('Cible hors de votre société.')
+        raise CibleIntrouvable('Cible hors de votre société.')
     # NOTE (AUD416) — le volet « symétrique » (refuser aussi ``company is
     # None``) n'est délibérément PAS appliqué : ``records.views._scoped`` accorde
     # explicitement au superuser SANS société d'attache une lecture de
@@ -95,7 +108,7 @@ class ActivitySerializer(SameCompanyFKSerializerMixin,
     activity_type_icone = serializers.CharField(
         source='activity_type.icone', read_only=True)
     assigned_to_nom = serializers.CharField(
-        source='assigned_to.username', read_only=True, default=None)
+        source='assigned_to.username', read_only=True, default=None, allow_null=True)
     state = serializers.SerializerMethodField()
     # Cible lisible : "crm.lead" + id (pour les liens du cockpit).
     target_model = serializers.SerializerMethodField()
@@ -117,15 +130,18 @@ class ActivitySerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['done', 'done_at', 'done_by', 'auto_relance',
                             'object_id', 'created_at']
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_state(self, obj):
         return activity_state(obj.due_date, obj.done)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_target_model(self, obj):
         ct = obj.content_type
         if ct is None:
             return None
         return f'{ct.app_label}.{ct.model}'
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_target_label(self, obj):
         # XKB4 — un à-faire personnel n'a pas de cible métier.
         if obj.content_type_id is None:
@@ -140,6 +156,7 @@ class ActivitySerializer(SameCompanyFKSerializerMixin,
                 return f'{val} {prenom}'.strip() if attr == 'nom' else str(val)
         return str(target)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_target_phone(self, obj):
         """QX25be — téléphone de la cible (lead/client), via un sélecteur crm.
 
@@ -181,7 +198,7 @@ class ChatterActivitySerializer(serializers.ModelSerializer):
     bien qu'un seul composant front lit toutes les timelines."""
 
     user_username = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
     target_model = serializers.SerializerMethodField()
 
     class Meta:
@@ -192,6 +209,7 @@ class ChatterActivitySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_target_model(self, obj):
         ct = obj.content_type
         if ct is None:
@@ -238,7 +256,7 @@ class UniformChatterSerializer(serializers.Serializer):
 
 class AttachmentSerializer(serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
-        source='uploaded_by.username', read_only=True, default=None)
+        source='uploaded_by.username', read_only=True, default=None, allow_null=True)
     url = serializers.SerializerMethodField()
 
     class Meta:
@@ -247,8 +265,16 @@ class AttachmentSerializer(serializers.ModelSerializer):
             'id', 'filename', 'size', 'mime', 'phase', 'uploaded_by',
             'uploaded_by_nom', 'created_at', 'url',
         ]
-        read_only_fields = fields
+        # ENF17 — liste LITTÉRALE (même contenu que ``fields``) : la garde
+        # check_fk_scoping lit un littéral ; ``read_only_fields = fields``
+        # la laissait croire ``uploaded_by`` inscriptible. Aucun champ n'est
+        # écrit par ce sérialiseur (pièce posée par l'action d'upload).
+        read_only_fields = [
+            'id', 'filename', 'size', 'mime', 'phase', 'uploaded_by',
+            'uploaded_by_nom', 'created_at', 'url',
+        ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_url(self, obj):
         # B1 — endpoint Django MÊME ORIGINE (chemin relatif résolu contre
         # l'origine courante : nginx → Django). Le cookie d'auth est envoyé
@@ -260,7 +286,7 @@ class AttachmentSerializer(serializers.ModelSerializer):
 class CommentSerializer(serializers.ModelSerializer):
     """FG7 — Commentaire générique avec @mentions."""
     author_username = serializers.CharField(
-        source='author.username', read_only=True, default=None)
+        source='author.username', read_only=True, default=None, allow_null=True)
     author_display = serializers.SerializerMethodField()
     target_model = serializers.SerializerMethodField()
 
@@ -276,12 +302,14 @@ class CommentSerializer(serializers.ModelSerializer):
             'object_id', 'target_model', 'created_at', 'updated_at',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_author_display(self, obj):
         if obj.author is None:
             return None
         name = f'{obj.author.first_name} {obj.author.last_name}'.strip()
         return name or obj.author.username
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_target_model(self, obj):
         ct = obj.content_type
         return f'{ct.app_label}.{ct.model}'
@@ -296,8 +324,12 @@ class TagSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
-class TaggedItemSerializer(serializers.ModelSerializer):
+class TaggedItemSerializer(SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
     """FG9 — Association tag ↔ enregistrement."""
+    # ENF17 — la création passe par ``get_company_object`` (vue) ; le PUT/PATCH
+    # générique du ModelViewSet, lui, résolvait ``tag`` sans borne société.
+    same_company_fields = ('tag',)
     tag_nom = serializers.CharField(source='tag.nom', read_only=True)
     tag_couleur = serializers.CharField(source='tag.couleur', read_only=True)
 
@@ -310,7 +342,7 @@ class TaggedItemSerializer(serializers.ModelSerializer):
 class FollowerSerializer(serializers.ModelSerializer):
     """XKB34 — abonnement d'un utilisateur à un enregistrement."""
     user_username = serializers.CharField(
-        source='user.username', read_only=True, default=None)
+        source='user.username', read_only=True, default=None, allow_null=True)
     target_model = serializers.SerializerMethodField()
 
     class Meta:
@@ -320,6 +352,7 @@ class FollowerSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'user_username', 'object_id',
                             'target_model', 'created_at']
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_target_model(self, obj):
         ct = obj.content_type
         return f'{ct.app_label}.{ct.model}'

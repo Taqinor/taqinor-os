@@ -31,7 +31,7 @@ from unittest import skipUnless
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import pack_technique
-from apps.calepinage.services.pack_technique import SPEC_PIECES, rendre_pieces
+from apps.calepinage.services.pack_technique import SPEC_PIECES, _rendre_pieces
 
 try:
     import fitz  # PyMuPDF
@@ -128,9 +128,9 @@ class DossierEtenduSimuleOuPasTest(SimpleTestCase):
                       rapport_etude=lambda: pdf_de(3),
                       plan_cablage=lambda: pdf_de(1),
                       rapport_ombrage=lambda: pdf_de(2))
-        pieces, signalements = rendre_pieces(self.calepinage,
-                                             company='societe-essai',
-                                             rendus=rendus)
+        pieces, signalements = _rendre_pieces(self.calepinage,
+                                              company='societe-essai',
+                                              rendus=rendus)
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
             ['planche', 'note_calcul', 'plan_toiture', 'plan_masse',
@@ -147,9 +147,9 @@ class DossierEtenduSimuleOuPasTest(SimpleTestCase):
         # calepinage sans résultat de moteur / sans chaîne publiée / sans
         # matrice d'ombrage — un refus amont AVALÉ en signalement, puisque
         # les trois sont FACULTATIVES.
-        pieces, signalements = rendre_pieces(self.calepinage,
-                                             company='societe-essai',
-                                             rendus=self.rendus_avant)
+        pieces, signalements = _rendre_pieces(self.calepinage,
+                                              company='societe-essai',
+                                              rendus=self.rendus_avant)
         self.assertEqual([code for code, _l, _o, _p in pieces],
                          list(PIECES_D_AVANT) + ['plan_pose'])
         self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 6)

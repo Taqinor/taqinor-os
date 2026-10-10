@@ -1,5 +1,6 @@
 """CHT27 — Cockpit KPI chantier (cycle time, taux de reprise post-MES,
 chantiers en retard)."""
+import uuid
 from datetime import date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
@@ -32,7 +33,7 @@ class ChantierReportBase(TestCase):
     def _installation(self, **kwargs):
         defaults = dict(
             company=self.company, client=self.client_obj,
-            reference=f'CH-CHT27-{Installation.objects.count() + 1}')
+            reference=f'CH-CHT27-{uuid.uuid4().hex[:8]}')
         defaults.update(kwargs)
         return Installation.objects.create(**defaults)
 

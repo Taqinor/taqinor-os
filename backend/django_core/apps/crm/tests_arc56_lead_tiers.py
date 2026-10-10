@@ -12,7 +12,7 @@ from django.test import TestCase
 from testkit.factories import CompanyFactory, another_tenant
 
 from apps.crm.models import Client, Lead
-from apps.crm.services import resolve_client_for_lead
+from apps.crm.clients_identite import resolve_client_for_lead
 
 
 class Arc56LeadTiersTests(TestCase):

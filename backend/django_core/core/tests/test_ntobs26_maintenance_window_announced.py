@@ -48,7 +48,7 @@ class MaintenanceWindowAnnouncedTests(TestCase):
 
     def test_creation_via_api_emet_le_signal(self):
         resp = self.api.post(
-            '/api/django/core/maintenance-windows/', self._payload())
+            '/api/django/core/maintenance-windows/', self._payload(), format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
         self.assertEqual(len(self.recus), 1)
@@ -69,5 +69,5 @@ class MaintenanceWindowAnnouncedTests(TestCase):
             dispatch_uid='test_ntobs26_casse')
 
         resp = self.api.post(
-            '/api/django/core/maintenance-windows/', self._payload())
+            '/api/django/core/maintenance-windows/', self._payload(), format='json')
         self.assertEqual(resp.status_code, 201, resp.data)

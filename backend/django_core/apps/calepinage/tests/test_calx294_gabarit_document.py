@@ -29,8 +29,8 @@ from types import SimpleNamespace
 from django.test import TestCase
 
 from apps.calepinage.services.documents.gabarit_document import (
-    CHARTE_IMPRESSION, CLES_STYLES, css_du_gabarit, document_html,
-    entete_html, pied_html, styles_de_societe,
+    CHARTE_IMPRESSION, CLES_STYLES, _css_du_gabarit, document_html,
+    _entete_html, pied_html, styles_de_societe,
 )
 
 SOURCE = (pathlib.Path(__file__).resolve().parents[1] / 'services'
@@ -111,7 +111,7 @@ class MiseEnPageTest(unittest.TestCase):
         self.assertLessEqual(couleurs, set(CHARTE_IMPRESSION))
 
     def test_les_boites_de_marge_sont_posees(self):
-        css = css_du_gabarit(styles_de_societe({}))
+        css = _css_du_gabarit(styles_de_societe({}))
         self.assertIn('@top-center{content:element(gabarit-entete)', css)
         self.assertIn('@bottom-left{content:element(gabarit-pied)', css)
         self.assertIn('position:running(gabarit-entete)', css)
@@ -136,12 +136,12 @@ class MiseEnPageTest(unittest.TestCase):
         self.assertLess(pied.index('entrée'), pied.index('Mention B'))
 
     def test_rien_a_dire_rien_d_imprime(self):
-        self.assertEqual(entete_html({}), '')
+        self.assertEqual(_entete_html({}), '')
         self.assertEqual(pied_html({}), '')
 
     def test_le_texte_de_la_societe_est_echappe(self):
         theme = SimpleNamespace(nom_affichage='<script>x</script>')
-        html = entete_html(styles_de_societe({'theme': theme}))
+        html = _entete_html(styles_de_societe({'theme': theme}))
         self.assertNotIn('<script>', html)
         self.assertIn('&lt;script&gt;', html)
 

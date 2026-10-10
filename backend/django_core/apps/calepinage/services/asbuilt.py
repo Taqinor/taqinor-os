@@ -21,10 +21,10 @@ sélecteur ``calepinage_retenu_du_chantier`` (CAL209). Ce module ne fait donc
 JAMAIS le chemin inverse en important ``apps.installations`` — il travaille
 sur le calepinage qu'on lui donne.
 
-La comparaison elle-même (``comparer``) ne connaît que des dictionnaires :
+La comparaison elle-même (``_comparer``) ne connaît que des dictionnaires :
 elle se teste sans base.
 
-CALX366 — LA PORTE. Jusqu'ici ``pans_prevus`` et ``ecarts_du_calepinage``
+CALX366 — LA PORTE. Jusqu'ici ``_pans_prevus`` et ``ecarts_du_calepinage``
 n'avaient AUCUN appelant hors de leurs tests. ``etat_pose_reelle`` /
 ``enregistrer_pose`` / ``version_depuis_ecarts`` (en fin de fichier) sont
 servies par ``views/asbuilt.py`` (``GET/POST calepinages/<pk>/pose-reelle/``)
@@ -67,8 +67,7 @@ PREVU_SOURCE_DEFAUT = 'calepinage'
 __all__ = [
     'SOURCE_VARIANTE', 'SOURCE_CALEPINAGE', 'SOURCE_DEVIS_ACCEPTE',
     'MENTION_SANS_SAISIE', 'MENTION_CONCEPTION_MODIFIEE',
-    'comparer', 'conception_du_chantier', 'pans_prevus',
-    'ecarts_du_calepinage',
+    'conception_du_chantier', 'ecarts_du_calepinage',
     # CALX366 — la porte HTTP ``pose-reelle/``.
     'PREFIXE_VERSION_POSE', 'PoseRefusee', 'etat_pose_reelle',
     'enregistrer_pose', 'version_depuis_ecarts',
@@ -77,7 +76,7 @@ __all__ = [
 ]
 
 
-def comparer(prevus, saisies):
+def _comparer(prevus, saisies):
     """``[{pan, prevu, pose, ecart, ecarts_position, releve_le, mention,
     prevu_fige, prevu_actuel, conception_modifiee}]``.
 
@@ -216,7 +215,7 @@ def conception_du_chantier(calepinage):
     return getattr(calepinage, 'roof_layout', None), SOURCE_CALEPINAGE
 
 
-def pans_prevus(calepinage, *, conception=None):
+def _pans_prevus(calepinage, *, conception=None):
     """Les pans PRÉVUS : ceux de :func:`conception_du_chantier`.
 
     Renvoie ``(pans, source)`` — la source est PUBLIÉE pour qu'un écart lu
@@ -251,10 +250,10 @@ def ecarts_du_calepinage(calepinage, *, conception=None):
     """
     from ..models import PoseReelle
 
-    prevus, source = pans_prevus(calepinage, conception=conception)
+    prevus, source = _pans_prevus(calepinage, conception=conception)
     saisies = [
         # ACAL267 — ``zone_id`` VIDE pour un relevé historique (libellé
-        # seul) : ``comparer`` le rattache alors au pan prévu de même libellé
+        # seul) : ``_comparer`` le rattache alors au pan prévu de même libellé
         # s'il est unique, au lieu d'en faire un faux orphelin.
         {'pan': pose.pan, 'zone_id': pose.zone_id or '',
          'libelle': pose.pan, 'modules_poses': pose.modules_poses,
@@ -265,7 +264,7 @@ def ecarts_du_calepinage(calepinage, *, conception=None):
         for pose in PoseReelle.objects.filter(calepinage=calepinage)
         .select_related('releve_par')
     ]
-    lignes = comparer([{'pan': pan['pan'], 'zone_id': pan['zone_id'],
+    lignes = _comparer([{'pan': pan['pan'], 'zone_id': pan['zone_id'],
                         'libelle': pan['libelle'], 'modules': pan['modules']}
                        for pan in prevus], saisies)
     return _agreger(calepinage.pk, source, lignes)
@@ -280,7 +279,7 @@ def _auteur_publie(user):
 
 
 def _agreger(calepinage_id, source, lignes):
-    """Les totaux des lignes de ``comparer`` — PUR (aucune base).
+    """Les totaux des lignes de ``_comparer`` — PUR (aucune base).
 
     CALX366 — extrait tel quel de ``ecarts_du_calepinage`` pour que la forme
     du contrat se rejoue sans base : même ``total_pose`` à ``None`` tant que
@@ -336,7 +335,7 @@ class PoseRefusee(ValueError):
 
 
 def _ligne_du_contrat(ligne):
-    """Une ligne de ``comparer`` → la ligne publiée (contrat CALX337)."""
+    """Une ligne de ``_comparer`` → la ligne publiée (contrat CALX337)."""
     return {
         'pan': ligne['pan'],
         'modules_prevus': ligne['prevu'],
@@ -494,7 +493,7 @@ def enregistrer_pose(calepinage, donnees, *, user=None):
     from ..models import PoseReelle
     from .journal import journaliser_pose_reelle
 
-    prevus, source = pans_prevus(calepinage)
+    prevus, source = _pans_prevus(calepinage)
     deja = set(PoseReelle.objects.filter(calepinage=calepinage)
                .values_list('zone_id', flat=True))
     saisie = _valider_saisie(

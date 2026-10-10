@@ -95,7 +95,7 @@ class GuardTests(XGed18Base):
             'document': doc.pk,
             'file': SimpleUploadedFile(
                 'x.pdf', b'%PDF-1.4 lien', content_type='application/pdf'),
-        })
+        }, format='multipart')
         self.assertEqual(resp.status_code, 400)
 
     def test_demander_signature_refuse_400(self):
@@ -106,5 +106,5 @@ class GuardTests(XGed18Base):
         resp = api.post('/api/django/ged/demandes-signature/', {
             'document': doc.pk, 'signataire_nom': 'Karim',
             'signataire_email': 'k@x.com',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 400)

@@ -4,7 +4,11 @@ Domaine « Avancé / Journal d'audit ». Ouverte à l'Administrateur ET au
 Responsable (promu) — comme le reste de l'écran Paramètres — jamais au palier
 limité."""
 from django.utils.dateparse import parse_date
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -40,6 +44,27 @@ def _date(request, cle):
     return valeur
 
 
+def _q(nom, type_, description, **kw):
+    return OpenApiParameter(
+        nom, type_, OpenApiParameter.QUERY, required=False,
+        description=description, **kw)
+
+
+@extend_schema(
+    parameters=[
+        _q('section', OpenApiTypes.STR, 'Section du journal.'),
+        _q('field', OpenApiTypes.STR, 'Champ modifié.'),
+        _q('user', OpenApiTypes.INT, "Identifiant de l'auteur."),
+        _q('date_debut', OpenApiTypes.DATE, 'Date de début (incluse).'),
+        _q('date_fin', OpenApiTypes.DATE, 'Date de fin (incluse).'),
+        _q('limit', OpenApiTypes.INT, 'Taille de page (1 à 500, défaut 100).'),
+        _q('offset', OpenApiTypes.INT, 'Décalage (défaut 0).'),
+    ],
+    responses=inline_serializer('JournalAuditPage', {
+        'count': serializers.IntegerField(),
+        'results': SettingsAuditLogSerializer(many=True),
+        'next': serializers.IntegerField(allow_null=True),
+    }))
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def settings_audit_log(request):
@@ -104,6 +129,12 @@ KNOWN_AUDIT_SECTIONS = [
 ]
 
 
+@extend_schema(responses=inline_serializer('JournalAuditSections', {
+    'sections': inline_serializer('JournalAuditSection', {
+        'value': serializers.CharField(),
+        'label': serializers.CharField(),
+    }, many=True),
+}))
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def settings_audit_sections(request):
@@ -122,6 +153,10 @@ def settings_audit_sections(request):
     return Response({'sections': sections})
 
 
+@extend_schema(request=None, responses=inline_serializer('PurgeAudit', {
+    'audit_deleted': serializers.IntegerField(),
+    'settings_deleted': serializers.IntegerField(),
+}))
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
 def purge_audit_retention(request):

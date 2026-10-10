@@ -31,6 +31,7 @@ from datetime import datetime, timezone as dt_timezone
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
+from django.utils.html import escape
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
@@ -183,8 +184,10 @@ class WhatsAppCloudWebhookView(View):
         if mode == 'subscribe' and hmac.compare_digest(
                 str(token).encode('utf-8'),
                 _verify_token().encode('utf-8')):
+            # ENF12 (semgrep reflected-data-httpresponse) : challenge échappé
+            # (Meta envoie un jeton alphanumérique, inchangé par escape).
             return HttpResponse(
-                challenge, content_type='text/plain', status=200)
+                escape(challenge), content_type='text/plain', status=200)
         return HttpResponse('Vérification refusée.', status=403)
 
     def post(self, request):

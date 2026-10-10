@@ -25,7 +25,7 @@ class Kit(models.Model):
     le composite n'est pas encore référencé au catalogue)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_kits')
     nom = models.CharField(max_length=255)
@@ -60,7 +60,7 @@ class KitComposant(models.Model):
     """FG328 — composant de la nomenclature d'un kit (SKU + quantité unitaire)."""
 
     kit = models.ForeignKey(
-        Kit, on_delete=models.CASCADE, related_name='composants')
+        Kit, on_delete=models.CASCADE, related_name='composants')  # on_delete: KitComposant est le détail de Kit — n'existe pas sans lui
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,
@@ -95,11 +95,11 @@ class RevisionKit(models.Model):
     (``OrdreAssemblage.revision_kit_numero``)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_revisions_kit')
     kit = models.ForeignKey(
-        Kit, on_delete=models.CASCADE, related_name='revisions')
+        Kit, on_delete=models.CASCADE, related_name='revisions')  # on_delete: pièce justificative de Kit — suit son objet parent
     numero = models.PositiveIntegerField(default=1)
     composition = models.JSONField(
         default=list,
@@ -141,7 +141,7 @@ class OrdreAssemblage(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_ordres_assemblage')
     reference = models.CharField(max_length=50)
@@ -186,7 +186,7 @@ class OrdreAssemblage(models.Model):
     # (interdite si le stock a déjà été mouvementé — XMFG1).
     date_prevue = models.DateField(null=True, blank=True)
     responsable = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: responsable informatif — l'ordre d'assemblage (traçabilité) survit à son départ
         null=True, blank=True,
         related_name='installations_ordres_assemblage_responsable')
     motif_annulation = models.TextField(blank=True, null=True)
@@ -246,13 +246,13 @@ class ReservationAssemblage(models.Model):
     backflush (verrou d'idempotence, jamais deux fois décomptée)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_reservations_assemblage')
     ordre = models.ForeignKey(
-        OrdreAssemblage, on_delete=models.CASCADE, related_name='reservations')
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='reservations')  # on_delete: ReservationAssemblage est le détail de OrdreAssemblage — n'existe pas sans lui
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: ReservationAssemblage est le détail de Produit — n'existe pas sans lui
         related_name='installations_reservations_assemblage')
     quantite = models.PositiveIntegerField(default=0)
     active = models.BooleanField(default=True)
@@ -286,11 +286,11 @@ class OrdreAssemblageActivity(models.Model):
         NOTE = 'note', 'Note'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_ordre_assemblage_activities')
     ordre = models.ForeignKey(
-        OrdreAssemblage, on_delete=models.CASCADE, related_name='activites')
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='activites')  # on_delete: historique/chatter de OrdreAssemblage — suit son objet
     kind = models.CharField(max_length=15, choices=Kind.choices)
     field = models.CharField(max_length=100, blank=True, null=True)
     field_label = models.CharField(max_length=150, blank=True, null=True)
@@ -327,7 +327,7 @@ class OrdreAssemblageLigne(models.Model):
         AJOUT = 'ajout', 'Ajouté sur cet ordre'
 
     ordre = models.ForeignKey(
-        OrdreAssemblage, on_delete=models.CASCADE, related_name='lignes')
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de OrdreAssemblage — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,
@@ -363,11 +363,11 @@ class SerieAssemblage(models.Model):
         COMPOSANT = 'composant', 'Composant consommé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_series_assemblage')
     ordre = models.ForeignKey(
-        OrdreAssemblage, on_delete=models.CASCADE, related_name='series')
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='series')  # on_delete: SerieAssemblage est le détail de OrdreAssemblage — n'existe pas sans lui
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,
@@ -413,7 +413,7 @@ class OrdreDemontage(models.Model):
         TERMINE = 'termine', 'Terminé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_ordres_demontage')
     reference = models.CharField(max_length=50)
@@ -462,7 +462,7 @@ class OrdreDemontageLigne(models.Model):
     représente la perte — déclarable en rebut (XMFG11) par l'appelant."""
 
     ordre = models.ForeignKey(
-        OrdreDemontage, on_delete=models.CASCADE, related_name='lignes')
+        OrdreDemontage, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de OrdreDemontage — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,
@@ -491,11 +491,11 @@ class ControleQualiteModele(models.Model):
     bloqué tant que sa checklist n'est pas passée."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_controle_qualite_modeles')
     kit = models.OneToOneField(
-        Kit, on_delete=models.CASCADE, related_name='controle_qualite_modele')
+        Kit, on_delete=models.CASCADE, related_name='controle_qualite_modele')  # on_delete: ControleQualiteModele est le détail de Kit — n'existe pas sans lui
     active = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
@@ -514,7 +514,7 @@ class ControleQualiteItemModele(models.Model):
     optionnelle avec tolérance min/max, photo optionnelle exigée)."""
 
     modele = models.ForeignKey(
-        ControleQualiteModele, on_delete=models.CASCADE, related_name='items')
+        ControleQualiteModele, on_delete=models.CASCADE, related_name='items')  # on_delete: étape/élément de ControleQualiteModele — n'existe pas sans lui
     libelle = models.CharField(max_length=255)
     ordre = models.PositiveIntegerField(default=0)
     # Tolérance optionnelle : si définie, la valeur mesurée doit être dans
@@ -547,10 +547,10 @@ class ControleQualiteOrdre(models.Model):
         FAIL = 'fail', 'Échec'
 
     ordre = models.ForeignKey(
-        OrdreAssemblage, on_delete=models.CASCADE,
+        OrdreAssemblage, on_delete=models.CASCADE,  # on_delete: ControleQualiteOrdre est le détail de OrdreAssemblage — n'existe pas sans lui
         related_name='controles_qualite')
     item_modele = models.ForeignKey(
-        ControleQualiteItemModele, on_delete=models.CASCADE,
+        ControleQualiteItemModele, on_delete=models.CASCADE,  # on_delete: ControleQualiteOrdre est le détail de ControleQualiteItemModele — n'existe pas sans lui
         related_name='executions')
     resultat = models.CharField(
         max_length=12, choices=Resultat.choices, default=Resultat.EN_ATTENTE)
@@ -586,7 +586,7 @@ class EtapeAssemblage(models.Model):
     sur chaque ordre."""
 
     kit = models.ForeignKey(
-        Kit, on_delete=models.CASCADE, related_name='etapes_assemblage')
+        Kit, on_delete=models.CASCADE, related_name='etapes_assemblage')  # on_delete: étape/élément de Kit — n'existe pas sans lui
     ordre = models.PositiveIntegerField(default=0)
     libelle = models.CharField(max_length=255)
     instructions = models.TextField(blank=True, default='')
@@ -617,9 +617,9 @@ class EtapeOrdre(models.Model):
     durées réelles vs attendues alimente XMFG15 (tableau de bord atelier)."""
 
     ordre = models.ForeignKey(
-        OrdreAssemblage, on_delete=models.CASCADE, related_name='etapes')
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='etapes')  # on_delete: étape/élément de OrdreAssemblage — n'existe pas sans lui
     etape_modele = models.ForeignKey(
-        EtapeAssemblage, on_delete=models.CASCADE, related_name='executions')
+        EtapeAssemblage, on_delete=models.CASCADE, related_name='executions')  # on_delete: étape/élément de EtapeAssemblage — n'existe pas sans lui
     fait = models.BooleanField(default=False)
     fait_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

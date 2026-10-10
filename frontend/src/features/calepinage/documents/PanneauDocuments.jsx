@@ -629,7 +629,10 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
     try {
       const params = paramsDe(entree)
       if (entree.methode === 'POST') {
-        const reponse = await calepinageApi.calepinages.declencherDocument(entree.endpoint, params)
+        // Le dossier de fin de chantier (seule pièce POST) ne lit aucun
+        // `?langue=` : rien n'est transmis en query (D1 — un paramètre non
+        // déclaré est refusé par le serveur).
+        const reponse = await calepinageApi.calepinages.declencherDocument(entree.endpoint)
         setResultatsPost((precedent) => ({ ...precedent, [code]: reponse.data }))
       } else {
         const reponse = params

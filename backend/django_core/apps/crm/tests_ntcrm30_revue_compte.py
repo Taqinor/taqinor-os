@@ -34,7 +34,7 @@ class RevueCompteApiTests(TestCase):
             'plan': self.plan.pk, 'date_revue': '2026-08-01',
             'participants': 'Reda, Client X', 'decisions': 'Signer avant fin du mois',
             'prochaine_action': 'Envoyer le devis final', 'prochaine_action_date': '2026-08-10',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['created_by'], self.user.id)
 

@@ -33,7 +33,7 @@ class SerieEntrepot(models.Model):
         RETOURNE = 'retourne', 'Retourné (réception annulée)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_series_entrepot')
     produit = models.ForeignKey(

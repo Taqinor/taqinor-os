@@ -16,7 +16,7 @@ from django.test import SimpleTestCase
 from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import (
     SOURCE_BORNE_MARCHE, SOURCE_BORNE_NOYAU, SOURCE_BORNE_SOCIETE,
-    bloc_ratio_dc_ac, bornes_ratio, ecretage_depuis_serie, temperatures_site,
+    _bloc_ratio_dc_ac, _bornes_ratio, ecretage_depuis_serie, temperatures_site,
 )
 from core.electrique.onduleurs import BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC
 
@@ -49,7 +49,7 @@ class BornesLuesTest(SimpleTestCase):
     """Aucune borne n'est écrite dans l'app : elles sont toutes lues."""
 
     def test_defaut_lu_sur_le_noyau(self):
-        borne, alerte, source, detail = bornes_ratio()
+        borne, alerte, source, detail = _bornes_ratio()
 
         self.assertEqual(borne, BORNE_USUELLE_DC_AC)
         self.assertEqual(alerte, SEUIL_ALERTE_DC_AC)
@@ -57,14 +57,14 @@ class BornesLuesTest(SimpleTestCase):
         self.assertIn('core.electrique', detail)
 
     def test_parametre_societe_prime_sur_le_noyau(self):
-        borne, _, source, _ = bornes_ratio(
+        borne, _, source, _ = _bornes_ratio(
             parametres_societe={'ratio_dc_ac_max': 1.2})
 
         self.assertEqual(borne, 1.2)
         self.assertEqual(source, SOURCE_BORNE_SOCIETE)
 
     def test_exigence_de_marche_prime_sur_la_societe(self):
-        borne, _, source, reference = bornes_ratio(
+        borne, _, source, reference = _bornes_ratio(
             exigence_marche={'ratio_dc_ac_max': 1.0,
                              'reference': 'CPS lot 3 art. 12'},
             parametres_societe={'ratio_dc_ac_max': 1.2})
@@ -79,7 +79,7 @@ class RatioPublieTest(SimpleTestCase):
 
     def test_dans_les_bornes_aucun_avertissement(self):
         # 12 × 710 Wc = 8,52 kWc sur 10 kW AC → 0,85.
-        bloc, messages = bloc_ratio_dc_ac(_conception(12, 10.0))
+        bloc, messages = _bloc_ratio_dc_ac(_conception(12, 10.0))
 
         self.assertAlmostEqual(bloc['valeur'], 0.852, places=3)
         self.assertEqual(bloc['borne'], BORNE_USUELLE_DC_AC)
@@ -89,7 +89,7 @@ class RatioPublieTest(SimpleTestCase):
 
     def test_hors_bornes_l_avertissement_cite_la_borne_et_sa_source(self):
         # 24 × 710 Wc = 17,04 kWc sur 10 kW AC → 1,70.
-        bloc, messages = bloc_ratio_dc_ac(_conception(24, 10.0))
+        bloc, messages = _bloc_ratio_dc_ac(_conception(24, 10.0))
 
         self.assertFalse(bloc['dans_bornes'])
         texte = '\n'.join(messages)
@@ -98,7 +98,7 @@ class RatioPublieTest(SimpleTestCase):
         self.assertIn("seuil d'alerte", texte)
 
     def test_la_borne_societe_change_le_verdict_et_le_dit(self):
-        bloc, messages = bloc_ratio_dc_ac(
+        bloc, messages = _bloc_ratio_dc_ac(
             _conception(12, 10.0),
             parametres_societe={'ratio_dc_ac_max': 0.80,
                                 'reference': 'décision société 2026'})
@@ -108,7 +108,7 @@ class RatioPublieTest(SimpleTestCase):
         self.assertIn('décision société 2026', '\n'.join(messages))
 
     def test_sans_onduleur_evalue_le_ratio_est_null_jamais_zero(self):
-        bloc, messages = bloc_ratio_dc_ac(_conception(0, 10.0))
+        bloc, messages = _bloc_ratio_dc_ac(_conception(0, 10.0))
 
         self.assertIsNone(bloc['valeur'])
         self.assertIsNone(bloc['dans_bornes'])
@@ -119,7 +119,7 @@ class EcretageTest(SimpleTestCase):
     """La perte d'écrêtage se calcule heure par heure, ou pas du tout."""
 
     def test_sans_serie_horaire_null_et_la_raison(self):
-        bloc, _ = bloc_ratio_dc_ac(_conception(24, 10.0))
+        bloc, _ = _bloc_ratio_dc_ac(_conception(24, 10.0))
 
         self.assertIsNone(bloc['ecretage_pct'])
         self.assertIn('CAL135', bloc['ecretage_methode'])

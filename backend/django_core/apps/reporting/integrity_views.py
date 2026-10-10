@@ -6,8 +6,19 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 
 from .integrity import controle_integrite, total_anomalies
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
+_INTEGRITY_VIEWS_INTEGRITE_INSIGHT_REPONSE = inline_serializer('IntegrityViewsIntegriteInsightReponse', {
+    'familles': drf_serializers.JSONField(allow_null=True),
+    'total_anomalies': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    responses={200: _INTEGRITY_VIEWS_INTEGRITE_INSIGHT_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def integrite_insight(request):

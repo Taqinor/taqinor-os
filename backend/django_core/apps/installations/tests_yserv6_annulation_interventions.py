@@ -88,7 +88,7 @@ class AnnulationSoldeInterventionsTests(TestCase):
             self.company, self.inst, statut=Intervention.Statut.TERMINEE)
 
     def test_annuler_marque_interventions_ouvertes(self):
-        r = self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {})
+        r = self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.i1.refresh_from_db()
         self.i2.refresh_from_db()
@@ -100,7 +100,7 @@ class AnnulationSoldeInterventionsTests(TestCase):
         self.assertEqual(self.i1.statut, Intervention.Statut.PRETE)
 
     def test_interventions_annulees_sorties_de_la_liste_par_defaut(self):
-        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {})
+        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
         r = self.api.get(f'{BASE}/interventions/?installation={self.inst.id}')
         results = r.data['results'] if 'results' in r.data else r.data
         ids = {row['id'] for row in results}
@@ -109,7 +109,7 @@ class AnnulationSoldeInterventionsTests(TestCase):
         self.assertIn(self.i3_terminee.id, ids)
 
     def test_interventions_annulees_visibles_avec_filtre(self):
-        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {})
+        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
         r = self.api.get(
             f'{BASE}/interventions/?installation={self.inst.id}'
             '&annulee=true')
@@ -119,11 +119,11 @@ class AnnulationSoldeInterventionsTests(TestCase):
         self.assertIn(self.i2.id, ids)
 
     def test_creation_refusee_sur_chantier_annule(self):
-        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {})
+        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
         r = self.api.post(f'{BASE}/interventions/', {
             'installation': self.inst.id,
             'type_intervention': Intervention.Type.CONTROLE,
-        })
+        }, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
 
@@ -136,10 +136,10 @@ class ReactivationTests(TestCase):
         self.i1 = make_intervention(self.company, self.inst)
 
     def test_reactiver_restaure_interventions_annulees_par_ce_flux(self):
-        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {})
+        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
         self.i1.refresh_from_db()
         self.assertTrue(self.i1.annulee)
-        r = self.api.post(f'{BASE}/chantiers/{self.inst.id}/reactiver/', {})
+        r = self.api.post(f'{BASE}/chantiers/{self.inst.id}/reactiver/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.i1.refresh_from_db()
         self.assertFalse(self.i1.annulee)
@@ -150,8 +150,8 @@ class ReactivationTests(TestCase):
         autre.annulee = True
         autre.motif_annulation = 'Annulée pour une autre raison'
         autre.save(update_fields=['annulee', 'motif_annulation'])
-        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {})
-        self.api.post(f'{BASE}/chantiers/{self.inst.id}/reactiver/', {})
+        self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
+        self.api.post(f'{BASE}/chantiers/{self.inst.id}/reactiver/', {}, format='json')
         autre.refresh_from_db()
         self.assertTrue(autre.annulee)
         self.assertEqual(autre.motif_annulation, 'Annulée pour une autre raison')
@@ -167,7 +167,7 @@ class IsolationSocieteTests(TestCase):
         interv1 = make_intervention(co1, inst1)
         interv2 = make_intervention(co2, inst2)
         api1 = auth(user1)
-        api1.post(f'{BASE}/chantiers/{inst1.id}/annuler/', {})
+        api1.post(f'{BASE}/chantiers/{inst1.id}/annuler/', {}, format='json')
         interv1.refresh_from_db()
         interv2.refresh_from_db()
         self.assertTrue(interv1.annulee)

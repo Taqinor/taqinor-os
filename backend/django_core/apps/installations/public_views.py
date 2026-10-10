@@ -42,6 +42,7 @@ class InterventionLienClientPublicView(APIView):
     confirme pas l'existence du token à un tiers). Read-only : aucune donnée
     interne (coûts, autres chantiers, etc.) n'entre dans le payload."""
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
     def get(self, request, token):
@@ -71,6 +72,7 @@ class InterventionRapportPublicView(APIView):
     ou révoqué → 404 (jamais 403 : on ne confirme pas l'existence du token à
     un tiers). Read-only, aucune donnée interne."""
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
     def get(self, request, token):
@@ -93,6 +95,7 @@ class InterventionRapportPhotoPublicView(APIView):
     MÊME jeton : la pièce doit appartenir à l'intervention du jeton (photo de
     créneau, image) — une pièce étrangère, un jeton inconnu ou un rapport
     rouvert répondent 404 (jamais 403 : on ne confirme rien à un tiers)."""
+    authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [PublicPhotoThrottle]
 
@@ -128,6 +131,7 @@ class InterventionRapportPdfPublicView(APIView):
     public que la page ci-dessus. Réutilise le rendu F19 existant
     (`intervention_pdf.compte_rendu_pdf`) — aucune donnée interne."""
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
     def get(self, request, token):

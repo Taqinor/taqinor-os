@@ -28,7 +28,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services
+from apps.crm import horaires, cadence_visite
 from apps.crm.models import Client, Lead
 from apps.parametres.models import CompanyProfile
 
@@ -48,14 +48,14 @@ class TextesDuContratTests(SimpleTestCase):
     def test_l_avertissement_nomme_la_regle(self):
         exemple = CONTRAT['exemple_sans_devis']
         self.assertEqual(exemple['avertissement_sans_devis'],
-                         services.AVERTISSEMENT_VISITE_SANS_DEVIS)
+                         cadence_visite.AVERTISSEMENT_VISITE_SANS_DEVIS)
         self.assertIn('se propose APRÈS le devis',
                       exemple['avertissement_sans_devis'])
 
     def test_le_rappel_juridique_est_celui_de_cad122(self):
         exemple = CONTRAT['exemple_sans_devis']
         self.assertEqual(exemple['rappel_juridique'],
-                         services.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
+                         cadence_visite.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
         self.assertIn('31-08', exemple['rappel_juridique'])
 
     def test_avec_devis_deux_chaines_vides(self):
@@ -129,7 +129,7 @@ class VisiteSansDevisTests(TestCase):
                       {'date_prevue': DEMAIN.isoformat()}, format='json')
         note = self.lead.activites.filter(
             body__startswith='Visite technique planifiée').get()
-        self.assertIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
+        self.assertIn(cadence_visite.MENTION_VISITE_SANS_DEVIS, note.body)
 
     def test_avec_devis_la_note_reste_ordinaire(self):
         self._devis_envoye()
@@ -137,7 +137,7 @@ class VisiteSansDevisTests(TestCase):
                       {'date_prevue': DEMAIN.isoformat()}, format='json')
         note = self.lead.activites.filter(
             body__startswith='Visite technique planifiée').get()
-        self.assertNotIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
+        self.assertNotIn(cadence_visite.MENTION_VISITE_SANS_DEVIS, note.body)
 
 
 class Agr408TextesPompageDuContratTests(SimpleTestCase):
@@ -146,16 +146,16 @@ class Agr408TextesPompageDuContratTests(SimpleTestCase):
     def test_l_avertissement_pompage_est_celui_du_serveur(self):
         exemple = CONTRAT['exemple_agricole_point_eau']
         self.assertEqual(exemple['avertissement_sans_devis'],
-                         services.AVERTISSEMENT_VISITE_POINT_EAU)
+                         cadence_visite.AVERTISSEMENT_VISITE_POINT_EAU)
         self.assertIn('AVANT le devis', exemple['avertissement_sans_devis'])
         self.assertEqual(exemple['rappel_juridique'],
-                         services.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
+                         cadence_visite.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
         self.assertEqual(sorted(exemple), sorted(CONTRAT['exemple']))
 
     def test_la_mention_de_planification_n_est_plus_une_exception(self):
-        self.assertNotIn('exception', services.MENTION_VISITE_POINT_EAU)
+        self.assertNotIn('exception', cadence_visite.MENTION_VISITE_POINT_EAU)
         self.assertIn('avant devis (règle pompage)',
-                      services.MENTION_VISITE_POINT_EAU)
+                      cadence_visite.MENTION_VISITE_POINT_EAU)
 
 
 class Agr408VisitePointEauAvantDevisTests(VisiteSansDevisTests):
@@ -185,15 +185,15 @@ class Agr408VisitePointEauAvantDevisTests(VisiteSansDevisTests):
                       {'date_prevue': DEMAIN.isoformat()}, format='json')
         note = self.lead.activites.filter(
             body__startswith='Visite technique planifiée').get()
-        self.assertIn(services.MENTION_VISITE_POINT_EAU, note.body)
-        self.assertNotIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
+        self.assertIn(cadence_visite.MENTION_VISITE_POINT_EAU, note.body)
+        self.assertNotIn(cadence_visite.MENTION_VISITE_SANS_DEVIS, note.body)
 
     def test_agricole_deja_releve_inchange(self):
         self._agricole(niveau_statique_m=Decimal('32'),
                        debit_forage_m3h=Decimal('36'))
         reponse = self.api.get(self._url('visites/'))
         self.assertEqual(reponse.data['avertissement_sans_devis'],
-                         services.AVERTISSEMENT_VISITE_SANS_DEVIS)
+                         cadence_visite.AVERTISSEMENT_VISITE_SANS_DEVIS)
         reponse = self.api.post(self._url('visites/planifier/'),
                                 {'date_prevue': DEMAIN.isoformat()},
                                 format='json')
@@ -207,15 +207,15 @@ class Ciq411TextesProDuContratTests(SimpleTestCase):
         exemple = CONTRAT['exemple_pro']
         self.assertEqual(
             exemple['avertissement_sans_devis'],
-            services.AVERTISSEMENT_VISITE_PRO.format(
+            cadence_visite.AVERTISSEMENT_VISITE_PRO.format(
                 motifs='site en moyenne tension'))
         self.assertEqual(exemple['rappel_juridique'],
-                         services.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
+                         cadence_visite.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
         self.assertEqual(sorted(exemple), sorted(CONTRAT['exemple']))
 
     def test_la_mention_pro_n_est_pas_une_exception(self):
-        self.assertNotIn('exception', services.MENTION_VISITE_PRO)
-        self.assertEqual(services.MENTION_VISITE_PRO,
+        self.assertNotIn('exception', cadence_visite.MENTION_VISITE_PRO)
+        self.assertEqual(cadence_visite.MENTION_VISITE_PRO,
                          'Visite technique avant devis (règle site '
                          'professionnel).')
 
@@ -251,8 +251,8 @@ class Ciq411VisiteProAvantDevisTests(VisiteSansDevisTests):
         self.assertEqual(reponse.status_code, 201, reponse.data)
         note = self.lead.activites.filter(
             body__startswith='Visite technique planifiée').get()
-        self.assertIn(services.MENTION_VISITE_PRO, note.body)
-        self.assertNotIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
+        self.assertIn(cadence_visite.MENTION_VISITE_PRO, note.body)
+        self.assertNotIn(cadence_visite.MENTION_VISITE_SANS_DEVIS, note.body)
 
     def test_pro_aux_faits_connus_inchange(self):
         self._pro(type_installation='commercial', tension_raccordement='bt',
@@ -261,4 +261,4 @@ class Ciq411VisiteProAvantDevisTests(VisiteSansDevisTests):
                   type_surface='toiture', surface_toiture_m2=Decimal('300'))
         reponse = self.api.get(self._url('visites/'))
         self.assertEqual(reponse.data['avertissement_sans_devis'],
-                         services.AVERTISSEMENT_VISITE_SANS_DEVIS)
+                         cadence_visite.AVERTISSEMENT_VISITE_SANS_DEVIS)

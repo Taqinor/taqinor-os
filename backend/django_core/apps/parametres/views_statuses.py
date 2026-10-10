@@ -11,6 +11,12 @@ canoniques et la machine à états restent intactes dans leurs modèles sources.
 `company` est filtrée et forcée côté serveur (TenantMixin) — jamais lue du
 corps de la requête. L'entonnoir du lead (STAGES.py) n'est jamais touché.
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
+from rest_framework import serializers
+from rest_framework.parsers import JSONParser
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -27,6 +33,31 @@ from .statuses_defaults import VALID_DOMAINES, default_statuses
 from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
+
+_DOMAINE_ENUM = sorted(VALID_DOMAINES)
+
+_LIGNE_STATUT_CHAMPS = {
+    'cle': serializers.CharField(),
+    'libelle': serializers.CharField(),
+    'ordre': serializers.IntegerField(),
+    'actif': serializers.BooleanField(),
+    'libelle_defaut': serializers.CharField(),
+    'personnalise': serializers.BooleanField(),
+}
+_STATUTS_EFFECTIFS = inline_serializer('StatutsEffectifs', {
+    'domaine': serializers.CharField(),
+    'results': inline_serializer(
+        'StatutEffectif', _LIGNE_STATUT_CHAMPS, many=True),
+})
+_STATUTS_BULK_REQUEST = inline_serializer('StatutsBulkRequest', {
+    'domaine': serializers.ChoiceField(choices=_DOMAINE_ENUM),
+    'statuts': inline_serializer('StatutsBulkLigne', {
+        'cle': serializers.CharField(),
+        'libelle': serializers.CharField(required=False, allow_null=True),
+        'ordre': serializers.IntegerField(required=False, allow_null=True),
+        'actif': serializers.BooleanField(required=False),
+    }, many=True, required=False),
+})
 
 
 def effective_statuses(company, domaine):
@@ -60,6 +91,10 @@ def effective_statuses(company, domaine):
     return rows
 
 
+@extend_schema_view(list=extend_schema(parameters=[OpenApiParameter(
+    'domaine', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    enum=_DOMAINE_ENUM,
+    description='Ne garder que les statuts de ce domaine.')]))
 class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
                           viewsets.ModelViewSet):
     """Surcharges d'affichage des statuts métier (N58).
@@ -69,6 +104,7 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
     """
     queryset = StatutConfig.objects.all()
     serializer_class = StatutConfigSerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     # APAR28 — CRUD direct journalisé (le ``bulk`` garde son propre audit).
     audit_section = 'statuts'
     audit_libelle = 'Statut'
@@ -98,6 +134,11 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
             company=company, user=self.request.user, section='statuts',
             field=field, field_label=label, old=old, new=new)
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'domaine', OpenApiTypes.STR, OpenApiParameter.QUERY,
+            required=True, enum=_DOMAINE_ENUM)],
+        responses=_STATUTS_EFFECTIFS)
     @action(detail=False, methods=['get'])
     def effective(self, request):
         """Liste effective (défauts fusionnés avec les surcharges) d'un domaine.
@@ -116,6 +157,8 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
             'results': effective_statuses(company, domaine),
         })
 
+    @extend_schema(request=_STATUTS_BULK_REQUEST,
+                   responses=_STATUTS_EFFECTIFS)
     @action(detail=False, methods=['put'])
     def bulk(self, request):
         """Upsert en une fois des surcharges d'un domaine (libellé/ordre/actif).

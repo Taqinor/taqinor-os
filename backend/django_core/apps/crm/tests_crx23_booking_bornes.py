@@ -24,8 +24,10 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.crm.models import Appointment, BookingLink, Lead
-from apps.crm.services import (
-    BOOKING_HORIZON_JOURS, BookingLinkUnavailable, reserver_creneau_public,
+from apps.crm.visites_rdv import (
+    BOOKING_HORIZON_JOURS,
+    BookingLinkUnavailable,
+    reserver_creneau_public,
 )
 from authentication.models import Company
 
@@ -114,7 +116,7 @@ class AntiDoubleReservationTests(TestCase):
         BookingLink.objects.filter(pk=self.link.pk).update(
             used_at=timezone.now())
 
-        with patch('apps.crm.services.resolve_booking_link',
+        with patch('apps.crm.visites_rdv.resolve_booking_link',
                    return_value=perime):
             with self.assertRaises(BookingLinkUnavailable):
                 reserver_creneau_public(
@@ -125,7 +127,7 @@ class AntiDoubleReservationTests(TestCase):
     def test_echec_de_creation_libere_le_lien(self):
         """La réclamation et la création sont dans la MÊME transaction : si le
         rendez-vous échoue, le lien n'est pas brûlé pour rien."""
-        with patch('apps.crm.services.book_appointment',
+        with patch('apps.crm.visites_rdv.book_appointment',
                    side_effect=RuntimeError('base indisponible')):
             with self.assertRaises(RuntimeError):
                 reserver_creneau_public(

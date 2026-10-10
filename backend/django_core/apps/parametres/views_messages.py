@@ -5,8 +5,12 @@ changement d'endpoint ni de comportement (lecture tout rôle, écriture
 Administrateur + Responsable promu, mêmes défauts FR/Darija, même audit)."""
 import re
 
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -78,7 +82,35 @@ def _unknown_placeholders(text, cle):
     return seen
 
 
+_MESSAGE_LIGNE = inline_serializer('MessageTemplateLigne', many=True, fields={
+    'cle': serializers.CharField(),
+    'label': serializers.CharField(),
+    'corps_fr': serializers.CharField(),
+    'corps_darija': serializers.CharField(),
+    'default_fr': serializers.CharField(),
+    'default_darija': serializers.CharField(),
+    'placeholders': serializers.ListField(child=serializers.CharField()),
+})
+_MESSAGE_ECRIT_REQUEST = inline_serializer('MessageTemplateEcritRequest', {
+    'cle': serializers.ChoiceField(
+        choices=[c for c, _ in MessageTemplate.Cle.choices]),
+    'corps_fr': serializers.CharField(required=False, allow_null=True),
+    'corps_darija': serializers.CharField(required=False, allow_null=True),
+    'reset': serializers.BooleanField(required=False),
+})
+_MESSAGE_ECRIT = inline_serializer('MessageTemplateEcrit', {
+    'cle': serializers.CharField(),
+    'corps_fr': serializers.CharField(),
+    'corps_darija': serializers.CharField(),
+    'default_fr': serializers.CharField(required=False),
+})
+
+
+@extend_schema(methods=['GET'], responses=_MESSAGE_LIGNE)
+@extend_schema(methods=['PUT', 'PATCH'], request=_MESSAGE_ECRIT_REQUEST,
+               responses=_MESSAGE_ECRIT)
 @api_view(['GET', 'PUT', 'PATCH'])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 @permission_classes([IsAnyRole])
 def messages_endpoint(request):
     """GET : lecture (tout rôle). PUT/PATCH : enregistrement (Administrateur +

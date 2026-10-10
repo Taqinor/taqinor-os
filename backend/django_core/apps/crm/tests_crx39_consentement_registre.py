@@ -118,7 +118,7 @@ class ConsentementIntakeWebTests(TestCase):
         """Le point d'entrée unique accepte désormais ``occurred_at`` — sans
         lui, le registre daterait le consentement du moment où l'ERP l'a
         enregistré, pas de celui où la personne l'a donné."""
-        from apps.crm.services import enregistrer_consentement_lead
+        from apps.crm.leads_consentement import enregistrer_consentement_lead
 
         quand = timezone.now() - timezone.timedelta(days=3)
         lead = Lead.objects.create(

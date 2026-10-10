@@ -23,6 +23,11 @@ export const options = {
 
 export function setup() {
   const token = login();
+  // ENF12 — sans jeton, plus de passe « verte » vide : l'ancien `return` dans
+  // default() mesurait 0 requête métier. Échec franc dès setup().
+  if (!token) {
+    throw new Error('Connexion k6 impossible (compte de charge absent ?)');
+  }
   return { token };
 }
 

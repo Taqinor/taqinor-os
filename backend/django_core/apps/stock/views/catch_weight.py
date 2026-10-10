@@ -64,7 +64,7 @@ class PeseeLigneActionsMixin:
                        for li in lignes],
         })
 
-    @extend_schema(request=None, responses={
+    @extend_schema(request=inline_serializer('PeseeLigneCorps', {'unite_variable': serializers.BooleanField(required=False), 'quantite_reelle': serializers.DecimalField(max_digits=14, decimal_places=3), 'unite_mesure': serializers.CharField(required=False), 'note': serializers.CharField(required=False, allow_blank=True)}), responses={
         200: inline_serializer('StockReceptionPeseeSaisie', PESEE_SHAPE),
     })
     @action(detail=True, methods=['post'],
@@ -94,7 +94,7 @@ class PeseeLigneActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_pesee_payload(ligne, pesee))
 
-    @extend_schema(request=None, responses={
+    @extend_schema(request=inline_serializer('RapprocherPeseesCorps', {'note': serializers.CharField(required=False, allow_blank=True)}), responses={
         200: inline_serializer('StockReceptionPeseeRapprochement', {
             'ajustes': serializers.IntegerField(),
             'inchanges': serializers.IntegerField(),

@@ -16,7 +16,7 @@ from django.utils import timezone
 from apps.crm import stages
 from apps.crm.models import Lead
 from apps.crm.scoring import compute_score
-from apps.crm.services import recalculer_scores_obsoletes
+from apps.crm.leads_score import recalculer_scores_obsoletes
 from authentication.models import Company
 
 

@@ -44,10 +44,12 @@ def _retirer_contrainte(apps, schema_editor):
         cursor.execute(_SQL_TROUVER_CONTRAINTE, [_TABLE, _COLONNE])
         noms = [ligne[0] for ligne in cursor.fetchall()]
         for nom in noms:
+            # ENF12 (semgrep no-formatted-raw-sql) : identifiants composés par
+            # psycopg2.sql (même SQL émis qu'avec quote_name).
+            from psycopg2 import sql
             cursor.execute(
-                'ALTER TABLE {} DROP CONSTRAINT IF EXISTS {}'.format(
-                    connection.ops.quote_name(_TABLE),
-                    connection.ops.quote_name(nom)))
+                sql.SQL('ALTER TABLE {} DROP CONSTRAINT IF EXISTS {}').format(
+                    sql.Identifier(_TABLE), sql.Identifier(nom)))
 
 
 class Migration(migrations.Migration):

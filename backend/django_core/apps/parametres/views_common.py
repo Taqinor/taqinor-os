@@ -3,7 +3,17 @@
 ``_profile`` et ``_audit_company`` sont utilisés à la fois par les vues du
 profil et par les vues d'upload/suppression d'images — regroupés ici pour
 éviter une dépendance circulaire entre fichiers de domaine."""
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter
+
 from .models import CompanyProfile, SettingsAuditLog
+
+#: ENF8 — paramètre de requête ``?actif=`` lu par les référentiels
+#: (``true``/``1`` ne garde que les lignes actives ; toute autre valeur = tout).
+ACTIF_PARAM = OpenApiParameter(
+    'actif', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    enum=['true', '1'],
+    description='« true » ou « 1 » : ne garder que les lignes actives.')
 
 
 def _audit_company(request):

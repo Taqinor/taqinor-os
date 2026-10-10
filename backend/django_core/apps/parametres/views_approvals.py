@@ -6,7 +6,12 @@ approbateur). Lecture tout rôle. ``company`` filtrée/forcée côté serveur
 (TenantMixin). Chaque écriture est tracée au Journal d'audit (section
 'approbations').
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view,
+)
 from rest_framework import viewsets
+from rest_framework.parsers import JSONParser
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import (
@@ -20,6 +25,9 @@ from .serializers_approvals import ApprovalPolicySerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
+@extend_schema_view(list=extend_schema(parameters=[OpenApiParameter(
+    'action_type', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    description="Ne garder que les politiques de ce type d'action.")]))
 class ApprovalPolicyViewSet(TenantMixin, viewsets.ModelViewSet):
     """Politiques d'approbation configurables (FG25).
 
@@ -28,6 +36,7 @@ class ApprovalPolicyViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     queryset = ApprovalPolicy.objects.all()
     serializer_class = ApprovalPolicySerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

@@ -13,15 +13,18 @@ Aucune passerelle de paiement : « payée » est un pointage MANUEL du fondateur
 """
 from __future__ import annotations
 
-import csv
 import logging
 from datetime import date
 
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -80,11 +83,30 @@ def _enregistrer_avec_reference(facture):
     return create_with_reference(FactureLicence, 'LIC', facture.company, _save)
 
 
+class FactureLicenceCreerSerializer(drf_serializers.Serializer):
+    company = drf_serializers.IntegerField()
+    periode = drf_serializers.CharField(help_text='AAAA-MM')
+    plan_code = drf_serializers.CharField(required=False, max_length=40)
+    montant_ht = drf_serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False)
+    tva = drf_serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False)
+    montant_ttc = drf_serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False)
+    notes = drf_serializers.CharField(required=False, allow_blank=True)
+    statut = drf_serializers.CharField(required=False)
+
+
+class FactureLicenceMarquerPayeeSerializer(drf_serializers.Serializer):
+    date_paiement = drf_serializers.CharField(required=False)
+
+
 class FactureLicenceListView(APIView):
     """GET — registre (filtrable par tenant) ; POST — nouvelle ligne."""
 
     permission_classes = [IsSuperuserConsole]
     serializer_class = FactureLicenceSerializer
+    parser_classes = [JSONParser]
 
     def _queryset(self, request):
         qs = FactureLicence.objects.select_related('company')
@@ -96,6 +118,16 @@ class FactureLicenceListView(APIView):
             qs = qs.filter(statut=statut)
         return qs.order_by('-periode', '-id')
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('company', OpenApiTypes.INT, required=False),
+            OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        ],
+        responses=inline_serializer('FacturesLicenceListe', {
+            'results': FactureLicenceSerializer(many=True),
+            'total_du_ttc': drf_serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+        }))
     def get(self, request):
         factures = list(self._queryset(request))
         total_du = sum(
@@ -106,6 +138,8 @@ class FactureLicenceListView(APIView):
             'total_du_ttc': total_du,
         })
 
+    @extend_schema(request=FactureLicenceCreerSerializer,
+                   responses={201: FactureLicenceSerializer})
     def post(self, request):
         company = Company.objects.filter(
             pk=request.data.get('company')).first()
@@ -145,7 +179,10 @@ class FactureLicenceMarquerPayeeView(APIView):
 
     permission_classes = [IsSuperuserConsole]
     serializer_class = FactureLicenceSerializer
+    parser_classes = [JSONParser]
 
+    @extend_schema(request=FactureLicenceMarquerPayeeSerializer,
+                   responses=FactureLicenceSerializer)
     def post(self, request, pk):
         facture = FactureLicence.objects.filter(pk=pk).first()
         if facture is None:
@@ -170,20 +207,29 @@ class FactureLicenceExportCsvView(APIView):
 
     permission_classes = [IsSuperuserConsole]
 
-    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('company', OpenApiTypes.INT, required=False),
+            OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        ],
+        responses={(200, 'text/csv'): OpenApiTypes.STR})
     def get(self, request):
         qs = FactureLicence.objects.select_related('company').order_by(
             '-periode', '-id')
         tenant = request.query_params.get('company')
         if tenant:
             qs = qs.filter(company_id=tenant)
+        statut = request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
 
         reponse = HttpResponse(content_type='text/csv; charset=utf-8')
         reponse['Content-Disposition'] = (
             'attachment; filename="facturation-licences.csv"')
         # BOM UTF-8 : Excel (FR) ouvre le fichier avec les accents corrects.
         reponse.write('﻿')
-        writer = csv.writer(reponse, delimiter=';')
+        from apps.records.xlsx import EcrivainCsvNeutralise
+        writer = EcrivainCsvNeutralise(reponse, delimiter=';')
         writer.writerow([
             'Référence', 'Société', 'Période', 'Plan', 'Montant HT', 'TVA',
             'Montant TTC', 'Statut', 'Date émission', 'Date paiement',

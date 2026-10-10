@@ -206,7 +206,7 @@ class RemiseDocumentTest(TestCase):
             # lisent la même heure figée (sinon rouge dès qu'une seconde passe
             # entre les deux — shard CI lent).
             heure = mock.patch(
-                'apps.calepinage.services.export_projet.horodatage_utc',
+                'apps.calepinage.services.export_projet._horodatage_utc',
                 return_value='2026-10-06T12:00:00Z')
             with self.subTest(code=code), heure:
                 with patch_materiel():

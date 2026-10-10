@@ -39,7 +39,7 @@ from apps.calepinage.services.zones_reglementaires import (
     COTES,
     GENRES,
     SECTION,
-    appliquer_modele,
+    _appliquer_modele,
     normaliser_section_zones_types,
     source_de_zone,
 )
@@ -174,9 +174,9 @@ class ApplicationTest(SimpleTestCase):
             {'coupe_feu': BANDE})['coupe_feu']
 
     def test_zone_appliquee_porte_sa_source(self):
-        zone = appliquer_modele(self.modele, cle='coupe_feu',
-                                sommets=[[0, 0], [10, 0], [10, 1.2],
-                                         [0, 1.2]])
+        zone = _appliquer_modele(self.modele, cle='coupe_feu',
+                                 sommets=[[0, 0], [10, 0], [10, 1.2],
+                                          [0, 1.2]])
         self.assertEqual(zone['source'], SOURCE)
         self.assertEqual(source_de_zone(zone), SOURCE)
         self.assertEqual(zone['nature'], 'INTERDITE')
@@ -184,9 +184,9 @@ class ApplicationTest(SimpleTestCase):
 
     def test_zone_appliquee_est_traduisible_par_cal68(self):
         """Le format rendu EST celui de `exclusionZones` (CAL68)."""
-        zone = appliquer_modele(self.modele, repere='CF-1',
-                                sommets=[[0, 0], [10, 0], [10, 1.2],
-                                         [0, 1.2]])
+        zone = _appliquer_modele(self.modele, repere='CF-1',
+                                 sommets=[[0, 0], [10, 0], [10, 1.2],
+                                          [0, 1.2]])
         traduite = zones_moteur_depuis_layout({'exclusionZones': [zone]})
         self.assertEqual(len(traduite), 1)
         self.assertEqual(traduite[0]['repere'], 'CF-1')
@@ -195,20 +195,20 @@ class ApplicationTest(SimpleTestCase):
     def test_polygone_porte_deja_son_contour(self):
         modele = normaliser_section_zones_types(
             {'servitude': POLYGONE})['servitude']
-        zone = appliquer_modele(modele, cle='servitude')
+        zone = _appliquer_modele(modele, cle='servitude')
         self.assertEqual(zone['vertices'],
                          [[0.0, 0.0], [3.0, 0.0], [3.0, 2.0], [0.0, 2.0]])
         self.assertEqual(zone['setbackM'], 0.5)
 
     def test_bande_sans_contour_reel_refusee(self):
         with self.assertRaises(ReglageInvalide) as capture:
-            appliquer_modele(self.modele, cle='coupe_feu')
+            _appliquer_modele(self.modele, cle='coupe_feu')
         self.assertEqual(capture.exception.champ, 'sommets')
 
     def test_gabarit_sans_source_ne_s_applique_pas(self):
         with self.assertRaises(ReglageInvalide) as capture:
-            appliquer_modele(dict(self.modele, source=''), cle='coupe_feu',
-                             sommets=[[0, 0], [1, 0], [1, 1]])
+            _appliquer_modele(dict(self.modele, source=''), cle='coupe_feu',
+                              sommets=[[0, 0], [1, 0], [1, 1]])
         self.assertEqual(capture.exception.champ, 'source')
 
     def test_zone_sans_source_ne_cite_rien(self):

@@ -34,7 +34,7 @@ from apps.calepinage.services.export_dxf import (
 )
 from apps.calepinage.services.export_projet import document_de_projet
 from apps.calepinage.services.export_tableur import (
-    FEUILLES, classeur_octets, exporter_xlsx, tables_du_resultat,
+    FEUILLES, _classeur_octets, exporter_xlsx, _tables_du_resultat,
 )
 from apps.calepinage.services.planche import geometrie_de_planche
 from apps.calepinage.services.provenance_document import (
@@ -202,8 +202,8 @@ class FormeDesSortiesTest(unittest.TestCase):
         geometrie = geometrie_de_planche(LAYOUT)
         document = relire_dxf(octets_dxf(geometrie))
         self.assertNotIn(CALQUE_PROVENANCE, document.layers)
-        classeur = relire_xlsx(classeur_octets(
-            tables_du_resultat(geometrie, STOCKE)))
+        classeur = relire_xlsx(_classeur_octets(
+            _tables_du_resultat(geometrie, STOCKE)))
         self.assertEqual(classeur.sheetnames, list(FEUILLES))
 
     def test_aucun_montant_dans_la_provenance(self):

@@ -61,12 +61,11 @@ REPERE_ZONE_CONTOUR = 'z1'
 
 __all__ = [
     'CLE_LAYOUT', 'CHAMP_PORTEUR', 'REPERE_ZONE_CONTOUR',
-    'document_public_du_lead', 'latlng_vers_lnglat',
     'reprendre_trace_public',
 ]
 
 
-def latlng_vers_lnglat(points):
+def _latlng_vers_lnglat(points):
     """``[[lat, lng], …]`` -> ``[[lng, lat], …]`` — l'échange est NOMMÉ.
 
     Rend ``[]`` sur une entrée illisible : un contour à moitié lu vaut moins
@@ -147,7 +146,7 @@ def _document_et_motif(lead):
         if not motif:
             return document, ''
 
-    contour = latlng_vers_lnglat(getattr(lead, 'roof_outline', None) or [])
+    contour = _latlng_vers_lnglat(getattr(lead, 'roof_outline', None) or [])
     if len(contour) < 3:
         return None, motif
     document = {
@@ -161,7 +160,7 @@ def _document_et_motif(lead):
     return document, motif
 
 
-def document_public_du_lead(lead):
+def _document_public_du_lead(lead):
     """Le document ``roof_layout`` v2 d'un lead public, ou ``None``.
 
     Deux sources, dans cet ordre — jamais une troisième inventée :

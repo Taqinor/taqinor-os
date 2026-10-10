@@ -44,7 +44,7 @@ class Facture(TotauxDocumentMixin, models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True,
         blank=True,
         related_name='factures',
@@ -722,7 +722,7 @@ class Facture(TotauxDocumentMixin, models.Model):
 
 class LigneFacture(models.Model):
     facture = models.ForeignKey(
-        Facture, on_delete=models.CASCADE, related_name='lignes'
+        Facture, on_delete=models.CASCADE, related_name='lignes'  # on_delete: ligne de Facture — n'existe pas sans son document parent
     )
     produit = models.ForeignKey(
         'stock.Produit',
@@ -851,7 +851,7 @@ class Paiement(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True,
         blank=True,
         related_name='paiements',
@@ -1031,7 +1031,7 @@ class Avoir(TotauxDocumentMixin, models.Model):
         RETOUR = 'retour', 'Retour'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='avoirs')
     type = models.CharField(
         max_length=20, choices=Type.choices, default=Type.GESTE_COMMERCIAL)
@@ -1128,7 +1128,7 @@ class Avoir(TotauxDocumentMixin, models.Model):
 
 class LigneAvoir(models.Model):
     avoir = models.ForeignKey(
-        Avoir, on_delete=models.CASCADE, related_name='lignes')
+        Avoir, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de Avoir — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_avoir')
@@ -1188,7 +1188,7 @@ class FollowupLevel(models.Model):
     s'applique. Le niveau courant d'une facture est le plus élevé dont le
     seuil est atteint. Modifiable par l'admin dans Paramètres."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='followup_levels')
     ordre = models.PositiveIntegerField(default=0)
     nom = models.CharField(max_length=120)
@@ -1245,10 +1245,10 @@ class FollowupLevel(models.Model):
 class RelanceLog(models.Model):
     """Trace d'une relance effectuée sur une facture (consigne, jamais envoi)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='relance_logs')
     facture = models.ForeignKey(
-        Facture, on_delete=models.CASCADE, related_name='relances')
+        Facture, on_delete=models.CASCADE, related_name='relances')  # on_delete: RelanceLog est le détail de Facture — n'existe pas sans lui
     niveau = models.PositiveIntegerField(null=True, blank=True)
     niveau_nom = models.CharField(max_length=120, blank=True, default='')
     note = models.TextField(blank=True, default='')

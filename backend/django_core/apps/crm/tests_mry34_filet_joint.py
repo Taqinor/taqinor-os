@@ -33,9 +33,8 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    FILET_APPEL_LIBELLE, FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE,
-    marquer_etape_relance)
+from apps.crm.cadence_touche import marquer_etape_relance
+from apps.crm.cadence_reperes import FILET_APPEL_LIBELLE, FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -55,10 +54,12 @@ def _materialiser_tout(lead, user, *, cadence='contact', depart=None):
     elle, est verrouillée dans ``tests_relance_foundation``.
     """
     from apps.crm import horaires as _h
-    from apps.crm.services import (
-        _adapter_gabarits_reveil, _normaliser_depart,
+    from apps.crm.cadence_plan import (
+        _adapter_gabarits_reveil,
+        _normaliser_depart,
         calculer_echeances_cadence,
-        initialiser_plan_relance as _initialiser)
+        initialiser_plan_relance as _initialiser,
+    )
 
     etapes = _initialiser(
         lead, user, cadence=cadence, depart=depart)
@@ -288,7 +289,7 @@ class FiletJointTests(_Base):
         # CADX — dans le vrai flux, le passage au FROID annule contact et
         # après-devis AVANT que le réveil ne soit posé ; sans quoi l'init
         # réveil est refusé (une seule cadence active par lead).
-        from apps.crm.services import arreter_cadence
+        from apps.crm.cadence_plan import arreter_cadence
         arreter_cadence(self.lead, user=self.acteur,
                         motif='lead passé en froid')
         reveils = _materialiser_tout(
@@ -327,7 +328,7 @@ class FiletJointTests(_Base):
         # pas sur la dernière ligne matérialisée : depuis la cadence réactive
         # celle-ci est la PREMIÈRE touche, et la proposition aurait expiré le
         # jour même de son envoi.
-        from apps.crm.services import calculer_echeances_cadence
+        from apps.crm.cadence_plan import calculer_echeances_cadence
         premiere_apres = (self.lead.relance_etapes
                           .filter(cadence='apres_devis')
                           .order_by('ordre').first())

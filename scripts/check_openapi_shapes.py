@@ -101,7 +101,7 @@ SIGNATURE_NON_DEVINABLE = "unable to guess serializer"
 # BAISSER : chaque vue qui gagne un serialiseur reel le fait descendre, et
 # c'est la seule direction autorisee. Baisser ce nombre est un progres a
 # committer ; le remonter est un refus.
-PLAFOND_NON_DEVINABLES = 406
+PLAFOND_NON_DEVINABLES = 146
 
 # --- R3 : vocabulaire des endpoints AGREGES ----------------------------------
 # Detection par le CHEMIN, jamais par la forme du `return` (cf. en-tete).

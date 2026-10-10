@@ -63,7 +63,7 @@ class ToucheAtomiqueTests(TestCase):
     def test_fait_panne_report_rien_ecrit(self):
         avant = self._empreinte()
         demain = (timezone.localdate() + datetime.timedelta(days=2))
-        with patch('apps.crm.services.reporter_prochaine_touche',
+        with patch('apps.crm.cadence_plan.reporter_prochaine_touche',
                    side_effect=RuntimeError('panne déclarée')):
             resp = self.api.post(f'{self.url}fait/',
                                  {'rappel_le': demain.isoformat()},
@@ -78,7 +78,7 @@ class ToucheAtomiqueTests(TestCase):
         avant = self._empreinte()
         fichier = SimpleUploadedFile('facture.png', _FAUX_PNG,
                                      content_type='image/png')
-        with patch('apps.crm.services.enregistrer_piece_recue',
+        with patch('apps.crm.cadence_reponses.enregistrer_piece_recue',
                    side_effect=RuntimeError('panne déclarée')):
             resp = self.api.post(f'{self.url}piece-recue/',
                                  {'type_piece': 'facture',
@@ -88,7 +88,7 @@ class ToucheAtomiqueTests(TestCase):
 
     def test_noter_panne_rien_ecrit(self):
         avant = self._empreinte()
-        with patch('apps.crm.services.marquer_premier_contact',
+        with patch('apps.crm.leads_premier_contact.marquer_premier_contact',
                    side_effect=RuntimeError('panne déclarée')):
             resp = self.api.post(
                 f'/api/django/crm/leads/{self.lead.pk}/noter/',

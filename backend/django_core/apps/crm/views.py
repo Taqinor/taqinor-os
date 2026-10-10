@@ -3,7 +3,10 @@ import re
 import uuid
 from contextlib import contextmanager
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import APIException
@@ -18,7 +21,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    AppareilEquipe, Apporteur, Appointment, Client, ConcurrentPerte,
+    AppareilEquipe, LeadActivity, Apporteur, Appointment, Client, ConcurrentPerte,
     DealEnregistre, Defi,
     EquipeCommerciale,
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
@@ -49,10 +52,10 @@ from .serializers import (
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity, stages
-from .services import (
-    COOKIE_APPAREIL, default_responsable_for,
-    domaine_cookies_equipe, enregistrer_appareil_equipe,
-)
+from .fiche_bulk import BULK_ACTIONS  # SPL3 (main) : déplacé de services ; ENF6 l'expose au schéma
+from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
+from .leads_attribution import default_responsable_for
+from . import schema_docs as sd
 from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import (
     IsAnyRole,
@@ -357,6 +360,7 @@ def _save_borne_aux_champs(instance, champs):
             instance.save = original
 
 
+@extend_schema(responses=sd.liste('CrmAssignableUser'))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def assignable_users(request):
@@ -387,6 +391,7 @@ def assignable_users(request):
     ])
 
 
+@extend_schema(responses=sd.OBJ)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def equipes_statistiques(request):
@@ -402,6 +407,7 @@ def equipes_statistiques(request):
     return Response({'equipes': stats_equipe(user.company)})
 
 
+@extend_schema(parameters=[sd.P_DEBUT, sd.P_FIN], responses=sd.OBJ)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def rapport_attribution(request):
@@ -419,6 +425,7 @@ def rapport_attribution(request):
 
 
 class ClientViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     # ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
     # get_queryset (portée de visibilité) et perform_create (company +
     # created_by forcés serveur) SURCHARGENT la base : réponses inchangées.
@@ -527,18 +534,20 @@ class ClientViewSet(CompanyScopedModelViewSet):
             return declared
         return [IsAdminRole()]
 
+    @extend_schema(request=None, responses={201: ClientSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer(self, request, pk=None):
         """NTUX13 — Duplique cette fiche client (suffixe « (copie) », email/
         ICE vidés — voir ``services.dupliquer_client``)."""
         source = self.get_object()
-        from .services import dupliquer_client
+        from .clients_identite import dupliquer_client
         copie = dupliquer_client(source, user=request.user)
         return Response(
             ClientSerializer(copie, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=sd.corps('CrmClientsExportRequest', ids=serializers.ListField(child=serializers.IntegerField(), required=False)), responses=sd.EXPORT_XLSX)
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
@@ -556,6 +565,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         return export_clients_xlsx(
             qs.order_by('nom'), masquer_pii=pii_masquee_pour(request.user))
 
+    @extend_schema(parameters=[sd.P_Q], responses=sd.corps('CrmClientSearch', results=serializers.ListField(child=serializers.DictField())))
     @action(detail=False, methods=['get'], url_path='search',
             permission_classes=[IsAnyRole])
     def search(self, request):
@@ -583,6 +593,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
             results = [r for r in results if r.get('source') != 'lead']
         return Response({'results': results})
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='documents',
             permission_classes=[IsAnyRole])
     def documents(self, request, pk=None):
@@ -644,6 +655,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
             'chantiers': chantiers,
         })
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='consolidation',
             permission_classes=[IsAnyRole])
     def consolidation(self, request, pk=None):
@@ -664,6 +676,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
             'nb_factures_total': rollup['nb_factures_total'],
         })
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='data-export',
             permission_classes=[IsResponsableOrAdmin])
     def data_export(self, request, pk=None):
@@ -707,6 +720,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         }
         return Response({'identite': identite, 'documents': documents})
 
+    @extend_schema(request=None, responses=ClientSerializer)
     @action(detail=True, methods=['post'], url_path='anonymize',
             permission_classes=[IsAdminRole])
     def anonymize(self, request, pk=None):
@@ -755,6 +769,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
     # FG32 — Segmentation clients ────────────────────────────────────────────
     # ACRM21 — déclaration EXPLICITE (admin) : c'est la garde qui
     # s'appliquait déjà par le repli ; elle est désormais lue sur l'@action.
+    @extend_schema(parameters=[sd.param('segment', enum=['top', 'sans_devis', 'a_recontacter', 'dormants'])], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='segments',
             permission_classes=[IsAdminRole])
     def segments(self, request):
@@ -838,6 +853,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
         return Response({'segment': segment, 'count': len(result), 'results': result})
 
+    @extend_schema(parameters=[sd.param('seuil', OpenApiTypes.INT)], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='dormants',
             permission_classes=[IsAnyRole])
     def dormants(self, request):
@@ -866,6 +882,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         } for e in entries]
         return Response({'seuil': seuil, 'count': len(results), 'results': results})
 
+    @extend_schema(request=None, responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='relancer-dormance',
             permission_classes=[IsAnyRole])
     def relancer_dormance(self, request, pk=None):
@@ -894,6 +911,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
             act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='engagement',
             permission_classes=[IsAnyRole])
     def engagement(self, request, pk=None):
@@ -902,6 +920,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         client = self.get_object()
         return Response(engagement_for_client(client))
 
+    @extend_schema(responses=sd.liste('CrmEngagementClient'))
     @action(detail=False, methods=['get'], url_path='engagement-bulk',
             permission_classes=[IsAnyRole])
     def engagement_bulk(self, request):
@@ -910,6 +929,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         qs = self.get_queryset()
         return Response(_engagement_bulk(list(qs)))
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='mon-portefeuille',
             permission_classes=[IsAnyRole])
     def mon_portefeuille(self, request):
@@ -923,12 +943,14 @@ class ClientViewSet(CompanyScopedModelViewSet):
         return Response({'count': len(results), 'results': results})
 
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('stage'), sd.param('source'), sd.P_ARCHIVED, sd.P_ENTITE]))
 class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
 
     L'utilisateur acteur et la société viennent toujours de la requête côté
     serveur — jamais du corps envoyé par le navigateur.
     """
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     # YOPSB13 — LeadSerializer expose owner_nom/owner_poste/owner_avatar
     # (SerializerMethodField sur obj.owner), client_nom (obj.client) et devis
     # (obj.devis, reverse FK) : sans select_related/prefetch_related, la
@@ -1230,16 +1252,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import (
-            demarrer_cadence_contact, recompute_lead_score,
-            sync_relance_activity,
-        )
+        from .leads_score import recompute_lead_score
+        from .cadence_plan import demarrer_cadence_contact, sync_relance_activity
         # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
         # site : il doit donc, comme eux, exister au registre de consentement.
         # La personne a elle-même sollicité le contact (appel entrant,
         # message reçu, demande au salon) : c'est la base légale tracée ici.
-        from .services import (
-            BASE_LEGALE_SOLLICITATION, CONSENT_SOURCE_SAISIE_MANUELLE,
+        from .leads_consentement import (
+            BASE_LEGALE_SOLLICITATION,
+            CONSENT_SOURCE_SAISIE_MANUELLE,
             enregistrer_base_legale_lead,
         )
         enregistrer_base_legale_lead(
@@ -1366,7 +1387,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # QJR584 — le WhatsApp qui n'était qu'une copie du téléphone suit la
         # correction du téléphone ; un WhatsApp distinct n'est jamais touché.
         if 'telephone' in vd and 'whatsapp' not in vd:
-            from .services import normalize_phone
+            from .leads_doublons import normalize_phone
             if (old.whatsapp and normalize_phone(old.whatsapp)
                     == normalize_phone(old.telephone)
                     and normalize_phone(vd['telephone'])
@@ -1387,11 +1408,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # sont best-effort, chacun dans son point de sauvegarde : leur panne
         # est journalisée et n'échoue plus un PATCH déjà écrit (LFICHE-5).
         from django.db import transaction
-        from .services import (
-            _emit_stage_changed, maybe_set_first_contacted_at,
-            recompute_lead_score, reporter_prochaine_touche,
-            sync_relance_activity,
-        )
+        from .leads_score import recompute_lead_score
+        from .cadence_plan import reporter_prochaine_touche, sync_relance_activity
+        from .fiche_funnel import _emit_stage_changed
+        from .leads_premier_contact import maybe_set_first_contacted_at
         with transaction.atomic():
             # Décision fondateur 08/10/2026 — SORTIR de « Signé » par une
             # action utilisateur dés-accepte le(s) devis du lead (retour à
@@ -1400,9 +1420,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # avancé…) rend un 409 qui nomme la cause, rien n'est écrit.
             if (old.stage == stages.SIGNED and 'stage' in vd
                     and vd['stage'] != stages.SIGNED):
-                from .services import (
-                    SortieSigneBloquee, desaccepter_devis_du_lead,
-                )
+                from .fiche_funnel import SortieSigneBloquee, desaccepter_devis_du_lead
                 try:
                     desaccepter_devis_du_lead(old, self.request.user)
                 except SortieSigneBloquee as exc:
@@ -1463,7 +1481,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                   != new_lead.dossier_subvention_le))
                 or (old.dossier_subvention == accorde
                     and new_lead.dossier_subvention != accorde)):
-            from .services import poser_rappel_subvention
+            from .cadence_filet import poser_rappel_subvention
             try:
                 poser_rappel_subvention(new_lead, self.request.user)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1474,7 +1492,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # plusieurs » (même effet que les réponses de touche). Idempotent ;
         # repasser à « seul » ne retire rien. Jamais bloquant.
         if old.decideur != new_lead.decideur:
-            from .services import poser_decision_a_plusieurs_depuis_decideur
+            from .cadence_reponses import poser_decision_a_plusieurs_depuis_decideur
             try:
                 poser_decision_a_plusieurs_depuis_decideur(
                     new_lead, self.request.user)
@@ -1485,7 +1503,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # la tâche FDA apparaît pour les étapes atteintes (idempotent).
         if (old.pompe_alim_actuelle != new_lead.pompe_alim_actuelle
                 and new_lead.pompe_alim_actuelle == 'butane'):
-            from .services import rattraper_playbooks_pompe
+            from .fiche_funnel import rattraper_playbooks_pompe
             try:
                 rattraper_playbooks_pompe(new_lead)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1497,7 +1515,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if any(getattr(old, champ) != getattr(new_lead, champ)
                for champ in ('tension_raccordement', 'regularisation_8221',
                              'objectif_projet')):
-            from .services import rattraper_playbooks_8221
+            from .fiche_funnel import rattraper_playbooks_8221
             try:
                 rattraper_playbooks_8221(new_lead)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1509,7 +1527,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',
                      'ville', 'societe', 'fonction_contact', 'ice', 'rc',
                      'if_fiscal', 'adresse_siege', 'tva_recuperable'}:
-            from .services import synchroniser_identite_client
+            from .clients_identite import synchroniser_identite_client
             try:
                 synchroniser_identite_client(new_lead, old, self.request.user)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1522,9 +1540,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # s'annule avec elles (best-effort, note au chatter quand un
         # rendez-vous est réellement annulé) : le technicien ne se déplace
         # pas chez un client perdu ou qui ne veut plus être contacté.
-        from .services import (
-            CAUSE_RDV_NE_PLUS_CONTACTER, annuler_rendez_vous_sur_arret,
-            arreter_cadence, cause_rdv_perdu)
+        from .cadence_visite import (
+            CAUSE_RDV_NE_PLUS_CONTACTER,
+            annuler_rendez_vous_sur_arret,
+            cause_rdv_perdu,
+        )
+        from .cadence_plan import arreter_cadence
         try:
             if not old.perdu and new_lead.perdu:
                 arreter_cadence(
@@ -1548,21 +1569,23 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # de cadence ci-dessus : sans elle, rien ne prouverait qu'elle a été
         # honorée. Aucun motif exigé (loi 09-08 art. 9 al. 2).
         if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
-            from .services import (
-                CONSENT_SOURCE_OPPOSITION_FICHE, tracer_opposition_registre)
+            from .cadence_reponses import (
+                CONSENT_SOURCE_OPPOSITION_FICHE,
+                tracer_opposition_registre,
+            )
             tracer_opposition_registre(
                 new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
         # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
         # finalité de contact, dont la source nomme l'utilisateur.
         if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
-            from .services import tracer_levee_opposition_registre
+            from .leads_consentement import tracer_levee_opposition_registre
             tracer_levee_opposition_registre(new_lead, self.request.user)
         # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
         # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
         # est le meilleur signal d'achat qui existe. Les trois chemins de
         # réouverture (ce PATCH, le lot `unset_perdu`, la nouvelle touche
         # entrante) posent désormais la MÊME cadence de reprise.
-        from .services import reprendre_cadence_apres_reouverture
+        from .cadence_touche import reprendre_cadence_apres_reouverture
         try:
             if old.perdu and not new_lead.perdu:
                 reprendre_cadence_apres_reouverture(
@@ -1695,6 +1718,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return [IsAdminRole()]
         return [IsAdminRole()]
 
+    @extend_schema(request=None, responses=LeadSerializer)
     @action(detail=True, methods=['post'], url_path='archiver',
             permission_classes=[IsResponsableOrAdmin])
     def archiver(self, request, pk=None):
@@ -1713,6 +1737,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 activity.log_archive(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=LeadSerializer)
     @action(detail=True, methods=['post'], url_path='restaurer',
             permission_classes=[IsResponsableOrAdmin])
     def restaurer(self, request, pk=None):
@@ -1793,6 +1818,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)
         return None, (devis_list, phone, message, links)
 
+    @extend_schema(request=sd.corps('CrmWhatsappDevisApercuRequest', devis_ids=sd.ids_requis(), langue=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='whatsapp-devis-apercu',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_devis_apercu(self, request, pk=None):
@@ -1816,7 +1842,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'phone': phone, 'message': message, 'links': links,
         })
 
-    @extend_schema(responses=inline_serializer('CrmResumeAssocie', {
+    @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.BooleanField(), devis_id=serializers.IntegerField(required=False), langue=serializers.CharField(required=False)), responses=inline_serializer('CrmResumeAssocie', {
         'wa_url': serializers.CharField(),
         'phone': serializers.CharField(),
         'message': serializers.CharField(),
@@ -1843,9 +1869,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         from .models import LeadActivity
         from .serializers import pii_masquee_pour
-        from .services import (
-            _corps_pour_segment, _nom_affiche_conseiller, _nom_affiche_marque,
-            _omettre_phrases_incompletes, _societe_du_lead,
+        from .cadence_messages import (
+            _corps_pour_segment,
+            _nom_affiche_conseiller,
+            _nom_affiche_marque,
+            _omettre_phrases_incompletes,
+            _societe_du_lead,
         )
 
         if pii_masquee_pour(request.user):
@@ -1907,6 +1936,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response({'wa_url': build_wa_url(phone, message),
                          'phone': phone, 'message': message})
 
+    @extend_schema(request=sd.corps('CrmWhatsappDevisRequest', devis_ids=sd.ids_requis(), langue=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='whatsapp-devis',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_devis(self, request, pk=None):
@@ -1954,6 +1984,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'phone': phone, 'message': message, 'links': links,
         })
 
+    @extend_schema(request=None, responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='synchroniser-client',
             permission_classes=[IsResponsableOrAdmin])
     def synchroniser_client(self, request, pk=None):
@@ -1961,7 +1992,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         fiche client » : recopie TOUT l'écart d'identité du lead vers SA fiche
         Client (``lead.client`` seulement, jamais un id du corps). 200
         ``{client_ecart, champs_mis_a_jour}`` | 400 ``{detail}``."""
-        from .services import client_ecart, synchroniser_identite_client
+        from .clients_identite import client_ecart, synchroniser_identite_client
 
         lead = self.get_object()
         if not lead.client_id:
@@ -1991,7 +2022,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         financières). L'événement est journalisé (qui/quand) côté serveur ; la
         réponse porte l'``corbeille_id`` pour l'undo-toast du front."""
         import logging
-        from .services import raison_refus_suppression
+        from .leads_fusion import raison_refus_suppression
         lead = self.get_object()
         # ACAL177 — UNE garde (devis liés + calepinage ouvert), partagée avec
         # l'opération en masse ``delete``.
@@ -2017,6 +2048,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(responses=sd.liste('CrmLeadDoublon'))
     @action(detail=True, methods=['get'], url_path='duplicates',
             permission_classes=[IsAnyRole])
     def duplicates(self, request, pk=None):
@@ -2028,7 +2060,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         client. Depuis que le webhook du site crée SYSTÉMATIQUEMENT un nouveau
         lead (plus aucune fusion silencieuse), c'est ce bandeau qui porte le
         rapprochement, et la fusion reste manuelle."""
-        from .services import find_duplicate_leads, is_strong_identity_match
+        from .leads_doublons import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
         dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
         # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``
@@ -2046,6 +2078,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             for d in dups
         ])
 
+    @extend_schema(parameters=[sd.param('telephone'), sd.param('phone'), sd.param('email'), sd.param('exclude', OpenApiTypes.INT)], responses=sd.liste('CrmLeadDoublonControle'))
     @action(detail=False, methods=['get'], url_path='check-duplicates',
             permission_classes=[IsAnyRole])
     def check_duplicates(self, request):
@@ -2056,7 +2089,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ?exclude=<id> retire le lead en cours d'édition de ses propres doublons.
         `match_fort` : même forme de ligne que l'action `duplicates` ci-dessus
         (les deux listes sont fusionnées par le même bandeau côté rail)."""
-        from .services import find_duplicates_by_contact, is_strong_identity_match
+        from .leads_doublons import find_duplicates_by_contact, is_strong_identity_match
         phone = request.query_params.get('telephone') or \
             request.query_params.get('phone')
         email = request.query_params.get('email')
@@ -2079,6 +2112,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             for d in dups
         ])
 
+    @extend_schema(request={'multipart/form-data': sd.corps('CrmScanCarteRequest', file=serializers.FileField())}, responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='scan-carte',
             permission_classes=[IsAnyRole],
             parser_classes=[MultiPartParser],
@@ -2089,7 +2123,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reconnus + un pré-check de doublons ; l'utilisateur valide avant
         toute création. Sans clé OCR configurée : 503 douce, aucun appel
         réseau. Aucune image persistée au-delà du traitement (en mémoire)."""
-        from .services import CarteVisiteScanUnavailable, scan_carte_visite
+        from .leads_intake import CarteVisiteScanUnavailable, scan_carte_visite
 
         upload = request.FILES.get('file')
         if not upload:
@@ -2121,6 +2155,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     scan_carte.throttle_scope = 'crm_ocr_scan'
 
+    @extend_schema(parameters=[sd.P_ARCHIVED_FLAG], responses=sd.liste('CrmGroupeDoublons'))
     @action(detail=False, methods=['get'], url_path='doublons',
             permission_classes=[IsAnyRole])
     def doublons(self, request):
@@ -2131,9 +2166,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         SUGGESTION seulement : aucune fusion n'est faite ici, `match_keys` dit
         POURQUOI chaque groupe est rapproché et la décision reste humaine."""
-        from .services import (
-            find_duplicate_clusters, _completeness, cluster_match_keys,
-            _MERGE_FILL_FIELDS, _est_vide,
+        from .leads_doublons import (
+            find_duplicate_clusters,
+            _completeness,
+            cluster_match_keys,
+            _MERGE_FILL_FIELDS,
+            _est_vide,
         )
         from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
@@ -2157,7 +2195,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # des touches ouvertes allaient quitter leur plan. Le compte vient
             # de la MÊME définition que la fusion (`relances_ouvertes_de`),
             # jamais d'un second filtre qui dériverait.
-            from .services import relances_ouvertes_de
+            from .leads_fusion import relances_ouvertes_de
             relances_reprises = sum(
                 relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
@@ -2197,13 +2235,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             })
         return Response(out)
 
+    @extend_schema(request=sd.corps('CrmLeadMergeRequest', others=sd.ids_requis()), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='merge',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def merge(self, request, pk=None):
         """Fusionne d'autres leads DANS celui-ci (survivant). Sans perte :
         devis, chantiers, activités, pièces jointes et historique sont déplacés ;
         les leads absorbés sont archivés (jamais supprimés)."""
-        from .services import merge_leads
+        from .leads_fusion import merge_leads
         survivor = self.get_object()
         ids = request.data.get('others') or []
         if not isinstance(ids, list) or not ids:
@@ -2223,6 +2262,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             survivor, '_clients_distincts', [])
         return Response(data)
 
+    @extend_schema(responses=LeadActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def historique(self, request, pk=None):
@@ -2247,6 +2287,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(LeadActivitySerializer(
             activites, many=True, context={'request': request}).data)
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='references-proches',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def references_proches(self, request, pk=None):
@@ -2263,6 +2304,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'references': realisations_proches(lead, limite=5),
         })
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='jalons-devis',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def jalons_devis(self, request, pk=None):
@@ -2282,6 +2324,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         return Response({'results': lead_jalons_devis(lead)})
 
+    @extend_schema(request=None, responses=LeadActivitySerializer)
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/epingler',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -2302,6 +2345,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=LeadActivitySerializer)
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/desepingler',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -2320,6 +2364,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data)
 
+    @extend_schema(request=sd.corps('CrmAppliquerPlanRequest', plan_id=serializers.IntegerField()), responses=sd.liste('CrmPlanActivites'))
     @action(detail=True, methods=['post'], url_path='appliquer-plan',
             permission_classes=[IsResponsableOrAdmin])
     def appliquer_plan(self, request, pk=None):
@@ -2336,7 +2381,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if plan is None:
             return Response({'detail': 'Plan introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
-        from .services import appliquer_plan_activite
+        from .fiche_ecritures import appliquer_plan_activite
         try:
             activites = appliquer_plan_activite(
                 lead=lead, plan=plan, user=request.user)
@@ -2349,6 +2394,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_200_OK)
 
     # ── RELANCE FOUNDATION — plan de relance structuré (multi-touches) ──────
+    @extend_schema(request=sd.corps('CrmInitialiserRelanceRequest', cadence=serializers.CharField(required=False), confirmer_remplacement=serializers.BooleanField(required=False), devis=serializers.IntegerField(required=False), motif=serializers.CharField(required=False), sans_devis_confirme=serializers.BooleanField(required=False)), responses=RelanceEtapeSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='relance/initialiser',
             permission_classes=[IsResponsableOrAdmin])
     def initialiser_relance(self, request, pk=None):
@@ -2394,15 +2440,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Lead marqué « ne plus contacter ».'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (MESSAGE_RELANCE_PLUSIEURS_DEVIS,
-                               MESSAGE_RELANCE_SANS_DEVIS,
-                               CadenceActiveConflit,
-                               CadenceRemplacementAConfirmer,
-                               apercu_remplacement_cadence,
-                               choix_devis_relance,
-                               devis_envoyes_pour_relance,
-                               initialiser_plan_relance,
-                               message_remplacement_cadence)
+        from .cadence_plan import (
+            MESSAGE_RELANCE_PLUSIEURS_DEVIS,
+            MESSAGE_RELANCE_SANS_DEVIS,
+            CadenceActiveConflit,
+            CadenceRemplacementAConfirmer,
+            apercu_remplacement_cadence,
+            choix_devis_relance,
+            devis_envoyes_pour_relance,
+            initialiser_plan_relance,
+            message_remplacement_cadence,
+        )
         oui = (True, 'true', 'True', '1', 1)
         confirme = request.data.get('confirmer_remplacement') in oui
         motif = str(request.data.get('motif') or '').strip()
@@ -2412,7 +2460,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # inchangée) : aucune question, et jamais un second plan à côté.
         # SUIVI E1 (30/09/2026) — un plan ouvert = un BARREAU du protocole :
         # une étape de visite ouverte (même cadence) ne l'est pas.
-        from .services import q_visite
+        from .cadence_reperes import q_visite
         devis = None
         if cadence == Cadence.APRES_DEVIS and not lead.relance_etapes.filter(
                 cadence=Cadence.APRES_DEVIS,
@@ -2484,6 +2532,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=sd.corps('CrmArreterRelanceRequest', cadences=serializers.ListField(child=serializers.CharField(), required=False), motif=serializers.CharField()), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='relance/arreter',
             permission_classes=[IsResponsableOrAdmin])
     def arreter_relance(self, request, pk=None):
@@ -2505,11 +2554,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'cadences': 'Liste de cadences attendue.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import arreter_cadence
+        from .cadence_plan import arreter_cadence
         arretees = arreter_cadence(
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
 
+    @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False), limite=serializers.IntegerField(required=False)), responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='placement-cadences',
             permission_classes=[IsResponsableOrAdmin])
     def placement_cadences(self, request):
@@ -2540,8 +2590,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'apply': 'Booléen attendu (true pour appliquer).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (
-            PLACEMENT_LOT_DEFAUT, PLACEMENT_LOT_MAX, placer_anciens_leads)
+        from .cadence_placement import (
+            PLACEMENT_LOT_DEFAUT,
+            PLACEMENT_LOT_MAX,
+            placer_anciens_leads,
+        )
         limite = request.data.get('limite')
         if limite in (None, ''):
             limite = PLACEMENT_LOT_DEFAUT
@@ -2566,7 +2619,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # ALEA25 — borné par la portée du viewset (société + équipe).
         from rest_framework.exceptions import APIException
 
-        from .services import PlacementImpossible
+        from .cadence_placement import PlacementImpossible
 
         class _PlacementSuspendu(APIException):
             # ACRM47 — 503 ``{detail}`` (contrat ACRM61) ; LEVÉE, pas
@@ -2581,6 +2634,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             raise _PlacementSuspendu(str(exc))
         return Response(rapport, status=status.HTTP_200_OK)
 
+    @extend_schema(request=sd.corps('CrmResoudreGpsRequest', adresse=serializers.CharField(required=False), lien=serializers.CharField(required=False), ville=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='resoudre-gps',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def resoudre_gps(self, request):
@@ -2618,6 +2672,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'precision': precision,
         })
 
+    @extend_schema(request=sd.corps('CrmVilleStatutRequest', ville=serializers.CharField(required=False, allow_blank=True), gps_lat=serializers.FloatField(required=False), gps_lng=serializers.FloatField(required=False), proches=serializers.BooleanField(required=False)), responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='ville-statut',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def ville_statut(self, request):
@@ -2674,6 +2729,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'gps_hors_zone': gps_hors_zone,
         })
 
+    @extend_schema(request=sd.corps('CrmConvertirClientRequest', mode=serializers.ChoiceField(choices=['nouveau', 'lier', 'aucun']), client_id=serializers.IntegerField(required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
@@ -2682,7 +2738,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         mode = (request.data.get('mode') or '').strip()
         client_id = request.data.get('client_id')
-        from .services import ClientIntrouvable, convertir_lead_en_client
+        from .clients_identite import ClientIntrouvable, convertir_lead_en_client
         try:
             # ACRM7 — le client à lier est cherché dans la PORTÉE de
             # l'appelant (même règle que ``ClientViewSet.get_queryset``).
@@ -2708,6 +2764,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 if client else None),
         })
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='points-contact',
             permission_classes=[IsAnyRole])
     def points_contact(self, request, pk=None):
@@ -2727,6 +2784,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 summary['timeline'], many=True).data,
         })
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='salle-vente-analytics',
             permission_classes=[IsAnyRole])
     def salle_vente_analytics_view(self, request, pk=None):
@@ -2738,6 +2796,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         summary = salle_vente_summary_for_lead(request.user.company, lead.pk)
         return Response(summary)
 
+    @extend_schema(request=None, responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='devis-auto',
             permission_classes=[IsResponsableOrAdmin])
     def devis_auto(self, request, pk=None):
@@ -2754,6 +2813,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             {'ok': True, 'detail': 'Lead prêt pour le devis automatique.'})
 
     # ── L-QUEST — Questionnaire envoyable au client ──────────────────────────
+    @extend_schema(request=sd.corps('CrmQuestionnaireLienRequest', questions=serializers.ListField(child=serializers.CharField(), required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='questionnaire-lien',
             permission_classes=[IsResponsableOrAdmin])
     def questionnaire_lien(self, request, pk=None):
@@ -2811,6 +2871,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         })
 
     # ── FG31 — File de relance du jour ───────────────────────────────────────
+    @extend_schema(parameters=[sd.P_SCOPE], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='relances',
             permission_classes=[IsAnyRole])
     def relances(self, request):
@@ -2838,6 +2899,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                          'results': self._serialiser_leads_en_lot(qs)})
 
     # ── FG34 — ROI par source / campagne ────────────────────────────────────
+    @extend_schema(parameters=[sd.param('from', OpenApiTypes.DATE), sd.param('to', OpenApiTypes.DATE), sd.param('canal')], responses=sd.liste('CrmRoiSource'))
     @action(detail=False, methods=['get'], url_path='roi-sources',
             permission_classes=[IsAnyRole])
     def roi_sources(self, request):
@@ -2913,6 +2975,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(result)
 
     # ── FG38 — Correspondance Lead↔Client (doublon retour client) ────────────
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='client-match',
             permission_classes=[IsAnyRole])
     def client_match(self, request, pk=None):
@@ -2929,7 +2992,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # `apps.ventes.utils.phone.normalize_ma_phone` (forçait un préfixe
         # '212', ne rapprochait jamais un lead à numéro étranger) vers la
         # même clé QW10 que `selectors.find_client_by_phone` juste au-dessus.
-        from .services import normalize_phone
+        from .leads_doublons import normalize_phone
 
         conditions = []
         phone_norm = normalize_phone(lead.telephone or '') if lead.telephone else None
@@ -2977,7 +3040,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # `LeadSerializer` du ViewSet alors qu'il renvoie sept chiffres : un schéma
     # qui MENT est pire qu'un schéma vide. `allow_null` partout où le contrat
     # MRY25 prévoit `null` sur un dénominateur vide.
-    @extend_schema(responses=inline_serializer('CrmKpiCadences', {
+    @extend_schema(parameters=[sd.P_JOURS], responses=inline_serializer('CrmKpiCadences', {
         'joints_sous_5j_pct': serializers.FloatField(allow_null=True),
         'cadences_completes': serializers.IntegerField(),
         'cadences_arretees_joint': serializers.IntegerField(),
@@ -3004,7 +3067,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # ── CAD-I ── CAD87 — les trois mesures de la cadence ─────────────────────
     # PACT7 — même raison que `kpi_cadences` : un agrégat déclare sa forme,
     # sinon le schéma publierait le `LeadSerializer` du ViewSet à sa place.
-    @extend_schema(responses=inline_serializer('CrmMesureCadence', {
+    @extend_schema(parameters=[sd.P_JOURS], responses=inline_serializer('CrmMesureCadence', {
         'jours': serializers.IntegerField(),
         'source_issue': serializers.CharField(),
         'taux_joint_par_creneau': serializers.ListField(
@@ -3041,7 +3104,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
     # PACT7 — même raison que `kpi_cadences` ci-dessous : un agrégat déclare
     # sa forme, sinon le schéma la remplace par celle du ViewSet.
-    @extend_schema(responses=inline_serializer('CrmKpiPremierContact', {
+    @extend_schema(parameters=[sd.P_JOURS], responses=inline_serializer('CrmKpiPremierContact', {
         'objectif_minutes': serializers.IntegerField(),
         'nb_leads': serializers.IntegerField(),
         'nb_sous_objectif': serializers.IntegerField(allow_null=True),
@@ -3071,6 +3134,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(_kpi(request.user.company, jours=jours))
 
     # ── FG28 — Filtre SLA non contactés ──────────────────────────────────────
+    @extend_schema(responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='sla-breach',
             permission_classes=[IsAnyRole])
     def sla_breach(self, request):
@@ -3081,7 +3145,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """
         from django.utils import timezone
         import datetime
-        from .services import lead_sla_hours as get_sla_hours
+        from .leads_premier_contact import lead_sla_hours as get_sla_hours
         sla = get_sla_hours(request.user.company)
         if sla == 0:
             return Response({'sla_hours': 0, 'count': 0, 'results': []})
@@ -3133,7 +3197,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         chaînes vides sinon."""
         from apps.visites.selectors import visites_pour_lead
 
-        from .services import avertissement_visite
+        from .cadence_visite import avertissement_visite
 
         lead = self.get_object()
         avertissement = avertissement_visite(lead)
@@ -3144,7 +3208,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'rappel_juridique': avertissement['rappel_juridique'],
         })
 
-    @extend_schema(responses=inline_serializer('CrmLeadVisitePlanifiee', {
+    @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False), date_prevue=serializers.CharField(), etape=serializers.CharField(required=False), note_etape=serializers.CharField(required=False), notes=serializers.CharField(required=False), replanifier=serializers.BooleanField(required=False)), responses=inline_serializer('CrmLeadVisitePlanifiee', {
         'visite': serializers.DictField(),
         'prochaine_touche': serializers.DictField(allow_null=True),
     }))
@@ -3174,8 +3238,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.visites.selectors import ligne_visite_pour_lead
         from apps.visites.services import planifier_visite
 
-        from .services import (
-            _prochaine_touche_a_faire, clore_etape_apres_planification)
+        from .cadence_visite import clore_etape_apres_planification
+        from .cadence_plan import _prochaine_touche_a_faire
 
         lead = self.get_object()
         brut = (request.data.get('date_prevue') or '').strip()
@@ -3237,7 +3301,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                              _prochaine_touche_a_faire(lead))},
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(responses=inline_serializer('CrmLeadLocataire', {
+    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False), proprietaire_inconnu=serializers.BooleanField(required=False)), responses=inline_serializer('CrmLeadLocataire', {
         'locataire': serializers.BooleanField(),
         'propose': serializers.ListField(child=serializers.CharField()),
         'motif_perte': serializers.CharField(),
@@ -3256,9 +3320,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         locataire avec le motif EXISTANT « Locataire » — 200. Chaque refus
         NOMME son champ. Aucune valeur d'énumération neuve (contrat
         ``lead_locataire``)."""
-        from .services import (
-            clore_locataire_sans_proprietaire, creer_lead_proprietaire,
-            proposition_locataire, refus_proprietaire)
+        from .cadence_reponses import (
+            clore_locataire_sans_proprietaire,
+            creer_lead_proprietaire,
+            proposition_locataire,
+            refus_proprietaire,
+        )
 
         lead = self.get_object()
         if request.method == 'GET':
@@ -3302,7 +3369,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                           'motif_perte': lead.motif_perte or ''},
         }, status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
-    @extend_schema(responses=inline_serializer('CrmLeadMessageVisite', {
+    @extend_schema(parameters=[sd.P_CLE], responses=inline_serializer('CrmLeadMessageVisite', {
         'corps_fr': serializers.CharField(),
         'corps_darija': serializers.CharField(),
     }))
@@ -3320,7 +3387,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
         from .serializers import pii_masquee_pour
-        from .services import cles_message_visite_du_lead, message_visite_pour_lead
+        from .cadence_messages import cles_message_visite_du_lead, message_visite_pour_lead
 
         cle = (request.query_params.get('cle') or '').strip()
         lead = self.get_object()
@@ -3339,7 +3406,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(rendu)
 
-    @extend_schema(responses=inline_serializer('CrmMessageVisiteOuvert', {
+    @extend_schema(request=sd.corps('CrmMessageVisiteOuvertRequest', cle=serializers.CharField(), etape=serializers.CharField(required=False), langue=serializers.CharField(required=False)), responses=inline_serializer('CrmMessageVisiteOuvert', {
         'journalise': serializers.BooleanField(),
         'cle': serializers.CharField(),
         'langue': serializers.CharField(),
@@ -3357,9 +3424,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         issue, aucune touche avancée. ``etape`` (une touche à faire de CE lead)
         rattache l'ouverture à la touche, que son panneau « Fait » reconnaît.
         Refus 400 nommant le champ (``cle``, ``langue``, ``etape``)."""
-        from .services import (
-            LANGUES_MESSAGE_VISITE, cle_message_visite_autorisee,
-            cles_message_visite_du_lead, journaliser_message_visite_ouvert,
+        from .cadence_messages import (
+            LANGUES_MESSAGE_VISITE,
+            cle_message_visite_autorisee,
+            cles_message_visite_du_lead,
+            journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
         cle = (request.data.get('cle') or '').strip()
@@ -3398,6 +3467,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response({'journalise': True, 'cle': cle, 'langue': langue,
                          'etape': etape.pk if etape is not None else None})
 
+    @extend_schema(request={'application/json': sd.corps('CrmNoterRequest', body=serializers.CharField()), 'multipart/form-data': sd.corps('CrmNoterMultipartRequest', body=serializers.CharField(), file=serializers.FileField(required=False))}, responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin],
             parser_classes=[MultiPartParser, FormParser, JSONParser])
@@ -3441,13 +3511,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # FG28/MRY19 — première note = premier contact. La condition
         # « lead encore en NEW » a DISPARU : un lead saisi à la main, déjà
         # CONTACTED, ne recevait jamais d'horodatage et sortait du KPI.
-        from .services import marquer_premier_contact
+        from .leads_premier_contact import marquer_premier_contact
         marquer_premier_contact(lead)
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
     # FG30 — Interaction typée (appel/e-mail) dans le chatter ─────────────────
+    @extend_schema(request=sd.corps('CrmLogInteractionRequest', kind=serializers.ChoiceField(choices=[LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL, LeadActivity.Kind.WHATSAPP]), body=serializers.CharField(required=False, allow_blank=True), outcome=serializers.ChoiceField(choices=[k for k, _ in LeadActivity.OUTCOMES if k], required=False), rappel_le=serializers.CharField(required=False), rappel_heure=serializers.CharField(required=False)), responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='log-interaction',
             permission_classes=[IsResponsableOrAdmin])
     def log_interaction(self, request, pk=None):
@@ -3497,8 +3568,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # touche forment UNE transaction : un report en panne n'écrit rien
         # (avant : chatter écrit puis 500, touche jamais déplacée).
         from django.db import transaction
-        from .services import (marquer_premier_contact,
-                               reporter_prochaine_touche)
+        from .cadence_plan import reporter_prochaine_touche
+        from .leads_premier_contact import marquer_premier_contact
         with transaction.atomic():
             act = LeadActivity.objects.create(
                 lead=lead,
@@ -3523,6 +3594,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)), ids=sd.ids_requis()), responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
     def bulk(self, request):
@@ -3558,6 +3630,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
+    @extend_schema(request=sd.corps('CrmLeadsExportRequest', ids=sd.ids_requis()), responses=sd.EXPORT_XLSX)
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
@@ -3611,6 +3684,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             leads, masquer_pii=pii_masquee_pour(request.user))
 
     # ── CAD-L ── CAD148 — le panneau d'appel guidé.
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='panneau-appel',
             permission_classes=[IsAnyRole])
     def panneau_appel(self, request, pk=None):
@@ -3632,6 +3706,7 @@ class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé).
     VX241(b) — la suppression effective écrit désormais une ligne AuditLog
     (UsageGuardedDestroyMixin) : LeadTag n'est pas dans TRACKED_MODELS."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = LeadTag.objects.all()
     serializer_class = LeadTagSerializer
 
@@ -3840,6 +3915,7 @@ class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     supprime pas — l'admin l'archive plutôt (comme pour les canaux).
     VX241(b) — la suppression effective écrit désormais une ligne AuditLog
     (UsageGuardedDestroyMixin) : MotifPerte n'est pas dans TRACKED_MODELS."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = MotifPerte.objects.all()
     serializer_class = MotifPerteSerializer
 
@@ -3912,6 +3988,7 @@ class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     pas, et aucun canal utilisé par des leads ne se supprime.
     VX241(b) — la suppression effective écrit désormais une ligne AuditLog
     (UsageGuardedDestroyMixin) : Canal n'est pas dans TRACKED_MODELS."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = Canal.objects.all()
     serializer_class = CanalSerializer
 
@@ -3938,14 +4015,19 @@ class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
 
 
 class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
     """N98 — parrainages. Lecture tout rôle, écriture responsable/admin.
 
     À la création, la récompense est pré-remplie depuis Paramètres
     (referral_reward) quand elle n'est pas fournie. ?stats=1 ajoute un petit
     tableau de bord (totaux par statut + récompenses)."""
     # ACRM9 — lectures bornées à la portée (leads : filleul_lead ;
+
     # clients : parrain, filleul_client).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ('filleul_lead',)
+
     portee_clients = ('parrain', 'filleul_client')
     queryset = Parrainage.objects.select_related(
         'parrain', 'filleul_lead', 'filleul_client').all()
@@ -3969,6 +4051,7 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
                 pass
         serializer.save(**extra)
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='stats',
             permission_classes=[IsAnyRole])
     def stats(self, request):
@@ -3995,6 +4078,7 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
 # ── QX16 — Surface de rejeu des payloads leads site web ──────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('all', description='Inclure aussi les payloads déjà rattachés.')]))
 class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """QX16 — « Jamais perdre un lead » (webhooks.py) devient opérationnel :
     liste des payloads bruts, avec un filtre par défaut sur ceux qui méritent
@@ -4002,6 +4086,7 @@ class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadO
     la liste complète (comportement admin). LECTURE SEULE — la seule écriture
     possible est l'action ``replay``, qui rejoue EXACTEMENT le même mapping
     que le webhook (jamais une seconde implémentation)."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     # ACRM52 — détail/rejeu désormais adressables hors filtre « à traiter » :
     # bornés à la portée du lead rattaché (sans lead : visible, comme avant).
     portee_leads = ('lead',)
@@ -4024,6 +4109,7 @@ class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadO
         from django.db.models import Q
         return qs.filter(Q(error__gt='') | Q(lead__isnull=True))
 
+    @extend_schema(request=None, responses={200: sd.OBJ, 422: sd.OBJ})
     @action(detail=True, methods=['post'], url_path='replay',
             permission_classes=[IsResponsableOrAdmin])
     def replay(self, request, pk=None):
@@ -4053,7 +4139,9 @@ class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadO
 
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
 class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Saisi une fois par client, le générateur de devis le pré-remplit ensuite
@@ -4061,8 +4149,12 @@ class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     serveur (jamais lus du corps de requête). Lecture tout rôle, écriture
     responsable/admin. Filtrable par ?client=<id>."""
     # ACRM9 — lectures bornées à la portée (leads : — ;
+
     # clients : client).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ()
+
     portee_clients = ('client',)
     queryset = SiteProfile.objects.select_related('client').all()
     serializer_class = SiteProfileSerializer
@@ -4091,6 +4183,7 @@ class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 class PlanActiviteViewSet(CompanyScopedModelViewSet):
     """Plans d'activité (checklists de tâches commerciales) : lecture tout
     rôle, écriture responsable/admin. Société forcée côté serveur."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = PlanActivite.objects.prefetch_related(
         'etapes', 'etapes__activity_type').all()
     serializer_class = PlanActiviteSerializer
@@ -4102,6 +4195,7 @@ class PlanActiviteViewSet(CompanyScopedModelViewSet):
 
 
 # ── RELANCE FOUNDATION — file « Relances du jour » + actions Fait/Sauter ────
+@extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD, sd.P_OWNER, sd.P_SCOPE], responses=sd.OBJ))
 class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                           viewsets.GenericViewSet):
     """Étapes de plan de relance structuré (``RelanceEtape``). AUCUNE création/
@@ -4110,6 +4204,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
     seules ``list`` (la file due) et les deux actions ``fait``/``sauter`` sont
     routées. Aucun envoi automatique (WhatsApp/e-mail) n'est jamais déclenché
     ici : ce sont des rappels VISUELS pour le commercial."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = RelanceEtape.objects.select_related('lead', 'lead__owner').all()
     serializer_class = RelanceEtapeSerializer
 
@@ -4203,6 +4298,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 request.user.company, request.user, owner=owner)
         return Response(payload)
 
+    @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True), sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER, sd.param('statut')], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='suivi',
             permission_classes=[IsAnyRole])
     def suivi(self, request):
@@ -4288,7 +4384,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'results': lignes,
         })
 
-    @extend_schema(responses=inline_serializer('CrmJournalRelance', {
+    @extend_schema(parameters=[sd.P_LEAD_REQ], responses=inline_serializer('CrmJournalRelance', {
         'lead': serializers.IntegerField(),
         'etat': serializers.DictField(),
         'lignes': serializers.ListField(child=serializers.DictField()),
@@ -4320,7 +4416,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_404_NOT_FOUND)
         return Response(journal)
 
-    @extend_schema(responses=inline_serializer('CrmCadencesEchues', {
+    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, required=True)], responses=inline_serializer('CrmCadencesEchues', {
         'count': serializers.IntegerField(),
         'jours': serializers.IntegerField(),
         'results': serializers.ListField(child=serializers.DictField()),
@@ -4353,7 +4449,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         return Response({'count': len(lignes), 'jours': jours,
                          'results': lignes})
 
-    @extend_schema(responses=inline_serializer('CrmKpiAdherence', {
+    @extend_schema(parameters=[sd.P_JOURS], responses=inline_serializer('CrmKpiAdherence', {
         'periode_jours': serializers.IntegerField(),
         'a_lheure_pct': serializers.FloatField(allow_null=True),
         'touches_faites': serializers.IntegerField(),
@@ -4440,7 +4536,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         return Response(
             chaine_commerciale(request.user, request.user.company))
 
-    @extend_schema(responses=inline_serializer('CrmControleSuivi', {
+    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, enum=[7, 14, 30]), sd.P_OWNER, sd.param('segment')], responses=inline_serializer('CrmControleSuivi', {
         'periode_jours': serializers.IntegerField(),
         'owner': serializers.IntegerField(allow_null=True),
         'commerciaux': serializers.ListField(child=serializers.DictField()),
@@ -4528,7 +4624,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # « perdu » reste une décision humaine, MRY22).
         motif_refus = (request.data.get('motif_refus') or '').strip()
         if motif_refus:
-            from .services import mention_motif_refus, motif_refus_valide
+            from .cadence_reponses import mention_motif_refus
+            from .leads_socle import motif_refus_valide
             if outcome != 'refuse':
                 return Response(
                     {'erreurs': {'motif_refus': (
@@ -4550,7 +4647,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         perdu_junk = (request.data.get('perdu_junk') or '').strip()
         motif_junk = None
         if perdu_junk:
-            from .services import motif_junk_valide
+            from .cadence_reponses import motif_junk_valide
             if statut != RelanceEtape.Statut.FAIT or outcome != 'non_joint':
                 return Response(
                     {'erreurs': {'perdu_junk': (
@@ -4625,13 +4722,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import (est_derniere_touche_de_contact,
-                               est_derniere_touche_du_suivi,
-                               est_dernier_reveil, est_etape_de_filet,
-                               est_etape_de_visite, marquer_etape_relance,
-                               repondre_planifier_sans_reponse,
-                               reporter_prochaine_touche,
-                               repondre_rappel_convenu)
+        from .cadence_touche import marquer_etape_relance
+        from .cadence_plan import est_etape_de_filet, reporter_prochaine_touche
+        from .cadence_reperes import est_etape_de_visite
+        from .cadence_reponses import (
+            est_derniere_touche_de_contact,
+            est_derniere_touche_du_suivi,
+            est_dernier_reveil,
+            repondre_planifier_sans_reponse,
+            repondre_rappel_convenu,
+        )
         # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse :
         # l'appel compte et l'étape est REPOSÉE pour demain — jamais
         # « Préparer et envoyer le devis » (le client a accepté la visite).
@@ -4724,7 +4824,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape, request.user, statut, note=note, outcome=outcome,
             body=body, suite=motif_junk is None)
         if motif_junk is not None:
-            from .services import marquer_lead_perdu_junk
+            from .cadence_reponses import marquer_lead_perdu_junk
             marquer_lead_perdu_junk(etape.lead, request.user, motif_junk)
         if quand is not None:
             # COCKPIT-CONTRÔLE — la touche est CLOSE ; la date place la
@@ -4754,7 +4854,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         SUIVI E9 — elle NOMME l'étape (``libelle``, ``cle``) :
         ``_prochaine_touche_publique``."""
-        from .services import _prochaine_touche_a_faire
+        from .cadence_plan import _prochaine_touche_a_faire
 
         data = self.get_serializer(etape).data
         data['prochaine_touche'] = _prochaine_touche_publique(
@@ -4769,18 +4869,31 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         l'issue enregistrée en est dérivée ici, jamais envoyée par l'écran.
         Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
         réponse et dit où elle vaut."""
-        from .services import (
-            REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-            REPONSE_ATTENTE_ACCORD, REPONSE_DEVIS_MODIFIE,
+        from .cadence_reponses import (
+            REPONSE_DECISION_FAMILLE,
+            REPONSE_DECISION_PROPRIETAIRE,
+            REPONSE_ATTENTE_ACCORD,
+            REPONSE_DEVIS_MODIFIE,
             REPONSE_JOINT_TELEPHONE,
-            REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
-            REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE,
-            refus_motif_perte, refus_raison_attente, refus_reponse_touche,
+            REPONSE_NE_PLUS_CONTACTER,
+            REPONSE_PERDU,
+            REPONSE_PLUS_TARD,
+            REPONSE_QUESTION_PRIX,
+            REPONSE_VISITE_ABANDONNEE,
+            refus_motif_perte,
+            refus_raison_attente,
+            refus_reponse_touche,
             repondre_attente_accord,
-            repondre_decision_a_plusieurs, repondre_devis_modifie,
-            repondre_joint_telephone, repondre_ne_plus_contacter,
-            repondre_perdu, repondre_plus_tard, repondre_question_prix,
-            repondre_visite_abandonnee, reponse_touche)
+            repondre_decision_a_plusieurs,
+            repondre_devis_modifie,
+            repondre_joint_telephone,
+            repondre_ne_plus_contacter,
+            repondre_perdu,
+            repondre_plus_tard,
+            repondre_question_prix,
+            repondre_visite_abandonnee,
+            reponse_touche,
+        )
 
         etape = self.get_object()
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
@@ -4871,6 +4984,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 etape, request.user, note=note, body=body)
         return self._reponse_fait(etape)
 
+    @extend_schema(request=sd.corps('CrmRelanceFaitRequest', outcome=serializers.CharField(required=False), reponse=serializers.CharField(required=False), langue=serializers.CharField(required=False), note=serializers.CharField(required=False)), responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
         """Marque cette étape FAITE.
@@ -4894,7 +5008,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         une fois pour toutes — seulement si la touche a bien été enregistrée
         (un refus 400 ne change rien). Une langue inconnue est refusée AVANT
         tout, en 400 ``{"erreurs": {"langue": …}}``."""
-        from .services import definir_langue_preferee, refus_langue_relance
+        from .cadence_messages import definir_langue_preferee, refus_langue_relance
         langue = (request.data.get('langue') or '').strip()
         if langue:
             refus = refus_langue_relance(langue)
@@ -4920,6 +5034,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 request.META.get('HTTP_USER_AGENT', ''))
         return resultat
 
+    @extend_schema(request=None, responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def sauter(self, request, pk=None):
         """Marque cette étape de relance SAUTÉE (note optionnelle).
@@ -4934,6 +5049,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         reporte, elle ne se saute pas."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
 
+    @extend_schema(request=None, responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def annuler(self, request, pk=None):
         """RLC1 — Annule une touche « Fait »/« Sautée » traitée par erreur.
@@ -4950,7 +5066,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions`` (jamais
         listée parmi les lectures)."""
         etape = self.get_object()
-        from .services import AnnulationToucheRefusee, annuler_touche_relance
+        from .cadence_touche import AnnulationToucheRefusee, annuler_touche_relance
         try:
             etape = annuler_touche_relance(etape, request.user)
         except AnnulationToucheRefusee as refus:
@@ -4958,6 +5074,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(etape).data)
 
+    @extend_schema(parameters=[sd.P_CLE, sd.P_LANGUE], responses=sd.OBJ)
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
         """MRY13 — Le message de CETTE touche, rendu côté serveur.
@@ -4975,8 +5092,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         à l'aperçu, sans toucher la fiche (le basculeur FR / Darija). Une
         autre valeur est refusée en 400 nommant le champ ``langue``."""
         etape = self.get_object()
-        from .services import (
-            CLES_MESSAGE_REPONSE, message_pour_etape, refus_langue_relance)
+        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_reponses import CLES_MESSAGE_REPONSE
         cle = (request.query_params.get('cle') or '').strip()
         if cle and cle not in CLES_MESSAGE_REPONSE:
             # Levée, jamais un second `return` : la forme du contrat
@@ -4993,6 +5110,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape, request=request, user=request.user, cle=cle or None,
             langue=langue or None))
 
+    @extend_schema(request=sd.corps('CrmRelanceWhatsappRequest', langue=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'])
     @_geste_atomique
     def whatsapp(self, request, pk=None):
@@ -5009,10 +5127,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
         pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
-        from .services import (
-            journaliser_whatsapp_ouvert, marquer_premier_contact,
-            message_pour_etape, refus_langue_relance,
-        )
+        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_reperes import journaliser_whatsapp_ouvert
+        from .leads_premier_contact import marquer_premier_contact
         langue = (request.data.get('langue') or '').strip()
         if langue and refus_langue_relance(langue):
             # Levée (même motif que `message`) : la forme versionnée du
@@ -5025,7 +5142,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             # CAD70 — sans réalisation publiée, le message J4 se réduit à une
             # phrase orpheline : il n'est pas « ouvert ». Levée (même motif
             # que la langue) : la forme versionnée reste celle du rendu.
-            from .services import REFUS_PREUVE_MANQUANTE
+            from .cadence_messages import REFUS_PREUVE_MANQUANTE
             raise DRFValidationError(
                 {'erreurs': {'preuve': REFUS_PREUVE_MANQUANTE}})
         if not rendu.get('wa_url'):
@@ -5052,6 +5169,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         rendu['etape'] = self.get_serializer(etape).data
         return Response(rendu)
 
+    @extend_schema(request=None, responses={204: None})
     @action(detail=True, methods=['post'], url_path='appel-compose')
     def appel_compose(self, request, pk=None):
         """CAD178 — compteur BEST-EFFORT du geste « Appeler ».
@@ -5069,6 +5187,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape.company, 'appeler', request.META.get('HTTP_USER_AGENT', ''))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(request=sd.corps('CrmRelanceLangueRequest', langue=serializers.CharField()), responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def langue(self, request, pk=None):
         """CAD63 — enregistre la langue du CLIENT de cette touche, en un geste.
@@ -5084,7 +5203,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         Écriture → garde ``IsResponsableOrAdmin`` par défaut de
         ``get_permissions``."""
         etape = self.get_object()
-        from .services import definir_langue_preferee, refus_langue_relance
+        from .cadence_messages import definir_langue_preferee, refus_langue_relance
         langue = (request.data.get('langue') or '').strip()
         refus = (refus_langue_relance(langue) if langue else
                  '« Langue du client » : choisissez la langue à enregistrer.')
@@ -5094,6 +5213,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         definir_langue_preferee(etape.lead, request.user, langue)
         return Response(self.get_serializer(etape).data)
 
+    @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest', type_piece=serializers.CharField(), note=serializers.CharField(required=False)), 'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest', type_piece=serializers.CharField(), note=serializers.CharField(required=False), fichier=serializers.FileField(required=False))}, responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='piece-recue',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     @_geste_atomique
@@ -5113,7 +5233,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         par un message ENTRANT : c'est un geste humain. Écriture → garde
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions``."""
         etape = self.get_object()
-        from .services import enregistrer_piece_recue, refus_piece_recue
+        from .cadence_reponses import enregistrer_piece_recue, refus_piece_recue
         type_piece = (request.data.get('type_piece') or '').strip()
         refus = refus_piece_recue(etape, type_piece)
         if refus:
@@ -5147,6 +5267,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # lead (d'ordinaire l'étape « préparer le devis » posée ici).
         return self._reponse_fait(etape)
 
+    @extend_schema(request=sd.corps('CrmReporterRequest', mode=serializers.ChoiceField(choices=['decaler', 'veille'], required=False), due_at=serializers.DateTimeField(required=False), rappel_le=serializers.CharField(required=False), rappel_heure=serializers.CharField(required=False)), responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     @_geste_atomique
     def reporter(self, request, pk=None):
@@ -5208,7 +5329,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'mesure CAD178 reporter', enregistrer_geste_appareil,
             etape.company, 'reporter', request.META.get('HTTP_USER_AGENT', ''))
         if mode == 'veille':
-            from .services import mettre_en_veille
+            from .cadence_reponses import mettre_en_veille
             reprise = mettre_en_veille(
                 etape.lead, request.user, quand, etape=etape)
             if reprise is None:
@@ -5217,7 +5338,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 etape.refresh_from_db()
                 reprise = etape
             return Response(self.get_serializer(reprise).data)
-        from .services import reporter_prochaine_touche
+        from .cadence_plan import reporter_prochaine_touche
         etape = reporter_prochaine_touche(
             etape.lead, request.user, quand, etape=etape)
         return Response(self.get_serializer(etape).data)
@@ -5233,6 +5354,7 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
     une PORTÉE (le rollup du forecast, les cartes « Mes équipes ») — un
     Commercial pouvait se nommer responsable d'une équipe et lire son
     pipeline."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = EquipeCommerciale.objects.prefetch_related('membres').all()
     serializer_class = EquipeCommercialeSerializer
 
@@ -5244,6 +5366,7 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.P_ARCHIVED_FLAG]))
 class MessageTemplateViewSet(CompanyScopedModelViewSet):
     """Modèles de messages CRM (WhatsApp/SMS). Lecture tout rôle, écriture admin.
 
@@ -5251,6 +5374,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
     reste accessible en détail mais n'apparaît plus dans la liste par défaut
     (?archived=true pour les voir).
     """
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = MessageTemplate.objects.all()
     serializer_class = MessageTemplateSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -5277,6 +5401,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             created_by=self.request.user,
         )
 
+    @extend_schema(request=sd.corps('CrmMessageRenderRequest', lead_id=serializers.IntegerField(required=False), lien=serializers.CharField(required=False), prenom=serializers.CharField(required=False), ville=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='render',
             permission_classes=[IsAnyRole])
     def render_template(self, request, pk=None):
@@ -5306,7 +5431,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
                 # LEVÉ, pas renvoyé : le contrat reste la forme du 200.
                 raise DRFValidationError({'lead': ['Lead introuvable.']})
         if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
-            from .services import public_booking_url
+            from .visites_rdv import public_booking_url
             try:
                 lien_rdv = public_booking_url(lead, request=request)
             except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
@@ -5339,6 +5464,7 @@ def _noter_rdv(lead, user, corps):
     activity.log_note(lead, user, f'{corps} (par {qui}).')
 
 
+@extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD]))
 class AppointmentViewSet(CompanyScopedModelViewSet):
     """QJ20 — Rendez-vous planifiés sur les leads (visites commerciales/techniques).
 
@@ -5347,6 +5473,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
     depuis l'utilisateur actif (jamais lue du corps de requête — multi-tenant).
     Filtre ?lead=<id> pour n'avoir que les RDV d'un lead donné.
     """
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = AppointmentSerializer
     queryset = Appointment.objects.select_related('lead', 'company').all()
     filterset_fields = ['lead', 'statut']
@@ -5374,7 +5501,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         """Company et created_by toujours posés côté serveur."""
-        from .services import book_appointment
+        from .visites_rdv import book_appointment
         lead = serializer.validated_data['lead']
         scheduled_at = serializer.validated_data['scheduled_at']
         notes = serializer.validated_data.get('notes') or ''
@@ -5429,6 +5556,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
             _noter_rdv(lead, self.request.user,
                        f'RDV #{pk} du {_quand_rdv(quand)} : supprimé')
 
+    @extend_schema(responses=sd.EXPORT_ICS)
     @action(detail=True, methods=['get'], url_path='ics')
     def ics(self, request, pk=None):
         """VX245(a) — `.ics` d'ÉVÉNEMENT UNIQUE pour CE rendez-vous (RFC 5545,
@@ -5460,6 +5588,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         resp['Content-Disposition'] = f'attachment; filename="rdv-{appt.pk}.ics"'
         return resp
 
+    @extend_schema(request=None, responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='confirmer-whatsapp',
             permission_classes=[IsResponsableOrAdmin])
     def confirmer_whatsapp(self, request, pk=None):
@@ -5468,7 +5597,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
         `LeadViewSet.whatsapp_devis`)."""
         appt = self.get_object()
-        from .services import build_appointment_confirmation_whatsapp
+        from .visites_rdv import build_appointment_confirmation_whatsapp
 
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
@@ -5484,6 +5613,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
 
 # ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('metric'), sd.param('year', OpenApiTypes.INT), sd.param('period_type'), sd.param('owner', description='Identifiant ou « null ».')]))
 class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
@@ -5494,6 +5624,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
       GET       /crm/objectifs/attainment/?year=&metric=&period_type=&owner=
       GET       /crm/objectifs/{id}/attainment/
     """
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = ObjectifCommercial.objects.all()
     serializer_class = ObjectifCommercialSerializer
 
@@ -5527,6 +5658,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    @extend_schema(responses=ObjectifAttainmentSerializer)
     @action(detail=True, methods=['get'], url_path='attainment',
             permission_classes=[IsAnyRole])
     def attainment(self, request, pk=None):
@@ -5553,7 +5685,14 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     # YAPIC6 — sans cette annotation le schéma documente un OBJET unique alors
     # que l'action renvoie une LISTE (drf-spectacular déduit le détail depuis
     # le serializer). Annotation de schéma uniquement : aucun effet runtime.
-    @extend_schema(responses=ObjectifAttainmentSerializer(many=True))
+    @extend_schema(
+        parameters=[
+            sd.param('metric'), sd.param('year', OpenApiTypes.INT),
+            sd.param('period_type'),
+            sd.param('owner', description='Identifiant ou « null ».'),
+        ],
+        responses=ObjectifAttainmentSerializer(many=True),
+    )
     @action(detail=False, methods=['get'], url_path='attainment',
             permission_classes=[IsAnyRole])
     def attainment_list(self, request):
@@ -5582,7 +5721,9 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
 
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD]))
 class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     Intelligence concurrentielle : sur un lead PERDU (drapeau ``Lead.perdu`` —
@@ -5599,8 +5740,12 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
     """
     # ACRM9 — lectures bornées à la portée (leads : lead ;
+
     # clients : —).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ('lead',)
+
     portee_clients = ()
     serializer_class = ConcurrentPerteSerializer
     queryset = ConcurrentPerte.objects.select_related(
@@ -5642,7 +5787,9 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             pass
 
 
+@extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD]))
 class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
     """FG204 — journal multi-touch des points de contact d'un lead.
 
     Au-delà du first-touch (``Lead.canal``), on consigne chaque point de contact
@@ -5660,8 +5807,12 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
     """
     # ACRM9 — lectures bornées à la portée (leads : lead ;
+
     # clients : —).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ('lead',)
+
     portee_clients = ()
     serializer_class = PointContactSerializer
     queryset = PointContact.objects.select_related(
@@ -5719,6 +5870,7 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         except Exception:
             pass
 
+    @extend_schema(parameters=[sd.P_LEAD_REQ], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='attribution',
             permission_classes=[IsAnyRole])
     def attribution(self, request):
@@ -5753,7 +5905,9 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
 # ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'), sd.param('periode', description='AAAA-MM')]))
 class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
     """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
 
     Routes :
@@ -5762,8 +5916,12 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     La réponse liste inclut ``totaux_par_categorie`` (somme des montants
     effectifs des lignes filtrées, par catégorie)."""
     # ACRM9 — lectures bornées à la portée (leads : lead ;
+
     # clients : —).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ('lead',)
+
     portee_clients = ()
     queryset = ForecastEntry.objects.select_related('lead', 'lead__owner')
     serializer_class = ForecastEntrySerializer
@@ -5816,6 +5974,7 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         return response
 
 
+@extend_schema(parameters=[sd.param('periode', description='AAAA-MM'), sd.param('equipe', OpenApiTypes.INT)], responses=sd.OBJ)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def forecast_rollup_view(request):
@@ -5853,6 +6012,7 @@ def forecast_rollup_view(request):
     return Response(data)
 
 
+@extend_schema(parameters=[sd.P_OWNER, sd.param('semaines', OpenApiTypes.INT)], responses=sd.OBJ)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def forecast_historique_view(request):
@@ -5877,15 +6037,21 @@ def forecast_historique_view(request):
 
 # ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
 class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
+
     """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
     ``records.Activity`` — création + changements de champ suivis journalisés
     via ``records.services`` (le « mail.thread » maison), jamais un modèle
     ``*Activity`` local. Le mixin ``ChatterViewSetMixin`` ajoute en plus les
     actions génériques ``chatter/historique`` (GET) et ``chatter/noter`` (POST)."""
     # ACRM9 — lectures bornées à la portée (leads : — ;
+
     # clients : client).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ()
+
     portee_clients = ('client',)
     queryset = PlanCompte.objects.select_related('client')
     serializer_class = PlanCompteSerializer
@@ -5932,6 +6098,7 @@ class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedM
 
 
 class RevueCompteViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = RevueCompte.objects.select_related('plan')
     serializer_class = RevueCompteSerializer
 
@@ -5961,6 +6128,7 @@ class RevueCompteViewSet(CompanyScopedModelViewSet):
 # ── NTCRM12 — Playbooks de vente par étape ───────────────────────────────────
 
 class PlaybookViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = Playbook.objects.prefetch_related('etapes__taches')
     serializer_class = PlaybookSerializer
 
@@ -6036,6 +6204,7 @@ class _PlaybookEnfantViewSetMixin:
 
 class PlaybookEtapeViewSet(_PlaybookEnfantViewSetMixin,
                            CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = PlaybookEtape.objects.select_related('playbook').prefetch_related('taches')
     serializer_class = PlaybookEtapeSerializer
     company_path = 'playbook__company_id'
@@ -6056,6 +6225,7 @@ class PlaybookEtapeViewSet(_PlaybookEnfantViewSetMixin,
 
 class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
                            CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = PlaybookTache.objects.select_related('etape__playbook')
     serializer_class = PlaybookTacheSerializer
     company_path = 'etape__playbook__company_id'
@@ -6127,6 +6297,7 @@ def lead_playbook_view(request, lead_id):
 
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('page')]))
 class SavedViewViewSet(CompanyScopedModelViewSet):
     """LB48 — vues enregistrées PERSONNELLES (filtres + disposition) pour une
     page donnée (ex. ``crm.leads``).
@@ -6145,6 +6316,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
       POST              /crm/vues-enregistrees/reorder/
                          {"page": "crm.leads", "ids": [3, 1, 2]}
     """
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     queryset = SavedView.objects.all()
     serializer_class = SavedViewSerializer
     # Pagination COUPÉE : listes personnelles minuscules, et surtout le
@@ -6169,6 +6341,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             user=self.request.user,
         )
 
+    @extend_schema(request=sd.corps('CrmSavedViewReorderRequest', page=serializers.CharField(), ids=serializers.ListField(child=serializers.IntegerField())), responses=SavedViewSerializer(many=True))
     @action(detail=False, methods=['post'])
     def reorder(self, request):
         """Réordonne en bloc les vues de l'utilisateur pour une page :
@@ -6203,6 +6376,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
 
 
 class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
     """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
 
     ``company`` posé côté serveur (TenantMixin). ``created_by`` forcé à la
@@ -6210,8 +6384,12 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     que ``PointContactViewSet``). Ajout/retrait d'items via des actions
     dédiées (jamais un PATCH imbriqué non trivial du serializer nested)."""
     # ACRM9 — lectures bornées à la portée (leads : lead ;
+
     # clients : client).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ('lead',)
+
     portee_clients = ('client',)
     serializer_class = SalleVenteSerializer
     queryset = SalleVente.objects.select_related(
@@ -6226,6 +6404,7 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company,
                         created_by=self.request.user)
 
+    @extend_schema(request=SalleVenteItemSerializer, responses={201: SalleVenteItemSerializer})
     @action(detail=True, methods=['post'], url_path='items',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_item(self, request, pk=None):
@@ -6242,6 +6421,7 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         serializer.save(salle=salle)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses={204: None})
     @action(detail=True, methods=['delete'], url_path=r'items/(?P<item_id>\d+)',
             permission_classes=[IsResponsableOrAdmin])
     def retirer_item(self, request, pk=None, item_id=None):
@@ -6252,6 +6432,7 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='analytics',
             permission_classes=[IsAnyRole])
     def analytics(self, request, pk=None):
@@ -6276,6 +6457,7 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
     ici nativement sa propre surface API, seule maison qu'il ait jamais eue.
     Le token d'accès est posé côté serveur, jamais lu du corps de requête.
     """
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = PartenaireSerializer
     queryset = Partenaire.objects.all()
     permission_classes = [IsResponsableOrAdmin]
@@ -6288,6 +6470,7 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
             company=self.request.user.company,
             token_acces=secrets.token_urlsafe(32))
 
+    @extend_schema(request=None, responses=sd.OBJ)
     @action(
         detail=True,
         methods=['post'],
@@ -6334,6 +6517,7 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
 
 class ApporteurViewSet(CompanyScopedModelViewSet):
     """NTCRM20 — Apporteurs d'affaires (registre B2B, CRUD interne)."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = ApporteurSerializer
     queryset = Apporteur.objects.select_related('company').all()
 
@@ -6344,14 +6528,19 @@ class ApporteurViewSet(CompanyScopedModelViewSet):
 
 
 class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
     """NTCRM20 — Deals enregistrés par un apporteur (protection anti-poaching).
 
     ``approuver``/``rejeter`` : actions dédiées plutôt qu'un PATCH direct du
     statut — un rejet/expiration lève la protection immédiatement pour un
     futur enregistrement concurrent (`clean()` du modèle)."""
     # ACRM9 — lectures bornées à la portée (leads : lead ;
+
     # clients : —).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     portee_leads = ('lead',)
+
     portee_clients = ()
     serializer_class = DealEnregistreSerializer
     queryset = DealEnregistre.objects.select_related(
@@ -6362,6 +6551,7 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
+    @extend_schema(request=None, responses=DealEnregistreSerializer)
     @action(detail=True, methods=['post'], url_path='approuver',
             permission_classes=[IsResponsableOrAdmin])
     def approuver(self, request, pk=None):
@@ -6370,6 +6560,7 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         deal.save(update_fields=['statut'])
         return Response(DealEnregistreSerializer(deal).data)
 
+    @extend_schema(request=None, responses=DealEnregistreSerializer)
     @action(detail=True, methods=['post'], url_path='rejeter',
             permission_classes=[IsResponsableOrAdmin])
     def rejeter(self, request, pk=None):
@@ -6378,6 +6569,7 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         deal.save(update_fields=['statut'])
         return Response(DealEnregistreSerializer(deal).data)
 
+    @extend_schema(responses=DealEnregistreSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='a-payer')
     def a_payer(self, request):
         """NTCRM22 — liste des commissions À_PAYER, pour le comptable."""
@@ -6385,8 +6577,10 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         return Response(DealEnregistreSerializer(qs, many=True).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('actif', OpenApiTypes.BOOL)]))
 class DefiViewSet(CompanyScopedModelViewSet):
     """NTCRM23 — Défis d'équipe (gamification) : CRUD + classement."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = DefiSerializer
     queryset = Defi.objects.select_related('company').all()
 
@@ -6395,6 +6589,7 @@ class DefiViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
+    @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='classement',
             permission_classes=[IsAnyRole])
     def classement(self, request, pk=None):
@@ -6402,6 +6597,7 @@ class DefiViewSet(CompanyScopedModelViewSet):
         defi = self.get_object()
         return Response(classement_defi(defi))
 
+    @extend_schema(responses=sd.EXPORT_XLSX)
     @action(detail=True, methods=['get'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request, pk=None):
@@ -6415,6 +6611,7 @@ class DefiViewSet(CompanyScopedModelViewSet):
 
 # ── QJ-EQUIPE-2 (14/09/2026) — écran de revue T-TRACE + registre équipe ──────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('appareil_id'), sd.P_LEAD, sd.param('point')]))
 class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
     """T-TRACE — écran de revue des visites externes (lecture seule).
 
@@ -6425,6 +6622,7 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
 
     Toujours scopé société (``TenantMixin``, via le queryset filtré ici) : un
     commercial ne voit que le traçage de SA société."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
     # runtime passe TOUJOURS par get_queryset, qui rescope par société).
     queryset = VisiteExterne.objects.all()
@@ -6451,6 +6649,7 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
 
     # Permission EXPLICITE sur l'@action (pattern d'or crm du cliquet
     # core.action_permission_scan : chaque @action porte sa garde).
+    @extend_schema(parameters=[sd.param('appareil_id')], responses=sd.liste('CrmAppareilVisites'))
     @action(detail=False, methods=['get'], permission_classes=[IsAnyRole])
     def appareils(self, request):
         """Agrégat PAR APPAREIL : nb visites, durée totale, première/dernière
@@ -6539,6 +6738,7 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
     responsable/admin (marquer/démarquer un appareil équipe est une décision
     de gouvernance anti-fraude). EXCEPTION QJEQUIPE3 : ``ce-navigateur``, où
     l'utilisateur ne marque QUE son propre navigateur — voir son docstring."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
     # runtime passe TOUJOURS par get_queryset, qui rescope par société).
     queryset = AppareilEquipe.objects.all()
@@ -6700,7 +6900,7 @@ def _message_ouvert_sur_touche(etape):
     issue sur un canal « appel » — le seul cas où la réponse sert.
     """
     from .models import LeadActivity
-    from .services import prefixe_activite_message_ouvert
+    from .cadence_reperes import prefixe_activite_message_ouvert
     return LeadActivity.objects.filter(
         company_id=etape.company_id, lead_id=etape.lead_id,
         kind=LeadActivity.Kind.WHATSAPP,

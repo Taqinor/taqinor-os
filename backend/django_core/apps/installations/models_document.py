@@ -61,10 +61,10 @@ class DocumentProjet(models.Model):
             'attestation_assurance', "Attestation d'assurance")
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='inst_documents_projet')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE,
+        Installation, on_delete=models.CASCADE,  # on_delete: DocumentProjet est le détail de Installation — n'existe pas sans lui
         related_name='inst_documents')
     type_doc = models.CharField(
         max_length=30, choices=TypeDoc.choices, default=TypeDoc.AUTRE)
@@ -97,10 +97,10 @@ class RevisionDocument(models.Model):
     Multi-tenant (société posée côté serveur)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='inst_revisions_document')
     document = models.ForeignKey(
-        DocumentProjet, on_delete=models.CASCADE,
+        DocumentProjet, on_delete=models.CASCADE,  # on_delete: pièce justificative de DocumentProjet — suit son objet parent
         related_name='inst_revisions')
     indice = models.CharField(max_length=10, default='A')
     date_revision = models.DateField()

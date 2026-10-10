@@ -50,6 +50,9 @@ from django.db import migrations, models
 #: Échouer vite vaut mieux que geler la base — mais uniquement PENDANT cette
 #: opération (voir :class:`_AddIndexConcurrentlyBorne`).
 LOCK_TIMEOUT_INDEX = '3s'
+# ENF12 (semgrep no-formatted-raw-sql) : instruction CONSTANTE figée à l'import
+# (aucune donnée d'exécution n'y entre).
+_SQL_LOCK_TIMEOUT = f"SET lock_timeout = '{LOCK_TIMEOUT_INDEX}';"
 
 
 class _AddIndexConcurrentlyBorne(AddIndexConcurrently):
@@ -75,8 +78,7 @@ class _AddIndexConcurrentlyBorne(AddIndexConcurrently):
         postgres = getattr(
             schema_editor.connection, 'vendor', '') == 'postgresql'
         if postgres:
-            schema_editor.execute(
-                f"SET lock_timeout = '{LOCK_TIMEOUT_INDEX}';")
+            schema_editor.execute(_SQL_LOCK_TIMEOUT)
         try:
             super().database_forwards(
                 app_label, schema_editor, from_state, to_state)

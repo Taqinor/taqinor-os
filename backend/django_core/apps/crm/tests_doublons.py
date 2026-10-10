@@ -19,8 +19,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead
-from apps.crm.services import (
-    find_duplicate_clusters, normalize_name, normalize_phone)
+from apps.crm.leads_doublons import find_duplicate_clusters, normalize_name, normalize_phone
 from apps.ventes.models import Devis
 
 User = get_user_model()
@@ -195,7 +194,7 @@ class TestDoublonsEndpointEnrichment(TestCase):
         self.api = make_api(self.user)
 
     def test_match_keys_and_preview(self):
-        from apps.crm.services import cluster_match_keys
+        from apps.crm.leads_doublons import cluster_match_keys
         a = Lead.objects.create(
             company=self.company, nom='Alaoui', telephone='0612345678')
         b = Lead.objects.create(
@@ -239,7 +238,7 @@ class TestMatchFortSurLesDoublons(TestCase):
         self.api = make_api(self.user)
 
     def test_unite_identite_forte(self):
-        from apps.crm.services import is_strong_identity_match
+        from apps.crm.leads_doublons import is_strong_identity_match
         autre = Lead.objects.create(
             company=self.company, nom='Alaoui',
             telephone='+212 612-34-56-78', email='Karim@Example.MA')

@@ -24,7 +24,7 @@ class Outillage(models.Model):
         PERDU = 'perdu', 'Perdu'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='outillages')
     nom = models.CharField(max_length=255)
     # Catégorie libre (Échelle, Électroportatif, Mesure…). Texte simple :
@@ -103,7 +103,7 @@ class KitOutillage(models.Model):
     éditables (renommer / réordonner / désactiver). Désactiver préserve la
     valeur sur les enregistrements historiques."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='kits_outillage')
     nom = models.CharField(max_length=120)
     # Type d'intervention (clé) qui auto-sélectionne ce kit. Vide = générique.
@@ -125,12 +125,12 @@ class KitOutillageItem(models.Model):
     """Un outil requis dans un kit (F2), ordonné. Référence un outil du
     catalogue Outillage. Company posée côté serveur depuis le kit parent."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='kit_outillage_items')
     kit = models.ForeignKey(
-        KitOutillage, on_delete=models.CASCADE, related_name='items')
+        KitOutillage, on_delete=models.CASCADE, related_name='items')  # on_delete: étape/élément de KitOutillage — n'existe pas sans lui
     outil = models.ForeignKey(
-        Outillage, on_delete=models.CASCADE, related_name='kit_items')
+        Outillage, on_delete=models.CASCADE, related_name='kit_items')  # on_delete: étape/élément de Outillage — n'existe pas sans lui
     ordre = models.PositiveIntegerField(default=0)
 
     class Meta:

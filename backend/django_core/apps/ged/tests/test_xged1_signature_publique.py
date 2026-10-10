@@ -192,7 +192,7 @@ class PublicSignatureApiTests(XGed1Base):
     def test_post_signer_missing_consentement_400(self):
         resp = self.client.post(
             self.URL_TMPL.format(token=self.demande.token),
-            {'action': 'signer', 'signature_texte': 'Jean'}, format='json')
+            {'action': 'signer', 'signature_texte': 'Jean'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
 
     def test_post_signer_success(self):
@@ -201,7 +201,7 @@ class PublicSignatureApiTests(XGed1Base):
             resp = self.client.post(
                 self.URL_TMPL.format(token=self.demande.token),
                 {'action': 'signer', 'consentement': True,
-                 'signature_texte': 'Jean Client'}, format='json')
+                 'signature_texte': 'Jean Client'}, content_type='application/json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['statut'], SIGNATURE_SIGNE)
         self.demande.refresh_from_db()
@@ -215,23 +215,23 @@ class PublicSignatureApiTests(XGed1Base):
             self.client.post(
                 self.URL_TMPL.format(token=self.demande.token),
                 {'action': 'signer', 'consentement': True,
-                 'signature_texte': 'Jean'}, format='json')
+                 'signature_texte': 'Jean'}, content_type='application/json')
             resp = self.client.post(
                 self.URL_TMPL.format(token=self.demande.token),
                 {'action': 'signer', 'consentement': True,
-                 'signature_texte': 'Jean'}, format='json')
+                 'signature_texte': 'Jean'}, content_type='application/json')
         self.assertEqual(resp.status_code, 410)
 
     def test_post_refuser_missing_motif_400(self):
         resp = self.client.post(
             self.URL_TMPL.format(token=self.demande.token),
-            {'action': 'refuser'}, format='json')
+            {'action': 'refuser'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
 
     def test_post_refuser_success(self):
         resp = self.client.post(
             self.URL_TMPL.format(token=self.demande.token),
-            {'action': 'refuser', 'motif': 'Pas intéressé'}, format='json')
+            {'action': 'refuser', 'motif': 'Pas intéressé'}, content_type='application/json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['statut'], SIGNATURE_REFUSE)
         self.demande.refresh_from_db()
@@ -240,7 +240,7 @@ class PublicSignatureApiTests(XGed1Base):
     def test_post_unknown_action_400(self):
         resp = self.client.post(
             self.URL_TMPL.format(token=self.demande.token),
-            {'action': 'danser'}, format='json')
+            {'action': 'danser'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
 
     def test_public_payload_never_leaks_other_company(self):
