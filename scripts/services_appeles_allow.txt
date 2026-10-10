@@ -14,8 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/diagramme_pertes.py::echelle_px_par_point
-backend/django_core/apps/calepinage/services/diagramme_pertes.py::px_de_mm
 backend/django_core/apps/calepinage/services/documents/document_asbuilt.py::construire_document
 backend/django_core/apps/calepinage/services/documents/document_asbuilt.py::html_de_document
 backend/django_core/apps/calepinage/services/documents/document_asbuilt.py::html_du_document_asbuilt
