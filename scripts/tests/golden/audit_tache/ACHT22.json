@@ -73,6 +73,11 @@
     "frontend/src/features/calepinage/__tests__/mode_terrain.test.jsx",
     "frontend/src/features/calepinage/__tests__/ombriere.test.jsx"
    ]
+  },
+  "test-canonique backend/django_core/apps/installations/services.py::recreer_nomenclature_ordre_assemblage": {
+   "modules": [
+    "backend/django_core/apps/installations/tests_fg328_kitting.py"
+   ]
   }
  }
 }

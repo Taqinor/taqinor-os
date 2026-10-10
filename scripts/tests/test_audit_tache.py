@@ -41,12 +41,16 @@ CAS = {
         ("ecrivains", "Lead.telephone_whatsapp"),
         ("assertions-existantes", f"{DJ}/crm/views.py::EquipeCommercialeViewSet.get_permissions"),
         ("listes-figees", f"{DJ}/crm/services.py"),
+        ("jumeaux", f"{DJ}/crm/views.py::EquipeCommercialeViewSet.get_permissions"),
+        ("jumeaux", f"{DJ}/crm/views.py::SiteProfileViewSet.get_permissions"),
+        ("emplacement", f"{DJ}/crm/services.py::merge_leads"),
     ],
     "ACHT22": [
         ("appelants", f"{DJ}/installations/views/livraison.py::LivraisonViewSet.bon_livraison"),
         ("appelants", f"{DJ}/installations/livraison_pdf.py::bon_livraison_pdf"),
         ("assertions-existantes", f"{DJ}/installations/views/livraison.py::LivraisonViewSet.bon_livraison"),
         ("lecteurs-sample", "roof_layout_v2.schema.json"),
+        ("test-canonique", f"{DJ}/installations/services.py::recreer_nomenclature_ordre_assemblage"),
     ],
     "AFAC47": [
         ("appelants", f"{DJ}/ventes/views/facture.py::FactureViewSet.perform_update"),
@@ -233,6 +237,65 @@ class AssertionsTests(unittest.TestCase):
         g = sortie["gardes"][0]
         self.assertEqual((g["garde"], g["type_de_cle"], g["declare"]), ("scripts/check_x.py", "par_ligne", False))
         self.assertIn("TYPE_DE_CLE absent (déduit : par_ligne)", sortie["texte"])
+
+
+class JumeauxTests(unittest.TestCase):
+    def test_get_permissions_rend_105_corps_identiques_sans_troncature(self):
+        # R3_V3 : 105 corps identiques = le corps `IsAnyRole` / `IsResponsableOrAdmin` qu'avait
+        # EquipeCommercialeViewSet AVANT ACRM26 ; ACRM26 l'a passe a `IsAdminRole` (groupe de 17).
+        # On rejoue donc le fait sur un porteur ACTUEL de ce corps (meme fichier crm/views.py).
+        sortie = _Golden.sortie("jumeaux", f"{DJ}/crm/views.py::SiteProfileViewSet.get_permissions")
+        identiques = sortie["corps_identiques"]
+        self.assertGreaterEqual(len(identiques), 105)          # 112 au 09/10 (docstrings ignorees)
+        self.assertEqual(sortie["nb_corps_identiques"], len(identiques))
+        self.assertEqual(sum(j["cible"] for j in identiques), 1)
+        for j in identiques:                                    # aucune troncature dans le texte
+            self.assertIn(j["symbole"].split("::", 1)[1], sortie["texte"])
+        self.assertRegex(sortie["texte"], r"\(gen [0-9a-f]{9} .+::SiteProfileViewSet\.get_permissions#[0-9a-f]{8}\)")
+        acrm26 = _Golden.sortie("jumeaux", f"{DJ}/crm/views.py::EquipeCommercialeViewSet.get_permissions")
+        self.assertEqual(acrm26["nb_corps_identiques"], len(acrm26["corps_identiques"]))
+
+    def test_emplacement_mur_et_spl_qui_deplace(self):
+        sortie = _Golden.sortie("emplacement", f"{DJ}/crm/services.py::merge_leads")
+        self.assertTrue(sortie["mur"])
+        self.assertGreaterEqual(sortie["lignes"], 2000)
+        self.assertIn("SPL22", sortie["spl"])                   # « Déplacer la fusion de leads … »
+        self.assertIn("@after: SPL22", sortie["texte"])
+
+    def test_test_canonique_classe_le_module_kitting_en_premier(self):
+        sortie = _Golden.sortie(
+            "test-canonique", f"{DJ}/installations/services.py::recreer_nomenclature_ordre_assemblage")
+        self.assertEqual(sortie["modules"][0]["module"], f"{DJ}/installations/tests_fg328_kitting.py")
+        self.assertTrue(sortie["modules"][0]["id_de_tache"])
+
+    def test_inspecter_est_l_api_exportee(self):
+        self.assertTrue(callable(at.inspecter) and callable(at.index))
+
+    def test_verifier_tampon_perime_exit_1(self):
+        depot = DepotJetable({"backend/app/a.py": "def f():\n    return 1\n"})
+        self.addCleanup(depot.fermer)
+        _, _, d = at.resoudre("backend/app/a.py::f", depot.racine)
+        frais = f"(gen abcdef123 backend/app/a.py::f#{d.empreinte[:8]})"
+        (depot.racine / "docs").mkdir()
+        (depot.racine / "docs" / "PLAN.md").write_text(
+            f"- [ ] ZZT1 — **x** : {frais} Files: `backend/app/a.py`\n"
+            "- [ ] ZZT2 — **y** : (gen abcdef123 backend/app/a.py::f#00000000) Files: `backend/app/a.py`\n",
+            encoding="utf-8")
+        sauvegarde = at.ctc.ROOT
+        at.ctc.ROOT = depot.racine
+        self.addCleanup(setattr, at.ctc, "ROOT", sauvegarde)
+        self.assertFalse(at.verifier("ZZT1", racine=depot.racine)["perimee"])
+        self.assertTrue(at.verifier("ZZT2", racine=depot.racine)["perimee"])
+        (depot.racine / "backend" / "app" / "a.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+        self.assertTrue(at.verifier("ZZT1", racine=depot.racine)["perimee"])
+        self.assertEqual(at.main(["--verifier", "ZZT2", "--racine", str(depot.racine)]), 1)
+
+    def test_clause_texte_pret_a_coller(self):
+        depot = DepotJetable({"backend/app/a.py": "def f():\n    return 1\n"})
+        self.addCleanup(depot.fermer)
+        sortie = at.emplacement("backend/app/a.py::f", racine=depot.racine)
+        self.assertTrue(sortie["texte"].startswith("Emplacement : `backend/app/a.py::f` (3 l."))
+        self.assertEqual(at.CLAUSES["emplacement"], "emplacement")
 
 
 def _git(racine, *args):
