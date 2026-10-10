@@ -131,7 +131,6 @@ backend/django_core/apps/ged/serializers.py::CertificatDestructionSerializer.det
 backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.created_by
 backend/django_core/apps/ged/serializers.py::JournalAccesSerializer.utilisateur
 backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.created_by
-backend/django_core/apps/parametres/serializers_audit.py::SettingsAuditLogSerializer.user
 backend/django_core/apps/publicapi/serializers.py::ApiKeySerializer.created_by
 backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_definition
 backend/django_core/apps/stock/serializers.py::RevisionKitSerializer.user
