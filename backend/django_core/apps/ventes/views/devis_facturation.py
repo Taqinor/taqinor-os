@@ -12,13 +12,12 @@ from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..models import Devis, BonCommande
+from ..models import Devis
 from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin,
 )
 from ..utils.references import create_with_reference
-from ..utils.company_settings import create_numbered
 
 
 class DevisFacturationActionsMixin:
@@ -40,26 +39,16 @@ class DevisFacturationActionsMixin:
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if BonCommande.objects.filter(devis=devis).exists():
-            return Response(
-                {'detail': 'Un bon de commande existe déjà pour ce devis.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        company = request.user.company
-        bc = create_numbered(
-            BonCommande, company, 'bon_commande',
-            lambda ref: BonCommande.objects.create(
-                reference=ref,
-                devis=devis,
-                client=devis.client,
-                statut=BonCommande.Statut.EN_ATTENTE,
-                company=company,
-            ),
-        )
-        # YEVNT6 — événement documentaire (best-effort).
-        from core.events import bon_commande_cree
-        bon_commande_cree.send(
-            sender=BonCommande, instance=bc, company=company)
+        # AMET6 (C-AMET-008) — LA porte unique `creer_bon_commande` (AMET5) :
+        # contrôle « BC existant », numérotation et `bon_commande_cree`
+        # (YEVNT6) partagés avec la création manuelle.
+        from ..domain.facturation_ops import (
+            BonCommandeExistant, creer_bon_commande)
+        try:
+            bc = creer_bon_commande(devis, request.user.company, request.user)
+        except BonCommandeExistant as exc:
+            return Response({'detail': exc.message},
+                            status=status.HTTP_400_BAD_REQUEST)
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
