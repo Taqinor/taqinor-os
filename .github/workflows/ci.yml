@@ -1358,6 +1358,8 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # AMET86 : check_forme_code.py juge le diff vs merge-base(origin/main) ; clone superficiel = echec ferme
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
