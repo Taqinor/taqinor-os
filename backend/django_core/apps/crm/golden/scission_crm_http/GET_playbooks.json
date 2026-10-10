@@ -11,7 +11,7 @@
     "date_creation": "<masque>",
     "etapes": [
      {
-      "id": "playbook#1",
+      "id": "objet:etapes?#1",
       "ordre": 1,
       "playbook": "playbook#1",
       "stage": "NEW",

@@ -621,6 +621,11 @@ _FAMILLE_PAR_CLE = {
     'playbook_id': 'playbook', 'company': 'company',
     'company_id': 'company'}
 _CLES_ID = {'id', 'pk'}
+#: Clé parente d'un objet imbriqué -> famille de son `id`.
+_FAMILLE_PAR_PARENT = {
+    'touche': 'etape', 'etape_courante': 'etape', 'prochaine_touche': 'etape',
+    'derniere_touche': 'etape', 'appointment': 'rdv', 'rdv': 'rdv',
+    'commerciaux': 'user'}
 
 
 class _Fixture:
@@ -651,11 +656,21 @@ class _Normaliseur:
             vus[valeur] = f'{famille}?#{len(vus) + 1}'
         return vus[valeur]
 
-    def __call__(self, valeur, cle=None):
+    def __call__(self, valeur, cle=None, famille_id=None):
+        famille_id = famille_id or self.defaut
         if isinstance(valeur, dict):
-            return {k: self(v, k) for k, v in valeur.items()}
+            # L'`id` d'un objet IMBRIQUÉ appartient à la famille de sa clé
+            # parente (`touche` -> étape…), jamais à celle de l'appel : sinon
+            # un pk d'étape égal par hasard à un pk de lead (séquences de la
+            # CI) prenait l'étiquette du lead.
+            if cle in (None, 'results'):
+                fam = famille_id
+            else:
+                fam = (_FAMILLE_PAR_CLE.get(cle)
+                       or _FAMILLE_PAR_PARENT.get(cle) or f'objet:{cle}')
+            return {k: self(v, k, fam) for k, v in valeur.items()}
         if isinstance(valeur, list):
-            return [self(v, cle) for v in valeur]
+            return [self(v, cle, famille_id) for v in valeur]
         if cle in _CLES_HORODATAGE and valeur is not None:
             return _MASQUE
         if cle in ('token', 'code_parrainage', 'tiers', 'tiers_id') and valeur:
@@ -666,7 +681,7 @@ class _Normaliseur:
             return valeur
         if isinstance(valeur, int) and not isinstance(valeur, bool):
             if cle in _CLES_ID:
-                return self._etiquette(self.defaut, valeur)
+                return self._etiquette(famille_id, valeur)
             if cle in _FAMILLE_PAR_CLE:
                 return self._etiquette(_FAMILLE_PAR_CLE[cle], valeur)
         return valeur
