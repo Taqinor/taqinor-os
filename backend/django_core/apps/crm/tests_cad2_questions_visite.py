@@ -33,7 +33,8 @@ from django.test import SimpleTestCase, TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -68,7 +69,7 @@ class ContratDebriefVisiteTests(SimpleTestCase):
                          set(CONTRAT['exemple']['results'][0]))
 
     def test_la_nature_se_lit_sur_le_libelle(self):
-        self.assertIn(self.touche['libelle'], services._LIBELLES_VISITE)
+        self.assertIn(self.touche['libelle'], cadence_reperes._LIBELLES_VISITE)
         etape = RelanceEtape(cadence=self.touche['cadence'],
                              libelle=self.touche['libelle'])
         self.assertEqual(st.nature_touche(etape), st.NATURE_VISITE)
@@ -92,13 +93,13 @@ class ContratDebriefVisiteTests(SimpleTestCase):
                 self.assertTrue(set(codes) <= set(PHRASES))
 
     def test_la_cloture_d_une_etape_de_visite_se_reconnait(self):
-        visite = RelanceEtape(libelle=services.VISITE_DEBRIEF_LIBELLE)
+        visite = RelanceEtape(libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE)
         barreau = RelanceEtape(libelle='Preuve — installation comparable')
         corps = ' (Appel, cadence apres_devis) marquée faite.'
-        self.assertTrue(services.est_cloture_d_etape_visite(LeadActivity(
-            body=services.prefixe_activite_touche(visite) + corps)))
-        self.assertFalse(services.est_cloture_d_etape_visite(LeadActivity(
-            body=services.prefixe_activite_touche(barreau) + corps)))
+        self.assertTrue(cadence_reperes.est_cloture_d_etape_visite(LeadActivity(
+            body=cadence_reperes.prefixe_activite_touche(visite) + corps)))
+        self.assertFalse(cadence_reperes.est_cloture_d_etape_visite(LeadActivity(
+            body=cadence_reperes.prefixe_activite_touche(barreau) + corps)))
 
 
 class DebriefCloseSansRelanceTests(TestCase):
@@ -127,9 +128,9 @@ class DebriefCloseSansRelanceTests(TestCase):
             date_envoi=GEL - datetime.timedelta(days=10))
         self.debrief = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_DEBRIEF,
+            ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
             canal=RelanceEtape.Canal.APPEL,
-            libelle=services.VISITE_DEBRIEF_LIBELLE, devis=self.devis,
+            libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE, devis=self.devis,
             due_at=GEL, due_date=GEL.date())
 
     def _barreaux_ouverts(self):
@@ -137,7 +138,7 @@ class DebriefCloseSansRelanceTests(TestCase):
         visite."""
         return (self.lead.relance_etapes
                 .filter(cadence='apres_devis', statut=A_FAIRE)
-                .exclude(libelle__in=services._LIBELLES_VISITE))
+                .exclude(libelle__in=cadence_reperes._LIBELLES_VISITE))
 
     def _barreau(self, ordre, statut):
         gabarit = next(e for e in CADENCES_DEFAUT['apres_devis']
@@ -155,7 +156,7 @@ class DebriefCloseSansRelanceTests(TestCase):
         # Le plan avait été ANNULÉ par le moteur (aucun barreau consommé) :
         # c'est exactement le cas où l'ancien filet le rejouait depuis 1.
         self._barreau(1, RelanceEtape.Statut.ANNULEE)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.debrief, self.acteur, FAIT, outcome='joint')
         self.assertFalse(self._barreaux_ouverts().exists())
         # Le lead n'est jamais laissé sans suite : l'étape générique est là.
@@ -163,7 +164,7 @@ class DebriefCloseSansRelanceTests(TestCase):
             cadence='generique', statut=A_FAIRE).exists())
 
     def test_debrief_sans_reponse_ne_demarre_pas_le_plan(self):
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.debrief, self.acteur, FAIT, outcome='non_joint')
         self.assertFalse(self._barreaux_ouverts().exists())
 
@@ -171,7 +172,7 @@ class DebriefCloseSansRelanceTests(TestCase):
         # CAD1 — poursuivre reste permis : le barreau 2 consommé fait naître
         # le 3, jamais le 1.
         self._barreau(2, FAIT)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.debrief, self.acteur, FAIT, outcome='joint')
         ordres = set(self._barreaux_ouverts().values_list('ordre', flat=True))
         self.assertNotIn(1, ordres)

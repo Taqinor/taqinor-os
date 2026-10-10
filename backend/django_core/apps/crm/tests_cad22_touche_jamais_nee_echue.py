@@ -34,9 +34,11 @@ from testkit.time import frozen
 from apps.crm import cadence_temps, horaires
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.selectors import _a_lheure
-from apps.crm.services import (
-    calculer_echeances_cadence, materialiser_touche_suivante,
-    reporter_prochaine_touche)
+from apps.crm.cadence_plan import (
+    calculer_echeances_cadence,
+    materialiser_touche_suivante,
+    reporter_prochaine_touche,
+)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

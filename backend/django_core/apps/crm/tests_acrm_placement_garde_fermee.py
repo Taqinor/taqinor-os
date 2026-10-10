@@ -20,7 +20,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Client, Lead
-from apps.crm.services import PLACEMENT_DEVIS_ILLISIBLES
+from apps.crm.cadence_placement import PLACEMENT_DEVIS_ILLISIBLES
 from apps.ventes.models import Devis
 
 User = get_user_model()

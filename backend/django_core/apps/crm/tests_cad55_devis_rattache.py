@@ -23,7 +23,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm import horaires, services
+from apps.crm import horaires, cadence_touche
 from apps.crm.models import Client, Lead, RelanceEtape
 from authentication.models import Company
 
@@ -83,7 +83,7 @@ class DevisRattacheTests(TestCase):
         # porte le devis — tout le plan, pas seulement la première touche.
         premiere = self._touches().filter(
             statut=RelanceEtape.Statut.A_FAIRE).order_by('ordre').first()
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             premiere, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='non_joint')
         self.assertGreaterEqual(self._touches().count(), 2)

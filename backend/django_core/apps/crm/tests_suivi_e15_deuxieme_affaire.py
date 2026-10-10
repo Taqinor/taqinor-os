@@ -22,7 +22,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE, CLE_DECIDER_SUITE
 from apps.crm.models import Lead, RelanceEtape
@@ -33,7 +34,7 @@ User = get_user_model()
 
 GEL = datetime.datetime(2026, 9, 23, 10, 0, tzinfo=horaires.CASABLANCA)
 A_FAIRE = RelanceEtape.Statut.A_FAIRE
-ISSUES = ('joint', 'interesse', services.OUTCOME_VISITE_ACCEPTEE, 'refuse')
+ISSUES = ('joint', 'interesse', cadence_reperes.OUTCOME_VISITE_ACCEPTEE, 'refuse')
 
 _seq = itertools.count(1)
 
@@ -52,8 +53,8 @@ class TableEtPromessesTests(SimpleTestCase):
         for issue in ISSUES:
             with self.subTest(issue=issue):
                 self.assertIn('deuxieme_affaire',
-                              services.CADENCES_ARRETEES_PAR_ISSUE[issue])
-                self.assertFalse(services.issue_fait_naitre_la_suite(
+                              cadence_touche.CADENCES_ARRETEES_PAR_ISSUE[issue])
+                self.assertFalse(cadence_touche.issue_fait_naitre_la_suite(
                     issue, 'deuxieme_affaire'))
 
     def test_les_promesses_ne_disent_plus_la_touche_suivante(self):
@@ -63,7 +64,7 @@ class TableEtPromessesTests(SimpleTestCase):
                          [st.CONTACT_ARRETEE, st.ETAPE_APPELER])
         self.assertEqual(promesses['refuse'],
                          [st.RELANCES_ARRETEES, st.ETAPE_DECIDER_SUITE])
-        self.assertEqual(promesses[services.OUTCOME_VISITE_ACCEPTEE],
+        self.assertEqual(promesses[cadence_reperes.OUTCOME_VISITE_ACCEPTEE],
                          [st.CONTACT_ARRETEE, st.ETAPE_PLANIFIER_VISITE])
 
 

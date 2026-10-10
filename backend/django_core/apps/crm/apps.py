@@ -73,10 +73,8 @@ class CrmConfig(AppConfig):
         # 180 j) — les payloads en erreur/non traités restent exemptés
         # (voir services.purge_website_lead_payloads).
         from core.retention import register_retention_policy, setting_days
-        from .services import (
-            DEFAULT_LEADACTIVITY_ARCHIVE_DAYS, archiver_anciens,
-            purge_stale_chat_sessions, purge_website_lead_payloads,
-        )
+        from .fiche_archivage import DEFAULT_LEADACTIVITY_ARCHIVE_DAYS, archiver_anciens
+        from .leads_retention import purge_stale_chat_sessions, purge_website_lead_payloads
         register_retention_policy(
             'crm_website_lead_payloads', purge_website_lead_payloads)
         register_retention_policy(

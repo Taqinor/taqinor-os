@@ -15,7 +15,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.crm.models import Appointment, Lead, LeadActivity
-from apps.crm.services import (
+from apps.crm.visites_rdv import (
     book_appointment,
     dispatch_appointment_reminder,
     send_due_appointment_reminders,
@@ -112,16 +112,16 @@ class TestDispatchReminder(TestCase):
         appt = self._make_appt()
 
         # Patch _ramadan_pacing_enabled and _is_ramadan_iftar_window.
-        import apps.crm.services as svc
-        orig_pacing = svc._ramadan_pacing_enabled
-        orig_window = svc._is_ramadan_iftar_window
-        svc._ramadan_pacing_enabled = lambda co: True
-        svc._is_ramadan_iftar_window = lambda dt: True
+        from apps.crm import visites_rdv
+        orig_pacing = visites_rdv._ramadan_pacing_enabled
+        orig_window = visites_rdv._is_ramadan_iftar_window
+        visites_rdv._ramadan_pacing_enabled = lambda co: True
+        visites_rdv._is_ramadan_iftar_window = lambda dt: True
         try:
             result = dispatch_appointment_reminder(appt)
         finally:
-            svc._ramadan_pacing_enabled = orig_pacing
-            svc._is_ramadan_iftar_window = orig_window
+            visites_rdv._ramadan_pacing_enabled = orig_pacing
+            visites_rdv._is_ramadan_iftar_window = orig_window
 
         self.assertFalse(result)
         appt.refresh_from_db()
@@ -131,13 +131,13 @@ class TestDispatchReminder(TestCase):
         """When pacing flag is off, even during iftar window the reminder goes."""
         appt = self._make_appt()
 
-        import apps.crm.services as svc
-        orig_pacing = svc._ramadan_pacing_enabled
-        svc._ramadan_pacing_enabled = lambda co: False
+        from apps.crm import visites_rdv
+        orig_pacing = visites_rdv._ramadan_pacing_enabled
+        visites_rdv._ramadan_pacing_enabled = lambda co: False
         try:
             result = dispatch_appointment_reminder(appt)
         finally:
-            svc._ramadan_pacing_enabled = orig_pacing
+            visites_rdv._ramadan_pacing_enabled = orig_pacing
 
         self.assertTrue(result)
         appt.refresh_from_db()
@@ -228,7 +228,7 @@ class TestRamadanHelpers(TestCase):
 
     def test_iftar_window_detected(self):
         """A datetime at 19:00 Casablanca should be in the iftar window."""
-        from apps.crm.services import _is_ramadan_iftar_window
+        from apps.crm.visites_rdv import _is_ramadan_iftar_window
         # 19:00 Casablanca = 19:00 UTC (Morocco = UTC+0 or UTC+1 — use UTC naive
         # and rely on the implementation's ZoneInfo lookup). Create an aware UTC
         # dt that maps to 19:30 Casablanca (Morocco is UTC+0 in winter).
@@ -238,7 +238,7 @@ class TestRamadanHelpers(TestCase):
         self.assertTrue(_is_ramadan_iftar_window(dt))
 
     def test_morning_not_iftar_window(self):
-        from apps.crm.services import _is_ramadan_iftar_window
+        from apps.crm.visites_rdv import _is_ramadan_iftar_window
         import zoneinfo
         tz = zoneinfo.ZoneInfo('Africa/Casablanca')
         dt = datetime(2025, 1, 15, 9, 0, tzinfo=tz)  # 09:00 local
@@ -246,7 +246,7 @@ class TestRamadanHelpers(TestCase):
 
     def test_pacing_disabled_by_default(self):
         """Without CompanyProfile.ramadan_pacing field, pacing is False."""
-        from apps.crm.services import _ramadan_pacing_enabled
+        from apps.crm.visites_rdv import _ramadan_pacing_enabled
         co = _make_company('qj20-ramadan')
         # Should not raise; returns False when field absent.
         result = _ramadan_pacing_enabled(co)

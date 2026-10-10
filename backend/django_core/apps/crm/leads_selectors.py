@@ -26,8 +26,8 @@ def normalize_phone_key(value):
     téléphone Odoo (``+212…``) passé ici produit EXACTEMENT la même clé que le
     ``phone_key`` d'un lead Meta capturé par l'ERP, donc les deux se rapprochent
     (matching signature ↔ campagne). Lecture pure, aucun accès base."""
-    from . import services as crm_services
-    return crm_services.normalize_phone(value)
+    from . import leads_doublons
+    return leads_doublons.normalize_phone(value)
 
 
 def normalize_email_key(value):
@@ -37,8 +37,8 @@ def normalize_email_key(value):
     ``services.normalize_email`` pour qu'une autre app (la qualité de données,
     par exemple) rapproche EXACTEMENT comme le CRM, sans importer ni
     ``crm.services`` ni ``crm.models``. Lecture pure, aucun accès base."""
-    from . import services as crm_services
-    return crm_services.normalize_email(value)
+    from . import leads_doublons
+    return leads_doublons.normalize_email(value)
 
 
 def normalize_name_key(nom, prenom=None, societe=None):
@@ -48,8 +48,8 @@ def normalize_name_key(nom, prenom=None, societe=None):
     triés, ponctuation écrasée). Rend une chaîne VIDE quand le nom est trop
     court pour rapprocher quoi que ce soit — c'est la garde du CRM, et elle
     doit valoir pour tous ses lecteurs. Lecture pure, aucun accès base."""
-    from . import services as crm_services
-    return crm_services.normalize_name(nom, prenom, societe)
+    from . import leads_doublons
+    return leads_doublons.normalize_name(nom, prenom, societe)
 
 
 def find_lead_id_by_phone(company, phone):
@@ -62,10 +62,10 @@ def find_lead_id_by_phone(company, phone):
     téléphone) — jamais un import de ``apps.crm.models`` côté adsengine. Renvoie
     le lead le plus récemment créé en cas de doublon ; None si le numéro est
     vide ou introuvable."""
-    from . import services as crm_services
+    from . import leads_doublons
     from .models import Lead
 
-    key = crm_services.normalize_phone(phone)
+    key = leads_doublons.normalize_phone(phone)
     if not key:
         return None
     for lead in (Lead.objects
@@ -95,7 +95,7 @@ def leads_sla_depasse(company, now=None, seuil_heures=None):
     import datetime as _dt
 
     from .models import Lead
-    from .services import lead_sla_hours as _get_sla_hours
+    from .leads_premier_contact import lead_sla_hours as _get_sla_hours
 
     now = now or _timezone.now()
     if seuil_heures is None:
@@ -151,7 +151,7 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
 
     from . import horaires
     from .models import Lead
-    from .services import callback_sla_hours as _get_callback_sla_hours
+    from .leads_premier_contact import callback_sla_hours as _get_callback_sla_hours
 
     now = now or _timezone.now()
     if seuil_heures is None:
@@ -444,7 +444,7 @@ def lead_known_field_codes(company, *, phone=None, email=None):
     ``set`` des codes déjà renseignés parmi les champs standards
     (nom/prenom/societe/email/telephone/ville, non vides) et les clés non
     vides de ``custom_data``. Lecture seule."""
-    from .services import find_duplicates_by_contact
+    from .leads_doublons import find_duplicates_by_contact
 
     matches = find_duplicates_by_contact(company, phone=phone, email=email)
     if not matches:
@@ -471,7 +471,7 @@ def lead_ids_by_contact(company, *, email=None, phone=None):
     ses séquences/journeys actifs. Renvoie ``[]`` si rien ne correspond —
     l'appelant se contente alors de la liste de suppression.
     """
-    from .services import find_duplicates_by_contact
+    from .leads_doublons import find_duplicates_by_contact
 
     if not email and not phone:
         return []
@@ -492,7 +492,7 @@ def lead_ids_par_identifiant(company, identifiant):
     scan Python de toute la table des leads.
     """
     from .models import Lead
-    from .services import normalize_email, normalize_phone
+    from .leads_doublons import normalize_email, normalize_phone
 
     if company is None or not (identifiant or '').strip():
         return []
@@ -524,7 +524,7 @@ def doublons_foyer_probables(company, *, include_archived=False):
     l'explique ; rien n'est fusionné, jamais, sans le geste humain de
     l'atelier doublons.
     """
-    from .services import cluster_match_keys, find_duplicate_clusters
+    from .leads_doublons import cluster_match_keys, find_duplicate_clusters
 
     #: Les seules clés qui parlent de LIEU. Un cluster qui partage aussi un
     #: téléphone, un e-mail ou un nom n'est pas un « même foyer » : c'est un

@@ -25,6 +25,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, scoring, services, signaux, stages
+from apps.crm import devis_chatter
 from apps.crm.models import Lead, LeadActivity
 from apps.parametres.models import CompanyProfile
 
@@ -208,13 +209,13 @@ class RecalculImmediatTests(TestCase):
             telephone='0600000064')
 
     def test_une_ouverture_recalcule_le_score_sur_le_champ(self):
-        with patch.object(services, 'recompute_lead_score') as recalcul:
-            services.noter_devis_ouvert('DV-1', self.lead)
+        with patch.object(devis_chatter, 'recompute_lead_score') as recalcul:
+            devis_chatter.noter_devis_ouvert('DV-1', self.lead)
         recalcul.assert_called_once_with(self.lead)
 
     def test_une_reouverture_recalcule_le_score_sur_le_champ(self):
-        with patch.object(services, 'recompute_lead_score') as recalcul:
-            services.noter_devis_reouvert('DV-1', self.lead, vues=3)
+        with patch.object(devis_chatter, 'recompute_lead_score') as recalcul:
+            devis_chatter.noter_devis_reouvert('DV-1', self.lead, vues=3)
         recalcul.assert_called_once_with(self.lead)
 
     def test_le_score_persiste_monte_apres_une_reouverture(self):
@@ -225,6 +226,6 @@ class RecalculImmediatTests(TestCase):
         avant = self.lead.score
         with patch.object(signaux, '_engagement_proposition',
                           return_value=_engagement(ouverte=True, vues=3)):
-            services.noter_devis_reouvert('DV-1', self.lead, vues=3)
+            devis_chatter.noter_devis_reouvert('DV-1', self.lead, vues=3)
         self.lead.refresh_from_db()
         self.assertGreater(self.lead.score, avant)

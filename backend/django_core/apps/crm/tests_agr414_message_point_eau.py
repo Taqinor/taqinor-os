@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm import services
+from apps.crm import cadence_messages
 from apps.crm.models import Lead
 from apps.parametres.models_messages import (
     CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
@@ -48,7 +48,7 @@ def _sha(texte):
 
 class TextesDeBase(SimpleTestCase):
     def test_cle_connue_partout(self):
-        self.assertIn(CLE, services.CLES_MESSAGE_VISITE)
+        self.assertIn(CLE, cadence_messages.CLES_MESSAGE_VISITE)
         self.assertIn(CLE, CLES_RELANCE)
         self.assertIn(CLE, {c for c, _ in MessageTemplate.Cle.choices})
         self.assertTrue(MESSAGE_TEMPLATE_DEFAULTS[CLE].strip())

@@ -28,7 +28,8 @@ from django.test import TestCase
 
 from testkit.time import frozen
 
-from apps.crm import horaires, services
+from apps.crm import horaires, cadence_visite
+from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
@@ -86,7 +87,7 @@ class _Base(TestCase):
         à 9 h — jamais une date codée en dur."""
         vise = datetime.datetime.combine(
             RETOUR_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS),
+                days=cadence_visite.VISITE_REPRISE_JOURS),
             datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
         return horaires.prochain_creneau_appel(
             vise, self.company, canal='whatsapp'
@@ -102,11 +103,11 @@ class LaRepriseSuitLeRetourTests(_Base):
         """La suspension avait posé la reprise sur la date PRÉVUE ; le
         retour, saisi trois jours plus tard, la repousse d'autant."""
         suspendue = VISITE_PREVUE_LE + datetime.timedelta(
-            days=services.VISITE_REPRISE_JOURS)
+            days=cadence_visite.VISITE_REPRISE_JOURS)
         touche = self._touche_du_plan(suspendue)
         self.assertEqual(touche.due_date, suspendue)
 
-        services.appliquer_retour_visite(
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'Toiture accessible.'})
 
         touche.refresh_from_db()
@@ -118,8 +119,8 @@ class LaRepriseSuitLeRetourTests(_Base):
         libellé, toujours à faire."""
         touche = self._touche_du_plan(
             VISITE_PREVUE_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
-        services.appliquer_retour_visite(
+                days=cadence_visite.VISITE_REPRISE_JOURS))
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         touche.refresh_from_db()
         self.assertEqual(touche.statut, RelanceEtape.Statut.A_FAIRE)
@@ -134,9 +135,9 @@ class LaRepriseSuitLeRetourTests(_Base):
         d'origine, c'est-à-dire avant la visite."""
         touche = self._touche_du_plan(
             VISITE_PREVUE_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
+                days=cadence_visite.VISITE_REPRISE_JOURS))
         avant = touche.cadence_depart
-        services.appliquer_retour_visite(
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         touche.refresh_from_db()
         self.assertGreater(touche.cadence_depart, avant)
@@ -144,8 +145,8 @@ class LaRepriseSuitLeRetourTests(_Base):
     def test_le_chatter_dit_pourquoi_la_relance_a_bouge(self):
         self._touche_du_plan(
             VISITE_PREVUE_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
-        services.appliquer_retour_visite(
+                days=cadence_visite.VISITE_REPRISE_JOURS))
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         notes = LeadActivity.objects.filter(
             lead=self.lead, kind=LeadActivity.Kind.NOTE)
@@ -162,7 +163,7 @@ class LesGardeFousTests(_Base):
     def test_une_touche_deja_posterieure_nest_pas_tiree_en_avant(self):
         loin = self._touche_du_plan(RETOUR_LE + datetime.timedelta(days=30))
         avant = loin.due_date
-        services.appliquer_retour_visite(
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         loin.refresh_from_db()
         self.assertEqual(loin.due_date, avant)
@@ -171,28 +172,28 @@ class LesGardeFousTests(_Base):
         """Créer une touche ici serait un redémarrage de cadence."""
         avant = self.lead.relance_etapes.filter(
             cadence='apres_devis').exclude(
-            libelle__in=services._LIBELLES_VISITE).count()
+            libelle__in=cadence_reperes._LIBELLES_VISITE).count()
         self.assertEqual(avant, 0)
-        services.appliquer_retour_visite(
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         apres = self.lead.relance_etapes.filter(
             cadence='apres_devis').exclude(
-            libelle__in=services._LIBELLES_VISITE).count()
+            libelle__in=cadence_reperes._LIBELLES_VISITE).count()
         self.assertEqual(apres, 0)
 
     def test_le_delai_de_reprise_reste_celui_du_debrief(self):
         """Garde-fou explicite de la tâche : le délai n'est PAS rendu
         réglable — deux jours, la place du débrief plus un."""
-        self.assertEqual(services.VISITE_REPRISE_JOURS, 2)
+        self.assertEqual(cadence_visite.VISITE_REPRISE_JOURS, 2)
 
     def test_un_lead_quon_ne_relance_plus_ne_bouge_pas(self):
         touche = self._touche_du_plan(
             VISITE_PREVUE_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
+                days=cadence_visite.VISITE_REPRISE_JOURS))
         avant = touche.due_date
         self.lead.ne_plus_contacter = True
         self.lead.save(update_fields=['ne_plus_contacter'])
-        services.appliquer_retour_visite(
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         touche.refresh_from_db()
         self.assertEqual(touche.due_date, avant)
@@ -202,9 +203,9 @@ class LesGardeFousTests(_Base):
         reprise ne doit jamais les prendre pour cible."""
         self._touche_du_plan(
             VISITE_PREVUE_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
-        debrief = services.appliquer_retour_visite(
+                days=cadence_visite.VISITE_REPRISE_JOURS))
+        debrief = cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         self.assertIsNotNone(debrief)
-        self.assertIn(debrief.libelle, services._LIBELLES_VISITE)
+        self.assertIn(debrief.libelle, cadence_reperes._LIBELLES_VISITE)
         self.assertLess(debrief.due_date, self._reprise_attendue())

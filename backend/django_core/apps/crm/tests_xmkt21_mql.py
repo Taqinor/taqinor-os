@@ -17,7 +17,7 @@ from django.contrib.auth import get_user_model
 from authentication.models import Company
 from apps.roles.models import Role
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import maybe_assign_mql, recompute_lead_score
+from apps.crm.leads_score import maybe_assign_mql, recompute_lead_score
 from apps.parametres.models import CompanyProfile
 from apps.notifications.models import Notification
 

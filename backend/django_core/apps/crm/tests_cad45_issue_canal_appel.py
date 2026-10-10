@@ -29,7 +29,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import journaliser_whatsapp_ouvert
+from apps.crm.cadence_reperes import journaliser_whatsapp_ouvert
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

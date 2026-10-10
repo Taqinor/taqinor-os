@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from django.test import SimpleTestCase
 
-from apps.crm.services import _build_lead_wa_reply_url
+from apps.crm.leads_notifications import _build_lead_wa_reply_url
 from apps.ventes.domain.cycle_vie import _build_acceptance_wa_url
 
 CAS = (

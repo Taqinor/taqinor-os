@@ -18,8 +18,11 @@ from authentication.models import Company
 
 from apps.crm import horaires
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import (
-    _PLACEHOLDERS_RENDUS, message_pour_etape, message_visite_pour_lead)
+from apps.crm.cadence_messages import (
+    _PLACEHOLDERS_RENDUS,
+    message_pour_etape,
+    message_visite_pour_lead,
+)
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import (
     PLACEHOLDERS_RELANCE, MessageTemplate)

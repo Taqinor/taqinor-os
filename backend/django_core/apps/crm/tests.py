@@ -237,7 +237,7 @@ class TestResolveClientForLead(TestCase):
         self.Client = Client
 
     def test_reuses_already_linked_client(self):
-        from apps.crm.services import resolve_client_for_lead
+        from apps.crm.clients_identite import resolve_client_for_lead
         client = self.Client.objects.create(
             company=self.company, nom='Linked', email='linked@example.com')
         lead = Lead.objects.create(
@@ -246,7 +246,7 @@ class TestResolveClientForLead(TestCase):
         self.assertEqual(self.Client.objects.count(), 1)
 
     def test_matches_existing_client_by_email(self):
-        from apps.crm.services import resolve_client_for_lead
+        from apps.crm.clients_identite import resolve_client_for_lead
         existing = self.Client.objects.create(
             company=self.company, nom='Match', email='Match@Example.com')
         lead = Lead.objects.create(
@@ -258,7 +258,7 @@ class TestResolveClientForLead(TestCase):
         self.assertEqual(self.Client.objects.count(), 1)  # no duplicate
 
     def test_creates_client_from_lead_without_email(self):
-        from apps.crm.services import resolve_client_for_lead
+        from apps.crm.clients_identite import resolve_client_for_lead
         lead = Lead.objects.create(
             company=self.company, nom='Nouveau', prenom='Prospect',
             telephone='+212600000004', ville='Rabat',
@@ -272,7 +272,7 @@ class TestResolveClientForLead(TestCase):
         self.assertEqual(self.Client.objects.count(), 1)
 
     def test_email_match_is_company_scoped(self):
-        from apps.crm.services import resolve_client_for_lead
+        from apps.crm.clients_identite import resolve_client_for_lead
         other = make_company(slug='other-bills-co', nom='Other')
         self.Client.objects.create(
             company=other, nom='Foreign', email='shared@example.com')
@@ -998,7 +998,7 @@ class TestLeadPatchEcritureBornee(TestCase):
         """QW10 — sans ``phone_normalise`` dans update_fields, la colonne
         INDEXÉE de dédup resterait sur l'ancien numéro et la déduplication
         deviendrait aveugle."""
-        from apps.crm.services import normalize_phone
+        from apps.crm.leads_doublons import normalize_phone
         ancien = self.lead.phone_normalise
         self.assertTrue(ancien)
         resp = self.api.patch(
@@ -1011,7 +1011,7 @@ class TestLeadPatchEcritureBornee(TestCase):
                          normalize_phone(self.lead.telephone) or '')
 
     def test_colonnes_derivees_suivent_un_changement_d_email(self):
-        from apps.crm.services import normalize_email
+        from apps.crm.leads_doublons import normalize_email
         ancien = self.lead.email_normalise
         self.assertTrue(ancien)
         resp = self.api.patch(

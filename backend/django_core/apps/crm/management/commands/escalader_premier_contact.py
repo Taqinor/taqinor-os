@@ -119,7 +119,7 @@ def _destinataires(lead):
     connaît déjà le repli « managers de la société » quand l'owner ou son
     supérieur manque) et on la coupe en deux : jamais un second calcul de
     destinataires qui dériverait du premier."""
-    from apps.crm.services import lead_notification_recipients
+    from apps.crm.leads_socle import lead_notification_recipients
 
     tous = lead_notification_recipients(lead)
     owner_pk = getattr(getattr(lead, 'owner', None), 'pk', None)

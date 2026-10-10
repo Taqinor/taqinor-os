@@ -24,7 +24,7 @@ from core.events import devis_sent
 
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, RelanceEtape
-from apps.crm.services import lead_finance_a_credit
+from apps.crm.cadence_messages import lead_finance_a_credit
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 from apps.ventes.services import jours_validite_societe
@@ -195,12 +195,12 @@ class SubventionDeposeeTests(_SubventionBase):
         attendu = max(FIN_DU_SUIVI, ENVOI.date() + datetime.timedelta(days=30))
         self.assertEqual(devis.date_validite, attendu)
         from apps.crm.models import LeadActivity
-        from apps.crm.services import MOTIF_VALIDITE_SUBVENTION
+        from apps.crm.cadence_messages import MOTIF_VALIDITE_SUBVENTION
         self.assertTrue(LeadActivity.objects.filter(
             lead=self.lead, body__contains=MOTIF_VALIDITE_SUBVENTION).exists())
 
     def test_le_message_J9_et_le_devis_disent_la_meme_date(self):
-        from apps.crm.services import message_pour_etape
+        from apps.crm.cadence_messages import message_pour_etape
 
         self.profil.quote_validity_days = 30
         self.profil.save(update_fields=['quote_validity_days'])
@@ -243,7 +243,7 @@ class MessageJ9Tests(_Base):
     financement = 'credit'
 
     def test_le_message_J9_cite_la_MEME_date_que_le_devis(self):
-        from apps.crm.services import message_pour_etape
+        from apps.crm.cadence_messages import message_pour_etape
 
         devis = self._envoyer()
         etape = RelanceEtape.objects.create(
@@ -296,7 +296,7 @@ class ProEtiquetteAttenteAuDemarrageTests(_ProBase):
 
     def test_etiquette_attente_au_demarrage_du_plan(self):
         from apps.crm.models import LeadActivity
-        from apps.crm.services import MOTIF_VALIDITE_ATTENTE
+        from apps.crm.cadence_plan import MOTIF_VALIDITE_ATTENTE
         devis = self._envoyer('DEV-CIQ510-0020')
         self.assertEqual(
             devis.date_validite,
@@ -323,7 +323,7 @@ class AttenteApresEnvoiTests(_ProBase):
 
     def _repondre_attente(self):
         from testkit.time import frozen
-        from apps.crm.services import repondre_attente_accord
+        from apps.crm.cadence_reponses import repondre_attente_accord
         j3 = ENVOI + datetime.timedelta(days=3)
         with frozen(j3):
             etape = (self.lead.relance_etapes
@@ -374,7 +374,7 @@ class AttenteApresEnvoiTests(_ProBase):
             devis, devis.date_validite - datetime.timedelta(days=1)))
 
     def test_e_message_j9_et_pdf_meme_date(self):
-        from apps.crm.services import message_pour_etape
+        from apps.crm.cadence_messages import message_pour_etape
         from apps.ventes.selectors import date_validite_effective
         devis = self._envoyer('DEV-CIQ510-0080')
         self._repondre_attente()

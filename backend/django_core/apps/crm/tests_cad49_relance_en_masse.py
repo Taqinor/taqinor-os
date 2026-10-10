@@ -25,7 +25,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import MOTIF_BULK_CADENCE_ACTIVE
+from apps.crm.leads_socle import MOTIF_BULK_CADENCE_ACTIVE
 from apps.crm.fiche_bulk import apply_bulk_action
 from apps.parametres.models import CompanyProfile
 

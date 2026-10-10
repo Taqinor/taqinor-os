@@ -28,7 +28,7 @@ from testkit.time import frozen
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import _a_lheure
-from apps.crm.services import touche_traitee_en_avance
+from apps.crm.cadence_reperes import touche_traitee_en_avance
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 

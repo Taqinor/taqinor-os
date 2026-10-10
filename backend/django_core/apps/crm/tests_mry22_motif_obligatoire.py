@@ -169,7 +169,7 @@ class ChainageArretTests(_Base):
     def test_un_patch_avec_motif_arrete_les_cadences(self):
         """MRY9 + MRY22 : la perte est motivée ET les relances s'arrêtent."""
         from apps.crm.models import RelanceEtape
-        from apps.crm.services import initialiser_plan_relance
+        from apps.crm.cadence_plan import initialiser_plan_relance
         initialiser_plan_relance(self.lead, self.acteur, cadence='contact')
         self.api.patch(
             f'/api/django/crm/leads/{self.lead.pk}/',

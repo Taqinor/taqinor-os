@@ -22,7 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
@@ -64,11 +64,11 @@ class ProchaineEtapeDuLeadTests(TestCase):
             {'outcome': outcome}, format='json')
 
     def test_visite_acceptee_annonce_l_etape_planifier_du_jour(self):
-        resp = self._fait(services.OUTCOME_VISITE_ACCEPTEE)
+        resp = self._fait(cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
 
         self.assertEqual(resp.status_code, 200, resp.data)
         planifier = self.lead.relance_etapes.get(
-            libelle=services.VISITE_FILET_LIBELLE, statut=A_FAIRE)
+            libelle=cadence_reperes.VISITE_FILET_LIBELLE, statut=A_FAIRE)
         self.assertNotEqual(planifier.cadence, self.appel.cadence)
         prochaine = resp.data['prochaine_touche']
         self.assertIsNotNone(prochaine)
@@ -83,6 +83,6 @@ class ProchaineEtapeDuLeadTests(TestCase):
 
         self.assertEqual(resp.status_code, 200, resp.data)
         devis = self.lead.relance_etapes.get(
-            libelle=services.FILET_JOINT_LIBELLE, statut=A_FAIRE)
+            libelle=cadence_reperes.FILET_JOINT_LIBELLE, statut=A_FAIRE)
         self.assertEqual(resp.data['prochaine_touche']['due_date'],
                          devis.due_date.isoformat())

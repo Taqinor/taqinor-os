@@ -8,7 +8,7 @@ from django.test import TestCase
 from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, LeadPlaybookProgress, Playbook, PlaybookEtape, PlaybookTache
-from apps.crm.services import generer_playbook_progress, playbooks_recommandes
+from apps.crm.fiche_funnel import generer_playbook_progress, playbooks_recommandes
 
 
 class PlaybookRecommandeTests(TestCase):

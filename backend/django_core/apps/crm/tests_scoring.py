@@ -392,7 +392,7 @@ class TestScoreReasonsApi(TestScoringMultiTenant):
             company=self.company_a, nom='Low',
             facture_hiver=100, canal='meta_ads')
         # Recompute stored scores via the service
-        from apps.crm.services import recompute_lead_score
+        from apps.crm.leads_score import recompute_lead_score
         recompute_lead_score(self.lead_a)
         recompute_lead_score(lead_low)
 
@@ -408,7 +408,7 @@ class TestScoreReasonsApi(TestScoringMultiTenant):
 
     def test_recompute_lead_score_persists(self):
         """recompute_lead_score() écrit le score sur le champ score du lead."""
-        from apps.crm.services import recompute_lead_score
+        from apps.crm.leads_score import recompute_lead_score
         recompute_lead_score(self.lead_a)
         self.lead_a.refresh_from_db()
         expected = compute_score(self.lead_a)

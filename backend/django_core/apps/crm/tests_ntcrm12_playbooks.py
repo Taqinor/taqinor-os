@@ -8,7 +8,7 @@ from apps.crm import stages
 from apps.crm.models import (
     Lead, LeadPlaybookProgress, Playbook, PlaybookEtape, PlaybookTache,
 )
-from apps.crm.services import generer_playbook_progress
+from apps.crm.fiche_funnel import generer_playbook_progress
 from apps.roles.models import Role
 
 User = get_user_model()

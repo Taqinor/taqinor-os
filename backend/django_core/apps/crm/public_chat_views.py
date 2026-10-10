@@ -171,7 +171,7 @@ def post_chat_message(request, token):
     extracted = extract_livechat_qualification(session.transcript)
     lead_created = False
     if extracted.has_contact and session.lead_id is None:
-        from .services import create_lead_from_livechat
+        from .leads_intake import create_lead_from_livechat
         transcript_text = '\n'.join(
             f"[{e.get('auteur')}] {e.get('texte')}"
             for e in (session.transcript or [])

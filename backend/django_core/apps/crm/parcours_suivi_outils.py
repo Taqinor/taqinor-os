@@ -130,7 +130,7 @@ def refus_variantes_segment(objet):
     """AGR533 — les clés interdites qu'une ``variantes_segment`` de ``objet``
     (modèle de réponse, entrée d'étape ou geste) voudrait changer : ``[]``
     quand tout va bien. La garde de table le vérifie partout."""
-    from apps.crm.services import CLES_MESSAGE_REPONSE
+    from apps.crm.cadence_reponses import CLES_MESSAGE_REPONSE
 
     refus = []
     for segment, variante in (objet.get('variantes_segment') or {}).items():
@@ -693,7 +693,7 @@ class ParcoursBase(TestCase):
         chemin réel vers une étape générique qui est un appel (la passation est un message ;
         un rappel demandé pendant un plan en cours DÉPLACE la touche suivante, il n'en pose
         pas)."""
-        from apps.crm.services import SIGNAL_PROPOSITION_ROUVERTE, poser_touche_signal
+        from apps.crm.cadence_signaux import SIGNAL_PROPOSITION_ROUVERTE, poser_touche_signal
 
         touche = poser_touche_signal(lead, SIGNAL_PROPOSITION_ROUVERTE, user=self.acteur)
         self.assertIsNotNone(touche, self.msg('le signal « proposition rouverte » n’a rien posé', lead))

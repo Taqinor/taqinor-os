@@ -37,7 +37,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -51,7 +52,7 @@ AUJOURDHUI = datetime.date(2026, 9, 23)
 A_FAIRE = RelanceEtape.Statut.A_FAIRE
 ANNULEE = RelanceEtape.Statut.ANNULEE
 FAIT = RelanceEtape.Statut.FAIT
-VISITE = services.OUTCOME_VISITE_ACCEPTEE
+VISITE = cadence_reperes.OUTCOME_VISITE_ACCEPTEE
 
 
 class _Base(TestCase):
@@ -94,7 +95,7 @@ class _Base(TestCase):
 
     def _filet_visite(self, lead):
         return lead.relance_etapes.filter(
-            libelle=services.VISITE_FILET_LIBELLE, statut=A_FAIRE)
+            libelle=cadence_reperes.VISITE_FILET_LIBELLE, statut=A_FAIRE)
 
 
 class PriseDeContactTests(_Base):
@@ -126,7 +127,7 @@ class PriseDeContactTests(_Base):
         self.assertEqual(
             set(lead.relance_etapes.filter(statut=A_FAIRE)
                 .values_list('libelle', flat=True)),
-            {services.VISITE_FILET_LIBELLE})
+            {cadence_reperes.VISITE_FILET_LIBELLE})
         # Le chatter le dit : la touche porte l'issue, l'arrêt a son motif.
         self.assertTrue(lead.activites.filter(
             outcome=VISITE, user=self.acteur).exists())
@@ -169,7 +170,7 @@ class FiletPreparerDevisTests(_Base):
         lead = self._lead()
         etape = self._touche(lead, cadence='generique', ordre=1,
                              canal=RelanceEtape.Canal.APPEL,
-                             libelle=services.FILET_JOINT_LIBELLE)
+                             libelle=cadence_reperes.FILET_JOINT_LIBELLE)
 
         resp = self._fait(etape)
 
@@ -182,11 +183,11 @@ class FiletPreparerDevisTests(_Base):
         self.assertEqual(lead.stage, stages.CONTACTED)
         self.assertFalse(lead.relance_etapes.filter(
             cadence='apres_devis').exclude(
-                libelle__in=tuple(services._LIBELLES_VISITE)).exists())
+                libelle__in=tuple(cadence_reperes._LIBELLES_VISITE)).exists())
         self.assertEqual(self._filet_visite(lead).get().due_date, AUJOURDHUI)
         # L'étape devis n'est pas re-posée à côté de la visite.
         self.assertFalse(lead.relance_etapes.filter(
-            libelle=services.FILET_JOINT_LIBELLE, statut=A_FAIRE).exists())
+            libelle=cadence_reperes.FILET_JOINT_LIBELLE, statut=A_FAIRE).exists())
 
 
 class JournalDAppelTests(_Base):
@@ -273,7 +274,7 @@ class PromessesTests(SimpleTestCase):
     def test_etape_preparer_le_devis(self):
         self.assertEqual(
             self._promesses('generique', 1,
-                            services.FILET_JOINT_LIBELLE)[VISITE],
+                            cadence_reperes.FILET_JOINT_LIBELLE)[VISITE],
             [st.ETAPE_PLANIFIER_VISITE])
 
     def test_journal_d_appel(self):
@@ -283,9 +284,9 @@ class PromessesTests(SimpleTestCase):
              st.ETAPE_PLANIFIER_VISITE])
 
     def test_la_table_d_arret_est_celle_de_joint(self):
-        self.assertEqual(services.CADENCES_ARRETEES_PAR_ISSUE[VISITE],
-                         services.CADENCES_ARRETEES_PAR_ISSUE['joint'])
+        self.assertEqual(cadence_touche.CADENCES_ARRETEES_PAR_ISSUE[VISITE],
+                         cadence_touche.CADENCES_ARRETEES_PAR_ISSUE['joint'])
         self.assertFalse(
-            services.issue_fait_naitre_la_suite(VISITE, 'contact'))
-        self.assertIn(VISITE, services._OUTCOMES_SANS_CLOTURE)
+            cadence_touche.issue_fait_naitre_la_suite(VISITE, 'contact'))
+        self.assertIn(VISITE, cadence_reperes._OUTCOMES_SANS_CLOTURE)
         self.assertIn(VISITE, {k for k, _ in LeadActivity.OUTCOMES})
