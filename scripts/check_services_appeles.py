@@ -135,7 +135,11 @@ def modules_services(app: str) -> list:
     racine = DJANGO / "apps" / app
     for motif in FICHIERS_SERVICES + FICHIERS_SERVICES_PAR_APP.get(app, ()):
         for path in sorted(racine.glob(motif)):
-            if path.is_file() and not est_test(path):
+            # SPL83 — `crm/cadence_selectors.py` (scission de selectors.py,
+            # LECTURES ré-exportées par la façade) n'est pas un module de
+            # service : selectors.py n'a jamais été surveillé, ses morceaux non plus.
+            if (path.is_file() and not est_test(path)
+                    and not path.name.endswith("_selectors.py")):
                 modules.append(path.resolve())
     return modules
 
