@@ -94,7 +94,7 @@ class BaseDepot(unittest.TestCase):
 class DetectionTests(BaseDepot):
     def test_constante_de_module_neuve_sans_source(self):
         self.depot.core_fichier("cables.py", "SEUIL_X = 1.5\n")
-        attendu = ["backend/django_core/core/electrique/cables.py:1"]
+        attendu = ["backend/django_core/core/electrique/cables.py::SEUIL_X"]  # AMET100 : cle par symbole
         self.assertEqual(self.signatures(), attendu)
 
     def test_defaut_de_dataclass_neuf_sans_source(self):
@@ -105,7 +105,7 @@ class DetectionTests(BaseDepot):
             "    seuil: float = 0.35\n"))
         signatures = self.signatures()
         self.assertEqual(len(signatures), 1)
-        self.assertTrue(signatures[0].endswith(":5"))
+        self.assertTrue(signatures[0].endswith("::Spec.seuil"))
 
     def test_litteral_negatif_est_analyse(self):
         """Le cas REEL de la tache : ``-0.27`` s'analyse en AST comme
@@ -232,8 +232,8 @@ class SilenceTests(BaseDepot):
             "    second: float = 2.4\n"))
         signatures = self.signatures()
         self.assertEqual(len(signatures), 1)
-        # `second` (ligne 7) rougit, `premier` (source IEC) non.
-        self.assertTrue(signatures[0].endswith(":7"))
+        # `second` rougit, `premier` (source IEC) non.
+        self.assertTrue(signatures[0].endswith("::Spec.second"))
 
 
 # ===========================================================================
@@ -297,12 +297,12 @@ class BaseDeReferenceTests(BaseDepot):
         self.depot.core_fichier("cables.py", "SEUIL_X = 1.5\n")
         write(self.depot.base,
               g.ENTETE_BASE +
-              "backend/django_core/core/electrique/cables.py:1"
+              "backend/django_core/core/electrique/cables.py::SEUIL_X"
               "  # motif ecrit a la main, a conserver\n")
         self._sortie(["--write-baseline"])
         base = g.charger_base()
         self.assertEqual(
-            base["backend/django_core/core/electrique/cables.py:1"],
+            base["backend/django_core/core/electrique/cables.py::SEUIL_X"],
             "motif ecrit a la main, a conserver")
 
     def test_chemin_de_base_resolu_a_l_appel(self):
@@ -354,7 +354,7 @@ class DepotReelTests(unittest.TestCase):
         def _cle(nom):
             trouvees = [cle for cle, motif in base.items()
                         if cle.endswith("core/electrique/types.py")
-                        or "core/electrique/types.py:" in cle
+                        or "core/electrique/types.py::" in cle
                         if motif.startswith(nom + " :")]
             self.assertEqual(len(trouvees), 1, (nom, trouvees))
             return trouvees[0]
@@ -367,8 +367,8 @@ class DepotReelTests(unittest.TestCase):
 
     def test_la_base_committee_ne_gele_que_le_perimetre(self):
         for cle in g.charger_base():
-            fichier, _, ligne = cle.rpartition(":")
-            self.assertTrue(ligne.isdigit(), cle)
+            fichier, sep, symbole = cle.partition("::")
+            self.assertTrue(sep and symbole, cle)  # AMET100 : cle par symbole, jamais par ligne
             self.assertTrue(
                 "/core/electrique/" in fichier
                 or "/apps/calepinage/services/" in fichier,

@@ -20,7 +20,7 @@ import check_forme_code as cfc  # noqa: E402
 from forme_code.socle import git  # noqa: E402
 
 CLASSES = ("FICHIER_MUR", "FONCTION_NEUVE", "FONCTION_MUR", "FACADE", "REGLAGE", "GARDE_NEUVE",
-           "BASELINE_GROSSIT", "EXCEPTION")
+           "BASELINE_GROSSIT", "CLE_LIGNE", "EXCEPTION")
 
 
 def commits_fusionnes(racine, ref: str, n: int) -> list:

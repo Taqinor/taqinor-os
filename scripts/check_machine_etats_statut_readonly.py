@@ -46,6 +46,7 @@ import argparse
 import ast
 import sys
 from pathlib import Path
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"

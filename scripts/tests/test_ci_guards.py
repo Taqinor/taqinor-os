@@ -329,5 +329,29 @@ class RegistresDeriveTests(unittest.TestCase):
                 self.assertIn(f"python scripts/{script} --check", commandes)
 
 
+class TypeDeCleTests(unittest.TestCase):
+    """AMET100 - toute garde qui lit une baseline / allowlist declare `TYPE_DE_CLE` (lu par
+    `audit_tache.py listes-figees`) : `par_symbole` = cle de contenu, `par_ligne` = numero de ligne."""
+
+    _BASELINE = re.compile(r"\w+_(?:allow|allowlist|exceptions|non_branches)\w*\.txt|exceptions_permanentes\.yml|_dette\.yml")
+    _TYPE = re.compile(r"(?m)^TYPE_DE_CLE\s*=\s*['\"](par_ligne|par_symbole)['\"]")
+
+    def test_toute_garde_a_baseline_declare_son_type_de_cle(self):
+        scripts = os.path.join(REPO_ROOT, "scripts")
+        sans_type = []
+        lisant = 0
+        for nom in sorted(os.listdir(scripts)):
+            if not (nom.startswith("check_") and nom.endswith(".py")):
+                continue
+            with open(os.path.join(scripts, nom), encoding="utf-8") as f:
+                source = f.read()
+            if self._BASELINE.search(source):
+                lisant += 1
+                if not self._TYPE.search(source):
+                    sans_type.append(nom)
+        self.assertGreater(lisant, 40)  # la detection ne s'est pas videe
+        self.assertEqual(sans_type, [], "ajoutez `TYPE_DE_CLE = \"par_symbole\"` (ou par_ligne) apres les imports")
+
+
 if __name__ == "__main__":
     unittest.main()
