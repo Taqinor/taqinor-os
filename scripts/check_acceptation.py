@@ -159,17 +159,8 @@ def _etape_complete(e) -> bool:
                 and all(v in ("PASS", "FAIL", "NA") for v in oracles.values()))
 
 
-def lire_enregistrement(md: Path, erreurs: list):
-    """Ids couverts par un enregistrement conforme (vide si FAIL), None si non conforme."""
-    nb_avant = len(erreurs)
-
-    def err(msg):
-        erreurs.append(f"{_rel(md)} : {msg}")
-
-    nom = _NOM.fullmatch(md.name)
-    if not nom:
-        err("nom non conforme (attendu <AAAA-MM-JJ>-<sha9>.md)")
-        return None
+def _charger_enregistrement(md: Path, err):
+    """(results, en-tête) d'un enregistrement, ou None (erreur déjà signalée)."""
     rj = md.with_name(md.name[:-3] + ".results.json")
     if not rj.is_file():
         err(f"{rj.name} : results.json absent (il fait foi)")
@@ -183,6 +174,10 @@ def lire_enregistrement(md: Path, erreurs: list):
     if not isinstance(res, dict) or not isinstance(tete, dict):
         err("en-tête YAML `---` ou objet results.json manquant")
         return None
+    return res, tete
+
+
+def _verifier_identite(res: dict, nom, md: Path, err):
     sha, verdict = str(res.get("sha") or ""), res.get("verdict")
     if not re.fullmatch(r"[0-9a-f]{9,40}", sha) or sha[:9] != nom["sha"]:
         err(f"sha « {sha} » ≠ nom de fichier ({nom['sha']})")
@@ -192,32 +187,44 @@ def lire_enregistrement(md: Path, erreurs: list):
         err(f"groupe « {res.get('groupe')} » ≠ dossier {md.parent.name}")
     if verdict not in VERDICTS:
         err(f"verdict « {verdict} » (attendu PASS ou FAIL)")
-    couvre = set(_liste(res.get("couvre")))
-    ecart = set(_liste(res.get("couvre_avec_ecart")))
+
+
+def _verifier_couvre(couvre: set, ecart: set, err):
     if not couvre:
         err("`couvre` vide")
     if ecart - couvre:
         err(f"couvre_avec_ecart hors de couvre : {', '.join(sorted(ecart - couvre))}")
-    etapes = res.get("etapes") if isinstance(res.get("etapes"), list) else []
+
+
+def _verifier_etape(n: int, e, verdict, ecart: set, err):
+    """Tâches de l'étape `e` (set), ou None si elle est vide/incomplète."""
+    if not isinstance(e, dict) or not _etape_complete(e):
+        err(f"étape {n} vide ou incomplète (id, taches, verdict, oracles 1-10 "
+            "PASS/FAIL/NA, trace)")
+        return None
+    taches = set(_liste(e.get("taches", e.get("tache"))))
+    if e["verdict"] == "PASS" and "FAIL" in e["oracles"].values():
+        err(f"étape {e['id']} PASS avec un oracle FAIL")
+    if e["verdict"] == "FAIL" and verdict == "PASS" and not (
+            taches <= ecart and e.get("base_verdict") == "FAIL"):
+        err(f"étape {e['id']} FAIL dans un enregistrement PASS : seul un écart "
+            "accepté (couvre_avec_ecart) qui échoue aussi à la base "
+            "(base_verdict: FAIL) est admis")
+    return taches
+
+
+def _verifier_etapes(etapes: list, verdict, ecart: set, err) -> set:
+    """Contrôle chaque étape ; renvoie l'union des tâches vues."""
     if not etapes:
         err("aucune étape")
     vues = set()
     for n, e in enumerate(etapes, 1):
-        if not isinstance(e, dict) or not _etape_complete(e):
-            err(f"étape {n} vide ou incomplète (id, taches, verdict, oracles 1-10 "
-                "PASS/FAIL/NA, trace)")
-            continue
-        taches = set(_liste(e.get("taches", e.get("tache"))))
-        vues |= taches
-        if e["verdict"] == "PASS" and "FAIL" in e["oracles"].values():
-            err(f"étape {e['id']} PASS avec un oracle FAIL")
-        if e["verdict"] == "FAIL" and verdict == "PASS" and not (
-                taches <= ecart and e.get("base_verdict") == "FAIL"):
-            err(f"étape {e['id']} FAIL dans un enregistrement PASS : seul un écart "
-                "accepté (couvre_avec_ecart) qui échoue aussi à la base "
-                "(base_verdict: FAIL) est admis")
-    if couvre - vues:
-        err(f"ids de `couvre` sans étape : {', '.join(sorted(couvre - vues, key=_cle))}")
+        vues |= _verifier_etape(n, e, verdict, ecart, err) or set()
+    return vues
+
+
+def _verifier_entete(tete: dict, res: dict, couvre: set, ecart: set, err):
+    """L'en-tête YAML du .md doit refléter results.json (qui fait foi)."""
     for cle in ("sha", "date", "groupe", "verdict"):
         if str(tete.get(cle)) != str(res.get(cle)):
             err(f"en-tête `{cle}` ≠ results.json")
@@ -225,9 +232,37 @@ def lire_enregistrement(md: Path, erreurs: list):
         err("en-tête `couvre` ≠ results.json")
     if set(_liste(tete.get("couvre_avec_ecart"))) != ecart:
         err("en-tête `couvre_avec_ecart` ≠ results.json")
+    etapes = res.get("etapes") if isinstance(res.get("etapes"), list) else []
     ids_tete = {str(x.get("id")) for x in tete.get("etapes") or [] if isinstance(x, dict)}
     if ids_tete != {str(e.get("id")) for e in etapes if isinstance(e, dict)}:
         err("en-tête `etapes` ≠ étapes de results.json")
+
+
+def lire_enregistrement(md: Path, erreurs: list):
+    """Ids couverts par un enregistrement conforme (vide si FAIL), None si non conforme."""
+    nb_avant = len(erreurs)
+
+    def err(msg):
+        erreurs.append(f"{_rel(md)} : {msg}")
+
+    nom = _NOM.fullmatch(md.name)
+    if not nom:
+        err("nom non conforme (attendu <AAAA-MM-JJ>-<sha9>.md)")
+        return None
+    charge = _charger_enregistrement(md, err)
+    if charge is None:
+        return None
+    res, tete = charge
+    verdict = res.get("verdict")
+    _verifier_identite(res, nom, md, err)
+    couvre = set(_liste(res.get("couvre")))
+    ecart = set(_liste(res.get("couvre_avec_ecart")))
+    _verifier_couvre(couvre, ecart, err)
+    etapes = res.get("etapes") if isinstance(res.get("etapes"), list) else []
+    vues = _verifier_etapes(etapes, verdict, ecart, err)
+    if couvre - vues:
+        err(f"ids de `couvre` sans étape : {', '.join(sorted(couvre - vues, key=_cle))}")
+    _verifier_entete(tete, res, couvre, ecart, err)
     if len(erreurs) > nb_avant:
         return None
     return couvre if verdict == "PASS" else set()
@@ -306,11 +341,7 @@ def croissances(base: str, actuelles: dict) -> list:
     return erreurs
 
 
-def main(argv=None) -> int:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Garde d'acceptation (AMET88).")
     ap.add_argument("--base", default="origin/main",
                     help="ref git de comparaison de la dette (défaut origin/main)")
@@ -323,45 +354,44 @@ def main(argv=None) -> int:
                     help="couverture d'UN groupe : exit 0 si toute tâche cochée à preuve est "
                          "couverte par un enregistrement PASS (dette vide), 1 sinon — lu par "
                          "scripts/audit_registre.py (statut « accepté »)")
-    args = ap.parse_args(argv)
+    return ap
 
-    erreurs: list = []
-    a_couvrir = taches_a_preuve()
-    couverts = enregistrements(erreurs)
-    dette = dettes()
-    restants: dict = {}
-    for ident in a_couvrir:
-        if ident not in couverts:
-            restants.setdefault(groupe_de(ident), set()).add(ident)
 
-    if args.groupe:
-        g = args.groupe.upper()
-        ids = {i for i in a_couvrir if groupe_de(i) == g}
-        non_couverts = sorted(ids - couverts, key=_cle)
-        print(f"{g} : {len(ids)} cochée(s) à preuve, {len(ids & couverts)} couverte(s), "
-              f"{len(non_couverts)} non couverte(s) (dette {len(dette.get(g, set()))})")
-        return 0 if not non_couverts and not dette.get(g) else 1
+def _mode_groupe(groupe: str, a_couvrir: dict, couverts: set, dette: dict) -> int:
+    g = groupe.upper()
+    ids = {i for i in a_couvrir if groupe_de(i) == g}
+    non_couverts = sorted(ids - couverts, key=_cle)
+    print(f"{g} : {len(ids)} cochée(s) à preuve, {len(ids & couverts)} couverte(s), "
+          f"{len(non_couverts)} non couverte(s) (dette {len(dette.get(g, set()))})")
+    return 0 if not non_couverts and not dette.get(g) else 1
 
-    if args.amorcer:
-        sha = (_git("rev-parse", "--short=9", "HEAD") or "inconnu").strip()
-        for groupe, ids in sorted(restants.items()):
-            if groupe in dette:
-                print(f"{groupe} : dette déjà amorcée — ignorée (elle ne fait que rétrécir)")
-                continue
-            ecrire_dette(groupe, ids, sha)
-            print(f"{groupe} : dette amorcée à {sha} ({len(ids)} id(s))")
-        return 0
-    if args.write_baseline:
-        for groupe, ids in sorted(dette.items()):
-            garde = ids & restants.get(groupe, set())
-            if garde != ids:
-                amorce = plan_lanes._MiniYamlParser((ROOT / DOSSIER / groupe / "_dette.yml")
-                                                    .read_text(encoding="utf-8")).parse()
-                ecrire_dette(groupe, garde, str(amorce.get("amorce") or "inconnu"))
-                print(f"{groupe} : dette rétrécie de {len(ids) - len(garde)} id(s) "
-                      f"→ {len(garde)}")
-        return 0
 
+def _mode_amorcer(restants: dict, dette: dict) -> int:
+    sha = (_git("rev-parse", "--short=9", "HEAD") or "inconnu").strip()
+    for groupe, ids in sorted(restants.items()):
+        if groupe in dette:
+            print(f"{groupe} : dette déjà amorcée — ignorée (elle ne fait que rétrécir)")
+            continue
+        ecrire_dette(groupe, ids, sha)
+        print(f"{groupe} : dette amorcée à {sha} ({len(ids)} id(s))")
+    return 0
+
+
+def _mode_baseline(restants: dict, dette: dict) -> int:
+    for groupe, ids in sorted(dette.items()):
+        garde = ids & restants.get(groupe, set())
+        if garde != ids:
+            amorce = plan_lanes._MiniYamlParser((ROOT / DOSSIER / groupe / "_dette.yml")
+                                                .read_text(encoding="utf-8")).parse()
+            ecrire_dette(groupe, garde, str(amorce.get("amorce") or "inconnu"))
+            print(f"{groupe} : dette rétrécie de {len(ids) - len(garde)} id(s) "
+                  f"→ {len(garde)}")
+    return 0
+
+
+def _erreurs_garde(a_couvrir: dict, couverts: set, dette: dict, restants: dict,
+                   base: str) -> list:
+    erreurs = []
     for ident in sorted(a_couvrir, key=_cle):
         groupe = groupe_de(ident)
         if ident not in couverts and ident not in dette.get(groupe, set()):
@@ -376,17 +406,47 @@ def main(argv=None) -> int:
             erreurs.append(f"dette {groupe} : {len(perimes)} id(s) couvert(s) ou plus cochés "
                            f"à preuve ({', '.join(sorted(perimes, key=_cle))}) — lancez "
                            "`python scripts/check_acceptation.py --write-baseline`")
-    if base_disponible(args.base):
-        erreurs += croissances(args.base, dette)
+    if base_disponible(base):
+        erreurs += croissances(base, dette)
     else:
-        print(f"Avis : base « {args.base} » indisponible — croissance de la dette non "
+        print(f"Avis : base « {base} » indisponible — croissance de la dette non "
               "vérifiée.")
+    return erreurs
 
+
+def _afficher_bilan(a_couvrir: dict, couverts: set, dette: dict):
     print("Acceptation par groupe (cochées à preuve / couvertes / en dette) :")
     for groupe in sorted({groupe_de(i) for i in a_couvrir} | set(dette)):
         ids = {i for i in a_couvrir if groupe_de(i) == groupe}
         print(f"  {groupe} : {len(ids)} cochée(s) à preuve, {len(ids & couverts)} "
               f"couverte(s), {len(dette.get(groupe, set()))} en dette")
+
+
+def main(argv=None) -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    args = _parser().parse_args(argv)
+
+    erreurs: list = []
+    a_couvrir = taches_a_preuve()
+    couverts = enregistrements(erreurs)
+    dette = dettes()
+    restants: dict = {}
+    for ident in a_couvrir:
+        if ident not in couverts:
+            restants.setdefault(groupe_de(ident), set()).add(ident)
+
+    if args.groupe:
+        return _mode_groupe(args.groupe, a_couvrir, couverts, dette)
+    if args.amorcer:
+        return _mode_amorcer(restants, dette)
+    if args.write_baseline:
+        return _mode_baseline(restants, dette)
+
+    erreurs += _erreurs_garde(a_couvrir, couverts, dette, restants, args.base)
+    _afficher_bilan(a_couvrir, couverts, dette)
     if not erreurs:
         print("OK — toute tâche cochée à preuve est couverte ou en dette gelée.")
         return 0
