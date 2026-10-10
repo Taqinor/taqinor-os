@@ -1516,7 +1516,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # s'annule avec elles (best-effort, note au chatter quand un
         # rendez-vous est réellement annulé) : le technicien ne se déplace
         # pas chez un client perdu ou qui ne veut plus être contacté.
-        from .services import (
+        from .cadence_visite import (
             CAUSE_RDV_NE_PLUS_CONTACTER,
             annuler_rendez_vous_sur_arret,
             cause_rdv_perdu,
@@ -3140,7 +3140,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         chaînes vides sinon."""
         from apps.visites.selectors import visites_pour_lead
 
-        from .services import avertissement_visite
+        from .cadence_visite import avertissement_visite
 
         lead = self.get_object()
         avertissement = avertissement_visite(lead)
@@ -3181,7 +3181,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.visites.selectors import ligne_visite_pour_lead
         from apps.visites.services import planifier_visite
 
-        from .services import clore_etape_apres_planification
+        from .cadence_visite import clore_etape_apres_planification
         from .cadence_plan import _prochaine_touche_a_faire
 
         lead = self.get_object()

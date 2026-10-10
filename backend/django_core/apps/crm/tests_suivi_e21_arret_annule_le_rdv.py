@@ -27,7 +27,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DECIDER_SUITE, q_etape)
@@ -123,7 +123,7 @@ class ArretParUneToucheTests(_Base):
         resp = self._fait(confirmation, {'outcome': 'refuse'})
 
         self.assertEqual(resp.status_code, 200, resp.data)
-        self._assert_annule(visite, services.CAUSE_RDV_REFUS)
+        self._assert_annule(visite, cadence_visite.CAUSE_RDV_REFUS)
         # La décision reste humaine : « Décider la suite » est posée.
         self.assertTrue(self.lead.relance_etapes.filter(
             q_etape(CLE_DECIDER_SUITE), statut=A_FAIRE).exists())
@@ -140,7 +140,7 @@ class ArretParUneToucheTests(_Base):
                                     'motif_perte': MOTIF})
 
         self.assertEqual(resp.status_code, 200, resp.data)
-        self._assert_annule(visite, services.cause_rdv_perdu(MOTIF))
+        self._assert_annule(visite, cadence_visite.cause_rdv_perdu(MOTIF))
         self.assertTrue(self.lead.perdu)
 
     def test_ne_plus_me_contacter(self):
@@ -152,7 +152,7 @@ class ArretParUneToucheTests(_Base):
                           {'reponse': cadence_reponses.REPONSE_NE_PLUS_CONTACTER})
 
         self.assertEqual(resp.status_code, 200, resp.data)
-        self._assert_annule(visite, services.CAUSE_RDV_NE_PLUS_CONTACTER)
+        self._assert_annule(visite, cadence_visite.CAUSE_RDV_NE_PLUS_CONTACTER)
         self.assertTrue(self.lead.ne_plus_contacter)
 
 
@@ -168,7 +168,7 @@ class ArretParLaFicheTests(_Base):
         resp = self._patch({'perdu': True, 'motif_perte': MOTIF})
 
         self.assertEqual(resp.status_code, 200, resp.data)
-        self._assert_annule(visite, services.cause_rdv_perdu(MOTIF))
+        self._assert_annule(visite, cadence_visite.cause_rdv_perdu(MOTIF))
 
     def test_bascule_ne_plus_contacter(self):
         visite = self._planifier()
@@ -176,7 +176,7 @@ class ArretParLaFicheTests(_Base):
         resp = self._patch({'ne_plus_contacter': True})
 
         self.assertEqual(resp.status_code, 200, resp.data)
-        self._assert_annule(visite, services.CAUSE_RDV_NE_PLUS_CONTACTER)
+        self._assert_annule(visite, cadence_visite.CAUSE_RDV_NE_PLUS_CONTACTER)
 
 
 class VisitePasseeTests(_Base):

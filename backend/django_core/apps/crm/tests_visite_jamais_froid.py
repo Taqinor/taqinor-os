@@ -37,7 +37,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
 from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
@@ -113,7 +113,7 @@ class DebriefSansDevisTests(_Base):
 
     def setUp(self):
         super().setUp()
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
         self.confirmation = self._ouverte(
             cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
         self.debrief = self._ouverte(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()

@@ -13,7 +13,7 @@ from django.utils import timezone
 from . import stages
 from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
 from .models import Lead, LeadActivity
-from .services import (
+from .cadence_visite import (
     CAUSE_RDV_REFUS,
     annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,

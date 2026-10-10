@@ -33,7 +33,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import cadence_config, horaires, services, stages
+from apps.crm import cadence_config, horaires, stages, cadence_visite
 from apps.crm import cadence_touche
 from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
@@ -248,7 +248,7 @@ class PilierSupprimeTests(_Base):
     def test_debrief_supprime_le_defaut_est_pose(self):
         _barreau(self.company, Cadence.VISITE, 'debrief').delete()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         debrief = self.lead.relance_etapes.get(cle='debrief', statut=A_FAIRE)
         self.assertEqual(debrief.libelle, cadence_reperes.VISITE_DEBRIEF_LIBELLE)
@@ -278,7 +278,7 @@ class ConfirmationAvantLaVisiteTests(_Base):
         confirmation.canal = 'appel'
         confirmation.save()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape = self.lead.relance_etapes.get(cle='confirmation',
                                              statut=A_FAIRE)
@@ -291,7 +291,7 @@ class ConfirmationAvantLaVisiteTests(_Base):
         confirmation.delai_jours = 30
         confirmation.save()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape = self.lead.relance_etapes.get(cle='confirmation',
                                              statut=A_FAIRE)
@@ -302,7 +302,7 @@ class ConfirmationAvantLaVisiteTests(_Base):
         debrief.delai_jours = 4
         debrief.save()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape = self.lead.relance_etapes.get(cle='debrief', statut=A_FAIRE)
         # Jeudi + 4 = lundi 05/10 (ouvré).

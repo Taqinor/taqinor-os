@@ -33,7 +33,7 @@ from authentication.models import Company
 from core.events import devis_sent
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
 from apps.crm import cadence_filet
 from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
@@ -138,7 +138,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
         self._aucun_refus_deja_en_cours()
 
     def test_confirmation_et_debrief_ouverts(self):
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
         confirmation = self._ouvertes(q_etape(CLE_CONFIRMATION)).get()
         debrief = self._ouvertes(q_etape(CLE_DEBRIEF)).get()
 

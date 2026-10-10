@@ -26,7 +26,7 @@ from .cadence_config import (
 )
 from .leads_socle import motif_refus_valide
 from .models import Lead, LeadActivity, RelanceEtape
-from .services import (
+from .cadence_visite import (
     CAUSE_RDV_NE_PLUS_CONTACTER,
     _debrief_ouvert,
     _requalifier_debrief,

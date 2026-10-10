@@ -23,7 +23,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
 from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
@@ -116,7 +116,7 @@ class RappelSurVisiteTests(_Base):
         self.assertEqual(resp.data['prochaine_touche']['cle'], CLE_PLANIFIER)
 
     def test_le_debrief_est_deplace(self):
-        services.appliquer_visite_planifiee(
+        cadence_visite.appliquer_visite_planifiee(
             self.lead, self.acteur, GEL.date())
         debrief = self.lead.relance_etapes.get(q_etape(CLE_DEBRIEF),
                                                statut=A_FAIRE)

@@ -38,7 +38,7 @@ from django.test import TestCase
 
 from testkit.time import frozen
 
-from apps.crm import horaires, services
+from apps.crm import horaires, cadence_visite
 from apps.crm import cadence_touche
 from apps.crm import cadence_filet
 from apps.crm import cadence_messages
@@ -148,7 +148,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         generique = self._touche_generique_ouverte()
         ancre_avant = generique.cadence_depart
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE,
                 commercial_nom='Youssef Alami')
 
@@ -161,7 +161,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.assertGreaterEqual(
             generique.due_date,
             VISITE_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
+                days=cadence_visite.VISITE_REPRISE_JOURS))
         # CKP2 — l'ANCRE a glissé du même delta : la touche suivante du
         # protocole naîtra APRÈS la visite, pas à sa date d'origine.
         self.assertGreater(generique.cadence_depart, ancre_avant)
@@ -174,7 +174,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
             jour=VISITE_LE + datetime.timedelta(days=30))
         avant = loin.due_date
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         loin.refresh_from_db()
         self.assertEqual(loin.due_date, avant)
@@ -182,7 +182,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
     def test_sans_touche_pendante_rien_nest_cree_dans_le_plan(self):
         """Aucun restart : une visite ne DÉMARRE jamais une cadence."""
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         libelles = set(self._touches().values_list('libelle', flat=True))
         self.assertEqual(libelles, {cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
@@ -194,7 +194,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
     def test_pose_les_deux_gestes_du_rendez_vous(self):
         self._touche_generique_ouverte()
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE,
                 commercial_nom='Youssef Alami')
 
@@ -220,7 +220,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
 
     def test_pose_une_note_de_chatter_systeme_qui_nomme_lassigne(self):
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE,
                 commercial_nom='Youssef Alami')
         note = self.lead.activites.filter(
@@ -234,7 +234,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
     def test_la_note_annonce_le_decalage_quand_il_a_eu_lieu(self):
         self._touche_generique_ouverte()
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE,
                 commercial_nom='Youssef Alami')
         note = self.lead.activites.filter(
@@ -254,7 +254,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         premier = gabarits[0]
         touche = self._touche_generique_ouverte(ordre=premier.ordre)
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
             touche.refresh_from_db()
             cadence_touche.marquer_etape_relance(
@@ -268,7 +268,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
 
     def test_sans_assigne_la_note_le_dit_au_lieu_dun_blanc(self):
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         note = self.lead.activites.filter(
             body__startswith='Visite technique planifiée').get()
@@ -277,7 +277,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
     def test_pose_les_deux_gestes_meme_sans_cadence_active(self):
         """Invariant « jamais zéro prochaine étape »."""
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         self.assertEqual(self._touches().count(), 2)
         self.lead.refresh_from_db()
@@ -285,7 +285,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
 
     def test_une_veille_deja_passee_tombe_aujourdhui(self):
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, AUJOURDHUI)
         confirmation = self._touches(
             cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
@@ -294,12 +294,12 @@ class VisitePlanifieeTests(VisiteCadenceBase):
     def test_replanifier_deplace_sans_dupliquer(self):
         generique = self._touche_generique_ouverte()
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
             confirmation_avant = self._touches(
                 cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
             nouveau = VISITE_LE + datetime.timedelta(days=7)
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, nouveau)
 
         self.assertEqual(self._touches(
@@ -323,14 +323,14 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.assertGreaterEqual(
             generique.due_date,
             nouveau + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
+                days=cadence_visite.VISITE_REPRISE_JOURS))
 
     def test_annule_le_filet_planifier_la_visite(self):
         with frozen(MAINTENANT):
             filet = cadence_filet.poser_filet_visite_a_planifier(
                 self.lead, self.acteur)
             self.assertIsNotNone(filet)
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         filet.refresh_from_db()
         self.assertEqual(filet.statut, RelanceEtape.Statut.ANNULEE)
@@ -341,7 +341,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.lead.perdu = True
         self.lead.save(update_fields=['perdu'])
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         self.assertEqual(self._touches().count(), 0)
         self.assertTrue(self.lead.activites.filter(
@@ -351,7 +351,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.lead.ne_plus_contacter = True
         self.lead.save(update_fields=['ne_plus_contacter'])
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         self.assertEqual(self._touches().count(), 0)
         self.assertTrue(self.lead.activites.filter(
@@ -359,7 +359,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
 
     def test_naffecte_jamais_le_lead_dune_autre_societe(self):
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         self.assertEqual(self.lead_autre.relance_etapes.count(), 0)
         self.assertEqual(self.lead_autre.activites.count(), 0)
@@ -369,7 +369,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
     def test_ne_touche_jamais_letape_du_funnel(self):
         avant = self.lead.stage
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, avant)
@@ -395,7 +395,7 @@ class RetourVisiteTests(VisiteCadenceBase):
 
     def test_la_note_porte_le_texte_libre_du_terrain(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR, auteur='Youssef Alami')
         note = self.lead.activites.filter(
             body__startswith='Visite technique terminée').get()
@@ -409,7 +409,7 @@ class RetourVisiteTests(VisiteCadenceBase):
 
     def test_un_retour_muet_le_dit(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur,
                 {'notes': '', 'commentaires_photos': [], 'nb_photos': 0})
         note = self.lead.activites.filter(
@@ -418,8 +418,8 @@ class RetourVisiteTests(VisiteCadenceBase):
 
     def test_la_note_est_tronquee_sans_perdre_le_debut(self):
         long = 'x' * 4000
-        corps = services.composer_note_retour_visite({'notes': long})
-        self.assertLessEqual(len(corps), services.RETOUR_VISITE_MAX)
+        corps = cadence_visite.composer_note_retour_visite({'notes': long})
+        self.assertLessEqual(len(corps), cadence_visite.RETOUR_VISITE_MAX)
         self.assertTrue(corps.endswith('…'))
         self.assertIn('Visite technique terminée', corps)
 
@@ -427,7 +427,7 @@ class RetourVisiteTests(VisiteCadenceBase):
         self.lead.visite_notes = 'Note écrite à la main.'
         self.lead.save(update_fields=['visite_notes'])
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
         self.lead.refresh_from_db()
         self.assertTrue(self.lead.visite_effectuee)
@@ -435,13 +435,13 @@ class RetourVisiteTests(VisiteCadenceBase):
 
     def test_ramene_le_debrief_a_demain(self):
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur,
                 AUJOURDHUI + datetime.timedelta(days=10))
             lointain = self._touches(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
             self.assertGreater(lointain.due_date,
                                AUJOURDHUI + datetime.timedelta(days=1))
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
 
         self.assertEqual(self._touches(
@@ -462,14 +462,14 @@ class RetourVisiteTests(VisiteCadenceBase):
                 canal=RelanceEtape.Canal.APPEL,
                 libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE,
                 due_date=AUJOURDHUI, due_at=MAINTENANT)
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
         proche.refresh_from_db()
         self.assertEqual(proche.due_date, AUJOURDHUI)
 
     def test_pose_le_debrief_meme_sans_planification_prealable(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
         self.assertEqual(self._touches(
             cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
@@ -478,7 +478,7 @@ class RetourVisiteTests(VisiteCadenceBase):
         self.lead.perdu = True
         self.lead.save(update_fields=['perdu'])
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
         self.assertEqual(self._touches().count(), 0)
         self.assertTrue(self.lead.activites.filter(
@@ -487,7 +487,7 @@ class RetourVisiteTests(VisiteCadenceBase):
     def test_ne_touche_jamais_letape_du_funnel(self):
         avant = self.lead.stage
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, avant)
@@ -520,7 +520,7 @@ class QualificationDansLeChatterTests(VisiteCadenceBase):
 
     def test_la_qualification_ouvre_la_note(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR, auteur='Youssef Alami',
                 qualification=dict(QUALIFICATION))
         corps = self._note().body
@@ -535,7 +535,7 @@ class QualificationDansLeChatterTests(VisiteCadenceBase):
 
     def test_le_conseil_de_closing_suit_la_qualification(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(
                     QUALIFICATION,
@@ -546,7 +546,7 @@ class QualificationDansLeChatterTests(VisiteCadenceBase):
 
     def test_le_detail_du_devis_entre_dans_la_phrase(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, devis='a_modifier',
                                    devis_details='Ajouter une batterie'))
@@ -555,7 +555,7 @@ class QualificationDansLeChatterTests(VisiteCadenceBase):
 
     def test_sans_qualification_la_note_reste_celle_du_retour(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
         self.assertFalse(self.lead.activites.filter(
             body__contains='Qualification :').exists())
@@ -582,7 +582,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
 
     def test_demain_matin_cale_le_debrief_a_demain(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, rappel='demain_matin'))
         etape = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
@@ -594,7 +594,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
 
     def test_cette_semaine_cale_le_debrief_a_trois_jours(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, rappel='cette_semaine'))
         etape = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
@@ -611,7 +611,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
         # qu'il vient de refuser. (Sans qualification, l'invariant « jamais
         # repoussé » reste testé par test_ne_repousse_jamais_un_debrief_deja_du.)
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur, AUJOURDHUI)
             pose = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
             self.assertEqual(
@@ -619,7 +619,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
                 _echeance_attendue(self.company,
                                    AUJOURDHUI + datetime.timedelta(days=1),
                                    'appel'))
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, rappel='cette_semaine'))
         self.assertEqual(
@@ -634,7 +634,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
 
     def test_un_devis_a_reprendre_change_le_libelle(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, devis='a_modifier',
                                    devis_details='Ajouter une batterie'))
@@ -645,7 +645,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
 
     def test_un_nouveau_devis_change_aussi_le_libelle(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, devis='nouveau',
                                    devis_details='Refaire en triphasé'))
@@ -654,11 +654,11 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
 
     def test_le_debrief_deja_pose_est_RENOMME_jamais_duplique(self):
         with frozen(MAINTENANT):
-            services.appliquer_visite_planifiee(
+            cadence_visite.appliquer_visite_planifiee(
                 self.lead, self.acteur,
                 AUJOURDHUI + datetime.timedelta(days=10))
             pose = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, devis='a_modifier',
                                    devis_details='Ajouter une batterie'))
@@ -671,7 +671,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
 
     def test_une_qualification_illisible_retombe_sur_le_defaut(self):
         with frozen(MAINTENANT):
-            services.appliquer_retour_visite(
+            cadence_visite.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification={'temperature': 'inconnue'})
         self.assertEqual(
@@ -769,7 +769,7 @@ class RecepteurPlanificationTests(VisiteCadenceBase):
         self.assertGreaterEqual(
             generique.due_date,
             VISITE_LE + datetime.timedelta(
-                days=services.VISITE_REPRISE_JOURS))
+                days=cadence_visite.VISITE_REPRISE_JOURS))
         # Le plan pendant + les deux gestes du rendez-vous.
         self.assertEqual(self._touches().count(), 3)
         self.lead.refresh_from_db()

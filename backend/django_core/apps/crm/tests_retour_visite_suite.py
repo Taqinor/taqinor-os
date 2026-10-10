@@ -23,7 +23,7 @@ from django.test import TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
 from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.notifications.models import Notification
@@ -109,41 +109,41 @@ class NotificationSuiteReelleTests(_Base):
         self._emettre_retour()
 
         self.assertEqual(self._notification().body,
-                         services.NOTIF_RETOUR_VISITE_RAPPELER)
+                         cadence_visite.NOTIF_RETOUR_VISITE_RAPPELER)
 
     def test_la_phrase_se_lit_sur_l_etape_rendue(self):
-        self.assertEqual(services.phrase_notification_retour_visite(None),
-                         services.NOTIF_RETOUR_VISITE_RAPPELER)
+        self.assertEqual(cadence_visite.phrase_notification_retour_visite(None),
+                         cadence_visite.NOTIF_RETOUR_VISITE_RAPPELER)
         debrief = RelanceEtape(libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE,
                                due_date=datetime.date(2026, 9, 24))
-        self.assertEqual(services.phrase_notification_retour_visite(debrief),
-                         services.NOTIF_RETOUR_VISITE_RAPPELER)
+        self.assertEqual(cadence_visite.phrase_notification_retour_visite(debrief),
+                         cadence_visite.NOTIF_RETOUR_VISITE_RAPPELER)
 
 
 class ConfirmationAnnuleeAuRetourTests(_Base):
     slug = 'rvs-conf'
 
     def test_la_confirmation_encore_ouverte_est_annulee(self):
-        services.appliquer_visite_planifiee(
+        cadence_visite.appliquer_visite_planifiee(
             self.lead, self.terrain, VISITE_LE, commercial_nom='Youssef')
         confirmation = self.lead.relance_etapes.get(
             libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE, statut=A_FAIRE)
 
-        services.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
+        cadence_visite.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
 
         confirmation.refresh_from_db()
         self.assertEqual(confirmation.statut, ANNULEE)
         self.assertEqual(confirmation.note,
-                         services.NOTE_CONFIRMATION_VISITE_FAITE)
+                         cadence_visite.NOTE_CONFIRMATION_VISITE_FAITE)
         self.assertIsNone(confirmation.traite_par)
         self.assertIsNotNone(confirmation.traite_le)
 
     def test_avec_devis_envoye_aussi(self):
         self._devis_envoye()
-        services.appliquer_visite_planifiee(
+        cadence_visite.appliquer_visite_planifiee(
             self.lead, self.terrain, VISITE_LE, commercial_nom='Youssef')
 
-        services.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
+        cadence_visite.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
 
         self.assertFalse(self.lead.relance_etapes.filter(
             libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
@@ -153,14 +153,14 @@ class ConfirmationAnnuleeAuRetourTests(_Base):
             libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE, statut=A_FAIRE).exists())
 
     def test_une_confirmation_deja_faite_n_est_pas_touchee(self):
-        services.appliquer_visite_planifiee(
+        cadence_visite.appliquer_visite_planifiee(
             self.lead, self.terrain, VISITE_LE, commercial_nom='Youssef')
         confirmation = self.lead.relance_etapes.get(
             libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE, statut=A_FAIRE)
         confirmation.statut = RelanceEtape.Statut.FAIT
         confirmation.save(update_fields=['statut'])
 
-        services.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
+        cadence_visite.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
 
         confirmation.refresh_from_db()
         self.assertEqual(confirmation.statut, RelanceEtape.Statut.FAIT)
