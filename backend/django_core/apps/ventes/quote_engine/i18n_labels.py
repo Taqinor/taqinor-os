@@ -1332,6 +1332,18 @@ LIBELLES = {
         'ar': ' — النسبة مبينة في الجدول'},
     'tva_exoneration': {'fr': 'exonération : {base}',
                         'en': 'exemption: {base}', 'ar': 'إعفاء: {base}'},
+    # ── APDF46 — page 3 du moteur LEGACY (étude résidentielle 4 pages) ──────
+    # Préfixe ``lg_`` ; le français est le littéral exact du gabarit.
+    'lg_confiance_bpa': {'fr': 'Confiance, Garanties &amp; Bon pour accord',
+                         'en': 'Trust, Warranties &amp; Approval',
+                         'ar': 'الثقة والضمانات والموافقة'},
+    'lg_pourquoi_choisir': {'fr': 'Pourquoi choisir {marque}&#160;?',
+                            'en': 'Why choose {marque}?',
+                            'ar': 'لماذا تختارون {marque}؟'},
+    'lg_experts_engages': {
+        'fr': 'Des experts engagés pour votre transition énergétique',
+        'en': 'Committed experts for your energy transition',
+        'ar': 'خبراء ملتزمون بانتقالكم الطاقي'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

@@ -879,6 +879,17 @@ def _doc_text(key):
     return val
 
 
+def _doc_text_langue(key, cle_i18n):
+    """APDF46 — texte éditable ``key`` : resté au DÉFAUT du moteur, il suit la
+    langue du document (clé ``cle_i18n`` d'``i18n_labels``) ; une surcharge
+    société reste telle quelle. Français : :func:`_doc_text`, inchangé."""
+    val = _doc_text(key)
+    if (val == DEFAULT_DOC_TEXTS.get(key)
+            and LANGUE_SORTIE != i18n_labels.LANGUE_DE_REPLI):
+        return _L(cle_i18n)
+    return val
+
+
 def _pct_echeance(valeur, defaut):
     """QJR623 — un pourcentage d'échéancier tel que le document l'IMPRIME.
 
@@ -2822,7 +2833,7 @@ def page3():
 <div class="page" style="display:block;position:relative;overflow:hidden;">
   <div style="background:{CN};padding:9px 24px;display:flex;align-items:center;justify-content:space-between;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">Confiance, Garanties &amp; Bon pour accord</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_confiance_bpa")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME}</div>
     </div>
     {logo_html("42px")}
@@ -2834,8 +2845,8 @@ def page3():
 
   <!-- QJR121 — POURQUOI NOUS : titre, marques et supervision dérivés du devis -->
   <div style="padding:6px 24px 4px;margin-bottom:5px;">
-    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">Pourquoi choisir {ENT_NOM_MARQUE}&#160;?</div>
-    <div style="font-size:9pt;color:{CG4};font-style:italic;margin-bottom:5px;">Des experts engag\u00e9s pour votre transition \u00e9nerg\u00e9tique</div>
+    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">{_L("lg_pourquoi_choisir").format(marque=ENT_NOM_MARQUE)}</div>
+    <div style="font-size:9pt;color:{CG4};font-style:italic;margin-bottom:5px;">{_L("lg_experts_engages")}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
 
       <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
@@ -2939,7 +2950,7 @@ def page3():
   <!-- BON POUR ACCORD — always pinned above footer via position:absolute -->
   <div style="position:absolute;bottom:{'28' if DEVIS_FINAL else '43'}px;left:0;right:0;padding:0 24px;">
     <div style="border-left:4px solid {CA};padding-left:10px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">
-      <div style="font-size:10pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1.5px;">{_doc_text("bpa_titre")}</div>
+      <div style="font-size:10pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1.5px;">{_doc_text_langue("bpa_titre", "bon_pour_accord")}</div>
     </div>{_acceptance_stamp_html()}
     {_opt}
     {_payment_html}
@@ -2950,7 +2961,7 @@ def page3():
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">Nom&#160;: <strong style="color:{CG7};">{CLIENT_NAME}</strong></div>
         <div style="border-bottom:1px solid {CG2};min-height:{'8' if DEVIS_FINAL else '12'}px;margin-top:3px;margin-bottom:3px;"></div>
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};">Date&#160;: _______________</div>
-        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text("bpa_mention")}</div>
+        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text_langue("bpa_mention", "ci_bpa_mention")}</div>
       </div>
       <div style="flex:1;border:1px solid {CG2};border-radius:8px;padding:{'6px 10px' if DEVIS_FINAL else '8px 12px'};min-height:{'50' if DEVIS_FINAL else '65'}px;background:white;">
         <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature {ENT_NOM_MARQUE}</div>
