@@ -418,6 +418,18 @@ decisions:
     source: "session « loop work on all plans » (Reda_Laptop) — question interactive après la critique YBW81"
     taches: [YBWM4, YBWM5, YBWM6]
 
+  - id: D-CLAIMS-MERGE
+    question: "Sessions de plan concurrentes : quand relâcher la claim d'une lane foldée mais pas encore mergée ? (7 doublons le 10/10 : PA1/2/5/6/7, ACAL352, ASTK242 reconstruits sur le PC 2)"
+    options:
+      - {cle: a, texte: "garder la claim fichier+apps jusqu'au merge de la vague"}
+      - {cle: b, texte: "merger plus petit (~30 tâches / 4 h) quand une autre session est active"}
+      - {cle: c, texte: "les deux"}
+      - {cle: d, texte: "laisser tel quel"}
+    reponse: a
+    date: "2026-10-10"
+    source: "session « loop work on all plans » (Reda_Laptop), question interactive après le merge d'origin/main"
+    taches: []
+
 # Pointeurs vers les décisions historiques (répondues, source de vérité = le fichier mémoire) :
 #   docs/claude-memory/decisions-audit-0810.md   — ASAV90-95, ACHT90/91/94/95, AFAC80-89, APDF92, AACQ90/95/96, AMOT1-7, ADEP90/91, AGNR4/43, ADEV61/62
 #   docs/claude-memory/asec-decisions-fondateur.md, astk-decisions-fondateur.md, ci-decisions-fondateur.md,
