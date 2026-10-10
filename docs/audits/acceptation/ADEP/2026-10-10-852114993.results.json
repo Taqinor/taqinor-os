@@ -1,0 +1,55 @@
+{
+  "sha": "852114993d08e50aee4538d163c38960d1ac01df",
+  "date": "2026-10-10",
+  "groupe": "ADEP",
+  "verdict": "PASS",
+  "couvre": [
+    "ADEP37",
+    "ADEP38"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.10",
+      "taches": [
+        "ADEP37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.10.txt"
+    },
+    {
+      "id": "P1.11",
+      "taches": [
+        "ADEP38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.11.txt"
+    }
+  ]
+}
