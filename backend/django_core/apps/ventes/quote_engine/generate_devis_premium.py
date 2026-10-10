@@ -597,6 +597,9 @@ ACCEPTE_PAR_NOM = ""
 NOTE_CLIENT = ""
 # QJR668 — clauses/CGV de l'affaire gelées (échappées à l'ingestion).
 CLAUSES_CGV = []
+# APDF13 — conditions générales imprimées (``cgv_imprimees``, APDF12), posées
+# par ``apply_quote_data`` ; la ligne de conditions du une-page les imprime.
+CGV_IMPRIMEES = {"titre": "", "puces": []}
 
 
 #: AMOT20 — vrai pendant l'ajustement du une-page quand la note et les
@@ -4517,12 +4520,7 @@ def page_onepage(items, tronquees=0):
     {_note_client_html("7.5")}{_clauses_cgv_html("7")}
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option ' + _onepage_note_ceci + '. Une option ' + _onepage_note_autre + ' est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
-      <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
-      <span style="margin-right:20px;">&#183; {_L("acompte")}&#160;: {PAY_A}&#37;</span>
-      {'' if (_pct_nul(PAY_M) and not regles_origine()) else '<span style="margin-right:20px;">&#183; ' + str(PAY_M) + '&#37; ' + _L("a_la_reception_materiel") + '</span>'}
-      <span style="margin-right:20px;">&#183; {PAY_S}&#37; {_L("apres_mise_en_marche")}</span>
-      <span>&#183; {TVA_NOTE}</span>
-      {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
+      {_conditions_onepage_html()}
     </div>
   </div>
   {bpa_html}
@@ -4719,14 +4717,47 @@ def _bas_totaux_page_haute(html_cls, html, formes):
 
 def _formes_bloc_fin():
     """AMOT20 — libellés de la ligne de conditions (dernier bloc de la zone
-    du une-page), dans la langue du document et en français (filet)."""
+    du une-page), dans la langue du document et en français (filet).
+    APDF13 — la ligne porte les puces de ``cgv_imprimees`` : leur début
+    (12 caractères, lisibles sur la première ligne) sert aussi d'ancre."""
     formes = []
     for cle in ("acompte", "apres_mise_en_marche"):
         for brut in (_L(cle), i18n_labels.libelle(cle, "fr")):
             brut = html.unescape(brut or "")
             if brut and brut not in formes:
                 formes.append(brut)
+    for puce in CGV_IMPRIMEES.get("puces") or []:
+        brut = html.unescape(re.sub(r"<[^>]+>", "", str(puce)))
+        brut = brut.replace("\xa0", " ").strip()[:12]
+        if brut and brut not in formes:
+            formes.append(brut)
     return tuple(formes)
+
+
+def _conditions_onepage_html():
+    """APDF13 — la ligne de conditions du une-page : les puces de
+    ``cgv_imprimees`` (APDF12 — société gelées ou vives, défaut du moteur
+    sinon ; tronquées comme les clauses quand la page est dense), la validité
+    et la note de TVA seulement quand aucune puce ne les porte déjà, puis la
+    note de remise par ligne."""
+    puces = list(CGV_IMPRIMEES.get("puces") or [])
+    if ONEPAGE_TEXTES_TRONQUES:
+        puces = [_tronquer_texte_echappe(p, _ONEPAGE_CLAUSE_MAX)
+                 for p in puces]
+    morceaux = []
+    validite = _doc_text("validite_onepage")
+    if validite and not (VALID_UNTIL and any(VALID_UNTIL in p
+                                             for p in puces)):
+        morceaux.append(validite)
+    morceaux += [f"&#183; {p}" for p in puces]
+    if TVA_NOTE and not any(TVA_NOTE in p for p in puces):
+        morceaux.append(f"&#183; {TVA_NOTE}")
+    if DISCOUNT_PCT > 0:
+        morceaux.append(f"&#183; {_note_remise_par_ligne()}")
+    return "".join(
+        (f'<span style="margin-right:20px;">{m}</span>' if i < len(morceaux) - 1
+         else f'<span>{m}</span>')
+        for i, m in enumerate(morceaux))
 
 
 def _bas_bloc_fin(page):
@@ -4836,6 +4867,7 @@ def apply_quote_data(data: dict) -> None:
     global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION, NOTE_CLIENT
     global CLAUSES_CGV  # QJR668 — clauses/CGV gelées de l'affaire
+    global CGV_IMPRIMEES  # APDF13 — conditions générales (cgv_imprimees)
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -5129,6 +5161,14 @@ def apply_quote_data(data: dict) -> None:
          "corps_texte": _esc(str(c.get("corps_texte") or ""))}
         for c in (data.get("clauses_cgv") or []) if isinstance(c, dict)]
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
+    # APDF13 — la variante C&I est un texte SAISI : échappée ici (ERR37) ;
+    # les puces société gardent leurs entités (le moteur ne les échappe pas).
+    _cgv_data = dict(data)
+    if isinstance(data.get("cgv_ci"), list):
+        _cgv_data["cgv_ci"] = [_esc(p) for p in data["cgv_ci"]]
+    if data.get("cgv_ci_titre"):
+        _cgv_data["cgv_ci_titre"] = _esc(data["cgv_ci_titre"])
+    CGV_IMPRIMEES = cgv_imprimees(_cgv_data)
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
     # (l'étude insérée entre les pages 2 et 3 porte le total à 4).

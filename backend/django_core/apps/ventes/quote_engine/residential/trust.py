@@ -216,17 +216,8 @@ def build(ctx) -> str:
     acompte = pay.get("acompte", 30)
     # AMOT19 — le builder sert les pourcentages des CASES de la branche
     # imprimée ; un créneau absent vaut 0 et n'est pas imprimé.
-    # Décision fondateur 08/10/2026 — devis envoyé avant AMOT19 : défaut et
-    # créneau « matériel » imprimés comme hier.
-    _origine = bool(d.get("regles_calcul_origine"))
-    materiel = pay.get("materiel", 60 if _origine else 0)
-    solde = pay.get("solde", 10)
-    tva_note = (d.get("tva_note", "") or "").strip()
-    # The builder's note already starts with "TVA :"; drop it so it doesn't
-    # double the "TVA" key in the conditions table.
-    low = tva_note.lower()
-    if low.startswith("tva"):
-        tva_note = tva_note[3:].lstrip(" :·-").strip()
+    # APDF13 — l'échéancier et la note de TVA ne sont plus composés ici : ce
+    # sont des puces des conditions générales (``cgv_imprimees``, plus bas).
 
     l_real = links.get("realisations", _lien_site("/realisations"))
     l_gar = links.get("garanties", _lien_site("/garanties"))
@@ -297,11 +288,6 @@ def build(ctx) -> str:
     )
 
     # ── Conditions (compact) ────────────────────────────────────────────────
-    _morceaux = [f"{acompte}% à la commande"]
-    if materiel or _origine:
-        _morceaux.append(f"{materiel}% à la réception du matériel")
-    _morceaux.append(f"{solde}% à la mise en service")
-    paiement = " &middot; ".join(_morceaux)
     # QRES31 — échéance absolue partout où la validité s'affiche.
     # M7 — la date imprimée est celle du devis. `valid_until` est déjà posée
     # par le builder ; l'arithmétique de repli ne sert qu'aux appels sans elle.
@@ -317,14 +303,20 @@ def build(ctx) -> str:
     # comme un engagement contractuel. Il rejoint les « prochaines étapes »,
     # avec la mention « (indicatif) ». Une échéance indéterminable retire aussi
     # la ligne de validité — jamais « None jours ».
-    conditions = [
-        *(((LF(d, "res_validite_offre", "Validité de l'offre"),
-             LF(d, "res_jusqu_au", f"jusqu'au {_valid_until}",
-                date=_valid_until)),)
-          if _valid_until else ()),
-        (LF(d, "res_paiement", "Paiement"), paiement),
-        (LF(d, "tva", "TVA"), tva_note or "Selon barème en vigueur"),
-    ]
+    # APDF13 (C-APDF-005) — la boîte « Conditions » imprime LES conditions
+    # générales de ``cgv_imprimees`` (APDF12) : puces de la société, gelées à
+    # l'envoi ou vives, sinon le défaut du moteur (validité, échéancier, TVA,
+    # tarifs) — celles que la page publique de signature fait accepter. Plus
+    # aucune ligne composée en dur : validité et TVA ne sont plus doublées.
+    from ..generate_devis_premium import cgv_imprimees
+    # L'échéance est celle déjà résolue ici (repli M7 compris).
+    _cgv = cgv_imprimees(dict(d, valid_until=_valid_until))
+    conditions = []
+    if _cgv["puces"]:
+        conditions.append((
+            _cgv["titre"],
+            '<span style="display:block;font-size:7.6pt;line-height:1.35;">'
+            + " &middot; ".join(_cgv["puces"]) + '</span>'))
     # QF3 / QRES65 (fondateur, 2026-08-18) — « Comment nous calculons vos
     # économies » QUITTE la colonne Conditions. Le texte reste celui du builder
     # (une seule source, aucun chiffre nouveau) mais il est rendu À PLAT sous la

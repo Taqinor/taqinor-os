@@ -1285,10 +1285,11 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertIn('10&#37; après la mise en marche', html)
         self.assertIn('+ acompte 30&#37;', html)
         # Résidentiel — one-page
+        # APDF13 — le une-page imprime les puces CGV (``cgv_imprimees``).
         html1, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte&#160;: 30&#37;', html1)
-        self.assertIn('60&#37; &#224; la r&#233;ception du mat&#233;riel', html1)
-        self.assertIn('10&#37; apr&#232;s mise en marche', html1)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html1)
+        self.assertIn('60&#37; à la réception du matériel', html1)
+        self.assertIn('10&#37; après la mise en marche', html1)
         # Industriel — 30/40/(20+10) partout (CIQ212)
         self.devis.mode_installation = 'industriel'
         self.devis.save(update_fields=['mode_installation'])
@@ -1298,8 +1299,8 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertIn('+ acompte 30&#37;', html2)
         self.assertNotIn('Acompte à la commande&#160;: 50&#37;', html2)
         html3, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte&#160;: 30&#37;', html3)
-        self.assertIn('40&#37; &#224; la r&#233;ception du mat&#233;riel', html3)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html3)
+        self.assertIn('40&#37; à la réception du matériel', html3)
         # Bloc « Modalités de paiement » (devis final) suit aussi le mode
         html4, _ = self._render({'devis_final': True})
         self.assertIn('Modalit', html4)
@@ -1308,7 +1309,7 @@ class TestPdfFormats4(TestPdfFormats):
         self.devis.mode_installation = 'agricole'
         self.devis.save(update_fields=['mode_installation'])
         html5, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte&#160;: 30&#37;', html5)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html5)
 
     def test_panel_performance_warranty_is_30_years(self):
         """Performance panneau : 30 ans, jamais 25 — mais LUE sur la fiche.

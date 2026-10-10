@@ -5,9 +5,10 @@ conditions de la page publique) viennent des CASES de la branche imprimée
 imprimé ; le cas 3 tranches par défaut est inchangé.
 
 Moteur réel (``build_quote_data``), rendus réels (résidentiel, legacy une-page),
-page publique réelle (``_conditions_publiques``). Test-du-test : réintroduire
-``pay.get("materiel", 60)`` + la ligne inconditionnelle dans ``trust.py`` ⇒
-``test_deux_tranches_typees`` échoue (160 %).
+page publique réelle (``_conditions_publiques``). APDF13 — le résidentiel et
+le une-page impriment les puces CGV (``cgv_imprimees``) : la ligne
+« Paiement » composée en dur a disparu. Test-du-test : retirer l'omission du
+créneau nul de ``remplir_cgv_bullets`` ⇒ ``test_deux_tranches_typees`` échoue.
 """
 import html as _html
 
@@ -70,8 +71,8 @@ class EcheancierTexteCasesTests(TestCase):
         self.assertEqual(data['payment_terms'],
                          {'acompte': acompte, 'materiel': 0, 'solde': solde})
         self.assertEqual(acompte + solde, 100)
-        self.assertIn(f'{acompte}% à la commande', res)
-        self.assertIn(f'{solde}% à la mise en service', res)
+        self.assertIn(f'Acompte à la commande : {acompte}%', res)
+        self.assertIn(f'{solde}% après la mise en marche', res)
         self.assertNotIn('à la réception du matériel', res)
         self.assertNotIn('réception du matériel', une_page)
         for puce in cgv + publiques:
@@ -101,7 +102,7 @@ class EcheancierTexteCasesTests(TestCase):
         termes = data['payment_terms']
         self.assertEqual(termes['acompte'], cases['pct_a'])
         self.assertEqual(sum(float(v) for v in termes.values()), 100)
-        self.assertIn(f"{cases['pct_a']}% à la commande", res)
+        self.assertIn(f"Acompte à la commande : {cases['pct_a']}%", res)
 
     def test_trois_tranches_par_defaut_inchangees(self):
         data, res, une_page, cgv, publiques = self._surfaces(self._devis())
