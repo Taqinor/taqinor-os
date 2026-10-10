@@ -131,4 +131,6 @@ tâches AACQ98-AACQ105 sont dans `docs/plans/PLAN_AUDIT_ACQUISITION.md` ; AACQ10
 - Orchestrateur : préparation de la pile jetable, sonde, revue ; un rédacteur pour les tâches et ce dossier.
 - Aucun appel Fable.
 
+**Rejeu final (10/10, après intégration de `origin/main` du jour dans la branche de la PR).** la sonde AACQ rejouée(s) sur le code de la tête de branche : toutes REPRO, base inchangée à chaque rejeu isolé (les écarts de compte observés en rejeu groupé venaient d'écritures d'autres sessions sur la base de démo partagée).
+
 <!-- verifie pct: 98 ecarts_s1_s2: 1 -->

@@ -172,4 +172,6 @@ renvoie à D-ACAL-6 : la production vue par le client est celle du devis, qui de
 - 1 appel Fable (critique des verdicts, §4-bis).
 - Orchestrateur : sondes, lectures prod, rejeu des gardes, rédaction.
 
+**Rejeu final (10/10, après intégration de `origin/main` du jour dans la branche de la PR).** 5/5 sondes ACAL rejouée(s) sur le code de la tête de branche : toutes REPRO, base inchangée à chaque rejeu isolé (les écarts de compte observés en rejeu groupé venaient d'écritures d'autres sessions sur la base de démo partagée).
+
 <!-- verifie pct: 95 ecarts_s1_s2: 6 -->

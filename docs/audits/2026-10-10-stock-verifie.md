@@ -78,7 +78,7 @@ Les sondes sont versionnées sous `docs/audits/sondes/ASTK/` (fonction `sonde(ct
 | `C-ASTK-VER-001.py` | hors lot (lot 7) | **REPRO** | « livrer-partiel=200 sorties après livraison=4 après facture=14 après Installé=14 stock=16 (attendu 10 / 20) » |
 | `C-ASTK-VER-002.py` | ASTK59 | **REPRO** | « quantite_appliquee=10 … statut_controle='normale' (facture 1200 HT, 10 x 100 entrés ; attendu exception) » |
 | `C-ASTK-VER-003.py` | hors lot (lot 2) | **REPRO** | rôle Commercial sans `prix_achat_voir` : 200 `montant=['820.00']` sur `/stock/acomptes-fournisseur/`, 200 `[820.0]` sur `/ouverts/` |
-| `C-ASTK-VER-004.py` | ASTK199 | **STATIQUE** | sonde HTTP écrite (stock 15 dont 10 rappelés, sortie scannée de 12, attendu 400) mais NON rejouée : le moteur Docker Desktop est tombé (500, VM WSL arrêtée) avant son exécution ; 1re version de la sonde (lecture du symbole) : `enregistrer_mouvement_scanne` contrôle la quarantaine : False |
+| `C-ASTK-VER-004.py` | ASTK199 | **REPRO** | « rappel 201 quarantaine=10 ; scanner sortie 12 -> 201 … quantite_avant 15, quantite_apres 3 ; stock 3 (attendu 400, stock 15) » — rejouée après le retour du moteur Docker (tombé entre-temps : 500, VM WSL arrêtée) ; base inchangée (12671 → 12671) |
 
 Les sorties ci-dessus sont celles relevées par l'orchestrateur ; ce dossier les recopie sans les avoir rejouées.
 
@@ -90,14 +90,14 @@ Les sorties ci-dessus sont celles relevées par l'orchestrateur ; ce dossier les
 | ASTK245 | C-ASTK-VER-002 | ASTK59 | S2 | L6-jumeau : rapprochement 3 voies sur quantité saisie | sonde VER-002 | `PLAN_AUDIT_STOCK.md` |
 | ASTK246 | C-ASTK-VER-003 | hors lot | S2 | règle de lecture divergente (acomptes + frère avoirs) | sonde VER-003 | `PLAN_AUDIT_STOCK.md` |
 | ASTK247 | C-ASTK-VER-003 | ASTK14 | S2 (garde) | L5 : garde de classe aveugle à `montant` | lecture | `PLAN_AUDIT_STOCK.md` |
-| ASTK248 | C-ASTK-VER-004 | ASTK199 | S3 | clause-manquante : quarantaine ignorée par scanner, mouvement manuel, expédition | sonde VER-004 | `PLAN_AUDIT_STOCK.md` |
-| ASTK249 | C-ASTK-VER-004 | ASTK199 | S3 | même cause, consommation à « Installé » | sonde VER-004 + lecture | `PLAN_AUDIT_CHANTIERS.md` |
+| ASTK248 | C-ASTK-VER-004 | ASTK199 | S2 | clause-manquante : quarantaine ignorée par scanner, mouvement manuel, expédition | sonde VER-004 | `PLAN_AUDIT_STOCK.md` |
+| ASTK249 | C-ASTK-VER-004 | ASTK199 | S2 | même cause, consommation à « Installé » | sonde VER-004 + lecture | `PLAN_AUDIT_CHANTIERS.md` |
 | ASTK250 | C-ASTK-VER-004 | ASTK199 | GATED | même cause, sortie de la facture : décision D-ASTK-VER-1 | lecture | `PLAN_AUDIT_FACTURATION.md` |
 | ASTK251 | C-ASTK-VER-005 | ASTK33 | S3 | clause-manquante : cellule Stock offerte à un rôle refusé 403 | lecture + `test_non_admin_forbidden` | `PLAN_AUDIT_STOCK.md` |
 | ASTK252 | C-ASTK-VER-006 | ASTK87, ASTK33, ASTK83 | S3 | L5 : tests affaiblis (mutants verts) | lecture | `PLAN_AUDIT_STOCK.md` |
 | ASTK253 | C-ASTK-VER-007 | ASTK180, ASTK181 | S3 | clause-manquante : contrat « NOUVEAU » ≠ texte servi | lecture | `PLAN_AUDIT_STOCK.md` |
 
-**Constats S1-S2 : 3** (C-ASTK-VER-001 à 003) ; C-ASTK-VER-004 tenu en S3 (sonde HTTP non rejouée, Docker hors service). Sans tâche : ASTK242 (L7, preuve en direct non jouée), voir §6.
+**Constats S1-S2 : 4** (C-ASTK-VER-001 à 004), tous reproduits par sonde. Sans tâche : ASTK242 (L7, preuve en direct non jouée), voir §6.
 
 **Routage.**
 - **C-ASTK-VER-001 reste chez UN propriétaire (facturation).** Le correctif ne compose que des lectures existantes
@@ -123,7 +123,7 @@ Elle confirme les verdicts et les 8 écarts des lots, et ajoute :
   (même mécanisme, non sondée ici).
 - **Le frère de C-ASTK-VER-003** : les avoirs fournisseur (`avoir_fournisseur.py`) servent `montant_ht`, `montant_tva`,
   `montant_ttc`, `montant_impute`, `montant_disponible` avec la même règle `IsAnyRole`.
-- **C-ASTK-VER-004 : relèvement en S2 proposé** (gardé en S3 ici, faute de sonde exécutée — METHODE §B.5 interdit un S2 STATIQUE ; à relever au rejeu de la sonde) : la quarantaine n'est respectée que par `sortir_lot_entrepot` ;
+- **C-ASTK-VER-004 relevé de S3 en S2** (confirmé par la sonde HTTP rejouée, REPRO) : la quarantaine n'est respectée que par `sortir_lot_entrepot` ;
   `quantite_disponible_hors_quarantaine` n'a aucun appelant de production.
 - **C-ASTK-VER-002** : elle proposait un `Coalesce(quantite_appliquee, quantite)`. La tâche réutilise plutôt
   `quantite_entree_ligne_reception` ligne par ligne, pour ne pas écrire une seconde fois la règle de repli.
@@ -169,4 +169,6 @@ Elle confirme les verdicts et les 8 écarts des lots, et ajoute :
 - 1 critique Fable : environ 0,23 M de jetons.
 - Orchestrateur : sondes, rédaction.
 
-<!-- verifie pct: 96 ecarts_s1_s2: 3 -->
+**Rejeu final (10/10, après intégration de `origin/main` du jour dans la branche de la PR).** 4/4 sondes ASTK rejouée(s) sur le code de la tête de branche : toutes REPRO, base inchangée à chaque rejeu isolé (les écarts de compte observés en rejeu groupé venaient d'écritures d'autres sessions sur la base de démo partagée).
+
+<!-- verifie pct: 96 ecarts_s1_s2: 4 -->

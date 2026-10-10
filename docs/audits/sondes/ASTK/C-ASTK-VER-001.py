@@ -15,11 +15,12 @@ def sonde(ctx):
     from apps.installations.models import Installation
     from apps.installations.services import create_installation_from_devis, changer_statut_chantier
     from apps.ventes.domain.facturation_ops import facturer_devis_complet
+    from apps.crm import stages
     co = Company.objects.create(nom='Sonde VER-001', slug='sonde-astk-ver-001')
     u = get_user_model().objects.create_user(username='sonde-astk-ver-001', password='x', company=co, role_legacy='responsable')
     p = Produit.objects.create(company=co, nom='Panneau sonde', sku='SONDE-VER-001', prix_vente=Decimal('100'), quantite_stock=30, tva=Decimal('20.00'))
     cl = Client.objects.create(company=co, nom='S', prenom='C', email='sonde-ver-001@example.invalid')
-    lead = Lead.objects.create(company=co, nom='S', prenom='C', stage='SIGNED', type_installation='residentiel')
+    lead = Lead.objects.create(company=co, nom='S', prenom='C', stage=stages.SIGNED, type_installation='residentiel')
     d = Devis.objects.create(company=co, reference='DEV-SONDE-VER-001', client=cl, lead=lead, statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'), mode_installation='residentiel')
     l = LigneDevis.objects.create(devis=d, produit=p, designation='Panneau', quantite=Decimal('10'), prix_unitaire=Decimal('100'), taux_tva=Decimal('20.00'))
     inst, _ = create_installation_from_devis(d, u, co)
