@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^playbook-taches/$",
+  "nom": "playbooktache-list",
+  "vue": "PlaybookTacheViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^playbook-taches/(?P<pk>[^/.]+)/$",
+  "nom": "playbooktache-detail",
+  "vue": "PlaybookTacheViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^playbook-taches/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "playbooktache-detail",
+  "vue": "PlaybookTacheViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^playbook-taches\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "playbooktache-list",
+  "vue": "PlaybookTacheViewSet"
+ }
+]

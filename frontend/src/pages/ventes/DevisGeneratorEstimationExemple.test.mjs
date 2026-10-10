@@ -21,9 +21,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 // QJR100 — la carte de métrique est extraite dans `generator/CarteMetrique.jsx`
 // (elle y devient LE seul déballeur d'une valeur signée). Les épingles de la
 // carte suivent le composant ; celles des APPELANTS restent sur l'écran.

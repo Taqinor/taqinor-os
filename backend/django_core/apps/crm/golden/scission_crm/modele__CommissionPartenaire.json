@@ -1,0 +1,136 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "commissions_partenaire",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "commissions",
+    "to": "crm.partenaire",
+    "verbose_name": "Partenaire"
+   },
+   "nom": "partenaire",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Id du devis signé"
+   },
+   "nom": "devis_id",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Id du lead"
+   },
+   "nom": "lead_id",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "decimal_places": 2,
+    "default": 0,
+    "max_digits": 14,
+    "verbose_name": "Base HT (MAD)"
+   },
+   "nom": "base_ht",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "decimal_places": 2,
+    "default": 0,
+    "max_digits": 5,
+    "verbose_name": "Taux de commission (%)"
+   },
+   "nom": "taux",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "decimal_places": 2,
+    "default": 0,
+    "max_digits": 14,
+    "verbose_name": "Montant de commission (MAD)"
+   },
+   "nom": "montant",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "due",
+      "Due"
+     ],
+     [
+      "payee",
+      "Payée"
+     ],
+     [
+      "annulee",
+      "Annulée"
+     ]
+    ],
+    "default": "due",
+    "max_length": 8,
+    "verbose_name": "Statut"
+   },
+   "nom": "statut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Payée le"
+   },
+   "nom": "paye_le",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true,
+    "verbose_name": "Créée le"
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "compta_commissionpartenaire",
+ "label": "crm.CommissionPartenaire",
+ "relations_inverses": []
+}

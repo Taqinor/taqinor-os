@@ -195,10 +195,25 @@ jobs:
       yanbow: ${{ steps.detect.outputs.yanbow }}
       fastapi: ${{ steps.detect.outputs.fastapi }}
       code: ${{ steps.detect.outputs.code }}
+      # WOW8-ONCE — 'true' ssi un dump EXACT existe deja pour l'ensemble de
+      # migrations courant (cf. le job `backend-testdb`).
+      testdb_hit: ${{ steps.testdb.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # WOW8-ONCE (09/10/2026) — `lookup-only` : ne telecharge rien (~5 s),
+      # repond seulement « la cle exacte existe-t-elle ? ». MEME expression de
+      # cle que dans `.github/actions/backend-env/action.yml` — a garder
+      # identiques, sinon le constructeur tourne (ou est saute) a tort.
+      - id: testdb
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+            /tmp/testdb.manifest
+          key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          lookup-only: true
       - id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -803,9 +818,82 @@ jobs:
   # 3,9 s), les separer ne coute rien. Prouve par
   # `scripts/tests/test_ci_shard.py` (job `stage-names`) a 2, 4, 6 et 8 lanes.
   # ---------------------------------------------------------------------------
-  backend-tests-shard:
+  # ---------------------------------------------------------------------------
+  # WOW8-ONCE (09/10/2026) — LE DUMP DE BASE DE TEST EST CONSTRUIT UNE FOIS.
+  # Avant : sur un miss de cache (toute PR qui ajoute OU edite une migration),
+  # CHACUNE des 8 lanes backend et des 2 lanes e2e rejouait les ~850 migrations
+  # (delta de quelques minutes, ou replay froid de ~65 min si une migration
+  # deja poussee a ete editee sur place — run 37959792590), et aucune ne
+  # sauvait (regle « push runs only »). Avec 20 jobs simultanes pour toute
+  # l'organisation (plan Free), ce seul run tenait 8-10 creneaux plus d'une
+  # heure et mettait les PR des autres postes en file.
+  # Desormais : `changes` verifie en ~5 s (`lookup-only`) si un dump EXACT
+  # existe ; sinon ce job le construit UNE fois (delta ou froid) et le sauve
+  # sous la cle exacte ; les lanes partent ensuite et le restaurent toutes en
+  # hit exact. Sur un hit exact des le depart, ce job est SAUTE : chemin
+  # inchange, zero cout. Il tourne SEUL avant les lanes, donc la vague de 18
+  # creneaux n'augmente pas.
+  # ---------------------------------------------------------------------------
+  backend-testdb:
     needs: [changes, ci-image-check]
-    if: ${{ needs.changes.outputs.backend == 'true' }}
+    if: ${{ (needs.changes.outputs.backend == 'true' || needs.changes.outputs.code == 'true') && needs.changes.outputs.testdb_hit != 'true' }}
+    runs-on: ubuntu-latest
+    # Replay froid complet possible ici (c'est precisement ce que ce job
+    # absorbe a la place des lanes) : meme plafond que les shards.
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        # Miroir GCR comme les lanes (6acc5ce39) : la limite anonyme Docker Hub
+        # (toomanyrequests) tuait les shards de toutes les sessions.
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      DB_STATEMENT_TIMEOUT_MS: '600000'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+    steps:
+      - uses: actions/checkout@v4
+      # Meme action, memes reglages que les lanes — seul `testdb-save: 'true'`
+      # change : restaure (exact / delta / froid), migre si besoin, re-dumpe et
+      # SAUVE sous la cle exacte. Les lanes qui suivent restaurent ce dump.
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'true'
+      - name: Dump pret pour les lanes
+        run: echo "Dump de base de test construit et sauve sous la cle exacte — les lanes backend et e2e le restaurent en hit exact."
+
+  backend-tests-shard:
+    # WOW8-ONCE — attend le constructeur du dump (saute sur hit exact) ; `!cancelled()`
+    # pour partir meme quand il est saute, et ne jamais partir s'il a echoue.
+    needs: [changes, ci-image-check, backend-testdb]
+    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -1142,7 +1230,7 @@ jobs:
             | python ../../scripts/verifier_sortie_unittest.py --plancher 78
 
   backend-tests:
-    needs: [changes, ci-image-check, backend-tests-shard, fastapi-security]
+    needs: [changes, ci-image-check, backend-testdb, backend-tests-shard, fastapi-security]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -1165,6 +1253,13 @@ jobs:
         run: |
           echo "ci-image-check=${{ needs.ci-image-check.result }} — l'image CI backend n'a pas pu être publiée/résolue."
           echo "Les shards n'ont donc PAS tourné. Repli manuel : workflow_dispatch sur ci-image.yml."
+          exit 1
+      # WOW8-ONCE — si le constructeur du dump a echoue, les shards sont
+      # « skipped » : ce check REQUIS doit rougir, pas passer au vert.
+      - name: Fail if the shared test-DB build failed or was cancelled
+        if: ${{ needs.backend-testdb.result == 'failure' || needs.backend-testdb.result == 'cancelled' }}
+        run: |
+          echo "backend-testdb=${{ needs.backend-testdb.result }} — le dump de base de test n'a pas pu etre construit, aucun shard n'a tourne."
           exit 1
       - name: Fail if any shard failed or was cancelled
         if: ${{ needs.backend-tests-shard.result == 'failure' || needs.backend-tests-shard.result == 'cancelled' }}
@@ -1533,8 +1628,9 @@ jobs:
   # volontairement pas.
   # ---------------------------------------------------------------------------
   e2e-shard:
-    needs: [changes, ci-image-check]
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    # WOW8-ONCE — meme attente du constructeur que backend-tests-shard.
+    needs: [changes, ci-image-check, backend-testdb]
+    if: ${{ !cancelled() && needs.changes.outputs.code == 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
     permissions:
       contents: read
       packages: read
@@ -1829,7 +1925,7 @@ jobs:
   # Agrégateur mince qui PRÉSERVE le nom de check requis `e2e` (patron WOW6,
   # identique à `backend-tests` / `frontend-lint` / `backend-lint`).
   e2e:
-    needs: [changes, ci-image-check, e2e-shard]
+    needs: [changes, ci-image-check, backend-testdb, e2e-shard]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -1850,6 +1946,11 @@ jobs:
         if: ${{ needs.ci-image-check.result == 'failure' || needs.ci-image-check.result == 'cancelled' }}
         run: |
           echo "ci-image-check=${{ needs.ci-image-check.result }} — les lanes e2e n'ont pas tourné."
+          exit 1
+      - name: Fail if the shared test-DB build failed or was cancelled
+        if: ${{ needs.backend-testdb.result == 'failure' || needs.backend-testdb.result == 'cancelled' }}
+        run: |
+          echo "backend-testdb=${{ needs.backend-testdb.result }} — le dump n'a pas pu etre construit, les lanes e2e n'ont pas tourne."
           exit 1
       - name: Fail if an e2e lane failed or was cancelled
         if: ${{ needs.e2e-shard.result == 'failure' || needs.e2e-shard.result == 'cancelled' }}
@@ -1890,6 +1991,7 @@ jobs:
     needs:
       - changes
       - ci-image-check
+      - backend-testdb
       - backend-lint-fast
       - backend-openapi
       - backend-tests-shard
@@ -1905,6 +2007,7 @@ jobs:
         run: |
           echo "changes=${{ needs.changes.result }}"
           echo "ci-image-check=${{ needs.ci-image-check.result }}"
+          echo "backend-testdb=${{ needs.backend-testdb.result }}"
           echo "backend-lint-fast=${{ needs.backend-lint-fast.result }}"
           echo "backend-openapi=${{ needs.backend-openapi.result }}"
           echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"

@@ -16,7 +16,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { autoFillLines } from '../solar.js'
 import { defaultProductLines } from '../solar.js'
 import { structureRoleForName } from '../solar.js'
 import { structureChoisie } from '../solar.js'
@@ -36,7 +35,7 @@ import {
 } from '../../../../scripts/calculs_golden.mjs'
 
 const FONCTIONS = {
-  autoFillLines, defaultProductLines, structureRoleForName, structureChoisie,
+  defaultProductLines, structureRoleForName, structureChoisie,
   orderLinesByRolePreference, deriveRoleOrderFromLines, appliquerRecomposition,
   fusionnerRecomposition, fusionnerVariantes, lignesManuellesEnConflitPossible,
   multiPropertyPreviewTTC, avecBatterieAvailability, computeBuyCost, prixParKwc,
@@ -49,7 +48,9 @@ const CATALOGUES = chargerCatalogues()
 test('le golden est entier : graine figée, toutes les fonctions couvertes', () => {
   assert.equal(ATTENDU.seed, SEED)
   assert.equal(ATTENDU.count, ATTENDU.entries.length)
-  assert.ok(ATTENDU.entries.length >= 480, `golden régressé : ${ATTENDU.entries.length}`)
+  // ADEV69 — 489 − 176 entrées `autoFillLines` (fonction supprimée) = 313.
+  assert.ok(ATTENDU.entries.length >= 313, `golden régressé : ${ATTENDU.entries.length}`)
+  assert.ok(!ATTENDU.entries.some((e) => e.axe === 'autoFillLines'), 'axe autoFillLines retiré (ADEV69)')
   const axes = new Set(ATTENDU.entries.map((e) => e.axe))
   for (const nom of Object.keys(FONCTIONS)) assert.ok(axes.has(nom), `fonction non couverte : ${nom}`)
   const catalogues = CATALOGUES.seed94.length + CATALOGUES.realPage1.length

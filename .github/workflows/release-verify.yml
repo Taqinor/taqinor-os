@@ -158,7 +158,7 @@ jobs:
       # un service Actions, mais s'atteint desormais par son NOM (`redis`) et
       # non plus `localhost`, une fois le job conteneurise.
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -189,6 +189,9 @@ jobs:
         with:
           testdb-cache-into: test_erp_db
           prebuilt-image: 'true'
+          # WOW8-ONCE — release-verify (dispatch/nocturne, jamais une PR) reste
+          # un ecrivain du cache, comme avant le 09/10/2026.
+          testdb-save: 'true'
       - name: Run FULL Django test suite (incl. pdf/slow) + coverage
         working-directory: backend/django_core
         # WOW3 — la couverture vit ICI (nightly/manuel), plus dans le gate
@@ -252,7 +255,7 @@ jobs:
       # dans le conteneur, via `backend-env`), `redis` reste un service mais
       # s'atteint par son NOM (`redis`), plus par `localhost`.
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -306,6 +309,7 @@ jobs:
         with:
           testdb-cache-into: erp_db
           prebuilt-image: 'true'
+          testdb-save: 'true'
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
@@ -457,7 +461,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: mirror.gcr.io/pgvector/pgvector:pg16
         env:
           POSTGRES_DB: erp_db
           POSTGRES_USER: erp_user
@@ -470,7 +474,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -554,7 +558,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     services:
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -586,6 +590,7 @@ jobs:
         with:
           testdb-cache-into: erp_db
           prebuilt-image: 'true'
+          testdb-save: 'true'
       - name: Migrate + seed throwaway demo data (repris de e2e-full)
         working-directory: backend/django_core
         run: |

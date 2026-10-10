@@ -1,0 +1,109 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "forecast_snapshots",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 8,
+    "verbose_name": "Semaine ISO (ex. 2026-W29)"
+   },
+   "nom": "semaine_iso",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "commit",
+      "Commit"
+     ],
+     [
+      "best_case",
+      "Best case"
+     ],
+     [
+      "pipeline",
+      "Pipeline"
+     ],
+     [
+      "omis",
+      "Omis"
+     ]
+    ],
+    "max_length": 12
+   },
+   "nom": "categorie",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "decimal_places": 2,
+    "default": 0,
+    "max_digits": 14
+   },
+   "nom": "montant_total",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "nb_leads",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "forecast_snapshots",
+    "to": "authentication.customuser"
+   },
+   "nom": "owner",
+   "type": "ForeignKey"
+  }
+ ],
+ "db_table": "crm_forecastsnapshot",
+ "label": "crm.ForecastSnapshot",
+ "relations_inverses": []
+}

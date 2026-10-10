@@ -6,7 +6,7 @@
 // Le nettoyage WIR217 (minuteurs de sondage annulés au démontage) vit ici, avec
 // le seul effet sensible au démontage.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchDevis, genererPdfDevis } from '../../../features/ventes/store/ventesSlice.js'
+import { rafraichirDevis, genererPdfDevis } from '../../../features/ventes/store/ventesSlice.js'
 import ventesApi from '../../../api/ventesApi.js'
 import { toast } from '../../../ui/index.js'
 import { filenameFromResponse } from '../../../utils/downloadBlob.js'
@@ -18,7 +18,7 @@ import { echeancierAvecAcompte } from '../../../features/ventes/echeancierEditio
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié : mêmes prédicats que la
 // garde de DevisGenerator.validate() (voir devisSansOnduleurClasse).
-import { isReseauInverter, isHybridInverter, isOffgridInverter } from '../../../features/ventes/solar.js'
+import { isReseauInverter, isHybridInverter, isOffgridInverter, texteClassement } from '../../../features/ventes/solar.js'
 import { frenchError } from './devisListHelpers.js'
 
 // Les options PDF envoyées à `generer-pdf` (whitelist `clean_pdf_options`)
@@ -124,9 +124,11 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // concerné ici.
   const devisSansOnduleurClasse = (d) =>
     d?.mode_installation !== 'agricole'
-    && !(d?.lignes ?? []).some(l =>
-      isReseauInverter(l.designation) || isHybridInverter(l.designation)
-      || isOffgridInverter(l.designation))
+    // AGNR36 — désignation + nom du produit servi sur la ligne (`produit_nom`).
+    && !(d?.lignes ?? []).some((l) => {
+      const t = texteClassement(l)
+      return isReseauInverter(t) || isHybridInverter(t) || isOffgridInverter(t)
+    })
 
   const openPdfModal = (d) => {
     setBatchPdf(false)
@@ -275,7 +277,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
             return
           }
           if (res.data.fichier_pdf) {
-            dispatch(fetchDevis())
+            dispatch(rafraichirDevis(d.id))
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
             if (autoOpen) {
               // VX48 — l'auto-open existant (QG1) reste l'expérience PAR
@@ -410,7 +412,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
         if (partage && d.statut === 'brouillon') {
           try {
             await ventesApi.partagePdfDevis(d.id)
-            dispatch(fetchDevis())
+            dispatch(rafraichirDevis(d.id))
             toast.success('PDF partagé — devis marqué envoyé.')
           } catch (err) {
             toast.error(frenchError(err, 'PDF partagé, mais le devis n\'a pas pu être marqué envoyé.'))

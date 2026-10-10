@@ -6,8 +6,10 @@
 // devis différents pour le même lead selon le chemin. Les paliers ne servent
 // plus qu'au dimensionnement AUTOMATIQUE sans cible.
 //
-// Exécute le VRAI createAutoQuote ; seuls l'API et `autoFillLines` sont
-// espionnés (l'espion prouve qu'aucune composition JS n'a lieu).
+// Exécute le VRAI createAutoQuote ; seule l'API est espionnée. ADEV69 —
+// l'espion sur `autoFillLines` est retiré avec la fonction (second composeur
+// supprimé) : « aucune composition JS » est désormais structurel, et
+// `createDevisAtomic` jamais appelé reste la preuve du chemin serveur.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../api/ventesApi', () => ({
@@ -16,14 +18,10 @@ vi.mock('../../api/ventesApi', () => ({
     createDevisAtomic: vi.fn(),
   },
 }))
-vi.mock('./solar', async (importOriginal) => {
-  const original = await importOriginal()
-  return { ...original, autoFillLines: vi.fn(() => []) }
-})
 
 import ventesApi from '../../api/ventesApi'
 import { createAutoQuote } from './autoQuote'
-import { autoFillLines, panneauxPourKwc, kwcPourPanneaux, PANEL_W_DEFAUT } from './solar'
+import { panneauxPourKwc, kwcPourPanneaux, PANEL_W_DEFAUT } from './solar'
 
 beforeEach(() => { vi.clearAllMocks() })
 
@@ -56,7 +54,6 @@ describe('QJR602 — la taille explicite est souveraine (aucun palier de 5 kWc)'
       lead: { id: 3, type_installation: type, taille_souhaitee_kwc: '6.5' },
       produits: [], discountStr: '0',
     })
-    expect(autoFillLines).not.toHaveBeenCalled()
     expect(ventesApi.createDevisAtomic).not.toHaveBeenCalled()
     expect(ventesApi.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 3, remise_globale: '0' })
   })

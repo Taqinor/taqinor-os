@@ -27,12 +27,12 @@
 // Run : node --test src/pages/ventes/DevisGeneratorProvenanceDV3.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 
 // Les QUATRE cartes visées par DV3 (nourries par `etudeCI`, dérivé de
 // l'étude C&I locale — le miroir local, jamais le serveur).

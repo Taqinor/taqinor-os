@@ -100,6 +100,10 @@ backend/django_core/apps/facturation/models.py::Facture.calcul_escompte::a9ec174
 
 # --- backend/django_core/apps/credit/services.py
 
+# --- backend/django_core/apps/ventes/domain/bornes.py
+backend/django_core/apps/ventes/domain/bornes.py::pourcentage_saisi::862180f26c67 | ATOT21 (08/10/2026) : TEST de precision (valeur != valeur.quantize(0.01) => refus « au plus 2 decimales ») ; la valeur quantifiee n'est ni servie ni stockee, aucun arrondi applique.
+backend/django_core/apps/ventes/domain/bornes.py::montant_saisi::204adc14b1b3 | ATOT21 (08/10/2026) : TEST de precision (nombre != nombre.quantize(0.01) => refus « au plus 2 decimales ») ; la valeur quantifiee n'est ni servie ni stockee, aucun arrondi applique.
+
 # --- backend/django_core/apps/ventes/domain/composition.py
 backend/django_core/apps/ventes/domain/composition.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
 

@@ -1,0 +1,180 @@
+{
+  "replaceLignesDevis": [
+    [
+      32,
+      [
+        {
+          "produit": 101,
+          "designation": "Panneau Canadien Solar 715W",
+          "quantite": "140",
+          "prix_unitaire": "1200.00",
+          "remise": "0",
+          "taux_tva": "10",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 107,
+          "designation": "Onduleur réseau 50kW Triphasé",
+          "quantite": "2",
+          "prix_unitaire": "52000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 1,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 105,
+          "designation": "Structures acier",
+          "quantite": "140",
+          "prix_unitaire": "375.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 2,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": "2026-11-07",
+          "note": null,
+          "mode_installation": "industriel",
+          "taux_tva": "20.00",
+          "remise_globale": "0",
+          "prix_cible_kwc": null
+        },
+        "etude_params": {
+          "scenario": "Sans batterie",
+          "recommended_option": "Sans batterie",
+          "nombre_proprietes": null
+        }
+      }
+    ]
+  ],
+  "createDevisAtomic": [],
+  "patchEtudeParams": [
+    [
+      32,
+      {
+        "scenario": "Sans batterie",
+        "recommended_option": "Sans batterie",
+        "nombre_proprietes": null,
+        "mode": "industriel",
+        "site": {
+          "ville": "Kénitra",
+          "lat": null,
+          "lon": null
+        },
+        "tension": "mt",
+        "phases": "tri",
+        "puissance_souscrite_kva": 250,
+        "consommation": {
+          "kwh_mensuels": [
+            9000,
+            8800,
+            9100,
+            9500,
+            9900,
+            10400,
+            11000,
+            11200,
+            10100,
+            9600,
+            9200,
+            9000
+          ],
+          "kwh_annuel": null,
+          "factures_mad": [],
+          "registres_mt": null
+        },
+        "rythme": {
+          "jours_ouverts": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false
+          ],
+          "plages": {
+            "ouvre": [
+              [
+                7,
+                19
+              ]
+            ]
+          },
+          "equipes": "1x8",
+          "debut_equipe_h": 7,
+          "fermetures": [],
+          "ramadan": null,
+          "talon": {
+            "kw": 12,
+            "part_pct": null,
+            "inconnu": false
+          },
+          "categorie_commerciale": null,
+          "reponses_categorie": null
+        },
+        "courbe_mesuree": null,
+        "toit": {
+          "type_pose": "bac_acier",
+          "surface_utile_m2": 1200,
+          "surface_type": "declaree",
+          "pente_deg": null,
+          "azimut_deg": null,
+          "couverture": "tôle",
+          "charge_admissible_kg_m2": null,
+          "charge_admissible_source": null
+        },
+        "contraintes": {
+          "revente_choisie": false,
+          "nb_points_raccordement": null,
+          "longueur_dc_m": null,
+          "longueur_ac_m": null,
+          "besoin_cellule_mt": null
+        },
+        "options": {
+          "batterie_souhaitee": null,
+          "om": null
+        },
+        "taille_explicite_kwc": null,
+        "tarif_declare": null,
+        "saisies_economie_ci": null
+      }
+    ]
+  ],
+  "poserOverrides": [],
+  "regenererOverride": []
+}

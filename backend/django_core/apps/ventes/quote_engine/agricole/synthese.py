@@ -249,10 +249,14 @@ def _bloc_besoin_vs_livre(etude):
     nature = (_dict(besoin_mensuel).get("nature")
               or besoin_saisi.get("nature"))
     if nature == "agronomique_plein":
-        cultures = besoin_saisi.get("cultures") or []
-        cultures_connues = bool(cultures) and all(
-            isinstance(c, dict) and c.get("crop") for c in cultures)
-        if not cultures_connues or not besoin_saisi.get("region"):
+        # AMOT63 — saisie du devis d'abord, sinon la valeur RÉSOLUE par le
+        # moteur (lead) qu'il a réellement utilisée.
+        cultures = _resolue(etude, besoin_saisi.get("cultures"),
+                            "cultures") or []
+        region = _resolue(etude, besoin_saisi.get("region"), "region")
+        cultures_connues = bool(cultures) and isinstance(cultures, list) \
+            and all(isinstance(c, dict) and c.get("crop") for c in cultures)
+        if not cultures_connues or not region:
             return None, MOTIF_CULTURE_INCONNUE
         if not _dict(besoin_mensuel).get("source_et0"):
             return None, MOTIF_ET0_NON_SOURCEE
@@ -284,16 +288,30 @@ def _bloc_point_fonctionnement(items, eau):
     }, None
 
 
+def _resolue(etude, saisie, cle):
+    """AMOT63 — la saisie du devis si elle existe (priorité corps > devis >
+    lead), sinon la valeur RÉSOLUE persistée par le moteur
+    (``etude_params['entrees_pompage']``, producteur
+    ``domain.pompage.derivees_de_l_etude``)."""
+    if saisie not in (None, "", [], {}):
+        return saisie
+    return _dict(etude.get("entrees_pompage")).get(cle)
+
+
 def _bloc_schema(etude, eau):
     source = _dict(etude.get("source"))
     return {
-        "profondeur_m": _num(source.get("profondeur_forage_m")),
-        "niveau_m": _num(source.get("niveau_dynamique_m")),
-        "distance_m": _num(etude.get("distance_champ_m")),
+        "profondeur_m": _num(_resolue(
+            etude, source.get("profondeur_forage_m"), "profondeur_forage_m")),
+        "niveau_m": _num(_resolue(
+            etude, source.get("niveau_dynamique_m"), "niveau_dynamique_m")),
+        "distance_m": _num(_resolue(
+            etude, etude.get("distance_champ_m"), "distance_champ_m")),
         "hmt_m": eau.get("hmt_m"),
         # Bassin dessiné seulement s'il est DÉCLARÉ (aucun bassin dimensionné,
         # aucun « ×2 » — AGR301) : son volume déclaré, sinon None.
-        "bassin": _num(source.get("volume_reservoir_m3")),
+        "bassin": _num(_resolue(
+            etude, source.get("volume_reservoir_m3"), "volume_reservoir_m3")),
     }
 
 
@@ -389,7 +407,7 @@ def synthese_agricole(data):
     pompe = {"cv": _num(etude.get("pompe_cv")),
              "kw": _num(etude.get("pompe_kw"))}
     if mode == "existante":
-        plaque = _dict(etude.get("plaque"))
+        plaque = _dict(_resolue(etude, etude.get("plaque"), "plaque"))
         if plaque:
             pompe["plaque"] = {cle: plaque.get(cle) for cle in CLES_PLAQUE}
         else:

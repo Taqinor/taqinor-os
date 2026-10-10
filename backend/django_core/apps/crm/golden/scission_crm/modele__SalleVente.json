@@ -1,0 +1,133 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "salles_vente",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "salles_vente",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "salles_vente",
+    "to": "crm.client"
+   },
+   "nom": "client",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 200,
+    "verbose_name": "Titre"
+   },
+   "nom": "titre",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_salle_vente_token",
+    "editable": false,
+    "max_length": 64,
+    "unique": true
+   },
+   "nom": "token",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_salle_vente_expiry",
+    "verbose_name": "Expire le"
+   },
+   "nom": "expires_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": ""
+   },
+   "nom": "password_hash",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": true,
+    "help_text": "Décoché = révocation immédiate du lien public.",
+    "verbose_name": "Actif"
+   },
+   "nom": "actif",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "salles_vente_creees",
+    "to": "authentication.customuser"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_sallevente",
+ "label": "crm.SalleVente",
+ "relations_inverses": [
+  "items",
+  "vues"
+ ]
+}

@@ -67,13 +67,14 @@ describe('AGR218 — base légale d’une ligne à 0 %', () => {
     expect(screen.getByLabelText('Base légale de l’exonération').value)
       .toBe(CORPS.lignes[0].tva_base_legale)
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.queryByText(/% attendu/)).toBeNull()
+    // ATOT20 — l'alerte dit le taux appliqué (« TVA appliquée : N % (catalogue : M %) »).
+    expect(screen.queryByText(/TVA appliquée/)).toBeNull()
   })
 
   it('ligne à 0 % sans base ⇒ l’alerte d’incohérence reste', () => {
     const [pompe] = lignesEcran()
     monter({ ...pompe, tvaBaseLegale: '' })
-    expect(screen.getByText(/% attendu/)).toBeTruthy()
+    expect(screen.getByText(/TVA appliquée : 0 % \(catalogue : \d+ %\)/)).toBeTruthy()
   })
 
   it('ligne à 20 % ⇒ aucun champ de base légale', () => {

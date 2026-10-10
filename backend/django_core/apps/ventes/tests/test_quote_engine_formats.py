@@ -2331,8 +2331,14 @@ class TestPageCalepinage(TestCase):
         self.assertNotIn('>Calepinage</div>', html)
 
     def test_avec_calepinage_l_auto_ajoute_exactement_une_page(self):
+        """ACAL103 (C-ACAL-117, QJR666) — sur ce devis RÉSIDENTIEL, l'AUTO
+        n'ajoute PLUS la planche (comportement voulu par la tâche) : seule la
+        demande EXPLICITE ajoute sa page, et exactement une."""
         self._creer_calepinage()
-        html, doc = self._render(self._options())
+        html, doc = self._render(self._options())                     # AUTO
+        self.assertEqual(len(doc.pages), 3)
+        self.assertNotIn('>Calepinage</div>', html)
+        html, doc = self._render(self._options(include_calepinage=True))
         self.assertEqual(len(doc.pages), 4)
         self.assertIn('>Calepinage</div>', html)
 
@@ -2402,21 +2408,23 @@ class TestPageCalepinage(TestCase):
         comptée, et l'équipe en est avertie."""
         from apps.ventes.quote_engine.builder import build_quote_data
 
+        # ACAL103 — résidentiel : la planche n'existe que DEMANDÉE.
+        explicite = self._options(include_calepinage=True)
         self._creer_calepinage()
         self._poser_layout_devis(14)
-        html, avant = self._render(self._options())
+        html, avant = self._render(explicite)
         self.assertIn('>Calepinage</div>', html)
 
         self.devis.lignes.filter(designation='Panneau mono 550W').update(
             quantite='16')
-        data = build_quote_data(self.devis, self._options())
+        data = build_quote_data(self.devis, explicite)
         self.assertTrue(data['layout_stale'])
         self.assertNotIn('calepinage_svg', data)
         self.assertNotIn('include_calepinage', data)
         self.assertIn(
             'planche de calepinage antérieure à la dernière correction',
             data.get('avertissements_internes') or [])
-        html, apres = self._render(self._options())
+        html, apres = self._render(explicite)
         self.assertNotIn('>Calepinage</div>', html)
         self.assertNotIn('calepinage_svg', html)
         # Ni rendue ni comptée : exactement une page de moins.
@@ -2468,12 +2476,15 @@ class TestPageCalepinage(TestCase):
         self.assertEqual(set(opts), set(DEFAULT_PDF_OPTIONS))
 
     def test_cal183_la_valeur_explicite_prime_sur_l_auto(self):
-        """AUTO n'est pas un verrou : un `False` explicite retire la page
-        d'un devis qui PORTE pourtant un calepinage."""
+        """La valeur explicite prime : `True` ajoute la page, `False` la
+        retire, sur un devis qui PORTE un calepinage. ACAL103 (QJR666) — en
+        résidentiel l'AUTO vaut désormais le `False` (aucune page)."""
         self._creer_calepinage()
-        _, avec = self._render(self._options())                       # AUTO
+        _, auto = self._render(self._options())                       # AUTO
+        _, avec = self._render(self._options(include_calepinage=True))
         _, sans = self._render(self._options(include_calepinage=False))
         self.assertEqual(len(avec.pages), len(sans.pages) + 1)
+        self.assertEqual(len(auto.pages), len(sans.pages))
 
     # ── contenu de la page ───────────────────────────────────────────────
     def _page_calepinage(self, html):
@@ -2483,14 +2494,14 @@ class TestPageCalepinage(TestCase):
 
     def test_la_page_porte_l_empreinte_et_la_version_du_moteur(self):
         self._creer_calepinage()
-        html, _doc = self._render(self._options())
+        html, _doc = self._render(self._options(include_calepinage=True))
         page = self._page_calepinage(html)
         self.assertIn('calepinage ab12cd34ab12', page)   # hash COURT (12)
         self.assertIn('moteur 2.1.0', page)
 
     def test_la_page_ne_porte_aucun_montant(self):
         self._creer_calepinage()
-        html, _doc = self._render(self._options())
+        html, _doc = self._render(self._options(include_calepinage=True))
         page = self._page_calepinage(html)
         # Les images embarquées (``data:image/png;base64,…``) sont de l'octet
         # aléatoire : « MAD » y apparaît par hasard (alphabet base64). On
@@ -2507,7 +2518,7 @@ class TestPageCalepinage(TestCase):
             CALEPINAGE_HAUTEUR_PX, CALEPINAGE_LARGEUR_PX)
 
         self._creer_calepinage()
-        html, _doc = self._render(self._options())
+        html, _doc = self._render(self._options(include_calepinage=True))
         page = self._page_calepinage(html)
         self.assertNotIn('<?xml', page)
         self.assertNotIn('420mm', page)

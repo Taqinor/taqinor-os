@@ -1,0 +1,46 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "company",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "appareil_id",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "libelle",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "cree_par",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "cree_par_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

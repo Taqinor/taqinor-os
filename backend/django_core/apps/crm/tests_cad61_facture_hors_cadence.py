@@ -25,7 +25,7 @@ from core.events import facture_emise
 
 from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
-from apps.crm.receivers import FACTURE_EMISE_TRACE
+from apps.crm.receivers_cadence import FACTURE_EMISE_TRACE
 from apps.facturation.models import Facture
 from apps.parametres.models import CompanyProfile
 

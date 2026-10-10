@@ -1,0 +1,132 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "appointments",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "appointments",
+    "to": "crm.lead",
+    "verbose_name": "Lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "help_text": "Heure UTC ; affichée en Africa/Casablanca dans l'UI.",
+    "verbose_name": "Date et heure planifiées"
+   },
+   "nom": "scheduled_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "planifie",
+      "Planifié"
+     ],
+     [
+      "confirme",
+      "Confirmé"
+     ],
+     [
+      "effectue",
+      "Effectué"
+     ],
+     [
+      "annule",
+      "Annulé"
+     ],
+     [
+      "no_show",
+      "Absent (no-show)"
+     ]
+    ],
+    "default": "planifie",
+    "max_length": 10,
+    "verbose_name": "Statut"
+   },
+   "nom": "statut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Notes de visite"
+   },
+   "nom": "notes",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "verbose_name": "Rappel envoyé"
+   },
+   "nom": "reminder_sent",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "appointments_crees",
+    "to": "authentication.customuser",
+    "verbose_name": "Créé par"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_appointment",
+ "label": "crm.Appointment",
+ "relations_inverses": [
+  "booking_link_origine"
+ ]
+}

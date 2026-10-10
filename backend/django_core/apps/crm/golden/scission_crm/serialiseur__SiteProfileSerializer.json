@@ -1,0 +1,148 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "company",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "client",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "facture_hiver",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "facture_ete",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "ete_differente",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "conso_mensuelle_kwh",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "tranche_onee",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "raccordement",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "regularisation_8221",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_installation",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "pompe_actuelle_cv",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "pompe_hmt_m",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "pompe_debit_m3h",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_toiture",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "surface_toiture_m2",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "orientation",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "inclinaison_deg",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "ombrage",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "ombrage_notes",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "gps_lat",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "gps_lng",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_modification",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

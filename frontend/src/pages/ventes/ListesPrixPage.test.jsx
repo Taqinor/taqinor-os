@@ -68,6 +68,21 @@ describe('ListesPrixPage', () => {
     expect(await screen.findByText('Revendeur')).toBeInTheDocument()
   })
 
+  it('ADEV35 — lit TOUTES les pages : 60 listes présentes, pas seulement 50', async () => {
+    const mk = (i) => ({ id: i, nom: `Liste ${i}`, devise: 'MAD', archived: false, lignes: [], regles: [] })
+    const p1 = Array.from({ length: 50 }, (_, i) => mk(i + 1))
+    const p2 = Array.from({ length: 10 }, (_, i) => mk(i + 51))
+    ventesApi.getListesPrix.mockImplementation(({ page } = {}) => Promise.resolve({
+      data: page === 2
+        ? { count: 60, next: null, results: p2 }
+        : { count: 60, next: '?page=2', results: p1 },
+    }))
+    render(<ListesPrixPage />)
+    expect(await screen.findByText('Liste 60')).toBeInTheDocument()
+    expect(screen.getByText('Liste 1')).toBeInTheDocument()
+    expect(ventesApi.getListesPrix).toHaveBeenCalledTimes(2)
+  })
+
   it('état vide quand aucune liste', async () => {
     ventesApi.getListesPrix.mockResolvedValue({ data: [] })
     render(<ListesPrixPage />)

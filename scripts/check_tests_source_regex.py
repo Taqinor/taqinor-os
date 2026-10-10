@@ -53,7 +53,9 @@ FAMILY_PREFIXES = ("DevisGenerator", "solar", "autoQuote")
 # par regex (assert.match / .match(/.../)) sur le texte lu — par opposition a
 # executer le code pur, ou a lire un fixture JSON (JSON.parse(readFileSync)
 # sans assertion regex derriere n'est PAS ce patron).
-RE_READFILESYNC = re.compile(r"\breadFileSync\s*\(")
+# SPL42 — le lecteur unique du source du generateur (`DevisGeneratorSource.js`)
+# est une lecture de source au meme titre que readFileSync.
+RE_READFILESYNC = re.compile(r"\b(?:readFileSync|lireSourceGenerateur|lireSourceCoquille)\s*\(")
 RE_REGEX_ASSERT = re.compile(r"assert\.match\(|\.match\(\s*/")
 
 # Allowlist NOMINATIVE — chaque entree porte sa raison (une ligne). Les 14

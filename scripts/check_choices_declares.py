@@ -609,7 +609,8 @@ REFUS = {
     "frontend/src/api/calepinageApi.js": [
         ("comparatif des variantes", "SANS_SOURCE")],
     "frontend/src/features/ventes/classifieurs.parite.test.mjs": [
-        ("miroir de solar.js", "TEST")],
+        ("miroir de solar.js", "TEST"),
+        ("(`texteClassement`, miroir de", "TEST")],
     "frontend/src/features/ventes/quote/overrides.js": [
         ("contrat QJR1", "SANS_SOURCE")],
     "frontend/src/features/ventes/quote/overrides.test.mjs": [
@@ -696,7 +697,28 @@ REFUS = {
         # `_canonical_totaux` (ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF).
         ("PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing`",
          "COMPORTEMENT"),
-        ("REMISE-100-NEGATIF — HT net borné à 0 (miroir de", "COMPORTEMENT")],
+        ("REMISE-100-NEGATIF — HT net borné à 0 (miroir de", "COMPORTEMENT"),
+        # ATOT25 (08/10/2026) — miroirs de FONCTIONS serveur (répartition de
+        # la remise par panier, plus fort reste) et alignement d'INDICES d'un
+        # tableau rendu : aucune liste de valeurs.
+        ("Miroir de `builder._annoter_remise`", "COMPORTEMENT"),
+        ("par `repartirRemiseParLigne` (miroir de", "COMPORTEMENT"),
+        ("`parLigne` est ALIGNÉ sur `lines`", "COMPORTEMENT")],
+    # AGNR36 (08/10/2026) — classement d'une ligne : miroir d'une FONCTION
+    # serveur (`utils/options.texte_classement`), pas un vocabulaire.
+    "frontend/src/features/ventes/quote/reouverture.js": [
+        ("(`texteClassement`, miroir de", "COMPORTEMENT")],
+    # ATOT25 — même miroir de fonction que solar.js ci-dessus.
+    "frontend/src/pages/ventes/DevisGenerator.jsx": [
+        ("(miroir de `builder._annoter_remise`)", "COMPORTEMENT")],
+    # SPL49 — « blocs repris du modal DevisForm » : composants déplacés d'un
+    # AUTRE fichier frontend, aucune source serveur.
+    "frontend/src/pages/ventes/generator/BlocsEditionComplete.jsx": [
+        ("blocs repris du modal DevisForm", "MIROIR_JS")],
+    # AGNR36 / ATOT24 — fichiers de test : ils CITENT la parité pour la rendre
+    # vérifiable, ne rendent aucun choix à l'écran.
+    "frontend/src/features/ventes/solar.atot.test.mjs": [
+        ("noyau miroir de", "TEST")],
     "frontend/src/features/ventes/solar.injection.test.mjs": [
         ("Valeurs", "TEST")],
     # QJR402 (02/09/2026) — fichier de test : il CITE la regle QF9 du noyau
