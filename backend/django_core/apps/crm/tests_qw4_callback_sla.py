@@ -24,9 +24,8 @@ from apps.crm.management.commands.escalader_rappels_demandes import (
     escalader_rappels_demandes,
 )
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import (
-    callback_sla_hours, notify_lead_callback_requested,
-)
+from apps.crm.services import notify_lead_callback_requested
+from apps.crm.leads_premier_contact import callback_sla_hours
 from apps.crm import selectors
 from apps.notifications.models import Notification
 from apps.parametres.models import CompanyProfile

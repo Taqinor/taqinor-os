@@ -19,8 +19,7 @@ from authentication.models import Company
 
 from apps.crm import dsr_provider
 from apps.crm.models import ChatSessionPublique, Lead, WebsiteLeadPayload
-from apps.crm.services import (
-    purge_stale_chat_sessions, purge_website_lead_payloads)
+from apps.crm.leads_retention import purge_stale_chat_sessions, purge_website_lead_payloads
 
 NOM = 'Kenza Bennani'
 EMAIL = 'kenza.acrm19@example.com'

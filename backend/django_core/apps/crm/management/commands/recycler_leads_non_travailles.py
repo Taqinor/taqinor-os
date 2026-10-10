@@ -62,7 +62,7 @@ def recycler_leads_non_travailles(now=None, dry_run=False):
 
     from apps.crm import selectors
     from apps.crm.models import LeadActivity
-    from apps.crm.services import lead_sla_hours
+    from apps.crm.leads_premier_contact import lead_sla_hours
 
     now = now or timezone.now()
     nb_escalades = 0

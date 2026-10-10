@@ -20,7 +20,7 @@ from authentication.models import Company
 from core.models import ConsentRecord
 
 from apps.crm.models import Lead
-from apps.crm.services import FINALITES_CONTACT, enregistrer_consentement_lead
+from apps.crm.leads_consentement import FINALITES_CONTACT, enregistrer_consentement_lead
 
 User = get_user_model()
 EMAIL = 'personne-acrm59@example.com'

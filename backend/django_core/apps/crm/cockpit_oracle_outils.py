@@ -324,7 +324,7 @@ class Oracle:
         }
 
     def _delai_premier_contact(self):
-        from apps.crm.services import lead_sla_hours
+        from apps.crm.leads_premier_contact import lead_sla_hours
         return lead_sla_hours(self.company)
 
     def _sans_prochaine_etape(self, owner):

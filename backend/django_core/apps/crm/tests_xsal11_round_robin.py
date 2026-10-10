@@ -20,7 +20,7 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead
-from apps.crm.services import default_responsable_for
+from apps.crm.leads_attribution import default_responsable_for
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role
 

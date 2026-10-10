@@ -23,7 +23,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import CONSENT_PURPOSE_PROSPECTION
+from apps.crm.leads_consentement import CONSENT_PURPOSE_PROSPECTION
 from apps.crm.cadence_reponses import (
     BASE_LEGALE_OPPOSITION,
     CONSENT_SOURCE_OPPOSITION_FICHE,

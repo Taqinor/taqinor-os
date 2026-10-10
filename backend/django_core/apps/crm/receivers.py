@@ -45,9 +45,9 @@ from .services import (
     avancer_stage_pour_devis,
     est_note_de_report,
     est_note_de_touche_sautee,
-    marquer_premier_contact,
     signaler_mismatch_signe_sur_refus,
 )
+from .leads_premier_contact import marquer_premier_contact
 
 logger = logging.getLogger(__name__)
 

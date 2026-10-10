@@ -22,6 +22,7 @@ from django.urls import reverse
 
 from authentication.models import Company
 from apps.crm import services
+from apps.crm import leads_attribution
 from apps.crm.models import Lead
 from apps.parametres.models import CompanyProfile
 
@@ -52,11 +53,11 @@ class RoutagePro(TestCase):
     def test_commercial_avec_reglage_va_au_responsable_pro(self):
         self._avec_reglage()
         for segment in ('commercial', 'industriel'):
-            self.assertEqual(services.default_responsable_for(
+            self.assertEqual(leads_attribution.default_responsable_for(
                 self.company, {'type_installation': segment}), self.pro)
 
     def test_sans_reglage_comportement_identique(self):
-        self.assertEqual(services.default_responsable_for(
+        self.assertEqual(leads_attribution.default_responsable_for(
             self.company, {'type_installation': 'commercial'}), self.defaut)
 
     def test_residentiel_et_type_inconnu_inchanges(self):
@@ -64,14 +65,14 @@ class RoutagePro(TestCase):
         for attrs in ({'type_installation': 'residentiel'},
                       {'type_installation': 'agricole'}, {}, None):
             self.assertEqual(
-                services.default_responsable_for(self.company, attrs),
+                leads_attribution.default_responsable_for(self.company, attrs),
                 self.defaut, attrs)
 
     def test_responsable_pro_inactif_ignore(self):
         self._avec_reglage()
         self.pro.is_active = False
         self.pro.save()
-        self.assertEqual(services.default_responsable_for(
+        self.assertEqual(leads_attribution.default_responsable_for(
             self.company, {'type_installation': 'commercial'}), self.defaut)
 
     @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)

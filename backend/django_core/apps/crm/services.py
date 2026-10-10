@@ -65,6 +65,21 @@ from .leads_doublons import (
 )
 from .leads_doublons import is_strong_identity_match  # noqa: F401 — façade
 
+from .leads_attribution import default_responsable_for, responsable_leads_pro
+
+from .leads_premier_contact import marquer_premier_contact, maybe_set_first_contacted_at
+
+from .leads_consentement import (
+    BASE_LEGALE_NON_COLLECTEE,
+    BASE_LEGALE_SOLLICITATION,
+    CONSENT_SOURCE_DOCUMENT,
+    CONSENT_SOURCE_META_LEAD_ADS,
+    CONSENT_SOURCE_WHATSAPP_ENTRANT,
+    _ecrire_registre_contact,
+    enregistrer_base_legale_lead,
+)
+from .leads_consentement import enregistrer_consentements_intake_web  # noqa: F401 — façade
+
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
 # (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
@@ -4261,135 +4276,6 @@ def _prochaine_touche_a_faire(lead):
             .first())
 
 
-def _leads_ouverts_count(commercial):
-    """XSAL11 — Nombre de leads OUVERTS assignés à un commercial : stage NON
-    SIGNED/COLD (clés STAGES.py — jamais codées en dur) et jamais perdu. Sert
-    de plafond de saturation pour la rotation round-robin équilibrée."""
-    return Lead.objects.filter(
-        owner=commercial, perdu=False,
-    ).exclude(stage__in=[stages.SIGNED, stages.COLD]).count()
-
-
-def _next_balanced_round_robin_commercial(company, plafond):
-    """XSAL11 — Round-robin ÉQUILIBRÉ : parmi les commerciaux actifs de la
-    société (rôle « Commercial » — pas de territoire câblé dans ce dépôt,
-    voir FG236), affecte au prochain dans la rotation (moins de leads
-    OUVERTS d'abord, départage par id) EN SAUTANT quiconque a atteint/dépassé
-    ``plafond`` leads ouverts. Renvoie None si TOUS les commerciaux actifs
-    sont saturés (l'appelant retombe alors sur ``responsable_defaut_leads``)
-    ou s'il n'y a aucun commercial actif du tout."""
-    from django.contrib.auth import get_user_model
-
-    User = get_user_model()
-    candidats = list(
-        User.objects.filter(
-            company=company, is_active=True, role__nom='Commercial',
-        ).order_by('id')
-    )
-    if not candidats:
-        return None
-    eligibles = [
-        c for c in candidats if _leads_ouverts_count(c) < plafond
-    ]
-    if not eligibles:
-        return None  # tous saturés — fallback à l'appelant
-    eligibles.sort(key=lambda c: (_leads_ouverts_count(c), c.id))
-    return eligibles[0]
-
-
-def default_responsable_for(company, lead_attrs=None):
-    """Responsable assigné par défaut aux nouveaux leads d'une société.
-
-    NTCRM1 — le moteur de territoires (module ``territoires``) qui consultait
-    ``lead_attrs`` (dict brut : ville/type_installation/montant_estime/canal)
-    EN PREMIER a été retiré (SOLMVP10, app sortie) : le comportement round-
-    robin XSAL11 ci-dessous — déjà le repli historique — est désormais le
-    SEUL chemin, ``lead_attrs`` n'étant plus consulté.
-
-    XSAL11 — quand ``CompanyProfile.round_robin_leads_actif`` est ON, la
-    rotation ÉQUILIBRÉE (en sautant les commerciaux saturés — plafond
-    ``round_robin_plafond_leads_ouverts``) est tentée EN PREMIER ; si tous
-    sont saturés, replie sur le responsable par défaut explicite. OFF
-    (défaut) = comportement byte-identique à avant XSAL11 : le profil
-    entreprise (Paramètres → « Responsable par défaut ») prime, et QW6 replie
-    sur un round-robin simple (par charge totale) si ce réglage est vide.
-    None si aucune société ou aucun commercial actif (comportement inchangé
-    dans ce cas — un lead sans owner reste possible).
-    """
-    if company is None:
-        return None
-    from apps.parametres.models import CompanyProfile
-    profile = CompanyProfile.objects.filter(company=company).first()
-    explicit = profile.responsable_defaut_leads if profile else None
-
-    # CIQ416 (D-CIQ-20) — un lead COMMERCIAL ou INDUSTRIEL va au responsable
-    # des leads pro quand il est désigné (et actif), AVANT le round-robin et
-    # le défaut. Réglage vide, ou autre segment : comportement identique à
-    # l'octet. Le routage n'est pas un rythme (CAD52/CAD124 tiennent).
-    responsable_pro = responsable_leads_pro(profile, lead_attrs)
-    if responsable_pro is not None:
-        return responsable_pro
-
-    if profile is not None and profile.round_robin_leads_actif:
-        balanced = _next_balanced_round_robin_commercial(
-            company, profile.round_robin_plafond_leads_ouverts)
-        if balanced is not None:
-            return balanced
-        # Tous saturés (ou aucun commercial actif) — fallback explicite.
-        return explicit
-
-    if explicit is not None:
-        return explicit
-    return pick_round_robin_owner(company)
-
-
-def _type_des_attrs(lead_attrs):
-    if not lead_attrs:
-        return None
-    if isinstance(lead_attrs, dict):
-        return lead_attrs.get('type_installation')
-    return getattr(lead_attrs, 'type_installation', None)
-
-
-def responsable_leads_pro(profile, lead_attrs=None):
-    """CIQ416 — le responsable des leads pro (``CompanyProfile.
-    responsable_leads_pro``, CIQ415) quand ``lead_attrs`` désigne un lead
-    commercial ou industriel et que ce responsable est actif ; sinon None."""
-    if profile is None or _type_des_attrs(lead_attrs) not in (
-            Lead.TypeInstallation.COMMERCIAL,
-            Lead.TypeInstallation.INDUSTRIEL):
-        return None
-    responsable = getattr(profile, 'responsable_leads_pro', None)
-    if responsable is None or not getattr(responsable, 'is_active', True):
-        return None
-    return responsable
-
-
-def pick_round_robin_owner(company):
-    """QW6 — Choisit un propriétaire par ROUND-ROBIN parmi les utilisateurs
-    commerciaux actifs de la société (permission ``crm_creer``), pour qu'un
-    lead ne reste JAMAIS sans responsable quand aucun « responsable par
-    défaut » n'est configuré. Sans état dédié à maintenir : le tour revient à
-    l'utilisateur ayant le MOINS de leads assignés (ties départagés par id,
-    ordre stable) — équivalent d'une rotation, sans compteur externe. None si
-    la société n'a aucun utilisateur commercial actif."""
-    from django.contrib.auth import get_user_model
-    from django.db.models import Count, Q
-
-    User = get_user_model()
-    candidates = list(
-        User.objects.filter(
-            company=company, is_active=True,
-        ).filter(
-            Q(role__permissions__contains=['crm_creer'])
-            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
-        ).annotate(
-            nb_leads=Count('leads_assignes'),
-        ).order_by('nb_leads', 'pk').distinct()
-    )
-    return candidates[0] if candidates else None
-
-
 # FG28 — SLA première prise de contact ────────────────────────────────────────
 
 def prefixe_activite_touche(etape):
@@ -4472,67 +4358,6 @@ def journaliser_whatsapp_ouvert(etape, user):
         body=(f'{prefixe_activite_message_ouvert(etape)} (cadence '
               f'{etape.cadence}) : message préparé ; la touche reste à faire '
               "jusqu'à la réponse du client."))
-
-
-def marquer_premier_contact(lead, *, when=None) -> bool:
-    """MRY19 — LA pose de ``first_contacted_at``. Une seule, partout.
-
-    Quatre endroits l'écrivaient à la main, avec quatre conditions
-    LÉGÈREMENT différentes (dont deux qui exigeaient l'étape NEW) : un lead
-    saisi à la main, déjà CONTACTED, ne recevait donc JAMAIS d'horodatage —
-    et sortait silencieusement du KPI de premier contact. Ici la règle est
-    unique et sans condition d'étape : si le champ est vide, on le pose.
-
-    Idempotente — jamais un écrasement. Renvoie True si la pose a eu lieu.
-    Best-effort : ne lève jamais."""
-    try:
-        if lead is None or getattr(lead, 'first_contacted_at', None):
-            return False
-        lead.first_contacted_at = when or timezone.now()
-        lead.save(update_fields=['first_contacted_at'])
-        return True
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        return False
-
-
-def maybe_set_first_contacted_at(old_lead, new_lead):
-    """Pose ``first_contacted_at`` quand le stage quitte NEW.
-
-    Signature INCHANGÉE (appelée par ``LeadViewSet.perform_update``) ; MRY19
-    délègue simplement à ``marquer_premier_contact`` — plus aucune seconde
-    règle qui pourrait diverger."""
-    try:
-        if old_lead.stage == stages.NEW and new_lead.stage != stages.NEW:
-            marquer_premier_contact(new_lead)
-    except Exception:
-        pass
-
-
-def lead_sla_hours(company) -> int:
-    """Retourne le délai SLA (heures) configuré pour la société. 24 par défaut."""
-    if company is None:
-        return 24
-    try:
-        from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.objects.filter(company=company).first()
-        if profile is not None:
-            return profile.lead_sla_hours
-    except Exception:
-        pass
-    return 24
-
-
-def callback_sla_hours(company) -> int:
-    """QW4 — Délai SLA (heures) d'un RAPPEL demandé (``contact_preference=
-    phone_ok``), plus SERRÉ que le SLA générique de premier contact
-    (``lead_sla_hours``) : la moitié, plancher 2 h. AUCUN nouveau champ
-    société (on reste dans `apps/crm`, pas de dépendance nouvelle sur
-    `parametres`) — dérivé du SLA générique déjà configurable. 0 (SLA
-    générique désactivé) désactive aussi le SLA rappel."""
-    generic = lead_sla_hours(company)
-    if not generic:
-        return 0
-    return max(2, generic // 2)
 
 
 # ── CAD-B ── CAD106 ─────────────────────────────────────────────────────────
@@ -8849,91 +8674,6 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
 # (jamais d'écriture directe de compta/parametres dans core.ConsentRecord au
 # nom d'un lead — cette fonction reste la porte d'entrée crm).
 
-def enregistrer_consentement_lead(
-        lead, *, purpose, granted=True, source='', version_texte='',
-        ip_confirmation=None, occurred_at=None):
-    """Pose (ou met à jour) le consentement d'un lead pour un canal donné.
-
-    ``purpose`` ∈ 'marketing' / 'email' / 'sms' / 'whatsapp'…
-    ``lead.email`` est utilisé comme identifiant si présent, sinon
-    ``lead.telephone``. Crée une NOUVELLE entrée à chaque appel (le registre
-    ``ConsentRecord`` est un historique append-only, cf. FG394) — la lecture
-    de l'état courant prend toujours la ligne la plus récente.
-
-    CRX39 — ``occurred_at`` (additif, défaut ``now()`` : tout appelant existant
-    est inchangé) porte l'horodatage RÉEL du consentement quand on le connaît,
-    comme le champ le demande explicitement (« sur le consent_timestamp
-    existant côté métier »). Sans lui, le registre daterait le consentement du
-    moment où l'ERP l'a enregistré, pas de celui où la personne l'a donné —
-    une preuve CNDP fausse est pire qu'une preuve absente.
-    """
-    from core.models import ConsentRecord
-
-    identifiant = (lead.email or lead.telephone or '').strip()
-    if not identifiant:
-        return None
-    return ConsentRecord.objects.create(
-        company=lead.company,
-        subject_identifier=identifiant,
-        purpose=purpose,
-        granted=granted,
-        source=source or '',
-        occurred_at=occurred_at or timezone.now(),
-        version_texte=version_texte or '',
-        ip_confirmation=ip_confirmation,
-    )
-
-
-#: CRX39 — origine consignée dans ``ConsentRecord.source`` pour l'intake web.
-CONSENT_SOURCE_SITE_WEB = 'formulaire site web'
-
-
-def enregistrer_consentements_intake_web(lead):
-    """CRX39 (DRAFT165-57) — trace au REGISTRE le consentement recueilli par le
-    formulaire du site, FINALITÉ PAR FINALITÉ.
-
-    Jusqu'ici le consentement du visiteur ne vivait que sur la fiche
-    (``Lead.consent_timestamp`` / ``Lead.whatsapp_opt_in``) : le registre
-    ``core.ConsentRecord`` — celui qu'une demande CNDP interroge, celui que
-    lisent le DSR et les filtres marketing — restait VIDE pour la source de
-    leads n°1. Cette fonction est le pont, appelée à la CRÉATION du lead par
-    le webhook site.
-
-    Deux finalités, chacune écrite SEULEMENT si la donnée existe (jamais un
-    consentement supposé — règle « aucun chiffre/fait inventé ») :
-      • ``marketing`` — la case du formulaire, ACCORDÉE, datée du
-        ``consentTimestamp`` transmis par le site (pas de l'instant serveur) ;
-      • ``whatsapp`` — l'opt-in WhatsApp, accordé OU refusé selon la case
-        (``whatsapp_opt_in`` vaut ``None`` quand la question n'a pas été posée
-        : on n'écrit alors RIEN, un silence n'est pas un refus).
-
-    ``ip_confirmation`` reste vide À DESSEIN : ce champ est la preuve du clic
-    de confirmation d'un DOUBLE opt-in, que le formulaire du site ne pratique
-    pas — y verser l'IP de la soumission maquillerait un simple opt-in en
-    double opt-in. Idem ``version_texte`` : le site ne transmet aucune version
-    de texte de consentement aujourd'hui.
-
-    Renvoie la liste des entrées créées (vide si aucune donnée exploitable).
-    Ne lève pas sur un lead sans email ni téléphone (le point d'entrée unique
-    ``enregistrer_consentement_lead`` renvoie alors ``None``).
-    """
-    horodatage = getattr(lead, 'consent_timestamp', None)
-    creees = []
-    if horodatage:
-        entree = enregistrer_consentement_lead(
-            lead, purpose='marketing', granted=True,
-            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage)
-        if entree is not None:
-            creees.append(entree)
-    opt_in = getattr(lead, 'whatsapp_opt_in', None)
-    if opt_in is not None:
-        entree = enregistrer_consentement_lead(
-            lead, purpose='whatsapp', granted=bool(opt_in),
-            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage or None)
-        if entree is not None:
-            creees.append(entree)
-    return creees
-
 
 # ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────
 # Point d'entrée UNIQUE pour qu'une ``EtapeSequence`` (module marketing de
@@ -9294,76 +9034,6 @@ def ajouter_note_lead_si_nouvelle(*, company, lead_id, user, body):
 # constantes founder-configurables de ce module, ex.
 # `WEBSITE_LEAD_WEBHOOK_SECRET`). 0/négatif désactive la purge (conservation
 # illimitée, comportement actuel inchangé).
-
-DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS = 180
-DEFAULT_CHAT_SESSION_RETENTION_DAYS = 180
-
-
-def _retention_days(setting_name, default_days):
-    from django.conf import settings
-    value = getattr(settings, setting_name, None)
-    if value is None:
-        return default_days
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default_days
-
-
-def purge_website_lead_payloads(now, apply_) -> int:
-    """QX42 — purge les ``WebsiteLeadPayload`` PROCESSED au-delà de la
-    fenêtre de rétention. Les payloads NON traités ou en ERREUR (``error``
-    non vide) sont EXEMPTÉS — ils doivent d'abord vieillir via la surface de
-    rejeu QX16 (un payload en erreur reste la seule trace récupérable d'un
-    lead potentiellement perdu ; on ne purge jamais une piste encore
-    actionnable). Contrat ``core.retention`` : ``apply_=False`` (dry-run) ne
-    supprime rien, renvoie le compte qui SERAIT supprimé."""
-    from django.db.models import Q
-
-    from .models import WebsiteLeadPayload
-
-    days = _retention_days(
-        'WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS',
-        DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS)
-    if days <= 0:
-        return 0
-    cutoff = now - timezone.timedelta(days=days)
-    qs = WebsiteLeadPayload.objects.filter(
-        processed=True, received_at__lt=cutoff,
-    ).filter(Q(error__isnull=True) | Q(error=''))
-    count = qs.count()
-    if apply_ and count:
-        qs.delete()
-    return count
-
-
-def purge_stale_chat_sessions(now, apply_) -> int:
-    """QX42 — purge les ``ChatSessionPublique`` (transcript PII d'un visiteur
-    anonyme) inactives au-delà de la fenêtre de rétention (mesurée sur
-    ``last_message_at`` — une session encore active récemment n'est jamais
-    purgée même si ``created_at`` est ancien). Une session déjà liée à un
-    Lead réel (``lead_id`` renseigné) garde son transcript — la conversation
-    fait partie de l'historique du lead, pas une trace anonyme jetable.
-
-    ACRM19 — SAUF celle d'un lead ANONYMISÉ : l'historique n'a plus de
-    personne à qui appartenir, l'exemption ne la protège plus."""
-    from django.db.models import Q
-
-    from .dsr_provider import LEAD_NOM_ANONYMISE
-    from .models import ChatSessionPublique
-
-    days = _retention_days(
-        'CHAT_SESSION_RETENTION_DAYS', DEFAULT_CHAT_SESSION_RETENTION_DAYS)
-    if days <= 0:
-        return 0
-    cutoff = now - timezone.timedelta(days=days)
-    qs = ChatSessionPublique.objects.filter(
-        last_message_at__lt=cutoff).filter(
-            Q(lead__isnull=True) | Q(lead__nom=LEAD_NOM_ANONYMISE))
-    count = qs.count()
-    if apply_ and count:
-        qs.delete()
-    return count
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -12770,46 +12440,6 @@ def _demarrer_deuxieme_affaire(lead, user):
 #     WhatsApp, demande au salon) — relation précontractuelle à sa demande,
 #     loi 09-08 art. 5. Le CNDP distingue les deux, le registre aussi.
 
-#: Finalité inscrite au registre pour la prospection commerciale.
-CONSENT_PURPOSE_PROSPECTION = 'marketing'
-
-#: Données NON collectées auprès de la personne (Meta, import, document).
-#: Le libellé est court À DESSEIN : ``ConsentRecord.source`` fait 120
-#: caractères et porte aussi l'origine — une base légale tronquée ne prouve
-#: rien. Le texte complet des deux articles est en tête de cette section.
-BASE_LEGALE_NON_COLLECTEE = 'base légale : loi 09-08 art. 5 §3 + décret ' \
-                            '2-09-165 art. 34'
-#: La personne a elle-même sollicité le contact (appel, message, salon).
-BASE_LEGALE_SOLLICITATION = 'base légale : relation précontractuelle à la ' \
-                            'demande de la personne (loi 09-08 art. 5)'
-
-CONSENT_SOURCE_SAISIE_MANUELLE = 'saisie manuelle CRM'
-CONSENT_SOURCE_META_LEAD_ADS = 'formulaire Meta Lead Ads'
-CONSENT_SOURCE_WHATSAPP_ENTRANT = 'message WhatsApp entrant'
-CONSENT_SOURCE_DOCUMENT = 'document importé'
-
-
-def enregistrer_base_legale_lead(lead, *, source, base_legale,
-                                 occurred_at=None):
-    """Trace au registre la BASE LÉGALE d'un lead créé hors formulaire du site.
-
-    ``granted=False`` : aucune case n'a été cochée par la personne sur ces
-    chemins. L'entrée existe pour que le registre ne soit pas MUET sur une
-    cohorte entière — une demande CNDP y lit la source ET le fondement
-    invoqué. Best-effort intégral : une création de lead ne tombe jamais
-    parce que le registre n'a pas pu être écrit.
-    """
-    try:
-        return enregistrer_consentement_lead(
-            lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
-            source=f'{source} — {base_legale}'[:120],
-            occurred_at=occurred_at)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'CAD90 : base légale non écrite au registre pour le lead #%s',
-            getattr(lead, 'pk', None), exc_info=True)
-        return None
-
 
 # ── CAD-K ── CAD129 — « rappelez-moi » entre dans la FILE, pas dans la cloche ─
 #
@@ -13225,66 +12855,6 @@ RAISONS_ATTENTE = (
      TAG_ATTENTE_ACCORD),
 )
 ETIQUETTES_RAISON_ATTENTE = tuple(r[2] for r in RAISONS_ATTENTE)
-
-
-#: ACRM59 (C-ACRM-044) — les FINALITÉS DE CONTACT du registre : une
-#: opposition les refuse TOUTES (la prospection, et chaque canal recueilli à
-#: l'intake — WhatsApp —, plus l'e-mail et le SMS que le registre connaît).
-#: Aucune finalité nouvelle n'est inventée : ce sont celles que
-#: ``enregistrer_consentement_lead`` documente.
-FINALITES_CONTACT = (CONSENT_PURPOSE_PROSPECTION, 'whatsapp', 'email', 'sms')
-
-#: ACRM59 — la source d'une opposition LEVÉE depuis la fiche.
-CONSENT_SOURCE_OPPOSITION_LEVEE = 'opposition levée par {utilisateur}'
-
-
-def _identifiants_registre(lead):
-    """ACRM59 — CHAQUE identifiant de la personne (e-mail ET téléphone,
-    sans doublon) : une opposition lue sous le téléphone doit tenir autant
-    que sous l'e-mail."""
-    vus = []
-    for valeur in (getattr(lead, 'email', None),
-                   getattr(lead, 'telephone', None)):
-        valeur = (valeur or '').strip()
-        if valeur and valeur not in vus:
-            vus.append(valeur)
-    return vus
-
-
-def _ecrire_registre_contact(lead, *, granted, source, occurred_at=None):
-    """ACRM59 — une ligne par (identifiant, finalité de contact)."""
-    from core.models import ConsentRecord
-
-    quand = occurred_at or timezone.now()
-    lignes = [
-        ConsentRecord(
-            company=lead.company, subject_identifier=identifiant,
-            purpose=finalite, granted=granted, source=source[:120],
-            occurred_at=quand)
-        for identifiant in _identifiants_registre(lead)
-        for finalite in FINALITES_CONTACT]
-    if not lignes:
-        return None
-    ConsentRecord.objects.bulk_create(lignes)
-    return lignes[0]
-
-
-def tracer_levee_opposition_registre(lead, user, *, occurred_at=None):
-    """ACRM59 — décocher « ne plus contacter » sur la fiche inscrit au
-    registre une ligne ``granted=True`` par finalité de contact et par
-    identifiant, dont la source NOMME l'utilisateur (« opposition levée par
-    <utilisateur> »). Best-effort, comme l'opposition."""
-    try:
-        qui = getattr(user, 'username', '') or 'utilisateur inconnu'
-        return _ecrire_registre_contact(
-            lead, granted=True,
-            source=CONSENT_SOURCE_OPPOSITION_LEVEE.format(utilisateur=qui),
-            occurred_at=occurred_at)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'ACRM59 : levée d\'opposition non écrite au registre (lead #%s)',
-            getattr(lead, 'pk', None), exc_info=True)
-        return None
 
 
 # ── CAD-A ── CAD7 — « Question de prix — veut négocier » ────────────────────

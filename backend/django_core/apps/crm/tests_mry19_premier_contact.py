@@ -29,9 +29,8 @@ from authentication.models import Company
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity
 from apps.crm.selectors import kpi_premier_contact
-from apps.crm.services import (
-    avancer_stage_new_vers_contacted, marquer_premier_contact,
-    maybe_set_first_contacted_at)
+from apps.crm.services import avancer_stage_new_vers_contacted
+from apps.crm.leads_premier_contact import marquer_premier_contact, maybe_set_first_contacted_at
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

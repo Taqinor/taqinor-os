@@ -88,7 +88,7 @@ class ToucheAtomiqueTests(TestCase):
 
     def test_noter_panne_rien_ecrit(self):
         avant = self._empreinte()
-        with patch('apps.crm.services.marquer_premier_contact',
+        with patch('apps.crm.leads_premier_contact.marquer_premier_contact',
                    side_effect=RuntimeError('panne déclarée')):
             resp = self.api.post(
                 f'/api/django/crm/leads/{self.lead.pk}/noter/',

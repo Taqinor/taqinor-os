@@ -49,10 +49,8 @@ from .serializers import (
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity, stages
-from .services import (
-    COOKIE_APPAREIL, default_responsable_for,
-    domaine_cookies_equipe, enregistrer_appareil_equipe,
-)
+from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
+from .leads_attribution import default_responsable_for
 from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import (
     IsAnyRole,
@@ -1238,8 +1236,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # site : il doit donc, comme eux, exister au registre de consentement.
         # La personne a elle-même sollicité le contact (appel entrant,
         # message reçu, demande au salon) : c'est la base légale tracée ici.
-        from .services import (
-            BASE_LEGALE_SOLLICITATION, CONSENT_SOURCE_SAISIE_MANUELLE,
+        from .leads_consentement import (
+            BASE_LEGALE_SOLLICITATION,
+            CONSENT_SOURCE_SAISIE_MANUELLE,
             enregistrer_base_legale_lead,
         )
         enregistrer_base_legale_lead(
@@ -1388,10 +1387,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # est journalisée et n'échoue plus un PATCH déjà écrit (LFICHE-5).
         from django.db import transaction
         from .services import (
-            _emit_stage_changed, maybe_set_first_contacted_at,
-            recompute_lead_score, reporter_prochaine_touche,
+            _emit_stage_changed,
+            recompute_lead_score,
+            reporter_prochaine_touche,
             sync_relance_activity,
         )
+        from .leads_premier_contact import maybe_set_first_contacted_at
         with transaction.atomic():
             # Décision fondateur 08/10/2026 — SORTIR de « Signé » par une
             # action utilisateur dés-accepte le(s) devis du lead (retour à
@@ -1557,7 +1558,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
         # finalité de contact, dont la source nomme l'utilisateur.
         if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
-            from .services import tracer_levee_opposition_registre
+            from .leads_consentement import tracer_levee_opposition_registre
             tracer_levee_opposition_registre(new_lead, self.request.user)
         # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
         # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
@@ -3086,7 +3087,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """
         from django.utils import timezone
         import datetime
-        from .services import lead_sla_hours as get_sla_hours
+        from .leads_premier_contact import lead_sla_hours as get_sla_hours
         sla = get_sla_hours(request.user.company)
         if sla == 0:
             return Response({'sla_hours': 0, 'count': 0, 'results': []})
@@ -3449,7 +3450,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # FG28/MRY19 — première note = premier contact. La condition
         # « lead encore en NEW » a DISPARU : un lead saisi à la main, déjà
         # CONTACTED, ne recevait jamais d'horodatage et sortait du KPI.
-        from .services import marquer_premier_contact
+        from .leads_premier_contact import marquer_premier_contact
         marquer_premier_contact(lead)
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data,
@@ -3505,8 +3506,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # touche forment UNE transaction : un report en panne n'écrit rien
         # (avant : chatter écrit puis 500, touche jamais déplacée).
         from django.db import transaction
-        from .services import (marquer_premier_contact,
-                               reporter_prochaine_touche)
+        from .services import reporter_prochaine_touche
+        from .leads_premier_contact import marquer_premier_contact
         with transaction.atomic():
             act = LeadActivity.objects.create(
                 lead=lead,
@@ -5037,10 +5038,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
         pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
-        from .services import (
-            journaliser_whatsapp_ouvert, marquer_premier_contact,
-            message_pour_etape, refus_langue_relance,
-        )
+        from .services import journaliser_whatsapp_ouvert, message_pour_etape, refus_langue_relance
+        from .leads_premier_contact import marquer_premier_contact
         langue = (request.data.get('langue') or '').strip()
         if langue and refus_langue_relance(langue):
             # Levée (même motif que `message`) : la forme versionnée du

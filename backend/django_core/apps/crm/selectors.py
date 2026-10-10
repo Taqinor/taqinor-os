@@ -2220,7 +2220,7 @@ def leads_sla_depasse(company, now=None, seuil_heures=None):
     import datetime as _dt
 
     from .models import Lead
-    from .services import lead_sla_hours as _get_sla_hours
+    from .leads_premier_contact import lead_sla_hours as _get_sla_hours
 
     now = now or _timezone.now()
     if seuil_heures is None:
@@ -2276,7 +2276,7 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
 
     from . import horaires
     from .models import Lead
-    from .services import callback_sla_hours as _get_callback_sla_hours
+    from .leads_premier_contact import callback_sla_hours as _get_callback_sla_hours
 
     now = now or _timezone.now()
     if seuil_heures is None:

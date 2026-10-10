@@ -44,7 +44,6 @@ from .services import (
     _canal_configure,
     _config_visite,
     _debrief_ouvert,
-    _ecrire_registre_contact,
     _lead_porte_tag,
     _lead_relancable,
     _poser_etape_de_filet,
@@ -70,6 +69,7 @@ from .services import (
     reporter_prochaine_touche,
     retirer_tag_lead,
 )
+from .leads_consentement import _ecrire_registre_contact
 from .leads_doublons import find_duplicates_by_contact, normalize_phone
 
 logger = logging.getLogger(__name__)
