@@ -100,6 +100,29 @@ class SignatureFigeeTests(SignatureFigeeBase):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(self.doc.versions.count(), 1)
 
+    def test_nouvelle_version_refusee_pendant_signature(self):
+        """ADOC175 — l'action « Nouvelle version » est gardée comme `versions`."""
+        from unittest import mock
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = f'/api/django/ged/documents/{self.doc.pk}/nouvelle-version/'
+        octets = b'%PDF-1.4\n%autre\n' + b'X' * 50
+        with mock.patch('apps.ged.views.store_attachment') as stocke:
+            resp = self.api.post(url, {'file': SimpleUploadedFile(
+                'v.pdf', octets, content_type='application/pdf')},
+                format='multipart')
+            self.assertEqual(resp.status_code, 409, resp.data)
+            self.assertIn('signature est en cours', resp.data['detail'])
+            stocke.assert_not_called()
+        self.assertEqual(self.doc.versions.count(), 1)
+
+    def test_editeur_office_refuse_pendant_signature(self):
+        with self.settings(GED_OFFICE_URL='http://office.test'):
+            with self.assertRaises(services.SignatureEnCoursError):
+                services.sauvegarder_depuis_editeur_office(
+                    self.doc, contenu_bytes=b'%PDF-1.4\n%o\n' + b'Z' * 50,
+                    user=self.admin, filename='o.pdf')
+        self.assertEqual(self.doc.versions.count(), 1)
+
     def test_pdf_signe_stable_apres_nouvelle_version(self):
         self._signer()
         self.assertIsNotNone(self.demande.version_signee_id)
