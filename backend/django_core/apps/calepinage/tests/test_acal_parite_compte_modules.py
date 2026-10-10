@@ -93,7 +93,7 @@ def _lecteurs(layout, resultat):
     lus['presentation_compacte'] = (totaux['total_modules'],
                                     totaux['total_kwc'])
 
-    infos = reglementaire.infos_du_calepinage(
+    infos = reglementaire._infos_du_calepinage(
         SimpleNamespace(company=None, client=None, roof_layout=layout),
         resultat=resultat)
     lus['reglementaire'] = (infos['nombre_modules'], infos['puissance_kwc'])

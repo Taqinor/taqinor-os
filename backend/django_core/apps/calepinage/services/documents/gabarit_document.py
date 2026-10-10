@@ -409,7 +409,7 @@ def client_du_calepinage(calepinage):
     bornés à la société du calepinage — jamais un import de
     ``apps.crm.models``. UNE seule résolution, partagée par la page de garde
     (:func:`identite_du_calepinage`) et le préremplissage réglementaire
-    (``services/reglementaire.infos_du_calepinage``).
+    (``services/reglementaire._infos_du_calepinage``).
     """
     company = getattr(calepinage, 'company', None)
     client = ''
