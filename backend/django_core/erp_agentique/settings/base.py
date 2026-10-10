@@ -1938,25 +1938,3 @@ WHATSAPP_CLOUD_COMPANY_ID = os.environ.get('WHATSAPP_CLOUD_COMPANY_ID') or None
 WHATSAPP_ENABLED = (
     os.environ.get('WHATSAPP_ENABLED', '').strip().lower() in ('1', 'true'))
 WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ADEP37 — apps.ged : signature électronique, co-édition Office, PAdES. Lus par
-# `esign_active()`, `esign_provider_name()`, `office_edit_active()` et la
-# signature PAdES de `apps/ged/services.py`. Avant ADEP37 ils n'étaient déclarés
-# nulle part : les poser dans l'environnement restait SANS effet (C-ADEP-004).
-# Absents = comportement inchangé (stub local, co-édition inactive).
-# ESIGN_ENABLED : booléen STRICT, seuls « 1 » et « true » l'activent.
-ESIGN_ENABLED = (
-    os.environ.get('ESIGN_ENABLED', '').strip().lower() in ('1', 'true'))
-ESIGN_PROVIDER = os.environ.get('ESIGN_PROVIDER', '').strip()
-GED_OFFICE_URL = os.environ.get('GED_OFFICE_URL', '').strip()
-GED_PADES_CERT_PATH = os.environ.get('GED_PADES_CERT_PATH', '').strip()
-GED_PADES_KEY_PATH = os.environ.get('GED_PADES_KEY_PATH', '').strip()
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ADEP38 — apps.portail : passerelle de paiement carte CMI, lus par `cmi_actif()`
-# (`apps/portail/services.py`). Actif seulement si CMI_ENABLED (« 1 »/« true »,
-# strict) ET CMI_MERCHANT_KEY non vide. Absents = faux, comme avant.
-CMI_ENABLED = (
-    os.environ.get('CMI_ENABLED', '').strip().lower() in ('1', 'true'))
-CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()

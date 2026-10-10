@@ -5,9 +5,16 @@
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_GRAPH_EOL_ALERT_MONTHS  # ADEP20 clé non déclarée
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_ROLLUP_AFTER_MONTHS  # ADEP20 clé non déclarée
 backend/django_core/apps/automation/actions.py::CONTACT_FROM_EMAIL  # ADEP20 clé non déclarée
+backend/django_core/apps/ged/services.py::ESIGN_ENABLED  # ADEP20 clé non déclarée
+backend/django_core/apps/ged/services.py::ESIGN_PROVIDER  # ADEP20 clé non déclarée
+backend/django_core/apps/ged/services.py::GED_OFFICE_URL  # ADEP20 clé non déclarée
+backend/django_core/apps/ged/services.py::GED_PADES_CERT_PATH  # ADEP20 clé non déclarée
+backend/django_core/apps/ged/services.py::GED_PADES_KEY_PATH  # ADEP20 clé non déclarée
 backend/django_core/apps/identity/anomaly.py::GEOIP2_CITY_DB  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_MINUTES_OUVREES  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_SCORE_THRESHOLD  # ADEP20 clé non déclarée
+backend/django_core/apps/portail/services.py::CMI_ENABLED  # ADEP20 clé non déclarée
+backend/django_core/apps/portail/services.py::CMI_MERCHANT_KEY  # ADEP20 clé non déclarée
 backend/django_core/apps/publicapi/edi/x12.py::PUBLICAPI_EDI_ACTIF  # ADEP20 clé non déclarée
 backend/django_core/apps/publicapi/oauth.py::PUBLIC_API_OAUTH_TOKEN_TTL  # ADEP20 clé non déclarée
 backend/django_core/apps/publicapi/webhook_health.py::WEBHOOK_AUTO_DISABLE_THRESHOLD  # ADEP20 clé non déclarée
