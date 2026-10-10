@@ -15,7 +15,8 @@ from apps.crm import questionnaire as quest
 from apps.crm import stages
 from apps.crm.models import Lead, QuestionnaireLien
 from apps.crm.scoring import compute_score
-from apps.crm.services import merge_leads, recompute_lead_score
+from apps.crm.services import merge_leads
+from apps.crm.leads_score import recompute_lead_score
 from apps.roles.models import Role
 from authentication.models import Company
 

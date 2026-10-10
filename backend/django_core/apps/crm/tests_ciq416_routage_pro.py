@@ -22,6 +22,7 @@ from django.urls import reverse
 
 from authentication.models import Company
 from apps.crm import services
+from apps.crm import leads_notifications
 from apps.crm import leads_attribution
 from apps.crm.models import Lead
 from apps.parametres.models import CompanyProfile
@@ -127,7 +128,7 @@ class NotificationPro(TestCase):
 
     def _notifier(self, lead):
         with mock.patch('apps.notifications.services.notify_many') as envoi:
-            services.notify_new_lead(lead)
+            leads_notifications.notify_new_lead(lead)
         self.assertEqual(envoi.call_count, 1)
         destinataires, _type, titre = envoi.call_args.args[:3]
         return list(destinataires), titre, envoi.call_args.kwargs['body']

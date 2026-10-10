@@ -16,7 +16,7 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.crm.models import Lead
-from apps.crm.services import notify_new_lead
+from apps.crm.leads_notifications import notify_new_lead
 from apps.crm.leads_attribution import default_responsable_for, pick_round_robin_owner
 from apps.notifications.models import Notification
 from apps.parametres.models import CompanyProfile

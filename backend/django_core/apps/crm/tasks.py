@@ -63,7 +63,7 @@ def recalculer_scores_obsoletes_task():
     jour. Délègue entièrement au service (testable hors Celery via
     ``apps.crm.services.recalculer_scores_obsoletes``).
     """
-    from apps.crm.services import recalculer_scores_obsoletes
+    from apps.crm.leads_score import recalculer_scores_obsoletes
 
     return recalculer_scores_obsoletes()
 

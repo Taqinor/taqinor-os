@@ -24,6 +24,7 @@ from django.test import TestCase
 
 from apps.crm import exports, services
 from apps.crm import leads_doublons
+from apps.crm import leads_score
 from apps.crm.management.commands import import_odoo_leads as odoo
 from apps.crm.models import Lead, Playbook
 from apps.crm.serializers import PlaybookSerializer
@@ -42,7 +43,7 @@ class RoundRobinMortTests(TestCase):
     def test_le_round_robin_reellement_utilise_survit(self):
         """XMKT21 en a un VRAI, appelé au franchissement du seuil MQL : on ne
         supprime pas les deux."""
-        self.assertTrue(hasattr(services, '_next_round_robin_commercial'))
+        self.assertTrue(hasattr(leads_score, '_next_round_robin_commercial'))
 
     def test_plus_aucune_reference_dans_le_depot(self):
         restes = []

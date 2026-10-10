@@ -1228,7 +1228,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import recompute_lead_score
+        from .leads_score import recompute_lead_score
         from .cadence_plan import demarrer_cadence_contact, sync_relance_activity
         # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
         # site : il doit donc, comme eux, exister au registre de consentement.
@@ -1384,7 +1384,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # sont best-effort, chacun dans son point de sauvegarde : leur panne
         # est journalisée et n'échoue plus un PATCH déjà écrit (LFICHE-5).
         from django.db import transaction
-        from .services import recompute_lead_score
+        from .leads_score import recompute_lead_score
         from .cadence_plan import reporter_prochaine_touche, sync_relance_activity
         from .fiche_funnel import _emit_stage_changed
         from .leads_premier_contact import maybe_set_first_contacted_at

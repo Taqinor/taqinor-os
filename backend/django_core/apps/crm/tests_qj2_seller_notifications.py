@@ -19,10 +19,7 @@ from authentication.models import Company
 from django.contrib.auth import get_user_model
 
 from apps.crm.models import Lead
-from apps.crm.services import (
-    notify_new_lead,
-    notify_devis_opened,
-)
+from apps.crm.leads_notifications import notify_new_lead, notify_devis_opened
 from apps.notifications.models import Notification
 from apps.notifications.types_evenements import EventType
 

@@ -63,7 +63,7 @@ class PatchAtomiqueTests(TestCase):
     def test_panne_score_n_echoue_pas_le_patch(self):
         touche_avant = self._etat_touche()
         chatter_avant = self._nb_chatter()
-        with mock.patch('apps.crm.services.recompute_lead_score',
+        with mock.patch('apps.crm.leads_score.recompute_lead_score',
                         side_effect=RuntimeError('score en panne')):
             with self.assertLogs('apps.crm.views', level='WARNING') as logs:
                 resp = self.api.patch(self.url, {'ville': 'Fès'},
