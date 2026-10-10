@@ -27,7 +27,7 @@ from django.utils import timezone
 
 from authentication.models import Company
 
-from apps.crm import horaires, services
+from apps.crm import horaires, visites_rdv
 from apps.parametres.models import CompanyProfile
 
 CASA = horaires.CASABLANCA
@@ -432,7 +432,7 @@ class RamadanPacingTests(TestCase):
         self.company = _company('mry8-ramadan')
 
     def test_faux_tant_quaucune_periode_nest_saisie(self):
-        self.assertFalse(services._ramadan_pacing_enabled(self.company))
+        self.assertFalse(visites_rdv._ramadan_pacing_enabled(self.company))
 
     def test_vrai_pendant_la_periode_saisie(self):
         aujourd_hui = horaires._local(timezone.now()).date()
@@ -440,7 +440,7 @@ class RamadanPacingTests(TestCase):
         profil.ramadan_debut = aujourd_hui - datetime.timedelta(days=2)
         profil.ramadan_fin = aujourd_hui + datetime.timedelta(days=25)
         profil.save(update_fields=['ramadan_debut', 'ramadan_fin'])
-        self.assertTrue(services._ramadan_pacing_enabled(self.company))
+        self.assertTrue(visites_rdv._ramadan_pacing_enabled(self.company))
 
     def test_faux_hors_de_la_periode_saisie(self):
         aujourd_hui = horaires._local(timezone.now()).date()
@@ -448,10 +448,10 @@ class RamadanPacingTests(TestCase):
         profil.ramadan_debut = aujourd_hui - datetime.timedelta(days=400)
         profil.ramadan_fin = aujourd_hui - datetime.timedelta(days=370)
         profil.save(update_fields=['ramadan_debut', 'ramadan_fin'])
-        self.assertFalse(services._ramadan_pacing_enabled(self.company))
+        self.assertFalse(visites_rdv._ramadan_pacing_enabled(self.company))
 
     def test_societe_absente_reste_fausse(self):
-        self.assertFalse(services._ramadan_pacing_enabled(None))
+        self.assertFalse(visites_rdv._ramadan_pacing_enabled(None))
 
 
 class CacheLocalTests(TestCase):

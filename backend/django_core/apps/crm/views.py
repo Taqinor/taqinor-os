@@ -5333,7 +5333,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
                 # LEVÉ, pas renvoyé : le contrat reste la forme du 200.
                 raise DRFValidationError({'lead': ['Lead introuvable.']})
         if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
-            from .services import public_booking_url
+            from .visites_rdv import public_booking_url
             try:
                 lien_rdv = public_booking_url(lead, request=request)
             except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
@@ -5401,7 +5401,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         """Company et created_by toujours posés côté serveur."""
-        from .services import book_appointment
+        from .visites_rdv import book_appointment
         lead = serializer.validated_data['lead']
         scheduled_at = serializer.validated_data['scheduled_at']
         notes = serializer.validated_data.get('notes') or ''
@@ -5495,7 +5495,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
         `LeadViewSet.whatsapp_devis`)."""
         appt = self.get_object()
-        from .services import build_appointment_confirmation_whatsapp
+        from .visites_rdv import build_appointment_confirmation_whatsapp
 
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)

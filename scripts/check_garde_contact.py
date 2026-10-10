@@ -37,7 +37,7 @@ LISTE_BLANCHE: dict[str, str] = {
         "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au lead",
     "backend/django_core/apps/crm/services.py::_build_lead_wa_reply_url::wa.me":
         "A CORRIGER (ACRM, session crm) : lien wa.me vers le prospect construit sans consulter peut_contacter ; brouillon que le vendeur clique, mais l'opposition n'est pas visible",
-    "backend/django_core/apps/crm/services.py::dispatch_appointment_reminder::wa.me":
+    "backend/django_core/apps/crm/visites_rdv.py::dispatch_appointment_reminder::wa.me":
         "A CORRIGER (ACRM, session crm) : brouillon wa.me de rappel RDV vers le lead sans garde de contact (opposition non verifiee)",
     "backend/django_core/apps/crm/services.py::_poser_etape_de_filet::touche":
         "A CORRIGER (LSVC5-5) : pose de filet sans garde propre ; liste blanche « appelants gardes » OU garde a ajouter, decision du proprietaire crm",

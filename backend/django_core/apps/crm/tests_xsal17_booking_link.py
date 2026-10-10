@@ -23,7 +23,7 @@ from django.utils import timezone
 from authentication.models import Company
 
 from apps.crm.models import Appointment, BookingLink, Lead, MessageTemplate
-from apps.crm.services import (
+from apps.crm.visites_rdv import (
     BookingLinkUnavailable,
     public_booking_url,
     reserver_creneau_public,

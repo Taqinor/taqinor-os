@@ -27,15 +27,14 @@ from .services import (
     arreter_cadence_du_lead_id,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
-    ecrire_retour_lead_visite,
     est_cloture_d_etape_visite,
     initialiser_plan_relance,
-    journaliser_visite,
     phrase_notification_retour_visite,
     poser_filet_visite_a_planifier,
     q_visite,
     touche_close_de,
 )
+from .visites_retour_lead import ecrire_retour_lead_visite, journaliser_visite
 from .cadence_reponses import est_derniere_touche_du_suivi
 
 logger = logging.getLogger(__name__)
@@ -387,7 +386,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
     mesures = kwargs.get('mesures_point_eau')
     if mesures:
         try:
-            from .services import appliquer_mesures_point_eau
+            from .visites_retour_lead import appliquer_mesures_point_eau
             lead = Lead.objects.filter(
                 pk=lead_id, company_id=visite.company_id).first()
             if lead is not None:
@@ -402,7 +401,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
     releve_ci = kwargs.get('releve_ci')
     if releve_ci:
         try:
-            from .services import appliquer_releve_ci
+            from .visites_retour_lead import appliquer_releve_ci
             lead = Lead.objects.filter(
                 pk=lead_id, company_id=visite.company_id).first()
             if lead is not None:

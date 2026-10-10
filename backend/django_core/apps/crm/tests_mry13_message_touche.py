@@ -206,7 +206,7 @@ class LienDeRendezVousTests(_Base):
 
     def test_un_lien_introuvable_fait_OMETTRE_la_phrase(self):
         self._gabarit()
-        with mock.patch('apps.crm.services.public_booking_url',
+        with mock.patch('apps.crm.visites_rdv.public_booking_url',
                         side_effect=RuntimeError('jeton indisponible')):
             rendu = message_pour_etape(self._touche(), user=self.acteur)
         self.assertIn('lien_rdv', rendu['placeholders_manquants'])
@@ -218,7 +218,7 @@ class LienDeRendezVousTests(_Base):
 
     def test_un_lien_resolu_garde_la_phrase(self):
         self._gabarit()
-        with mock.patch('apps.crm.services.public_booking_url',
+        with mock.patch('apps.crm.visites_rdv.public_booking_url',
                         return_value='https://exemple.test/rdv/jeton'):
             rendu = message_pour_etape(self._touche(), user=self.acteur)
         self.assertEqual(rendu['placeholders_manquants'], [])
@@ -229,7 +229,7 @@ class LienDeRendezVousTests(_Base):
         """Garde négative (XSAL17) : aucun lien n'est généré à l'avance."""
         MessageTemplate.objects.create(
             company=self.company, cle='identite', corps_fr='Bonjour {prenom}.')
-        with mock.patch('apps.crm.services.public_booking_url') as booking:
+        with mock.patch('apps.crm.visites_rdv.public_booking_url') as booking:
             rendu = message_pour_etape(self._touche(), user=self.acteur)
         booking.assert_not_called()
         self.assertEqual(rendu['message'], 'Bonjour Aziz.')

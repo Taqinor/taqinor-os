@@ -16,7 +16,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
-from apps.crm import services
+from apps.crm import visites_retour_lead
 from apps.crm.models import Lead, LeadActivity
 from apps.visites import selectors as visites_selectors
 from apps.visites import services as visites_services
@@ -45,10 +45,10 @@ class TableDuContrat(SimpleTestCase):
                 categorie, code, ligne['colonne_lead'],
                 (provenance['colonne_lead'], provenance['valeur'])
                 if provenance else None))
-        self.assertEqual(list(services.RETOUR_LEAD_POINT_EAU), attendu)
+        self.assertEqual(list(visites_retour_lead.RETOUR_LEAD_POINT_EAU), attendu)
 
     def test_chaque_colonne_cible_est_une_colonne_du_contrat_lead(self):
-        for _cat, _code, colonne, provenance in services.RETOUR_LEAD_POINT_EAU:
+        for _cat, _code, colonne, provenance in visites_retour_lead.RETOUR_LEAD_POINT_EAU:
             self.assertIn(colonne, COLONNES_POMPAGE)
             if provenance:
                 self.assertIn(provenance[0], COLONNES_POMPAGE)
@@ -133,7 +133,7 @@ class RetourPointEauALaValidation(TestCase):
         mesures = visites_selectors.mesures_point_eau_pour_lead(visite)
         self.lead.refresh_from_db()
         self.assertEqual(
-            services.appliquer_mesures_point_eau(
+            visites_retour_lead.appliquer_mesures_point_eau(
                 self.lead, mesures, self.bureau), [])
         self.assertEqual(
             LeadActivity.objects.filter(
