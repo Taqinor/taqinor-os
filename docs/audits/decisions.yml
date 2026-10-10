@@ -1358,18 +1358,6 @@ decisions:
     source: "docs/claude-memory/apar-decisions-fondateur.md"
     taches: [APAR1, APAR44]
 
-  - id: D-APAR-2
-    question: "Sort de l'ecran Parametres > Approbations ?"
-    options:
-      - cle: a
-        texte: "ecran retire, routes d'ecriture fermees"
-      - cle: b
-        texte: "requires_approval appele dans le chemin de remise"
-    reponse: ouverte
-    date: "2026-10-09"
-    source: "docs/claude-memory/apar-decisions-fondateur.md (reste gatee par D-APAR-2, APAR2)"
-    taches: [APAR2]
-
   - id: D-APDF-1
     question: "Bande legale du devis ?"
     options:
