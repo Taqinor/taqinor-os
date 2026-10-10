@@ -75,6 +75,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   // EXPOSÉE : un retry ne repart JAMAIS en second `createFacture` (doublon
   // fiscal).
   const [createdFactureId, setCreatedFactureId] = useState(null)
+  // AFAC70 — raison SERVEUR de l'échec d'enregistrement de chaque ligne
+  // ({[_key]: message FR}), affichée sous la ligne fautive.
+  const [lineErrors, setLineErrors] = useState({})
 
   const [fields, setFields] = useState({
     client:          facture?.client          ?? '',
@@ -235,6 +238,12 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     setDirty(true)
     clearField('lines')
     setLines(ls => ls.map(l => l._key === key ? { ...l, [k]: v } : l))
+    setLineErrors(errs => {
+      if (!(key in errs)) return errs
+      const rest = { ...errs }
+      delete rest[key]
+      return rest
+    })
   }
 
   const onProduitChange = (key, produitId) => {
@@ -361,10 +370,33 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         }))
       }
 
-      const lineFails = delResult.failed.length + updResult.failed.length + createResult.failed.length
+      // AFAC70 — chaque ligne refusée dit POURQUOI (motif serveur, clé de
+      // champ DRF via frenchError) et LAQUELLE (numéro d'affichage) ; la
+      // saisie reste dans le champ, jamais corrigée en silence.
+      const lignesEnEchec = [...updResult.failed, ...createResult.failed]
+        .map(f => ({
+          key: f.item._key,
+          numero: lines.findIndex(l => l._key === f.item._key) + 1,
+          motif: frenchError(f.error, 'Ligne refusée par le serveur.'),
+        }))
+        .sort((a, b) => a.numero - b.numero)
+      setLineErrors(Object.fromEntries(lignesEnEchec.map(e => [e.key, e.motif])))
+      const lineFails = delResult.failed.length + lignesEnEchec.length
       if (lineFails > 0) {
+        const parts = []
+        if (lignesEnEchec.length === 1) {
+          const [e] = lignesEnEchec
+          parts.push(`la ligne ${e.numero} n'a pas pu être enregistrée : ${e.motif}`)
+        } else if (lignesEnEchec.length > 1) {
+          parts.push(`les lignes ${lignesEnEchec.map(e => e.numero).join(', ')} n'ont pas pu être enregistrées : `
+            + lignesEnEchec.map(e => `ligne ${e.numero} — ${e.motif}`).join(' ; '))
+        }
+        if (delResult.failed.length > 0) {
+          parts.push(`${delResult.failed.length} ligne(s) supprimée(s) n'ont pas pu être retirée(s) : `
+            + frenchError(delResult.failed[0].error, 'suppression refusée.'))
+        }
         setErrors(prev => ({ ...prev, submit:
-          `Facture enregistrée, mais ${lineFails} ligne(s) n'ont pas pu être enregistrée(s). `
+          `Facture enregistrée, mais ${parts.join(' ; ').replace(/\.$/, '')}. `
           + 'Corrigez et réessayez — seules les lignes en échec seront retentées, aucun doublon.' }))
         return
       }
@@ -631,6 +663,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                           <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
                                  placeholder="Désignation" />
+                          {/* AFAC70 — motif serveur de l'échec de CETTE ligne. */}
+                          {lineErrors[l._key] && (
+                            <p role="alert" data-line-error={l._key}
+                               className="m-0 mt-1 text-xs text-destructive">
+                              {lineErrors[l._key]}
+                            </p>
+                          )}
                         </td>
                         <td data-label="Qté">
                           <Input type="number" min="0.01" step="0.01" data-role="line-qty"

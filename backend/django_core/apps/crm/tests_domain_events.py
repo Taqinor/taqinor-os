@@ -92,7 +92,9 @@ class TestDevisAcceptedAdvancesLeadStage(TestCase):
         self.assertEqual(lead.stage, 'SIGNED')
 
     def test_ignores_lost_lead(self):
-        """Lead marqué perdu : le funnel ne bouge plus automatiquement."""
+        """D-ADEV-5 = (a) (fondateur, 08/10/2026 ; ADEV63) : un lead PERDU dont
+        le client signe le devis est relevé de Perdu puis passe en Signé (le
+        nom du test est conservé pour l'historique ; la règle a changé)."""
         lead = Lead.objects.create(
             company=self.company, nom='Lead Perdu', stage='QUOTE_SENT',
             perdu=True)
@@ -100,4 +102,5 @@ class TestDevisAcceptedAdvancesLeadStage(TestCase):
         devis_accepted.send(
             sender=None, devis=devis, user=self.user, ancien_statut='envoye')
         lead.refresh_from_db()
-        self.assertEqual(lead.stage, 'QUOTE_SENT')
+        self.assertEqual(lead.stage, 'SIGNED')
+        self.assertFalse(lead.perdu)
