@@ -201,6 +201,18 @@ def _fonction_filtre_societe(fonction: ast.AST, modeles: set) -> bool:
     return False
 
 
+def _chaines_par_pk(fonction: ast.AST) -> set:
+    """ids des appels d'une chaîne bornée par ``.filter/.get(pk=…|id=…)`` : lecture d'UNE
+    ligne par clé primaire, jamais un balayage (``pk__in`` reste un balayage)."""
+    ids = set()
+    for c in ast.walk(fonction):
+        if (isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                and c.func.attr in ("filter", "get")
+                and any(kw.arg in ("pk", "id") for kw in c.keywords)):
+            ids.update(id(x) for x in ast.walk(c))
+    return ids
+
+
 def check_balayage_global(path: Path, modeles: set):
     """[(cle_fonction, ligne, expression)] : requête sur un modèle à company, fonction non scopée."""
     try:
@@ -216,8 +228,9 @@ def check_balayage_global(path: Path, modeles: set):
                       for x in ast.walk(f)}
         if _fonction_filtre_societe(fonction, modeles):
             continue
+        par_pk = _chaines_par_pk(fonction)
         for n in ast.walk(fonction):
-            if id(n) in imbriquees or not isinstance(n, ast.Call):
+            if id(n) in imbriquees or id(n) in par_pk or not isinstance(n, ast.Call):
                 continue
             nom = _callee_name(n)
             if not nom:

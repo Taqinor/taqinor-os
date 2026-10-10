@@ -23,14 +23,8 @@ backend/django_core/apps/adminops/tasks.py
 # DECROITRE (une cle morte fait echouer la garde). Raison : balayage ou lecture par objet
 # a scoper ; tache qui la retire = C-AFAC-036 (recouvrement : AFAC43) ou le plan du proprietaire.
 backend/django_core/apps/installations/tasks.py::_deja_notifie_aujourdhui
-backend/django_core/apps/publicapi/tasks.py::deliver_webhook
 backend/django_core/apps/stock/tasks.py::_deja_notifie_aujourdhui
 backend/django_core/apps/ventes/scheduled.py::engagement_followup_engine
-backend/django_core/apps/ventes/tasks.py::_societe_du_devis
-backend/django_core/apps/ventes/tasks.py::_content_version
-backend/django_core/apps/ventes/tasks.py::ranger_simulation
-# Lecture d'UN devis par sa clé primaire (tâche déclenchée pour ce devis précis, pas un balayage) :
-# aucune itération sur des sociétés, donc rien à filtrer par active_companies().
-backend/django_core/apps/ventes/tasks.py::_signaler_pdf_devis_genere
-# Lecture d'UN devis par sa cle primaire pour resoudre la langue de sortie (AFAC101 : le mot-cle company= d'un resolveur ne borne plus un balayage ; ici aucun balayage).
-backend/django_core/apps/ventes/tasks.py::_langue_resolue
+# (10/10/2026) Les lectures d'UNE ligne par clé primaire (`.filter/.get(pk=…|id=…)`) ne sont
+# plus des balayages pour la garde : 5 entrées retirées (deliver_webhook, _societe_du_devis,
+# _content_version, ranger_simulation, _signaler_pdf_devis_genere).
