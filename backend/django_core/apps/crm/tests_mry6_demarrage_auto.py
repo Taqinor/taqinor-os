@@ -22,6 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import services, stages
+from apps.crm import leads_meta
 from apps.crm import cadence_plan
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_plan import demarrer_cadence_contact
@@ -216,7 +217,7 @@ class PointsDappelTests(_Base):
         self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_meta_lead_ads(self):
-        lead = services.create_lead_from_meta_lead_ads(
+        lead = leads_meta.create_lead_from_meta_lead_ads(
             company=self.company, leadgen_id='mry6-1', field_data=[
                 {'name': 'full_name', 'values': ['Aziz']},
                 {'name': 'phone_number', 'values': ['+212651971400']},

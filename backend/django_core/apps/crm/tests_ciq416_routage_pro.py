@@ -21,7 +21,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from authentication.models import Company
-from apps.crm import services
+from apps.crm import leads_meta
 from apps.crm import leads_notifications
 from apps.crm import leads_attribution
 from apps.crm.models import Lead
@@ -99,7 +99,7 @@ class RoutagePro(TestCase):
 
     def test_lead_meta_commercial(self):
         self._avec_reglage()
-        lead = services.create_lead_from_meta_lead_ads(
+        lead = leads_meta.create_lead_from_meta_lead_ads(
             company=self.company, leadgen_id='ciq416-1',
             field_data=[
                 {'name': 'full_name', 'values': ['Hôtel Atlas']},
