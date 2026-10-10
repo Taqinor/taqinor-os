@@ -192,7 +192,7 @@ class TestFG54Reappro(TestCase):
     def test_generer_bcf_reappro_creates_bcf(self):
         r = self.client.post(
             '/api/django/stock/produits/generer-bcf-reappro/',
-            {'fournisseur_id': self.fournisseur.id}, content_type='application/json')
+            {'fournisseur_id': self.fournisseur.id}, format='json')
         self.assertEqual(r.status_code, 201)
         data = r.json()
         self.assertIn('bon_commande_id', data)
@@ -204,7 +204,7 @@ class TestFG54Reappro(TestCase):
         """Référence numérotée sans trou (préfixe BCF)."""
         r = self.client.post(
             '/api/django/stock/produits/generer-bcf-reappro/',
-            {'fournisseur_id': self.fournisseur.id}, content_type='application/json')
+            {'fournisseur_id': self.fournisseur.id}, format='json')
         self.assertEqual(r.status_code, 201)
         ref = r.json()['reference']
         self.assertTrue(ref.startswith('BCF'), f"Référence incorrecte: {ref}")
@@ -290,7 +290,7 @@ class TestFG56FacturerReception(TestCase):
     def test_facturer_creates_facture(self):
         r = self.client.post(
             f'/api/django/stock/receptions-fournisseur/{self.reception.id}/facturer/',
-            {}, content_type='application/json')
+            {}, format='json')
         self.assertEqual(r.status_code, 201, r.json())
         data = r.json()
         self.assertIn('reference', data)
@@ -299,7 +299,7 @@ class TestFG56FacturerReception(TestCase):
     def test_facturer_computes_ht_tva_ttc(self):
         r = self.client.post(
             f'/api/django/stock/receptions-fournisseur/{self.reception.id}/facturer/',
-            {}, content_type='application/json')
+            {}, format='json')
         self.assertEqual(r.status_code, 201)
         data = r.json()
         # 10 × 100 = 1000 HT, TVA 20% = 200, TTC = 1200
@@ -310,10 +310,10 @@ class TestFG56FacturerReception(TestCase):
     def test_facturer_twice_rejected(self):
         self.client.post(
             f'/api/django/stock/receptions-fournisseur/{self.reception.id}/facturer/',
-            {}, content_type='application/json')
+            {}, format='json')
         r = self.client.post(
             f'/api/django/stock/receptions-fournisseur/{self.reception.id}/facturer/',
-            {}, content_type='application/json')
+            {}, format='json')
         self.assertEqual(r.status_code, 400)
         self.assertIn('déjà', r.json()['detail'].lower())
 
@@ -325,7 +325,7 @@ class TestFG56FacturerReception(TestCase):
             created_by=self.admin)
         r = self.client.post(
             f'/api/django/stock/receptions-fournisseur/{reception2.id}/facturer/',
-            {}, content_type='application/json')
+            {}, format='json')
         self.assertEqual(r.status_code, 400)
 
 
@@ -610,7 +610,7 @@ class TestFG63InventaireSession(TestCase):
     def test_create_session(self):
         r = self.client.post('/api/django/stock/inventaire-sessions/', {
             'motif': 'Inventaire annuel',
-        }, content_type='application/json')
+        }, format='json')
         self.assertEqual(r.status_code, 201, r.json())
         data = r.json()
         self.assertTrue(data['reference'].startswith('INV'))
@@ -620,7 +620,7 @@ class TestFG63InventaireSession(TestCase):
         # Crée session
         r = self.client.post('/api/django/stock/inventaire-sessions/', {
             'motif': 'Test FG63',
-        }, content_type='application/json')
+        }, format='json')
         session_id = r.json()['id']
         # Ajoute une ligne (théorique = 10, comptée = 7)
         session = InventaireSession.objects.get(pk=session_id)
@@ -641,7 +641,7 @@ class TestFG63InventaireSession(TestCase):
         self.assertEqual(self.produit.quantite_stock, 7)
 
     def test_valider_session_inchange(self):
-        r = self.client.post('/api/django/stock/inventaire-sessions/', {}, content_type='application/json')
+        r = self.client.post('/api/django/stock/inventaire-sessions/', {}, format='json')
         session_id = r.json()['id']
         session = InventaireSession.objects.get(pk=session_id)
         LigneInventaire.objects.create(
@@ -654,7 +654,7 @@ class TestFG63InventaireSession(TestCase):
         self.assertEqual(data['inchanges'], 1)
 
     def test_valider_already_validated_rejected(self):
-        r = self.client.post('/api/django/stock/inventaire-sessions/', {}, content_type='application/json')
+        r = self.client.post('/api/django/stock/inventaire-sessions/', {}, format='json')
         session_id = r.json()['id']
         self.client.post(
             f'/api/django/stock/inventaire-sessions/{session_id}/valider/')
@@ -735,7 +735,7 @@ class TestDC16FactureLieeAuBonCommande(TestCase):
             {'fournisseur': self.fournisseur.id, 'bon_commande': self.bcf.id,
              'date_facture': '2026-06-01', 'montant_ht': '999.00',
              'montant_tva': '0.00', 'montant_ttc': '999.00'},
-            content_type='application/json')
+            format='json')
         self.assertEqual(r.status_code, 400, r.json())
         self.assertIn('bon_commande', r.json())
 
@@ -746,7 +746,7 @@ class TestDC16FactureLieeAuBonCommande(TestCase):
             {'fournisseur': self.fournisseur.id, 'date_facture': '2026-06-01',
              'montant_ht': '500.00', 'montant_tva': '100.00',
              'montant_ttc': '600.00'},
-            content_type='application/json')
+            format='json')
         self.assertEqual(r.status_code, 201, r.json())
         self.assertIsNone(r.json().get('bon_commande'))
 
@@ -767,17 +767,17 @@ class TestDC16FactureLieeAuBonCommande(TestCase):
             produit=self.produit, quantite=10)
         fr = self.client.post(
             f'/api/django/stock/receptions-fournisseur/{reception.id}/facturer/',
-            {}, content_type='application/json')
+            {}, format='json')
         self.assertEqual(fr.status_code, 201, fr.json())
         fid = fr.json()['id']
         # Tentative d'écraser le HT dérivé de la réception → refus.
         r = self.client.patch(
             f'/api/django/stock/factures-fournisseur/{fid}/',
-            {'montant_ht': '1.00'}, content_type='application/json')
+            {'montant_ht': '1.00'}, format='json')
         self.assertEqual(r.status_code, 400, r.json())
         self.assertIn('montant_ht', r.json())
         # Un champ non-montant reste éditable (ex. la note).
         r = self.client.patch(
             f'/api/django/stock/factures-fournisseur/{fid}/',
-            {'note': 'vérifiée'}, content_type='application/json')
+            {'note': 'vérifiée'}, format='json')
         self.assertEqual(r.status_code, 200, r.json())
