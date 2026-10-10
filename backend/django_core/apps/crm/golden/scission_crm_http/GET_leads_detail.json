@@ -31,7 +31,7 @@
   "client_nom": null,
   "client_ref": null,
   "client_ref_provisoire": null,
-  "company": 7480,
+  "company": "company#1",
   "compteur_eau": null,
   "compteur_puissance_kva": null,
   "conception": {
