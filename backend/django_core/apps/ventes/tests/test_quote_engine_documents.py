@@ -133,9 +133,14 @@ class TestDocLiteralTemplates(TestCase):
         pages : deux documents du même devis ne peuvent plus annoncer deux
         dates différentes."""
         html = self._render({'pdf_mode': 'onepage'})
+        echeance = self._echeance()
+        # APDF13 — la validité du une-page est la puce CGV « Validité de
+        # l'offre » (cgv_imprimees) ; la ligne « · Validité : jusqu'au … »
+        # ne la double plus : la date réelle est imprimée UNE fois.
         self.assertIn(
-            f'&#183; Validit&#233;&#160;: jusqu&#8217;au {self._echeance()}',
-            html)
+            '&#183; Validit&#233; de l&#8217;offre&#160;: '
+            f'jusqu&#8217;au {echeance}', html)
+        self.assertEqual(html.count(f'jusqu&#8217;au {echeance}'), 1)
         self.assertNotIn('Validit&#233;&#160;: 30 jours', html)
 
     def test_editing_templates_changes_rendered_html(self):
