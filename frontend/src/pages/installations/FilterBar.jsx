@@ -3,7 +3,7 @@ import { Search } from 'lucide-react'
 import {
   EMPTY_FILTERS,
   INSTALLATION_STATUSES,
-  statusLabel,
+  STATUS_LABELS,
   TYPE_LABELS,
   REGIME_8221_LABELS,
 } from '../../features/installations/statuses'
@@ -63,7 +63,7 @@ export default function FilterBar({ filters, setFilters, items }) {
         <SelectContent>
           <SelectItem value={ALL}>Tous les statuts</SelectItem>
           {INSTALLATION_STATUSES.map((k) => (
-            <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>
+            <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
           ))}
         </SelectContent>
       </Select>

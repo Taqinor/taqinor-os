@@ -56,10 +56,6 @@ vi.mock('../../api/ventesApi', () => ({
 
 import InstallationsPage from '../../pages/installations/InstallationsPage'
 import TicketsPage from '../../pages/sav/TicketsPage'
-import FilterBar from '../../pages/installations/FilterBar'
-import KanbanView from '../../pages/installations/views/KanbanView'
-import { renderInstallationDetail } from '../../test/installationDetailHarness'
-import { EMPTY_FILTERS } from '../installations/statuses'
 
 function renderPage(ui) {
   const store = configureStore({
@@ -127,32 +123,5 @@ describe('useStatutConfig (APAR54)', () => {
     renderPage(<TicketsPage />)
     await waitFor(() => expect(screen.getAllByText('Clos').length).toBeGreaterThan(0))
     expect(mocks.getStatutsEffective).toHaveBeenCalledWith('sav')
-  })
-
-  it('chantiers : filtre, colonne kanban et fiche affichent le libellé réglé', async () => {
-    const rename = { data: { results: [{ cle: 'cloture', libelle: 'Livré', ordre: 6 }] } }
-    mocks.getStatutsEffective.mockResolvedValue(rename)
-    applyStatutConfig(rename.data.results)
-
-    // Filtre : la valeur sélectionnée porte le libellé réglé.
-    const { unmount: u1 } = renderPage(
-      <FilterBar filters={{ ...EMPTY_FILTERS, statut: 'cloture' }} setFilters={() => {}} items={[]} />,
-    )
-    expect(screen.getByLabelText('Filtrer par statut').textContent).toContain('Livré')
-    u1()
-
-    // Kanban : l'en-tête de colonne porte le libellé réglé.
-    const { unmount: u2 } = renderPage(
-      <KanbanView items={[]} onOpen={() => {}} onChangeStatus={() => {}} users={[]} onReassign={() => {}} />,
-    )
-    expect(screen.getAllByText('Livré').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Clôturé')).toBeNull()
-    u2()
-
-    // Fiche chantier montée seule : le hook applique le réglage à son tour.
-    applyStatutConfig(null)
-    renderInstallationDetail({ id: 9, reference: 'CH-APAR54-9', client_nom: 'Client C', statut: 'cloture' })
-    await waitFor(() => expect(screen.getAllByText('Livré').length).toBeGreaterThan(0))
-    expect(mocks.getStatutsEffective).toHaveBeenCalledWith('chantier')
   })
 })

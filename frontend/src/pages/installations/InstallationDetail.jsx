@@ -26,7 +26,7 @@ import {
 } from '../../features/ventes/previewPdf'
 import {
   INSTALLATION_STATUSES,
-  statusLabel,
+  STATUS_LABELS,
   INTERVENTION_TYPES,
   adjacentStatuses,
   canMoveStatus,
@@ -61,7 +61,6 @@ import {
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import useStatutConfig from '../../features/parametres/useStatutConfig'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Card, CardHeader, CardTitle, CardContent,
@@ -205,8 +204,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // plutôt qu'une route dédiée — repli sur « Installation » si le client
   // n'est pas encore chargé.
   useDocumentTitle(installation?.client_nom ? `Installation · ${installation.client_nom}` : 'Installation')
-  // APAR54 — libellés de statut réglés dans Paramètres › Statuts (fiche ouverte hors liste).
-  useStatutConfig('chantier')
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const id = installation.id
@@ -1150,12 +1147,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                       {/* Statut hérité éventuel conservé en tête pour ne pas le perdre. */}
                       {fields.statut && !INSTALLATION_STATUSES.includes(fields.statut) && (
                         <SelectItem value={fields.statut}>
-                          {statusLabel(fields.statut)} (ancien)
+                          {STATUS_LABELS[fields.statut] ?? fields.statut} (ancien)
                         </SelectItem>
                       )}
                       {/* Seuls le statut courant et ses voisins (±1) sont offerts. */}
                       {adjacentStatuses(current.statut).map((k) => (
-                        <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>
+                        <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

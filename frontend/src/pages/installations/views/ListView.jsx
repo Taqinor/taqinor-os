@@ -10,6 +10,7 @@ import {
   canMoveStatus,
   canonicalStatus,
   INSTALLATION_STATUSES,
+  STATUS_LABELS,
 } from '../../../features/installations/statuses'
 import {
   DataTable, StatusPill, Button, Badge,
@@ -94,7 +95,7 @@ function BulkActionDialog({ kind, rows, users, onApply, onDone, onClose }) {
                 <SelectTrigger aria-label="Nouveau statut"><SelectValue placeholder="Choisir un statut…" /></SelectTrigger>
                 <SelectContent>
                   {INSTALLATION_STATUSES.map((k) => (
-                    <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>
+                    <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
