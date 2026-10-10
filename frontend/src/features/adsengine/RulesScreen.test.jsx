@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { reponseContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ENG43 — Écran Règles & anomalies : catalogue de gabarits FR (picker, jamais
    un builder libre), dry-run VISUALISÉ (objets touchés + effet), flux
@@ -152,6 +152,39 @@ describe('RulesScreen (ENG43)', () => {
     const finding = screen.getByTestId('ae-rule-run-finding')
     expect(finding).toHaveTextContent('cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.')
     expect(screen.getByTestId('ae-rule-run-delta')).toHaveTextContent('100 → 115 MAD/j')
+  })
+
+  it('AACQ102 — la devise du seuil et le motif non applicable sont affichés', async () => {
+    // Gabarit tel que servi par `regles/catalogue/` (params éditables compris).
+    mocks.templates.mockResolvedValue({ data: [
+      { key: 'stop_loss_cpl', nom: 'Stop-loss — coût par lead au plafond', cadence: 'daily',
+        condition_fr: 'Stop-loss — coût par lead au plafond',
+        action_fr: 'Mise en pause proposée (approbation requise).',
+        editable_params: ['threshold_mad', 'window_days', 'min_samples'] },
+    ] })
+    const page = (regle) => ({ data: { count: 1, next: null, previous: null, results: [regle] } })
+    mocks.policies.mockResolvedValue(page(exempleContrat('adsengine', 'regle_policy', 'armee_sans_seuil')))
+    mocks.journal.mockResolvedValue(reponseContrat('adsengine', 'regles_journal'))
+    const { unmount } = renderScreen()
+    expect(await screen.findByTestId('ae-rule-threshold-currency-stop_loss_cpl'))
+      .toHaveTextContent('Seuil en MAD')
+    // Le motif SERVI du passage bloqué, tel quel (aucun motif composé à l'écran).
+    expect(await screen.findByTestId('ae-rule-run-finding')).toHaveTextContent(
+      exempleContrat('adsengine', 'regles_journal', 'constat_bloque').blocked_fr)
+    unmount()
+    mocks.policies.mockResolvedValue(page(exempleContrat('adsengine', 'regle_policy')))
+    renderScreen()
+    expect(await screen.findByTestId('ae-rule-threshold-currency-stop_loss_cpl'))
+      .toHaveTextContent('Seuil en USD')
+  })
+
+  it('AACQ102 — un gabarit sans seuil monétaire armé n\'affiche aucune devise', async () => {
+    mocks.policies.mockResolvedValue({ data: [
+      { id: 2, template_key: 'fatigue', enabled: true, dry_run: false, threshold_currency: '' },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(screen.getByTestId('ae-rule-state-fatigue')).toHaveTextContent('Armée ·'))
+    expect(screen.queryByTestId('ae-rule-threshold-currency-fatigue')).toBeNull()
   })
 
   describe('PUB23 — armer/désarmer une règle', () => {
