@@ -6,6 +6,11 @@ règle de modularité). Comportement strictement identique aux requêtes inline
 d'origine.
 """
 import datetime
+from .portee_selectors import (  # noqa: F401
+    MOTIF_CONTACT_REFUSE, peut_contacter, portee_leads, leads_visibles,
+    leads_en_portee, lead_signe_q, est_lead_signe, cles_numeros_lead,
+    lead_ids_du_responsable, lead_ids_anonymises, client_ids_anonymises,
+)
 
 
 def client_base_qs(company=None):
@@ -148,101 +153,6 @@ def normalize_name_key(nom, prenom=None, societe=None):
     doit valoir pour tous ses lecteurs. Lecture pure, aucun accès base."""
     from . import services as crm_services
     return crm_services.normalize_name(nom, prenom, societe)
-
-
-#: ACRM17 — le motif FR d'un envoi refusé à une personne opposée (loi 09-08).
-MOTIF_CONTACT_REFUSE = ('Contact refusé : la personne a demandé à ne plus '
-                        'être contactée')
-
-
-def peut_contacter(instance, canal=None):
-    """ACRM17 (C-ACRM-010) — peut-on CONTACTER la personne derrière
-    ``instance`` par ``canal`` (e-mail, WhatsApp…) ?
-
-    Faux quand ``instance`` est un ``crm.Lead`` — ou porte un ``lead`` —
-    marqué ``ne_plus_contacter`` : aucun émetteur automatique (règles
-    d'automatisation, réveils, envois en masse) ne lui écrit. Vrai sinon (une
-    instance sans lead n'est pas concernée par ce drapeau). ``canal`` est
-    accepté pour l'avenir (consentement par canal, ACRM59) ; le drapeau
-    actuel couvre TOUS les canaux. Lecture pure."""
-    from .models import Lead
-
-    lead = instance if isinstance(instance, Lead) else getattr(
-        instance, 'lead', None)
-    if not isinstance(lead, Lead):
-        return True
-    return not getattr(lead, 'ne_plus_contacter', False)
-
-
-def portee_leads(qs, user):
-    """ACRM28 — restreint un queryset de LEADS à ce que ``user`` voit :
-    portée de visibilité du rôle (``scope_queryset`` sur ``owner`` —
-    Feature F) ET périmètre d'entités (``scope_entite_queryset``, NTADM3).
-    Un rôle sans entités visibles → seule la portée propriétaire, comme
-    avant."""
-    from authentication.scoping import scope_queryset
-    from core.entite_scoping import scope_entite_queryset
-
-    return scope_entite_queryset(
-        scope_queryset(qs, user, ['owner']), user, 'entite')
-
-
-def leads_visibles(user, company=None):
-    """ACRM28 — LES leads visibles de ``user`` : société (``company``, ou
-    la société active par ``company_qs``), portée propriétaire et périmètre
-    d'entités (``portee_leads``). Une seule définition, lue par toutes les
-    files (relances, cockpit, « Ma file », clôture des cadences) et par les
-    viewsets enfants d'un lead (ACRM8 — ``leads_en_portee`` en est l'alias) :
-    un lead qui répond 404 à l'utilisateur n'apparaît nulle part."""
-    from core.mixins import company_qs
-
-    from .models import Lead
-
-    qs = (Lead.objects.filter(company=company) if company is not None
-          else company_qs(Lead.objects.all(), user))
-    return portee_leads(qs, user)
-
-
-def leads_en_portee(user):
-    """ACRM8 — alias de ``leads_visibles`` (ACRM28) : la portée des
-    viewsets ENFANTS d'un lead (rendez-vous, concurrents, points de contact,
-    forecast, deals, playbook, aperçu de gabarit). Un lead hors portée y est
-    traité comme ABSENT."""
-    return leads_visibles(user)
-
-
-def lead_signe_q():
-    """ACRM31 — LE prédicat « lead signé » (filtre ORM) : étape SIGNED
-    (clé lue de ``stages``/STAGES.py, jamais un littéral — règle #2), non
-    perdu, non archivé. Toute lecture qui compte des « signés » passe par lui
-    (ou par ``est_lead_signe`` pour un objet déjà chargé) afin que tous les
-    rapports comptent pareil sur le même jeu."""
-    from django.db.models import Q
-    from . import stages as stage_mod
-    return Q(stage=stage_mod.SIGNED, perdu=False, is_archived=False)
-
-
-def est_lead_signe(lead):
-    """ACRM31 — Jumeau Python de ``lead_signe_q`` pour un lead déjà chargé."""
-    from . import stages as stage_mod
-    return (getattr(lead, 'stage', None) == stage_mod.SIGNED
-            and not getattr(lead, 'perdu', False)
-            and not getattr(lead, 'is_archived', False))
-
-
-def cles_numeros_lead(lead):
-    """ACRM33 — Clés téléphone NORMALISÉES (QW10) d'un lead : son
-    ``telephone`` ET son ``whatsapp`` (vides ignorés). Helper unique partagé
-    par ``find_lead_id_by_phone`` et ``signed_lead_phone_keys`` — un lead
-    joignable seulement sur WhatsApp est reconnu partout pareil."""
-    from . import services as crm_services
-    keys = set()
-    for numero in (getattr(lead, 'telephone', None),
-                   getattr(lead, 'whatsapp', None)):
-        key = crm_services.normalize_phone(numero)
-        if key:
-            keys.add(key)
-    return keys
 
 
 def find_lead_id_by_phone(company, phone):
@@ -572,16 +482,6 @@ def get_company_leads_by_ids(company, ids, avec_corbeille=False):
     leads = gestionnaire.filter(
         company=company, pk__in=list(ids)).select_related('owner')
     return {lead.pk: lead for lead in leads}
-
-
-def lead_ids_du_responsable(user):
-    """Sous-requête des ids de leads dont ``user`` est le RESPONSABLE
-    (``Lead.owner``), bornée à SA société. Lecture seule, cross-app : ventes
-    l'utilise pour que le responsable d'un lead voie TOUS les devis de ce lead,
-    quel qu'en soit l'auteur (règle fondateur 08/10/2026)."""
-    from .models import Lead
-    return Lead.objects.filter(
-        company_id=user.company_id, owner_id=user.pk).values('pk')
 
 
 def rechercher_leads_minimal(company, q, limit=10, *, user=None):
@@ -1054,6 +954,7 @@ SITE_PROFILE_FIELDS = (
     'ombrage', 'ombrage_notes', 'gps_lat', 'gps_lng',
 )
 
+
 #: AGR401 — nom de l'ALIAS lecture seule déprécié de ``pompe_actuelle_cv``
 #: (ancien nom de colonne), servi tant que le frontend le lit ; AGR424 le
 #: retire. Une seule constante pour le sélecteur et les sérialiseurs.
@@ -1447,6 +1348,7 @@ _LEAD_PROVENANCE_MARQUEURS = (
     'ville', 'type_installation',
 )
 
+
 # Les raisons, mutualisées par famille : une seule phrase à relire, et un champ
 # ajouté à une famille reste malgré tout un ROUGE tant qu'il n'est pas nommé
 # ci-dessous (l'exclusion est par CHAMP, jamais par préfixe).
@@ -1456,21 +1358,28 @@ _RAISON_LU_EN_DIRECT = (
     "diverger de sa copie. L'ajouter ferait clignoter la bannière sur un "
     "champ que le devis n'a jamais repris."
 )
+
+
 _RAISON_PROFIL_APPEL = (
     "profil d'équipements du script d'appel (L-BACK / L-WEBT2) : le devis ne "
     "le RECOPIE pas — il est lu sur le lead quand l'étude en a besoin. "
     "À déclarer le jour où l'écran générateur le re-saisit."
 )
+
+
 _RAISON_QUALIFICATION = (
     "donnée de QUALIFICATION du lead (ce que le prospect a déclaré au "
     "premier contact), pas une valeur d'étude re-saisie dans le devis : elle "
     "vit sa vie côté CRM et n'a pas de copie dans `etude_params`."
 )
+
+
 _RAISON_TRANCHE = (
     "valeur RE-DÉRIVÉE par l'étude à chaque rendu depuis la facture et la "
     "consommation (elles, sont estampillées) : l'estampiller en plus ferait "
     "signaler deux fois la même dérive."
 )
+
 
 _RAISON_POMPAGE_AGR = (
     "colonne de pompage agricole (AGR400, contrat AGR1) : le devis ne la "
@@ -1479,6 +1388,7 @@ _RAISON_POMPAGE_AGR = (
     "déclarer dans `LEAD_PROVENANCE_FIELDS`."
 )
 
+
 _RAISON_PRO_CIQ = (
     "colonne du lead pro (CIQ401, contrat CIQ1) : le devis C&I ne la "
     "RECOPIE pas encore dans `etude_params` — elle est lue par "
@@ -1486,6 +1396,7 @@ _RAISON_PRO_CIQ = (
     "compose l'étude ; à déclarer dans `LEAD_PROVENANCE_FIELDS` le jour où "
     "le devis en garde une copie."
 )
+
 
 LEAD_PROVENANCE_EXCLUSIONS = dict(
     [(champ, _RAISON_PROFIL_APPEL) for champ in (
@@ -1738,6 +1649,7 @@ ENTREES_POMPAGE_CIBLES = (
      'saisies_economie_pompage.mois_irrigation.mois'),
 )
 
+
 #: Colonnes dont la provenance vit dans une colonne ``*_source`` dédiée :
 #: colonne → (colonne source, {valeur source → provenance}).
 _ENTREES_POMPAGE_SOURCES = {
@@ -1754,12 +1666,15 @@ _ENTREES_POMPAGE_SOURCES = {
         'declaree': 'client', 'site_web': 'site_web'}),
 }
 
+
 #: La pompe ACTUELLE : lue par le moteur seulement en mode « pompe existante
 #: conservée » (D-AGR-7) — servie marquée « information ».
 _ENTREES_POMPAGE_INFORMATION = ('pompe_actuelle_cv', 'pompe_actuelle_type')
 
+
 #: Les heures de la pompe ACTUELLE, jamais des heures de pompage solaire.
 _LIBELLE_HEURES_ACTUELLES = 'heures de la pompe actuelle'
+
 
 #: Formule du volume déclaré dérivé (D-AGR-3).
 FORMULE_VOLUME_DECLARE = 'pompe_actuelle_debit_m3h × pompage_heures_jour'
@@ -1911,19 +1826,27 @@ _CI_DETAIL_SOURCE = {
     'calepinage': 'derive', 'lu_sur_facture': 'facture',
     'ocr_confirme': 'facture',
 }
+
+
 _CI_COLONNE_SOURCE = {
     'tension_raccordement': 'tension_source',
     'compteur_puissance_kva': 'puissance_souscrite_source',
     'surface_toiture_m2': 'surface_source',
     'cos_phi': 'cos_phi_source',
 }
+
+
 #: Colonnes servies pour INFORMATION (Q17 : déclarées, jamais un calcul).
 _CI_INFORMATIONS = (
     'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois',
     'groupe_depense_mad_mois', 'pv_existant_kwc', 'cos_phi',
     'export_ue_declare',
 )
+
+
 _CI_PHASES = {'monophase': 'mono', 'triphase': 'tri', 'inconnu': 'inconnu'}
+
+
 _CI_REGISTRES_MT = ('kwh_pointe', 'kwh_pleines', 'kwh_creuses',
                     'puissance_atteinte_kva', 'cos_phi')
 
@@ -2683,6 +2606,7 @@ def kpi_cadences(company, *, jours=30):
 #: Le DÉNOMINATEUR de l'adhérence = les touches closes PAR UN HUMAIN sur la
 #: période (faites + sautées). Les annulations moteur en sont exclues.
 _STATUTS_CLOS_HUMAIN = ('fait', 'sautee')
+
 
 #: Plafond de la liste actionnable `leads_sans_touche` : au-delà, ce n'est
 #: plus une file de travail mais un export — et la page mettrait dix secondes.
@@ -3969,10 +3893,12 @@ def file_du_cockpit(company, user, *, owner=None, today=None):
 #: défini autrement — dans la vue puis dans l'écran.
 STATUT_EN_RETARD = 'en_retard'
 
+
 #: Les quatre valeurs acceptées par ``?statut=`` de l'action « suivi ».
 #: CKP1 — ``annulee`` s'AJOUTE (aucune valeur retirée : les écrans qui
 #: envoient ``statut=sautee`` continuent de fonctionner à l'identique).
 STATUTS_SUIVI = ('a_faire', 'fait', 'sautee', 'annulee', STATUT_EN_RETARD)
+
 
 #: Écart MAXIMAL entre les deux bornes du suivi. Au-delà, la requête cesse
 #: d'être une « période de travail » et devient un export : 400 plutôt qu'une
@@ -4077,10 +4003,12 @@ JOURNAL_TYPES = (
     'filet_pose', 'devis_suivi', 'etape_funnel',
 )
 
+
 #: Fenêtre d'appariement entre une touche close et la ligne de chatter écrite
 #: par la MÊME requête (voir ``services._ANNULATION_FENETRE_EFFETS`` : même
 #: raisonnement, même ordre de grandeur — une requête HTTP, pas une journée).
 _JOURNAL_FENETRE = datetime.timedelta(minutes=2)
+
 
 #: Préfixes de chatter → nature de ligne. L'ORDRE compte : le premier préfixe
 #: qui correspond gagne (« Cadence de relance non initialisée » est un refus de
@@ -5197,6 +5125,7 @@ COLD_AGE_BUCKETS = (
     (180, None, '180j+'),
 )
 
+
 # Jamais un taux de reconversion calculé sur un échantillon minuscule (bruit
 # statistique) — sous ce seuil, ``rate`` reste ``None``.
 MIN_SAMPLE_COLD_BUCKET = 3
@@ -5996,6 +5925,7 @@ ATTRIBUTION_MODELES = (
     'dernier_touche', 'premier_touche', 'lineaire', 'pondere_temporel',
 )
 
+
 # Demi-vie (jours) du modèle « pondéré temporel » — formule de dégradation
 # temporelle standard (poids = 2^(-jours_avant_la_dernière_touche / demi_vie)).
 _ATTRIBUTION_DEMI_VIE_JOURS = 7
@@ -6224,33 +6154,6 @@ def lead_ids_par_identifiant(company, identifiant):
         ids.update(
             qs.filter(phone_normalise=phone).values_list('id', flat=True))
     return sorted(ids)
-
-
-def lead_ids_anonymises(company):
-    """ACAL300 — ids des leads DÉJÀ anonymisés (DSR ou rétention) de la
-    société : le scrub de ``crm.dsr_provider.anonymiser_lead`` pose
-    ``LEAD_NOM_ANONYMISE`` et vide email / téléphone. Lecture bornée société,
-    sans PII ; pour le rattrapage des calepinages (``manage.py
-    anonymiser_calepinages_effaces``)."""
-    from .dsr_provider import LEAD_NOM_ANONYMISE
-    from .models import Lead
-
-    if company is None:
-        return []
-    return sorted(Lead.objects.filter(
-        company=company, nom=LEAD_NOM_ANONYMISE, email__isnull=True,
-        telephone__isnull=True).values_list('id', flat=True))
-
-
-def client_ids_anonymises(company):
-    """ACAL300 — ids des clients anonymisés (``is_anonymized``) de la
-    société, bornés société, sans PII."""
-    from .models import Client
-
-    if company is None:
-        return []
-    return sorted(Client.objects.filter(
-        company=company, is_anonymized=True).values_list('id', flat=True))
 
 
 def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
@@ -6490,6 +6393,7 @@ def doublons_foyer_probables(company, *, include_archived=False):
 #: priorité haute en tête et laisse la basse en fin de tranche.
 PRIORITE_RANG_FILE = {'haute': 0, 'normale': 1, 'basse': 2}
 
+
 #: Rang appliqué à une priorité vide ou inconnue : celui de « normale », pour
 #: qu'un lead sans priorité ne soit ni promu ni relégué.
 PRIORITE_RANG_DEFAUT = 1
@@ -6623,7 +6527,10 @@ def leads_signes_sans_devis_accepte(company):
 
 # ── QJR598 — UN seul repère toit du lead (D-QJR5-15) ────────────────────────
 REPERE_SOURCE_ROOF_POINT = 'roof_point'   # l'épingle posée sur le tunnel public
+
+
 REPERE_SOURCE_GPS = 'gps'                 # le GPS corrigé (équipe ou questionnaire)
+
 
 # Le GPS est stocké à 7 décimales : en deçà, deux coordonnées sont la même.
 _REPERE_TOLERANCE_DEG = 1e-6
