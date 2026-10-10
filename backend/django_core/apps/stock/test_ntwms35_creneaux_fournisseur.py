@@ -194,9 +194,11 @@ class Ntwms35ReservationTests(Ntwms35Base):
 class Ntwms35EndpointTests(Ntwms35Base):
     def test_endpoints_publics_repondent_avec_le_jeton(self):
         api = APIClient()
-        # Fenêtre de 7 jours : avec `periode: 1`, un run lancé un samedi ou un
-        # dimanche (aucun jour ouvré dans la fenêtre) rendait une liste vide.
-        liste = api.get(self._url('creneaux-disponibles/'), {'periode': 7})
+        # Sans `date_debut`, la grille part d'aujourd'hui : un samedi/dimanche
+        # (ASTK191, jours ouvrés seulement) renvoyait [] — CI rouge chaque
+        # week-end. On vise le même jour ouvré que la réservation ci-dessous.
+        liste = api.get(self._url('creneaux-disponibles/'), {
+            'date_debut': self.jour.isoformat(), 'periode': 1})
         self.assertEqual(liste.status_code, 200)
         self.assertTrue(liste.data['creneaux'])
         self.assertEqual(liste['X-Robots-Tag'], 'noindex, nofollow, noarchive')
