@@ -75,6 +75,18 @@ def _refus_resynchro(devis):
     return SyncLayoutError(detail, revision_possible=v['revision_possible'])
 
 
+def _refuser_avant_ecriture(layout, *args, **kwargs):
+    """ACAL353 (C-ACAL-VER-001) — les refus du document AVANT la première
+    écriture : d'abord ceux que la création prononce déjà (surface pavée sans
+    ``moduleWc``, pan au module absent de ``modules[]`` — même primitive
+    ``refus_des_pans``, 409 nommé), puis le couple panneau/onduleur."""
+    from apps.ventes.domain.geometrie import pans_du_document, refus_des_pans
+    refus = refus_des_pans(pans_du_document(layout))
+    if refus:
+        raise SyncLayoutError(refus[0])
+    _refuser_couple_panneau_onduleur_impossible(*args, **kwargs)
+
+
 def _resynchroniser_instance_appelante(devis, verrou):
     """QJR20 (29/08/2026) — recale l'instance de l'APPELANT sur ce qui vient
     d'être écrit sous verrou.
@@ -460,9 +472,9 @@ def reconcilier(devis, intention):
         # déjà passé (re-poster un layout identique n'écrit rien, donc n'a rien
         # à refuser), et aucune ligne n'a encore bougé — un refus laisse la
         # transaction absolument intacte.
-        _refuser_couple_panneau_onduleur_impossible(
-            verrou, lignes, lignes_panneau, cible_panneaux, watt, gamme,
-            modeles=modeles)
+        _refuser_avant_ecriture(
+            layout, verrou, lignes, lignes_panneau, cible_panneaux, watt,
+            gamme, modeles=modeles)
 
         # ── Panneaux : porter le compte à la cible ──
         if modeles and not devis_variante and cible_panneaux > 0:
