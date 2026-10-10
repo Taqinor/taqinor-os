@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ENG43 — Écran Règles & anomalies : catalogue de gabarits FR (picker, jamais
    un builder libre), dry-run VISUALISÉ (objets touchés + effet), flux
@@ -103,19 +104,10 @@ beforeEach(() => {
   mocks.history.mockResolvedValue({ data: { alerts: [
     { id: 1, niveau: 'alerte', message: 'Fréquence élevée', quand: '2026-07-12' },
   ] } })
-  // ADSDEEP43 — journal d'exécution enrichi (condition avec valeurs + delta).
-  mocks.journal.mockResolvedValue({ data: { results: [
-    { id: 1, template_key: 'surf_scale_budget',
-      label_fr: 'Surf-scaling — CPL en amélioration', enabled: true, dry_run: false,
-      last_evaluated_at: '2026-07-16T10:00:00Z', evaluated: true, fired: true,
-      findings: [
-        { target: 'as1', target_type: 'adset', fired: true, insufficient_data: false,
-          condition_fr: 'cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.',
-          action: { id: 5, kind: 'increase_pace', status: 'proposee',
-            reason_fr: 'Surf-scaling : montée de budget learning-safe.',
-            delta: { type: 'budget', current_mad: 100.0, new_mad: 115.0 } } },
-      ] },
-  ] } })
+  // ADSDEEP43 — journal d'exécution enrichi (condition avec valeurs + delta) ;
+  // AACQ99 (PACT13) — lu dans le contrat committé, plus tapé à la main.
+  mocks.journal.mockResolvedValue(
+    reponseContrat('adsengine', 'regles_journal', 'exemple_declenche'))
 })
 
 describe('RulesScreen (ENG43)', () => {

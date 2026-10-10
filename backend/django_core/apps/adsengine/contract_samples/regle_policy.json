@@ -1,0 +1,69 @@
+{
+  "endpoint": "GET /api/django/adsengine/regles/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AACQ99 (PACT10) — contrat d'UNE ligne de `GET /regles/` (`RulePolicySerializer`), posé SEUL et EN PREMIER pour l'écran Règles (AACQ102). La liste est paginée (`page`, enveloppe DRF `count/next/previous/results`). Ligne copiée de la sortie réelle du serializer. `threshold_currency` est en LECTURE SEULE, posée par le serveur (AACQ3, D-AACQ-1 = a) : devise du compte Meta au moment où un seuil `*_mad` de `params` a été RÉELLEMENT saisi (`exemple` : `params.threshold_mad` 30 saisi sur un compte USD ⇒ 'USD') ; '' quand aucun seuil n'a été saisi (AACQ98 : le défaut du gabarit, calibré en MAD, ne prend jamais la devise du compte — variante `armee_sans_seuil`, armée par le corps exact du bouton « Armer » `corps_armer`). Vide = sémantique MAD : sur un compte hors MAD la règle n'est pas applicable et son journal porte `blocked_fr` (voir `regles_journal.json`). Aucun taux de change n'est jamais appliqué.",
+  "corps_armer": {
+    "template_key": "stop_loss_cpl",
+    "enabled": true,
+    "dry_run": false
+  },
+  "page": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      "<exemple>"
+    ]
+  },
+  "armee_sans_seuil": {
+    "id": 13,
+    "template_key": "stop_loss_cpl",
+    "enabled": true,
+    "mode": "propose",
+    "dry_run": false,
+    "conditions": {},
+    "params": {},
+    "cadence_hours": 6,
+    "cooldown_hours": 0,
+    "last_evaluated_at": "2026-10-10T10:00:00Z",
+    "last_result": {
+      "evaluated": true,
+      "fired": false,
+      "findings": [
+        {
+          "target": "120210000000001",
+          "target_type": "campaign",
+          "fired": false,
+          "insufficient_data": true,
+          "computed": {
+            "metric": "cpl"
+          },
+          "condition_fr": "120210000000001 : données insuffisantes (0 échantillon(s)) — non évaluable.",
+          "blocked_fr": "Seuil en MAD, compte facturé en USD : seuil non applicable — ressaisir le seuil dans la devise du compte (aucun taux inventé)."
+        }
+      ],
+      "at": "2026-10-10T10:00:00+00:00"
+    },
+    "threshold_currency": "",
+    "created_at": "2026-10-10T09:00:00Z",
+    "updated_at": "2026-10-10T10:00:00Z"
+  },
+  "exemple": {
+    "id": 12,
+    "template_key": "stop_loss_cpl",
+    "enabled": true,
+    "mode": "propose",
+    "dry_run": false,
+    "conditions": {},
+    "params": {
+      "threshold_mad": 30
+    },
+    "cadence_hours": 6,
+    "cooldown_hours": 0,
+    "last_evaluated_at": null,
+    "last_result": {},
+    "threshold_currency": "USD",
+    "created_at": "2026-10-10T09:00:00Z",
+    "updated_at": "2026-10-10T09:00:00Z"
+  }
+}
