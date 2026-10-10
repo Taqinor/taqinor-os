@@ -14,7 +14,7 @@ import copy
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.documents.plan_cablage import _modules_du_plan
-from apps.calepinage.services.export_tableur import table_modules
+from apps.calepinage.services.export_tableur import _table_modules
 from apps.calepinage.services.planche import (
     _reperes_de_pose, geometrie_de_planche,
 )
@@ -42,7 +42,7 @@ class NumerosStablesTest(SimpleTestCase):
             {'module': 'z1#4', 'pan': 'Pan Sud', 'chaine': 2, 'mppt': 1,
              'onduleur': 1}]}}
 
-        entetes, lignes = table_modules(geometrie, resultat)
+        entetes, lignes = _table_modules(geometrie, resultat)
 
         module = entetes.index('Module')
         self.assertEqual([ligne[module] for ligne in lignes], [1, 2, 4])
@@ -64,7 +64,7 @@ class NumerosStablesTest(SimpleTestCase):
         layout = _layout(numerotes=False)
         geometrie = geometrie_de_planche(layout)
 
-        entetes, lignes = table_modules(geometrie)
+        entetes, lignes = _table_modules(geometrie)
 
         self.assertEqual([ligne[entetes.index('Module')] for ligne in lignes],
                          [1, 2, 3])

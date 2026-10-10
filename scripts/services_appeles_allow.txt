@@ -14,11 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/export_tableur.py::classeur_octets
-backend/django_core/apps/calepinage/services/export_tableur.py::csv_octets
-backend/django_core/apps/calepinage/services/export_tableur.py::table_chaines
-backend/django_core/apps/calepinage/services/export_tableur.py::table_modules
-backend/django_core/apps/calepinage/services/export_tableur.py::tables_du_resultat
 backend/django_core/apps/calepinage/services/feu_vert.py::lead_id_de_reference
 backend/django_core/apps/calepinage/services/feu_vert.py::option_active
 backend/django_core/apps/calepinage/services/gabarits.py::gabarit_depuis_zone
