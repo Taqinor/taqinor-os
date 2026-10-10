@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
-    CLE_ENTREE, CLE_FIL_ECARTS, journaliser_ecart_longueur,
+    CLE_ENTREE, CLE_FIL_ECARTS, _journaliser_ecart_longueur,
 )
 from apps.roles.models import Role
 from apps.stock.models import FicheTechnique, Produit
@@ -104,7 +104,7 @@ class Derogations(BaseApiCalepinage):
         self.assertEqual(resultat.data['ecarts_longueur'], [])
 
     def test_ecart_de_longueur_est_servi(self):
-        journaliser_ecart_longueur(self.calepinage, {
+        _journaliser_ecart_longueur(self.calepinage, {
             'hors_tolerance': True, 'longueur': 12, 'longueur_dossier': 18,
             'ecart': -6, 'par_pan': {'Sud': 12}})
         self.calepinage.refresh_from_db()

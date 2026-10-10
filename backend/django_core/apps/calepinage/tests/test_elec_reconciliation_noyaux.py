@@ -24,7 +24,7 @@ from django.test import SimpleTestCase
 from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import (
     ORIGINE_LONGUEUR_DOSSIER, ORIGINE_LONGUEUR_FICHE,
-    journaliser_ecart_longueur, _longueur_chaine_retenue, _plafond_modules,
+    _journaliser_ecart_longueur, _longueur_chaine_retenue, _plafond_modules,
     temperatures_site,
 )
 from core.calepinage.electrique import MODULES_PAR_CHAINE
@@ -104,8 +104,8 @@ class JournalTest(SimpleTestCase):
         dans_tolerance = {'hors_tolerance': False, 'longueur': 15,
                           'longueur_dossier': 16, 'ecart': -1}
 
-        self.assertIsNone(journaliser_ecart_longueur(calepinage,
-                                                     dans_tolerance))
+        self.assertIsNone(_journaliser_ecart_longueur(calepinage,
+                                                      dans_tolerance))
         self.assertEqual(calepinage.resultat, {})
 
     def test_un_ecart_hors_tolerance_part_en_warning_et_reste_en_historique(
@@ -117,7 +117,7 @@ class JournalTest(SimpleTestCase):
 
         with self.assertLogs(
                 'apps.calepinage.services.electrique', level='WARNING') as log:
-            journal = journaliser_ecart_longueur(calepinage, hors)
+            journal = _journaliser_ecart_longueur(calepinage, hors)
 
         self.assertEqual(len(journal), 1)
         self.assertEqual(journal[0]['ecart'], -10)
@@ -125,7 +125,7 @@ class JournalTest(SimpleTestCase):
 
         # L'historique s'ACCUMULE : la relecture du dossier doit voir la
         # succession des écarts, pas seulement le dernier.
-        journaliser_ecart_longueur(calepinage, hors)
+        _journaliser_ecart_longueur(calepinage, hors)
         self.assertEqual(
             len(calepinage.resultat['journal_longueur_chaine']), 2)
 

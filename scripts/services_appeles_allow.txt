@@ -14,7 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/electrique.py::journaliser_ecart_longueur
 backend/django_core/apps/crm/cadence_config.py::etape_configuree
 backend/django_core/apps/crm/cadence_config.py::palier_actif
 backend/django_core/apps/crm/cadence_reveil_saison.py::dans_la_fenetre_saison

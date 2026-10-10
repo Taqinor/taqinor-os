@@ -72,7 +72,7 @@ __all__ = [
     'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
     'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
-    'journaliser_ecart_longueur', 'parametres_societe',
+    'parametres_societe',
     'CLE_DEROGATIONS', 'CLE_FIL_ECARTS',
     'CLE_FIL_DEROGATIONS',  # CALX215
     'CLE_BORDEREAU', 'CLE_CORRESPONDANCES',
@@ -2856,8 +2856,8 @@ def rejouer_apres_layout(calepinage, *, user=None):
     try:
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage)
-        journaliser_ecart_longueur(calepinage,
-                                   _longueur_chaine_retenue(conception))
+        _journaliser_ecart_longueur(calepinage,
+                                    _longueur_chaine_retenue(conception))
     except Exception:  # noqa: BLE001 — cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
@@ -3017,7 +3017,7 @@ def _ajouter_au_fil(resultat, cle, entrees):
     return resultat[cle]
 
 
-def journaliser_ecart_longueur(calepinage, reconciliation):
+def _journaliser_ecart_longueur(calepinage, reconciliation):
     """Journalise un écart moteur↔fiche HORS TOLÉRANCE, historique conservé.
 
     Discipline PVG2 : on ne remplace jamais une valeur en silence. L'écart
@@ -3034,7 +3034,7 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
         reconciliation.get('longueur'), reconciliation.get('longueur_dossier'),
         reconciliation.get('ecart'), getattr(calepinage, 'pk', None))
 
-    from .resultat import modifier_resultat
+    from .resultat import appliquer_en_memoire, modifier_resultat
 
     entrees = [{
         'longueur': reconciliation.get('longueur'),
@@ -3042,22 +3042,21 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
         'ecart': reconciliation.get('ecart'),
         'par_pan': reconciliation.get('par_pan') or {},
     }]
+
+    def prolonger(resultat):
+        return _ajouter_au_fil(resultat, CLE_FIL_ECARTS, entrees)
+
     try:
         # ACAL57 — l'écrivain unique : le fil est prolongé sur le resultat
         # RELU sous verrou, jamais sur l'instantané du début du geste.
-        return modifier_resultat(
-            calepinage,
-            lambda resultat: _ajouter_au_fil(resultat, CLE_FIL_ECARTS,
-                                             entrees))
+        return modifier_resultat(calepinage, prolonger)
     except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
         logging.getLogger(__name__).exception(
             'CAL170 : journal d écart non enregistré (calepinage %s)',
             getattr(calepinage, 'pk', None))
-        resultat = getattr(calepinage, 'resultat', None)
-        resultat = dict(resultat) if isinstance(resultat, dict) else {}
-        fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, entrees)
-        calepinage.resultat = resultat
-        return fil
+        # Repli EN MÉMOIRE, par l'écrivain unique (ACAL321) : même fil, même
+        # valeur rendue qu'avant, sans affecter ``resultat`` ici.
+        return appliquer_en_memoire(calepinage, prolonger)
 
 
 def parametres_societe(calepinage):
