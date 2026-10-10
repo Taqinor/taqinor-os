@@ -111,6 +111,49 @@ def _ligne_rib(d) -> str:
     return ligne_rib(d.get("entreprise") or {})
 
 
+#: APDF13 (fix) — budget de la boîte « Conditions » de la page 3, en
+#: caractères VISIBLES des puces CGV (entités et balises exclues). Corps
+#: 7,6 pt (≈ 1,34 mm/caractère, interligne 3,6 mm) dans une colonne de
+#: ≈ 82 mm : ≈ 61 caractères par ligne, 420 caractères + la ligne de renvoi
+#: ≈ 8 lignes ≈ 29 mm, + la clé ≈ 4 mm = 33 mm — SOUS la colonne « Prochaines
+#: étapes » (4 étapes ≈ 39,5 mm), qui fixe la hauteur de la rangée. La page 3
+#: ne grandit donc jamais à cause des CGV : la bande légale et la clause
+#: « non contractuelles » restent dans le cadre A4 (``overflow:hidden``).
+#: Le défaut du moteur (≈ 250 caractères, 5 lignes ≈ 22 mm) n'est pas touché.
+CGV_MAX_CARACTERES = 420
+
+
+def _visible(texte) -> str:
+    import html as _h
+    import re as _re
+    return _h.unescape(_re.sub(r"<[^>]+>", "", str(texte)))
+
+
+def puces_cgv_bornees(d, puces):
+    """APDF13 (fix) — les puces CGV de la page 3 dans leur budget
+    (:data:`CGV_MAX_CARACTERES`) : puces ENTIÈRES tant qu'elles tiennent ; la
+    suite est DÉCLARÉE (« Suite des conditions : proposition en ligne »,
+    libellé ``ci_cgv_suite`` du C&I, AMOT36) — jamais coupée en silence."""
+    from . import theme
+    gardees, total = [], 0
+    for puce in puces:
+        longueur = len(_visible(puce)) + 3  # « · » séparateur
+        if total + longueur > CGV_MAX_CARACTERES:
+            break
+        gardees.append(puce)
+        total += longueur
+    if len(gardees) == len(puces):
+        return list(puces)
+    if not gardees:
+        # Une première puce à elle seule trop longue : coupée au dernier mot
+        # qui tient, et dite.
+        texte = _visible(puces[0])[:CGV_MAX_CARACTERES].rsplit(" ", 1)[0]
+        import html as _h
+        gardees = [_h.escape(texte, quote=False) + "&#8230;"]
+    return gardees + [theme.libelle_doc(
+        d, "ci_cgv_suite", "Suite des conditions : proposition en ligne")]
+
+
 def _bloc_paiement(d, ctx, ident) -> str:
     """QJR666 — « Modalités de paiement » du Devis final : cases au CENTIME
     lues dans ``montants_tranches`` (builder), branche imprimée choisie comme
@@ -313,10 +356,13 @@ def build(ctx) -> str:
     _cgv = cgv_imprimees(dict(d, valid_until=_valid_until))
     conditions = []
     if _cgv["puces"]:
+        # APDF13 (fix) — bornées : la boîte ne dépasse jamais la colonne
+        # « Prochaines étapes » (voir ``CGV_MAX_CARACTERES``).
         conditions.append((
             _cgv["titre"],
             '<span style="display:block;font-size:7.6pt;line-height:1.35;">'
-            + " &middot; ".join(_cgv["puces"]) + '</span>'))
+            + " &middot; ".join(puces_cgv_bornees(d, _cgv["puces"]))
+            + '</span>'))
     # QF3 / QRES65 (fondateur, 2026-08-18) — « Comment nous calculons vos
     # économies » QUITTE la colonne Conditions. Le texte reste celui du builder
     # (une seule source, aucun chiffre nouveau) mais il est rendu À PLAT sous la

@@ -338,3 +338,40 @@ class DocTextsGelesFiltreTests(SimpleTestCase):
         self.assertIsNone(_doc_texts_geles(brouillon))
         self.assertIsNone(_doc_texts_geles(
             SimpleNamespace(statut='envoye', clauses_appliquees=[])))
+
+
+class CgvPage3BorneeTests(SimpleTestCase):
+    """APDF13 (fix) — la boîte « Conditions » de la page 3 a un budget : la
+    page ne grandit jamais à cause des CGV, la bande légale reste dans le
+    cadre A4 (``test_bottom_content_never_silently_clipped``)."""
+
+    def test_defaut_entier(self):
+        from apps.ventes.quote_engine.residential import trust
+        puces = ['Validité', 'Acompte à la commande&#160;: 30&#37;', 'TVA']
+        self.assertEqual(trust.puces_cgv_bornees({}, puces), puces)
+
+    def test_cgv_longues_suite_declaree(self):
+        from apps.ventes.quote_engine.residential import trust
+        puces = [f'Clause n° {n} : ' + 'texte contractuel long ' * 6
+                 for n in range(1, 9)]
+        bornees = trust.puces_cgv_bornees({}, puces)
+        self.assertLess(len(bornees), len(puces) + 1)
+        self.assertEqual(bornees[-1],
+                         'Suite des conditions : proposition en ligne')
+        visible = sum(len(trust._visible(p)) + 3 for p in bornees[:-1])
+        self.assertLessEqual(visible, trust.CGV_MAX_CARACTERES)
+        unique = trust.puces_cgv_bornees({}, ['mot ' * 300])
+        self.assertTrue(unique[0].endswith('&#8230;'))
+        self.assertLessEqual(len(trust._visible(unique[0])),
+                             trust.CGV_MAX_CARACTERES + 1)
+
+    def test_bande_legale_de_l_echantillon_lue_du_profil(self):
+        """Le profil TAQINOR de la démonstration est renseigné (D-APDF-1) : sa
+        bande porte « SARLAU » + RC/ICE et la clause non contractuelle."""
+        import re
+        html = _html_formats()['residentiel']
+        bande = re.search(r'<div class="p3-legal">(.*?)</div>', html,
+                          re.S).group(1)
+        for attendu in ('SARLAU', 'RC 691213', 'ICE 003799642000067',
+                        'non contractuelles'):
+            self.assertIn(attendu, bande)
