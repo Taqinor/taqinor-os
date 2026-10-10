@@ -72,7 +72,7 @@ __all__ = [
     'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
     'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
-    'parametres_societe',
+    'journaliser_ecart_longueur', 'parametres_societe',
     'CLE_DEROGATIONS', 'CLE_FIL_ECARTS',
     'CLE_FIL_DEROGATIONS',  # CALX215
     'CLE_BORDEREAU', 'CLE_CORRESPONDANCES',
@@ -2856,8 +2856,8 @@ def rejouer_apres_layout(calepinage, *, user=None):
     try:
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage)
-        _journaliser_ecart_longueur(calepinage,
-                                    _longueur_chaine_retenue(conception))
+        journaliser_ecart_longueur(calepinage,
+                                   _longueur_chaine_retenue(conception))
     except Exception:  # noqa: BLE001 — cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
@@ -3017,7 +3017,7 @@ def _ajouter_au_fil(resultat, cle, entrees):
     return resultat[cle]
 
 
-def _journaliser_ecart_longueur(calepinage, reconciliation):
+def journaliser_ecart_longueur(calepinage, reconciliation):
     """Journalise un écart moteur↔fiche HORS TOLÉRANCE, historique conservé.
 
     Discipline PVG2 : on ne remplace jamais une valeur en silence. L'écart
