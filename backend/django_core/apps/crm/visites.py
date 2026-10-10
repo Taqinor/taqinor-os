@@ -698,7 +698,7 @@ def alerter_appareil_partage(lead) -> None:
 
         from apps.notifications.services import notify_many
 
-        from .services import lead_notification_recipients
+        from .leads_socle import lead_notification_recipients
         destinataires = avec_direction(
             lead_notification_recipients(lead), company)
         if not destinataires:
@@ -877,7 +877,7 @@ def _destinataires_des_leads(company, lead_ids):
     commerciaux : ils sont tous prévenus (chacun ignore ce que l'autre voit),
     et la direction l'est TOUJOURS."""
     from .models import Lead
-    from .services import lead_notification_recipients
+    from .leads_socle import lead_notification_recipients
 
     destinataires = []
     for lead in Lead.objects.filter(company=company, pk__in=lead_ids):

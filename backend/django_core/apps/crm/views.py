@@ -4528,7 +4528,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # « perdu » reste une décision humaine, MRY22).
         motif_refus = (request.data.get('motif_refus') or '').strip()
         if motif_refus:
-            from .services import mention_motif_refus, motif_refus_valide
+            from .services import mention_motif_refus
+            from .leads_socle import motif_refus_valide
             if outcome != 'refuse':
                 return Response(
                     {'erreurs': {'motif_refus': (

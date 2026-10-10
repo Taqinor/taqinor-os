@@ -52,7 +52,8 @@ def escalader_rappels_demandes(now=None, dry_run=False):
 
     from apps.crm import selectors
     from apps.crm.models import LeadActivity
-    from apps.crm.services import callback_sla_hours, lead_notification_recipients
+    from apps.crm.services import callback_sla_hours
+    from apps.crm.leads_socle import lead_notification_recipients
 
     now = now or timezone.now()
     nb_escalades = 0

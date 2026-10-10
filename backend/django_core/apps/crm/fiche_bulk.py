@@ -8,7 +8,6 @@ from django.utils import timezone
 from . import activity, stages
 from .models import Canal, Lead
 from .services import (
-    MOTIF_BULK_CADENCE_ACTIVE,
     SortieSigneBloquee,
     _bulk_stage_allowed,
     _corps_whatsapp_en_masse,
@@ -17,12 +16,12 @@ from .services import (
     arreter_cadence,
     assurer_prochaine_etape_apres_succes,
     desaccepter_devis_du_lead,
-    leads_avec_cadence_active,
     raison_refus_suppression,
     reattribuer_lead,
     reprendre_cadence_apres_reouverture,
     sync_relance_activity,
 )
+from .leads_socle import MOTIF_BULK_CADENCE_ACTIVE, leads_avec_cadence_active
 
 
 BULK_ACTIONS = {

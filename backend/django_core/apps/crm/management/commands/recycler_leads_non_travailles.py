@@ -122,7 +122,7 @@ def _escalate(lead, seuil, now):
         kind=LeadActivity.Kind.NOTE, body=body)
     try:
         from apps.notifications.services import notify
-        from apps.crm.services import lead_notification_recipients
+        from apps.crm.leads_socle import lead_notification_recipients
         recipients = lead_notification_recipients(lead)
         for recipient in recipients:
             nom = (lead.nom or '').strip() or 'Lead'
