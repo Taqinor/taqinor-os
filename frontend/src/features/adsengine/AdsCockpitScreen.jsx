@@ -42,6 +42,10 @@ function totalSpend(rows) {
 // TOUTES les métriques détenues. `render(row, currency)` produit la cellule ; le
 // sélecteur de colonnes (persisté localStorage) choisit lesquelles afficher.
 // Toutes sont triables (sortCockpitRows est null-safe et coerce les nombres).
+// AACQ104 — un coût par lead porte la source SERVIE (`cpl_source`,
+// `cpl_odoo_source`) à côté de sa valeur ; source absente → aucun libellé.
+const withCplSource = (value, source) => (source ? <>{value}{' '}
+  <small data-testid="ae-cockpit-cpl-source" style={{ color: '#64748b' }}>({source})</small></> : value)
 const ALL_COLUMNS = [
   { key: 'nom', label: 'Ad', render: (r) => r.nom || '—' },
   { key: 'statut_display', label: 'Statut / apprentissage', render: (r) => (
@@ -62,12 +66,12 @@ const ALL_COLUMNS = [
   { key: 'nb_leads', label: 'Leads', render: (r) => formatNumber(r.nb_leads) },
   // FIXPUB9 — compte RÉEL Odoo/CRM, à côté du compte Meta (nb_leads).
   { key: 'leads_odoo', label: 'Leads (Odoo)', render: (r) => formatNumber(r.leads_odoo) },
-  { key: 'cpl_mad', label: 'CPL', render: (r, c) => r.cpl_mad == null ? '—' : formatMoney(r.cpl_mad, c) },
+  { key: 'cpl_mad', label: 'CPL', render: (r, c) => r.cpl_mad == null ? '—' : withCplSource(formatMoney(r.cpl_mad, c), r.cpl_source) },
   // DATAPUB6 — CPL sur les leads Odoo : le numérateur est la DÉPENSE, dans la
   // devise du COMPTE publicitaire (souvent USD), pas des MAD. On l'étiquette
   // avec la devise du compte (comme le coût/signature) — jamais forcé en MAD
   // (la doctrine ERP-MAD ne vaut que pour des montants réellement en MAD).
-  { key: 'cpl_odoo', label: 'CPL (Odoo)', render: (r, c) => r.cpl_odoo == null ? '—' : formatMoney(r.cpl_odoo, c) },
+  { key: 'cpl_odoo', label: 'CPL (Odoo)', render: (r, c) => r.cpl_odoo == null ? '—' : withCplSource(formatMoney(r.cpl_odoo, c), r.cpl_odoo_source) },
   { key: 'signatures', label: 'Signatures', render: (r) => formatNumber(r.signatures) },
   { key: 'cost_per_signature_mad', label: 'Coût / signature', render: (r, c) => r.cost_per_signature_mad == null ? '—' : formatMoney(r.cost_per_signature_mad, c) },
   { key: 'frequency', label: 'Fréquence', render: (r) => r.frequency == null ? '—' : formatRatio(r.frequency) },

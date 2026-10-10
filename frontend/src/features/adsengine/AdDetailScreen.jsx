@@ -137,10 +137,13 @@ export default function AdDetailScreen() {
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Leads (Odoo)</div>
                   <div style={{ fontWeight: 700 }}>{formatNumber(metriques.leads_odoo)}</div></div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>CPL</div>
-                  <div style={{ fontWeight: 700 }}>{metriques.cpl_mad == null ? '—' : formatMoney(metriques.cpl_mad, currency)}</div></div>
+                  <div style={{ fontWeight: 700 }}>{metriques.cpl_mad == null ? '—' : formatMoney(metriques.cpl_mad, currency)}</div>
+                  {/* AACQ104 — la source SERVIE du coût par lead ; absente → rien. */}
+                  {metriques.cpl_mad != null && metriques.cpl_source && <div data-testid="ae-ad-detail-cpl-source" style={{ color: '#64748b', fontSize: '0.75rem' }}>{metriques.cpl_source}</div>}</div>
                 {/* FIXPUB9 — CPL calculé sur les leads Odoo, RÉELLEMENT en MAD (déal Odoo). */}
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>CPL (Odoo)</div>
-                  <div style={{ fontWeight: 700 }}>{metriques.cpl_odoo == null ? '—' : formatMAD(metriques.cpl_odoo)}</div></div>
+                  <div style={{ fontWeight: 700 }}>{metriques.cpl_odoo == null ? '—' : formatMAD(metriques.cpl_odoo)}</div>
+                  {metriques.cpl_odoo != null && metriques.cpl_odoo_source && <div data-testid="ae-ad-detail-cpl-odoo-source" style={{ color: '#64748b', fontSize: '0.75rem' }}>{metriques.cpl_odoo_source}</div>}</div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Signatures</div>
                   <div style={{ fontWeight: 700 }}>{formatNumber(metriques.signatures)}</div></div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Coût / signature</div>
