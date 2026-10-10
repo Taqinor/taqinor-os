@@ -34,7 +34,16 @@ vi.mock('../../api/ventesApi', () => ({
     getBonsCommande: vi.fn().mockResolvedValue({ data: { count: 0, next: null, results: [] } }),
     getFacture: vi.fn(() => Promise.resolve({ data: base.facture })),
     // Le serveur applique tel quel le corps reçu : tout champ envoyé est réécrit.
+    // Comme le vrai PUT, une mise à jour COMPLÈTE sans client est refusée (400).
     updateFacture: vi.fn((id, data) => {
+      if (!data.client) {
+        return Promise.reject({ response: { status: 400, data: { client: ['Ce champ est obligatoire.'] } } })
+      }
+      Object.assign(base.facture, data)
+      return Promise.resolve({ data: { ...base.facture } })
+    }),
+    // PATCH : mise à jour partielle (facture hors brouillon, AFAC71).
+    patchFacture: vi.fn((id, data) => {
       Object.assign(base.facture, data)
       return Promise.resolve({ data: { ...base.facture } })
     }),

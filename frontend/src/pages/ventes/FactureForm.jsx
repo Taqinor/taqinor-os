@@ -323,7 +323,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       // submit précédent partiellement échoué) ne repart JAMAIS en second
       // POST : la relance passe systématiquement en ÉDITION.
       let factureId = facture?.id ?? createdFactureId
-      if (factureId) {
+      if (factureId && horsBrouillon) {
+        // AFAC71 — hors brouillon, seuls les champs non financiers partent :
+        // mise à jour PARTIELLE (PATCH). Un PUT exige le client et les montants
+        // (400 « client : Ce champ est obligatoire », vu en acceptation live).
+        const { data } = await ventesApi.patchFacture(factureId, payload)
+        factureId = data.id
+      } else if (factureId) {
         const res = await dispatch(updateFacture({ id: factureId, data: payload })).unwrap()
         factureId = res.id
       } else {
