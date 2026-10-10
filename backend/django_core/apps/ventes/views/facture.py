@@ -381,7 +381,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         bc_corps = serializer.validated_data.get('bon_commande')
         if bc_corps is not None and bc_corps.devis_id \
                 and bc_corps.pk != facture.bon_commande_id:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError({
                 'bon_commande': BC_DE_DEVIS_REFUSE,
                 'code': 'bon_commande_de_devis'})
@@ -401,7 +400,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     set(serializer.validated_data.keys())
                     & FACTURE_CHAMPS_FINANCIERS)
                 if champs_touches:
-                    from rest_framework.exceptions import ValidationError
                     raise ValidationError({
                         'detail': (
                             "Facture immuable : les champs financiers d'une "
