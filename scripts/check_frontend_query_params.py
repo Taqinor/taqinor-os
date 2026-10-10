@@ -112,6 +112,8 @@ from check_api_contract import (  # noqa: E402
     ANY, HOLE, FrontendCalls, frontend_files, normalise_call, resolve_template,
 )
 
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `ECHEC|fichier|METHODE|operation|nom` (jamais un numero de ligne)
+
 SNAPSHOT_PATH = ROOT / "docs" / "openapi-schema.yml"
 ALLOW_PATH = ROOT / "scripts" / "frontend_query_params_allow.txt"
 AXIOS_PATH = ROOT / "frontend" / "src" / "api" / "axios.js"
@@ -340,6 +342,11 @@ _METHODE = re.compile(r"(?<![\w$.])(?:async\s+)?([A-Za-z_$][\w$]*)\s*\(")
 
 
 def _tetes(code: str, masked: str) -> list:
+    return (_tetes_fleches(code, masked) + _tetes_function(code, masked)
+            + _tetes_methodes(code, masked))
+
+
+def _tetes_fleches(code: str, masked: str) -> list:
     tetes = []
     # a) arrows
     for m in re.finditer(r"=>", masked):
@@ -371,6 +378,11 @@ def _tetes(code: str, masked: str) -> list:
         bloc = c < len(masked) and masked[c] == "{"
         fin = _apparier(masked, c) if bloc else _fin_expression(masked, c)
         tetes.append(Tete(ouvre, nom, params, c, fin, bloc))
+    return tetes
+
+
+def _tetes_function(code: str, masked: str) -> list:
+    tetes = []
     # b) function nom(...) { }
     for m in _FUNCTION.finditer(masked):
         ouvre = m.end() - 1
@@ -386,6 +398,11 @@ def _tetes(code: str, masked: str) -> list:
             nom = nm.group(1) if nm else None
         tetes.append(Tete(m.start(), nom, _params_de(masked, code, ouvre + 1, ferme),
                           c, _apparier(masked, c)))
+    return tetes
+
+
+def _tetes_methodes(code: str, masked: str) -> list:
+    tetes = []
     # c) méthode raccourcie  nom(...) { }
     for m in _METHODE.finditer(masked):
         nom = m.group(1)
@@ -415,6 +432,59 @@ _REGEX_AVANT = re.compile(r"[(,=:\[!&|?{};+\-*%~^<>]\s*$")
 _REGEX_MOT = re.compile(r"\b(return|typeof|instanceof|in|of|new|delete|void|case|do|else|yield|await)\s*$")
 
 
+def _commentaire(src: str, out: list, masked: list, i: int):
+    """Efface le commentaire ouvert en ``i`` ; index suivant (None si ``i`` n'en ouvre pas)."""
+    n = len(src)
+    two = src[i:i + 2]
+    if two == "//":
+        j = src.find("\n", i)
+        j = n if j < 0 else j
+        for k in range(i, j):
+            out[k] = masked[k] = " "
+        return j
+    if two == "/*":
+        j = src.find("*/", i + 2)
+        j = n if j < 0 else j + 2
+        for k in range(i, j):
+            if src[k] != "\n":
+                out[k] = masked[k] = " "
+        return j
+    return None
+
+
+def _fin_chaine(src: str, i: int, c: str) -> int:
+    """Index (exclu) de la fin de la chaîne ouverte en ``i`` par ``c``."""
+    n = len(src)
+    j = i + 1
+    while j < n:
+        if src[j] == "\\":
+            j += 2
+            continue
+        if src[j] == c or (c != "`" and src[j] == "\n"):
+            break
+        j += 1
+    return min(j + 1, n)
+
+
+def _fin_regex(src: str, i: int):
+    """Index du ``/`` fermant le littéral regex ouvert en ``i`` (None s'il n'y en a pas)."""
+    n = len(src)
+    j = i + 1
+    in_class = False
+    while j < n and src[j] != "\n":
+        if src[j] == "\\":
+            j += 2
+            continue
+        if src[j] == "[":
+            in_class = True
+        elif src[j] == "]":
+            in_class = False
+        elif src[j] == "/" and not in_class:
+            break
+        j += 1
+    return j if j < n and src[j] == "/" else None
+
+
 def scanner_js(src: str):
     """Variante du lexeur de ``check_api_contract.scan_js`` (même sortie :
     code sans commentaires, jetons de chaîne, code masqué) qui tient compte du
@@ -429,38 +499,17 @@ def scanner_js(src: str):
     i, n = 0, len(src)
     while i < n:
         c = src[i]
-        two = src[i:i + 2]
-        if two == "//":
-            j = src.find("\n", i)
-            j = n if j < 0 else j
-            for k in range(i, j):
-                out[k] = masked[k] = " "
-            i = j
-            continue
-        if two == "/*":
-            j = src.find("*/", i + 2)
-            j = n if j < 0 else j + 2
-            for k in range(i, j):
-                if src[k] != "\n":
-                    out[k] = masked[k] = " "
-            i = j
+        suivant = _commentaire(src, out, masked, i)
+        if suivant is not None:
+            i = suivant
             continue
         if c in "'\"" and i > 0 and (src[i - 1].isalnum() or src[i - 1] in "’"):
             i += 1  # apostrophe de texte JSX
             continue
         if c in "'\"`":
-            start = i
-            i += 1
-            while i < n:
-                if src[i] == "\\":
-                    i += 2
-                    continue
-                if src[i] == c or (c != "`" and src[i] == "\n"):
-                    break
-                i += 1
-            end = min(i + 1, n)
-            tokens.append((start, end, c, src[start + 1:end - 1]))
-            for k in range(start + 1, end - 1):
+            end = _fin_chaine(src, i, c)
+            tokens.append((i, end, c, src[i + 1:end - 1]))
+            for k in range(i + 1, end - 1):
                 if src[k] != "\n":
                     masked[k] = " "
             i = end
@@ -468,20 +517,8 @@ def scanner_js(src: str):
         if c == "/":
             before = src[max(0, i - 40):i]
             if _REGEX_AVANT.search(before) or _REGEX_MOT.search(before) or not before.strip():
-                j = i + 1
-                in_class = False
-                while j < n and src[j] != "\n":
-                    if src[j] == "\\":
-                        j += 2
-                        continue
-                    if src[j] == "[":
-                        in_class = True
-                    elif src[j] == "]":
-                        in_class = False
-                    elif src[j] == "/" and not in_class:
-                        break
-                    j += 1
-                if j < n and src[j] == "/":
+                j = _fin_regex(src, i)
+                if j is not None:
                     for k in range(i + 1, j):
                         masked[k] = " "
                     i = j + 1
@@ -676,17 +713,8 @@ class Analyse:
                     vus.setdefault(id(m2), m2)
         return list(vus.values())
 
-    def sites(self, mod, tete, genre_force=None):
-        """(appels, références) de la fonction ``tete`` : [(module, pos)].
-
-        Les appelants sont QUALIFIÉS pour ne pas confondre deux fonctions de
-        même nom : ``parent.nom(`` pour une méthode imbriquée
-        (``instagram.media``), ``<client>Api.nom(`` restreint aux modules qui
-        importent le client pour une méthode de premier niveau, ``nom(`` dans
-        les importeurs pour une fonction exportée, la portée locale sinon."""
-        cle = (mod.rel, tete.debut)
-        if cle in self.cache_sites:
-            return self.cache_sites[cle]
+    def _cadre_sites(self, mod, tete, genre_force):
+        """(genre, chaîne, racine, modules, motif) de la recherche des appelants de ``tete``."""
         nom = re.escape(tete.nom)
         if genre_force:
             genre, chaine, racine = genre_force, [], None
@@ -704,23 +732,45 @@ class Analyse:
         else:
             modules = self._modules_clients(mod)
             motif = r"([A-Za-z_$][\w$]*)\s*\??\.\s*(%s)\b" % nom
+        return genre, chaine, racine, modules, motif
+
+    @staticmethod
+    def _alias_fragments(modules, racine):
+        """Clés sous lesquelles ``racine`` est étalé : `calepinages: { ...projet }` → `x.calepinages.f(`."""
+        alias = set()
+        for cmod in modules:
+            for sm in re.finditer(r"\.\.\.\s*%s\b" % re.escape(racine), cmod.masked):
+                b = cmod.enclos(sm.start())
+                km = re.search(r"([A-Za-z_$][\w$]*)\s*:\s*$", cmod.masked[max(0, b - 80):max(0, b)])
+                if b >= 0 and cmod.masked[b] == "{" and km:
+                    alias.add(km.group(1))
+        return alias
+
+    def _occurrences_sites(self, tete, genre, chaine, modules, motif):
+        """[(module, correspondance)] des mentions du nom de ``tete`` dans ``modules``."""
+        if genre == "prop":
+            ids = {id(x) for x in modules}
+            return [(cmod, m) for cmod, m in self.pointes.get(tete.nom, ())
+                    if id(cmod) in ids and (not chaine or m.group(1) == chaine[-1])]
+        return [(cmod, m) for cmod in modules for m in re.finditer(motif, cmod.masked)]
+
+    def sites(self, mod, tete, genre_force=None):
+        """(appels, références) de la fonction ``tete`` : [(module, pos)].
+
+        Les appelants sont QUALIFIÉS pour ne pas confondre deux fonctions de
+        même nom : ``parent.nom(`` pour une méthode imbriquée
+        (``instagram.media``), ``<client>Api.nom(`` restreint aux modules qui
+        importent le client pour une méthode de premier niveau, ``nom(`` dans
+        les importeurs pour une fonction exportée, la portée locale sinon."""
+        cle = (mod.rel, tete.debut)
+        if cle in self.cache_sites:
+            return self.cache_sites[cle]
+        genre, chaine, racine, modules, motif = self._cadre_sites(mod, tete, genre_force)
         appels, refs = [], []
         alias = {racine} if racine else set()
         if genre == "prop" and not chaine and racine:
-            # fragment étalé : `calepinages: { ...projet }` → `x.calepinages.f(`
-            for cmod in modules:
-                for sm in re.finditer(r"\.\.\.\s*%s\b" % re.escape(racine), cmod.masked):
-                    b = cmod.enclos(sm.start())
-                    km = re.search(r"([A-Za-z_$][\w$]*)\s*:\s*$", cmod.masked[max(0, b - 80):max(0, b)])
-                    if b >= 0 and cmod.masked[b] == "{" and km:
-                        alias.add(km.group(1))
-        if genre == "prop":
-            ids = {id(x) for x in modules}
-            occurrences = [(cmod, m) for cmod, m in self.pointes.get(tete.nom, ())
-                           if id(cmod) in ids and (not chaine or m.group(1) == chaine[-1])]
-        else:
-            occurrences = [(cmod, m) for cmod in modules
-                           for m in re.finditer(motif, cmod.masked)]
+            alias |= self._alias_fragments(modules, racine)
+        occurrences = self._occurrences_sites(tete, genre, chaine, modules, motif)
         for cmod, m in occurrences:
             if genre == "prop" and not chaine:
                 qual = m.group(1)
@@ -772,6 +822,25 @@ class Analyse:
         return f"{mod.rel}:{mod.ligne(pos)}"
 
     # -- expression -> noms --------------------------------------------------
+    def _ref_react(self, mod, texte, decl, res, mode, prof, vus):
+        """``R.current`` : `const R = useRef(init)` + `R.current = expr` (None si non applicable)."""
+        rm = re.fullmatch(r"([A-Za-z_$][\w$]*)\.current", texte)
+        if not rm or decl is not None:
+            return None
+        n = re.escape(rm.group(1))
+        sources = [x for x in re.finditer(r"\b(?:const|let|var)\s+%s\s*=\s*useRef\s*\(" % n,
+                                          mod.masked)]
+        if not sources:
+            return None
+        for x in sources:
+            ouvre = x.end() - 1
+            for a, b in _decouper(mod.masked, ouvre + 1, _apparier(mod.masked, ouvre))[:1]:
+                res.fusion(self.cles(mod, a, b, mode, prof, vus))
+        for x in re.finditer(r"(?<![\w$.])%s\.current\s*=(?![=>])" % n, mod.masked):
+            res.fusion(self.cles(mod, x.end(), _fin_expression(mod.masked, x.end()),
+                                 mode, prof, vus))
+        return res
+
     def cles(self, mod, s, e, mode, prof, vus=frozenset()):
         """Noms de paramètres portés par l'expression [s, e).
 
@@ -826,21 +895,9 @@ class Analyse:
             return res
         if IDENT.match(texte):
             return self._identifiant(mod, texte, s, mode, prof, vus, decl)
-        rm = re.fullmatch(r"([A-Za-z_$][\w$]*)\.current", texte)
-        if rm and decl is None:
-            # ref React : `const R = useRef(init)` + `R.current = expr`
-            n = re.escape(rm.group(1))
-            sources = [x for x in re.finditer(r"\b(?:const|let|var)\s+%s\s*=\s*useRef\s*\(" % n,
-                                              mod.masked)]
-            if sources:
-                for x in sources:
-                    ouvre = x.end() - 1
-                    for a, b in _decouper(mod.masked, ouvre + 1, _apparier(mod.masked, ouvre))[:1]:
-                        res.fusion(self.cles(mod, a, b, mode, prof, vus))
-                for x in re.finditer(r"(?<![\w$.])%s\.current\s*=(?![=>])" % n, mod.masked):
-                    res.fusion(self.cles(mod, x.end(), _fin_expression(mod.masked, x.end()),
-                                         mode, prof, vus))
-                return res
+        retour = self._ref_react(mod, texte, decl, res, mode, prof, vus)
+        if retour is not None:
+            return retour
         cm = re.match(r"([A-Za-z_$][\w$]*)\s*\(", texte)
         if cm and decl is None and _apparier(mod.masked, s + cm.end() - 1) == e - 1:
             retour = self._retour_appel(mod, cm.group(1), s + cm.end() - 1, mode, prof, vus)
@@ -1195,14 +1252,7 @@ class Analyse:
                 return self._composant(rmod, b, am.group(1), libelle, d, index, champ, mode,
                                        prof, vus)
         if b >= 0 and m[b] == "{":
-            prop = [(x, y) for x, y in _decouper(m, b + 1, _apparier(m, b)) if x <= d < y]
-            if prop:
-                x, y = prop[0]
-                km = re.match(r"([A-Za-z_$][\w$]*)\s*:\s*", rmod.code[x:y])
-                if km and x + km.end() == d and y == f:
-                    cle_objet = km.group(1)
-                elif x == d and y == f and IDENT.match(rmod.code[x:y]):
-                    cle_objet = rmod.code[x:y]
+            cle_objet = self._cle_objet(rmod, b, d, f)
             if cle_objet is None:
                 return self._inconnu(rmod, d, raison, res, mode, rmod.declaration(d))
             debut_arg = b
@@ -1227,34 +1277,64 @@ class Analyse:
         if cle_objet is None and ENVELOPPES.get(nom_h) == j:
             return self._enveloppe(rmod, b - len(m[max(0, b - 80):b]) + hm.start(), nom_h,
                                    index, champ, mode, prof, vus, d)
+        candidats = self._candidats_hote(rmod, nom_h)
+        if not candidats:
+            return self._inconnu(rmod, d, raison + f" à « {nom_h} »", res, mode,
+                                 rmod.declaration(d))
+        for hmod, ht in candidats:
+            param = self._param_recu(ht, j, cle_objet)
+            if param is None:
+                self._inconnu(rmod, d, raison + f" à « {nom_h} »", res, mode,
+                              rmod.declaration(d))
+                continue
+            res.fusion(self._corps_lie(rmod, hmod, ht, args, param, index, champ, mode, prof, vus))
+        return res
+
+    @staticmethod
+    def _cle_objet(rmod, b, d, f):
+        """Clé de propriété sous laquelle la fonction [d, f) est rangée dans l'objet ouvert en ``b``."""
+        m = rmod.masked
+        prop = [(x, y) for x, y in _decouper(m, b + 1, _apparier(m, b)) if x <= d < y]
+        if not prop:
+            return None
+        x, y = prop[0]
+        km = re.match(r"([A-Za-z_$][\w$]*)\s*:\s*", rmod.code[x:y])
+        if km and x + km.end() == d and y == f:
+            return km.group(1)
+        if x == d and y == f and IDENT.match(rmod.code[x:y]):
+            return rmod.code[x:y]
+        return None
+
+    def _candidats_hote(self, rmod, nom_h):
+        """[(module, tête)] des fonctions nommées ``nom_h`` : locales, sinon importées."""
         candidats = [(rmod, t) for t in rmod.tetes if t.nom == nom_h]
         if not candidats:
             for hmod in self.modules:
                 if hmod.rel in rmod.imports:
                     candidats += [(hmod, t) for t in hmod.tetes if t.nom == nom_h
                                   and hmod.chemin_objet(t)[0] == "fonction"]
-        if not candidats:
-            return self._inconnu(rmod, d, raison + f" à « {nom_h} »", res, mode,
-                                 rmod.declaration(d))
-        for hmod, ht in candidats:
-            param = None
-            for idx, pnom, pch in ht.params:
-                if idx == j and pch == cle_objet:
-                    param = pnom
-            if param is None:
-                self._inconnu(rmod, d, raison + f" à « {nom_h} »", res, mode,
-                              rmod.declaration(d))
-                continue
-            env = dict(self.env)
-            for idx, pnom, pch in ht.params:
-                lien = (rmod,) + args[idx] + (self.env, pch) if idx < len(args) else None
-                env[(hmod.rel, ht.debut, pnom)] = lien
-            sauve, self.env = self.env, env
-            try:
-                res.fusion(self._corps(hmod, ht, param, index, champ, mode, prof, vus))
-            finally:
-                self.env = sauve
-        return res
+        return candidats
+
+    @staticmethod
+    def _param_recu(ht, j, cle_objet):
+        """Nom du paramètre de ``ht`` qui reçoit la fonction passée (index ``j``, champ ``cle_objet``)."""
+        param = None
+        for idx, pnom, pch in ht.params:
+            if idx == j and pch == cle_objet:
+                param = pnom
+        return param
+
+    def _corps_lie(self, rmod, hmod, ht, args, param, index, champ, mode, prof, vus):
+        """Corps de ``ht`` lu avec ses paramètres liés aux arguments ``args`` du site de ``rmod``."""
+        env = dict(self.env)
+        for idx, pnom, pch in ht.params:
+            lien = (rmod,) + args[idx] + (self.env, pch) if idx < len(args) else None
+            env[(hmod.rel, ht.debut, pnom)] = lien
+        sauve, self.env = self.env, env
+        try:
+            return self._corps(hmod, ht, param, index, champ, mode, prof, vus)
+        finally:
+            self.env = sauve
 
     def _corps(self, hmod, ht, param, index, champ, mode, prof, vus):
         """Dans le corps de ``ht``, ce que reçoit le paramètre-fonction
@@ -1466,6 +1546,40 @@ _TROU = re.compile(r"\$\{([^{}]*)\}")
 _TERNAIRE = re.compile(r"^[^?]+\?\s*('[^']*'|\"[^\"]*\")\s*:\s*('[^']*'|\"[^\"]*\")$")
 
 
+def _morceaux_gabarit(raw: str) -> list:
+    """[("lit", texte) | ("trou", expression)] d'un gabarit ``${…}``."""
+    morceaux, pos = [], 0
+    for m in _TROU.finditer(raw):
+        morceaux.append(("lit", raw[pos:m.start()]))
+        morceaux.append(("trou", m.group(1).strip()))
+        pos = m.end()
+    morceaux.append(("lit", raw[pos:]))
+    return morceaux
+
+
+def _verser_litteral(chemin: str, dans_requete: bool, requete: str, texte: str) -> tuple:
+    """Verse ``texte`` dans le chemin ou, une fois passé le ``?``, dans la requête."""
+    if not dans_requete and "?" in texte:
+        avant, _, apres = texte.partition("?")
+        return chemin + avant, True, requete + apres
+    if dans_requete:
+        return chemin, dans_requete, requete + texte
+    return chemin + texte, dans_requete, requete
+
+
+def _noms_requete_reconstituee(requete: str, ori: str, res) -> None:
+    """Verse dans ``res`` les noms de la requête reconstituée par ``decouper_url``."""
+    for part in requete.split("&"):
+        cle = part.split("=", 1)[0].strip()
+        if not cle or cle == "\x01":
+            continue
+        if HOLE in cle or "\x01" in cle:
+            res.inconnu(ori, "clé de requête calculée dans le gabarit")
+            continue
+        if re.match(r"^[\w.\[\]-]+$", cle):
+            res.nom(cle, ori)
+
+
 def decouper_url(analyse, mod, debut_jeton, raw, quote):
     """(chemin avec trous, Resultat des noms de la chaîne de requête, non_résolu?)"""
     res = Resultat()
@@ -1476,24 +1590,10 @@ def decouper_url(analyse, mod, debut_jeton, raw, quote):
             res.nom(nom, ori)
         return chemin, res
     # Gabarit : remplacer les trous, en notant ceux de la requête.
-    morceaux, pos = [], 0
-    for m in _TROU.finditer(raw):
-        morceaux.append(("lit", raw[pos:m.start()]))
-        morceaux.append(("trou", m.group(1).strip()))
-        pos = m.end()
-    morceaux.append(("lit", raw[pos:]))
     chemin, dans_requete, requete = "", False, ""
-    for genre, valeur in morceaux:
+    for genre, valeur in _morceaux_gabarit(raw):
         if genre == "lit":
-            if not dans_requete and "?" in valeur:
-                avant, _, apres = valeur.partition("?")
-                chemin += avant
-                dans_requete = True
-                requete += apres
-            elif dans_requete:
-                requete += valeur
-            else:
-                chemin += valeur
+            chemin, dans_requete, requete = _verser_litteral(chemin, dans_requete, requete, valeur)
             continue
         const = mod.consts.get(valeur)
         fm = re.fullmatch(r"([A-Za-z_$][\w$]*)\s*\(.*\)", valeur, re.S)
@@ -1502,15 +1602,7 @@ def decouper_url(analyse, mod, debut_jeton, raw, quote):
             const = analyse.gabarit_fonction(mod, fm.group(1))
         ternaire = _TERNAIRE.match(valeur)
         if isinstance(const, str):
-            if not dans_requete and "?" in const:
-                avant, _, apres = const.partition("?")
-                chemin += avant
-                dans_requete = True
-                requete += apres
-            elif dans_requete:
-                requete += const
-            else:
-                chemin += const
+            chemin, dans_requete, requete = _verser_litteral(chemin, dans_requete, requete, const)
             continue
         if ternaire:
             branches = [ternaire.group(1)[1:-1], ternaire.group(2)[1:-1]]
@@ -1529,15 +1621,7 @@ def decouper_url(analyse, mod, debut_jeton, raw, quote):
                 requete += HOLE  # valeur d'un paramètre
             continue
         chemin += HOLE
-    for part in requete.split("&"):
-        cle = part.split("=", 1)[0].strip()
-        if not cle or cle == "\x01":
-            continue
-        if HOLE in cle or "\x01" in cle:
-            res.inconnu(ori, "clé de requête calculée dans le gabarit")
-            continue
-        if re.match(r"^[\w.\[\]-]+$", cle):
-            res.nom(cle, ori)
+    _noms_requete_reconstituee(requete, ori, res)
     chemin = resolve_template(chemin, "'", mod.consts) or chemin
     return chemin, res
 
