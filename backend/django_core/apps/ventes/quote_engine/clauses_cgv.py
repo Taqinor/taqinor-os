@@ -141,7 +141,8 @@ def cgv_bullets_remplies(data):
                          data.get("mode_installation"))
     terms = data.get("payment_terms") or {}
     try:
-        tva_pct = float(data.get("taux_tva", 20) or 20)
+        brut = data.get("taux_tva")
+        tva_pct = 20.0 if brut is None or brut == "" else float(brut)  # AMOT73 : 0 % reste 0 %
     except (TypeError, ValueError):
         tva_pct = 20.0
     return remplir_cgv_bullets(
