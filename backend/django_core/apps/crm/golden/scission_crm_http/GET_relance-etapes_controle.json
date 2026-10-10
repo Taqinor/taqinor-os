@@ -3,11 +3,11 @@
  "corps": {
   "commerciaux": [
    {
-    "id": "etape?#1",
+    "id": "user#2",
     "nom": "golden-http-comm"
    },
    {
-    "id": "etape?#2",
+    "id": "user#1",
     "nom": "golden-http-resp"
    }
   ],
