@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import parametresApi from '../../api/parametresApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { applyStatutConfig } from '../installations/statuses'
 import { applyTicketStatutConfig } from '../sav/ticketStatuses'
 
@@ -22,10 +23,12 @@ export default function useStatutConfig(domaine) {
     const apply = APPLIERS[domaine]
     if (!apply) return undefined
     let active = true
-    parametresApi.getStatutsEffective(domaine)
-      .then((res) => {
+    // Liste complète lue via fetchAllPages (l'endpoint rend tous les statuts
+    // en une réponse ; le helper reste correct s'il devenait paginé).
+    fetchAllPages(() => parametresApi.getStatutsEffective(domaine).then((r) => r?.data))
+      .then((statuts) => {
         if (!active) return
-        apply(res?.data?.results ?? [])
+        apply(Array.isArray(statuts) ? statuts : [])
         setVersion((v) => v + 1)
       })
       .catch(() => {
