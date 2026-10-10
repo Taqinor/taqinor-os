@@ -37,7 +37,7 @@ from unittest import mock
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.export_projet import (
     CLES_DOCUMENT, FORMAT_VERSION, MOTIF_NON_SIMULE, MOTIF_SANS_CONCEPTION,
-    ExportProjetRefuse, document_de_projet, octets_de_projet,
+    ExportProjetRefuse, document_de_projet, _octets_de_projet,
 )
 from apps.calepinage.services.note_calcul import CLES_INTERDITES
 
@@ -258,7 +258,7 @@ def _refuser_constante(nom):
 class JsonStrictTest(unittest.TestCase):
     def test_le_fichier_se_relit_en_json_strict(self):
         for document in (exporte(), vide()):
-            relu = json.loads(octets_de_projet(document).decode('utf-8'),
+            relu = json.loads(_octets_de_projet(document).decode('utf-8'),
                               parse_constant=_refuser_constante)
             self.assertEqual(relu, document)
 

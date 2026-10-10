@@ -202,7 +202,7 @@ class AllerRetourDesSaisiesTest(BaseConceptionReelle):
 
     def _exporter(self, calepinage):
         document = ep.document_de_projet(calepinage)
-        return json.loads(ep.octets_de_projet(document))
+        return json.loads(ep._octets_de_projet(document))
 
     def test_aller_retour_export_import_export_restitue_les_saisies(self):
         from apps.calepinage.models import Calepinage

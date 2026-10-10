@@ -14,10 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/export_projet.py::cle_de_montant
-backend/django_core/apps/calepinage/services/export_projet.py::horodatage_utc
-backend/django_core/apps/calepinage/services/export_projet.py::octets_de_projet
-backend/django_core/apps/calepinage/services/export_projet.py::verifier_aucun_montant
 backend/django_core/apps/calepinage/services/export_tableur.py::classeur_octets
 backend/django_core/apps/calepinage/services/export_tableur.py::csv_octets
 backend/django_core/apps/calepinage/services/export_tableur.py::table_chaines
