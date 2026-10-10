@@ -173,7 +173,7 @@ etape('P5.3', ['ADEP18', 'ACHT69', 'ADEP99'], (ctx) => loteRefuse(ctx, 403,
 
 etape('P5.3-500', ['ACHT69', 'ADEP99'], (ctx) => loteRefuse(ctx, 500, 'Erreur interne du serveur.'))
 
-etape('P5.4', ['ADEP19', 'ADEP99'], async ({ page, suivi }) => {
+etape('P5.4', ['ADEP19', 'ADEP33', 'ADEP99'], async ({ page, suivi }) => {
   // fetchMe échoue SANS 401/403 (réseau, puis 503) : écran « Hors ligne », jamais /login.
   const me = /\/api\/django\/auth\/me\/(\?.*)?$/
   for (const panne of ['reseau', 503]) {

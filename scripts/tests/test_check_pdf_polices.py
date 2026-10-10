@@ -23,7 +23,7 @@ def _arbre(fichiers):
 
 class CheckPdfPolicesTests(unittest.TestCase):
     def test_familles_derivees_du_dockerfile(self):
-        self.assertEqual(g.familles_systeme(DOCKERFILE), ['DejaVu', 'Liberation', 'Noto'])
+        self.assertEqual(g.familles_systeme(DOCKERFILE), ['Liberation', 'Noto'])
 
     def test_depot_vert(self):
         racine = Path(__file__).resolve().parent.parent.parent
@@ -32,7 +32,7 @@ class CheckPdfPolicesTests(unittest.TestCase):
     def test_homonyme_rouge(self):
         tmp, racine = _arbre({
             'a/gabarit.html': "<style>\n@font-face{font-family:'Noto Sans Arabic';src:url(x)}</style>",
-            'a/b.py': 'css = f\'@font-face{{font-family:"DejaVu Sans";}}\'',
+            'a/b.py': 'css = f\'@font-face{{font-family:"Liberation Serif";}}\'',
             'a/ok.py': 'css = "@font-face{font-family:\'DM Sans\';}"',
         })
         with tmp:
