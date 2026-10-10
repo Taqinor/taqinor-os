@@ -658,7 +658,7 @@ class _Normaliseur:
             return [self(v, cle) for v in valeur]
         if cle in _CLES_HORODATAGE and valeur is not None:
             return _MASQUE
-        if cle == 'token' and valeur:
+        if cle in ('token', 'code_parrainage', 'tiers', 'tiers_id') and valeur:
             return _MASQUE
         if isinstance(valeur, str):
             for secret in self.secrets:
