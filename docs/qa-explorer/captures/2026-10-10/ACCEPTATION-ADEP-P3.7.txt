@@ -1,0 +1,46 @@
+# ADEP99 P3.7 — suite FastAPI : propre 231 OK (0 sauté) ; avec `from app.core.config import N_EXISTE_PAS` : FAILED (errors=12), exit 1, 0 test sauté (avant ADEP42 : OK skipped=8)
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P3_7_propre.txt
+Ran 231 tests in 14.721s
+OK
+
+## P3_7_casse.txt
+ImportError: Failed to import test module: test_adsengine_nl
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_asec42_agent_sql_formes
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_config_agent_sql
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_eval_harness
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_infra_hardening
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_margin_guard
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_permissions_agent
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_read_extension
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_societe_active
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_sql_agent_endpoint
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_sql_agent_limites
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+ImportError: Failed to import test module: test_sql_security
+    from app.core.config import N_EXISTE_PAS  # noqa: F401
+ImportError: cannot import name 'N_EXISTE_PAS' from 'app.core.config' (/w/backend/fastapi_ia/app/core/config.py)
+Ran 104 tests in 1.156s
+FAILED (errors=12)
