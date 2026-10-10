@@ -33,10 +33,15 @@ LIGNES_IND = [('Panneau mono 450W', '40', '1500'),
               ('Onduleur réseau 20 kW', '1', '30000')]
 
 
-def _norm(texte):
-    """Espaces (insécables, retours de ligne du PDF) ramenés à un seul."""
-    return re.sub(r'\s+', ' ', str(texte).replace('\xa0', ' ')
-                  .replace(' ', ' ')).strip()
+def _compact(texte):
+    """Texte sans AUCUN blanc : le PDF coupe ses lignes où il veut (après
+    « ONEE/ », avant « : »…) ; mot pour mot = mêmes caractères visibles."""
+    return re.sub(r'\s+', '', str(texte))
+
+
+#: Renvoi DÉCLARÉ de la page 3 résidentielle quand ses CGV dépassent le
+#: budget (``residential.trust.puces_cgv_bornees``, libellé ``ci_cgv_suite``).
+RENVOI = 'Suite des conditions : proposition en ligne'
 
 
 def puces_attendues(devis):
@@ -106,26 +111,42 @@ class ConditionsPubliquesParitePdfTests(TestCase):
 
     @tag('pdf')
     def test_pdf_imprime_les_memes_puces(self):
-        """Mot pour mot : chaque puce servie à la page publique est dans le
-        texte du PDF réel du même devis (brouillon, envoyé, résidentiel)."""
+        """Parité PDF ⊂ page publique, mot pour mot : la page sert la liste
+        COMPLÈTE ; le PDF imprime ce qui tient — tout en C&I, le budget de la
+        page 3 en résidentiel (``puces_cgv_bornees``) avec le renvoi déclaré
+        quand il tronque. Chaque puce IMPRIMÉE est dans la liste servie, la
+        première servie est la première imprimée, et sans troncature aucun
+        renvoi n'est imprimé (donc toutes les puces servies le sont)."""
+        from apps.ventes.quote_engine.residential import trust
         from apps.ventes.tests.test_pdf_apdf_identite import (
             devis_residentiel, rendre_pdf, texte_pdf)
         residentiel = devis_residentiel(self.company, 'DEV-APDF19-RES2',
                                         user=self.user, client=self.client_obj)
-        cas = [('brouillon', self.devis, lambda: self.lien.token_interne)]
-        for etat, devis, jeton in cas:
-            with self.subTest(etat=etat):
-                pdf = _norm(texte_pdf(rendre_pdf(devis)))
-                for puce in self._conditions(jeton()):
-                    self.assertIn(_norm(puce), pdf)
-                self.assertIn(TITRE_IND, pdf)
+
+        def verifier(devis, jeton, borne):
+            servies = self._conditions(jeton)
+            self.assertTrue(servies)
+            pdf = _compact(texte_pdf(rendre_pdf(devis)))
+            imprimees = (trust.puces_cgv_bornees({}, servies) if borne
+                         else list(servies))
+            tronque = bool(imprimees) and imprimees[-1] == RENVOI
+            if tronque:
+                imprimees = imprimees[:-1]
+            self.assertTrue(imprimees)
+            self.assertEqual(imprimees[0], servies[0])
+            self.assertEqual(imprimees, servies[:len(imprimees)])
+            for puce in imprimees:
+                self.assertIn(_compact(puce), pdf)
+            self.assertEqual(_compact(RENVOI) in pdf, tronque)
+            return pdf
+
+        with self.subTest(etat='brouillon'):
+            pdf = verifier(self.devis, self.lien.token_interne, borne=False)
+            self.assertIn(_compact(TITRE_IND), pdf)
         self._envoyer(self.devis)
         self._envoyer(residentiel)
-        lien_res = ShareLink.for_devis(residentiel)
-        for etat, devis, jeton in (('envoye', self.devis, self.lien.token),
-                                   ('residentiel', residentiel,
-                                    lien_res.token)):
-            with self.subTest(etat=etat):
-                pdf = _norm(texte_pdf(rendre_pdf(devis)))
-                for puce in self._conditions(jeton):
-                    self.assertIn(_norm(puce), pdf)
+        with self.subTest(etat='envoye'):
+            verifier(self.devis, self.lien.token, borne=False)
+        with self.subTest(etat='residentiel'):
+            verifier(residentiel, ShareLink.for_devis(residentiel).token,
+                     borne=True)
