@@ -21,6 +21,13 @@ vi.mock('../../api/stockApi', () => ({
   },
 }))
 
+// ASTK242 — codes de permission pilotés par test (défaut : tous accordés).
+const mockCodes = { achats_commander: true }
+vi.mock('../../features/stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: (code) => mockCodes[code] !== false,
+  useVoitPrixAchat: () => true,
+}))
+
 import stockApi from '../../api/stockApi'
 import ModelesBcf from './ModelesBcf.jsx'
 
@@ -34,6 +41,7 @@ function wrapper({ children }) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockCodes.achats_commander = true
   if (!window.matchMedia) {
     window.matchMedia = vi.fn().mockImplementation((q) => ({
       matches: false, media: q, onchange: null,
@@ -82,5 +90,16 @@ describe('ZPUR3 — liste des modèles de BCF', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/au moins une ligne/)
     expect(stockApi.createModeleBcf).not.toHaveBeenCalled()
+  })
+})
+
+describe('ASTK242 — gating par achats_commander', () => {
+  it('sans achats_commander : aucun bouton Créer / Générer / Supprimer', async () => {
+    mockCodes.achats_commander = false
+    render(<ModelesBcf />, { wrapper })
+    await screen.findAllByText('Réassort panneaux')
+    expect(screen.queryByRole('button', { name: /Nouveau modèle/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Générer un BCF/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Supprimer le modèle/ })).toBeNull()
   })
 })

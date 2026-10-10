@@ -7,6 +7,7 @@ import {
   Button, Input, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 
 // VX149 — panneaux de la barre en masse : au lieu d'un bouton-onglet
 // réinventé à la main (`tabBtn` — bordure blanche translucide, aria-pressed
@@ -26,6 +27,9 @@ export default function BulkProductBar({
   count, categories = [], marques = [], busy, labelsBusy, kanbanBusy,
   onAction, onExport, onPrintLabels, onPrintKanban, onClear,
 }) {
+  // ASTK242 — « Prix » (set_price) exige `catalogue_prix_modifier` côté serveur.
+  const peutPrix = usePermissionAchats('catalogue_prix_modifier')
+  const panels = peutPrix ? PANELS : PANELS.filter((p) => p.value !== 'price')
   const [panel, setPanel] = useState(null)
   const [priceMode, setPriceMode] = useState('percent')
   const [priceVal, setPriceVal] = useState('')
@@ -53,7 +57,7 @@ export default function BulkProductBar({
           onChange={busy ? undefined : toggle}
           aria-label="Panneau d'action en masse"
           className="border-white/20 bg-white/10"
-          options={PANELS}
+          options={panels}
         />
         <button
           type="button" disabled={busy} onClick={onExport}
@@ -89,7 +93,7 @@ export default function BulkProductBar({
         </button>
       </div>
 
-      {panel === 'price' && (
+      {peutPrix && panel === 'price' && (
         <div className="flex w-full flex-wrap items-center gap-2 border-t border-white/15 pt-2">
           <div className="w-40">
             <Select value={priceMode} onValueChange={setPriceMode}>

@@ -9,6 +9,13 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    un BCF brouillon en un clic (generer-bcf-reappro/).
    ========================================================================== */
 
+// ASTK242 — le gating par codes lit le store : ici l'auto-accord (compte
+// légacy sans rôle fin) ; les cas « sans code » sont dans ModelesBcf.test.jsx.
+vi.mock('../../features/stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: () => true,
+  useVoitPrixAchat: () => true,
+}))
+
 vi.mock('../../api/stockApi', () => ({
   default: {
     produitsAReapprovisionner: vi.fn(),
