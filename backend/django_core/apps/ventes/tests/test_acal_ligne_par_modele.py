@@ -4,7 +4,8 @@ une ligne panneau par modèle (produit explicite prioritaire), kWc des lignes
 ACAL353 (C-ACAL-VER-001) — la resynchro (``sync-layout`` puis ``sync-devis``
 du module) refuse en 409 nommé, sans rien écrire au devis, un document dont
 une surface pavée n'a pas de ``moduleWc`` ou dont un pan désigne un module
-absent de ``modules[]``.
+absent de ``modules[]``. ACAL354 (C-ACAL-VER-002) — de même une fiche
+désignée SANS ligne au devis et non tarifée (« tarifez la fiche … »).
 
 Catalogue réel en base, aucun patch de ``_pick_product`` ; HTTP réel
 (from-layout, sync-layout).
@@ -151,8 +152,24 @@ class LigneParModele(TestCase):
         devis = Devis.objects.get(pk=devis_id)
         return self._panneaux(devis_id), devis.total_ttc, devis.layout_hash
 
-    def _refus_aux_deux_routes(self, document, attendus, api_module):
-        r = self._from_layout(self._toit_douze())
+    def _api_directeur(self):
+        """Le module calepinage exige ``calepinage_gerer`` (rôle Directeur)."""
+        role = Role.objects.create(company=self.company, nom='Directeur',
+                                   permissions=list(DIRECTEUR_PERMISSIONS))
+        directeur = User.objects.create_user(
+            username='acal353-dir', password='x', company=self.company,
+            role=role, role_legacy='responsable')
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(directeur)}')
+        return api
+
+    def _refus_aux_deux_routes(self, initial, document, attendus,
+                               api_module):
+        """Né de ``from-layout`` (``initial``), puis ``document`` posté par
+        ``sync-layout`` ET par ``sync-devis`` du module : 409 nommé aux deux,
+        devis relu identique. Rend l'id du devis."""
+        r = self._from_layout(initial)
         self.assertEqual(r.status_code, 201, r.data)
         devis_id = r.data['id']
         avant = self._etat(devis_id)
@@ -173,6 +190,7 @@ class LigneParModele(TestCase):
                 self.assertIn(attendu, reponse.data['detail'])
         # Le refus précède toute écriture : lignes, TTC, empreinte relus.
         self.assertEqual(self._etat(devis_id), avant)
+        return devis_id
 
     def test_resynchro_refuse_surface_sans_puissance_et_module_non_resolu(
             self):
@@ -180,23 +198,40 @@ class LigneParModele(TestCase):
             company=self.company, nom='Onduleur réseau Growatt 50kW',
             sku='A63-OND50', prix_vente=Decimal('30000'),
             prix_achat=Decimal('1'), quantite_stock=100)
-        role = Role.objects.create(company=self.company, nom='Directeur',
-                                   permissions=list(DIRECTEUR_PERMISSIONS))
-        directeur = User.objects.create_user(
-            username='acal353-dir', password='x', company=self.company,
-            role=role, role_legacy='responsable')
-        api_module = APIClient()
-        api_module.credentials(
-            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(directeur)}')
+        api_module = self._api_directeur()
         surface = {'id': 's1', 'kind': 'sol', 'label': 'Champ au sol',
                    'rowAzimuthDeg': 90, 'tiltDeg': 25,
                    'engine': {'modules': 40}}
         self._refus_aux_deux_routes(
-            self._toit_douze(poseSurfaces=[surface]),
+            self._toit_douze(), self._toit_douze(poseSurfaces=[surface]),
             ('Surface de pose « Champ au sol »', 'moduleWc'), api_module)
         pan_orphelin = self._toit_douze()
         pan_orphelin['zones'][0]['geometry']['moduleId'] = 'mX'
         self._refus_aux_deux_routes(
-            pan_orphelin, ('Pan « Toit »',
-                           'le module « mX » ne figure pas dans « modules »'),
+            self._toit_douze(), pan_orphelin,
+            ('Pan « Toit »', 'le module « mX » ne figure pas dans « modules »'),
             api_module)
+
+    def test_resynchro_vers_fiche_non_tarifee_refusee(self):
+        initial = self._layout([_pan('A', 12, 'm1')],
+                               [_module('m1', self.p550, 550)])
+        premium = self._layout([_pan('A', 12, 'm2')],
+                               [_module('m2', self.p550_premium, 550)])
+        Produit.objects.filter(pk=self.p550_premium.pk).update(
+            prix_vente=Decimal('0'))
+        devis_id = self._refus_aux_deux_routes(
+            initial, premium,
+            ("Le module désigné par le calepinage n'est pas tarifé : "
+             "tarifez la fiche « Panneau mono 550W premium » (prix de vente) "
+             "puis relancez.",), self._api_directeur())
+        self.assertEqual(self._panneaux(devis_id), {self.p550.pk: 12})
+        # Fiche tarifée : la même resynchro crée la ligne premium et ramène
+        # l'ancienne à 0 (ACAL63 conservé).
+        Produit.objects.filter(pk=self.p550_premium.pk).update(
+            prix_vente=Decimal('3500'))
+        sync = self.api.post(
+            f'/api/django/ventes/devis/{devis_id}/sync-layout/', premium,
+            format='json')
+        self.assertEqual(sync.status_code, 200, sync.data)
+        self.assertEqual(self._panneaux(devis_id),
+                         {self.p550_premium.pk: 12})
