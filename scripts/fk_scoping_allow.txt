@@ -134,7 +134,6 @@ backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.created_by
 backend/django_core/apps/notifications/serializers.py::NotificationRoutingRuleSerializer.target_user
 backend/django_core/apps/parametres/serializers_audit.py::SettingsAuditLogSerializer.user
 backend/django_core/apps/publicapi/serializers.py::ApiKeySerializer.created_by
-backend/django_core/apps/records/serializers.py::AttachmentSerializer.uploaded_by
 backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_definition
 backend/django_core/apps/stock/serializers.py::RevisionKitSerializer.user
 backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.bon_commande
@@ -172,7 +171,6 @@ backend/django_core/apps/notifications/serializers.py::AnnonceLectureSerializer.
 backend/django_core/apps/outillage/serializers.py::KitOutillageItemSerializer.kit
 backend/django_core/apps/outillage/serializers.py::KitOutillageItemSerializer.outil
 backend/django_core/apps/publicapi/serializers.py::WebhookDeliverySerializer.webhook
-backend/django_core/apps/records/serializers.py::TaggedItemSerializer.tag
 backend/django_core/apps/reporting/saved_reports_api.py::EnvoiRapportSerializer.saved_report
 backend/django_core/apps/stock/serializers.py::LotEntrepotSerializer.emplacement
 backend/django_core/apps/stock/serializers.py::LotEntrepotSerializer.produit
