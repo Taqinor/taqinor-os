@@ -4,13 +4,4 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ADEP
 amorce: 3a7c3b882
-ids:
-  - ADEP2
-  - ADEP4
-  - ADEP15
-  - ADEP40
-  - ADEP41
-  - ADEP42
-  - ADEP44
-  - ADEP45
-  - ADEP46
+ids: []

@@ -1,0 +1,15 @@
+# ADEP99 P3.6 — PR jouet #941 (import app.* cassé) : fastapi-security FAILURE ⇒ backend-tests (requis) FAILURE ; PR docs-only #938 : fastapi-security SKIPPED, backend-tests SUCCESS
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P3_6_ci_jouet.txt
+=== PR jouet #941 (import app.* cassé dans backend/fastapi_ia) — checks
+https://github.com/Taqinor/taqinor-os/pull/941
+changes=SUCCESS https://github.com/Taqinor/taqinor-os/actions/runs/38050665105/job/114208961045
+fastapi-security=FAILURE https://github.com/Taqinor/taqinor-os/actions/runs/38050665105/job/114209010595
+backend-tests=FAILURE https://github.com/Taqinor/taqinor-os/actions/runs/38050665105/job/114210138493
+ci-gate=FAILURE https://github.com/Taqinor/taqinor-os/actions/runs/38050665105/job/114210138456
+=== PR docs-only #938 — checks
+https://github.com/Taqinor/taqinor-os/pull/938
+changes=SUCCESS
+fastapi-security=SKIPPED
+backend-tests=SUCCESS
