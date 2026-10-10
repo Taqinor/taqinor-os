@@ -98,7 +98,7 @@ def _lecteurs(layout, resultat):
         resultat=resultat)
     lus['reglementaire'] = (infos['nombre_modules'], infos['puissance_kwc'])
 
-    prevus, _source = asbuilt.pans_prevus(
+    prevus, _source = asbuilt._pans_prevus(
         SimpleNamespace(roof_layout=layout))
     lus['asbuilt'] = (sum(p['modules'] for p in prevus), ...)
 

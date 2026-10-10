@@ -119,7 +119,7 @@ class RetenirConceptionTest(BaseApiCalepinage):
         enregistrer_layout(self.calepinage, plus_tard, user=self.user)
         self.a.refresh_from_db()
         self.assertEqual(self.a.roof_layout, _toit(14))
-        prevus, source = asbuilt.pans_prevus(self.calepinage)
+        prevus, source = asbuilt._pans_prevus(self.calepinage)
         self.assertEqual(source, asbuilt.SOURCE_CALEPINAGE)
         self.assertEqual(sum(p['modules'] for p in prevus), 9)
 

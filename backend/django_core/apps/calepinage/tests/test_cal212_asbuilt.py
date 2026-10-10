@@ -20,7 +20,7 @@ from apps.calepinage.models import PoseReelle
 from apps.calepinage.services.asbuilt import (
     MENTION_ORPHELIN,
     MENTION_SANS_SAISIE,
-    comparer,
+    _comparer,
 )
 
 PREVUS = [
@@ -36,7 +36,7 @@ def _ligne(lignes, pan):
 class EcartMesureTest(unittest.TestCase):
 
     def test_ecart_est_la_difference_des_deux_saisies(self):
-        lignes = comparer(PREVUS, [
+        lignes = _comparer(PREVUS, [
             {'pan': 'Pan Sud', 'modules_poses': 11,
              'ecarts_position': 'Une rangée décalée vers le faîtage',
              'releve_le': '2026-09-19'},
@@ -49,7 +49,7 @@ class EcartMesureTest(unittest.TestCase):
         self.assertIn('faîtage', sud['ecarts_position'])
 
     def test_ecart_nul_quand_le_pose_egale_le_prevu(self):
-        lignes = comparer(PREVUS, [
+        lignes = _comparer(PREVUS, [
             {'pan': 'Pan Sud', 'modules_poses': 12, 'releve_le': '2026-09-19'},
         ])
         self.assertEqual(_ligne(lignes, 'Pan Sud')['ecart'], 0)
@@ -58,7 +58,7 @@ class EcartMesureTest(unittest.TestCase):
 class AbsenceDeSaisieTest(unittest.TestCase):
 
     def test_pan_non_releve_n_affiche_aucun_ecart(self):
-        lignes = comparer(PREVUS, [])
+        lignes = _comparer(PREVUS, [])
         for pan in ('Pan Sud', 'Pan Nord'):
             ligne = _ligne(lignes, pan)
             self.assertIsNone(ligne['pose'], pan)
@@ -66,14 +66,14 @@ class AbsenceDeSaisieTest(unittest.TestCase):
             self.assertEqual(ligne['mention'], MENTION_SANS_SAISIE)
 
     def test_zero_n_est_jamais_servi_a_la_place_d_un_ecart_inconnu(self):
-        lignes = comparer(PREVUS, [
+        lignes = _comparer(PREVUS, [
             {'pan': 'Pan Sud', 'modules_poses': 12, 'releve_le': '2026-09-19'},
         ])
         self.assertEqual(_ligne(lignes, 'Pan Sud')['ecart'], 0)
         self.assertIsNone(_ligne(lignes, 'Pan Nord')['ecart'])
 
     def test_pan_pose_absent_du_prevu_reste_visible(self):
-        lignes = comparer(PREVUS, [
+        lignes = _comparer(PREVUS, [
             {'pan': 'Auvent', 'modules_poses': 4, 'releve_le': '2026-09-19'},
         ])
         auvent = _ligne(lignes, 'Auvent')
@@ -86,7 +86,7 @@ class AbsenceDeSaisieTest(unittest.TestCase):
         self.assertEqual(auvent['mention'], MENTION_ORPHELIN)
 
     def test_aucun_pan_prevu_aucune_ligne_inventee(self):
-        self.assertEqual(comparer([], []), [])
+        self.assertEqual(_comparer([], []), [])
 
 
 class PoseReelleModeleTest(SimpleTestCase):
