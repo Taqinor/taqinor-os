@@ -2091,7 +2091,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reconnus + un pré-check de doublons ; l'utilisateur valide avant
         toute création. Sans clé OCR configurée : 503 douce, aucun appel
         réseau. Aucune image persistée au-delà du traitement (en mémoire)."""
-        from .services import CarteVisiteScanUnavailable, scan_carte_visite
+        from .leads_intake import CarteVisiteScanUnavailable, scan_carte_visite
 
         upload = request.FILES.get('file')
         if not upload:

@@ -25,7 +25,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import stages, leads_intake
 from apps.crm import cadence_touche
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -93,7 +93,7 @@ class LesTroisCheminsProduisentLaMemeRepriseTests(_Base):
 
     def test_chemin_3_une_nouvelle_demande_entrante_pose_la_meme(self):
         lead = self._lead_perdu()
-        self.assertTrue(services.reactivate_lead_on_new_touch(lead))
+        self.assertTrue(leads_intake.reactivate_lead_on_new_touch(lead))
         self.assertEqual(self._cadences_ouvertes(lead), {'reveil'})
 
     def test_les_trois_chemins_posent_le_MEME_nombre_de_touches(self):
@@ -104,7 +104,7 @@ class LesTroisCheminsProduisentLaMemeRepriseTests(_Base):
                           format='json')
         self._api().post(BULK_URL, {'ids': [b.pk], 'action': 'unset_perdu'},
                          format='json')
-        services.reactivate_lead_on_new_touch(c)
+        leads_intake.reactivate_lead_on_new_touch(c)
         comptes = {self._ouvertes(x).count() for x in (a, b, c)}
         self.assertEqual(len(comptes), 1, comptes)
         self.assertNotIn(0, comptes)

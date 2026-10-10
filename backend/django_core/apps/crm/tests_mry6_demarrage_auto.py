@@ -22,6 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import services, stages
+from apps.crm import leads_intake
 from apps.crm import leads_meta
 from apps.crm import cadence_plan
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -231,7 +232,7 @@ class PointsDappelTests(_Base):
         self.assertGreater(self._touches(lead), 0)
 
     def test_evenement_marketing(self):
-        lead = services.create_lead_from_evenement_marketing(
+        lead = leads_intake.create_lead_from_evenement_marketing(
             company=self.company, nom='Salon',
             telephone='+212661334455', email='salon@example.com')
         self.assertGreater(self._touches(lead), 0)
@@ -264,7 +265,7 @@ class PointsExclusTests(_Base):
             company=self.company, nom='Client', email='c@example.com')
         # ZSAV8 — renvoie (lead, created) : jamais le lead seul (voir
         # apps.sav.views, seul autre appelant, qui déballe pareil).
-        lead, _created = services.create_lead_depuis_ticket(
+        lead, _created = leads_intake.create_lead_depuis_ticket(
             company=self.company, user=self.acteur, client=client,
             contexte='Suite SAV')
         self.assertEqual(

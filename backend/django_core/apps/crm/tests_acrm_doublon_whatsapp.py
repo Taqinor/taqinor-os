@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm import services, stages
+from apps.crm import stages, leads_intake
 from apps.crm import leads_doublons
 from apps.crm.models import Lead
 from apps.crm.serializers import LEAD_PII_FIELDS
@@ -43,7 +43,7 @@ class DoublonWhatsappTests(TestCase):
 
     def test_whatsapp_entrant_sans_doublon(self):
         avant = Lead.objects.filter(company=self.company).count()
-        lead = services.resolve_or_create_lead_from_whatsapp(
+        lead = leads_intake.resolve_or_create_lead_from_whatsapp(
             self.company, '+212612345678', nom='Client')
         self.assertEqual(lead.pk, self.lead.pk)
         self.assertEqual(Lead.objects.filter(company=self.company).count(),
