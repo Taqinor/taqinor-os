@@ -1241,6 +1241,24 @@ def _marqueurs_cgv_ci(devis, tva_note):
             "tva_note": tva_note or ""}
 
 
+def _doc_texts_geles(devis):
+    """APDF14 (C-APDF-006) — textes contractuels GELÉS à l'envoi (entrée
+    ``doc_texts_geles`` d'APDF20) d'un devis envoyé ou signé, réduits à ses
+    vraies surcharges (≠ défaut du moteur, comme ``as_doc_texts``), ou
+    ``None`` : brouillon, ou envoyé d'avant ce gel (comportement inchangé)."""
+    if getattr(devis, "statut", None) == "brouillon":
+        return None
+    for c in (getattr(devis, "clauses_appliquees", None) or []):
+        if (isinstance(c, dict) and c.get("type") == "doc_texts_geles"
+                and isinstance(c.get("textes"), dict)):
+            from .generate_devis_premium import DEFAULT_DOC_TEXTS
+            return {cle: copy.deepcopy(val)
+                    for cle, val in c["textes"].items()
+                    if val not in (None, "", [], {})
+                    and val != DEFAULT_DOC_TEXTS.get(cle)}
+    return None
+
+
 def _source_cgv_ci(devis):
     """CIQ218 / APDF12 — la variante C&I (``{titre, bullets, mode}``) GELÉE à
     l'envoi, sinon — brouillon jamais envoyé — la variante vive ; ``None``
@@ -3514,6 +3532,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             doc_texts = dict(doc_texts, cgv_bullets=[
                 str(b) for b in _c["bullets"]])
             break
+    # APDF14 — devis envoyé ou signé : l'ENSEMBLE des textes gelés à l'envoi
+    # (CGV, titre, garanties, bon pour accord…) prime sur les textes vifs —
+    # un texte édité ensuite dans Paramètres ne change pas ce que le client a
+    # reçu. La boucle ci-dessus ne sert plus qu'aux envoyés d'avant ce gel.
+    _geles = _doc_texts_geles(devis)
+    if _geles is not None:
+        doc_texts = _geles
 
     # DC1 — identité société (multi-tenant) : nom/RC/ICE/RIB/banque/adresse/tel/
     # couleur lus depuis CompanyProfile via le sélecteur parametres. Le moteur

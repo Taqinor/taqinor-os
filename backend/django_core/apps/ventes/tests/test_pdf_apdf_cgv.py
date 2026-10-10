@@ -15,6 +15,11 @@ impriment ``cgv_imprimees(data)``, sans changer les nombres de pages.
 Test-du-test : remettre le bloc « Conditions » en dur de
 ``residential/trust.py`` ⇒ ``test_puces_societe_imprimees[residentiel]``
 échoue.
+
+APDF14 — ``GelCompletLectureTests`` : un devis envoyé ou signé imprime
+l'ENSEMBLE des textes contractuels gelés à l'envoi (``doc_texts_geles``,
+APDF20) ; un brouillon lit les textes vifs ; un envoyé d'avant ce gel garde
+le comportement d'hier.
 """
 from django.test import SimpleTestCase, TestCase, tag
 
@@ -223,3 +228,113 @@ class CgvTousFormatsTests(TestCase):
                     (self._lire(devis, {})[1],
                      self._lire(devis, {'pdf_mode': 'onepage'})[1]),
                     attendu)
+
+
+# ── APDF14 — lecture du gel COMPLET des textes contractuels ────────────────
+# Test-du-test : ignorer l'entrée ``doc_texts_geles`` dans
+# ``build_quote_data`` ⇒ ``test_envoye_imprime_textes_A_apres_edition``
+# échoue.
+
+TEXTES_A = {'cgv_bullets': ['CGV-A puce'], 'cgv_titre': 'TITRE-A',
+            'bpa_mention': 'BPA-A', 'garantie_detail': 'GARANTIE-A'}
+TEXTES_B = {'cgv_bullets': ['CGV-B puce'], 'cgv_titre': 'TITRE-B',
+            'bpa_mention': 'BPA-B', 'garantie_detail': 'GARANTIE-B'}
+
+
+class GelCompletLectureTests(TestCase):
+    """APDF14 — devis envoyé : textes A gelés, édités en B ensuite."""
+
+    def setUp(self):
+        from apps.ventes.tests.test_pdf_apdf_identite import (
+            devis_residentiel)
+        self.company = make_company(slug='apdf14-co', nom='APDF14')
+        self._textes(TEXTES_A)
+        self.devis = devis_residentiel(self.company, 'DEV-APDF14-1')
+
+    def _textes(self, textes):
+        from apps.parametres.models_documents import DocumentTemplates
+        modele = DocumentTemplates.get(company=self.company)
+        for cle, valeur in textes.items():
+            setattr(modele, cle, valeur)
+        modele.save()
+
+    def _envoyer(self):
+        from apps.ventes.domain.envoi import mark_devis_sent
+        mark_devis_sent(devis=self.devis)
+        self.devis.refresh_from_db()
+
+    def _legacy_etude(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine.builder import clean_pdf_options
+        return G.render_html_for(build_quote_data(
+            self.devis, clean_pdf_options({'include_etude': True})))
+
+    def test_envoye_imprime_textes_A_apres_edition(self):
+        self._envoyer()
+        avant = list(self.devis.clauses_appliquees)
+        self._textes(TEXTES_B)
+        data = build_quote_data(self.devis, {})
+        self.assertEqual(cgv_imprimees(data),
+                         {'titre': 'TITRE-A', 'puces': ['CGV-A puce']})
+        self.assertEqual(data['doc_texts']['bpa_mention'], 'BPA-A')
+        html = self._legacy_etude()
+        for attendu in ('TITRE-A', 'BPA-A', 'GARANTIE-A', 'CGV-A puce'):
+            self.assertIn(attendu, html)
+        for interdit in ('TITRE-B', 'BPA-B', 'GARANTIE-B', 'CGV-B'):
+            self.assertNotIn(interdit, html)
+        # CLAUSE PERSISTANCE — le rendu ne touche pas au gel.
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.clauses_appliquees, avant)
+
+    def test_brouillon_lit_vif(self):
+        self._textes(TEXTES_B)
+        data = build_quote_data(self.devis, {})
+        self.assertEqual(cgv_imprimees(data),
+                         {'titre': 'TITRE-B', 'puces': ['CGV-B puce']})
+        self.assertEqual(data['doc_texts']['bpa_mention'], 'BPA-B')
+
+    def test_ancien_envoye_sans_gel(self):
+        from apps.ventes.models import Devis
+        self._envoyer()
+        sans_gel = [c for c in self.devis.clauses_appliquees
+                    if not (isinstance(c, dict)
+                            and c.get('type') == 'doc_texts_geles')]
+        Devis.objects.filter(pk=self.devis.pk).update(
+            clauses_appliquees=sans_gel)
+        self.devis.refresh_from_db()
+        self._textes(TEXTES_B)
+        data = build_quote_data(self.devis, {})
+        # Comportement d'avant APDF20 : puces gelées (ERR-QJR668), le reste vif.
+        self.assertEqual(cgv_imprimees(data)['puces'], ['CGV-A puce'])
+        self.assertEqual(data['doc_texts']['cgv_titre'], 'TITRE-B')
+        self.assertEqual(data['doc_texts']['bpa_mention'], 'BPA-B')
+
+    @tag('pdf')
+    def test_defaut_premium_imprime_textes_A(self):
+        from apps.ventes.tests.test_pdf_apdf_identite import (
+            rendre_pdf, texte_pdf)
+        self._envoyer()
+        self._textes(TEXTES_B)
+        texte = texte_pdf(rendre_pdf(self.devis))
+        self.assertIn('CGV-A puce', texte)
+        self.assertNotIn('CGV-B', texte)
+
+
+class DocTextsGelesFiltreTests(SimpleTestCase):
+    """APDF14 — seules les vraies surcharges du gel sont reprises."""
+
+    def test_defauts_geles_ignores(self):
+        from types import SimpleNamespace
+        from apps.ventes.quote_engine.builder import _doc_texts_geles
+        from apps.ventes.quote_engine.generate_devis_premium import (
+            DEFAULT_DOC_TEXTS)
+        entree = {'type': 'doc_texts_geles', 'version': 2, 'textes': {
+            'cgv_bullets': list(DEFAULT_DOC_TEXTS['cgv_bullets']),
+            'cgv_titre': 'TITRE-A', 'garantie_titre': ''}}
+        envoye = SimpleNamespace(statut='envoye', clauses_appliquees=[entree])
+        self.assertEqual(_doc_texts_geles(envoye), {'cgv_titre': 'TITRE-A'})
+        brouillon = SimpleNamespace(statut='brouillon',
+                                    clauses_appliquees=[entree])
+        self.assertIsNone(_doc_texts_geles(brouillon))
+        self.assertIsNone(_doc_texts_geles(
+            SimpleNamespace(statut='envoye', clauses_appliquees=[])))
