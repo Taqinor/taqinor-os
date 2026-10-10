@@ -46,6 +46,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import check_api_contract as cac  # noqa: E402
+import check_duplicats_litteraux as cdl  # noqa: E402
+import check_ownership as cown  # noqa: E402
 import check_services_appeles as csa  # noqa: E402
 import check_taches_cablage as ctc  # noqa: E402
 
@@ -163,8 +165,8 @@ def englobant(defs, ligne: int) -> str:
 
 def _analyser(lot):
     """Worker (process pool) : [(rel, entree)] pour un lot de fichiers."""
-    racine, rels, motif = lot
-    filtre = re.compile(motif) if motif else None
+    racine, rels, motif, fixe = lot
+    filtre = re.compile(re.escape(motif) if fixe else motif) if motif else None
     sortie = []
     for rel in rels:
         try:
@@ -187,29 +189,29 @@ def _analyser(lot):
     return sortie
 
 
-def fichiers_py(racine=None, narrow=None) -> list:
+def fichiers_py(racine=None, narrow=None, fixe=False) -> list:
     if narrow:
-        rels = git_grep(narrow, PATHSPECS_PY, racine, liste=True)
+        rels = git_grep(narrow, PATHSPECS_PY, racine, liste=True, fixe=fixe)
     else:
         rels = git("ls-files", "--", *PATHSPECS_PY, racine=racine).split()
     return sorted(r for r in rels if "/migrations/" not in r and r.endswith(".py"))
 
 
-def index(narrow=None, racine=None, *, cache=True, cache_dir=None) -> dict:
+def index(narrow=None, racine=None, *, fixe=False, cache=True, cache_dir=None) -> dict:
     """{rel: {'defs': [Def], 'lignes': n, ('refs', 'noms_utilises' si narrow)}}."""
     racine = Path(racine or ROOT)
     debut = time.perf_counter()
 
     def calcul():
-        rels = fichiers_py(racine, narrow)
-        lots = [(str(racine), rels[i:i + 200], narrow) for i in range(0, len(rels), 200)]
+        rels = fichiers_py(racine, narrow, fixe)
+        lots = [(str(racine), rels[i:i + 200], narrow, fixe) for i in range(0, len(rels), 200)]
         if len(lots) > 2:
             with ProcessPoolExecutor() as pool:
                 resultats = list(pool.map(_analyser, lots))
         else:
             resultats = [_analyser(lot) for lot in lots]
         return {rel: entree for lot in resultats for rel, entree in lot}
-    valeur = _memo_disque("index", racine, narrow, cache_dir, calcul) if cache else calcul()
+    valeur = _memo_disque("index", racine, (narrow, fixe), cache_dir, calcul) if cache else calcul()
     CHRONO[f"index {narrow or 'complet'}"] = (len(valeur), round(time.perf_counter() - debut, 1))
     return valeur
 
@@ -551,7 +553,390 @@ def _sites_ecriture(arbre, champ: str, modele: str = "") -> list:
     return sites
 
 
-COMMANDES = {"appelants": appelants, "lecteurs-front": lecteurs_front, "ecrivains": ecrivains}
+# --- 6. Lot 2 (AMET81) : assertions existantes, lecteurs d'un sample, listes figees ---
+
+PROPRES = ("scripts/tests/golden/audit_tache/", "scripts/tests/test_audit_tache.py", "scripts/audit_tache.py")
+PATHSPECS_TESTS = ("backend", "frontend/src", "frontend/e2e", "scripts/tests", "apps/web/src")
+_CODE_HTTP = re.compile(r"(?:status_code\s*(?:,|==|!=)\s*|HTTP_|assert\w*\(\s*)(\d{3})\b")
+_ROLE = re.compile(r"""\brole\w*\s*=\s*['"]([\w-]+)['"]|\bRole\.([A-Z_]+)|(is_superuser)\s*=\s*True""")
+_VERBE_TEST = re.compile(r"\.(get|post|put|patch|delete)\(")
+_NOM_TEST_JS = re.compile(r"""\b(?:it|test|describe)\s*\(\s*(['"`])(.+?)\1""")
+_TYPE_DE_CLE = re.compile(r"""(?m)^TYPE_DE_CLE\s*=\s*['"](par_ligne|par_symbole)['"]""")
+
+
+def categorie(rel: str) -> str | None:
+    """test-py | test-front | e2e | contract_sample | golden | None (pas une assertion ;
+    les goldens et le test de CET outil citent les symboles par construction)."""
+    if rel.startswith(PROPRES):
+        return None
+    if rel.endswith(".json"):
+        return "contract_sample" if "/contract_samples/" in rel else "golden" if "golden" in rel else None
+    if rel.startswith("frontend/e2e/"):
+        return "e2e"
+    if rel.endswith(".py"):
+        return "test-py" if csa.est_test(Path(rel)) else None
+    return "test-front" if ctc.est_test(rel) else None
+
+
+def _tests_py(rel: str, lignes: set, racine) -> list:
+    """[(Classe::test, debut, fin, setUp)] des fonctions de test qui contiennent
+    une des lignes — ou, depuis une constante de module (`URL = '…'`), qui la nomment."""
+    texte = (Path(racine) / rel).read_text(encoding="utf-8", errors="replace")
+    arbre = ast.parse(texte)
+    defs = definitions(arbre)
+    constantes = {t.id for n in arbre.body if isinstance(n, ast.Assign) and n.lineno in lignes
+                  for t in n.targets if isinstance(t, ast.Name)}
+    trouves = []
+    for d in defs:
+        if d.kind != "fonction" or not d.qualname.split(".")[-1].startswith("test"):
+            continue
+        dedans = any(d.debut <= x <= d.fin for x in lignes)
+        if not dedans and constantes:
+            noeud = next(n for n in ast.walk(arbre) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                         and n.lineno <= d.debut <= n.end_lineno and n.name == d.qualname.split(".")[-1])
+            dedans = any(isinstance(n, ast.Name) and n.id in constantes for n in ast.walk(noeud))
+        if dedans:
+            classe = d.qualname.rsplit(".", 1)[0] if "." in d.qualname else ""
+            setup = next((x for x in defs if x.qualname == f"{classe}.setUp"), None)
+            trouves.append((d.qualname.replace(".", "::"), d.debut, d.fin, setup))
+    return trouves
+
+
+def _affirme(rel: str, debut: int, fin: int, setup, racine) -> dict:
+    """Codes HTTP, verbes et roles affirmes dans le corps (+ setUp pour les roles)."""
+    lignes = (Path(racine) / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+    corps = "\n".join(lignes[debut - 1:fin])
+    contexte = corps + ("\n".join(lignes[setup.debut - 1:setup.fin]) if setup else "")
+    return {"codes": sorted({int(c) for c in _CODE_HTTP.findall(corps) if 100 <= int(c) < 600}),
+            "verbes": sorted({v.upper() for v in _VERBE_TEST.findall(corps)}),
+            "roles": sorted({next(g for g in m if g) for m in _ROLE.findall(contexte)})}
+
+
+def _motif_route(route: tuple, carte: dict, hook: bool):
+    """(litteral git grep, regex) d'une route dans un test, montage `/api/<x>/` libre.
+    Hook de ViewSet : la base, sauf si suivie d'un segment frere litteral (`statistiques`)."""
+    segs = route[2:]
+    trou = r"[^/'\"\s]+"
+    if not hook:
+        corps = "/".join(trou if s in (cac.ANY, cac.PK) else re.escape(s) for s in segs)
+        litteral = next(s for s in reversed(segs) if s not in (cac.ANY, cac.PK))
+        return litteral, re.compile(r"(?<![\w-])" + corps + r"/?(?=['\"?#\s)]|$)")
+    base = segs[:-1] if segs[-1] in (cac.ANY, cac.PK) else segs
+    n = 2 + len(base)
+    freres = {r[n] for r in carte["routes"] if r[2:n] == base and len(r) > n and r[n] not in (cac.ANY, cac.PK)}
+    freres_detail = {r[n + 1] for r in carte["routes"] if r[2:n] == base and len(r) > n + 1
+                     and r[n] in (cac.ANY, cac.PK) and r[n + 1] not in (cac.ANY, cac.PK)}
+    motif = r"(?<![\w-])" + "/".join(map(re.escape, base)) + "/"
+    if freres:
+        motif += r"(?!(?:%s)(?:/|['\"?]))" % "|".join(map(re.escape, sorted(freres)))
+    if freres_detail:
+        motif += r"(?!%s/(?:%s)(?:/|['\"?]))" % (trou, "|".join(map(re.escape, sorted(freres_detail))))
+    return "/".join(base) + "/", re.compile(motif)
+
+
+def assertions_existantes(cible: str, anciens=(), racine=None) -> dict:
+    racine = Path(racine or ROOT)
+    rel, qual, _ = resoudre(cible, racine)
+    sites: dict = {}   # rel -> {ligne: via}
+    if racine.resolve() == ROOT.resolve():
+        carte = carte_routes()
+        for route, verbes, vue in routes_du_symbole(rel, qual, carte):
+            litteral, motif = _motif_route(route, carte, hook=vue.endswith((".list", ".retrieve")))
+            for f, ligne, texte in git_grep(litteral, PATHSPECS_TESTS, racine, fixe=True):
+                if categorie(f) and motif.search(texte):
+                    sites.setdefault(f, {})[ligne] = (f"route {_route_texte(route)}", verbes)
+    nom = qual.split(".")[-1]
+    if not re.search(r"(ViewSet|View)$", qual.split(".")[0]):
+        for f, ligne, _ in git_grep(nom, PATHSPECS_TESTS, racine, fixe=True, mot=True):
+            if categorie(f) and f != rel:
+                sites.setdefault(f, {}).setdefault(ligne, (f"nomme `{nom}`", None))
+    for ancien in anciens:
+        for f, ligne, _ in git_grep(ancien, PATHSPECS_TESTS, racine, fixe=True):
+            if categorie(f):
+                sites.setdefault(f, {})[ligne] = (f"littéral « {ancien} »", None)
+    assertions = []
+    for f, par_ligne in sorted(sites.items()):
+        cat = categorie(f)
+        if cat == "test-py":
+            for test, debut, fin, setup in _tests_py(f, set(par_ligne), racine):
+                lignes = [x for x in par_ligne if debut <= x <= fin] or sorted(par_ligne)
+                via = sorted({par_ligne[x][0] for x in lignes})
+                affirme = _affirme(f, debut, fin, setup, racine)
+                attendus = set().union(*[par_ligne[x][1] or set() for x in lignes])
+                if attendus and affirme["verbes"] and not attendus & set(affirme["verbes"]) \
+                        and not any(v.startswith("littéral") for v in via):
+                    continue  # la route est appelee, mais pas avec un verbe que sert le symbole
+                assertions.append({"test": f"{f}::{test}", "categorie": cat, "via": via, **affirme, "verdict": ""})
+        else:
+            noms = {_nom_test_js(f, x, racine) for x in par_ligne} if cat in ("test-front", "e2e") else {None}
+            for nom_test in sorted(noms, key=str):
+                assertions.append({"test": f"{f}::{nom_test}" if nom_test else f, "categorie": cat,
+                                   "via": sorted({v for v, _ in par_ligne.values()}), "codes": [], "verbes": [],
+                                   "roles": [], "verdict": ""})
+    resume = (f"`{a['test']}` ({', '.join(a['verbes'] + [str(c) for c in a['codes']] + a['roles']) or a['categorie']})"
+              for a in assertions)
+    texte = ("Assertions existantes : " + (" → ⟨verdict⟩ ; ".join(resume) or "aucune")
+             + " — verdict à remplir : « reste vert » ou « réaligner » (alors dans `Files:`).")
+    return {"cible": f"{rel}::{qual}", "anciens": list(anciens), "assertions": assertions, "texte": texte}
+
+
+def _nom_test_js(rel: str, ligne: int, racine) -> str | None:
+    lignes = (Path(racine) / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+    for numero in range(min(ligne, len(lignes)) - 1, -1, -1):
+        m = _NOM_TEST_JS.search(lignes[numero])
+        if m:
+            return m.group(2)
+    return None
+
+
+def lecteurs_sample(sample: str, racine=None) -> dict:
+    """Fichiers de CODE qui chargent le sample (chaine hors commentaire / docstring)."""
+    racine = Path(racine or ROOT)
+    nom = Path(sample).name
+    trouves = {}
+    for f, ligne, _ in git_grep(nom, PATHSPECS_TESTS, racine, fixe=True):
+        if f.endswith(".md") or f.endswith(nom) or f.startswith(PROPRES):
+            continue
+        texte = (racine / f).read_text(encoding="utf-8", errors="replace")
+        if f.endswith(".py"):
+            arbre = ast.parse(texte)
+            docs = {id(n.value) for n in ast.walk(arbre) if isinstance(n, ast.Expr)}
+            charge = any(isinstance(n, ast.Constant) and isinstance(n.value, str) and nom in n.value
+                         and id(n) not in docs for n in ast.walk(arbre))
+        else:
+            charge = nom in "".join(t[3] for t in cac.scan_js(texte)[1])
+        if charge:
+            trouves.setdefault(f, []).append(ligne)
+    lecteurs = [{"fichier": f, "lignes": lg, "categorie": categorie(f) or ("front" if f.startswith("frontend")
+                 else "code")} for f, lg in sorted(trouves.items())]
+    par_cat: dict = {}
+    for x in lecteurs:
+        par_cat[x["categorie"]] = par_cat.get(x["categorie"], 0) + 1
+    texte = (f"Contrat partagé : `{nom}` chargé par {len(lecteurs)} fichier(s) ("
+             + ", ".join(f"{k} {v}" for k, v in sorted(par_cat.items())) + ") — "
+             + ", ".join(f"`{x['fichier']}`" for x in lecteurs) + ".")
+    return {"sample": nom, "lecteurs": lecteurs, "texte": texte}
+
+
+def listes_figees(fichier: str, racine=None) -> dict:
+    """Baselines / allowlists / registres (scripts/, docs/ racine, api-contracts,
+    OpenAPI) qui citent le fichier ou une route qu'il sert ; garde proprietaire,
+    type de cle (declare `TYPE_DE_CLE` ou deduit) et commande de regeneration."""
+    racine = Path(racine or ROOT)
+    rel = fichier if (racine / fichier).is_file() else f"{DJANGO_REL}/{fichier}"
+    court = rel[len(DJANGO_REL) + 1:] if rel.startswith(DJANGO_REL + "/") else rel
+    cites = {}
+    for f, ligne, texte in git_grep(court, ("scripts/*", "docs/*.md", "docs/*.yml"), racine, fixe=True):
+        if "/" not in f.split("/", 1)[1] and "PLAN" not in f and Path(f).name not in ("audit_tache.py", "ci_guards.py"):
+            cites.setdefault(f, []).append((ligne, texte))
+    if racine.resolve() == ROOT.resolve():
+        arbre = ast.parse((racine / rel).read_text(encoding="utf-8", errors="replace"))
+        carte = carte_routes()
+        for classe in (n.name for n in arbre.body if isinstance(n, ast.ClassDef)):
+            for route, _, _ in routes_du_symbole(rel, classe, carte):
+                motif = re.compile(re.escape("/" + "/".join(route)).replace(re.escape(cac.PK), r"(?:<[^>]*>|\{[^}]*\})")
+                                   + r"/?(?=[\s\[]|$)")
+                for f in ("docs/api-contracts.md", "docs/openapi-schema.yml"):
+                    for ligne, texte in enumerate((racine / f).read_text(encoding="utf-8").splitlines(), 1):
+                        if motif.search(texte):
+                            cites.setdefault(f, []).append((ligne, texte))
+    gardes = []
+    for liste, lignes in sorted(cites.items()):
+        proprietaires = [liste] if liste.endswith(".py") else sorted(
+            g for g in git_grep(Path(liste).name, ("scripts/check_*.py",), racine, fixe=True, liste=True))
+        if not proprietaires and liste.startswith("docs/"):
+            continue  # un document qu'aucune garde ne lit n'est pas une liste figee
+        for garde in proprietaires or ["(aucune garde ne la lit)"]:
+            source = (racine / garde).read_text(encoding="utf-8", errors="replace") if garde.endswith(".py") else ""
+            declare = _TYPE_DE_CLE.search(source)
+            ecriture = re.search(r"--write[\w-]*", source)
+            par_ligne = any(re.search(re.escape(court) + r"[:#]\d+", t) for _, t in lignes)
+            deduit = "par_ligne" if par_ligne else "par_symbole"
+            gardes.append({"garde": garde, "liste": liste, "citations": len(lignes),
+                           "type_de_cle": declare.group(1) if declare else deduit, "declare": bool(declare),
+                           "regeneration": f"python {garde} {ecriture.group(0)}" if ecriture else "à la main"})
+    texte = "Listes figées : " + (" ; ".join(
+        f"`{g['liste']}` ({g['citations']} citation(s)) ← `{Path(g['garde']).name}` ("
+        + (g["type_de_cle"] if g["declare"] else f"TYPE_DE_CLE absent (déduit : {g['type_de_cle']})")
+        + f") → régénérer : `{g['regeneration']}`" for g in gardes)
+        or f"aucune (grep `{court}` dans scripts/ et docs/ : 0)") + "."
+    return {"fichier": rel, "gardes": gardes, "texte": texte}
+
+
+# --- 7. Lot 3 (AMET82) : jumeaux, emplacement, test canonique, tampon (API `inspecter`) ---
+
+MUR = 2000
+
+_TAMPON = re.compile(r"\(gen ([0-9a-f]{7,40}) ([^\s:()]+)::([\w.]+)#([0-9a-f]{8})\)")
+_ID_TACHE = re.compile(r"(?:^|_)[a-z]+\d+[a-z]?(?=_)")
+
+
+def _lignes_corps(rel: str, d, racine) -> list:
+    lignes = (Path(racine) / rel).read_text(encoding="utf-8", errors="replace").splitlines()[d.debut - 1:d.fin]
+    return [x.strip() for x in lignes[1:] if x.strip() and not x.strip().startswith(("#", '"', "'"))]
+
+
+def jumeaux(cible: str, racine=None) -> dict:
+    """Meme nom, corps AST identique (TOUS, jamais tronques), bloc litteral
+    duplique, meme segment d'URL servi ailleurs, copies apps/web / PDF."""
+    racine = Path(racine or ROOT)
+    rel, qual, d = resoudre(cible, racine)
+    nom = qual.split(".")[-1]
+    corps = _lignes_corps(rel, d, racine)
+    amorce = max(corps, key=len) if corps else None
+    identiques = []
+    candidats = index(narrow=amorce, fixe=True, racine=racine) if amorce else index(racine=racine)
+    for f, e in sorted(candidats.items()):
+        identiques += [{"symbole": f"{f}::{x.qualname}", "cible": f == rel and x.qualname == qual}
+                       for x in e["defs"] if x.empreinte == d.empreinte and x.kind == d.kind]
+    meme_nom = [f"{f}::{x.qualname}" for f, e in sorted(index(narrow=r"(def|class) +%s\b" % nom, racine=racine).items())
+                for x in e["defs"] if x.qualname.split(".")[-1] == nom and x.empreinte != d.empreinte]
+    blocs = []
+    if racine.resolve() == ROOT.resolve():
+        duplicats, _ = cdl.analyse()
+        for dup in duplicats:
+            if any(b.fichier == rel and b.debut <= d.fin and b.fin >= d.debut for b in dup.blocs):
+                blocs.append({"empreinte": dup.empreinte, "lignes": dup.nb_lignes,
+                              "fichiers": [f for f in dup.fichiers if f != rel]})
+    segments = []
+    if racine.resolve() == ROOT.resolve() and re.search(r"(ViewSet|View)$", qual.split(".")[0]):
+        carte = carte_routes()
+        miens = routes_du_symbole(rel, qual, carte)
+        derniers = {next(x for x in reversed(r) if x not in (cac.ANY, cac.PK)) for r, _, _ in miens}
+        classe = qual.split(".")[0]
+        for route, (module, ref, _) in sorted(carte["vues"].items()):
+            if ref and ref[1] != classe and route[1] == "django" and route[-1] in derniers:
+                segments.append(f"{_route_texte(route)} ({ref[1]})")
+    copies = sorted({f for f, _, _ in git_grep(nom, ("apps/web/src", "backend/django_core/templates/pdf",
+                                                     f"{DJANGO_REL}/apps/ventes/quote_engine"), racine,
+                                               fixe=True, mot=True) if f != rel})
+    par_fichier: dict = {}
+    for j in identiques:
+        f, q = j["symbole"].split("::", 1)
+        par_fichier.setdefault(f, []).append(q)
+    texte = (f"Jumeaux : corps identiques {len(identiques)} (cible comprise, liste complète) — "
+             + " ; ".join(f"`{f}` : {', '.join(qs)}" for f, qs in par_fichier.items())
+             + f" ; même nom, autre corps {len(meme_nom)}"
+             + (f" ; blocs littéraux dupliqués {len(blocs)} (" + ", ".join(
+                 f"{b['lignes']} l. avec {', '.join(f'`{x}`' for x in b['fichiers'])}" for b in blocs) + ")" if blocs
+                else " ; blocs littéraux dupliqués 0")
+             + (f" ; même segment d'URL servi ailleurs : {', '.join(f'`{x}`' for x in segments)}" if segments else "")
+             + (f" ; copies apps/web / PDF : {', '.join(f'`{x}`' for x in copies)}" if copies else "")
+             + " → verdict : « traité ici, survivant X » / « autre geste »." + "\n" + tampon(rel, qual, d, racine))
+    return {"cible": f"{rel}::{qual}", "corps_identiques": identiques, "nb_corps_identiques": len(identiques),
+            "meme_nom": meme_nom, "blocs_litteraux": blocs, "meme_segment_url": segments, "copies": copies,
+            "texte": texte}
+
+
+def _spl_ouvertes(rel: str, nom: str) -> list:
+    court = rel[len(DJANGO_REL) + 1:] if rel.startswith(DJANGO_REL + "/") else rel
+    # Le symbole DEPLACE est dans le titre ou dans la liste `cible ← N symboles : a, b, nom ;`.
+    deplace = re.compile(r"(?:^[^:]*|←[^;]*)\b%s\b" % re.escape(nom))
+    return sorted(t.identifiant for t in ctc.lire_taches() if t.identifiant.startswith("SPL") and not t.close
+                  and "deplac" in t.normalise.split(":", 1)[0] and deplace.search(t.texte)
+                  and (court in t.texte or court.split("/", 1)[-1] in t.texte))
+
+
+def emplacement(cible: str, racine=None) -> dict:
+    racine = Path(racine or ROOT)
+    rel, qual, d = resoudre(cible, racine)
+    total = (racine / rel).read_text(encoding="utf-8", errors="replace").count("\n") + 1
+    spl = _spl_ouvertes(rel, qual.split(".")[-1]) if racine.resolve() == ROOT.resolve() else []
+    texte = (f"Emplacement : `{rel}::{qual}` ({total} l. ; symbole l. {d.debut}-{d.fin}, {d.fin - d.debut + 1} l."
+             + (f" ; ≥ {MUR} l. = mur : point d'insertion après `{qual}` (l. {d.fin}) ou cible d'extraction"
+                if total >= MUR else "")
+             + (f" ; SPL ouvert(s) qui déplace(nt) le symbole : {', '.join(spl)} → `@after: {', '.join(spl)}`"
+                if spl else "") + ").")
+    return {"cible": f"{rel}::{qual}", "lignes": total, "debut": d.debut, "fin": d.fin, "mur": total >= MUR,
+            "spl": spl, "texte": texte}
+
+
+def test_canonique(cible: str, racine=None) -> dict:
+    """Modules de test EXISTANTS classes : references au symbole, puis a ses
+    appelants, puis au theme (nom des fichiers appelants) ; proprietaire de chacun."""
+    racine = Path(racine or ROOT)
+    rel, qual, _ = resoudre(cible, racine)
+    nom = qual.split(".")[-1]
+    app = "/".join(rel.split("/")[:4]) if rel.startswith(DJANGO_REL + "/apps/") else str(Path(rel).parent.as_posix())
+    candidats = {f for f in git("ls-files", "--", app, racine=racine).split() if f.endswith(".py")
+                 and csa.est_test(Path(f))}
+    candidats |= {f for f, _, _ in git_grep(nom, ("backend",), racine, fixe=True, mot=True) if csa.est_test(Path(f))}
+    idx = index(narrow=r"\b%s\b" % re.escape(nom), racine=racine)
+    appelants_ = {englobant(e["defs"], ln).split(".")[0] for f, e in idx.items() if not csa.est_test(Path(f))
+                  for k, v, ln in e.get("refs", ()) if k != "chaine" and v == nom} - {"<module>", qual.split(".")[0]}
+    themes = {Path(f).stem for f, e in idx.items() if not csa.est_test(Path(f)) and f != rel} | {Path(rel).stem}
+    themes -= {"services", "views", "models", "utils", "selectors", "__init__"}
+    # Affinite d'identifiant : `tests_fg328_kitting.py` teste les vues « FG328 » qui appellent le symbole.
+    entetes = [(racine / f).read_text(encoding="utf-8", errors="replace")[:3000] for f in idx if f != rel
+               and not csa.est_test(Path(f))] + [_corps_texte(rel, qual, racine)]
+    ids = {i.lower() for t in entetes for i in re.findall(r"\b([A-Z]{2,}\d+)\b", t)}
+    registre = cown.charger_registre(racine / "docs" / "ownership.yml", racine=racine) \
+        if (racine / "docs" / "ownership.yml").is_file() else None
+    classes = []
+    for f in sorted(candidats):
+        texte = (racine / f).read_text(encoding="utf-8", errors="replace")
+        score = (100 * len(re.findall(r"\b%s\b" % re.escape(nom), texte))
+                 + 10 * sum(len(re.findall(r"\b%s\b" % re.escape(a), texte)) for a in appelants_)
+                 + sum(5 for t in themes if t in Path(f).stem)
+                 + 50 * len(ids & set(re.split(r"[_.]", Path(f).stem))))
+        if score:
+            classes.append({"module": f, "score": score, "id_de_tache": bool(_ID_TACHE.search(Path(f).stem)),
+                            "proprietaire": cown.proprietaire(registre, f) if registre else None})
+    classes.sort(key=lambda c: (-c["score"], c["module"]))
+    texte = ("Test rouge d'abord : module EXISTANT proposé "
+             + (f"`{classes[0]['module']}` (propriétaire {classes[0]['proprietaire']})" if classes else "aucun")
+             + "".join(f" ; puis `{c['module']}`" for c in classes[1:5])
+             + " — un nouveau fichier seulement avec « Nouveau fichier car : ».")
+    return {"cible": f"{rel}::{qual}", "modules": classes, "texte": texte}
+
+
+def _corps_texte(rel: str, qual: str, racine) -> str:
+    d = resoudre(f"{rel}::{qual}", racine)[2]
+    return "\n".join((Path(racine) / rel).read_text(encoding="utf-8", errors="replace").splitlines()[d.debut - 1:d.fin])
+
+
+def tampon(rel: str, qual: str, d, racine=None) -> str:
+    sha = git("rev-parse", "--short=9", "HEAD", racine=racine).strip()
+    return f"(gen {sha} {rel}::{qual}#{d.empreinte[:8]})"
+
+
+def verifier(identifiant: str, racine=None) -> dict:
+    """Fraicheur des tampons d'une tache : le symbole a-t-il change depuis ?"""
+    tache = next((t for t in ctc.lire_taches() if t.identifiant == identifiant), None)
+    if tache is None:
+        raise SystemExit(f"tâche {identifiant} introuvable dans les plans")
+    etats = []
+    for sha, rel, qual, h8 in _TAMPON.findall(tache.texte):
+        try:
+            _, _, d = resoudre(f"{rel}::{qual}", racine)
+            etat = "à jour" if d.empreinte.startswith(h8) else "périmée"
+        except SystemExit:
+            etat = "périmée"
+        etats.append({"tampon": f"{rel}::{qual}#{h8}", "gen": sha, "etat": etat})
+    perimee = any(e["etat"] == "périmée" for e in etats)
+    texte = (f"{identifiant} : " + ("; ".join(f"{e['tampon']} (gen {e['gen']}) {e['etat']}" for e in etats)
+                                    or "aucun tampon `(gen <sha> fichier::symbole#hash8)` (manuel : non vérifiable)"))
+    return {"tache": identifiant, "tampons": etats, "perimee": perimee, "texte": texte}
+
+
+def inspecter(cible: str, racine=None) -> dict:
+    """API pour `check_forme_code.py --inspecter` (AMET85) : emplacement,
+    jumeaux et test canonique d'un symbole, en une passe sur le meme index."""
+    r = {"emplacement": emplacement(cible, racine), "jumeaux": jumeaux(cible, racine),
+         "test_canonique": test_canonique(cible, racine)}
+    r["texte"] = "\n".join(x["texte"] for x in r.values())
+    return r
+
+
+CLAUSES = {"appelants": "appelants", "assertions existantes": "assertions-existantes", "jumeaux": "jumeaux",
+           "listes figees": "listes-figees", "emplacement": "emplacement",
+           "test rouge d'abord": "test-canonique", "contrat partage": "lecteurs-sample"}
+
+
+COMMANDES = {"appelants": appelants, "lecteurs-front": lecteurs_front, "ecrivains": ecrivains,
+             "assertions-existantes": assertions_existantes, "lecteurs-sample": lecteurs_sample,
+             "listes-figees": listes_figees, "jumeaux": jumeaux, "emplacement": emplacement,
+             "test-canonique": test_canonique, "inspecter": inspecter}
 
 
 def projection(commande: str, r: dict) -> dict:
@@ -562,10 +947,21 @@ def projection(commande: str, r: dict) -> dict:
                 "routes": sorted(x["route"] for x in r["routes"]),
                 "wrappers": sorted({f"{w['fichier']}::{w['nom']}" for w in r["wrappers"]}),
                 "ecrans": r["ecrans"], "nb_ecrans": len(r["ecrans"])}
-    if commande == "lecteurs-front":
+    if commande in ("lecteurs-front", "lecteurs-sample"):
         return {"lecteurs": [x["fichier"] for x in r["lecteurs"]]}
     if commande == "ecrivains":
         return {"ecrivains": sorted({e["symbole"] for e in r["ecrivains"]}), "champ_existe": r["champ_existe"]}
+    if commande == "assertions-existantes":
+        return {"assertions": sorted({a["test"] for a in r["assertions"]})}
+    if commande == "jumeaux":
+        return {"corps_identiques": sorted(j["symbole"] for j in r["corps_identiques"]),
+                "nb_corps_identiques": r["nb_corps_identiques"], "copies": r["copies"]}
+    if commande == "emplacement":
+        return {"mur": r["mur"], "spl": r["spl"]}
+    if commande == "test-canonique":
+        return {"modules": [m["module"] for m in r["modules"]][:1]}
+    if commande == "listes-figees":
+        return {"gardes": sorted({f"{g['liste']} <- {g['garde']} ({g['type_de_cle']})" for g in r["gardes"]})}
     return {k: v for k, v in r.items() if k != "texte"}
 
 
@@ -573,21 +969,32 @@ def projection(commande: str, r: dict) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Clauses calculées des tâches d'audit (AMET80-82).")
-    parser.add_argument("commande", choices=sorted(COMMANDES) + ["index"])
-    parser.add_argument("argument", nargs="?")
+    parser.add_argument("elements", nargs="*", help="<commande> <argument> (avec --clause : <argument>)")
     parser.add_argument("--json", action="store_true", help="sortie JSON")
     parser.add_argument("--narrow", help="index : motif git grep -E appliqué avant l'AST")
+    parser.add_argument("--anciens", nargs="*", default=[], help="assertions-existantes : anciens littéraux")
+    parser.add_argument("--clause", help="libellé de clause (Appelants, Jumeaux, Emplacement…) : texte à coller")
+    parser.add_argument("--verifier", metavar="ID", help="fraîcheur des tampons (gen …) d'une tâche ; 1 si périmée")
+    parser.add_argument("--racine", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     for flux in (sys.stdout, sys.stderr):
         getattr(flux, "reconfigure", lambda **_: None)(encoding="utf-8")
-    debut = time.perf_counter()
-    if args.commande == "index":
+    debut, racine = time.perf_counter(), args.racine
+    if args.verifier:
+        resultat = verifier(args.verifier, racine)
+        print(resultat["texte"])
+        return 1 if resultat["perimee"] else 0
+    elements = ([CLAUSES.get(ctc.normaliser(args.clause).strip(), args.clause)] if args.clause else []) + args.elements
+    if not elements or elements[0] not in list(COMMANDES) + ["index"]:
+        parser.error(f"commande inconnue : {elements[:1]} (attendu : {', '.join(sorted(COMMANDES))}, index)")
+    if elements[0] == "index":
         idx = index(narrow=args.narrow)
         print(f"index : {len(idx)} fichiers, {sum(len(e['defs']) for e in idx.values())} définitions")
-    elif not args.argument:
-        parser.error(f"{args.commande} : argument manquant")
+    elif len(elements) < 2:
+        parser.error(f"{elements[0]} : argument manquant")
     else:
-        resultat = COMMANDES[args.commande](args.argument)
+        options = {"anciens": args.anciens} if elements[0] == "assertions-existantes" else {}
+        resultat = COMMANDES[elements[0]](elements[1], racine=racine, **options)
         print(json.dumps(resultat, ensure_ascii=False, indent=1) if args.json else resultat["texte"])
     for etape, (taille, secondes) in CHRONO.items():
         print(f"[chrono] {etape} : {taille} éléments en {secondes} s", file=sys.stderr)
