@@ -59,7 +59,7 @@ class TestMouvementQuantiteFractionnaireRefusee(TestCase):
 
     def _post(self, **body):
         return self.client.post(
-            '/api/django/stock/mouvements/', body, format='json')
+            '/api/django/stock/mouvements/', body, content_type='application/json')
 
     def test_quantite_decimale_7_5_est_refusee_400_champ_nomme(self):
         """Reproduction du corps QA-explorer (quantite fractionnaire) :

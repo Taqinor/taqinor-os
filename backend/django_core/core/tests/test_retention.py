@@ -161,7 +161,7 @@ class RunRetentionCommandTests(TestCase):
             return 0
 
         retention.register_retention_policy('demo', fake_sweep)
-        with mock.patch('django.conf.settings.RETENTION_AUTO_APPLY', True, format='multipart'):
+        with mock.patch('django.conf.settings.RETENTION_AUTO_APPLY', True):
             call_command('run_retention', stdout=StringIO())
         self.assertTrue(received['apply_'])
 

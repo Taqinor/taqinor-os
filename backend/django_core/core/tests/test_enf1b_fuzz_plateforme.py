@@ -86,7 +86,8 @@ class ExceptionsClientTests(SimpleTestCase):
 
 
 class FuzzPlateformeHttpTests(TestCase):
-    """Les requêtes EXACTES du fuzz du 09/10 (corps multipart repris)."""
+    """Les requêtes EXACTES du fuzz du 09/10 — corps en JSON depuis D2 (vues sans
+    fichier en JSON seul : un multipart y répond 415, par conception)."""
 
     def setUp(self):
         co = Company.objects.create(nom='ENF1b Co', slug='enf1b-co')
@@ -118,14 +119,14 @@ class FuzzPlateformeHttpTests(TestCase):
                 ('/api/django/stock/revalorisations-stock/',
                  {'produit': '{}', 'nouveau_cout': ''})):
             with self.subTest(url=url):
-                response = self.api.post(url, corps, format='multipart')
+                response = self.api.post(url, corps, format='json')
                 self.assertEqual(response.status_code, 400, response.content)
 
     def test_service_account_date_invalide_400(self):
         response = self.api.post(
             '/api/django/identity/service-accounts/',
             {'nom': '0', 'scopes': 'None', 'actif': 'False', 'expire_le': '{}'},
-            format='multipart')
+            format='json')
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()['error']['code'], 'validation_error')
 

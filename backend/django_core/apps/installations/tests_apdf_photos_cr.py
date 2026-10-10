@@ -92,14 +92,14 @@ class PhotosCompteRenduPdfTests(TestCase):
         for n in range(intervention_pdf.PDF_PHOTOS_MAX + 2):
             self._photo(n)
         with mock.patch('apps.records.storage.fetch_attachment',
-                        self._fake_fetch, format='multipart'):
+                        self._fake_fetch):
             groupes, non_reproduites = (
                 intervention_pdf._photos_payload_embarquees(self.iv))
         retenues = sum(len(v) for v in groupes.values())
         self.assertEqual(retenues, intervention_pdf.PDF_PHOTOS_MAX)
         self.assertEqual(non_reproduites, 2)
         with mock.patch('apps.records.storage.fetch_attachment',
-                        self._fake_fetch, format='multipart'):
+                        self._fake_fetch):
             pdf = intervention_pdf.compte_rendu_pdf(self.iv)
         import fitz
         texte = ''.join(p.get_text() for p in fitz.open(

@@ -8302,7 +8302,7 @@ query_params:
   get /api/django/ventes/etats/analyse-facturation/: debut end export fin month quarter start
   get /api/django/ventes/export-comptable/: end fmt layout month quarter start
   get /api/django/ventes/factures-lignes/: ordering page page_size search
-  get /api/django/ventes/factures/: entite ordering page page_size search
+  get /api/django/ventes/factures/: client entite ordering page page_size search
   get /api/django/ventes/factures/{facture_id}/lettre-relance-premium/: niveau
   get /api/django/ventes/factures/{id}/arrondi-caisse/: mode
   get /api/django/ventes/insights/cash-flow/: mode
@@ -9054,7 +9054,7 @@ query_params:
   get /api/v1/ventes/etats/analyse-facturation/: debut end export fin month quarter start
   get /api/v1/ventes/export-comptable/: end fmt layout month quarter start
   get /api/v1/ventes/factures-lignes/: ordering page page_size search
-  get /api/v1/ventes/factures/: entite ordering page page_size search
+  get /api/v1/ventes/factures/: client entite ordering page page_size search
   get /api/v1/ventes/factures/{facture_id}/lettre-relance-premium/: niveau
   get /api/v1/ventes/factures/{id}/arrondi-caisse/: mode
   get /api/v1/ventes/insights/cash-flow/: mode

@@ -54,7 +54,7 @@ class TestCategorieCreationSansCompanyDansLeCorps(TestCase):
             'nom': 'QAH-TEST',
             'type_equipement': None,
             'ordre': 100,
-        }, format='json')
+        }, content_type='application/json')
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(r.data['nom'], 'QAH-TEST')
         cat = Categorie.objects.get(pk=r.data['id'])
@@ -68,7 +68,7 @@ class TestCategorieCreationSansCompanyDansLeCorps(TestCase):
         r = self.client.post('/api/django/stock/categories/', {
             'nom': 'QAH-TEST-2',
             'company': autre_company.id,
-        }, format='json')
+        }, content_type='application/json')
         self.assertEqual(r.status_code, 201, r.content)
         cat = Categorie.objects.get(pk=r.data['id'])
         self.assertEqual(cat.company_id, self.company.id)
@@ -83,13 +83,13 @@ class TestCategorieCreationSansCompanyDansLeCorps(TestCase):
         Categorie.objects.create(company=autre_company, nom='Panneaux')
         r = self.client.post('/api/django/stock/categories/', {
             'nom': 'Panneaux',
-        }, format='json')
+        }, content_type='application/json')
         self.assertEqual(r.status_code, 201, r.content)
 
     def test_meme_nom_dans_la_meme_societe_est_refuse(self):
         Categorie.objects.create(company=self.company, nom='Panneaux')
         r = self.client.post('/api/django/stock/categories/', {
             'nom': 'Panneaux',
-        }, format='json')
+        }, content_type='application/json')
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('nom', r.data)

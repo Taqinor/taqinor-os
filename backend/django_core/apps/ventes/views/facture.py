@@ -1,5 +1,5 @@
 from drf_spectacular.utils import extend_schema_view
-from ..openapi_params import ENTITE, qstr
+from ..openapi_params import ENTITE, qint, qstr
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
 from django.db import transaction  # noqa: F401
@@ -161,7 +161,7 @@ class IsSuperuserOnly(BasePermission):
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[ENTITE]))
+    parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]))
 class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
@@ -209,6 +209,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # AFAC17/ENF — `?client=` (réaffectation d'un paiement : factures du
+        # MÊME client) ; une valeur non numérique est ignorée.
+        client = self.request.query_params.get('client')
+        if self.action == 'list' and client and str(client).isdigit():
+            qs = qs.filter(client_id=int(client))
         # Portée de visibilité (Feature F) — factures créées par soi / l'équipe.
         return scope_queryset(qs, self.request.user, ['created_by'])
 

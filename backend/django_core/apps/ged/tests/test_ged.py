@@ -649,8 +649,9 @@ class DocumentLienTests(GedBase):
             'document': self.doc_a.id,
             'model': 'crm.client', 'id': client_b.id,
         }, format='json')
-        # La cible appartient à B → rejetée côté A (jamais de fuite cross-société).
-        self.assertEqual(resp.status_code, 400)
+        # La cible appartient à B → rejetée côté A (jamais de fuite cross-société) ;
+        # ENF7 : une cible d'une autre société répond 404 (on ne confirme rien).
+        self.assertEqual(resp.status_code, 404)
         self.assertFalse(DocumentLien.objects.exists())
 
     def test_reject_other_company_document(self):
