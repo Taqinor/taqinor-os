@@ -124,7 +124,7 @@ class ProvenanceLivrablesTest(SimpleTestCase):
             'electrique': {},
             'simulation': _entete(),
         }
-        ombrage = rapport_ombrage.construire_rapport_ombrage(
+        ombrage = rapport_ombrage._construire_rapport_ombrage(
             calepinage, resultat=resultat, etat={})
         self._verifier(ombrage['provenance'])
         self.assertEqual(ombrage['provenance']['hash_entree'],

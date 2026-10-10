@@ -274,14 +274,14 @@ def _html_rapport_etude():
 
 def _html_rapport_ombrage():
     from apps.calepinage.services.rapport_ombrage import (
-        html_du_rapport_ombrage,
+        _html_du_rapport_ombrage,
     )
 
     nu = SimpleNamespace(company=None, client_id=None, lead_id=None,
                          titre='Villa Anfa', pk=None,
                          roof_layout=ROOF_LAYOUT_OMBRAGE)
-    return html_du_rapport_ombrage(nu, resultat=_resultat(), site=SITE,
-                                   identite=IDENTITE, styles=STYLES, etat={})
+    return _html_du_rapport_ombrage(nu, resultat=_resultat(), site=SITE,
+                                    identite=IDENTITE, styles=STYLES, etat={})
 
 
 def _html_document_asbuilt():

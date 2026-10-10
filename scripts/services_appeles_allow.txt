@@ -14,8 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/rapport_ombrage.py::construire_rapport_ombrage
-backend/django_core/apps/calepinage/services/rapport_ombrage.py::html_du_rapport_ombrage
 backend/django_core/apps/calepinage/services/reglementaire.py::avancement_du_dossier
 backend/django_core/apps/calepinage/services/reglementaire.py::composer_dossier
 backend/django_core/apps/calepinage/services/reglementaire.py::composer_dossiers
