@@ -24,15 +24,15 @@
       "regles_aval": [
         {
           "regle": "Sans responsable par défaut, le propriétaire est choisi au tour de rôle.",
-          "source": "apps/crm/services.py::pick_round_robin_owner"
+          "source": "apps/crm/leads_attribution.py::pick_round_robin_owner"
         },
         {
           "regle": "Le score de qualité est calculé et stocké sur la fiche.",
-          "source": "apps/crm/services.py::recompute_lead_score"
+          "source": "apps/crm/leads_score.py::recompute_lead_score"
         },
         {
           "regle": "La cadence de contact démarre explicitement (jamais par signal global).",
-          "source": "apps/crm/services.py::demarrer_cadence_contact"
+          "source": "apps/crm/cadence_plan.py::demarrer_cadence_contact"
         }
       ]
     },
@@ -51,7 +51,7 @@
       "regles_aval": [
         {
           "regle": "La cadence de contact démarre à l'arrivée d'un lead vivant.",
-          "source": "apps/crm/services.py::demarrer_cadence_contact"
+          "source": "apps/crm/cadence_plan.py::demarrer_cadence_contact"
         }
       ]
     },
@@ -62,7 +62,7 @@
         "type": "http",
         "source": "apps/crm/views.py::LeadViewSet.perform_update"
       },
-      "fonction_entree": "apps/crm/services.py::recompute_lead_score",
+      "fonction_entree": "apps/crm/leads_score.py::recompute_lead_score",
       "checkpoint": {
         "persistance": "apps/crm/models.py::Lead",
         "description": "Champs de la fiche et `score` persistés ; chaque changement tracé au chatter."
@@ -70,7 +70,7 @@
       "regles_aval": [
         {
           "regle": "Un ajustement manuel de score est tracé avec son delta.",
-          "source": "apps/crm/services.py::ajuster_score_lead"
+          "source": "apps/crm/fiche_funnel.py::ajuster_score_lead"
         }
       ]
     },
@@ -81,7 +81,7 @@
         "type": "tache",
         "source": "apps/crm/tasks.py::notifier_relances_dues_task"
       },
-      "fonction_entree": "apps/crm/services.py::demarrer_cadence_contact",
+      "fonction_entree": "apps/crm/cadence_plan.py::demarrer_cadence_contact",
       "checkpoint": {
         "persistance": "apps/crm/models.py::RelanceEtape",
         "description": "Une touche échue par étape de cadence, jamais deux en parallèle."
@@ -89,11 +89,11 @@
       "regles_aval": [
         {
           "regle": "Une touche traitée matérialise la suivante.",
-          "source": "apps/crm/services.py::materialiser_touche_suivante"
+          "source": "apps/crm/cadence_plan.py::materialiser_touche_suivante"
         },
         {
           "regle": "Le report humain d'une échéance est tracé.",
-          "source": "apps/crm/services.py::reporter_prochaine_touche"
+          "source": "apps/crm/cadence_plan.py::reporter_prochaine_touche"
         }
       ]
     },
@@ -181,42 +181,42 @@
     },
     {
       "id": "meta_lead_ads",
-      "source": "apps/crm/services.py::create_lead_from_meta_lead_ads",
+      "source": "apps/crm/leads_meta.py::create_lead_from_meta_lead_ads",
       "description": "Formulaire Meta Lead Ads."
     },
     {
       "id": "whatsapp_ctwa",
-      "source": "apps/crm/services.py::create_minimal_lead_from_ctwa",
+      "source": "apps/crm/leads_meta.py::create_minimal_lead_from_ctwa",
       "description": "Clic vers WhatsApp (annonce)."
     },
     {
       "id": "livechat",
-      "source": "apps/crm/services.py::create_lead_from_livechat",
+      "source": "apps/crm/leads_intake.py::create_lead_from_livechat",
       "description": "Chat du site."
     },
     {
       "id": "api_publique",
-      "source": "apps/crm/services.py::create_lead_from_public_api",
+      "source": "apps/crm/fiche_api_publique.py::create_lead_from_public_api",
       "description": "API publique."
     },
     {
       "id": "evenement_marketing",
-      "source": "apps/crm/services.py::create_lead_from_evenement_marketing",
+      "source": "apps/crm/leads_intake.py::create_lead_from_evenement_marketing",
       "description": "Événement marketing."
     },
     {
       "id": "ticket_sav",
-      "source": "apps/crm/services.py::create_lead_depuis_ticket",
+      "source": "apps/crm/leads_intake.py::create_lead_depuis_ticket",
       "description": "Ticket SAV devenu opportunité."
     },
     {
       "id": "ocr_facture",
-      "source": "apps/crm/services.py::create_draft_lead_from_ocr",
+      "source": "apps/crm/leads_intake.py::create_draft_lead_from_ocr",
       "description": "Brouillon issu d'un scan de facture."
     },
     {
       "id": "proprietaire",
-      "source": "apps/crm/services.py::creer_lead_proprietaire",
+      "source": "apps/crm/cadence_reponses.py::creer_lead_proprietaire",
       "description": "Propriétaire d'un lead locataire."
     },
     {
@@ -237,15 +237,15 @@
         "ecrivains": [
           {
             "regle": "Recalcul du score de qualité.",
-            "source": "apps/crm/services.py::recompute_lead_score"
+            "source": "apps/crm/leads_score.py::recompute_lead_score"
           },
           {
             "regle": "Ajustement manuel du score.",
-            "source": "apps/crm/services.py::ajuster_score_lead"
+            "source": "apps/crm/fiche_funnel.py::ajuster_score_lead"
           },
           {
             "regle": "Recalcul différé des scores obsolètes.",
-            "source": "apps/crm/services.py::recalculer_scores_obsoletes"
+            "source": "apps/crm/leads_score.py::recalculer_scores_obsoletes"
           }
         ]
       },
@@ -254,7 +254,7 @@
         "ecrivains": [
           {
             "regle": "Propriétaire choisi au tour de rôle.",
-            "source": "apps/crm/services.py::pick_round_robin_owner"
+            "source": "apps/crm/leads_attribution.py::pick_round_robin_owner"
           }
         ]
       },
@@ -263,11 +263,11 @@
         "ecrivains": [
           {
             "regle": "Création depuis Meta Lead Ads.",
-            "source": "apps/crm/services.py::create_lead_from_meta_lead_ads"
+            "source": "apps/crm/leads_meta.py::create_lead_from_meta_lead_ads"
           },
           {
             "regle": "Rétro-remplissage de l'attribution par variante.",
-            "source": "apps/crm/services.py::backfill_meta_lead_attribution"
+            "source": "apps/crm/leads_meta.py::backfill_meta_lead_attribution"
           }
         ]
       },
@@ -276,7 +276,7 @@
         "ecrivains": [
           {
             "regle": "Fusion de doublons : champs vides du survivant complétés.",
-            "source": "apps/crm/services.py::merge_leads"
+            "source": "apps/crm/leads_fusion.py::merge_leads"
           }
         ]
       },
@@ -285,7 +285,7 @@
         "ecrivains": [
           {
             "regle": "Phase de décision du placement des relances (n'écrit aucune donnée métier).",
-            "source": "apps/crm/services.py::_decider_placements"
+            "source": "apps/crm/cadence_placement.py::_decider_placements"
           }
         ]
       },
