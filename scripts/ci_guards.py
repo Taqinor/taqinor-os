@@ -565,7 +565,6 @@ GARDES = {
         ('Check routes GET calepinage sous contrat (ACAL348)',
          'python scripts/check_calepinage_routes_sous_contrat.py',
          '.'),
-        # ANCRE-A11-parcours : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the routes GET calepinage sous contrat (ACAL348) checker itself',
          'python -m unittest scripts.tests.test_check_calepinage_routes_sous_contrat -v',
          '.'),
