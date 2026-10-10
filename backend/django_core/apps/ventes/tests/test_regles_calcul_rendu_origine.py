@@ -150,10 +150,23 @@ CLES_HORS_RENDU_ORIGINE = (
     ('regles_calcul_origine',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     *_LIBELLES_APDF)
-#: APDF10 — un document en/ar porte sa note de TVA TRADUITE (mêmes taux,
-#: ``tva_note_des_lignes(langue=…)``) : retirée des deux côtés hors français
-#: seulement ; le français reste comparé au caractère près.
-CLES_TRADUITES_HORS_FR = (('tva_note',),)
+_RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
+
+
+def _note_tva_d_origine(build, devis, opts, data):
+    """APDF10 — un document en/ar porte sa note de TVA TRADUITE ; le golden,
+    lui, a été pris quand elle restait en français. ``tva_note`` EXISTAIT
+    déjà : la retirer d'un seul côté ne peut pas égaler le golden (seules
+    des clés NOUVELLES se retirent ainsi). On compare donc la note française
+    du MÊME devis rendu sans langue, après avoir exigé que la traduction
+    porte exactement les mêmes nombres (taux) — aucun chiffre ne change."""
+    if data.get('langue_sortie') in (None, 'fr'):
+        return data
+    fr = build(devis, {k: v for k, v in opts.items() if k != 'langue_sortie'})
+    if _RE_NOMBRE.findall(data.get('tva_note') or '') != _RE_NOMBRE.findall(
+            fr.get('tva_note') or ''):
+        return data  # nombres différents : l'écart reste visible
+    return dict(data, tva_note=fr.get('tva_note'))
 
 
 def _empreinte(test, devis, data):
@@ -173,10 +186,7 @@ def _empreinte(test, devis, data):
     for pk in sorted(pks, reverse=True):
         texte = re.sub(r'(?<![0-9])/%d(?=[/._?#"])' % pk, '/<pk>', texte)
     d = json.loads(texte)
-    chemins = CLES_HORS_RENDU_ORIGINE
-    if d.get('langue_sortie') not in (None, 'fr'):
-        chemins = chemins + CLES_TRADUITES_HORS_FR
-    for chemin in chemins:
+    for chemin in CLES_HORS_RENDU_ORIGINE:
         cible = d
         for k in chemin[:-1]:
             cible = cible.get(k) if isinstance(cible, dict) else None
@@ -306,7 +316,9 @@ class RenduReglesOrigineTests(TestCase):
                     frais = Devis.objects.get(pk=devis.pk)
                     self.assertEqual(frais.regles_calcul, 1)
                     with rendu_sans_reseau():
-                        data = build_quote_data(frais, dict(opts))
+                        data = _note_tva_d_origine(
+                            build_quote_data, frais, opts,
+                            build_quote_data(frais, dict(opts)))
                     if _empreinte(self, frais, data) != golden.get(cle):
                         ecarts.append(cle)
                     transaction.set_rollback(True)
