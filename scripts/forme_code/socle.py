@@ -8,17 +8,20 @@ from __future__ import annotations
 
 import ast
 import bisect
+import copy
 import io
 import re
 import subprocess
 import sys
 import tokenize
+from collections import namedtuple
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import audit_tache  # noqa: E402  (empreintes AST : definitions / empreinte_corps)
+import audit_tache  # noqa: E402  (empreinte AST du corps : empreinte_corps)
 
 DJANGO = "backend/django_core/"
 SUFFIXES_CODE = (".py", ".js", ".jsx", ".mjs", ".ts", ".tsx")
@@ -50,22 +53,56 @@ class Changement:
     apres: str | None
 
 
+Defn = namedtuple("Defn", "qualname kind debut fin noeud")
+BLOCS = ("body", "orelse", "finalbody", "handlers", "cases")
+
+
+def definitions(arbre) -> list:
+    """`qualname` d'`audit_tache.definitions` ; blocs d'instructions seulement, empreinte a la demande."""
+    trouvees, pile = [], [(arbre, "")]
+    while pile:
+        noeud, prefixe = pile.pop()
+        for champ in BLOCS:
+            for enfant in getattr(noeud, champ, None) or ():
+                if isinstance(enfant, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    kind = "classe" if isinstance(enfant, ast.ClassDef) else "fonction"
+                    trouvees.append(Defn(prefixe + enfant.name, kind, enfant.lineno, enfant.end_lineno, enfant))
+                    pile.append((enfant, prefixe + enfant.name + "."))
+                else:
+                    pile.append((enfant, prefixe))
+    return trouvees
+
+
 class Fichier:
     """Texte + lignes logiques + (Python) definitions AST d'un cote du diff."""
 
     def __init__(self, chemin: str, texte: str):
-        self.texte, self.brutes = texte, len(texte.splitlines())
+        self.chemin, self.texte, self.brutes = chemin, texte, len(texte.splitlines())
         self.arbre, self.defs = None, []
         if chemin.endswith(".py"):
             try:
                 self.arbre = ast.parse(texte)
-                self.defs = audit_tache.definitions(self.arbre)
+                self.defs = definitions(self.arbre)
             except (SyntaxError, ValueError):
                 pass
-        self.lignes = lignes_logiques(texte, chemin)
+
+    @cached_property
+    def lignes(self) -> list:
+        return lignes_logiques(self.texte, self.chemin)
 
     def compter(self, debut: int, fin: int) -> int:
         return bisect.bisect_right(self.lignes, fin) - bisect.bisect_left(self.lignes, debut)
+
+    def empreinte(self, d) -> str:
+        """`audit_tache.empreinte_corps` SANS les imports : un deplacement re-cible ses imports locaux."""
+        copie = copy.deepcopy(d.noeud)
+        for n in ast.walk(copie):
+            for champ in BLOCS:
+                bloc = getattr(n, champ, None)
+                if isinstance(bloc, list) and any(isinstance(s, (ast.Import, ast.ImportFrom)) for s in bloc):
+                    setattr(n, champ, [s for s in bloc if not isinstance(s, (ast.Import, ast.ImportFrom))]
+                            or [ast.Pass()])
+        return audit_tache.empreinte_corps(copie)
 
 
 def lignes_logiques(texte: str, chemin: str) -> list:

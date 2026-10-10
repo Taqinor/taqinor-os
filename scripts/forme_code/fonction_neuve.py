@@ -14,8 +14,9 @@ def verifier(ctx) -> list:
     for c, base, tete in ctx.paires_py():
         anciens = {d.qualname for d in base.defs} if base else set()
         for d in tete.defs:
-            if d.kind != "fonction" or d.qualname in anciens or (c.apres, d.qualname) in ctx.deplaces.entres:
-                continue
+            if d.kind != "fonction" or d.fin - d.debut < MAX_LIGNES or d.qualname in anciens \
+                    or (c.apres, d.qualname) in ctx.deplaces.entres:
+                continue  # < 61 lignes physiques : jamais > 60 logiques
             n = tete.compter(d.debut, d.fin)
             if n > MAX_LIGNES:
                 constats.append(Constat("FONCTION_NEUVE", c.apres, d.qualname,

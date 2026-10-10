@@ -16,7 +16,7 @@ def verifier(ctx) -> list:
         anciennes = {d.qualname: d for d in base.defs if d.kind == "fonction"} if base else {}
         for d in tete.defs:
             ancienne = anciennes.get(d.qualname)
-            if ancienne is None:
+            if ancienne is None or d.fin - d.debut < SEUIL:
                 continue
             apres, avant = tete.compter(d.debut, d.fin), base.compter(ancienne.debut, ancienne.fin)
             if apres > SEUIL and apres > avant:

@@ -115,17 +115,18 @@ class FormeCodeTests(unittest.TestCase):
         self.assertEqual(code, 0, sortie)
 
     def test_facade_jugee_sur_les_noms_neufs(self):
-        d = self.depot({"backend/app/a.py": "from backend.app.b import f  # noqa: F401\n",
+        d = self.depot({"backend/app/a.py": "from .b import f  # noqa: F401\n",
                         "backend/app/b.py": "def f():\n    return 1\n\n\ndef g():\n    return 2\n",
                         "backend/app/signals.py": "X = 1\n", "backend/app/tests/test_a.py": "X = 1\n"})
         code, sortie = d.scenario({
-            "backend/app/a.py": ("from backend.app.c import f  # noqa: F401\nfrom backend.app.b import g  # noqa: F401\n"
-                                 "from . import signals  # noqa: F401\nh = g\n"),
-            "backend/app/tests/test_a.py": "from backend.app.b import g  # noqa: F401\n"})
+            "backend/app/a.py": ("from .c import f  # noqa: F401\nfrom .b import g  # noqa: F401\n"
+                                 "from . import signals  # noqa: F401\nh = g\n"
+                                 "from django.db.models import QuerySet  # noqa: F401\n"),
+            "backend/app/tests/test_a.py": "from ..b import g  # noqa: F401\n"})
         self.assertEqual(code, 1, sortie)
         self.assertIn("[FACADE] backend/app/a.py::g", sortie)
         self.assertIn("[FACADE] backend/app/a.py::h : nouvelle façade (alias de g", sortie)
-        for absent in ("a.py::f ", "::signals", "test_a.py"):
+        for absent in ("a.py::f ", "::signals", "test_a.py", "::QuerySet"):
             self.assertNotIn(absent, sortie)
 
     def test_reglage_neuf_declare_dans_settings_et_env_example(self):
@@ -167,9 +168,12 @@ class FormeCodeTests(unittest.TestCase):
 
     def test_deplacement_spl_exempte_par_empreinte(self):
         mur_py = "backend/app/w.py"
-        d = self.depot({mur_py: fonction("grosse", 70) + mur()})
-        code, sortie = d.scenario({mur_py: "from backend.app.n import grosse  # noqa: F401\n" + mur(),
-                                   "backend/app/n.py": '"""module extrait."""\n\n\n' + fonction("grosse", 70)})
+
+        def grosse(module):  # le deplacement re-cible son import local : toujours un deplacement
+            return fonction("grosse", 70).replace("():\n", f"():\n    from .{module} import y  # noqa: F401\n", 1)
+        d = self.depot({mur_py: grosse("ancien") + mur()})
+        code, sortie = d.scenario({mur_py: "from .n import grosse  # noqa: F401\n" + mur(),
+                                   "backend/app/n.py": '"""module extrait."""\n\n\n' + grosse("nouveau")})
         self.assertEqual(code, 0, sortie)
         self.assertIn("1 symbole(s) déplacé(s)", sortie)
 
@@ -193,6 +197,28 @@ class FormeCodeTests(unittest.TestCase):
         r = cfc.analyser(ROOT, PR_888 + "^1", PR_888)
         self.assertEqual(r["constats"], [])
         self.assertIn("ASAV18", [i for i, _ in r["taches"]])
+
+
+class RejeuTests(unittest.TestCase):
+    """AMET87 : le rejeu suit `--first-parent` — un squash (un seul parent) est une PR comme un merge."""
+
+    def test_first_parent_inclut_les_squash(self):
+        from forme_code import rejouer_prs
+        d = Depot({"a.py": "X = 1\n"})
+        self.addCleanup(d.tmp.cleanup)
+        _git(d.racine, "checkout", "-q", "-b", "pr")
+        d.commit({"b.py": "Y = 1\n"}, "interne de la PR")
+        _git(d.racine, "checkout", "-q", "main")
+        _git(d.racine, "-c", "user.email=t@t", "merge", "-q", "--no-ff", "pr", "-m", "Merge pull request #1")
+        squash = d.commit({"c.py": fonction("neuve", 61)}, "PR squashée (#2)")
+        commits = rejouer_prs.commits_fusionnes(d.racine, "main", 10)
+        self.assertEqual([s for _, _, s in commits], ["PR squashée (#2)", "Merge pull request #1"])
+        res = rejouer_prs.rejouer(d.racine, "main", 10, journal=io.StringIO())
+        self.assertEqual(res["plantages"], [])
+        self.assertEqual([t for _, t in res["par_classe"]["FONCTION_NEUVE"]],
+                         ["c.py::neuve : fonction neuve de 61 lignes logiques (> 60)"])
+        self.assertTrue(squash.startswith(res["par_classe"]["FONCTION_NEUVE"][0][0][:9]))
+        self.assertIn("| FONCTION_NEUVE | 1 | à remplir |", rejouer_prs.rapport(res, 11))
 
 
 if __name__ == "__main__":

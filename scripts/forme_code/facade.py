@@ -1,7 +1,8 @@
 """Regle FACADE — pas de NOUVEAU re-export `# noqa: F401` ni d'alias de nom importe.
 
 Jugee sur les NOMS neufs (prototype a 2/10 quand il jugeait les lignes). Hors champ : tests,
-`import x` nu, sous-module (effet de bord : signaux), re-export d'un symbole deplace (SPL).
+`import x` nu, sous-module (effet de bord : signaux), nom hors projet (django, stdlib), re-export
+d'un symbole deplace (SPL).
 """
 from __future__ import annotations
 
@@ -9,7 +10,7 @@ import ast
 import re
 from pathlib import PurePosixPath
 
-from .socle import Constat
+from .socle import BLOCS, Constat
 
 NOQA_F401 = re.compile(r"#\s*noqa\s*:[^#\n]*\bF401\b")
 RACINES = ("backend/django_core", "scripts", "backend", "")
@@ -18,6 +19,16 @@ RACINES = ("backend/django_core", "scripts", "backend", "")
 def _est_test(chemin: str) -> bool:
     nom = PurePosixPath(chemin).name
     return "/tests/" in f"/{chemin}" or nom.startswith(("test_", "tests_")) or nom in ("tests.py", "conftest.py")
+
+
+def _niveau_module(arbre):
+    """Instructions du MODULE (if/try/with compris) : un import local a une fonction n'expose rien."""
+    pile = list(arbre.body)
+    while pile:
+        n = pile.pop()
+        yield n
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            pile += [s for champ in BLOCS for s in (getattr(n, champ, None) or ())]
 
 
 def _sous_module(ctx, chemin: str, noeud, nom: str) -> bool:
@@ -46,10 +57,13 @@ def facades(ctx, chemin: str, fichier) -> dict:
                 and isinstance(n.value, ast.Name) and n.value.id in importes \
                 and not n.targets[0].id.startswith("_") and n.targets[0].id != n.value.id:
             sortie[n.targets[0].id] = f"alias de {n.value.id}"
-    for n in ast.walk(fichier.arbre):
+    for n in (_niveau_module(fichier.arbre) if "F401" in fichier.texte else ()):
         if not isinstance(n, ast.ImportFrom) or not any(
                 NOQA_F401.search(lignes[i - 1]) for i in range(n.lineno, (n.end_lineno or n.lineno) + 1)):
             continue
+        tete_module = ast.ImportFrom(module=None, names=[], level=0)
+        if not n.level and not _sous_module(ctx, chemin, tete_module, (n.module or "").split(".")[0]):
+            continue  # nom de django / stdlib (typage, mock) : pas une facade du projet
         for a in n.names:
             if a.name != "*" and not _sous_module(ctx, chemin, n, a.name):
                 sortie[a.asname or a.name] = f"from {'.' * n.level}{n.module or ''} import {a.name}"

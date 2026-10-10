@@ -18,31 +18,37 @@ class Deplacements:
     lignes_entrees: dict = field(default_factory=dict)
 
 
-def _empreintes(ctx, cote: str) -> dict:
-    """{empreinte: {(fichier, qualname): lignes}} ; la base est rangee sous le NOUVEAU nom (renommage)."""
+def _symboles(ctx, cote: str) -> dict:
+    """{(fichier, qualname): (Fichier, Defn)} ; la base est rangee sous le NOUVEAU nom (renommage)."""
     sortie = {}
     for c in ctx.changements:
         chemin = c.avant if cote == "base" else c.apres
-        if not (chemin and chemin.endswith(".py")):
-            continue
-        fichier = ctx.fichier(cote, chemin)
+        fichier = ctx.fichier(cote, chemin) if chemin and chemin.endswith(".py") else None
         for d in (fichier.defs if fichier else []):
-            n = fichier.compter(d.debut, d.fin)
-            if n >= MIN_LIGNES:
-                sortie.setdefault(d.empreinte, {})[(c.apres or c.avant, d.qualname)] = n
+            sortie[(c.apres or c.avant, d.qualname)] = (fichier, d)
+    return sortie
+
+
+def _empreintes(symboles: dict, cles: set) -> dict:
+    """{empreinte: {cle: lignes logiques}} des seuls symboles partis ou arrives (hachage a la demande)."""
+    sortie = {}
+    for cle in cles:
+        fichier, d = symboles[cle]
+        n = fichier.compter(d.debut, d.fin)
+        if n >= MIN_LIGNES:
+            sortie.setdefault(fichier.empreinte(d), {})[cle] = n
     return sortie
 
 
 def verifier(ctx) -> Deplacements:
-    base, tete = _empreintes(ctx, "base"), _empreintes(ctx, "tete")
-    resultat = Deplacements()
-    arrivees = {}
-    for empreinte, places in tete.items():
-        partis = set(base.get(empreinte, {})) - set(places)
-        venus = {cle: n for cle, n in places.items() if cle not in base.get(empreinte, {})}
-        if partis and venus:
-            resultat.sortis |= partis
-            arrivees.update(venus)
+    base, tete = _symboles(ctx, "base"), _symboles(ctx, "tete")
+    partis = _empreintes(base, set(base) - set(tete))
+    venus = _empreintes(tete, set(tete) - set(base))
+    resultat, arrivees = Deplacements(), {}
+    for empreinte, places in venus.items():
+        if empreinte in partis:
+            resultat.sortis |= set(partis[empreinte])
+            arrivees.update(places)
     resultat.entres = set(arrivees)
     for (fichier, qual), n in arrivees.items():
         parents = {".".join(qual.split(".")[:i]) for i in range(1, qual.count(".") + 1)}
