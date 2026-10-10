@@ -1853,8 +1853,17 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # premium agricole imprime clauses/CGV gelées). Ré-épinglée depuis
         # le message d'échec du run CI de la PR #886 (shard fast tier) —
         # jamais calculée à la main.
+        # Lane APDF (2026-10-10) — CHANGEMENTS VOULUS : APDF4 (société
+        # identifiée « TAQINOR Fixture QJR307 » sans logo téléversé ⇒ en-tête
+        # neutre, plus le logo TAQINOR) et APDF13 (+ suite AGR310) — la ligne
+        # de conditions imprime les puces CGV de ``cgv_imprimees`` (« Acompte à
+        # la commande », « … après la mise en marche », sans la puce
+        # ONEE/SRM en agricole) ; APDF9/APDF10 laissent le français
+        # octet-identique. Toujours 1 page (garde ci-dessus, verte dans le
+        # même run). Valeur recopiée du message d'échec du gate image de la
+        # lane (gate_moteur2) — jamais calculée à la main.
         EMPREINTE_EPINGLEE = (
-            '9ece669334e9ed5db57aff6372bd52a2fb7e3ba986a18afb9dcc3c012efe39aa')
+            'eee219be00191833eb4b5e98cc9e3680afc920958f95fa5400011b2a04676bfa')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
