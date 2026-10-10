@@ -251,6 +251,13 @@
      "*",
      false
     ],
+    "type": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
     "ventilation_tva": [
      "JSONField",
      true,
