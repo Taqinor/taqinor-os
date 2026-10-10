@@ -217,7 +217,7 @@ class ScissionGoldenHttpTests(TestCase):
             ('GET relance-etapes controle',
              'relance-etapes/controle/?jours=7', 'etape'),
             ('GET relance-etapes cadences-echues',
-             'relance-etapes/cadences-echues/', 'etape'),
+             'relance-etapes/cadences-echues/?jours=0', 'etape'),
             ('GET relance-etapes kpi-adherence',
              'relance-etapes/kpi-adherence/', 'etape'),
             ('GET relance-etapes mes-stats',
@@ -233,12 +233,12 @@ class ScissionGoldenHttpTests(TestCase):
         # Les écritures viennent APRÈS les lectures (elles changent la file).
         posts = [
             ('POST relance-etapes fait',
-             f'relance-etapes/{e[1]}/fait/', 'etape', {}),
+             f'relance-etapes/{e[1]}/fait/', 'etape', {'outcome': 'joint'}),
             ('POST relance-etapes sauter',
              f'relance-etapes/{e[3]}/sauter/', 'etape',
              {'note': 'sauté pour le golden'}),
             ('POST relance-etapes reporter',
-             f'relance-etapes/{e[2]}/reporter/', 'etape',
+             f'relance-etapes/{e[0]}/reporter/', 'etape',
              {'mode': 'decaler', 'note': 'report golden',
               'due_at': '2026-10-02T10:00:00+01:00'}),
         ]

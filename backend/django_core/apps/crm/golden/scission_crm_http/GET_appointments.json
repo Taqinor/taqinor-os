@@ -1,0 +1,24 @@
+{
+ "appel": "GET appointments",
+ "corps": {
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+   {
+    "created_by": null,
+    "date_creation": "<masque>",
+    "date_modification": "<masque>",
+    "id": "rdv#1",
+    "lead": "lead#2",
+    "lead_nom": "Prospect Golden Deux",
+    "notes": null,
+    "reminder_sent": false,
+    "scheduled_at": "2026-10-02T10:00:00Z",
+    "statut": "planifie",
+    "statut_display": "Planifié"
+   }
+  ]
+ },
+ "statut": 200
+}

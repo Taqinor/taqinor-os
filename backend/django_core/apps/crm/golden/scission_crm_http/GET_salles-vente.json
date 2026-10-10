@@ -1,0 +1,26 @@
+{
+ "appel": "GET salles-vente",
+ "corps": {
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+   {
+    "actif": true,
+    "client": null,
+    "created_at": "<masque>",
+    "created_by": "user#1",
+    "expires_at": "2026-10-30T10:00:00Z",
+    "has_password": false,
+    "id": "salle#1",
+    "items": [],
+    "lead": "lead#3",
+    "lien_public": "/salle-vente/<masque>",
+    "titre": "Salle Golden",
+    "token": "<masque>",
+    "updated_at": "<masque>"
+   }
+  ]
+ },
+ "statut": 200
+}

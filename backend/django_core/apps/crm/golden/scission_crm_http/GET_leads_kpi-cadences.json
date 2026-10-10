@@ -1,0 +1,13 @@
+{
+ "appel": "GET leads kpi-cadences",
+ "corps": {
+  "cadences_arretees_joint": 0,
+  "cadences_completes": 0,
+  "devis_envoyes": 0,
+  "joints_sous_5j_pct": 0.0,
+  "perdus_avec_motif_pct": null,
+  "signatures": 0,
+  "tentatives_moy_avant_abandon": null
+ },
+ "statut": 200
+}
