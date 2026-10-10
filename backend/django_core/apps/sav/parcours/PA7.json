@@ -1,0 +1,136 @@
+{
+  "parcours": "PA7",
+  "titre": "Monitoring et abonnement",
+  "pilote": "sav",
+  "pourquoi": "AMET24 (C-AMET-025) — table du parcours équipement du parc -> abonnement monitoring -> relevés -> sous-performance -> SLA -> crédit SLA -> résiliation, lue par la garde `apps/sav/test_parcours_pa7.py` (AST, sans base). Chaque étape PRÉSENTE nomme son déclencheur, sa fonction d'entrée, son point de persistance et au moins une règle aval, tous résolus dans le code. Une étape MANQUANTE (`manquante: true`) déclare ce qui n'existe PAS aujourd'hui et porte une `preuve_absence` que la garde re-vérifie : le jour où quelqu'un câble l'étape, la garde rougit et la table doit être mise à jour (jamais un trou silencieux). Les fonctions ASAV100-103 (monitoring rendu utilisable, décision 08/10) sont référencées, pas redécrites.",
+  "chemins_relatifs_a": "backend/django_core",
+  "etapes": [
+    {
+      "id": "equipement_parc",
+      "libelle": "Équipement du parc posé à la réception du chantier",
+      "declencheur": {"type": "signal", "signal": "chantier_receptionne", "source": "apps/installations/services.py::changer_statut_chantier"},
+      "fonction_entree": "apps/sav/services.py::sweep_bom_to_parc",
+      "checkpoint": {"persistance": "apps/sav/models.py::Equipement", "description": "Une ligne de parc par équipement posé (garantie figée à la pose)."},
+      "regles_aval": [
+        {"regle": "Sans contrat d'entretien actif, une activité « Proposer le contrat » est créée pour le commercial (J+14).", "source": "apps/sav/receivers.py::_proposer_contrat_maintenance_on_chantier_receptionne"},
+        {"regle": "La production attendue du monitoring est semée depuis le PR de recette ou l'étude du devis.", "source": "apps/monitoring/receivers.py::_semer_attendu_a_reception"}
+      ]
+    },
+    {
+      "id": "abonnement_creation",
+      "libelle": "Création de l'abonnement monitoring du client",
+      "manquante": true,
+      "raison": "Le modèle `AbonnementMonitoring` existe (table conservée de l'ancienne app compta) mais aucune vue, aucun service ni aucune tâche du code vivant ne crée un abonnement.",
+      "attendu": "Un service `creer_abonnement_monitoring` (ASAV, tâche de câblage) appelé depuis le parc SAV.",
+      "declencheur": {"manquant": true},
+      "fonction_entree": {"manquant": true},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Abonnement actif/suspendu/résilié, périodicité, prochaine échéance."},
+      "regles_aval": [
+        {"regle": "La résiliation coupe la supervision automatique du système lié (abonné déjà en place, voir l'étape résiliation).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
+      ],
+      "preuves_absence": [
+        {"motif": "AbonnementMonitoring\\b", "racine": "apps", "fichiers_autorises": ["apps/monitoring/models.py"]}
+      ]
+    },
+    {
+      "id": "releves",
+      "libelle": "Relevés de production synchronisés chaque jour",
+      "declencheur": {"type": "tache", "source": "apps/monitoring/tasks.py::balayage_quotidien"},
+      "fonction_entree": "apps/monitoring/services.py::sync_system",
+      "checkpoint": {"persistance": "apps/monitoring/models.py::ProductionReading", "description": "Un relevé par jour et par système (idempotent sur external_id)."},
+      "regles_aval": [
+        {"regle": "Après la synchro, la sous-performance du système est évaluée.", "source": "apps/monitoring/services.py::evaluate_underperformance"}
+      ]
+    },
+    {
+      "id": "sous_performance",
+      "libelle": "Sous-performance détectée et ticket SAV ouvert",
+      "declencheur": {"type": "tache", "source": "apps/monitoring/tasks.py::balayage_quotidien"},
+      "fonction_entree": "apps/monitoring/services.py::evaluate_underperformance",
+      "checkpoint": {"persistance": "apps/monitoring/models.py::UnderperformanceFlag", "description": "Un drapeau ouvert par épisode de sous-performance, fermé avec motif."},
+      "regles_aval": [
+        {"regle": "Un épisode ouvert crée un ticket SAV correctif (une seule fois par épisode).", "source": "apps/monitoring/services.py::_create_underperf_ticket"}
+      ]
+    },
+    {
+      "id": "sla_disponibilite",
+      "libelle": "Disponibilité mesurée comparée au SLA de disponibilité garanti",
+      "manquante": true,
+      "raison": "`SlaDisponibilite` et son sélecteur `disponibilite_vs_garantie` existent et sont testés, mais aucun appelant du code vivant (vue, tâche, rapport) ne les lit, et aucune vue n'écrit un `SlaDisponibilite`.",
+      "attendu": "Une action ou un rapport qui appelle `disponibilite_vs_garantie` et un écran de saisie du taux garanti (tâche ASAV).",
+      "declencheur": {"manquant": true},
+      "fonction_entree": {"manquant": true},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::SlaDisponibilite", "description": "Taux garanti par système, sans valeur par défaut (CIQ644)."},
+      "regles_aval": [
+        {"regle": "Le sélecteur compare la disponibilité mesurée au taux garanti et chiffre la compensation.", "source": "apps/monitoring/selectors.py::disponibilite_vs_garantie"}
+      ],
+      "preuves_absence": [
+        {"motif": "disponibilite_vs_garantie", "racine": "apps", "fichiers_autorises": ["apps/monitoring/models.py", "apps/monitoring/selectors.py"]},
+        {"motif": "SlaDisponibilite\\b", "racine": "apps", "fichiers_autorises": ["apps/monitoring/models.py", "apps/monitoring/selectors.py"]}
+      ]
+    },
+    {
+      "id": "credit_sla_genere",
+      "libelle": "Instantané SLA mensuel et crédit dû calculés",
+      "declencheur": {"type": "tache", "source": "core/tasks.py::generer_sla_mensuel_task"},
+      "fonction_entree": "core/sla.py::generer_sla_mensuel",
+      "checkpoint": {"persistance": "core/sla.py::SlaSnapshot", "description": "Un instantané par société et par mois, avec uptime et crédit dû."},
+      "regles_aval": [
+        {"regle": "Le crédit dû se déduit de l'uptime par paliers de la politique de la société.", "source": "core/sla.py::_calculer_credit"}
+      ]
+    },
+    {
+      "id": "credit_sla_decision",
+      "libelle": "Décision humaine sur le crédit SLA (émis ou refusé)",
+      "declencheur": {"type": "http", "source": "core/sla.py::sla_credit_statut"},
+      "fonction_entree": "core/sla.py::sla_credit_statut",
+      "checkpoint": {"persistance": "core/sla.py::SlaSnapshot", "description": "Statut du crédit tracé ; aucun avoir n'est créé par cette action."},
+      "regles_aval": [
+        {"regle": "La décision est émise sur le bus et inscrite au journal d'audit.", "source": "core/sla.py::_emettre_sla_credit_statut_change"},
+        {"regle": "L'abonné d'audit enregistre la ligne du journal.", "source": "apps/audit/receivers.py::_record_sla_credit_statut_change"}
+      ]
+    },
+    {
+      "id": "equipement_remplace",
+      "libelle": "Équipement du parc remplacé par une pièce retirée",
+      "declencheur": {"type": "http", "source": "apps/sav/views.py::TicketViewSet.pieces_retirees"},
+      "fonction_entree": "apps/sav/services.py::retirer_piece",
+      "checkpoint": {"persistance": "apps/sav/models.py::Equipement", "description": "Statut « remplacé » et ticket de remplacement posés sur la ligne de parc."},
+      "regles_aval": [
+        {"regle": "Le signal `equipement_remplace` (émis par `retirer_piece`) notifie les managers.", "source": "apps/notifications/signals.py::equipement_remplace_receiver"}
+      ]
+    },
+    {
+      "id": "monitoring_suit_remplacement",
+      "libelle": "Le monitoring suit le remplacement d'un équipement",
+      "manquante": true,
+      "raison": "`equipement_remplace` est émis et notifié, mais le satellite monitoring n'y est pas abonné : la configuration de supervision et les relevés ne suivent pas l'équipement remplacé.",
+      "attendu": "Un récepteur dans `apps/monitoring/receivers.py` (tâche ASAV).",
+      "declencheur": {"manquant": true},
+      "fonction_entree": {"manquant": true},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::MonitoringConfig", "description": "Configuration de supervision du système."},
+      "regles_aval": [
+        {"regle": "L'émetteur existe déjà côté SAV.", "source": "apps/sav/services.py::retirer_piece"}
+      ],
+      "preuves_absence": [
+        {"motif": "equipement_remplace", "racine": "apps/monitoring", "fichiers_autorises": []}
+      ]
+    },
+    {
+      "id": "resiliation",
+      "libelle": "Résiliation de l'abonnement et arrêt de la supervision",
+      "manquante": true,
+      "raison": "L'abonné `abonnement_monitoring_resilie` coupe la supervision, mais aucun émetteur du code vivant n'envoie ce signal : `resilier_abonnement_monitoring` vivait dans l'app compta sortie du périmètre.",
+      "attendu": "Un service de résiliation côté monitoring/sav qui émet `abonnement_monitoring_resilie` (tâche ASAV).",
+      "declencheur": {"manquant": true},
+      "fonction_entree": {"manquant": true},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Statut résilié et motif de résiliation."},
+      "regles_aval": [
+        {"regle": "À la résiliation, la supervision automatique du système lié est coupée.", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
+      ],
+      "preuves_absence": [
+        {"motif": "abonnement_monitoring_resilie\\.send|def resilier_abonnement_monitoring", "racine": "apps", "fichiers_autorises": []}
+      ]
+    }
+  ]
+}

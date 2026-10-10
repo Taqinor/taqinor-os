@@ -1,0 +1,15 @@
+{
+  "endpoint": "PRIMITIVE /records/provenance/",
+  "pourquoi": "AMET22 (M0, C-AMET-025, D-PROVENANCE) — primitive Python apps/records/provenance.py, sans route HTTP. `saisies_humaines` = liste des noms de champs saisis par un humain, TRIÉE et SANS DOUBLON. `marquer_saisie_humaine(obj, champs)` ajoute des clés (aucun save()). `ecrire_si_libre(obj, champ, valeur, *, journal=True)` renvoie false et n'écrit pas si `champ` ∈ saisies_humaines (refus journalisé « écriture automatique refusée » dans le chatter records.Activity), sinon pose la valeur et renvoie true (aucun save()). Affirmé par apps/records/tests_chatter_envelope.py::ProvenanceTests ; importé par AMET23 (crm, colonne Lead.saisies_humaines).",
+  "exemple": {
+    "saisies_humaines": [
+      "email",
+      "telephone_whatsapp"
+    ],
+    "ecrire_si_libre": {
+      "champ_saisi": false,
+      "champ_libre": true
+    },
+    "message_refus": "écriture automatique refusée"
+  }
+}
