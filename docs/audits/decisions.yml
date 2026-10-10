@@ -130,14 +130,16 @@ decisions:
     taches: [AMET96, AMET101]
 
   - id: ADEP92
-    question: "Variables d'environnement e-mail en prod : lecture des noms réels avant toute dérivation (ADEP91 (b) : Reda pose EMAIL_BACKEND lui-même)"
+    question: "Clés .env inertes que ADEP32/ADEP35-ADEP39 rendent actives (WhatsApp, e-signature, CMI, GeoIP, OpenSearch, confiance CF) : les laisser prendre effet au déploiement ou les retirer avant ? (D-ADEP-3)"
     options:
       - cle: a
-        texte: "lire les noms de variables sur le serveur puis trancher"
-    reponse: ouverte
-    date: "2026-10-08"
-    source: "docs/claude-memory/decisions-audit-0810.md"
-    taches: [ADEP92]
+        texte: "les laisser prendre effet (recommandé quand la fonction est attendue)"
+      - cle: b
+        texte: "les retirer du .env avant de déployer"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/claude-memory/deploy-decisions-fondateur.md (D-ADEP-3 : relevé prod en lecture seule, AUCUNE clé présente, rien ne s'active ; construire ADEP32/35-39)"
+    taches: [ADEP92, ADEP32, ADEP35, ADEP36]
 
   # --- Inventaire historique (AMET94) : docs/claude-memory/*decisions*.md ---
 
