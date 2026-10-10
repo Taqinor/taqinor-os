@@ -30,8 +30,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.roles.models import Role
 from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from apps.stock.models import (
-    BonCommandeFournisseur, FactureFournisseur, Fournisseur,
-    LigneBonCommandeFournisseur, LigneFactureFournisseur, LotEntrepot,
+    AcompteFournisseur, AvoirFournisseur, BonCommandeFournisseur,
+    FactureFournisseur, Fournisseur, LigneBonCommandeFournisseur, LigneFactureFournisseur, LotEntrepot,
     PaiementFournisseur, PalierPrixFournisseur, PrixFournisseur, Produit,
 )
 from apps.stock.models_wms import UniteLogistique
@@ -45,7 +45,7 @@ RACINES = {
 }
 CLES_EXACTES = {
     'prix_achat', 'prix_unitaire_ht', 'prix_convenu', 'montant_achete',
-    'frais_annexes', 'paiements',
+    'frais_annexes', 'paiements', 'montant',
 }
 PREFIXES_CLES = ('prix_achat_', 'total_achat', 'montant_', 'cout_')
 RE_PK = re.compile(r'\(\?P<pk>[^)]*\)')
@@ -235,6 +235,14 @@ class GardePrixAchat(TestCase):
         PaiementFournisseur.objects.create(
             company=self.company, facture=facture,
             montant=Decimal('400'), date_paiement=datetime.date(2026, 9, 10))
+        # ASTK247 — un acompte et un avoir VALIDÉ de démo (montants réglés).
+        AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=bcf, montant=Decimal('820'))
+        AvoirFournisseur.objects.create(
+            company=self.company, reference='AVF-ASTK14-1',
+            fournisseur=self.fournisseur, montant_ht=Decimal('100'),
+            montant_tva=Decimal('20'), montant_ttc=Decimal('120'),
+            statut=AvoirFournisseur.Statut.VALIDE)
 
     def test_introspection_non_vide(self):
         """Le balayage découvre bien les routes (garde contre une
@@ -289,10 +297,11 @@ class GardePrixAchat(TestCase):
                                'lignes': [{'frais_annexes': 5,
                                            'prix_unitaire_ht': 6}],
                                'paiements': [], 'montant_achete': 7,
-                               'montant_total': 8, 'cout_retard': 9}]}
+                               'montant_total': 8, 'cout_retard': 9,
+                               'montant': 10}]}
         self.assertEqual(cles_interdites(plante), {
             'prix_achat', 'prix_achat_devise', 'total_achats_ht',
             'prix_convenu', 'frais_annexes', 'prix_unitaire_ht', 'paiements',
-            'montant_achete', 'montant_total', 'cout_retard'})
+            'montant_achete', 'montant_total', 'cout_retard', 'montant'})
         self.assertEqual(cles_interdites({'quantite': 1, 'prix_vente': 2}),
                          set())
