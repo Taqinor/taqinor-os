@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0132_acrm32_lead_whatsapp_normalise_idx'),
+        ('crm', '0133_amet23_lead_saisies_humaines'),
     ]
 
     operations = [

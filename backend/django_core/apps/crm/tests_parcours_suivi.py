@@ -323,6 +323,35 @@ class ParcoursCompletsTests(ParcoursBase):
     def _etapes_de_cle(self, lead, *cles):
         return [e for e in self.ouvertes(lead) if cle_de(e) in cles]
 
+    def test_saisies_humaines_rattrapees_depuis_le_journal(self):
+        """AMET23 — le rattrapage marque la clé d'une modification journalisée AVEC
+        utilisateur, jamais celle d'un champ touché par le seul système ; idempotent ;
+        ``ecrire_si_libre`` refuse ensuite d'écraser (primitive AMET22)."""
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        from apps.crm.models import Lead
+        from apps.records.provenance import ecrire_si_libre
+        migration = importlib.import_module(
+            'apps.crm.migrations.0133_amet23_lead_saisies_humaines')
+        lead = Lead.objects.create(company=self.company, nom='Provenance')
+        self.assertEqual(lead.saisies_humaines, [])
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, kind='modification', field='whatsapp',
+            old_value='0661000000', new_value='', user=self.acteur)
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, kind='modification', field='ville',
+            old_value='', new_value='Fès', user=None)
+        migration.rattraper_saisies_humaines(django_apps, None)
+        lead.refresh_from_db()
+        self.assertEqual(lead.saisies_humaines, ['whatsapp'])
+        migration.rattraper_saisies_humaines(django_apps, None)
+        lead.refresh_from_db()
+        self.assertEqual(lead.saisies_humaines, ['whatsapp'], 'rattrapage idempotent')
+        self.assertFalse(ecrire_si_libre(lead, 'whatsapp', '0662000000', journal=False))
+        self.assertTrue(ecrire_si_libre(lead, 'ville', 'Fès', journal=False))
+
     def _moment(self, jour, heure):
         return datetime.datetime.combine(jour, heure, tzinfo=horaires.CASABLANCA)
 

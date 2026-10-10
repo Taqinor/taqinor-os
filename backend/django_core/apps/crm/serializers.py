@@ -1674,7 +1674,26 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # ARC18), jamais par le corps. Inscriptible, il acceptait le Tiers
             # d'une AUTRE société ; il reste RENDU en lecture.
             'tiers',
+            # AMET23 — marqueur de provenance : posé par ``update`` ci-dessous
+            # (clés du corps) et par la migration de rattrapage, jamais du corps.
+            'saisies_humaines',
         ]
+
+    def update(self, instance, validated_data):
+        """AMET23 — un PATCH/PUT de la fiche est une saisie humaine : les clés du
+        corps (champs réels du lead) rejoignent ``saisies_humaines``."""
+        from apps.records.provenance import marquer_saisie_humaine
+        corps = getattr(self, 'initial_data', None)
+        user = getattr(self.context.get('request'), 'user', None)
+        if corps is not None and getattr(user, 'is_authenticated', False):
+            champs = [c for c in validated_data
+                      if c in corps and c != 'saisies_humaines']
+            if champs:
+                marquer_saisie_humaine(instance, champs)
+                validated_data = {
+                    **validated_data,
+                    'saisies_humaines': instance.saisies_humaines}
+        return super().update(instance, validated_data)
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
     # CRX19 — SOURCE UNIQUE (module) partagée avec le masquage du chatter :

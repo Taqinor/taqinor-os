@@ -361,6 +361,12 @@
    "required": false
   },
   {
+   "classe": "JSONField",
+   "nom": "saisies_humaines",
+   "read_only": true,
+   "required": false
+  },
+  {
    "classe": "DateField",
    "nom": "relance_date",
    "read_only": false,
