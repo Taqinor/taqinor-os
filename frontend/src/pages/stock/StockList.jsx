@@ -1601,7 +1601,7 @@ export default function StockList() {
                 } },
               }) : null}
               onInlineSave={canWrite ? onInlineSave : null}
-              onAjusterStock={canWrite ? onAjusterStock : null}
+              onAjusterStock={canDelete ? onAjusterStock : null /* ASTK251 — même droit que « Inventaire » (POST admin) */}
               selected={visibleSelected}
               onToggleSelect={canWrite ? onToggleSelect : null}
               fichesParProduit={fichesTechniques}

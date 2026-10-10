@@ -32,8 +32,17 @@ vi.mock('../../api/stockApi', () => {
   }
 })
 
+// ASTK251 — StockList réel : ses dépendances hors sujet (pilotage, vues
+// serveur) sont neutralisées, même patron que StockList.test.jsx.
+vi.mock('./PilotageStock', () => ({ default: () => null }))
+vi.mock('../../features/uxviews/useServerSavedViews', () => ({
+  useServerSavedViews: () => ({ createView: vi.fn() }),
+}))
+vi.mock('../../features/uxviews/ViewsManagerPopover', () => ({ default: () => null }))
+
 import ProduitForm from './ProduitForm.jsx'
 import { CatalogueTable } from './CatalogueTable.jsx'
+import StockList from './StockList.jsx'
 import { installerCalesJsdom } from '../../test/fixtures/calesJsdom'
 
 const createProduitApi = creer
@@ -110,5 +119,42 @@ describe('ASTK33 — cellule « Stock » du catalogue : ajustement d\'inventaire
     expect(prod.id).toBe(1)
     expect(String(valeur)).toBe('12')
     expect(onInlineSave.mock.calls.some(([, champ]) => champ === 'quantite_stock')).toBe(false)
+  })
+})
+
+/* ASTK251 (C-ASTK-VER-005) — `POST /stock/produits/inventaire/` est réservé à
+   l'administrateur (IsAdminRole) : la cellule Stock suit le droit du bouton
+   « Inventaire » (`canDelete`), jamais `canWrite` (un responsable recevait 403). */
+describe('ASTK251 — cellule « Stock » de StockList : éditable seulement par l\'administrateur', () => {
+  const produitListe = {
+    id: 1, nom: 'Panneau 550 Wc', sku: 'PAN-550', prix_vente: '1000.00', tva: '20',
+    quantite_stock: 15, quantite_reservee: 0, quantite_disponible: 15, seuil_alerte: 2,
+    unite: 'piece', is_archived: false, categorie: { id: 3, nom: 'Panneaux', ordre: 1 },
+  }
+  const rendreListe = (auth) => render(
+    <Provider store={configureStore({ reducer: {
+      auth: () => auth,
+      stock: () => ({ produits: [produitListe], produitsArchived: [], fournisseurs: [],
+        categories: [{ id: 3, nom: 'Panneaux', ordre: 1 }], loading: false, error: null }),
+    } })}>
+      <MemoryRouter><ThemeProvider><StockList /></ThemeProvider></MemoryRouter>
+    </Provider>,
+  )
+  const cellulesStockEditables = () => document.querySelectorAll(
+    '.pcat-stock-val [title="Double-cliquez pour modifier"]')
+
+  it('responsable non administrateur : la cellule Stock n\'est pas éditable', async () => {
+    rendreListe({ role: 'responsable', role_nom: 'Technicien responsable',
+      permissions: ['stock_voir', 'stock_modifier'] })
+    expect((await screen.findAllByText('Panneau 550 Wc')).length).toBeGreaterThan(0)
+    expect(cellulesStockEditables()).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /^Inventaire$/ })).toBeNull()
+  })
+
+  it('administrateur : la cellule Stock est éditable, comme le bouton « Inventaire »', async () => {
+    rendreListe({ role: 'admin', role_nom: 'Directeur', permissions: [] })
+    expect((await screen.findAllByText('Panneau 550 Wc')).length).toBeGreaterThan(0)
+    expect(cellulesStockEditables().length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /^Inventaire$/ }).length).toBeGreaterThan(0)
   })
 })
