@@ -1834,6 +1834,42 @@ def annuler_note_debit_par_avoir(*, note_debit, user):
     return avoir, True
 
 
+MESSAGE_BC_EXISTANT = 'Un bon de commande existe déjà pour ce devis.'
+
+
+class BonCommandeExistant(Exception):
+    """AMET5 — le devis porte déjà un BC (message FR, prêt 400)."""
+
+    def __init__(self, message=MESSAGE_BC_EXISTANT):
+        super().__init__(message)
+        self.message = message
+
+
+def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
+    """AMET5 (C-AMET-008) — LA porte unique de création d'un BC : refuse un
+    devis qui a déjà un BC (``BonCommandeExistant``), numérote par
+    ``create_numbered`` et émet ``bon_commande_cree`` exactement une fois.
+    ``enregistrer(ref)`` crée l'objet (création manuelle : le sérialiseur) ;
+    défaut = BC « en attente » repris du devis (``convertir_en_bc``, AMET6)."""
+    from django.db import transaction
+    from core.events import bon_commande_cree
+    from ..models import BonCommande, Devis
+    from ..utils.company_settings import create_numbered
+    if enregistrer is None:
+        def enregistrer(ref):
+            return BonCommande.objects.create(
+                reference=ref, devis=devis, client=devis.client,
+                statut=BonCommande.Statut.EN_ATTENTE, company=company)
+    with transaction.atomic():
+        if devis is not None:
+            Devis.objects.select_for_update().filter(pk=devis.pk).first()
+            if BonCommande.objects.filter(devis=devis).exists():
+                raise BonCommandeExistant()
+        bc = create_numbered(BonCommande, company, 'bon_commande', enregistrer)
+    bon_commande_cree.send(sender=BonCommande, instance=bc, company=company)
+    return bc
+
+
 def argent_modifie(instance, donnees, champs):
     """ATOT35 (C-AMET-001) — champs d'ARGENT dont la VALEUR change : une clé
     présente avec une valeur identique (PUT du formulaire inchangé) ne compte
