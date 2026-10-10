@@ -1,0 +1,6 @@
+# AMET5/AMET6 PA4.2 — BC : porte manuelle et conversion par l'entrée unique
+# rejeu orchestrateur, pile locale (main f7bc5042d : code identique a pc2-batch9), 2026-10-10
+APIClient JWT demo_admin, transaction annulée :
+AMET6 devis 731 : POST convertir-bc = 201, événement bon_commande_cree x1 ; POST bons-commande (manuel) = 400 « Un bon de commande existe déjà pour ce devis. » ; re-conversion = 400 même message ; 1 seul BC
+AMET5 devis 727 (neuf) : POST bons-commande = 201, événement bon_commande_cree x1 (notification abonnée), 1 BC
+PA4.2 verdict: PASS

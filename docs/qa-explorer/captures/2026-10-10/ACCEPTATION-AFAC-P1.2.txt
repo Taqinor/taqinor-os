@@ -1,0 +1,6 @@
+# AFAC69/AFAC70 P1.2 — remise 150 sur une ligne : 400 nommé, motif sous la ligne
+# rejeu orchestrateur, pile locale (main f7bc5042d : code identique a pc2-batch9), 2026-10-10
+Playwright demo_admin : brouillon FAC-202610-0001 (1 ligne) ouvert depuis le Kanban, « Rem. % » = 150, « Mettre à jour »
+PUT factures/286 = 200 ; PUT factures-lignes/542 = 400 « La remise doit être comprise entre 0 et 100 % » (AFAC69)
+motif affiché sous la ligne + « Facture enregistrée, mais la ligne 1 n'a pas pu être enregistrée : … » ; saisie conservée (150) (AFAC70)
+P1.2 verdict: PASS
