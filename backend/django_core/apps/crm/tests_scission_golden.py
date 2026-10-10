@@ -683,6 +683,24 @@ def _ecrire(nom, contenu):
         f.write('\n')
 
 
+def _ecarts(attendu, obtenu, chemin=''):
+    """Chemins qui diffèrent (texte simple : un échec reste lisible et
+    sérialisable par le runner parallèle)."""
+    if type(attendu) is not type(obtenu):
+        return [f'{chemin}: {attendu!r:.60} -> {obtenu!r:.60}']
+    if isinstance(attendu, dict):
+        return [e for k in sorted(set(attendu) | set(obtenu), key=str)
+                for e in _ecarts(attendu.get(k), obtenu.get(k), f'{chemin}.{k}')]
+    if isinstance(attendu, list):
+        res = [] if len(attendu) == len(obtenu) else [
+            f'{chemin}: longueur {len(attendu)} -> {len(obtenu)}']
+        for i, (a, o) in enumerate(zip(attendu, obtenu)):
+            res += _ecarts(a, o, f'{chemin}[{i}]')
+        return res
+    return [] if attendu == obtenu else [
+        f'{chemin}: {attendu!r:.60} -> {obtenu!r:.60}']
+
+
 def _lire(nom):
     with open(_GOLDEN_HTTP / nom, encoding='utf-8') as f:
         return json.load(f)
@@ -837,7 +855,9 @@ class ScissionGoldenHttpTests(TestCase):
                 if _CAPTURE_HTTP:
                     _ecrire(nom, obtenu)
                 else:
-                    self.assertEqual(obtenu, _lire(nom), libelle)
+                    ecarts = _ecarts(_lire(nom), obtenu)
+                    if ecarts:
+                        self.fail(f'{libelle} : ' + ' ; '.join(ecarts[:15]))
         if not _CAPTURE_HTTP:
             en_trop = sorted(
                 p.name for p in _GOLDEN_HTTP.glob('*.json')
