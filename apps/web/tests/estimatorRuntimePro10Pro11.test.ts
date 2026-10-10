@@ -2342,3 +2342,87 @@ describe('runtime ACAL138 — accès solaire persisté', () => {
     expect(JSON.stringify(deux)).toBe(JSON.stringify(un));
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// CAL93 / ACAL356 — la production VIVANTE (carte, total du panneau « Zones », document
+// `result.annualKwh`) suit le dérate d'horizon ET d'ombrage comme `renderConfig` : session
+// neuve + horizon 25° tout autour, puis le même toit rouvert avec une matrice 0,8 relue.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime CAL93 — horizon et ombrage dératent la production vivante', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  type Api = import('../src/scripts/roofPro11/types').RoofToolApi;
+  type Doc = Record<string, unknown> & { result: { annualKwh: number } };
+  const kwhOf = (id: string): number => Number(txt(id).replace(/[^\d]/g, ''));
+
+  async function boot(hydrate?: Record<string, unknown>): Promise<() => Api> {
+    setupDom();
+    fakeMaps.length = 0;
+    vi.resetModules(); // un boot neuf par réouverture (le module ne s'initialise qu'une fois)
+    const init = await loadTool();
+    let api: Api | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      ...(hydrate ? { hydrate: hydrate as never } : {}),
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    return () => api!;
+  }
+  const lecture = (api: Api) => ({
+    carte: kwhOf('rp9-reco-prod'),
+    zones: kwhOf('rp9-areas-total-prod'),
+    doc: (api.serializeLayout() as Doc).result.annualKwh,
+  });
+  const copie = (d: Doc): Doc => JSON.parse(JSON.stringify(d)) as Doc;
+
+  it('horizon 25° (session neuve) et matrice 0,8 relue', async () => {
+    const api = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const avant = lecture(api());
+    expect(avant.doc).toBeGreaterThan(0);
+    const docSansDerate = copie(api().serializeLayout() as Doc);
+    // Horizon 25° sur six azimuts : la carte, le total « Zones » et le document baissent
+    // du MÊME facteur (horizonAnnualFactor ; l'ombrage proche reste à 1).
+    const points = [0, 60, 120, 180, 240, 300].map((azimuthDeg) => ({ azimuthDeg, heightDeg: 25 }));
+    api().appliquerSection('horizonProfile', { source: 'saisie', points });
+    const apres = lecture(api());
+    const f = apres.doc / avant.doc;
+    expect(f).toBeLessThan(0.99);
+    expect(apres.carte / avant.carte).toBeCloseTo(f, 3);
+    expect(apres.zones / avant.zones).toBeCloseTo(f, 3);
+    const docDerate = copie(api().serializeLayout() as Doc);
+
+    const reouvrir = async (doc: Doc, geste: boolean) => {
+      const a = await boot({ devis: { id: 7, geometrie: { roof_layout: copie(doc) }, cibleVendue: false } });
+      if (geste) {
+        vi.useFakeTimers();
+        setBill('3000');
+        vi.advanceTimersByTime(321); // la facture est débattue (320 ms) avant le recalcul
+        vi.useRealTimers();
+      }
+      return lecture(a());
+    };
+    // Persistance : enregistré dératé puis rouvert sans geste ⇒ le dératé est relu tel quel.
+    expect((await reouvrir(docDerate, false)).doc).toBe(apres.doc);
+    // Le même toit rouvert et recalculé (facture ressaisie ; document sans production stockée,
+    // sinon ACAL31 réémet celle relue) : sans matrice (référence), puis matrice 0,8 relue.
+    const { result: _stocke, ...sansProduction } = docSansDerate;
+    const reference = await reouvrir(sansProduction as Doc, true);
+    expect(reference.doc).toBeGreaterThan(0);
+    const matrice = Array.from({ length: 12 }, () => Array(24).fill(0.8));
+    const ombre = await reouvrir({ ...sansProduction, shading12x24: matrice } as Doc, true);
+    for (const k of ['carte', 'zones', 'doc'] as const) expect(ombre[k] / reference[k]).toBeCloseTo(0.8, 3);
+  }, 120000);
+});

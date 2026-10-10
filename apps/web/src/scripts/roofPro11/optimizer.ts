@@ -267,6 +267,14 @@ export function besoinVendu(panneaux: number | null | undefined): number {
   return typeof panneaux === 'number' && Number.isFinite(panneaux) ? Math.max(0, Math.round(panneaux)) : 0;
 }
 
+/** ACAL356 — borne d'UN facteur annuel de dérate (WJ19/CAL93) : hors ]0;1[ ⇒ 1 (aucun dérate inventé). */
+const borneDerate = (f: number | undefined): number => (typeof f === 'number' && f > 0 && f < 1 ? f : 1);
+/** ACAL356 — LE dérate annuel de la production vivante : ombrage tracé × horizon lointain (deux
+ *  postes qui se MULTIPLIENT), appliqué par `renderConfig`, les gagnants vivants et le document. */
+export function facteurDerateAnnuel(c: Pick<Ctx, 'shadeAnnualFactor' | 'horizonAnnualFactor'>): number {
+  return borneDerate(c.shadeAnnualFactor) * borneDerate(c.horizonAnnualFactor);
+}
+
 /** ACAL80 — le point de rendement PVGIS par défaut (pages publiques d'apps/web). */
 export const RENDEMENT_PVGIS_DEFAUT = '/api/roof-yield';
 
@@ -574,8 +582,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   // WJ19 — dérate d'ombrage tracé appliqué aux chiffres ANNUELS affichés (1 = aucun
   // ombrage → identique à avant). Les économies sont recalculées depuis le kWh dératé,
   // donc elles restent plafonnées à la facture. Le libellé de source l'affiche.
-  const shadeFactor = (): number =>
-    ctx.shadeAnnualFactor > 0 && ctx.shadeAnnualFactor < 1 ? ctx.shadeAnnualFactor : 1;
+  const shadeFactor = (): number => borneDerate(ctx.shadeAnnualFactor);
   const shadeLabel = (): string => {
     const f = shadeFactor();
     return f < 1 ? ` · ombrage tracé −${Math.round((1 - f) * 100)} %` : '';
@@ -583,10 +590,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   // CAL93 — dérate d'HORIZON LOINTAIN, TOUJOURS un poste SÉPARÉ de l'ombrage proche
   // ci-dessus (jamais fondu dans `shadeFactor`) : les deux facteurs se MULTIPLIENT.
   // 1 = aucun profil d'horizon renseigné → chiffres strictement inchangés.
-  const horizonFactor = (): number =>
-    typeof ctx.horizonAnnualFactor === 'number' && ctx.horizonAnnualFactor > 0 && ctx.horizonAnnualFactor < 1
-      ? ctx.horizonAnnualFactor
-      : 1;
+  const horizonFactor = (): number => borneDerate(ctx.horizonAnnualFactor);
   const horizonLabel = (): string => {
     const f = horizonFactor();
     return f < 1 ? ` · horizon PVGIS −${Math.round((1 - f) * 100)} %` : '';
@@ -606,7 +610,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // Affinage PVGIS : rendement par kWc × kWc POSÉ (suit le plafond/contrainte).
     // WJ19 — puis dérate d'ombrage tracé (1 = aucun → inchangé).
     const annualKwh =
-      (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor() * horizonFactor();
+      (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * facteurDerateAnnuel(ctx);
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
@@ -752,7 +756,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
     // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule
     // couverture + économies (plafonnées à la conso) à partir du kWh écrêté.
-    const annualKwh = clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * gapScale;
+    // ACAL356 — puis le dérate ombrage × horizon de `renderConfig` (1 ⇒ inchangé).
+    const annualKwh = clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * gapScale * facteurDerateAnnuel(ctx);
     const kwc = w.kwc * gapScale;
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target);
@@ -1188,9 +1193,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // couverture + économies de façon cohérente ; sinon repli table (« estimé »).
     const target = ctx.pitchedRec.targetAnnualKwh;
     const usePvgis = ctx.pitchedPvgisPerKwc != null && ctx.pitchedRec.totalKwc > 0 && !plane.northFacing;
-    const annualKwh = usePvgis ? ctx.pitchedRec.totalKwc * (ctx.pitchedPvgisPerKwc as number) : ctx.pitchedRec.totalAnnualKwh;
+    const f = facteurDerateAnnuel(ctx); // ACAL356 — 1 ⇒ chiffres inchangés
+    const annualKwh = (usePvgis ? ctx.pitchedRec.totalKwc * (ctx.pitchedPvgisPerKwc as number) : ctx.pitchedRec.totalAnnualKwh) * f;
     const pct = target > 0 ? (annualKwh / target) * 100 : 0;
-    const savings = usePvgis ? annualSavingsMad(annualKwh, target, tariffForCity(undefined)) : { low: ctx.pitchedRec.savingsLow, high: ctx.pitchedRec.savingsHigh };
+    const savings = usePvgis || f < 1 ? annualSavingsMad(annualKwh, target, tariffForCity(undefined)) : { low: ctx.pitchedRec.savingsLow, high: ctx.pitchedRec.savingsHigh };
     paintCard(
       {
         title: `Toit en pente ~${Math.round(fp.pitchDeg)}° · face ${facingLabel(ctx.facingAzimuthDeg)}`,
@@ -1263,7 +1269,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   function renderPitchedWinner(res: PitchedLiveResult, isReco: boolean) {
     const w = res.winner;
     renderScene(flushToPack(w.pack), flushGridToPanelGrid(w.grid), w.pack.pitchDeg, 'south', w.placedCount, true);
-    const cov = Math.round(w.pctOfTarget);
+    // ACAL356 — dérate ombrage × horizon ; économies recalculées du kWh dératé (1 ⇒ chiffres du solveur).
+    const f = facteurDerateAnnuel(ctx);
+    const eco = f < 1 ? annualSavingsMad(w.annualKwh * f, res.target) : { low: w.savingsLow, high: w.savingsHigh };
+    const cov = Math.round(w.pctOfTarget * f);
     const tiltTxt = `${Math.round(ctx.pitchDeg)}°`;
     // W74 — pan orienté nord (production quasi nulle) ET pan non viable (trop petit /
     // contraint à néant) ont chacun leur message honnête, distincts d'un faux gagnant.
@@ -1285,10 +1294,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         isReco,
         count: w.placedCount,
         kwc: w.kwc,
-        annualKwh: w.annualKwh,
-        pct: w.pctOfTarget,
-        savingsLow: w.savingsLow,
-        savingsHigh: w.savingsHigh,
+        annualKwh: w.annualKwh * f,
+        pct: w.pctOfTarget * f,
+        savingsLow: eco.low,
+        savingsHigh: eco.high,
         why,
         family: 'south', // pose affleurante mono-orientation → pas d'écrêtage E-O
         tiltDeg: w.pack.pitchDeg,
