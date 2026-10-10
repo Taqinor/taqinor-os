@@ -8,7 +8,8 @@ from pathlib import Path
 from . import theme
 from . import charts as charts_mod
 from . import cover, options, trust
-from .. import i18n_labels, montants
+from .. import i18n_labels
+from ..premium_base import build_ctx as _ctx_socle
 
 # QRES62 — joints élastiques : marqueurs inertes posés par les gabarits de
 # page ; le second passage de rendu les remplace par des espaceurs
@@ -22,27 +23,18 @@ def build_ctx(data: dict, compact_p3: bool = False) -> dict:
     # « Pourquoi … », signature, cover, liens) lit ``ident`` et retombe sur le
     # littéral Taqinor historique quand le champ correspondant est vide → un
     # devis sans profil enrichi reste rendu strictement à l'identique.
-    ident = theme.company_identity(data)
-    return {
-        "d": data,
-        "C": theme.C,
-        "fmt": theme.fmt,
-        # QJR614 — montants dérivés du prix (P.U., total de ligne, chaîne de
-        # totaux, prix TTC) au CENTIME, ROUND_HALF_UP ; ``fmt`` (entier)
-        # reste pour kWh, CO2, panneaux, économies estimées.
-        "fmt_mad": montants.fmt_centimes,
-        "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
-                  "sans": theme.FONT_SANS},
-        # APDF4 — logo de la société (neutre sans logo, TAQINOR sans profil).
-        "logo_dark": theme.logo_imprime_b64(data),
-        "logo_color": theme.logo_imprime_b64(data, sombre=False),
-        "hero_img": theme.hero_image_b64(data.get("puissance_kwc"), "residentiel"),
+    # Le socle (identité, palette, formats, polices, logo APDF4) est celui
+    # de ``premium_base.build_ctx`` — UNE définition (check_duplicats).
+    ctx = _ctx_socle(data)
+    ctx.update({
+        "hero_img": theme.hero_image_b64(data.get("puissance_kwc"),
+                                         "residentiel"),
         "charts": charts_mod.build_all(data),
-        "ident": ident,
         # ERR114 — rythme vertical resserré de la page 3, demandé par le
         # renderer UNIQUEMENT après avoir MESURÉ un débordement réel.
         "compact_p3": bool(compact_p3),
-    }
+    })
+    return ctx
 
 
 def _apply_elastic(inner: str, slack_mm: float) -> str:
