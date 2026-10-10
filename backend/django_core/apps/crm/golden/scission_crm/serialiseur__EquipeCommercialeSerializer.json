@@ -1,0 +1,58 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "company",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "responsable",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "responsable_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ManyRelatedField",
+   "nom": "membres",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "nb_membres",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "actif",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

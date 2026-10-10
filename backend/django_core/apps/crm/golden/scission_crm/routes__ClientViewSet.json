@@ -1,0 +1,250 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^clients/$",
+  "nom": "client-list",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/$",
+  "nom": "client-detail",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "anonymize"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/anonymize/$",
+  "nom": "client-anonymize",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "anonymize"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/anonymize\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-anonymize",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "consolidation"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/consolidation/$",
+  "nom": "client-consolidation",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "consolidation"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/consolidation\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-consolidation",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "data_export"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/data-export/$",
+  "nom": "client-data-export",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "data_export"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/data-export\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-data-export",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "documents"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/documents/$",
+  "nom": "client-documents",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "documents"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/documents\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-documents",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "dupliquer"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/dupliquer/$",
+  "nom": "client-dupliquer",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "dupliquer"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/dupliquer\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-dupliquer",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "engagement"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/engagement/$",
+  "nom": "client-engagement",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "engagement"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/engagement\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-engagement",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "relancer_dormance"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/relancer-dormance/$",
+  "nom": "client-relancer-dormance",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "relancer_dormance"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)/relancer-dormance\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-relancer-dormance",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^clients/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-detail",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "dormants"
+  },
+  "motif": "^clients/dormants/$",
+  "nom": "client-dormants",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "dormants"
+  },
+  "motif": "^clients/dormants\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-dormants",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "engagement_bulk"
+  },
+  "motif": "^clients/engagement-bulk/$",
+  "nom": "client-engagement-bulk",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "engagement_bulk"
+  },
+  "motif": "^clients/engagement-bulk\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-engagement-bulk",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "export_xlsx"
+  },
+  "motif": "^clients/export-xlsx/$",
+  "nom": "client-export-xlsx",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "export_xlsx"
+  },
+  "motif": "^clients/export-xlsx\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-export-xlsx",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "mon_portefeuille"
+  },
+  "motif": "^clients/mon-portefeuille/$",
+  "nom": "client-mon-portefeuille",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "mon_portefeuille"
+  },
+  "motif": "^clients/mon-portefeuille\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-mon-portefeuille",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "search"
+  },
+  "motif": "^clients/search/$",
+  "nom": "client-search",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "search"
+  },
+  "motif": "^clients/search\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-search",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "segments"
+  },
+  "motif": "^clients/segments/$",
+  "nom": "client-segments",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "segments"
+  },
+  "motif": "^clients/segments\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-segments",
+  "vue": "ClientViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^clients\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "client-list",
+  "vue": "ClientViewSet"
+ }
+]

@@ -33,7 +33,7 @@ GARDES_RECONNUES = {"peut_contacter", "_lead_relancable", "motif_de_refus"}
 #: Les raisons « A CORRIGER » sont de la dette reelle a traiter dans la session
 #: qui possede le fichier (jamais corrigee depuis cette garde).
 LISTE_BLANCHE: dict[str, str] = {
-    "backend/django_core/apps/crm/receivers.py::_proposer_lien_parrainage_on_devis_accepted::wa.me":
+    "backend/django_core/apps/crm/receivers_clients.py::_proposer_lien_parrainage_on_devis_accepted::wa.me":
         "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au lead",
     "backend/django_core/apps/crm/services.py::_build_lead_wa_reply_url::wa.me":
         "A CORRIGER (ACRM, session crm) : lien wa.me vers le prospect construit sans consulter peut_contacter ; brouillon que le vendeur clique, mais l'opposition n'est pas visible",

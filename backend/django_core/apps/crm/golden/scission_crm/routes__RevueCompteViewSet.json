@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^revues-compte/$",
+  "nom": "revuecompte-list",
+  "vue": "RevueCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^revues-compte/(?P<pk>[^/.]+)/$",
+  "nom": "revuecompte-detail",
+  "vue": "RevueCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^revues-compte/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "revuecompte-detail",
+  "vue": "RevueCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^revues-compte\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "revuecompte-list",
+  "vue": "RevueCompteViewSet"
+ }
+]

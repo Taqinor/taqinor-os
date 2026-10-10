@@ -1082,7 +1082,7 @@ def _bloc_vide():
 
 def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
                      reglages=None, reperes=None, surface_irriguee_ha=None,
-                     conditions_fda=None):
+                     conditions_fda=None, investissement_ttc_canonique=None):
     """Le bloc ``economie_pompage`` (contrat ``economie_pompage.json``).
 
     Args:
@@ -1118,7 +1118,13 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     motifs = bloc['motifs_non_publiable'] = list(dep['motifs'])
     bloc['statut'] = dep['statut']
 
-    investissement = investissement_ttc(lignes)
+    # ADEV28 — l'investissement de l'étude est le TTC CANONIQUE du devis
+    # (``Devis.total_ttc``, palier ``PAS_ARRONDI_DEVIS`` compris) quand
+    # l'appelant le transmet ; sinon (aperçu écran, devis aux règles
+    # d'origine) la somme des lignes d'hier.
+    investissement = (investissement_ttc(lignes)
+                      if investissement_ttc_canonique is None
+                      else float(investissement_ttc_canonique))
     publies, remplacements, omis_rempl = _remplacements(
         lignes, mode_pompe(sortie_etude))
     bloc['remplacements'] = publies
@@ -1319,12 +1325,27 @@ def _surface_irriguee(sortie_etude):
         return None
 
 
-def economie_pompage_depuis(company, saisies, *, sortie_etude, lignes):
+def economie_pompage_depuis(company, saisies, *, sortie_etude, lignes,
+                            investissement_ttc_canonique=None):
     """Le calcul commun de la lecture d'un devis ET de l'aperçu (D-AGR-1)."""
     return economie_pompage(
         saisies or {}, sortie_etude=sortie_etude, lignes=lignes,
         reglages=reglages_pompage(company), reperes=reperes_pompage(company),
-        surface_irriguee_ha=_surface_irriguee(sortie_etude))
+        surface_irriguee_ha=_surface_irriguee(sortie_etude),
+        investissement_ttc_canonique=investissement_ttc_canonique)
+
+
+def investissement_canonique_du_devis(devis):
+    """ADEV28 — ``Devis.total_ttc`` (float) pour un devis aux règles
+    corrigées ; ``None`` (somme des lignes d'hier) pour un devis envoyé avant
+    les corrections (décision fondateur 08/10/2026)."""
+    from .domain.regles_calcul import calcul_corrige
+    if not calcul_corrige(devis):
+        return None
+    try:
+        return float(devis.total_ttc)
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def economie_pompage_pour_devis(devis_id, company):
@@ -1350,4 +1371,6 @@ def economie_pompage_pour_devis(devis_id, company):
     sortie_etude = etudier_pompage(company, {}, devis=devis)
     return economie_pompage_depuis(company, saisies,
                                    sortie_etude=sortie_etude,
-                                   lignes=lignes_pour_economie(devis))
+                                   lignes=lignes_pour_economie(devis),
+                                   investissement_ttc_canonique=(
+                                       investissement_canonique_du_devis(devis)))

@@ -135,6 +135,10 @@ def render_pdf_bytes(data: dict) -> bytes:
     REGROUPEMENT DÉCLARÉ des lignes (``pages._ligne_regroupee``, total exact) ;
     jamais de 4ᵉ page qui coupe le bloc d'acceptation. Au-delà :
     :class:`Unsupported` NOMMÉ (journalisé par le dispatch)."""
+    # Décision fondateur 08/10/2026 — un devis envoyé avant les
+    # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
+    from ..montants import poser_regles_origine
+    poser_regles_origine((data or {}).get("regles_calcul_origine"))
     from weasyprint import HTML
 
     from . import pages

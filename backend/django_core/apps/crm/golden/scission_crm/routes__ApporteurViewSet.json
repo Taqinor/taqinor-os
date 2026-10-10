@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^apporteurs/$",
+  "nom": "crm-apporteur-list",
+  "vue": "ApporteurViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^apporteurs/(?P<pk>[^/.]+)/$",
+  "nom": "crm-apporteur-detail",
+  "vue": "ApporteurViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^apporteurs/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-apporteur-detail",
+  "vue": "ApporteurViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^apporteurs\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-apporteur-list",
+  "vue": "ApporteurViewSet"
+ }
+]

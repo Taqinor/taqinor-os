@@ -1,0 +1,86 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "booking_links",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "booking_links",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_booking_token",
+    "editable": false,
+    "max_length": 64,
+    "unique": true
+   },
+   "nom": "token",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_booking_expiry"
+   },
+   "nom": "expires_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "used_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "booking_link_origine",
+    "to": "crm.appointment"
+   },
+   "nom": "appointment",
+   "type": "ForeignKey"
+  }
+ ],
+ "db_table": "crm_bookinglink",
+ "label": "crm.BookingLink",
+ "relations_inverses": []
+}

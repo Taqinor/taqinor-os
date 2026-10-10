@@ -1,0 +1,106 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "client",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "objectifs_strategiques",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "potentiel_estime",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "concurrents_presents",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "swot_forces",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "swot_faiblesses",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "swot_opportunites",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "swot_menaces",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "prochaine_revue",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "statut",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "statut_display",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "created_by",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "mis_a_jour_par",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ListSerializer",
+   "nom": "revues",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_modification",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

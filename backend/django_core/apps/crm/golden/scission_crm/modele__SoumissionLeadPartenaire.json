@@ -1,0 +1,139 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "soumissions_lead_partenaire",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "soumissions",
+    "to": "crm.partenaire",
+    "verbose_name": "Partenaire"
+   },
+   "nom": "partenaire",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 200,
+    "verbose_name": "Nom du prospect"
+   },
+   "nom": "nom_prospect",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 30,
+    "verbose_name": "Téléphone du prospect"
+   },
+   "nom": "telephone_prospect",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 254,
+    "verbose_name": "Email du prospect"
+   },
+   "nom": "email_prospect",
+   "type": "EmailField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 120,
+    "verbose_name": "Ville"
+   },
+   "nom": "ville",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "verbose_name": "Note"
+   },
+   "nom": "note",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "soumis",
+      "Soumis"
+     ],
+     [
+      "qualifie",
+      "Qualifié"
+     ],
+     [
+      "converti",
+      "Converti"
+     ],
+     [
+      "rejete",
+      "Rejeté"
+     ]
+    ],
+    "default": "soumis",
+    "max_length": 10,
+    "verbose_name": "Statut"
+   },
+   "nom": "statut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Id du lead créé"
+   },
+   "nom": "lead_id",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true,
+    "verbose_name": "Soumis le"
+   },
+   "nom": "date_soumission",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "compta_soumissionleadpartenaire",
+ "label": "crm.SoumissionLeadPartenaire",
+ "relations_inverses": []
+}

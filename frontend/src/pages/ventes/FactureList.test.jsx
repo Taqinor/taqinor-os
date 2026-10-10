@@ -4,6 +4,20 @@ import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// AFAC26 — les réponses simulées du lien de paiement sont LUES dans le contrat
+// partagé `lien_paiement.json` (AFAC20), plus un payload inventé.
+const CONTRAT_LIEN = JSON.parse(readFileSync(join(
+  dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'backend',
+  'django_core', 'apps', 'facturation', 'contract_samples', 'lien_paiement.json'), 'utf8')).exemple
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), message: vi.fn(), info: vi.fn() }))
+vi.mock('../../ui/Toaster', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, toast: toastMock }
+})
 
 // WR2b — la liste des factures ne doit toucher aucun réseau pendant le test :
 // on neutralise le thunk de chargement (le composant le dispatche au montage).
@@ -24,7 +38,8 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
     default: {
       ...actual.default,
       lienPaiementFacture: vi.fn(() => Promise.resolve({
-        data: { pay_url: 'https://pay.example/tok123', montant: '5000.00', token: 'tok123' },
+        // montant figé à la création ≠ montant_a_payer : l'écran annonce le second.
+        data: { ...CONTRAT_LIEN, montant: '5000.00', montant_a_payer: '900.00' },
       })),
       dgiExportFacture: vi.fn(() => Promise.resolve({
         data: new Blob(['<xml/>'], { type: 'application/xml' }),
@@ -124,8 +139,28 @@ describe('FactureList — WR2b : « Payer en ligne »', () => {
       expect(ventesApi.lienPaiementFacture).toHaveBeenCalledWith(1)
     })
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('https://pay.example/tok123')
+      expect(writeText).toHaveBeenCalledWith(CONTRAT_LIEN.pay_url)
     })
+  })
+
+  it('le toast annonce montant_a_payer', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.resolve()) } })
+    renderList({ factures: [{ ...baseFacture }] })
+    const row = screen.getByText('FAC-2026-07-0001').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Payer en ligne/ }))
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalled())
+    const msg = toastMock.success.mock.calls.at(-1)[0]
+    expect(msg).toMatch(/900,00/)
+    expect(msg).not.toMatch(/5\s?000/)
+  })
+
+  it('pas de bouton Payer en ligne si exigible nul', () => {
+    renderList({
+      factures: [{ ...baseFacture, id: 3, reference: 'FAC-RETENUE', montant_du: 10000, montant_exigible: '0.00' }],
+    })
+    const row = screen.getByText('FAC-RETENUE').closest('tr')
+    expect(within(row).queryByRole('button', { name: /Payer en ligne/ })).toBeNull()
+    expect(within(row).getByRole('button', { name: /Encaisser/ })).toBeInTheDocument()
   })
 
   it('n\'affiche pas le bouton quand la facture est déjà soldée', () => {

@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^motifs-perte/$",
+  "nom": "motifperte-list",
+  "vue": "MotifPerteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^motifs-perte/(?P<pk>[^/.]+)/$",
+  "nom": "motifperte-detail",
+  "vue": "MotifPerteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^motifs-perte/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "motifperte-detail",
+  "vue": "MotifPerteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^motifs-perte\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "motifperte-list",
+  "vue": "MotifPerteViewSet"
+ }
+]

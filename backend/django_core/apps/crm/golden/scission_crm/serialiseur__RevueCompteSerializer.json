@@ -1,0 +1,58 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "plan",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DateField",
+   "nom": "date_revue",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "participants",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "decisions",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "prochaine_action",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "prochaine_action_date",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "created_by",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

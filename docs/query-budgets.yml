@@ -40,8 +40,16 @@ endpoints:
     enforced: true
     note: "Liste des produits (YOPSB13) — plafond 24 : régime fixe mesuré en CI (22 requêtes à 5 comme à 50 lignes, hors compteur de catégories) + 1 requête groupée nb_produits."
 
+  # APRF5 (09/10/2026) — plafond MESURÉ par
+  # apps/ventes/tests/test_yopsb13_devis_query_budget.py : 23 requêtes à 10 ET
+  # à 25 devis (page mixte : deux options, facturé, mono), donc O(1). Le 15
+  # d'origine datait d'avant le dé-skip et ne comptait ni l'authentification
+  # (3 lectures utilisateur + module + politique réseau), ni les 3 singletons
+  # de config du moteur d'affichage (profil, gabarits, tarification), ni les
+  # préchargements de solde par facture (paiements, avoirs, affectations,
+  # lignes, notes de débit, retenues — APRF4/APRF5).
   - path: /api/django/ventes/devis/
-    budget: 15
+    budget: 23
     enforced: true
     note: "Liste des devis (YOPSB13) — appelle le moteur d'affichage TTC."
 

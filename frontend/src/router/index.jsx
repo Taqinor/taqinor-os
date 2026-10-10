@@ -63,6 +63,8 @@ const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 // XSAL17 — page publique de réservation de visite (placeholder {lien_rdv}).
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
+// AFAC26 — page publique « Payer » (lien de paiement tokenisé, sans login ni layout ERP).
+const PagePaiementPublic = lazy(() => import('../pages/ventes/factureList/PagePaiementPublic'))
 // ASTK219 — kiosque de quai public (check-in chauffeur par code, sans login).
 const KiosqueQuaiPage = lazy(() => import('../pages/stock/KiosqueQuaiPage'))
 // ASTK223 — solde public du dépositaire 3PL (sans login).
@@ -421,6 +423,8 @@ const router = createBrowserRouter([
   { path: '/ui', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><UIShowcase /></Suspense></RouteErrorBoundary> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
   { path: '/rdv/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense></RouteErrorBoundary> },
+  // AFAC26 — page client « Payer » (URL absolue du lien de paiement, AFAC21).
+  { path: '/payer/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PagePaiementPublic /></Suspense></RouteErrorBoundary> },
   // ASTK219 — kiosque de quai public (sans login, sans layout ERP).
   { path: '/quai/checkin', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><KiosqueQuaiPage /></Suspense></RouteErrorBoundary> },
   // ASTK223 — solde du dépositaire 3PL par lien (sans login, sans layout ERP).

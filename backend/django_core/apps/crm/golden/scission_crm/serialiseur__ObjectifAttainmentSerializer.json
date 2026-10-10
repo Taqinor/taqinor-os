@@ -1,0 +1,88 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "metric",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "metric_display",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "period_type",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "period_year",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "period_month",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "period_quarter",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "cible",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "owner",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "owner_nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "realise",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "FloatField",
+   "nom": "taux",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DateField",
+   "nom": "period_start",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DateField",
+   "nom": "period_end",
+   "read_only": false,
+   "required": true
+  }
+ ]
+}

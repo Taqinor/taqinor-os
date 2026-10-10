@@ -1,0 +1,46 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "semaine_iso",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "categorie",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "montant_total",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "nb_leads",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "owner",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

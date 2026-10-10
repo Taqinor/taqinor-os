@@ -5,7 +5,7 @@ import {
   Copy, Send, X, Eye, AlertTriangle, Box, ExternalLink,
   Link2, Link2Off, MoreHorizontal, Bell, Share2,
 } from 'lucide-react'
-import { fetchDevis } from '../../../features/ventes/store/ventesSlice.js'
+import { rafraichirDevis } from '../../../features/ventes/store/ventesSlice.js'
 import ventesApi from '../../../api/ventesApi.js'
 import {
   Button, Badge, StatusPill, Checkbox, Textarea,
@@ -486,11 +486,19 @@ export default function DevisRow({ d, ctx }) {
               <Send /> Envoyer
             </Button>
           )}
+          {/* ADEV8 — une version REMPLACÉE (is_active=false) est en lecture
+              seule : aucun geste Relancer / Accepter / Refuser / Copier le
+              lien ; on indique à la place par quelle version elle a été remplacée. */}
+          {d.statut === 'envoye' && d.is_active === false && (
+            <span className="text-xs text-muted-foreground" data-testid="devis-remplacee-par">
+              Remplacée par {d.superseded_by_ref || 'une version plus récente'}
+            </span>
+          )}
           {/* VX222 — « Relancer » : pendant devis de la relance facture. Rouvre
               le flux WhatsApp EXISTANT en mode rappel (aperçu-puis-clic, jamais
               d'envoi auto) + consigne la relance au chatter. N'apparaît que sur
               un devis « Envoyé ». */}
-          {d.statut === 'envoye' && (
+          {d.statut === 'envoye' && d.is_active !== false && (
             <Button
               size="sm"
               variant="outline"
@@ -501,7 +509,7 @@ export default function DevisRow({ d, ctx }) {
               <Bell /> Relancer
             </Button>
           )}
-          {d.statut === 'envoye' && canValiderVente && (
+          {d.statut === 'envoye' && d.is_active !== false && canValiderVente && (
             <Button
               size="sm"
               title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
@@ -510,7 +518,7 @@ export default function DevisRow({ d, ctx }) {
               <Check /> Accepter
             </Button>
           )}
-          {d.statut === 'envoye' && canValiderVente && (
+          {d.statut === 'envoye' && d.is_active !== false && canValiderVente && (
             <Button
               size="sm"
               variant="outline"
@@ -614,7 +622,7 @@ export default function DevisRow({ d, ctx }) {
               )}
               {/* WR2/QJR531 — Copier le lien de proposition (share_link) :
                   copier le lien CLIENT vaut envoi (D-QJR5-3). */}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && d.is_active !== false && (
                 <DropdownMenuItem
                   disabled={shareBusyId === d.id}
                   onSelect={() => handleCopierLienProposition(d)}
@@ -626,7 +634,7 @@ export default function DevisRow({ d, ctx }) {
               {/* L-INTPREV/QJ1bis — même page, jeton INTERNE : vérifier la
                   proposition sans déclencher la notification d'ouverture
                   ni aucune trace. Jamais à envoyer au client. */}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && d.is_active !== false && (
                 <DropdownMenuItem
                   disabled={shareBusyId === d.id}
                   onSelect={() => handleCopierApercuInterne(d)}
@@ -769,7 +777,7 @@ export default function DevisRow({ d, ctx }) {
                   // avertit si chantier en cours (VX216(a)), dit le résultat,
                   // ouvre la V2 en Édition complète.
                   reviserEtOuvrir({
-                    devis: d, navigate, onApres: () => dispatch(fetchDevis()),
+                    devis: d, navigate, onApres: () => dispatch(rafraichirDevis(d.id)),
                   })
                 }}>
                   Réviser (nouvelle version)
@@ -779,7 +787,7 @@ export default function DevisRow({ d, ctx }) {
                 && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
                 <DropdownMenuItem onSelect={() => {
                   ventesApi.approuverRemise(d.id)
-                    .then(() => dispatch(fetchDevis())).catch(() => {})
+                    .then(() => dispatch(rafraichirDevis(d.id))).catch(() => {})
                 }}>
                   Approuver la remise
                 </DropdownMenuItem>
@@ -1039,7 +1047,7 @@ export default function DevisRow({ d, ctx }) {
             <p className="mb-2 text-xs font-medium text-muted-foreground">
               Étude bancable — {d.reference}
             </p>
-            <EtudeBancable devis={d} onRefresh={() => dispatch(fetchDevis())} />
+            <EtudeBancable devis={d} onRefresh={() => dispatch(rafraichirDevis(d.id))} />
           </div>
         </td>
       </tr>

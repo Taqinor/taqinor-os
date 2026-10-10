@@ -529,6 +529,12 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
         tranches = []
     if not tranches:
         return slots
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    if not calcul_corrige(devis):
+        # Décision fondateur 08/10/2026 — devis envoyé avant AMOT70
+        # (``regles_calcul = 1``) : la correspondance d'hier, défauts société
+        # pour un créneau absent, le client relit ce qu'il a reçu.
+        return _termes_paiement_origine(slots, tranches)
     # AMOT70 (C-AMOT-017, volet amont) — UN ÉCHÉANCIER DU DEVIS EST COMPLET :
     # un créneau qu'il ne porte pas vaut 0, jamais le défaut société (qui
     # imprimait « 60 % à la réception du matériel » à côté de 45/55 — 160 %).
@@ -561,6 +567,32 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
             slots[cle] = slots[cle] + t['pct']
     # La PREMIÈRE tranche non typée EST l'acompte (rang 0 ci-dessus) ; aucune
     # réaffectation de plus — la somme des créneaux reste celle des tranches.
+    return slots
+
+
+def _termes_paiement_origine(slots, tranches):
+    """``termes_paiement_devis`` d'AVANT AMOT70, pour un devis aux règles
+    d'origine (décision fondateur 08/10/2026) : ``slots`` porte les défauts
+    société ; un créneau que l'échéancier ne nomme pas les garde."""
+    slots = dict(slots)
+    if len(tranches) == 3:
+        for cle, tr in zip(('acompte', 'materiel', 'solde'), tranches):
+            slots[cle] = tr['pct']
+        return slots
+    par_cle = {t['key']: t['pct'] for t in tranches}
+    for cle in ('acompte', 'materiel', 'solde'):
+        if cle in par_cle:
+            slots[cle] = par_cle[cle]
+    from apps.ventes.utils.company_settings import CRENEAU_DU_JALON
+    sommes = {}
+    if any(t.get('jalon') in JALONS_CI or t['key'] in JALONS_CI
+           for t in tranches):
+        for t in tranches:
+            creneau = CRENEAU_DU_JALON.get(t.get('jalon') or t['key'])
+            if creneau is not None:
+                sommes[creneau] = sommes.get(creneau, 0) + t['pct']
+    slots.update(sommes)
+    slots['acompte'] = tranches[0]['pct']
     return slots
 
 

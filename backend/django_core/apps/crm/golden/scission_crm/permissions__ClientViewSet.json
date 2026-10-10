@@ -1,0 +1,324 @@
+[
+ {
+  "action": "__action_absente__",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "__action_absente__",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "anonymize",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "consolidation",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "create",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "data_export",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "destroy",
+  "methode": "DELETE",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "documents",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "dormants",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "dupliquer",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "engagement",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "engagement_bulk",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "export_xlsx",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "list",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "mon_portefeuille",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "partial_update",
+  "methode": "PATCH",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "relancer_dormance",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "retrieve",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "search",
+  "methode": "GET",
+  "permissions": [
+   {
+    "classe": "OR",
+    "op1": {
+     "classe": "OR",
+     "op1": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_crm_voir"
+     },
+     "op2": {
+      "attrs": {},
+      "classe": "HasPermissionOrLegacy_sav_voir"
+     }
+    },
+    "op2": {
+     "attrs": {},
+     "classe": "HasPermissionOrLegacy_installation_voir"
+    }
+   }
+  ]
+ },
+ {
+  "action": "segments",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "update",
+  "methode": "PUT",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ }
+]

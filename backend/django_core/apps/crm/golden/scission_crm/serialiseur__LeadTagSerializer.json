@@ -1,0 +1,34 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "couleur",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "archived",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "en_usage",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

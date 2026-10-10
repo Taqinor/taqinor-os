@@ -1,0 +1,137 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "deals_enregistres",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "deals",
+    "to": "crm.apporteur"
+   },
+   "nom": "apporteur",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "deal_enregistre",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "OneToOneField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_enregistrement",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "en_attente",
+      "En attente"
+     ],
+     [
+      "approuve",
+      "Approuvé"
+     ],
+     [
+      "rejete",
+      "Rejeté"
+     ],
+     [
+      "expire",
+      "Expiré"
+     ],
+     [
+      "a_payer",
+      "À payer"
+     ]
+    ],
+    "default": "en_attente",
+    "max_length": 10
+   },
+   "nom": "statut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_deal_expiry"
+   },
+   "nom": "expire_le",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 14,
+    "null": true
+   },
+   "nom": "montant_commission_estime",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Posé à `À_PAYER` par NTCRM22 (acceptation du devis lié).",
+    "max_digits": 14,
+    "null": true,
+    "verbose_name": "Commission due (MAD)"
+   },
+   "nom": "montant_commission_du",
+   "type": "DecimalField"
+  }
+ ],
+ "db_table": "crm_dealenregistre",
+ "label": "crm.DealEnregistre",
+ "relations_inverses": []
+}

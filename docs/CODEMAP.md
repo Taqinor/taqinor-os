@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: f57d7fa3b50686d634a80ed247b968562fed44436f99fa250223fad3aed43035
+Structure fingerprint: 02d2ed080bae7be9e5b0038afdbb54d2627df6ab00776ad89aaa3fd34123d3a9
 Plan fingerprint: c08ffd017d7f428f72940505f5dbaf1aa7f882b9f9f09bd679eb6cd4dcf852a4
 
 
@@ -393,7 +393,8 @@ through `frontend/src/lib/apps/` — **never a second app registry**:
 | `useAppBadges.js` | Live grid badges — ONE aggregated call on the existing federated endpoint `GET /reporting/reports/kpi-federes/`, never a local re-aggregation. |
 
 In immersion, `Sidebar`/`Header`/`BottomTabBar` render only the active app. The build flag
-the legacy « sidebar globale » shell and its `VITE_APPS_SHELL` kill-switch were REMOVED by ODY33 (10/10/2026, founder decision D-ODY33): one Apps shell in the code
+`VITE_APPS_SHELL` (default ON) is an emergency kill-switch; removing it is task ODY33,
+gated on founder validation in production.
 
 ### Routes
 

@@ -164,27 +164,18 @@ test('computeROI (estimation) : la batterie apporte des kWh, plus un forfait MAD
     dayUsagePct: 60, totalSans: 100000, totalAvec: 140000, batteryKwh: BATTERY,
   })
   assert.equal(roi.savings_model, 'estimation')
-  // Production EXACTE (non arrondie) telle que computeROI la calcule.
-  const PROD_EXACT = 10 * 1651 * PRODUCTIBLE_NET_FACTOR
-  const GHI_SUM = GHI.reduce((s, v) => s + v, 0)
-  let shiftAttendu = 0
-  for (let i = 0; i < 12; i++) {
-    const prod = PROD_EXACT * (GHI[i] / GHI_SUM)
-    const shift = Math.min(BATTERY * DAYS_IN_MONTH[i], prod * 0.4) // 100 % − 60 %
-    shiftAttendu += shift
-    // Chaque mois : écart avec/sans = kWh décalés × tarif.
-    assert.equal(
-      Math.abs(roi.eco_avec_monthly[i] - roi.eco_sans_monthly[i] - shift * PRICE) < 1e-6,
-      true, `mois ${i + 1} : apport batterie ≠ kWh décalés × tarif`)
-  }
-  // Avec les 20 % de pertes totales, DÉCEMBRE devient plafonné : production
-  // 15 358 × 74,61/1 570,28 = 729,7 kWh, surplus 40 % = 291,9 kWh alors que la
-  // batterie pourrait décaler 10 × 31 = 310 kWh. L'apport annuel n'est donc
-  // plus 3 650 kWh mais 3 650 − 18,1 = 3 631,9 → 3 632 kWh (honnête : on ne
-  // stocke pas une énergie qui n'existe pas en hiver).
-  assert.equal(Math.round(shiftAttendu), 3632)
-  assert.equal(roi.battery_shift_kwh, 3632)
-  assert.equal(roi.battery_shift_kwh < BATTERY * DAYS_PER_YEAR, true)
+  // AGNR25 — l'apport batterie se calcule sur l'ANNÉE, comme le serveur
+  // (`calculate_savings_roi` → `autoconso_avec_ratio`) : production arrondie
+  // 15 358 kWh, taux avec = min(1, 0,60 + 10 × 365 / 15 358) ; aucun
+  // forfait MAD. Décalage = 3 650 kWh (sous le plafond 40 % × 15 358 = 6 143).
+  const PROD = Math.round(10 * 1651 * PRODUCTIBLE_NET_FACTOR)
+  assert.equal(PROD, 15358)
+  const tauxAvec = Math.min(1, 0.6 + (BATTERY * DAYS_PER_YEAR) / PROD)
+  assert.equal(Math.abs(roi.eco_annuelle_avec - PROD * tauxAvec * PRICE) < 1e-6, true)
+  assert.equal(roi.battery_shift_kwh, BATTERY * DAYS_PER_YEAR)
+  // La série mensuelle « avec » est répartie depuis l'annuel (Σ = annuel).
+  const somme = roi.eco_avec_monthly.reduce((s, v) => s + v, 0)
+  assert.equal(Math.abs(somme - roi.eco_annuelle_avec) < 1e-6, true)
 })
 
 test('petite installation, grosse batterie : l\'apport est plafonné par la production', () => {

@@ -1,0 +1,46 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "plan",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "ordre",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "activity_type",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "delai_jours",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "resume_defaut",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "assigne_par_defaut",
+   "read_only": false,
+   "required": false
+  }
+ ]
+}
