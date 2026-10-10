@@ -9,6 +9,10 @@ page publique réelle (``_conditions_publiques``). APDF13 — le résidentiel et
 le une-page impriment les puces CGV (``cgv_imprimees``) : la ligne
 « Paiement » composée en dur a disparu. Test-du-test : retirer l'omission du
 créneau nul de ``remplir_cgv_bullets`` ⇒ ``test_deux_tranches_typees`` échoue.
+
+AMET25 (C-AMET-003, D-ECH-FIGE) — ``EcheancierFigePdfTests`` : le PDF d'un
+devis ACCEPTÉ imprime l'échéancier FIGÉ à l'acceptation (``figer_echeancier``,
+AMET1), jamais les réglages société changés depuis ; un brouillon les suit.
 """
 import html as _html
 
@@ -111,3 +115,42 @@ class EcheancierTexteCasesTests(TestCase):
         self.assertIn('60% à la réception du matériel', res)
         self.assertIn('réception du matériel', une_page)
         self.assertTrue(any('réception du matériel' in p for p in cgv))
+
+
+class EcheancierFigePdfTests(TestCase):
+    def setUp(self):
+        self.company = make_company(slug='amet25-co', nom='AMET25')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _reglages(self, acompte, materiel, solde):
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.company)
+        profil.payment_terms = {'residentiel': {
+            'acompte': acompte, 'materiel': materiel, 'solde': solde}}
+        profil.save(update_fields=['payment_terms'])
+
+    def _termes(self, devis):
+        return build_quote_data(devis, clean_pdf_options(
+            {'pdf_mode': 'full'}))['payment_terms']
+
+    def test_pdf_imprime_l_echeancier_fige_apres_changement_de_reglage(self):
+        from apps.ventes.utils.echeancier import (
+            figer_echeancier, tranches_normalisees)
+        signe = make_devis(self.company, self.user, self.client_obj, _LIGNES,
+                           reference='DEV-AMET25-1')
+        Devis.objects.filter(pk=signe.pk).update(statut='accepte')
+        signe.refresh_from_db()
+        self.assertFalse(figer_echeancier(signe)['deja_fige'])
+        self._reglages(30, 40, 30)
+        signe.refresh_from_db()
+        fige = {'acompte': 30, 'materiel': 60, 'solde': 10}
+        self.assertEqual(self._termes(signe), fige)
+        # PDF = écran : la source unique des tranches dit la même chose.
+        self.assertEqual([t['valeur'] for t in tranches_normalisees(signe)],
+                         list(fige.values()))
+        # Un brouillon (aucun échéancier propre) suit les réglages du jour.
+        brouillon = make_devis(self.company, self.user, self.client_obj,
+                               _LIGNES, reference='DEV-AMET25-2')
+        self.assertEqual(self._termes(brouillon),
+                         {'acompte': 30, 'materiel': 40, 'solde': 30})
