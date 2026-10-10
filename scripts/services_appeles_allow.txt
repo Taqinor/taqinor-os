@@ -14,8 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/feu_vert.py::lead_id_de_reference
-backend/django_core/apps/calepinage/services/feu_vert.py::option_active
 backend/django_core/apps/calepinage/services/gabarits.py::gabarit_depuis_zone
 backend/django_core/apps/calepinage/services/gabarits.py::reglages_admis
 backend/django_core/apps/calepinage/services/horizon.py::azimut_de_face
