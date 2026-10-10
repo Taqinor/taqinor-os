@@ -27,7 +27,7 @@ from apps.calepinage.services.chaines import (
     affectation, bloc_electrique, concevoir_par_pan, empreinte_entree,
 )
 from apps.calepinage.services.electrique import (
-    resultat_calepinage, temperatures_site, verdicts_electriques,
+    resultat_calepinage, temperatures_site, _verdicts_electriques,
 )
 from apps.calepinage.tests._m0_en_attente import EN_ATTENTE_RESULTAT, sans
 
@@ -167,7 +167,7 @@ class FormeDuResultatTest(SimpleTestCase):
 
     def test_le_bloc_electrique_a_les_quatre_cles(self):
         bloc, _ = bloc_electrique(_conception(),
-                                  verdicts=verdicts_electriques(
+                                  verdicts=_verdicts_electriques(
                                       _conception()))
 
         self.assertEqual(
@@ -195,7 +195,7 @@ class FormeDuResultatTest(SimpleTestCase):
         self.assertIn(MOTIF_SANS_ACCES, servi['avertissements'])
 
     def test_les_cinq_codes_de_verdict_du_contrat_sont_servis(self):
-        codes = [v['code'] for v in verdicts_electriques(_conception())]
+        codes = [v['code'] for v in _verdicts_electriques(_conception())]
         attendus = [v['code']
                     for v in EXEMPLE_SERVI['electrique']['verdicts']]
 

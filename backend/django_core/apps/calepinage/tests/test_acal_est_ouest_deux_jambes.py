@@ -23,7 +23,7 @@ import unittest
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.chaines import (
-    affectation, concevoir_par_pan, groupes_electriques,
+    affectation, concevoir_par_pan, _groupes_electriques,
 )
 from apps.calepinage.services.electrique import TemperaturesSite
 from apps.calepinage.services.etapes.inter_rangees import _parts_est_ouest
@@ -145,7 +145,7 @@ class DeuxGroupesElectriquesTest(unittest.TestCase):
 
     def test_deux_groupes_electriques(self):
         layout = _layout(_zone_est_ouest())
-        groupes = groupes_electriques(layout)
+        groupes = _groupes_electriques(layout)
         self.assertEqual([(g.label, g.nb_modules, g.azimut_deg)
                           for g in groupes],
                          [('PAN-EO', 12, 90.0), ('PAN-EO', 8, 270.0)])

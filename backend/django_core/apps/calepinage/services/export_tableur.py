@@ -40,9 +40,8 @@ from .rangees import rangees_du_pan
 
 __all__ = [
     'FEUILLES', 'MOTS_D_ARGENT', 'ExportRefuse', 'verifier_absence_de_prix',
-    'table_modules', 'table_chaines', 'table_nomenclature',
-    'tables_du_resultat',
-    'classeur_octets', 'csv_octets', 'exporter_xlsx', 'exporter_csv',
+    'table_nomenclature',
+    'exporter_xlsx', 'exporter_csv',
     'FEUILLE_COMPARATIF', 'exporter_comparatif_xlsx',
 ]
 
@@ -108,7 +107,7 @@ def _affectation_par_module(resultat):
             if isinstance(entree, dict) and entree.get('module')}
 
 
-def table_modules(geometrie, resultat=None):
+def _table_modules(geometrie, resultat=None):
     """Un module POSÉ par ligne. Les quantités sont celles de la géométrie."""
     entetes = ['Pan', 'Bâtiment', 'Rangée', 'Module', 'Est (m)', 'Nord (m)',
                'Azimut (°)', 'Inclinaison (°)', 'Chaîne', 'Onduleur', 'MPPT']
@@ -144,7 +143,7 @@ def table_modules(geometrie, resultat=None):
     return entetes, lignes
 
 
-def table_chaines(resultat):
+def _table_chaines(resultat):
     """Le chaînage PUBLIÉ par le moteur — aucune chaîne n'est recomposée ici."""
     entetes = ['Grandeur', 'Valeur']
     electrique = (resultat or {}).get('electrique') or {}
@@ -239,11 +238,11 @@ def table_nomenclature(resultat):
     return entetes, lignes
 
 
-def tables_du_resultat(geometrie, resultat=None):
+def _tables_du_resultat(geometrie, resultat=None):
     """``[(titre, entetes, lignes)]`` pour les trois feuilles, PRIX VÉRIFIÉS."""
     tables = [
-        (FEUILLES[0],) + table_modules(geometrie, resultat),
-        (FEUILLES[1],) + table_chaines(resultat),
+        (FEUILLES[0],) + _table_modules(geometrie, resultat),
+        (FEUILLES[1],) + _table_chaines(resultat),
         (FEUILLES[2],) + table_nomenclature(resultat),
     ]
     # ACAL260 — la feuille DÉDIÉE des surfaces de pose, seulement quand le
@@ -296,7 +295,7 @@ def _table_surfaces_de_pose(geometrie):
 
 # ── Les sorties, par l'utilitaire PARTAGÉ ───────────────────────────────────
 
-def classeur_octets(tables, *, provenance=None):
+def _classeur_octets(tables, *, provenance=None):
     """Les trois feuilles dans UN classeur .xlsx, en octets.
 
     ``apps.records.xlsx.build_workbook`` construit la PREMIÈRE feuille (en-têtes
@@ -348,7 +347,7 @@ def classeur_octets(tables, *, provenance=None):
     return tampon.getvalue()
 
 
-def csv_octets(tables, feuille=None):
+def _csv_octets(tables, feuille=None):
     """La variante CSV — UNE feuille par fichier (un CSV n'en porte qu'une).
 
     Sans ``feuille``, c'est la première (les modules). Le séparateur est le
@@ -385,8 +384,8 @@ def _tables_du_calepinage(calepinage):
 
     # ACAL216 — le résultat SERVI (pose, électrique, nomenclature), lecteur
     # tolérant : jamais la colonne brute, qui ne porte ni pose ni électrique.
-    tables = tables_du_resultat(geometrie,
-                                selectors.resultat_servi(calepinage))
+    tables = _tables_du_resultat(geometrie,
+                                 selectors.resultat_servi(calepinage))
     # CALX359 — la feuille « Fixation », EN FIN, seulement quand la société
     # a un catalogue de fixation : sans lui, le classeur est EXACTEMENT
     # celui d'aujourd'hui (D12). Même garde de prix que les trois autres.
@@ -405,13 +404,13 @@ def exporter_xlsx(calepinage):
     """
     from .provenance_document import lignes_de_provenance
 
-    return classeur_octets(_tables_du_calepinage(calepinage),
-                           provenance=lignes_de_provenance(calepinage))
+    return _classeur_octets(_tables_du_calepinage(calepinage),
+                            provenance=lignes_de_provenance(calepinage))
 
 
 def exporter_csv(calepinage, feuille=None):
     """La variante CSV d'une feuille du même classeur."""
-    return csv_octets(_tables_du_calepinage(calepinage), feuille=feuille)
+    return _csv_octets(_tables_du_calepinage(calepinage), feuille=feuille)
 
 
 # ── CALX341 — la feuille « Comparatif » de plusieurs calepinages ───────────
@@ -465,7 +464,7 @@ def exporter_comparatif_xlsx(comparaison):
     """
     entetes, lignes = _table_comparatif(comparaison)
     verifier_absence_de_prix(entetes, [ligne[1:] for ligne in lignes])
-    return classeur_octets([(FEUILLE_COMPARATIF, entetes, lignes)])
+    return _classeur_octets([(FEUILLE_COMPARATIF, entetes, lignes)])
 # ── CALX359 — la feuille « Fixation » ───────────────────────────────────────
 
 

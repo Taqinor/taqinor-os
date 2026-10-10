@@ -18,7 +18,7 @@ SAISIE = {'pan': 'P', 'modules_poses': 12, 'ecarts_position': '',
 
 def lignes(saisies):
     ecarts = service._agreger(1, service.SOURCE_VARIANTE,
-                              service.comparer(PREVUS, saisies))
+                              service._comparer(PREVUS, saisies))
     return service._forme_contrat(ecarts, None)['lignes']
 
 

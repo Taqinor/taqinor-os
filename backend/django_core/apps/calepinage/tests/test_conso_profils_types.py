@@ -18,8 +18,8 @@ from django.core.exceptions import ValidationError
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.calepinage.services.profils_types import (
-    MENTION_REPLI, SOURCE_REPLI, courbe_journaliere, profil_de_repli,
-    profils_de_repli,
+    MENTION_REPLI, SOURCE_REPLI, courbe_journaliere, _profil_de_repli,
+    _profils_de_repli,
 )
 
 #: Une journée de test : 24 poids, forme quelconque mais non nulle.
@@ -91,7 +91,7 @@ class RepliEtiqueteTest(unittest.TestCase):
     """Les profils codés restent — mais ils DISENT qu'ils sont une hypothèse."""
 
     def test_chaque_repli_porte_sa_source_et_sa_mention(self):
-        replis = profils_de_repli()
+        replis = _profils_de_repli()
         self.assertTrue(replis)
         for profil_repli in replis:
             self.assertEqual(profil_repli['source'], SOURCE_REPLI)
@@ -103,7 +103,7 @@ class RepliEtiqueteTest(unittest.TestCase):
         """Jamais une copie : deux copies divergeraient en silence."""
         from apps.ventes.solar_design import TYPICAL_LOAD_PROFILE_RESIDENTIAL
 
-        courbe = profil_de_repli('residentiel')['courbes']['annuel']
+        courbe = _profil_de_repli('residentiel')['courbes']['annuel']
         total = sum(TYPICAL_LOAD_PROFILE_RESIDENTIAL)
         attendue = [valeur / total
                     for valeur in TYPICAL_LOAD_PROFILE_RESIDENTIAL]
@@ -111,7 +111,7 @@ class RepliEtiqueteTest(unittest.TestCase):
                          [round(v, 9) for v in attendue])
 
     def test_une_cle_inconnue_ne_donne_aucun_repli(self):
-        self.assertIsNone(profil_de_repli('industriel'))
+        self.assertIsNone(_profil_de_repli('industriel'))
 
 
 class CourbeJournaliereTest(unittest.TestCase):

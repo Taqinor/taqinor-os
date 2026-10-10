@@ -21,7 +21,7 @@ from apps.calepinage.services.reglementaire import (
     ETAT_FOURNIE,
     ETAT_MANQUANTE,
     MESSAGE_AUCUN_GABARIT,
-    composer_dossiers,
+    _composer_dossiers,
 )
 from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
 
@@ -91,7 +91,7 @@ def _champ(dossier, code):
 class PreremplissageTest(unittest.TestCase):
 
     def setUp(self):
-        self.agregat = composer_dossiers(
+        self.agregat = _composer_dossiers(
             calepinage_id=1, pays='ma', entrees=[_entree()],
             infos=INFOS_LACUNAIRES)
         self.dossier = self.agregat['dossiers'][0]
@@ -115,7 +115,7 @@ class PreremplissageTest(unittest.TestCase):
                          {'societe': 'Taqinor SARL'})
 
     def test_champ_deja_saisi_n_est_plus_a_completer(self):
-        agregat = composer_dossiers(
+        agregat = _composer_dossiers(
             calepinage_id=1, pays='ma',
             entrees=[_entree(champs_saisis={'reference_dossier': 'DP-42'})],
             infos=INFOS_LACUNAIRES)
@@ -129,7 +129,7 @@ class PreremplissageTest(unittest.TestCase):
         self.assertEqual(self.dossier['statut'], 'incomplet')
 
     def test_dossier_complet_se_genere(self):
-        agregat = composer_dossiers(
+        agregat = _composer_dossiers(
             calepinage_id=1, pays='ma', entrees=[_entree(
                 champs_saisis={'societe': 'Taqinor SARL',
                                'puissance': 12.3,
@@ -146,7 +146,7 @@ class PreremplissageTest(unittest.TestCase):
 class PiecesTest(unittest.TestCase):
 
     def test_etats_des_pieces(self):
-        agregat = composer_dossiers(
+        agregat = _composer_dossiers(
             calepinage_id=1, pays='ma',
             entrees=[_entree(pieces_jointes={
                 'piece-a': {'fichier': 'a.pdf', 'fichier_url': None}})],
@@ -156,14 +156,14 @@ class PiecesTest(unittest.TestCase):
         self.assertEqual(pieces['piece-b']['etat'], ETAT_MANQUANTE)
 
     def test_piece_obligatoire_absente_est_a_completer(self):
-        agregat = composer_dossiers(
+        agregat = _composer_dossiers(
             calepinage_id=1, pays='ma', entrees=[_entree()],
             infos=INFOS_LACUNAIRES)
         pieces = {p['code']: p for p in agregat['dossiers'][0]['pieces']}
         self.assertEqual(pieces['piece-a']['etat'], ETAT_A_COMPLETER)
 
     def test_chaque_piece_porte_sa_source_et_sa_reference(self):
-        agregat = composer_dossiers(
+        agregat = _composer_dossiers(
             calepinage_id=1, pays='ma', entrees=[_entree()],
             infos=INFOS_LACUNAIRES)
         for piece in agregat['dossiers'][0]['pieces']:
@@ -175,7 +175,7 @@ class PiecesTest(unittest.TestCase):
 class GabaritManquantTest(unittest.TestCase):
 
     def test_dossier_reste_visible_sans_son_fichier(self):
-        agregat = composer_dossiers(
+        agregat = _composer_dossiers(
             calepinage_id=1, pays='ma',
             entrees=[_entree(gabarit={'id': 2, 'present': False,
                                       'fichier': None, 'depose_le': None,
@@ -189,8 +189,8 @@ class GabaritManquantTest(unittest.TestCase):
         self.assertIn("n'a pas été déposé", dossier['motif_non_generable'])
 
     def test_societe_sans_gabarit_ne_voit_aucun_dossier(self):
-        agregat = composer_dossiers(calepinage_id=2, pays='ma', entrees=[],
-                                    infos={})
+        agregat = _composer_dossiers(calepinage_id=2, pays='ma', entrees=[],
+                                     infos={})
         self.assertEqual(agregat['dossiers'], [])
         self.assertEqual(agregat['gabarits_deposes'], 0)
         self.assertEqual(agregat['message_aucun_gabarit'],
@@ -209,23 +209,23 @@ class ContratCAL247Test(unittest.TestCase):
     """La forme servie est celle du contrat, clé par clé."""
 
     def test_forme_de_l_agregat(self):
-        agregat = composer_dossiers(calepinage_id=1, pays='ma',
-                                    entrees=[_entree()],
-                                    infos=INFOS_LACUNAIRES)
+        agregat = _composer_dossiers(calepinage_id=1, pays='ma',
+                                     entrees=[_entree()],
+                                     infos=INFOS_LACUNAIRES)
         affirmer_non_servies(self, agregat, EN_ATTENTE)
         self.assertEqual(sorted(agregat),
                          sorted(sans(CONTRAT['exemple'], EN_ATTENTE)))
 
     def test_forme_de_l_etat_vide(self):
-        agregat = composer_dossiers(calepinage_id=2, pays='ma', entrees=[],
-                                    infos={})
+        agregat = _composer_dossiers(calepinage_id=2, pays='ma', entrees=[],
+                                     infos={})
         self.assertEqual(sorted(agregat),
                          sorted(sans(CONTRAT['exemple_vide'], EN_ATTENTE)))
 
     def test_forme_d_un_dossier_et_de_ses_sous_objets(self):
-        agregat = composer_dossiers(calepinage_id=1, pays='ma',
-                                    entrees=[_entree()],
-                                    infos=INFOS_LACUNAIRES)
+        agregat = _composer_dossiers(calepinage_id=1, pays='ma',
+                                     entrees=[_entree()],
+                                     infos=INFOS_LACUNAIRES)
         servi = agregat['dossiers'][0]
         attendu = sans(CONTRAT['exemple'], EN_ATTENTE)['dossiers'][0]
         self.assertEqual(sorted(servi), sorted(attendu))
@@ -245,7 +245,7 @@ class ContratCAL247Test(unittest.TestCase):
         # signale ; une saisie égale (« 12,5 » contre 12.5) ne le fait pas.
         infos = dict(INFOS_LACUNAIRES, puissance_kwc=12.5)
         for saisie, ecart in (('12,5', False), (14, True)):
-            agregat = composer_dossiers(
+            agregat = _composer_dossiers(
                 calepinage_id=1, pays='ma',
                 entrees=[_entree(champs_saisis={'puissance': saisie})],
                 infos=infos)
@@ -257,6 +257,6 @@ class ContratCAL247Test(unittest.TestCase):
                 CONTRAT['exemple']['dossiers'][0]['champs_saisis'][0]))
 
     def test_pays_servi_en_majuscules_comme_le_contrat(self):
-        agregat = composer_dossiers(calepinage_id=1, pays='ma', entrees=[],
-                                    infos={})
+        agregat = _composer_dossiers(calepinage_id=1, pays='ma', entrees=[],
+                                     infos={})
         self.assertEqual(agregat['pays'], CONTRAT['exemple']['pays'])

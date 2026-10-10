@@ -7,7 +7,7 @@ La note de calcul n'imprime que 5 lignes annuelles
 mensuel et le détail par pan (``contract_samples/calepinage_resultat.json`` :
 ``production.mensuel[]`` avec ``mois``/``p50_kwh``, ``production.par_pan[]``
 avec ``p50_kwh``, ``performance_ratio``, ``specific_yield_kwh_kwc``,
-``shading_annual_loss_pct``) — et ``construire_note_calcul`` COLLECTE
+``shading_annual_loss_pct``) — et ``_construire_note_calcul`` COLLECTE
 ``par_pan`` (``:313``) sans jamais l'imprimer.
 
 Ce que la section imprime — LU, jamais recalculé

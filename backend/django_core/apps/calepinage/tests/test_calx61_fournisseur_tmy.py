@@ -45,7 +45,7 @@ from apps.calepinage.services.electrique import (
     SOURCE_TMY,
     SOURCE_TMY_NOCT,
     enregistrer_fournisseur_temperatures,
-    fournisseur_temperatures,
+    _fournisseur_temperatures,
     temperatures_site,
 )
 from apps.calepinage.services.pvgis_serie import ClientPvgis, PvgisIndisponible
@@ -217,7 +217,7 @@ class BranchementParesseuxTest(SimpleTestCase):
 
     def test_le_fournisseur_enregistre_est_celui_du_module(self):
         self.assertIs(
-            fournisseur_temperatures(), temperatures_tmy,
+            _fournisseur_temperatures(), temperatures_tmy,
             "apps.py::ready() n'a pas branché le fournisseur TMY : les "
             'bornes de tension retomberaient sur la mention « non '
             'sourcées » alors que le point GPS est connu (CALX61).')

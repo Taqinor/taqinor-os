@@ -20,7 +20,7 @@ La regle
   organe ajoute) : seulement sur les en-tetes de colonnes et sur les textes
   qui viennent du catalogue ou du moteur (designations, references, fiches
   produit). Ce que l'appelant lui passe est son choix, et il le dit ;
-* la garde PAR CLE (``export_projet.cle_de_montant``, ``note_calcul
+* la garde PAR CLE (``export_projet._cle_de_montant``, ``note_calcul
   ._cle_interdite``, ``rapport.verifier_etancheite``) est INCHANGEE : elle ne
   lit pas du texte, elle lit des noms de cles.
 """

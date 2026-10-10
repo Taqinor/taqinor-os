@@ -18,12 +18,21 @@ from __future__ import annotations
 
 
 # ── CALX297 — le rapport d'étude ────────────────────────────────────────────
-#: ``code du document -> chemin de SA fonction de mise en page`` : UNE seule
-#: fonction HTML par document, que le rendu PDF et l'aperçu (CALX323)
-#: partagent. Les pièces suivantes du lot AJOUTENT leur ligne ici.
+#: ``code du document -> SA fonction de mise en page`` : UNE seule fonction
+#: HTML par document, que le rendu PDF et l'aperçu (CALX323) partagent. Les
+#: pièces suivantes du lot AJOUTENT leur ligne ici. Une entrée est soit le
+#: chemin ``'module:fonction'``, soit un appelable SANS argument qui rend la
+#: fonction (import tardif : ce paquet n'importe rien au chargement).
 MISES_EN_PAGE = {
     'rapport_etude': 'apps.calepinage.services.rapport:html_du_rapport',
 }
+
+
+def _piece(nom):
+    """Le module de la pièce ``nom`` de ce paquet (import tardif)."""
+    from importlib import import_module
+
+    return import_module('%s.%s' % (__name__, nom))
 
 
 def mise_en_page(code):
@@ -34,11 +43,13 @@ def mise_en_page(code):
     from importlib import import_module
 
     try:
-        chemin = MISES_EN_PAGE[code]
+        entree = MISES_EN_PAGE[code]
     except KeyError:
         raise KeyError('Document sans mise en page déclarée : « %s ».'
                        % code) from None
-    module, _, fonction = chemin.partition(':')
+    if callable(entree):
+        return entree()
+    module, _, fonction = entree.partition(':')
     return getattr(import_module(module), fonction)
 
 
@@ -420,23 +431,26 @@ def inventaire_des_documents(calepinage):
 
 
 # ── CALX310 — le plan de câblage des chaînes ────────────────────────────────
+#
+# ENF18 — les quatre mises en page ci-dessous sont enregistrées par un
+# appelable (``_piece(nom).fonction``) et non plus par un chemin-chaîne : la
+# fonction est ainsi NOMMÉE dans le code qui la sert (``mise_en_page``,
+# consommée par l'aperçu ``apercu-document/``), au lieu de n'exister que dans
+# une chaîne que la garde ``check_services_appeles`` ne peut pas suivre.
 MISES_EN_PAGE['plan_cablage'] = (
-    'apps.calepinage.services.documents.plan_cablage:html_du_plan_cablage')
+    lambda: _piece('plan_cablage').html_du_plan_cablage)
 
 
 # ── CALX316 — le manuel du propriétaire, depuis le gabarit société ─────────
 MISES_EN_PAGE['manuel_proprietaire'] = (
-    'apps.calepinage.services.documents.manuel_proprietaire:'
-    'html_du_manuel')
+    lambda: _piece('manuel_proprietaire').html_du_manuel)
 
 
 # ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
 MISES_EN_PAGE['document_asbuilt'] = (
-    'apps.calepinage.services.documents.document_asbuilt:'
-    'html_du_document_asbuilt')
+    lambda: _piece('document_asbuilt').html_du_document_asbuilt)
 
 
 # ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
 MISES_EN_PAGE['presentation_compacte'] = (
-    'apps.calepinage.services.documents.presentation_compacte:'
-    'html_de_presentation_compacte')
+    lambda: _piece('presentation_compacte').html_de_presentation_compacte)

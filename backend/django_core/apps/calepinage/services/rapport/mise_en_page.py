@@ -15,7 +15,7 @@ les sections d'UN SEUL document.
 
 Ce que ce module ajoute
 ========================
-* ``pages_attendues(rapport)`` — le nombre de pages RÉELLEMENT occupées par
+* ``_pages_attendues(rapport)`` — le nombre de pages RÉELLEMENT occupées par
   chaque bloc du rapport (la garde, le sommaire, puis chaque section RETENUE
   dans l'ordre d'impression), en rendant CHAQUE bloc comme un document
   autonome et en le comptant par ``pack_technique.compter_pages`` — même
@@ -23,7 +23,7 @@ Ce que ce module ajoute
   qu'à des pièces séparées. Une section RETIRÉE par la société (CALX307 —
   absente de ``rapport['sections']``) n'a AUCUNE entrée : elle n'est nulle
   part dans le document, donc nulle part dans ce compte ;
-* ``html_du_sommaire(rapport, pages)`` — le corps HTML du sommaire : une
+* ``_html_du_sommaire(rapport, pages)`` — le corps HTML du sommaire : une
   ligne par section RETENUE (la garde exclue), avec son numéro de PREMIÈRE
   page, obtenu en CUMULANT ``pages`` dans l'ordre d'impression — jamais un
   numéro deviné. Une section dont ``pages`` ne publie rien (rendu manquant)
@@ -60,7 +60,7 @@ from __future__ import annotations
 
 from html import escape
 
-__all__ = ['CSS_MISE_EN_PAGE', 'pages_attendues', 'html_du_sommaire',
+__all__ = ['CSS_MISE_EN_PAGE',
            'html_de_rapport_pagine']
 
 #: Un saut de page AVANT chaque section (la garde force déjà le sien) —
@@ -110,7 +110,7 @@ def _corps_garde(rapport):
         rapport['styles'], libelles=libelles_de_garde(rapport['langue']))
 
 
-def pages_attendues(rapport):
+def _pages_attendues(rapport):
     """``{code: pages}`` — chaque bloc RÉELLEMENT imprimé, compté seul.
 
     ``'garde'`` et ``'sommaire'`` sont deux entrées à part (le sommaire n'est
@@ -138,12 +138,12 @@ def pages_attendues(rapport):
     # défaut d'UNE page — juste assez pour mesurer son propre compte.
     provisoire = dict(contenu, garde=pages_garde)
     pages_sommaire = _pages_du_bloc(
-        rapport, html_du_sommaire(rapport, provisoire))
+        rapport, _html_du_sommaire(rapport, provisoire))
 
     return dict(contenu, garde=pages_garde, sommaire=pages_sommaire)
 
 
-def html_du_sommaire(rapport, pages):
+def _html_du_sommaire(rapport, pages):
     """Le corps HTML du sommaire — la garde exclue, une ligne par section
     RETENUE dont ``pages`` publie un compte.
 
@@ -196,8 +196,8 @@ def html_de_rapport_pagine(rapport):
         return html_de_rapport(rapport)
 
     langue = rapport['langue']
-    pages = pages_attendues(rapport)
-    corps = [_corps_garde(rapport), html_du_sommaire(rapport, pages)]
+    pages = _pages_attendues(rapport)
+    corps = [_corps_garde(rapport), _html_du_sommaire(rapport, pages)]
     feuilles = [CSS_RAPPORT, CSS_MISE_EN_PAGE]
     for section in rapport['sections']:
         if section['code'] == 'garde':

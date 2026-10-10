@@ -22,7 +22,7 @@ from decimal import Decimal
 from django.test import TestCase
 
 from apps.calepinage.services.kits import (
-    KitDePoseRefuse, construire_kit_de_pose,
+    KitDePoseRefuse, _construire_kit_de_pose,
 )
 from apps.calepinage.services.parametres import enregistrer_parametres
 from apps.stock.models import FicheTechnique, Produit
@@ -64,8 +64,8 @@ class ConstruireKitDeSposeTest(TestCase):
         return produit
 
     def test_sans_produit_module_cotes_historiques_du_kit(self):
-        resultat = construire_kit_de_pose(self.company,
-                                          kit_id=self.kit_id)
+        resultat = _construire_kit_de_pose(self.company,
+                                           kit_id=self.kit_id)
         self.assertEqual(resultat['module']['source'], 'kit')
         self.assertEqual(resultat['module']['puissance_wc'], 720)
         self.assertIsNone(resultat['produit_module_id'])
@@ -74,7 +74,7 @@ class ConstruireKitDeSposeTest(TestCase):
     def test_avec_produit_module_complet_cotes_du_produit(self):
         module = self._module(nom='Longi 610', longueur_mm=2384,
                               largeur_mm=1303, pmax_wc=Decimal('610'))
-        resultat = construire_kit_de_pose(
+        resultat = _construire_kit_de_pose(
             self.company, kit_id=self.kit_id, produit_module_id=module.pk)
         self.assertEqual(resultat['module']['source'], 'produit')
         self.assertEqual(resultat['module']['longueur_mm'], 2384)
@@ -84,33 +84,33 @@ class ConstruireKitDeSposeTest(TestCase):
     def test_module_sans_dimensions_refuse_en_nommant_le_champ(self):
         module = self._module(nom='Sans fiche complète')  # tout None
         with self.assertRaises(KitDePoseRefuse) as ctx:
-            construire_kit_de_pose(
+            _construire_kit_de_pose(
                 self.company, kit_id=self.kit_id, produit_module_id=module.pk)
         self.assertIn(ctx.exception.champ,
                       ('longueur_mm', 'largeur_mm', 'puissance_wc'))
 
     def test_produit_module_introuvable_refuse(self):
         with self.assertRaises(KitDePoseRefuse) as ctx:
-            construire_kit_de_pose(
+            _construire_kit_de_pose(
                 self.company, kit_id=self.kit_id,
                 produit_module_id=999999)
         self.assertEqual(ctx.exception.champ, 'produit_module')
 
     def test_kit_introuvable_refuse(self):
         with self.assertRaises(KitDePoseRefuse) as ctx:
-            construire_kit_de_pose(self.company, kit_id=999999)
+            _construire_kit_de_pose(self.company, kit_id=999999)
         self.assertEqual(ctx.exception.champ, 'kit')
 
     def test_societe_absente_refuse(self):
         with self.assertRaises(KitDePoseRefuse) as ctx:
-            construire_kit_de_pose(None, kit_id=self.kit_id)
+            _construire_kit_de_pose(None, kit_id=self.kit_id)
         self.assertEqual(ctx.exception.champ, 'kit')
 
     def test_produit_module_archive_signale_mais_kit_construit(self):
         module = self._module(nom='Archivé', longueur_mm=2384,
                               largeur_mm=1303, pmax_wc=Decimal('610'),
                               archive=True)
-        resultat = construire_kit_de_pose(
+        resultat = _construire_kit_de_pose(
             self.company, kit_id=self.kit_id, produit_module_id=module.pk)
         self.assertTrue(resultat['produit_module_archive'])
         self.assertEqual(resultat['module']['source'], 'produit')
@@ -123,6 +123,6 @@ class ConstruireKitDeSposeTest(TestCase):
             prix_achat=Decimal('50'), prix_vente=Decimal('90'),
             quantite_stock=1, is_archived=True)
         self._poser_kit(produit_id=produit_prix.pk)
-        resultat = construire_kit_de_pose(self.company,
-                                          kit_id=self.kit_id)
+        resultat = _construire_kit_de_pose(self.company,
+                                           kit_id=self.kit_id)
         self.assertTrue(resultat['kit']['produit_archive'])

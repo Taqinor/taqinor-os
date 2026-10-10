@@ -211,8 +211,19 @@ def _module_de_section(code):
 
 
 def redacteur_de_section(code):
-    """``html_de_section(contexte)`` du rédacteur de ``code``, ou ``None``."""
-    return getattr(_module_de_section(code), 'html_de_section', None)
+    """``html_de_section(contexte)`` du rédacteur de ``code``, ou ``None``.
+
+    L'attribut est lu NOMMÉMENT (``module.html_de_section``) : c'est cet appel
+    — et non un ``getattr`` à chaîne — que voit ``check_services_appeles`` pour
+    justifier la fonction ``html_de_section`` de CHAQUE rédacteur (ENF18).
+    Pas de module (section sans rédacteur ENCORE) ou pas de fonction : ``None``,
+    et l'assembleur retombe sur le rendu générique.
+    """
+    module = _module_de_section(code)
+    try:
+        return module.html_de_section
+    except AttributeError:
+        return None
 
 
 def feuille_de_section(code):
@@ -513,7 +524,7 @@ def html_du_rapport(calepinage, *, paginer=True, **options):
     ACAL226 — c'est la version PAGINÉE (garde, sommaire en page 2, une
     section par page) qui est servie ; ``html_de_rapport`` n'est plus que
     l'assembleur interne des sections. ``paginer=False`` (essais purs sans
-    rendu PDF) rend l'assemblage brut : ``pages_attendues`` rend chaque
+    rendu PDF) rend l'assemblage brut : ``_pages_attendues`` rend chaque
     section pour compter ses pages.
     """
     from .mise_en_page import html_de_rapport_pagine

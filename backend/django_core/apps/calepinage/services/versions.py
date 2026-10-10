@@ -136,7 +136,7 @@ def enregistrer_version(calepinage, *, user=None, libelle='',
     )
 
 
-def borne_de_purge(company):
+def _borne_de_purge(company):
     """La borne de conservation SAISIE par ``company``, ou ``None`` (= OFF).
 
     Une valeur absente, nulle, non entière ou ``<= 0`` vaut OFF : on ne devine
@@ -167,7 +167,7 @@ def purger_versions(calepinage, *, garder=None):
     if calepinage is None or not calepinage.pk:
         return 0
     if garder is None:
-        garder = borne_de_purge(getattr(calepinage, 'company', None))
+        garder = _borne_de_purge(getattr(calepinage, 'company', None))
     if garder is None:
         return 0
     if isinstance(garder, bool) or not isinstance(garder, int) or garder <= 0:

@@ -11,9 +11,9 @@ charge NON SERVIE, pas en pourcentage de pertes.
 Sans réseau, il n'y a pas de soutirage : ce que la production et la banque ne
 servent pas est une DÉFAILLANCE DE CHARGE (loss of load). C'est exactement le
 chiffre qu'un site isolé doit connaître avant d'être vendu, et
-``services/hors_reseau.py::simuler_hors_reseau`` (CAL154) le calcule déjà
+``services/hors_reseau.py::_simuler_hors_reseau`` (CAL154) le calcule déjà
 heure par heure ; il est appelé TEL QUEL, avec son dimensionnement
-(``banque_pour_autonomie``) par ``dimensionner_hors_reseau``.
+(``_banque_pour_autonomie``) par ``dimensionner_hors_reseau``.
 
 Parité citée :
 * PV*SOL — protection de batterie hors réseau à trois niveaux et règle de

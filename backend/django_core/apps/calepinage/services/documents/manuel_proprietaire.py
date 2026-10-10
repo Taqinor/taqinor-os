@@ -43,8 +43,7 @@ from ..rapport import RapportRefuse
 __all__ = [
     'CODE_DOCUMENT', 'GENRE_GABARIT', 'NON_RENSEIGNE', 'ManuelRefuse',
     'MESSAGE_AUCUN_GABARIT_MANUEL', 'VARIABLES_SYSTEME',
-    'gabarit_manuel_actif', 'variables_systeme', 'substituer_variables',
-    'construire_manuel', 'html_de_manuel', 'html_du_manuel', 'rendre_manuel',
+    'html_du_manuel', 'rendre_manuel',
 ]
 
 #: Le code du document dans l'inventaire (contrat ``calepinage_documents``).
@@ -92,7 +91,7 @@ class ManuelRefuse(RapportRefuse):
     """
 
 
-def gabarit_manuel_actif(company):
+def _gabarit_manuel_actif(company):
     """Le gabarit ACTIF de genre « manuel » de la société, ou ``None``.
 
     Lecture PURE, bornée société par le filtre — jamais une écriture. Un
@@ -128,7 +127,7 @@ def disponibilite(calepinage):
     carte de l'inventaire ``documents/`` appelle CETTE fonction au lieu de
     dupliquer la condition de refus.
     """
-    if gabarit_manuel_actif(getattr(calepinage, 'company', None)) is None:
+    if _gabarit_manuel_actif(getattr(calepinage, 'company', None)) is None:
         return False, MESSAGE_AUCUN_GABARIT_MANUEL, [MANQUE_GABARIT_MANUEL]
     return True, None, []
 
@@ -169,7 +168,7 @@ def _designation_modules(calepinage):
     return str((bloc or {}).get('designation') or '').strip()
 
 
-def variables_systeme(calepinage, *, resultat=None):
+def _variables_systeme(calepinage, *, resultat=None):
     """Les valeurs RÉELLES des clés de ``VARIABLES_SYSTEME`` — jamais devinées.
 
     Une donnée absente vaut ``''`` (``substituer_variables`` l'imprime
@@ -203,7 +202,7 @@ def variables_systeme(calepinage, *, resultat=None):
     }
 
 
-def substituer_variables(texte, variables):
+def _substituer_variables(texte, variables):
     """Remplace chaque ``{{cle}}`` de ``texte`` (déjà échappé HTML) par sa
     valeur, échappée. AUCUN ``{{...}}`` ne subsiste jamais dans la sortie :
 
@@ -241,7 +240,7 @@ def _sections_du_gabarit(gabarit, variables):
         code = str(champ.get('code') or '').strip()
         libelle = str(champ.get('libelle') or code).strip()
         sections.append({'code': code, 'libelle': libelle,
-                         'texte': substituer_variables(texte, variables)})
+                         'texte': _substituer_variables(texte, variables)})
     return sections
 
 
@@ -250,8 +249,8 @@ def _sections_du_gabarit(gabarit, variables):
 _LIRE = object()
 
 
-def construire_manuel(calepinage, *, resultat=None, gabarit=_LIRE,
-                      styles=None, identite=None, site=None, etat=None):
+def _construire_manuel(calepinage, *, resultat=None, gabarit=_LIRE,
+                       styles=None, identite=None, site=None, etat=None):
     """Le manuel, prêt à mettre en page — ou un refus NOMMÉ.
 
     Args:
@@ -260,7 +259,7 @@ def construire_manuel(calepinage, *, resultat=None, gabarit=_LIRE,
             ``services.rapport.resultat_du_rapport`` (même pare-feu de
             montants que le rapport d'étude).
         gabarit: le gabarit DÉJÀ lu (essai pur, ``None`` pour forcer
-            l'absence) — sinon ``gabarit_manuel_actif(company)``.
+            l'absence) — sinon ``_gabarit_manuel_actif(company)``.
         styles / identite / site / etat: déjà lus par l'appelant — sinon LUS
             ici (mêmes lectures que le rapport d'étude, CALX297).
 
@@ -273,7 +272,7 @@ def construire_manuel(calepinage, *, resultat=None, gabarit=_LIRE,
     """
     company = getattr(calepinage, 'company', None)
     if gabarit is _LIRE:
-        gabarit = gabarit_manuel_actif(company)
+        gabarit = _gabarit_manuel_actif(company)
     if gabarit is None:
         raise ManuelRefuse(MESSAGE_AUCUN_GABARIT_MANUEL, champ='gabarit')
 
@@ -292,7 +291,7 @@ def construire_manuel(calepinage, *, resultat=None, gabarit=_LIRE,
 
     from ..provenance_document import provenance_de_simulation
 
-    variables = variables_systeme(calepinage, resultat=resultat)
+    variables = _variables_systeme(calepinage, resultat=resultat)
     sections = _sections_du_gabarit(gabarit, variables)
 
     from .gabarit_document import (
@@ -333,7 +332,7 @@ CSS_MANUEL = (
 )
 
 
-def html_de_manuel(manuel):
+def _html_de_manuel(manuel):
     """Le manuel en HTML AUTONOME habillé du gabarit société."""
     from .gabarit_document import document_html, page_de_garde_html
 
@@ -356,7 +355,7 @@ def html_du_manuel(calepinage, *, langue=None, **options):
     partagent. ``langue`` est accepté pour la forme commune à
     ``services.documents.mise_en_page`` : le manuel n'est servi qu'en
     français (aucun gabarit RTL, CALX296)."""
-    return html_de_manuel(construire_manuel(calepinage, **options))
+    return _html_de_manuel(_construire_manuel(calepinage, **options))
 
 
 def rendre_manuel(calepinage, *, company=None, **options):

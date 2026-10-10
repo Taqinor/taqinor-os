@@ -19,7 +19,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import pack_technique
 from apps.calepinage.services.pack_technique import (
-    DOSSIER_FIN_CHANTIER, SPEC_PIECES, rendre_pieces,
+    DOSSIER_FIN_CHANTIER, SPEC_PIECES, _rendre_pieces,
 )
 
 from .acal_livrables_helpers import exiger_bibliotheques_pdf, patch_materiel
@@ -54,7 +54,7 @@ class PlanDePoseDuDossierFinChantierTest(SimpleTestCase):
         vide = FauxCalepinage(roof_layout={})
         rendus = pack_technique._rendus_dossier_fin_chantier(vide, None)
         with patch_materiel():
-            pieces, signalements = rendre_pieces(
+            pieces, signalements = _rendre_pieces(
                 vide, company='societe-essai',
                 rendus={'plan_pose': rendus['plan_pose']},
                 spec=DOSSIER_FIN_CHANTIER)

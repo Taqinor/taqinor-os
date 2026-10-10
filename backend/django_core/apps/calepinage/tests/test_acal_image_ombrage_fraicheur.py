@@ -28,7 +28,7 @@ from apps.calepinage.services.images_document import images_du_calepinage
 from apps.calepinage.services.layout import enregistrer_layout
 from apps.calepinage.services.rapport import ombrage as section_ombrage
 from apps.calepinage.services.rapport_ombrage import (
-    _table_matrice, html_du_rapport_ombrage,
+    _table_matrice, _html_du_rapport_ombrage,
 )
 from apps.records.models import Attachment
 from apps.roles.models import Role
@@ -65,7 +65,7 @@ class ImageOmbrageFraicheurTest(BaseApiCalepinage):
 
     def _deux_rapports(self):
         self.calepinage.refresh_from_db()
-        autonome = html_du_rapport_ombrage(self.calepinage)
+        autonome = _html_du_rapport_ombrage(self.calepinage)
         section = section_ombrage.html_de_section(
             {'resultat': {'calepinage': self.calepinage.pk}})
         return autonome, section

@@ -9,10 +9,10 @@ import copy
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.export_dxf import document_dxf
+from apps.calepinage.services.export_dxf import _document_dxf
 from apps.calepinage.services.io_layout import module_du_pan
 from apps.calepinage.services.planche import (
-    dimensions_module, geometrie_de_planche, svg_de_planche,
+    _dimensions_module, geometrie_de_planche, svg_de_planche,
 )
 
 from .test_cal171_planche import LAYOUT
@@ -61,7 +61,7 @@ class CotesDuModuleDuPanTest(SimpleTestCase):
         # panelWatt 720 sans modules[] : le kit declare (2,384 x 1,303).
         geometrie = geometrie_de_planche(LAYOUT)
         self.assertEqual(geometrie['pans'][0]['module_m'], (2.384, 1.303))
-        self.assertEqual(dimensions_module({'panelWatt': 720}), (2.384, 1.303))
+        self.assertEqual(_dimensions_module({'panelWatt': 720}), (2.384, 1.303))
 
     def test_un_pan_sans_renvoi_retombe_sur_le_kit_les_autres_gardent_leur_module(self):
         layout = layout_a_deux_pans()
@@ -77,7 +77,7 @@ class CotesDuModuleDuPanTest(SimpleTestCase):
         self.assertNotIn('r="0.7"', svg)
 
     def test_le_dxf_cote_chaque_pan_avec_son_module(self):
-        document = document_dxf(geometrie_de_planche(layout_a_deux_pans()))
+        document = _document_dxf(geometrie_de_planche(layout_a_deux_pans()))
         polylignes = list(document.modelspace().query(
             'LWPOLYLINE[layer=="MODULES"]'))
         largeurs = sorted(round(max(p[0] for p in e.get_points())

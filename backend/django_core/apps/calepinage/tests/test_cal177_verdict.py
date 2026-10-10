@@ -26,7 +26,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage import selectors
 from apps.calepinage.services.note_calcul import (
-    CLES_MARGES, construire_note_calcul, html_de_note_calcul,
+    CLES_MARGES, _construire_note_calcul, _html_de_note_calcul,
     verdict_de_preuve,
 )
 
@@ -132,19 +132,19 @@ class SectionImprimeeTest(SimpleTestCase):
         for cle, valeur in mesures_de_variante().items():
             if cle not in ('production', 'kwc', 'version_moteur'):
                 resultat[cle] = valeur
-        note = construire_note_calcul(resultat, site={})
-        html = html_de_note_calcul(note)
+        note = _construire_note_calcul(resultat, site={})
+        html = _html_de_note_calcul(note)
         self.assertIn('Verdict de preuve', html)
         self.assertIn('programmation_dynamique', html)
         self.assertIn('Optimum prouvé', html)
 
     def test_une_grandeur_non_mesuree_s_affiche_non_mesure(self):
-        note = construire_note_calcul(
+        note = _construire_note_calcul(
             dict(copy.deepcopy(echantillon('calepinage_resultat')['exemple']),
                  marges={'troncon_min_cm': None, 'bande_min_cm': None,
                          'rangee_critique': None, 'obstacle_critique': None}),
             site={})
-        html = html_de_note_calcul(note)
+        html = _html_de_note_calcul(note)
         # « 0 cm » signifierait « au ras » — ce n'est pas « non mesuré ».
         for libelle in ('Marge minimale de tronçon (cm)',
                         'Marge minimale de bande (cm)'):

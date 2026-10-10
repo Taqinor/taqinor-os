@@ -26,8 +26,8 @@ import pathlib
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.gabarits import (
-    CLES_DE_ZONE, SECTION, appliquer_gabarit, gabarit_depuis_zone,
-    normaliser_section_gabarits_disposition, reglages_admis,
+    CLES_DE_ZONE, SECTION, appliquer_gabarit, _gabarit_depuis_zone,
+    normaliser_section_gabarits_disposition, _reglages_admis,
 )
 from apps.calepinage.services.parametres import ReglageInvalide
 
@@ -58,7 +58,7 @@ REGLAGES_MOTEUR = {
 class UnGabaritReproduitExactementSesReglages(SimpleTestCase):
 
     def setUp(self):
-        self.gabarit = gabarit_depuis_zone(
+        self.gabarit = _gabarit_depuis_zone(
             ZONE_SOURCE, reglages=REGLAGES_MOTEUR, libelle='Pan sud type')
 
     def test_les_reglages_de_zone_sont_repris_a_l_identique(self):
@@ -74,8 +74,8 @@ class UnGabaritReproduitExactementSesReglages(SimpleTestCase):
         """Ré-enregistrer la zone réglée doit redonner le MÊME gabarit."""
         vierge, regles = appliquer_gabarit(self.gabarit, {'id': 'z9'})
         self.assertEqual(
-            gabarit_depuis_zone(vierge, reglages=regles,
-                                libelle='Pan sud type'),
+            _gabarit_depuis_zone(vierge, reglages=regles,
+                                 libelle='Pan sud type'),
             self.gabarit)
 
     def test_une_zone_neuve_ne_porte_que_les_reglages(self):
@@ -92,14 +92,14 @@ class UnGabaritReproduitExactementSesReglages(SimpleTestCase):
 
     def test_un_reglage_absent_de_la_zone_reste_absent_du_gabarit(self):
         """Aucun défaut inventé : ce qui n'a pas été réglé ne s'impose pas."""
-        gabarit = gabarit_depuis_zone({'id': 'z2', 'roofType': 'flat'})
+        gabarit = _gabarit_depuis_zone({'id': 'z2', 'roofType': 'flat'})
         self.assertEqual(set(gabarit), {'roofType'})
 
 
 class UnGabaritNeTransportePasDeGeometrie(SimpleTestCase):
 
     def test_la_geometrie_de_la_zone_source_n_entre_pas_dans_le_gabarit(self):
-        gabarit = gabarit_depuis_zone(ZONE_SOURCE, reglages=REGLAGES_MOTEUR)
+        gabarit = _gabarit_depuis_zone(ZONE_SOURCE, reglages=REGLAGES_MOTEUR)
         self.assertNotIn('vertices', gabarit)
         self.assertNotIn('obstacles', gabarit)
         self.assertNotIn('id', gabarit)
@@ -113,7 +113,7 @@ class UnGabaritNeTransportePasDeGeometrie(SimpleTestCase):
             self.assertIn('géométrie', str(refus.exception))
 
     def test_appliquer_un_gabarit_ne_touche_pas_le_contour(self):
-        gabarit = gabarit_depuis_zone(ZONE_SOURCE, reglages=REGLAGES_MOTEUR)
+        gabarit = _gabarit_depuis_zone(ZONE_SOURCE, reglages=REGLAGES_MOTEUR)
         autre = {'id': 'z9',
                  'vertices': [[0, 0], [1, 0], [1, 1]],
                  'obstacles': [{'id': 'x'}]}
@@ -123,7 +123,7 @@ class UnGabaritNeTransportePasDeGeometrie(SimpleTestCase):
 
     def test_la_zone_source_n_est_pas_mutee(self):
         avant = json.dumps(ZONE_SOURCE, sort_keys=True)
-        gabarit = gabarit_depuis_zone(ZONE_SOURCE, reglages=REGLAGES_MOTEUR)
+        gabarit = _gabarit_depuis_zone(ZONE_SOURCE, reglages=REGLAGES_MOTEUR)
         appliquer_gabarit(gabarit, ZONE_SOURCE)
         self.assertEqual(json.dumps(ZONE_SOURCE, sort_keys=True), avant)
 
@@ -132,7 +132,7 @@ class LAxeDesRangeesNEstPasUnReglage(SimpleTestCase):
     """Il est DÉRIVÉ du kit — un gabarit ne peut pas imposer l'inconstructible."""
 
     def test_axe_rangee_n_est_pas_un_reglage_admis(self):
-        self.assertNotIn('axe_rangee', reglages_admis())
+        self.assertNotIn('axe_rangee', _reglages_admis())
 
     def test_un_gabarit_qui_l_impose_est_refuse(self):
         with self.assertRaises(ReglageInvalide) as refus:

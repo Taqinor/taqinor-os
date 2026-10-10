@@ -47,7 +47,7 @@ from apps.calepinage.services.modules_stock import (
     modules_disponibles_du_calepinage,
 )
 from apps.calepinage.services.raccordement import bloc_raccordement
-from apps.calepinage.services.reglementaire import composer_dossiers
+from apps.calepinage.services.reglementaire import _composer_dossiers
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
 ECHANTILLONS = RACINE / 'contract_samples'
@@ -549,8 +549,8 @@ class ClesServiesTest(unittest.TestCase):
                          sorted(echantillon['exemple_post_201']['gabarit']))
 
     def test_dossiers_reglementaires(self):
-        servi = composer_dossiers(calepinage_id=1, pays='ma', entrees=[],
-                                  infos={})
+        servi = _composer_dossiers(calepinage_id=1, pays='ma', entrees=[],
+                                   infos={})
         self._comparer('dossiers_reglementaires.json', servi)
         self._comparer('dossiers_reglementaires.json', servi, 'exemple_vide')
 

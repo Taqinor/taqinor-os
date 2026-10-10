@@ -54,8 +54,8 @@ from . import nombre_tel_que_servi, valeur_imprimable
 __all__ = [
     'CSS_SECTION', 'MENTION_FICHE_NON_RENSEIGNE', 'MENTION_PDF_ABSENT',
     'LIBELLE_FAMILLE', 'LIBELLE_CHAMP_FICHE',
-    'html_de_section', 'html_annexe_equipements',
-    'equipements_pour_rapport', 'annexes_pdf', 'fusionner_octets_pdf',
+    'html_de_section',
+    'annexes_pdf', 'fusionner_octets_pdf',
     'rendre_rapport_avec_annexes',
 ]
 
@@ -200,7 +200,7 @@ def _bloc_batterie(batterie, langue):
             % (entete, lignes))
 
 
-def html_annexe_equipements(equipements, langue='fr'):
+def _html_annexe_equipements(equipements, langue='fr'):
     """L'annexe champ par champ des fiches RETENUES — pure, aucune base lue.
 
     ``equipements`` a la forme du contrat ``calepinage_equipements.json``
@@ -278,7 +278,7 @@ def html_de_section(contexte):
 
     equipements = resultat.get('equipements')
     if equipements:
-        blocs.append(html_annexe_equipements(equipements, langue))
+        blocs.append(_html_annexe_equipements(equipements, langue))
 
     # ACAL226 - une fiche retenue SANS PDF constructeur n'ajoute aucune page
     # a l'annexe : elle est DITE ici, jamais passee sous silence.
@@ -290,7 +290,7 @@ def html_de_section(contexte):
 
 # ── L'annexe des fiches PDF constructeur — lit la base, prend le calepinage ─
 
-def equipements_pour_rapport(calepinage):
+def _equipements_pour_rapport(calepinage):
     """``equipements_du_calepinage`` (CAL243), enveloppe mince pour ce paquet.
 
     Lecture PURE — aucune écriture, aucun statut touché.
@@ -314,7 +314,7 @@ def annexes_pdf(calepinage):
 
     from ..equipements import FAMILLES
 
-    equipements = equipements_pour_rapport(calepinage)
+    equipements = _equipements_pour_rapport(calepinage)
     company = getattr(calepinage, 'company', None)
     annexes = []
     for famille in FAMILLES:

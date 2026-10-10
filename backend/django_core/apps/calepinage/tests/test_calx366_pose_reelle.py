@@ -80,7 +80,7 @@ ORPHELIN = {'pan': CONTRAT['exemple']['lignes'][3]['libelle'],
 
 def ecarts(prevus=PREVUS, saisies=SAISIES, source=service.SOURCE_VARIANTE):
     """Les écarts d'un calepinage, calculés SANS base par le vrai code."""
-    return service._agreger(1, source, service.comparer(prevus, saisies))
+    return service._agreger(1, source, service._comparer(prevus, saisies))
 
 
 class ContratCommitteTest(SimpleTestCase):

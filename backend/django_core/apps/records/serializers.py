@@ -265,7 +265,14 @@ class AttachmentSerializer(serializers.ModelSerializer):
             'id', 'filename', 'size', 'mime', 'phase', 'uploaded_by',
             'uploaded_by_nom', 'created_at', 'url',
         ]
-        read_only_fields = fields
+        # ENF17 — liste LITTÉRALE (même contenu que ``fields``) : la garde
+        # check_fk_scoping lit un littéral ; ``read_only_fields = fields``
+        # la laissait croire ``uploaded_by`` inscriptible. Aucun champ n'est
+        # écrit par ce sérialiseur (pièce posée par l'action d'upload).
+        read_only_fields = [
+            'id', 'filename', 'size', 'mime', 'phase', 'uploaded_by',
+            'uploaded_by_nom', 'created_at', 'url',
+        ]
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_url(self, obj):
@@ -317,8 +324,12 @@ class TagSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
-class TaggedItemSerializer(serializers.ModelSerializer):
+class TaggedItemSerializer(SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
     """FG9 — Association tag ↔ enregistrement."""
+    # ENF17 — la création passe par ``get_company_object`` (vue) ; le PUT/PATCH
+    # générique du ModelViewSet, lui, résolvait ``tag`` sans borne société.
+    same_company_fields = ('tag',)
     tag_nom = serializers.CharField(source='tag.nom', read_only=True)
     tag_couleur = serializers.CharField(source='tag.couleur', read_only=True)
 

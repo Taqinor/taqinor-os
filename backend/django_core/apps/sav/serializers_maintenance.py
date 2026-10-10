@@ -2,6 +2,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import ContratMaintenance, PrestationContrat
 
 
@@ -20,7 +22,11 @@ class PrestationContratSerializer(serializers.ModelSerializer):
         read_only_fields = ['type', 'libelle']
 
 
-class ContratMaintenanceSerializer(serializers.ModelSerializer):
+class ContratMaintenanceSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ENF17 — client et chantier bornés à la société (les équipements le sont
+    # par ``validate_equipements``).
+    same_company_fields = ('client', 'installation')
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     prochaine_visite = serializers.SerializerMethodField()
     due = serializers.SerializerMethodField()

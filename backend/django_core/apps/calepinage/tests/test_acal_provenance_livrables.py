@@ -22,11 +22,11 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import rapport_ombrage
 from apps.calepinage.services.documents.document_asbuilt import (
-    construire_document, html_de_document,
+    _construire_document, _html_de_document,
 )
 from apps.calepinage.services.documents.gabarit_document import pied_html
 from apps.calepinage.services.documents.manuel_proprietaire import (
-    construire_manuel,
+    _construire_manuel,
 )
 from apps.calepinage.services.rapport import construire_rapport, html_de_rapport
 
@@ -102,7 +102,7 @@ class ProvenanceLivrablesTest(SimpleTestCase):
     def test_manuel_et_ombrage_meme_empreinte(self):
         nu = SimpleNamespace(company=None, client_id=None, lead_id=None,
                              pk=None, titre='Villa Anfa', resultat=None)
-        manuel = construire_manuel(
+        manuel = _construire_manuel(
             nu, resultat=_resultat_stocke(), gabarit=GABARIT_CONSIGNES,
             site=SITE, identite=_identite('Manuel du propriétaire'),
             styles=STYLES)
@@ -124,7 +124,7 @@ class ProvenanceLivrablesTest(SimpleTestCase):
             'electrique': {},
             'simulation': _entete(),
         }
-        ombrage = rapport_ombrage.construire_rapport_ombrage(
+        ombrage = rapport_ombrage._construire_rapport_ombrage(
             calepinage, resultat=resultat, etat={})
         self._verifier(ombrage['provenance'])
         self.assertEqual(ombrage['provenance']['hash_entree'],
@@ -137,12 +137,12 @@ class ProvenanceLivrablesTest(SimpleTestCase):
                              pk=None, titre='Villa Anfa',
                              layout_hash=layout_hash, version_moteur='',
                              resultat={'simulation': _entete()})
-        document = construire_document(
+        document = _construire_document(
             nu, ecarts=ECARTS_3_PANS_1_RELEVE, photos=[], svg_planche='',
             site=SITE, identite=_identite('Document as-built'),
             styles=STYLES)
         self._verifier(document['provenance'])
-        self.assertNotIn(layout_hash[:12], html_de_document(document))
+        self.assertNotIn(layout_hash[:12], _html_de_document(document))
 
         # Jamais simulé : aucune empreinte de calcul imprimée — et surtout
         # pas celle du document de pose sous ce nom.
@@ -150,7 +150,7 @@ class ProvenanceLivrablesTest(SimpleTestCase):
                                  pk=None, titre='Villa Anfa',
                                  layout_hash=layout_hash, version_moteur='',
                                  resultat=None)
-        vide = construire_document(
+        vide = _construire_document(
             jamais, ecarts=ECARTS_3_PANS_1_RELEVE, photos=[], svg_planche='',
             site=SITE, identite=_identite('Document as-built'),
             styles=STYLES)

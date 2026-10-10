@@ -2,9 +2,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     Annonce,
-    AnnonceLecture,
     Holiday,
     MessageAccueil,
     Notification,
@@ -79,8 +80,11 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         return value
 
 
-class NotificationRoutingRuleSerializer(serializers.ModelSerializer):
+class NotificationRoutingRuleSerializer(SameCompanyFKSerializerMixin,
+                                        serializers.ModelSerializer):
     """FG4 — Serializer des règles de routage (admin seulement)."""
+    # ENF17 — l'utilisateur ciblé d'une AUTRE société = id absent (400).
+    same_company_fields = ('target_user',)
     event_label = serializers.CharField(
         source='get_event_type_display', read_only=True)
     target_role_label = serializers.CharField(
@@ -227,20 +231,3 @@ class MessageAccueilSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError('Le corps du message est requis.')
         return value
-
-
-class AnnonceLectureSerializer(serializers.ModelSerializer):
-    """XKB6 — Accusé de lecture obligatoire."""
-    utilisateur_username = serializers.CharField(
-        source='utilisateur.username', read_only=True)
-
-    class Meta:
-        model = AnnonceLecture
-        fields = [
-            'id', 'annonce', 'utilisateur', 'utilisateur_username',
-            'date_lecture', 'relances_envoyees', 'derniere_relance_le',
-        ]
-        read_only_fields = [
-            'id', 'utilisateur', 'utilisateur_username', 'date_lecture',
-            'relances_envoyees', 'derniere_relance_le',
-        ]

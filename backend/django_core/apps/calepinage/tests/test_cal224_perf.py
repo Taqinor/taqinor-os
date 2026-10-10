@@ -43,8 +43,8 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.export_dxf import octets_dxf
 from apps.calepinage.services.note_calcul import (
-    construire_note_calcul,
-    html_de_note_calcul,
+    _construire_note_calcul,
+    _html_de_note_calcul,
 )
 from apps.calepinage.services.planche import (
     geometrie_de_planche,
@@ -122,8 +122,8 @@ class PerfNoteCalculTest(SimpleTestCase):
 
     def test_note_calcul_reste_sous_la_borne_mesuree(self):
         def composer():
-            note = construire_note_calcul(_resultat(), site=SITE)
-            return html_de_note_calcul(note)
+            note = _construire_note_calcul(_resultat(), site=SITE)
+            return _html_de_note_calcul(note)
 
         moyenne = _chronometre(composer)
         self.assertLess(

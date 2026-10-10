@@ -22,7 +22,7 @@ import random
 import unittest
 
 from apps.calepinage.services.consommation import (
-    ProfilInvalide, courbe_appareils,
+    ProfilInvalide, _courbe_appareils,
 )
 from apps.calepinage.services.pompage import JOURS_PAR_MOIS
 
@@ -37,7 +37,7 @@ def appareil(kwh, debut, fin, *, provenance='saisi', **autres):
 class SommeDesAppareilsTest(unittest.TestCase):
 
     def test_deux_appareils_disjoints_font_6_kwh_sans_recouvrement(self):
-        resultat = courbe_appareils([appareil(3, 8, 11),
+        resultat = _courbe_appareils([appareil(3, 8, 11),
                                      appareil(3, 18, 21)])
         courbe = resultat['courbe']
         self.assertEqual(len(courbe), 24)
@@ -51,19 +51,19 @@ class SommeDesAppareilsTest(unittest.TestCase):
             self.assertAlmostEqual(courbe[heure], attendu, places=6)
 
     def test_un_creneau_traverse_minuit(self):
-        resultat = courbe_appareils([appareil(8, 22, 6)])
+        resultat = _courbe_appareils([appareil(8, 22, 6)])
         self.assertEqual(resultat['appareils'][0]['creneau'],
                          [22, 23, 0, 1, 2, 3, 4, 5])
         self.assertAlmostEqual(resultat['courbe'][23], 1.0)
         self.assertAlmostEqual(resultat['courbe'][6], 0.0)
 
     def test_debut_egal_fin_couvre_la_journee(self):
-        resultat = courbe_appareils([appareil(2.4, 0, 24)])
+        resultat = _courbe_appareils([appareil(2.4, 0, 24)])
         self.assertEqual(len(resultat['appareils'][0]['creneau']), 24)
         self.assertAlmostEqual(resultat['courbe'][12], 0.1)
 
     def test_sans_appareil_aucune_courbe_inventee(self):
-        resultat = courbe_appareils([])
+        resultat = _courbe_appareils([])
         self.assertIsNone(resultat['courbe'])
         self.assertTrue(resultat['avertissements'])
 
@@ -74,18 +74,18 @@ class ProvenanceTest(unittest.TestCase):
         sans = appareil(3, 8, 11)
         del sans['provenance']
         with self.assertRaises(ProfilInvalide) as capture:
-            courbe_appareils([sans])
+            _courbe_appareils([sans])
         self.assertEqual(capture.exception.champ, 'appareils[0].provenance')
         self.assertIn('appareils[0].provenance', str(capture.exception))
 
     def test_provenance_inconnue_refusee_en_la_nommant(self):
         with self.assertRaises(ProfilInvalide) as capture:
-            courbe_appareils([appareil(3, 8, 11),
+            _courbe_appareils([appareil(3, 8, 11),
                               appareil(1, 9, 10, provenance='releve')])
         self.assertEqual(capture.exception.champ, 'appareils[1].provenance')
 
     def test_valeur_de_la_table_publiee_comme_valeur_type(self):
-        resultat = courbe_appareils(
+        resultat = _courbe_appareils(
             [appareil(1.2, 18, 23, provenance='table_atelier')])
         publie = resultat['appareils'][0]
         self.assertEqual(publie['source'], 'table_atelier')
@@ -104,7 +104,7 @@ class ProvenanceTest(unittest.TestCase):
         )
         for entree, champ in cas:
             with self.assertRaises(ProfilInvalide) as capture:
-                courbe_appareils([entree])
+                _courbe_appareils([entree])
             self.assertEqual(capture.exception.champ, champ)
 
 
@@ -114,16 +114,16 @@ class TotalSaisiTest(unittest.TestCase):
 
     def test_la_courbe_garde_le_total_saisi(self):
         total_annuel = 3650.0          # 10 kWh/j
-        seul = courbe_appareils([appareil(3, 8, 11)],
-                                total_annuel_kwh=total_annuel)
-        deux = courbe_appareils([appareil(3, 8, 11), appareil(3, 18, 21)],
-                                total_annuel_kwh=total_annuel)
+        seul = _courbe_appareils([appareil(3, 8, 11)],
+                                 total_annuel_kwh=total_annuel)
+        deux = _courbe_appareils([appareil(3, 8, 11), appareil(3, 18, 21)],
+                                 total_annuel_kwh=total_annuel)
         for resultat in (seul, deux):
             self.assertAlmostEqual(resultat['total_journalier_kwh'],
                                    total_annuel / self.JOURS, places=3)
 
     def test_lecart_est_publie_avec_les_deux_nombres(self):
-        resultat = courbe_appareils(
+        resultat = _courbe_appareils(
             [appareil(3, 8, 11), appareil(3, 18, 21)],
             total_annuel_kwh=3650.0)
         norm = resultat['normalisation']
@@ -136,12 +136,12 @@ class TotalSaisiTest(unittest.TestCase):
                             for avis in resultat['avertissements']))
 
     def test_sans_total_saisi_aucune_normalisation(self):
-        resultat = courbe_appareils([appareil(3, 8, 11)])
+        resultat = _courbe_appareils([appareil(3, 8, 11)])
         self.assertIsNone(resultat['normalisation'])
 
     def test_total_saisi_illisible_refuse_en_le_nommant(self):
         with self.assertRaises(ProfilInvalide) as capture:
-            courbe_appareils([appareil(3, 8, 11)], total_annuel_kwh=-5)
+            _courbe_appareils([appareil(3, 8, 11)], total_annuel_kwh=-5)
         self.assertEqual(capture.exception.champ, 'total_annuel_kwh')
 
 
@@ -161,9 +161,9 @@ class RetraitProprieteTest(unittest.TestCase):
             nouveau = self._liste(alea, 1)[0]
             total = alea.choice((None, round(alea.uniform(500, 9000), 1)))
             gele = copy.deepcopy(base)
-            avant = courbe_appareils(base, total_annuel_kwh=total)
-            courbe_appareils(base + [nouveau], total_annuel_kwh=total)
-            apres = courbe_appareils(
+            avant = _courbe_appareils(base, total_annuel_kwh=total)
+            _courbe_appareils(base + [nouveau], total_annuel_kwh=total)
+            apres = _courbe_appareils(
                 [a for a in base + [nouveau] if a is not nouveau],
                 total_annuel_kwh=total)
             self.assertEqual(apres['courbe'], avant['courbe'])
@@ -174,9 +174,9 @@ class RetraitProprieteTest(unittest.TestCase):
         for _ in range(200):
             base = self._liste(alea, alea.randrange(1, 6))
             nouveau = self._liste(alea, 1)[0]
-            avant = courbe_appareils(base)['courbe']
-            avec = courbe_appareils(base + [nouveau])['courbe']
-            seul = courbe_appareils([nouveau])['courbe']
+            avant = _courbe_appareils(base)['courbe']
+            avec = _courbe_appareils(base + [nouveau])['courbe']
+            seul = _courbe_appareils([nouveau])['courbe']
             for heure in range(24):
                 self.assertAlmostEqual(avec[heure] - seul[heure],
                                        avant[heure], delta=1e-3)

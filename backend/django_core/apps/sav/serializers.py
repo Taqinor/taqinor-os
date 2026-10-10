@@ -21,7 +21,13 @@ from .models import (
 EXPIRING_SOON_DAYS = 90
 
 
-class EquipementSerializer(serializers.ModelSerializer):
+class EquipementSerializer(SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
+    # ENF17 — FK inscriptibles bornées à la société : un id d'ailleurs reçoit
+    # la réponse d'un id absent (400), à la création comme au PATCH.
+    same_company_fields = (
+        'categorie', 'client_vente', 'installation', 'produit',
+        'remplace_par_ticket')
     produit_nom = serializers.CharField(source='produit.nom', read_only=True, allow_null=True, default=None)
     produit_marque = serializers.CharField(source='produit.marque', read_only=True, allow_null=True, default=None)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True, allow_null=True, default=None)
@@ -173,7 +179,10 @@ class TicketActivitySerializer(serializers.ModelSerializer):
 
 # ── ZSAV3 — Activités planifiées à échéance sur le ticket ────────────────────
 
-class TicketActiviteAFaireSerializer(serializers.ModelSerializer):
+class TicketActiviteAFaireSerializer(SameCompanyFKSerializerMixin,
+                                     serializers.ModelSerializer):
+    # ENF17 — FK inscriptible bornée à la société.
+    same_company_fields = ('assigne',)
     type_display = serializers.CharField(
         source='get_type_display', read_only=True)
     assigne_nom = serializers.CharField(
@@ -192,8 +201,11 @@ class TicketActiviteAFaireSerializer(serializers.ModelSerializer):
         ]
 
 
-class PieceRetireeSerializer(serializers.ModelSerializer):
+class PieceRetireeSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
     """XMFG10 — pièce retirée (lecture). Aucun prix d'achat exposé côté client."""
+    # ENF17 — FK inscriptible bornée à la société.
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, allow_null=True, default=None)
     produit_marque = serializers.CharField(
@@ -221,9 +233,12 @@ class PieceRetireeSerializer(serializers.ModelSerializer):
         ]
 
 
-class PretEquipementSerializer(serializers.ModelSerializer):
+class PretEquipementSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """XSAV27 — prêt d'équipement (loaner). Statut/mouvements posés par les
     actions dédiées du service (jamais en écriture directe du corps)."""
+    # ENF17 — FK inscriptibles bornées à la société.
+    same_company_fields = ('produit', 'ticket')
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, allow_null=True, default=None)
     produit_marque = serializers.CharField(
@@ -246,8 +261,11 @@ class PretEquipementSerializer(serializers.ModelSerializer):
         ]
 
 
-class PieceConsommeeSerializer(serializers.ModelSerializer):
+class PieceConsommeeSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """N46 — pièce consommée (lecture). Aucun prix d'achat exposé côté client."""
+    # ENF17 — FK inscriptible bornée à la société.
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, allow_null=True, default=None)
     produit_marque = serializers.CharField(
@@ -299,8 +317,11 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
     # ASEC34 — un id d'une autre société reçoit la réponse d'un id absent
     # (400 « objet inexistant »), à la création comme au PATCH.
+    # ENF17 — étendu à toutes les FK inscriptibles (client, chantier,
+    # équipement, équipe, taxonomie cause/remède).
     same_company_fields = (
-        'technicien_responsable', 'categorie', 'categorie_equipement')
+        'technicien_responsable', 'categorie', 'categorie_equipement',
+        'cause', 'client', 'equipe', 'equipement', 'installation', 'remede')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     type_display = serializers.CharField(
@@ -591,7 +612,10 @@ class MaintenanceChecklistTemplateSerializer(serializers.ModelSerializer):
 
 # ── FG83 — Réclamation garantie fournisseur ───────────────────────────────────
 
-class WarrantyClaimSerializer(serializers.ModelSerializer):
+class WarrantyClaimSerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
+    # ENF17 — FK inscriptibles bornées à la société.
+    same_company_fields = ('equipement', 'ticket')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     resolution_display = serializers.CharField(
@@ -614,7 +638,10 @@ class WarrantyClaimSerializer(serializers.ModelSerializer):
 
 # ── FG87 — Base de connaissances ──────────────────────────────────────────────
 
-class KbArticleSerializer(serializers.ModelSerializer):
+class KbArticleSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # ENF17 — FK inscriptible bornée à la société.
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, allow_null=True, default=None)
     created_by_nom = serializers.CharField(
@@ -642,7 +669,10 @@ class TicketSatisfactionSerializer(serializers.ModelSerializer):
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
 
-class AlarmeOnduleurSerializer(serializers.ModelSerializer):
+class AlarmeOnduleurSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
+    # ENF17 — FK inscriptible bornée à la société.
+    same_company_fields = ('equipement',)
     gravite_display = serializers.CharField(
         source='get_gravite_display', read_only=True)
     statut_display = serializers.CharField(
@@ -735,7 +765,11 @@ class EquipeMaintenanceSerializer(serializers.ModelSerializer):
 
 # ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
 
-class CategorieEquipementSerializer(serializers.ModelSerializer):
+class CategorieEquipementSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
+    # ENF17 — équipe responsable bornée à la société (le responsable l'est
+    # déjà par ``validate_responsable``).
+    same_company_fields = ('equipe_responsable',)
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True, allow_null=True, default=None)
     # Compteur d'équipements par catégorie (smart-button façon Odoo).
@@ -774,7 +808,10 @@ class CategorieEquipementSerializer(serializers.ModelSerializer):
 
 # ── XSAV16 — Journal d'immobilisation (downtime) ──────────────────────────────
 
-class EquipementDowntimeSerializer(serializers.ModelSerializer):
+class EquipementDowntimeSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ENF17 — FK inscriptibles bornées à la société.
+    same_company_fields = ('equipement', 'ticket')
     ticket_reference = serializers.CharField(
         source='ticket.reference', read_only=True, allow_null=True, default=None)
     en_cours = serializers.SerializerMethodField()
@@ -796,7 +833,10 @@ class EquipementDowntimeSerializer(serializers.ModelSerializer):
 
 # ── XSAV17 — Relevés compteur (heures / kWh) ──────────────────────────────────
 
-class ReleveCompteurEquipementSerializer(serializers.ModelSerializer):
+class ReleveCompteurEquipementSerializer(SameCompanyFKSerializerMixin,
+                                         serializers.ModelSerializer):
+    # ENF17 — FK inscriptible bornée à la société.
+    same_company_fields = ('equipement',)
     # AGR615 — moyenne par jour depuis le relevé précédent du même type
     # (null au premier relevé ; contrat partagé releves_compteur.json).
     moyenne_jour_depuis_precedent = serializers.SerializerMethodField()
@@ -852,7 +892,10 @@ class ReponseTypeSerializer(serializers.ModelSerializer):
 
 # ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
 
-class CompatibilitePieceSerializer(serializers.ModelSerializer):
+class CompatibilitePieceSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ENF17 — FK inscriptibles bornées à la société.
+    same_company_fields = ('piece', 'produit_equipement', 'remplace_par')
     produit_equipement_nom = serializers.CharField(
         source='produit_equipement.nom', read_only=True, allow_null=True, default=None)
     piece_nom = serializers.CharField(
@@ -882,7 +925,10 @@ class WorksheetMaintenanceModeleSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'company', 'date_creation']
 
 
-class TicketWorksheetSerializer(serializers.ModelSerializer):
+class TicketWorksheetSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
+    # ENF17 — FK inscriptibles bornées à la société.
+    same_company_fields = ('modele', 'ticket')
     modele_nom = serializers.CharField(
         source='modele.nom', read_only=True, allow_null=True, default=None)
     champs_requis_manquants = serializers.SerializerMethodField()

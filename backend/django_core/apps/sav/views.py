@@ -1438,7 +1438,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             qs = ticket.activites_a_faire.select_related('assigne')
             return Response(
                 TicketActiviteAFaireSerializer(qs, many=True).data)
-        serializer = TicketActiviteAFaireSerializer(data=request.data)
+        # ENF17 — la requête en contexte borne ``assigne`` à la société
+        # (``same_company_fields``) : un id d'ailleurs = un id absent (400).
+        serializer = TicketActiviteAFaireSerializer(
+            data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         assigne = serializer.validated_data.get('assigne')
         if assigne is not None and assigne.company_id != ticket.company_id:

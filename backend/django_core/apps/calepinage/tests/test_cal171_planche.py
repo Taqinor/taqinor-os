@@ -13,7 +13,7 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.planche import (
-    PlancheRefusee, dimensions_module, echelle_de_dessin, geometrie_de_planche,
+    PlancheRefusee, _dimensions_module, _echelle_de_dessin, geometrie_de_planche,
     html_de_planche, nom_de_fichier, svg_de_planche, texte_de_longueur,
 )
 
@@ -88,14 +88,14 @@ class GeometrieDePlancheTest(SimpleTestCase):
 
 class DimensionsModuleTest(SimpleTestCase):
     def test_dimensions_sourcees_par_le_kit_declare(self):
-        self.assertEqual(dimensions_module({'panelWatt': 720}),
+        self.assertEqual(_dimensions_module({'panelWatt': 720}),
                          (2.384, 1.303))
 
     def test_puissance_inconnue_ne_produit_aucune_dimension(self):
         # Une emprise plausible mais non sourcée se lirait comme une emprise
         # mesurée : on préfère l'absence.
-        self.assertIsNone(dimensions_module({'panelWatt': 615}))
-        self.assertIsNone(dimensions_module({}))
+        self.assertIsNone(_dimensions_module({'panelWatt': 615}))
+        self.assertIsNone(_dimensions_module({}))
 
 
 class SvgDePlancheTest(SimpleTestCase):
@@ -145,7 +145,7 @@ class SvgDePlancheTest(SimpleTestCase):
 
     def test_l_echelle_tient_dans_la_zone_de_dessin(self):
         etendue = geometrie_de_planche(LAYOUT)['etendue']
-        echelle = echelle_de_dessin(etendue)
+        echelle = _echelle_de_dessin(etendue)
         largeur_mm = (etendue[2] - etendue[0]) * echelle
         self.assertLessEqual(round(largeur_mm, 3),
                              420.0 - 2 * 12.0 - 84.0 + 0.001)
