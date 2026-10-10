@@ -206,11 +206,14 @@ class ExceptionsTests(unittest.TestCase):
 
 
 class DepotReelTests(unittest.TestCase):
-    def test_le_depot_reel_s_analyse_en_moins_de_30_s(self):
+    def test_le_depot_reel_s_analyse_en_moins_de_90_s(self):
+        # ~10 s sur un poste libre, ~33 s mesurés dans le job stage-names (runner
+        # partagé, gardes en parallèle) : 30 s faisait échouer la garde au hasard.
+        # 90 s reste un budget réel (un retour au O(n²) le crève largement).
         import time
         debut = time.monotonic()
         _, _, stats = fqp.analyser()
-        self.assertLess(time.monotonic() - debut, 30)
+        self.assertLess(time.monotonic() - debut, 90)
         self.assertGreater(stats["appels"], 1000)
         self.assertGreater(stats["parametres_verifies"], 300)
 
