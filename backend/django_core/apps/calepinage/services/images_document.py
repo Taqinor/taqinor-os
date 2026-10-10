@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'GENRES_IMAGE', 'ImageDocumentRefuse', 'deposer_image_document',
-    'images_du_calepinage', 'image_recente', 'octets_et_mime',
+    'images_du_calepinage', 'image_recente',
     'derniere_image_encodee', 'image_est_fraiche',
 ]
 
@@ -306,7 +306,7 @@ def image_recente(calepinage, *, genre):
     return _attachments_images(calepinage, genre=genre).first()
 
 
-def octets_et_mime(attachment):
+def _octets_et_mime(attachment):
     """``(octets, mime)`` de la pièce déposée, ou ``(None, None)`` — une
     lecture MinIO impossible ne lève jamais (best-effort, même discipline
     que ``versions_document`` : un incident de relecture ne doit jamais
@@ -331,7 +331,7 @@ def derniere_image_encodee(calepinage, *, genre):
     piece = image_recente(calepinage, genre=genre)
     if piece is None or not image_est_fraiche(piece, calepinage):
         return None
-    octets, mime = octets_et_mime(piece)
+    octets, mime = _octets_et_mime(piece)
     if not octets:
         return None
     return 'data:%s;base64,%s' % (mime, base64.b64encode(octets)
