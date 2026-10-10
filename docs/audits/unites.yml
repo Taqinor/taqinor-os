@@ -139,9 +139,9 @@ unites:
     plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
     plans_alimentes: [docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: 790
-    date: 2026-10-04
+    date: 2026-10-10
     dossier: docs/audits/2026-10-04-calepinage.md
-    notes: "Score le plus élevé à égalité (critique de complétude) ; livrables PDF d'étude hors règle #4."
+    notes: "vérifie ACAL du 10/10/2026 (clôture, 336/351 cochées ; dossier docs/audits/2026-10-10-calepinage-verifie.md) : 48 tâches échantillonnées parmi 60 P0/S1 (graine 5ea32b58b) — 29 ok, 19 partielles ; 6 écarts S1-S2 reproduits (sondes docs/audits/sondes/ACAL/C-ACAL-VER-001..005 + vitest) : resync sans refus moduleWc/moduleId (S1, ACAL59/62), resync vers fiche non tarifée met la ligne à 0 (S1, ACAL63), production au prorata du kWc (S1, ACAL28), dérate horizon/ombrage absent de la production du devis (S1), « Ajouter une zone » efface les ombres (S2, ACAL27), pan sans fiche chaîné au module par défaut (S2, ACAL264) + S3 → ACAL353-ACAL365 (CALEPINAGE, DEVIS, ANALYSE, TRANSVERSE) ; ACAL253/48/54 sans tâche (lecture prod 10/10 : aucun calepinage concerné) ; 1 critique Fable. Score le plus élevé à égalité (critique de complétude) ; livrables PDF d'étude hors règle #4."
 
   - id: J0
     rang: 4
