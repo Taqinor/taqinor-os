@@ -14,35 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/documents/document_asbuilt.py::construire_document
-backend/django_core/apps/calepinage/services/documents/document_asbuilt.py::html_de_document
-backend/django_core/apps/calepinage/services/documents/document_asbuilt.py::html_du_document_asbuilt
-backend/django_core/apps/calepinage/services/documents/document_asbuilt.py::photos_du_calepinage
-backend/django_core/apps/calepinage/services/documents/gabarit_document.py::couleur_valide
-backend/django_core/apps/calepinage/services/documents/gabarit_document.py::css_du_gabarit
-backend/django_core/apps/calepinage/services/documents/gabarit_document.py::entete_html
-backend/django_core/apps/calepinage/services/documents/gabarit_document.py::logo_valide
-backend/django_core/apps/calepinage/services/documents/gabarit_document.py::styles_vides
-backend/django_core/apps/calepinage/services/documents/libelles_document.py::mention_de_repli
-backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::construire_manuel
-backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::gabarit_manuel_actif
-backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::html_de_manuel
-backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::html_du_manuel
-backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::substituer_variables
-backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::variables_systeme
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::html_du_plan_cablage
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::lignes_de_legende
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::modules_du_plan
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::plan_de_cablage
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::plan_du_calepinage
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::rendre_plan_cablage_svg
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::svg_de_plan_cablage
-backend/django_core/apps/calepinage/services/documents/plan_cablage.py::verifier_legende_sans_montant
-backend/django_core/apps/calepinage/services/documents/presentation_compacte.py::construire_presentation
-backend/django_core/apps/calepinage/services/documents/presentation_compacte.py::html_de_presentation
-backend/django_core/apps/calepinage/services/documents/presentation_compacte.py::html_de_presentation_compacte
-backend/django_core/apps/calepinage/services/documents/presentation_compacte.py::totaux_de_pose
-backend/django_core/apps/calepinage/services/documents/versions_document.py::prochain_numero
 backend/django_core/apps/calepinage/services/electrique.py::alertes_nommees
 backend/django_core/apps/calepinage/services/electrique.py::bloc_ratio_dc_ac
 backend/django_core/apps/calepinage/services/electrique.py::bornes_ratio

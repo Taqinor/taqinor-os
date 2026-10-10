@@ -18,7 +18,7 @@ import copy
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.documents.plan_cablage import (
-    plan_de_cablage, svg_de_plan_cablage,
+    _plan_de_cablage, _svg_de_plan_cablage,
 )
 from apps.calepinage.services.export_tableur import (
     FEUILLE_SURFACES, tables_du_resultat,
@@ -95,9 +95,9 @@ class ChampSeulTest(SimpleTestCase):
         self.assertEqual(lignes[0][2], 24)
 
     def test_plan_de_cablage_ne_refuse_plus_le_champ(self):
-        plan = plan_de_cablage(copy.deepcopy(CHAMP_SEUL), [
+        plan = _plan_de_cablage(copy.deepcopy(CHAMP_SEUL), [
             {'module': 'sol-1:1', 'chaine': 1, 'onduleur': 1, 'mppt': 1}])
-        svg = svg_de_plan_cablage(plan, titre='Câblage')
+        svg = _svg_de_plan_cablage(plan, titre='Câblage')
         self.assertIn(MENTION_REPERE_LOCAL, svg)
 
     def test_dxf_porte_le_calque_des_surfaces(self):

@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'VersionDocumentRefuse', 'enregistrer_version_document',
-    'versions_du_document', 'prochain_numero', 'empreinte_courante',
+    'versions_du_document', 'empreinte_courante',
     'TAILLE_EMPREINTE',
 ]
 
@@ -158,7 +158,7 @@ def _attachments_du_document(calepinage, code):
             .order_by('-id'))
 
 
-def prochain_numero(calepinage, code):
+def _prochain_numero(calepinage, code):
     """Le plus HAUT numéro déjà utilisé pour (calepinage, code) + 1 —
     JAMAIS un ``count()+1`` (une version supprimée ne remet pas à zéro)."""
     if calepinage is None or not getattr(calepinage, 'pk', None):
@@ -331,7 +331,7 @@ def enregistrer_version_document(calepinage, *, code, octets, langue=None,
                 'produit_le': existante.created_at,
                 'deja_remise': True,
             }
-        numero = prochain_numero(calepinage, code)
+        numero = _prochain_numero(calepinage, code)
         nom = _nom_fichier_version(code, numero, langue_propre, extension,
                                    courte)
         donnees, erreur = _stocker(octets, nom, mime=mime,

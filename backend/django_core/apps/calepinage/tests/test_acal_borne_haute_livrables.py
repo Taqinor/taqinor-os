@@ -29,7 +29,7 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.documents.presentation_compacte import (
-    construire_presentation, html_de_presentation,
+    _construire_presentation, _html_de_presentation,
 )
 from apps.calepinage.services.note_calcul import (
     construire_note_calcul, html_de_note_calcul,
@@ -125,7 +125,7 @@ class BorneHauteLivrablesTest(SimpleTestCase):
     def test_presentation_compacte_sans_pr_100(self):
         resultat = _servi(complet=False)
         total = resultat['production']['total']
-        html = html_de_presentation(construire_presentation(
+        html = _html_de_presentation(_construire_presentation(
             NU, resultat=resultat, roof_layout=LAYOUT, svg_planche='',
             styles=STYLES))
         self.assertIn(escape(total['mention']), html)
@@ -135,7 +135,7 @@ class BorneHauteLivrablesTest(SimpleTestCase):
             % escape(_non_publie(total, 'performance_ratio')))
 
         complet = _servi(complet=True)
-        html_complet = html_de_presentation(construire_presentation(
+        html_complet = _html_de_presentation(_construire_presentation(
             NU, resultat=complet, roof_layout=LAYOUT, svg_planche='',
             styles=STYLES))
         self.assertIn('Ratio de performance (PR) : %s' % nombre_tel_que_servi(

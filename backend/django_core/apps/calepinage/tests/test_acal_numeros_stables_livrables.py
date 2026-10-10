@@ -13,7 +13,7 @@ import copy
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.documents.plan_cablage import modules_du_plan
+from apps.calepinage.services.documents.plan_cablage import _modules_du_plan
 from apps.calepinage.services.export_tableur import table_modules
 from apps.calepinage.services.planche import (
     _reperes_de_pose, geometrie_de_planche,
@@ -53,7 +53,7 @@ class NumerosStablesTest(SimpleTestCase):
         self.assertEqual([ligne[chaine] for ligne in lignes], [None, None, 2])
         # Le plan de câblage nomme les mêmes modules.
         self.assertEqual([m['module'] for m in
-                          modules_du_plan(layout, geometrie)],
+                          _modules_du_plan(layout, geometrie)],
                          ['z1#1', 'z1#2', 'z1#4'])
         # Le plan de pose imprime l'étiquette de rangée du document.
         svg = ''.join(_reperes_de_pose(geometrie['pans'][0],
@@ -69,5 +69,5 @@ class NumerosStablesTest(SimpleTestCase):
         self.assertEqual([ligne[entetes.index('Module')] for ligne in lignes],
                          [1, 2, 3])
         self.assertEqual([m['module'] for m in
-                          modules_du_plan(layout, geometrie)],
+                          _modules_du_plan(layout, geometrie)],
                          ['z1#1', 'z1#2', 'z1#3'])

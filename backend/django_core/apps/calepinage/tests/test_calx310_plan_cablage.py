@@ -40,9 +40,9 @@ from apps.calepinage.services.documents.plan_cablage import (
     CHAMP_CHAINAGE, COULEUR_NON_AFFECTE, MOTS_DE_MONTANT, PALETTE_CHAINES,
     PlanCablageRefuse, _affectation_publiee_du_calepinage,
     exporter_plan_cablage_dxf,
-    html_du_plan_cablage, lignes_de_legende, modules_du_plan,
-    plan_de_cablage, rendre_plan_cablage_pdf, rendre_plan_cablage_svg,
-    svg_de_plan_cablage, verifier_legende_sans_montant,
+    html_du_plan_cablage, _lignes_de_legende, _modules_du_plan,
+    _plan_de_cablage, rendre_plan_cablage_pdf, _rendre_plan_cablage_svg,
+    _svg_de_plan_cablage, _verifier_legende_sans_montant,
 )
 from apps.calepinage.services.export_dxf import (
     CALQUE_CHAINES, CALQUE_MODULES, octets_dxf,
@@ -106,8 +106,8 @@ def layout(**zone):
 
 
 def svg_de(plan):
-    return svg_de_plan_cablage(plan, titre='Plan de câblage — Villa Anfa',
-                               pied='calepinage abababababab')
+    return _svg_de_plan_cablage(plan, titre='Plan de câblage — Villa Anfa',
+                                pied='calepinage abababababab')
 
 
 def formes(svg, classe):
@@ -117,7 +117,7 @@ def formes(svg, classe):
 
 class PlanDeCablageTest(unittest.TestCase):
     def setUp(self):
-        self.plan = plan_de_cablage(LAYOUT, AFFECTATION)
+        self.plan = _plan_de_cablage(LAYOUT, AFFECTATION)
         self.svg = svg_de(self.plan)
 
     def test_12_modules_sur_2_chaines_2_entrees_et_12_formes_teintees(self):
@@ -136,7 +136,7 @@ class PlanDeCablageTest(unittest.TestCase):
         self.assertEqual(couleurs['z1#12'], ('2', PALETTE_CHAINES[1]))
 
     def test_la_legende_dit_numero_modules_onduleur_et_mppt(self):
-        lignes = lignes_de_legende(self.plan)
+        lignes = _lignes_de_legende(self.plan)
         self.assertIn('Chaîne 1 — 6 modules', lignes)
         self.assertIn('onduleur 1 · entrée MPPT 1', lignes)
         self.assertIn('Chaîne 2 — 6 modules', lignes)
@@ -145,18 +145,18 @@ class PlanDeCablageTest(unittest.TestCase):
 
     def test_un_onduleur_non_attribue_est_dit_jamais_numerote(self):
         table = [dict(entree, onduleur=None) for entree in AFFECTATION]
-        lignes = lignes_de_legende(plan_de_cablage(LAYOUT, table))
+        lignes = _lignes_de_legende(_plan_de_cablage(LAYOUT, table))
         self.assertIn('onduleur non attribué · entrée MPPT 1', lignes)
 
     def test_aucun_montant_dans_la_legende(self):
-        for texte in lignes_de_legende(self.plan):
+        for texte in _lignes_de_legende(self.plan):
             self.assertIsNone(MOTS_DE_MONTANT.search(texte), texte)
         visible = re.sub(r'<[^>]+>', ' ', self.svg.split('legende-cablage')[1])
         self.assertIsNone(MOTS_DE_MONTANT.search(visible))
 
     def test_une_legende_porteuse_d_un_montant_est_refusee(self):
         with self.assertRaises(PlanCablageRefuse) as capture:
-            verifier_legende_sans_montant(['Chaîne 1 — 1200 MAD'])
+            _verifier_legende_sans_montant(['Chaîne 1 — 1200 MAD'])
         self.assertEqual(capture.exception.champ, 'legende')
         self.assertIn('MAD', str(capture.exception))
 
@@ -180,7 +180,7 @@ class PlanDeCablageTest(unittest.TestCase):
 class NonAffectesTest(unittest.TestCase):
     def test_un_module_a_chaine_nulle_reste_en_contour_seul(self):
         table = AFFECTATION[:11] + [ligne(12, None)]
-        plan = plan_de_cablage(LAYOUT, table)
+        plan = _plan_de_cablage(LAYOUT, table)
         svg = svg_de(plan)
         seuls = formes(svg, 'module-non-affecte')
         self.assertEqual([e.get('data-module') for e in seuls], ['z1#12'])
@@ -189,12 +189,12 @@ class NonAffectesTest(unittest.TestCase):
         self.assertEqual(seuls[0].get('data-chaine'), '')
         self.assertEqual(len(formes(svg, 'module-chaine')), 11)
         self.assertEqual(plan['non_affectes'], 1)
-        self.assertIn('Non affectés : 1 module', lignes_de_legende(plan))
+        self.assertIn('Non affectés : 1 module', _lignes_de_legende(plan))
 
     def test_un_module_absent_de_la_table_n_emprunte_aucune_teinte(self):
         # Le 12e module n'a AUCUNE ligne : il n'hérite pas de la chaîne 2 de
         # son voisin — il est non affecté.
-        plan = plan_de_cablage(LAYOUT, AFFECTATION[:11])
+        plan = _plan_de_cablage(LAYOUT, AFFECTATION[:11])
         dernier = [m for m in plan['modules']
                    if m['module'] == 'z1#12'][0]
         self.assertIsNone(dernier['chaine'])
@@ -209,7 +209,7 @@ class NonAffectesTest(unittest.TestCase):
 
     def test_un_module_affecte_mais_non_dessine_est_compte_a_part(self):
         table = AFFECTATION + [ligne(13, 2)]
-        plan = plan_de_cablage(LAYOUT, table)
+        plan = _plan_de_cablage(LAYOUT, table)
         self.assertEqual(plan['non_dessines'], 1)
         self.assertEqual(plan['legende'][1]['modules'], 7)
         self.assertEqual(len(formes(svg_de(plan), 'module-chaine')), 12)
@@ -219,17 +219,17 @@ class AffectationManuelleTest(unittest.TestCase):
     def test_un_module_manuel_porte_un_signe_distinct(self):
         table = copy.deepcopy(AFFECTATION)
         table[2]['source'] = 'affectation manuelle'
-        plan = plan_de_cablage(LAYOUT, table)
+        plan = _plan_de_cablage(LAYOUT, table)
         svg = svg_de(plan)
         marques = formes(svg, 'marque-manuelle')
         self.assertEqual([m.get('data-module') for m in marques],
                          ['z1#3'])
         self.assertEqual(plan['manuels'], 1)
         self.assertIn('× affectation manuelle : 1 module',
-                      lignes_de_legende(plan))
+                      _lignes_de_legende(plan))
 
     def test_sans_affectation_manuelle_aucun_signe(self):
-        svg = svg_de(plan_de_cablage(LAYOUT, AFFECTATION))
+        svg = svg_de(_plan_de_cablage(LAYOUT, AFFECTATION))
         self.assertEqual(formes(svg, 'marque-manuelle'), [])
 
 
@@ -240,11 +240,11 @@ class JointDocumentElectriqueTest(unittest.TestCase):
         donnees = layout(geometry=dict(LAYOUT['zones'][0]['geometry'],
                                        panels=panneaux))
         geometrie = geometrie_de_planche(donnees)
-        reperes = [m['module'] for m in modules_du_plan(donnees, geometrie)]
+        reperes = [m['module'] for m in _modules_du_plan(donnees, geometrie)]
         self.assertEqual(len(reperes), 11)
         self.assertNotIn('z1#5', reperes)
         self.assertEqual(reperes[4], 'z1#6')
-        plan = plan_de_cablage(donnees, AFFECTATION)
+        plan = _plan_de_cablage(donnees, AFFECTATION)
         sixieme = [m for m in plan['modules'] if m['module'] == 'z1#6'][0]
         self.assertEqual(sixieme['chaine'], 1)
         self.assertEqual(plan['non_dessines'], 1)
@@ -253,11 +253,11 @@ class JointDocumentElectriqueTest(unittest.TestCase):
         # Sans label : l'identifiant ; sans l'un ni l'autre : PAN-<rang>.
         sans_label = layout(label=None)
         geometrie = geometrie_de_planche(sans_label)
-        self.assertEqual(modules_du_plan(sans_label, geometrie)[0]['module'],
+        self.assertEqual(_modules_du_plan(sans_label, geometrie)[0]['module'],
                          'z1#1')
         anonyme = layout(label=None, id=None)
         geometrie = geometrie_de_planche(anonyme)
-        self.assertEqual(modules_du_plan(anonyme, geometrie)[0]['module'],
+        self.assertEqual(_modules_du_plan(anonyme, geometrie)[0]['module'],
                          'PAN-1#1')
 
     def test_la_palette_est_la_source_unique_servie(self):
@@ -275,14 +275,14 @@ class RefusTest(unittest.TestCase):
         for table in ([], [ligne(r, None) for r in range(1, 13)], None):
             with self.subTest(table=table):
                 with self.assertRaises(PlanCablageRefuse) as capture:
-                    plan_de_cablage(LAYOUT, table)
+                    _plan_de_cablage(LAYOUT, table)
                 self.assertEqual(capture.exception.champ, CHAMP_CHAINAGE)
                 self.assertEqual(capture.exception.champ,
                                  'electrique.chainage')
 
     def test_sans_geometrie_refus_nommant_roof_layout(self):
         with self.assertRaises(PlancheRefusee) as capture:
-            plan_de_cablage(None, AFFECTATION)
+            _plan_de_cablage(None, AFFECTATION)
         self.assertEqual(capture.exception.champ, 'roof_layout')
 
     def test_une_cle_de_cout_dans_la_table_publiee_est_refusee(self):
@@ -304,7 +304,7 @@ class DxfChainesTest(unittest.TestCase):
         return ezdxf.read(io.StringIO(octets.decode('utf-8')))
 
     def setUp(self):
-        self.plan = plan_de_cablage(LAYOUT, AFFECTATION)
+        self.plan = _plan_de_cablage(LAYOUT, AFFECTATION)
         self.document = self.relire(octets_dxf(self.plan['geometrie'],
                                                chaines=self.plan['modules']))
 
@@ -333,7 +333,7 @@ class DxfChainesTest(unittest.TestCase):
         self.assertEqual(len(modules), 12)
 
     def test_un_module_non_affecte_n_entre_pas_sur_le_calque(self):
-        plan = plan_de_cablage(LAYOUT, AFFECTATION[:11] + [ligne(12, None)])
+        plan = _plan_de_cablage(LAYOUT, AFFECTATION[:11] + [ligne(12, None)])
         document = self.relire(octets_dxf(plan['geometrie'],
                                           chaines=plan['modules']))
         formes_ = [e for e in document.modelspace()
@@ -361,8 +361,8 @@ NU = SimpleNamespace(pk=None, company=None, titre='Villa Anfa',
 
 class RenduPartageTest(unittest.TestCase):
     def test_le_svg_du_calepinage_porte_l_empreinte(self):
-        svg = rendre_plan_cablage_svg(NU, moment=MOMENT,
-                                      affectation=AFFECTATION)
+        svg = _rendre_plan_cablage_svg(NU, moment=MOMENT,
+                                       affectation=AFFECTATION)
         self.assertIn('calepinage abababababab', svg)
         self.assertIn('23/09/2026', svg)
 

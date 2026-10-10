@@ -62,10 +62,8 @@ from ..planche import PlancheRefusee
 __all__ = [
     'CODE_DOCUMENT', 'CHAMP_CHAINAGE', 'PALETTE_CHAINES',
     'COULEUR_NON_AFFECTE', 'SOURCE_MANUELLE', 'MOTS_DE_MONTANT',
-    'PlanCablageRefuse', 'rgb_de', 'modules_du_plan', 'plan_de_cablage',
-    'lignes_de_legende', 'verifier_legende_sans_montant',
-    'svg_de_plan_cablage',
-    'plan_du_calepinage', 'rendre_plan_cablage_svg', 'html_du_plan_cablage',
+    'PlanCablageRefuse', 'rgb_de',
+    'html_du_plan_cablage',
     'rendre_plan_cablage_pdf', 'exporter_plan_cablage_dxf',
 ]
 
@@ -128,7 +126,7 @@ def _rangs_dessines(zone):
             and _nombre(panneau.get('cy')) is not None]
 
 
-def modules_du_plan(roof_layout, geometrie):
+def _modules_du_plan(roof_layout, geometrie):
     """Les modules DESSINÉS, repérés comme l'affectation les nomme.
 
     ``[{module: '<pan>#<rang>', pan, centre}]`` dans l'ordre du document. Les
@@ -165,7 +163,7 @@ def _lignes_lisibles(affectation):
             if isinstance(ligne, dict) and isinstance(ligne.get('module'), str)]
 
 
-def plan_de_cablage(roof_layout, affectation):
+def _plan_de_cablage(roof_layout, affectation):
     """Le plan de câblage, prêt à dessiner — AUCUNE partition recalculée.
 
     Args:
@@ -220,7 +218,7 @@ def plan_de_cablage(roof_layout, affectation):
 
     table = {ligne['module']: ligne for ligne in lignes}
     modules, dessines = [], set()
-    for module in modules_du_plan(roof_layout, geometrie):
+    for module in _modules_du_plan(roof_layout, geometrie):
         ligne = table.get(module['module']) or {}
         chaine = ligne.get('chaine')
         dessines.add(module['module'])
@@ -271,7 +269,7 @@ def _lignes_de_chaine(entree):
     return [titre] + [_texte_entree(e) for e in entree['entrees']]
 
 
-def lignes_de_legende(plan):
+def _lignes_de_legende(plan):
     """Toutes les lignes de texte de la légende, dans l'ordre d'impression."""
     lignes = ['CHAÎNES']
     for entree in plan['legende']:
@@ -287,7 +285,7 @@ def lignes_de_legende(plan):
     return lignes
 
 
-def verifier_legende_sans_montant(lignes):
+def _verifier_legende_sans_montant(lignes):
     """Refuse une légende qui porterait un mot de montant — en le NOMMANT."""
     trouves = sorted({m.group(0) for ligne in lignes
                       for m in MOTS_DE_MONTANT.finditer(str(ligne))})
@@ -438,7 +436,7 @@ def _legende_svg(plan):
     return ''.join(morceaux)
 
 
-def svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
+def _svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
     """Le SVG A3 du plan : la planche de TOITURE + la couche de câblage.
 
     La toiture (contour, pans, obstacles, cotes, nord, échelle, cartouche,
@@ -451,7 +449,7 @@ def svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
         svg_de_planche,
     )
 
-    verifier_legende_sans_montant(lignes_de_legende(plan))
+    _verifier_legende_sans_montant(_lignes_de_legende(plan))
     geometrie = plan['geometrie']
     base = svg_de_planche(geometrie, titre=titre, sous_titre=sous_titre,
                           pied=pied, contenu=CONTENU_TOITURE)
@@ -504,20 +502,20 @@ def _affectation_publiee_du_calepinage(calepinage):
     return affectation
 
 
-def plan_du_calepinage(calepinage, *, affectation=None):
+def _plan_du_calepinage(calepinage, *, affectation=None):
     """Le plan de câblage d'un ``Calepinage`` (affectation LUE si absente)."""
     if affectation is None:
         affectation = _affectation_publiee_du_calepinage(calepinage)
-    return plan_de_cablage(getattr(calepinage, 'roof_layout', None),
-                           affectation)
+    return _plan_de_cablage(getattr(calepinage, 'roof_layout', None),
+                            affectation)
 
 
-def rendre_plan_cablage_svg(calepinage, *, moment=None, affectation=None):
+def _rendre_plan_cablage_svg(calepinage, *, moment=None, affectation=None):
     """Le SVG du plan de câblage, pied d'empreinte compris (CAL173)."""
     from ..planche import pied_du_calepinage
 
-    plan = plan_du_calepinage(calepinage, affectation=affectation)
-    return svg_de_plan_cablage(
+    plan = _plan_du_calepinage(calepinage, affectation=affectation)
+    return _svg_de_plan_cablage(
         plan, titre='Plan de câblage — %s' % calepinage,
         sous_titre='Modules teintés par chaîne (affectation publiée)',
         pied=pied_du_calepinage(calepinage, moment=moment))
@@ -528,7 +526,7 @@ def html_du_plan_cablage(calepinage, **options):
     partagent."""
     from ..planche import html_de_planche
 
-    return html_de_planche(rendre_plan_cablage_svg(calepinage, **options))
+    return html_de_planche(_rendre_plan_cablage_svg(calepinage, **options))
 
 
 def rendre_plan_cablage_pdf(calepinage, *, company=None, **options):
@@ -545,6 +543,6 @@ def exporter_plan_cablage_dxf(calepinage, *, affectation=None):
     from ..export_dxf import octets_dxf
     from ..provenance_document import lignes_de_provenance
 
-    plan = plan_du_calepinage(calepinage, affectation=affectation)
+    plan = _plan_du_calepinage(calepinage, affectation=affectation)
     return octets_dxf(plan['geometrie'], chaines=plan['modules'],
                       provenance=lignes_de_provenance(calepinage))

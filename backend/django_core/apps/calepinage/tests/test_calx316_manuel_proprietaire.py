@@ -33,12 +33,12 @@ from apps.calepinage.services.documents.manuel_proprietaire import (
     CODE_DOCUMENT,
     MESSAGE_AUCUN_GABARIT_MANUEL,
     ManuelRefuse,
-    construire_manuel,
-    html_de_manuel,
+    _construire_manuel,
+    _html_de_manuel,
     html_du_manuel,
     rendre_manuel,
-    substituer_variables,
-    variables_systeme,
+    _substituer_variables,
+    _variables_systeme,
 )
 from apps.calepinage.services.rapport import RapportRefuse
 
@@ -87,14 +87,14 @@ def manuel(**options):
     options.setdefault('site', SITE)
     options.setdefault('identite', IDENTITE)
     options.setdefault('styles', STYLES)
-    return construire_manuel(NU, **options)
+    return _construire_manuel(NU, **options)
 
 
 class SansGabaritTest(unittest.TestCase):
     def test_sans_gabarit_aucun_manuel_et_le_message_nomme_le_genre(self):
         with self.assertRaises(ManuelRefuse) as capture:
-            construire_manuel(NU, resultat=resultat(), gabarit=None,
-                              site=SITE, identite=IDENTITE, styles=STYLES)
+            _construire_manuel(NU, resultat=resultat(), gabarit=None,
+                               site=SITE, identite=IDENTITE, styles=STYLES)
         self.assertEqual(capture.exception.champ, 'gabarit')
         self.assertEqual(str(capture.exception),
                          MESSAGE_AUCUN_GABARIT_MANUEL)
@@ -108,41 +108,41 @@ class SansGabaritTest(unittest.TestCase):
 
 class SubstitutionTest(unittest.TestCase):
     def test_une_variable_declaree_est_substituee(self):
-        html = substituer_variables('Chaînes : {{nombre_chaines}}.',
-                                    {'nombre_chaines': '2'})
+        html = _substituer_variables('Chaînes : {{nombre_chaines}}.',
+                                     {'nombre_chaines': '2'})
         self.assertEqual(html, 'Chaînes : 2.')
 
     def test_une_variable_sans_valeur_imprime_non_renseigne(self):
-        html = substituer_variables('Contact : {{installateur_nom}}.', {})
+        html = _substituer_variables('Contact : {{installateur_nom}}.', {})
         self.assertIn('non renseigné', html)
         self.assertNotIn('{{', html)
 
     def test_une_variable_inconnue_est_refusee_en_la_nommant(self):
         with self.assertRaises(ManuelRefuse) as capture:
-            substituer_variables('{{variable_fantome}}', {})
+            _substituer_variables('{{variable_fantome}}', {})
         self.assertEqual(capture.exception.champ, 'champs')
         self.assertIn('variable_fantome', str(capture.exception))
 
     def test_le_texte_est_echappe_html(self):
-        html = substituer_variables('<script>{{modules}}</script>',
-                                    {'modules': '<b>24</b>'})
+        html = _substituer_variables('<script>{{modules}}</script>',
+                                     {'modules': '<b>24</b>'})
         self.assertNotIn('<script>', html)
         self.assertNotIn('<b>', html)
 
 
 class VariablesSystemeTest(unittest.TestCase):
     def test_le_nombre_de_chaines_et_l_onduleur_sont_lus_du_resultat(self):
-        variables = variables_systeme(NU, resultat=resultat())
+        variables = _variables_systeme(NU, resultat=resultat())
         self.assertEqual(variables['nombre_chaines'], '2')
         self.assertIn('ONDULEUR-ESSAI-1', variables['onduleurs'])
 
     def test_sans_resultat_les_variables_de_resultat_sont_vides(self):
-        variables = variables_systeme(NU, resultat=None)
+        variables = _variables_systeme(NU, resultat=None)
         self.assertEqual(variables['nombre_chaines'], '')
         self.assertEqual(variables['onduleurs'], '')
 
     def test_sans_societe_les_coordonnees_installateur_sont_vides(self):
-        variables = variables_systeme(NU, resultat=resultat())
+        variables = _variables_systeme(NU, resultat=resultat())
         self.assertEqual(variables['installateur_nom'], '')
         self.assertEqual(variables['installateur_telephone'], '')
 
@@ -186,7 +186,7 @@ class ConstruireManuelTest(unittest.TestCase):
 
 class MiseEnPageTest(unittest.TestCase):
     def test_aucun_mot_de_montant(self):
-        html = html_de_manuel(manuel())
+        html = _html_de_manuel(manuel())
         mots_de_montant = (
             'MAD', 'DH', 'prix', 'coût', 'cout', 'montant', 'remise',
             'marge', 'TTC', 'HT', '€')
@@ -194,7 +194,7 @@ class MiseEnPageTest(unittest.TestCase):
             self.assertNotIn(mot, html, mot)
 
     def test_le_titre_et_la_garde_sont_presents(self):
-        html = html_de_manuel(manuel())
+        html = _html_de_manuel(manuel())
         self.assertIn('Manuel du propriétaire', html)
         self.assertEqual(html.count('class="page-de-garde"'), 1)
 

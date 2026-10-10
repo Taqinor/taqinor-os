@@ -26,7 +26,7 @@ import unittest
 
 from apps.calepinage.services.documents.versions_document import (
     VersionDocumentRefuse, _nom_fichier_version, _numero_depuis_nom,
-    enregistrer_version_document, prochain_numero, versions_du_document,
+    enregistrer_version_document, _prochain_numero, versions_du_document,
 )
 
 
@@ -55,7 +55,7 @@ class CalepinageNonEnregistreTest(unittest.TestCase):
 
     def test_prochain_numero_vaut_un(self):
         self.assertEqual(
-            prochain_numero(self.FauxNonEnregistre(), 'rapport_etude'), 1)
+            _prochain_numero(self.FauxNonEnregistre(), 'rapport_etude'), 1)
 
     def test_versions_du_document_est_vide(self):
         self.assertEqual(

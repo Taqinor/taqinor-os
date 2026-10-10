@@ -33,7 +33,7 @@ from apps.calepinage.services import (
 )
 from apps.calepinage.services.chaines import bloc_pose
 from apps.calepinage.services.documents.presentation_compacte import (
-    construire_presentation,
+    _construire_presentation,
 )
 from apps.calepinage.services.electrique import (
     conception_du_calepinage, resultat_calepinage,
@@ -84,7 +84,7 @@ def _lecteurs(layout, resultat):
     pivot.resultat = resultat
     lus = {}
 
-    totaux = construire_presentation(
+    totaux = _construire_presentation(
         SimpleNamespace(company=None, pk=None, titre='QA-CAL-RT',
                         roof_layout=layout, resultat=None, layout_hash='',
                         version_moteur=''),

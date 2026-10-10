@@ -23,10 +23,10 @@ from apps.calepinage.services.documents.gabarit_document import (
     MENTION_ARCHIVE, MENTION_VERROUILLE,
 )
 from apps.calepinage.services.documents.plan_cablage import (
-    rendre_plan_cablage_svg,
+    _rendre_plan_cablage_svg,
 )
 from apps.calepinage.services.documents.presentation_compacte import (
-    construire_presentation, html_de_presentation,
+    _construire_presentation, _html_de_presentation,
 )
 from apps.calepinage.services.note_calcul import (
     construire_note_calcul, html_de_note_calcul,
@@ -81,7 +81,7 @@ def sept_rendus_texte(cal):
     etat = etat_de_conception(cal)
     note = construire_note_calcul(copy.deepcopy(ECHANTILLON),
                                   site={'ville': 'x'}, etat=etat)
-    presentation = construire_presentation(
+    presentation = _construire_presentation(
         cal, resultat=copy.deepcopy(ECHANTILLON),
         roof_layout=cal.roof_layout, svg_planche='', styles={}, etat=etat)
     with patch_materiel():
@@ -89,7 +89,7 @@ def sept_rendus_texte(cal):
         # Le plan de câblage REFUSE une conception sans chaîne publiée
         # (CALX310) : l'affectation est celle du résultat SERVI, matériel
         # connu — jamais une liste vide injectée.
-        plan_cablage = rendre_plan_cablage_svg(cal, moment=MOMENT)
+        plan_cablage = _rendre_plan_cablage_svg(cal, moment=MOMENT)
     return {
         'planche': rendre_planche_svg(cal, moment=MOMENT),
         'plan_pose': plan_pose,
@@ -99,7 +99,7 @@ def sept_rendus_texte(cal):
                                       moment=MOMENT),
         'note_calcul': html_de_note_calcul(note),
         'plan_cablage': plan_cablage,
-        'presentation_compacte': html_de_presentation(presentation),
+        'presentation_compacte': _html_de_presentation(presentation),
     }
 
 
