@@ -45,19 +45,19 @@ EXCEPTIONS: dict = {
     _C + "selectors.py::_activites_en_retard":
         "lit des Activity (records), pas des RelanceEtape : autre définition, "
         "autre propriétaire",
-    _C + "selectors.py::kpi_adherence":
+    _C + "cadence_selectors.py::kpi_adherence":
         "À CORRIGER (constat ALEA43, hors Files de la garde) : due_date < "
         "aujourd'hui en jours calendaires ; devrait passer par seuil_retard "
         "(reste de C-ALEA-028 après ALEA32)",
-    _C + "selectors.py::mes_stats_relance":
+    _C + "cadence_selectors.py::mes_stats_relance":
         "À CORRIGER (constat ALEA43, hors Files de la garde) : due_date < "
         "aujourd'hui en jours calendaires ; devrait passer par seuil_retard "
         "(reste de C-ALEA-028 après ALEA32)",
-    _C + "selectors.py::_serie_jours_sans_retard":
+    _C + "cadence_selectors.py::_serie_jours_sans_retard":
         "borne de la FENÊTRE de jours écoulés de la série (due_date < "
         "aujourd'hui exclut le jour en cours), la qualification retard par "
         "jour est faite ensuite ; relu au build",
-    _C + "selectors.py::cadences_echues_a_clore":
+    _C + "cadence_selectors.py::cadences_echues_a_clore":
         "seuil de CLÔTURE de cadence (touche ouverte depuis plus de N jours), "
         "distinct du retard affiché ; N est un paramètre de la clôture",
     _C + "services.py::touche_traitee_en_avance":
