@@ -1,0 +1,7 @@
+# ADEP37 P1.10 — réglages GED lus de l'environnement (probe des drapeaux)
+# rejeu orchestrateur, pile locale (pc2-batch9 @ 852114993), 2026-10-10
+docker exec -e ESIGN_ENABLED=1 -e GED_OFFICE_URL=https://office.example.test erp-agentique-django_core-1 manage.py shell
+  esign_active()=True  office_edit_active()=True   -> attendu True/True  -> PASS
+docker exec -e ESIGN_ENABLED=0 -e GED_OFFICE_URL= ...
+  esign_active()=False office_edit_active()=False  -> attendu False/False -> PASS
+P1.10 verdict: PASS
