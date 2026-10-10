@@ -31,6 +31,18 @@
    "required": false
   },
   {
+   "classe": "DictField",
+   "nom": "web_questionnaire",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DictField",
+   "nom": "web_estimate",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "CharField",
    "nom": "stage_label",
    "read_only": true,
@@ -993,18 +1005,6 @@
   {
    "classe": "CharField",
    "nom": "page",
-   "read_only": false,
-   "required": false
-  },
-  {
-   "classe": "JSONField",
-   "nom": "web_questionnaire",
-   "read_only": false,
-   "required": false
-  },
-  {
-   "classe": "JSONField",
-   "nom": "web_estimate",
    "read_only": false,
    "required": false
   },

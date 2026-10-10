@@ -25,7 +25,7 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "DictField",
    "nom": "payload",
    "read_only": false,
    "required": false

@@ -7809,7 +7809,7 @@ query_params:
   get /api/django/entites/entites/{id}/historique/: ordering page page_size search
   get /api/django/facturation/avoirs/: facture ordering page page_size search
   get /api/django/facturation/factures-lignes/: ordering page page_size search
-  get /api/django/facturation/factures/: entite ordering page page_size search
+  get /api/django/facturation/factures/: client entite ordering page page_size search
   get /api/django/facturation/factures/{id}/arrondi-caisse/: mode
   get /api/django/facturation/niveaux-relance/: ordering page page_size search
   get /api/django/facturation/notes-debit/: facture ordering page page_size search
@@ -8563,7 +8563,7 @@ query_params:
   get /api/v1/entites/entites/{id}/historique/: ordering page page_size search
   get /api/v1/facturation/avoirs/: facture ordering page page_size search
   get /api/v1/facturation/factures-lignes/: ordering page page_size search
-  get /api/v1/facturation/factures/: entite ordering page page_size search
+  get /api/v1/facturation/factures/: client entite ordering page page_size search
   get /api/v1/facturation/factures/{id}/arrondi-caisse/: mode
   get /api/v1/facturation/niveaux-relance/: ordering page page_size search
   get /api/v1/facturation/notes-debit/: facture ordering page page_size search
