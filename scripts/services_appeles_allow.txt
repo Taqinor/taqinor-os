@@ -14,7 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/kits.py::construire_kit_de_pose
 backend/django_core/apps/calepinage/services/lestage.py::feuille_de_lestage
 backend/django_core/apps/calepinage/services/lestage.py::masse_du_layout
 backend/django_core/apps/calepinage/services/lidar_ign.py::altimetre_ign
