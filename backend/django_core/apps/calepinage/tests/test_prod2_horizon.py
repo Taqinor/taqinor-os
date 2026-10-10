@@ -22,8 +22,8 @@ import unittest
 import urllib.error
 
 from apps.calepinage.services.horizon import (
-    ClientHorizon, azimut_de_face, lire_profil, profil_depuis_document,
-    profil_saisi,
+    ClientHorizon, _azimut_de_face, _lire_profil, profil_depuis_document,
+    _profil_saisi,
 )
 from apps.calepinage.services.pvgis_serie import (
     _Cache, EntreeInvalide, PvgisIndisponible,
@@ -106,7 +106,7 @@ class DeuxVillesTest(unittest.TestCase):
 class ConventionAzimutTest(unittest.TestCase):
 
     def test_l_azimut_de_face_est_republie_a_cote_de_celui_de_pvgis(self):
-        profil = lire_profil(charger(VILLES['casablanca'][2]))
+        profil = _lire_profil(charger(VILLES['casablanca'][2]))
         sud = [p for p in profil['points']
                if p['azimut_pvgis_deg'] == 0.0][0]
         self.assertEqual(sud['azimut_face_deg'], 180.0)
@@ -117,7 +117,7 @@ class ConventionAzimutTest(unittest.TestCase):
         for face in (0.0, 90.0, 180.0, 270.0, 315.0):
             with self.subTest(face=face):
                 self.assertAlmostEqual(
-                    azimut_de_face(azimut_pvgis(face)) % 360.0, face % 360.0,
+                    _azimut_de_face(azimut_pvgis(face)) % 360.0, face % 360.0,
                     places=6)
 
 
@@ -138,7 +138,7 @@ class PvgisIndisponibleTest(unittest.TestCase):
 
     def test_reponse_sans_profil_est_refusee_en_le_disant(self):
         with self.assertRaises(PvgisIndisponible) as refus:
-            lire_profil({'outputs': {}})
+            _lire_profil({'outputs': {}})
         self.assertIn('VIDE', str(refus.exception))
         self.assertIn('plat', str(refus.exception))
 
@@ -154,7 +154,7 @@ class ProfilSaisiTest(unittest.TestCase):
     """Le profil se CORRIGE à la main — et la source change avec lui."""
 
     def test_un_profil_saisi_porte_la_source_saisie(self):
-        profil = profil_saisi([
+        profil = _profil_saisi([
             {'azimut_face_deg': 90.0, 'hauteur_deg': 12.0},
             {'azimut_face_deg': 180.0, 'hauteur_deg': 3.0},
         ], note='relevé au clinomètre, 20/09')
@@ -163,7 +163,7 @@ class ProfilSaisiTest(unittest.TestCase):
         self.assertIn('clinomètre', profil['note'])
 
     def test_les_deux_conventions_d_azimut_sont_publiees(self):
-        profil = profil_saisi([{'azimut_face_deg': 180.0,
+        profil = _profil_saisi([{'azimut_face_deg': 180.0,
                                 'hauteur_deg': 3.0}])
         self.assertEqual(profil['points'][0]['azimut_pvgis_deg'], 0.0)
 
@@ -175,7 +175,7 @@ class ProfilSaisiTest(unittest.TestCase):
             {'azimuthDeg': 180.0, 'heightDeg': 3.0},
         ]}
         lu = profil_depuis_document(document)
-        direct = profil_saisi([
+        direct = _profil_saisi([
             {'azimut_face_deg': 90.0, 'hauteur_deg': 12.0},
             {'azimut_face_deg': 180.0, 'hauteur_deg': 3.0},
         ])
@@ -185,13 +185,13 @@ class ProfilSaisiTest(unittest.TestCase):
 
     def test_un_profil_saisi_vide_est_refuse(self):
         with self.assertRaises(EntreeInvalide) as refus:
-            profil_saisi([])
+            _profil_saisi([])
         self.assertEqual(refus.exception.champ, 'horizon')
         self.assertIn('plat', str(refus.exception))
 
     def test_un_point_hors_bornes_nomme_son_rang(self):
         with self.assertRaises(EntreeInvalide) as refus:
-            profil_saisi([{'azimut_face_deg': 400.0, 'hauteur_deg': 3.0}])
+            _profil_saisi([{'azimut_face_deg': 400.0, 'hauteur_deg': 3.0}])
         self.assertEqual(refus.exception.champ, 'horizon[0].azimut_face_deg')
 
 

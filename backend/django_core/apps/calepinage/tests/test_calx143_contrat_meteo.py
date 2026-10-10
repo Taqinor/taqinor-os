@@ -23,7 +23,7 @@ import json
 import pathlib
 import unittest
 
-from apps.calepinage.services.horizon import lire_profil
+from apps.calepinage.services.horizon import _lire_profil
 from apps.calepinage.services.pvgis_serie import azimut_pvgis
 from apps.calepinage.tests._m0_en_attente import sans
 from apps.calepinage.tests.test_pvgis_serie import serie_enregistree
@@ -141,7 +141,7 @@ class ProducteurDuProfilDHorizonTest(unittest.TestCase):
     """`lire_profil` publie les trois noms de champs que le bloc consomme."""
 
     def test_les_trois_champs_existent_chez_le_producteur(self):
-        profil = lire_profil(charger(FIXTURES / 'printhorizon_casablanca.json'))
+        profil = _lire_profil(charger(FIXTURES / 'printhorizon_casablanca.json'))
         for champ in ('base_horizon', 'hauteur_max_deg', 'altitude_m'):
             self.assertIn(champ, profil)
             self.assertIsNotNone(profil[champ])

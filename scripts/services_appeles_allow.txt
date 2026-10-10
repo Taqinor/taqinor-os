@@ -14,9 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/horizon.py::azimut_de_face
-backend/django_core/apps/calepinage/services/horizon.py::lire_profil
-backend/django_core/apps/calepinage/services/horizon.py::profil_saisi
 backend/django_core/apps/calepinage/services/hors_reseau.py::banque_pour_autonomie
 backend/django_core/apps/calepinage/services/hors_reseau.py::simuler_hors_reseau
 backend/django_core/apps/calepinage/services/images_document.py::octets_et_mime
