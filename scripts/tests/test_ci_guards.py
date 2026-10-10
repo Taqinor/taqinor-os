@@ -123,6 +123,22 @@ class CiYmlTests(unittest.TestCase):
                 self.assertGreaterEqual(len(steps), len(rows))
 
 
+class GardesTests(unittest.TestCase):
+    """AMET86 (C-AMET-029) - la garde C20 tourne dans stage-names sur un clone COMPLET
+    (sinon elle echoue fermee) ; check_ao_api_contract (NO-OP, app `ao` parquee) est retiree."""
+
+    def test_forme_code_presente_et_ao_api_contract_absente(self):
+        commandes = [c for _n, c, _w in ci_guards.GARDES["stage-names"]]
+        self.assertIn("python scripts/check_forme_code.py --base origin/main", commandes)
+        self.assertIn("python -m unittest scripts.tests.test_check_forme_code -v", commandes)
+        toutes = [c for rows in ci_guards.GARDES.values() for _n, c, _w in rows]
+        self.assertFalse([c for c in toutes if "check_ao_api_contract" in c])
+        self.assertFalse(os.path.exists(os.path.join(REPO_ROOT, "scripts", "check_ao_api_contract.py")))
+        etapes = ci_fast_gate_steps.load_jobs()["stage-names"]["steps"]
+        checkout = next(e for e in etapes if str(e.get("uses", "")).startswith("actions/checkout"))
+        self.assertEqual((checkout.get("with") or {}).get("fetch-depth"), 0)
+
+
 class RunnerTests(unittest.TestCase):
     def _run(self, gardes):
         buf = io.StringIO()
