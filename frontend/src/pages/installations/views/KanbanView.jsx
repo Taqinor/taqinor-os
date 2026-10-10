@@ -20,6 +20,7 @@ import {
 import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
+  statusLabel,
   STATUS_COLORS,
   canonicalStatus,
   canMoveStatus,
@@ -83,7 +84,7 @@ export function StatusMover({ inst, onChangeStatus }) {
         }}
       >
         {options.map((s) => (
-          <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+          <option key={s} value={s}>{statusLabel(s)}</option>
         ))}
       </select>
     </div>
@@ -130,7 +131,7 @@ function ChantierCard({ inst, isNew }) {
         <span className="kc-card-ref">{inst.reference}</span>
         {/* VX218 — badge « Nouveau » : chantier assigné depuis ma dernière visite. */}
         {isNew && <Badge tone="success">Nouveau</Badge>}
-        <StatusPill status={inst.statut} label={STATUS_LABELS[canonicalStatus(inst.statut)]} dot={false} />
+        <StatusPill status={inst.statut} label={statusLabel(canonicalStatus(inst.statut))} dot={false} />
       </div>
       <div className="kc-card-sub">{inst.client_nom ?? '—'}</div>
       <div className="kc-chips">
@@ -232,7 +233,7 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
       else (byCol[INSTALLATION_STATUSES[0]]).push(it)
     }
     return INSTALLATION_STATUSES.map((s) => ({
-      key: s, label: STATUS_LABELS[s], color: STATUS_COLORS[s], items: byCol[s],
+      key: s, label: statusLabel(s), color: STATUS_COLORS[s], items: byCol[s],
     }))
   }, [items])
 
@@ -241,7 +242,7 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
   const announcements = useMemo(() => {
     const byId = new Map((items ?? []).map((it) => [it.id, it]))
     const labelFor = (id) => {
-      if (STATUS_LABELS[id]) return STATUS_LABELS[id]
+      if (STATUS_LABELS[id]) return statusLabel(id)
       const it = byId.get(id)
       return it?.reference ?? String(id)
     }
