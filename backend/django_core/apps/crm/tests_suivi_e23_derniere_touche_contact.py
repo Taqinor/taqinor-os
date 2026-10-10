@@ -31,7 +31,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, CLE_RAPPEL_CONVENU, cle_de, q_etape
 from apps.crm.models import Lead, RelanceEtape
@@ -149,8 +149,8 @@ class LectureDuRangTests(SimpleTestCase):
         suivi = RelanceEtape(cadence='apres_devis', ordre=10,
                              canal=WHATSAPP, libelle='Mise en pause',
                              statut=A_FAIRE)
-        self.assertFalse(services.est_derniere_touche_de_contact(suivi))
-        self.assertFalse(services.est_derniere_touche_de_contact(None))
+        self.assertFalse(cadence_reponses.est_derniere_touche_de_contact(suivi))
+        self.assertFalse(cadence_reponses.est_derniere_touche_de_contact(None))
 
 
 class DerniereToucheContactApiTests(TestCase):
@@ -242,7 +242,7 @@ class DerniereToucheContactApiTests(TestCase):
     def test_dernier_message_a_rappeler_le(self):
         cloture = self._barreau(DERNIER)
         self.assertEqual(cloture.canal, WHATSAPP)
-        self.assertTrue(services.est_derniere_touche_de_contact(cloture))
+        self.assertTrue(cadence_reponses.est_derniere_touche_de_contact(cloture))
 
         resp = self._rappel(cloture)
 
@@ -252,7 +252,7 @@ class DerniereToucheContactApiTests(TestCase):
         self._desactiver_apres(DERNIER_APPEL)
         appel = self._barreau(DERNIER_APPEL)
         self.assertEqual(appel.canal, APPEL)
-        self.assertTrue(services.est_derniere_touche_de_contact(appel))
+        self.assertTrue(cadence_reponses.est_derniere_touche_de_contact(appel))
 
         resp = self._rappel(appel)
 
@@ -271,7 +271,7 @@ class DerniereToucheContactApiTests(TestCase):
 
     def test_une_touche_qui_n_est_pas_la_derniere_date_la_suivante(self):
         appel = self._barreau(DERNIER_APPEL)
-        self.assertFalse(services.est_derniere_touche_de_contact(appel))
+        self.assertFalse(cadence_reponses.est_derniere_touche_de_contact(appel))
 
         resp = self._rappel(appel)
 

@@ -46,10 +46,12 @@ def _materialiser_tout(lead, user, *, cadence='contact', depart=None):
     elle, est verrouillée dans ``tests_relance_foundation``.
     """
     from apps.crm import horaires as _h
-    from apps.crm.services import (
-        _adapter_gabarits_reveil, _normaliser_depart,
+    from apps.crm.cadence_plan import (
+        _adapter_gabarits_reveil,
+        _normaliser_depart,
         calculer_echeances_cadence,
-        initialiser_plan_relance as _initialiser)
+        initialiser_plan_relance as _initialiser,
+    )
 
     etapes = _initialiser(
         lead, user, cadence=cadence, depart=depart)
@@ -124,7 +126,7 @@ class WhatsappTypeTests(_Base):
     def test_un_whatsapp_compte_comme_prise_de_contact(self):
         """`_CONTACT_KINDS` : un WhatsApp fait avancer NEW → CONTACTED, comme
         un e-mail. C'est le canal principal de Meryem."""
-        from apps.crm.services import _CONTACT_KINDS
+        from apps.crm.fiche_funnel import _CONTACT_KINDS
         self.assertIn(LeadActivity.Kind.WHATSAPP, _CONTACT_KINDS)
         self.api.post(
             f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',

@@ -10,7 +10,7 @@ import logging
 
 from urllib.parse import quote
 
-from .services import generer_playbook_progress
+from .fiche_funnel import generer_playbook_progress
 
 logger = logging.getLogger(__name__)
 

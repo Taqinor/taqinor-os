@@ -9,7 +9,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead
-from apps.crm.services import resolve_client_for_lead
+from apps.crm.clients_identite import resolve_client_for_lead
 
 
 class ResolveClientForLeadPhoneDedupTests(TestCase):

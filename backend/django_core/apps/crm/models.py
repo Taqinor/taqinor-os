@@ -2267,12 +2267,12 @@ class Lead(SoftDeleteModel):
         # QW10 — maintient les colonnes de dédup normalisées à chaque save,
         # quelle que soit la voie d'écriture (webhook, admin, API, import) —
         # source unique de vérité : `apps.crm.services` (jamais dupliquée ici).
-        from . import services as _crm_services
-        self.phone_normalise = _crm_services.normalize_phone(self.telephone) or ''
-        self.email_normalise = _crm_services.normalize_email(self.email) or ''
+        from . import leads_doublons as _crm_doublons
+        self.phone_normalise = _crm_doublons.normalize_phone(self.telephone) or ''
+        self.email_normalise = _crm_doublons.normalize_email(self.email) or ''
         # ACRM32 — idem pour le WhatsApp (tronqué comme la colonne).
         self.whatsapp_normalise = (
-            _crm_services.normalize_phone(self.whatsapp) or '')[:20]
+            _crm_doublons.normalize_phone(self.whatsapp) or '')[:20]
         super().save(*args, **kwargs)
 
     class Meta:

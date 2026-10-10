@@ -774,7 +774,7 @@ def leads_signes_sans_devis_accepte(company):
     Renvoie une liste de dicts ``{'id', 'stage', 'source'}`` — aucune donnée
     personnelle (le nom n'est pas lu). Scopé à ``company``."""
     from .models import Lead
-    from .services import _DEVIS_STATUT_ACCEPTE
+    from .fiche_funnel import _DEVIS_STATUT_ACCEPTE
     return list(
         Lead.objects
         .filter(lead_signe_q(), company=company)
@@ -806,7 +806,8 @@ def lead_en_attente_ou_veille(lead_id, today, *, company):
     ne jamais parquer au Froid un lead qui attend. Lecture seule ; un lead
     d'une autre société n'est jamais lu (``False``)."""
     from .models import Lead, RelanceEtape
-    from .services import ETIQUETTES_RAISON_ATTENTE, _lead_porte_tag
+    from .cadence_messages import ETIQUETTES_RAISON_ATTENTE
+    from .cadence_reperes import _lead_porte_tag
 
     if not lead_id or company is None:
         return False

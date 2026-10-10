@@ -1,0 +1,22 @@
+# ADEP99 P3.1 — fc-match sur 8 familles : couche polices de l'image CI reconstruite (.github/ci-image/Dockerfile l.1-144) == image de prod ; check_parite_image_ci OK
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P3_1_fc_ci.txt
+Georgia            -> NotoSerif-Regular.ttf: "Noto Serif" "Regular"
+serif              -> NotoSerif-Regular.ttf: "Noto Serif" "Regular"
+sans-serif         -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+monospace          -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+DM Sans            -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+Inter              -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+DM Serif Display   -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+:lang=ar           -> NotoKufiArabic-Regular.ttf: "Noto Kufi Arabic" "Regular"
+
+## P3_1_fc_prod.txt
+Georgia            -> NotoSerif-Regular.ttf: "Noto Serif" "Regular"
+serif              -> NotoSerif-Regular.ttf: "Noto Serif" "Regular"
+sans-serif         -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+monospace          -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+DM Sans            -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+Inter              -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+DM Serif Display   -> NotoSans-Regular.ttf: "Noto Sans" "Regular"
+:lang=ar           -> NotoKufiArabic-Regular.ttf: "Noto Kufi Arabic" "Regular"

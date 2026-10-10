@@ -31,7 +31,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
+from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_APPEL_APRES_REPONSE, CLE_DEBRIEF, CLE_DECIDER_SUITE, CLE_DEVIS,
@@ -50,7 +51,7 @@ A_FAIRE = RelanceEtape.Statut.A_FAIRE
 FAIT = RelanceEtape.Statut.FAIT
 APPEL = RelanceEtape.Canal.APPEL
 WHATSAPP = RelanceEtape.Canal.WHATSAPP
-JOINT_TELEPHONE = services.REPONSE_JOINT_TELEPHONE
+JOINT_TELEPHONE = cadence_reponses.REPONSE_JOINT_TELEPHONE
 ORDRES_SUIVI = frozenset(e['ordre'] for e in CADENCES_DEFAUT['apres_devis'])
 #: Le dernier barreau du gabarit livré (« Mise en pause », un message).
 DERNIER = max(ORDRES_SUIVI)
@@ -152,19 +153,19 @@ class LectureDuRangTests(SimpleTestCase):
 
     def test_une_etape_de_visite_n_est_pas_un_barreau(self):
         debrief = RelanceEtape(
-            cadence='apres_devis', ordre=services.VISITE_ORDRE_DEBRIEF,
+            cadence='apres_devis', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
             canal=APPEL, cle=CLE_DEBRIEF,
-            libelle=services.VISITE_DEBRIEF_LIBELLE, statut=A_FAIRE)
-        self.assertFalse(services.est_derniere_touche_du_suivi(debrief))
+            libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE, statut=A_FAIRE)
+        self.assertFalse(cadence_reponses.est_derniere_touche_du_suivi(debrief))
 
     def test_une_autre_cadence_ou_aucune_touche(self):
         contact = RelanceEtape(cadence='contact', ordre=11, canal=WHATSAPP,
                                libelle='Clôture', statut=A_FAIRE)
-        self.assertFalse(services.est_derniere_touche_du_suivi(contact))
-        self.assertFalse(services.est_derniere_touche_du_suivi(None))
+        self.assertFalse(cadence_reponses.est_derniere_touche_du_suivi(contact))
+        self.assertFalse(cadence_reponses.est_derniere_touche_du_suivi(None))
 
     def test_une_ligne_de_chatter_ordinaire_ne_porte_aucune_touche(self):
-        self.assertIsNone(services.touche_close_de(LeadActivity()))
+        self.assertIsNone(cadence_reperes.touche_close_de(LeadActivity()))
 
 
 class DerniereToucheApiTests(TestCase):
@@ -267,7 +268,7 @@ class DerniereToucheApiTests(TestCase):
         self._desactiver_apres(DERNIER_APPEL)
         appel = self._barreau(DERNIER_APPEL, devis=self._devis())
         self.assertEqual(appel.canal, APPEL)
-        self.assertTrue(services.est_derniere_touche_du_suivi(appel))
+        self.assertTrue(cadence_reponses.est_derniere_touche_du_suivi(appel))
 
         resp = self._fait(appel, outcome='joint')
 
@@ -290,7 +291,7 @@ class DerniereToucheApiTests(TestCase):
         # E16 inchangé : la ligne de chatter reste un APPEL abouti.
         ligne = LeadActivity.objects.get(
             lead=self.lead,
-            body__startswith=services.prefixe_activite_touche(message))
+            body__startswith=cadence_reperes.prefixe_activite_touche(message))
         self.assertEqual(ligne.kind, LeadActivity.Kind.APPEL)
 
     def test_dernier_message_sans_devis_dans_l_erp(self):
@@ -305,7 +306,7 @@ class DerniereToucheApiTests(TestCase):
 
     def test_une_touche_qui_n_est_pas_la_derniere_fait_naitre_la_suivante(self):
         appel = self._barreau(DERNIER_APPEL, devis=self._devis())
-        self.assertFalse(services.est_derniere_touche_du_suivi(appel))
+        self.assertFalse(cadence_reponses.est_derniere_touche_du_suivi(appel))
 
         resp = self._fait(appel, outcome='joint')
 

@@ -18,10 +18,11 @@ from django.test import TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import cadence_temps, horaires, services
+from apps.crm import cadence_temps, horaires, cadence_plan
+from apps.crm import cadence_messages
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.serializers import RelanceEtapeSerializer
-from apps.crm.services import calculer_echeances_cadence
+from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -45,7 +46,7 @@ class _Base(TestCase):
         # Une société qui a une réalisation éligible : la touche J4 « preuve »
         # existe au suivi après devis (AGR514).
         patcher = mock.patch.object(
-            services, '_realisation_eligible', return_value=True)
+            cadence_plan, '_realisation_eligible', return_value=True)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.company = Company.objects.create(
@@ -318,7 +319,7 @@ class RenduEmailTests(_Base):
 
         from apps.parametres.models_messages import forme_email
         lead = self._lead(telephone=FIXE, email=EMAIL)
-        rendu = services.message_pour_etape(
+        rendu = cadence_messages.message_pour_etape(
             self._etape(lead, 'email', devis=self._devis()),
             user=self.acteur)
         forme = forme_email('j9_validite')
@@ -350,12 +351,12 @@ class RenduEmailTests(_Base):
         sans_pii = User.objects.create_user(
             username='ciq506-sanspii', password='x', role=role,
             company=self.company)
-        rendu = services.message_pour_etape(etape, user=sans_pii)
+        rendu = cadence_messages.message_pour_etape(etape, user=sans_pii)
         self.assertIsNone(rendu['mailto_url'])
-        rendu_ok = services.message_pour_etape(etape, user=self.acteur)
+        rendu_ok = cadence_messages.message_pour_etape(etape, user=self.acteur)
         self.assertIsNotNone(rendu_ok['mailto_url'])
         sans_adresse = self._lead('Karim', telephone=FIXE, email='')
-        rendu_vide = services.message_pour_etape(
+        rendu_vide = cadence_messages.message_pour_etape(
             self._etape(sans_adresse, 'email', devis=self._devis()),
             user=self.acteur)
         self.assertIsNone(rendu_vide['mailto_url'])
@@ -364,7 +365,7 @@ class RenduEmailTests(_Base):
 
     def test_c_une_touche_whatsapp_garde_sa_reponse_actuelle(self):
         lead = self._lead(telephone=MOBILE, email=EMAIL)
-        rendu = services.message_pour_etape(
+        rendu = cadence_messages.message_pour_etape(
             self._etape(lead, 'whatsapp', devis=self._devis()),
             user=self.acteur)
         self.assertEqual(rendu['objet'], '')
@@ -373,7 +374,7 @@ class RenduEmailTests(_Base):
 
     def test_une_cle_sans_forme_email_rend_le_texte_de_la_cle_sans_objet(self):
         lead = self._lead(telephone=FIXE, email=EMAIL)
-        rendu = services.message_pour_etape(
+        rendu = cadence_messages.message_pour_etape(
             self._etape(lead, 'email', cle='relance_email_j10'),
             user=self.acteur)
         self.assertEqual(rendu['objet'], '')
@@ -384,7 +385,7 @@ class RenduEmailTests(_Base):
     def test_un_objet_dont_le_placeholder_manque_est_omis(self):
         lead = self._lead(telephone=FIXE, email=EMAIL)
         # Touche sans devis : `{reference}` n'a pas de valeur réelle.
-        rendu = services.message_pour_etape(
+        rendu = cadence_messages.message_pour_etape(
             self._etape(lead, 'email', cle='j6_garanties'),
             user=self.acteur)
         self.assertEqual(rendu['objet'], '')

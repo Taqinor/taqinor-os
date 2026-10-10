@@ -24,7 +24,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_DECIDER_SUITE, CLE_DEVIS, CLE_DEVIS_MODIFIE, CLE_PLANIFIER)
@@ -43,9 +44,9 @@ A_FAIRE = RelanceEtape.Statut.A_FAIRE
 TACHES = (
     ('generique', CLE_DEVIS, 'Préparer le devis'),
     ('generique', CLE_DECIDER_SUITE, 'Décider la suite'),
-    (services.VISITE_CADENCE, CLE_PLANIFIER, 'Planifier la visite'),
-    (services.VISITE_CADENCE, CLE_DEVIS_MODIFIE, 'Devis modifié'),
-    ('generique', '', services.QUESTION_PRIX_LIBELLE),
+    (cadence_reperes.VISITE_CADENCE, CLE_PLANIFIER, 'Planifier la visite'),
+    (cadence_reperes.VISITE_CADENCE, CLE_DEVIS_MODIFIE, 'Devis modifié'),
+    ('generique', '', cadence_reperes.QUESTION_PRIX_LIBELLE),
 )
 
 _seq = itertools.count(1)
@@ -142,14 +143,14 @@ class ReconnaissanceNoteDeReportTests(SimpleTestCase):
         return LeadActivity(kind=kind, body=corps)
 
     def test_la_note_d_un_report(self):
-        corps = (services.PREFIXE_NOTE_REPORT
+        corps = (cadence_reperes.PREFIXE_NOTE_REPORT
                  + '01/10/2026 à 09:00 — touche « Appel »'
-                 + services.FIN_NOTE_REPORT)
+                 + cadence_reperes.FIN_NOTE_REPORT)
         self.assertEqual(
             corps,
             'Rappel demandé le 01/10/2026 à 09:00 — touche « Appel » '
             'reportée.')
-        self.assertTrue(services.est_note_de_report(self._note(corps)))
+        self.assertTrue(cadence_reperes.est_note_de_report(self._note(corps)))
 
     def test_les_deux_notes_de_veille(self):
         for corps in ('Mise en veille jusqu’au 12/10/2026 à la demande du '
@@ -157,9 +158,9 @@ class ReconnaissanceNoteDeReportTests(SimpleTestCase):
                       'Mise en veille demandée jusqu’au 12/12/2026 : plus '
                       'd’un mois d’attente.'):
             with self.subTest(corps=corps):
-                self.assertTrue(corps.startswith(services.PREFIXE_NOTE_VEILLE))
+                self.assertTrue(corps.startswith(cadence_reperes.PREFIXE_NOTE_VEILLE))
                 self.assertTrue(
-                    services.est_note_de_report(self._note(corps)))
+                    cadence_reperes.est_note_de_report(self._note(corps)))
 
     def test_une_note_ordinaire_reste_un_contact(self):
         for corps in ('Appelé, pas de réponse',
@@ -167,13 +168,13 @@ class ReconnaissanceNoteDeReportTests(SimpleTestCase):
                       'est ramenée au 30/09/2026 à 10:00.'):
             with self.subTest(corps=corps):
                 self.assertFalse(
-                    services.est_note_de_report(self._note(corps)))
+                    cadence_reperes.est_note_de_report(self._note(corps)))
 
     def test_une_ligne_typee_n_est_jamais_une_note_de_report(self):
-        corps = services.PREFIXE_NOTE_VEILLE + 'jusqu’au 12/10/2026'
-        self.assertFalse(services.est_note_de_report(
+        corps = cadence_reperes.PREFIXE_NOTE_VEILLE + 'jusqu’au 12/10/2026'
+        self.assertFalse(cadence_reperes.est_note_de_report(
             self._note(corps, kind=LeadActivity.Kind.APPEL)))
-        self.assertFalse(services.est_note_de_report(None))
+        self.assertFalse(cadence_reperes.est_note_de_report(None))
 
 
 class ReportNePosePasLePremierContactTests(_Base):
@@ -209,7 +210,7 @@ class ReportNePosePasLePremierContactTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(LeadActivity.objects.filter(
             lead=self.lead,
-            body__startswith=services.PREFIXE_NOTE_REPORT).exists())
+            body__startswith=cadence_reperes.PREFIXE_NOTE_REPORT).exists())
         self._toujours_escalade()
 
     def test_mettre_en_veille_ne_l_horodate_pas(self):
@@ -220,7 +221,7 @@ class ReportNePosePasLePremierContactTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(LeadActivity.objects.filter(
             lead=self.lead,
-            body__startswith=services.PREFIXE_NOTE_VEILLE).exists())
+            body__startswith=cadence_reperes.PREFIXE_NOTE_VEILLE).exists())
         self._toujours_escalade()
 
     def test_la_date_de_relance_de_la_fiche_ne_l_horodate_pas(self):
@@ -233,7 +234,7 @@ class ReportNePosePasLePremierContactTests(_Base):
     def test_un_vrai_contact_horodate_toujours(self):
         """Témoin : la touche FAITE (un message réellement envoyé) reste une
         tentative — MRY19/CAD131 ne sont pas défaits."""
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.touche, self.acteur, RelanceEtape.Statut.FAIT)
         self.lead.refresh_from_db()
         self.assertIsNotNone(self.lead.first_contacted_at)

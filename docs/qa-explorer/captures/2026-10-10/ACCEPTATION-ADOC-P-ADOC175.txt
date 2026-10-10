@@ -1,0 +1,8 @@
+# ADOC175 — « Nouvelle version » refusée pendant une demande de signature
+# rejeu orchestrateur, pile locale (API construite depuis pc2-batch10 050997ce3), 2026-10-10
+API (JWT demo_admin) : POST ged/demandes-signature/ document 8 = 201 (demande 13)
+Playwright demo_admin : GED → « Dossiers de fin de chantier » → « Document as-built — QA-CAL-GATE LIV06 » → « Nouvelle version… » → PDF déposé → « Déposer la version »
+POST ged/documents/8/nouvelle-version/ = 409 ; message affiché : « Une demande de signature est en cours sur ce document : aucune nouvelle version tant qu'elle n'est pas close. »
+versions du document : 1 avant, 1 après (l'aperçu garde v1)
+nettoyage : demande 13 supprimée
+P-ADOC175 verdict: PASS

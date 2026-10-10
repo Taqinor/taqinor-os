@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from authentication.models import Company
-from apps.crm import selectors, services, stages
+from apps.crm import selectors, stages, leads_doublons
 from apps.crm.models import Lead
 
 
@@ -21,7 +21,7 @@ class ClesSigneesWhatsappTests(TestCase):
         self.lead = Lead.objects.create(
             company=self.company, nom='WhatsApp seul', telephone='',
             whatsapp='+212 6 12 34 56 78', stage=stages.SIGNED)
-        self.cle = services.normalize_phone('+212 6 12 34 56 78')
+        self.cle = leads_doublons.normalize_phone('+212 6 12 34 56 78')
 
     def test_whatsapp_seul_compte(self):
         self.assertTrue(self.cle)
@@ -43,5 +43,5 @@ class ClesSigneesWhatsappTests(TestCase):
         lead = Lead(telephone='0611111111', whatsapp='0622222222')
         self.assertEqual(
             selectors.cles_numeros_lead(lead),
-            {services.normalize_phone('0611111111'),
-             services.normalize_phone('0622222222')})
+            {leads_doublons.normalize_phone('0611111111'),
+             leads_doublons.normalize_phone('0622222222')})

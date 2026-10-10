@@ -28,7 +28,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_signaux
+from apps.crm import cadence_reperes
+from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, q_etape
 from apps.crm.models import Lead, RelanceEtape
@@ -130,9 +132,9 @@ class SuiviSansDevisPoursuiviTests(_Base):
 
     def test_la_question_de_prix_reprend_le_suivi(self):
         appel = self._barreau(2)
-        self._fait(appel, reponse=services.REPONSE_QUESTION_PRIX)
+        self._fait(appel, reponse=cadence_reponses.REPONSE_QUESTION_PRIX)
         question = self.lead.relance_etapes.get(
-            libelle=services.QUESTION_PRIX_LIBELLE, statut=A_FAIRE)
+            libelle=cadence_reperes.QUESTION_PRIX_LIBELLE, statut=A_FAIRE)
 
         self._fait(question)
 
@@ -145,7 +147,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
 
     def test_devis_parti_poursuit_sans_rejouer_depuis_le_barreau_1(self):
         self._barreau(2, statut=FAIT)
-        devis = services.poser_etape_preparer_devis(
+        devis = cadence_signaux.poser_etape_preparer_devis(
             self.lead, origine='test', user=self.acteur)
         self._fait(devis)
         [ouverte] = self._ouvertes()
@@ -160,7 +162,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
         decider = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='generique',
             ordre=1, canal=RelanceEtape.Canal.APPEL,
-            libelle=services.FILET_REFUS_LIBELLE, due_at=GEL,
+            libelle=cadence_reperes.FILET_REFUS_LIBELLE, due_at=GEL,
             due_date=GEL.date())
         self._fait(decider)
         [ouverte] = self._ouvertes()
@@ -173,7 +175,7 @@ class TemoinDemarrageTests(_Base):
     (TREADMILL-1538, inchangé)."""
 
     def test_devis_parti_sans_aucun_suivi_demarre_au_barreau_1(self):
-        devis = services.poser_etape_preparer_devis(
+        devis = cadence_signaux.poser_etape_preparer_devis(
             self.lead, origine='test', user=self.acteur)
         self._fait(devis)
         [ouverte] = self._ouvertes()

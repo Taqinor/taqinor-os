@@ -18,7 +18,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import placer_anciens_leads
+from apps.crm.cadence_placement import placer_anciens_leads
 
 User = get_user_model()
 

@@ -13,30 +13,35 @@ from django.utils import timezone
 from . import stages
 from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
 from .models import Lead, LeadActivity
-from .services import (
-    CADENCES_ARRETEES_PAR_ISSUE,
+from .cadence_visite import (
     CAUSE_RDV_REFUS,
-    OUTCOME_VISITE_ACCEPTEE,
-    _poser_etape_de_filet,
-    _recaler_file,
-    annuler_etapes_moteur_ouvertes,
     annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
+    phrase_notification_retour_visite,
+)
+from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
+from .cadence_filet import (
+    _poser_etape_de_filet,
+    assurer_prochaine_etape_apres_succes,
+    poser_filet_visite_a_planifier,
+)
+from .cadence_plan import (
+    _recaler_file,
     arreter_cadence,
     arreter_cadence_du_lead_id,
-    assurer_prochaine_etape_apres_succes,
-    avancer_stage_lead_vers,
-    ecrire_retour_lead_visite,
-    est_cloture_d_etape_visite,
-    est_derniere_touche_du_suivi,
     initialiser_plan_relance,
-    journaliser_visite,
-    phrase_notification_retour_visite,
-    poser_filet_visite_a_planifier,
+)
+from .fiche_funnel import avancer_stage_lead_vers
+from .cadence_reperes import (
+    OUTCOME_VISITE_ACCEPTEE,
+    annuler_etapes_moteur_ouvertes,
+    est_cloture_d_etape_visite,
     q_visite,
     touche_close_de,
 )
+from .visites_retour_lead import ecrire_retour_lead_visite, journaliser_visite
+from .cadence_reponses import est_derniere_touche_du_suivi
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +392,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
     mesures = kwargs.get('mesures_point_eau')
     if mesures:
         try:
-            from .services import appliquer_mesures_point_eau
+            from .visites_retour_lead import appliquer_mesures_point_eau
             lead = Lead.objects.filter(
                 pk=lead_id, company_id=visite.company_id).first()
             if lead is not None:
@@ -402,7 +407,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
     releve_ci = kwargs.get('releve_ci')
     if releve_ci:
         try:
-            from .services import appliquer_releve_ci
+            from .visites_retour_lead import appliquer_releve_ci
             lead = Lead.objects.filter(
                 pk=lead_id, company_id=visite.company_id).first()
             if lead is not None:

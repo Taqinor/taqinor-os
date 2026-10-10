@@ -6626,6 +6626,7 @@ def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
             "cette fonctionnalité est désactivée.")
     assert_not_archive_legalement(document)
     assert_not_legal_hold(document)
+    assert_aucune_signature_en_attente(document)  # ADOC175 (jumeau ADOC68)
     # ADOC17 — garde de check-out portée par add_version(user=...) ; vérifiée
     # aussi AVANT le stockage pour ne jamais téléverser un objet orphelin.
     assert_not_locked_by_other(document, user)

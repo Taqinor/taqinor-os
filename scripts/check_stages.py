@@ -80,7 +80,7 @@ LITERAL_EXEMPT = {
 # Per-file ceilings (number of literal uses) frozen on 2026-10-07 — DECREASE ONLY.
 LITERAL_ALLOW = {
     "backend/django_core/apps/crm/leads_selectors.py": 1,
-    "backend/django_core/apps/crm/services.py": 3,
+    "backend/django_core/apps/crm/fiche_funnel.py": 3,
     "backend/django_core/apps/crm/views.py": 1,
     "backend/django_core/core/win_probability.py": 6,
 }

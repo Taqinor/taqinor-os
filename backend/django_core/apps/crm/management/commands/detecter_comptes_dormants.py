@@ -76,7 +76,7 @@ def _alerter(client, entry, now):
     # Imports ABSOLUS : ce module vit dans `apps.crm.management.commands`,
     # donc `..` désigne `apps.crm.management` (qui n'a ni `services` ni
     # `models`) et non `apps.crm` — d'où l'ImportError historique.
-    from apps.crm import services as crm_services
+    from apps.crm import leads_attribution
     from apps.crm.models import Client, Lead
 
     Client.objects.filter(pk=client.pk).update(
@@ -93,7 +93,7 @@ def _alerter(client, entry, now):
         owner = CustomUser.objects.filter(pk=owner).first()
     if owner is None:
         try:
-            owner = crm_services.default_responsable_for(client.company)
+            owner = leads_attribution.default_responsable_for(client.company)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             owner = None
 

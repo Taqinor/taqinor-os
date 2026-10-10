@@ -16,7 +16,7 @@ from __future__ import annotations
 
 def seed_playbooks_segment_hook(company, *, user=None):
     """Pose les playbooks de segment de CAD125 — idempotent."""
-    from .services import seed_playbooks_segment
+    from .cadence_messages import seed_playbooks_segment
     seed_playbooks_segment(company)
 
 

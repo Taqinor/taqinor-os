@@ -166,14 +166,14 @@ def attach_capture_photo(lead, data: dict):
         # appelle : PRÉPARER LE DEVIS — production, pas relance (nuance du
         # round 2). Best-effort par construction (le point d'entrée ne lève
         # jamais) : la photo ne fait pas retomber le webhook.
-        from .services import SIGNAL_PHOTO_FACTURE, notifier_signal_client
+        from .cadence_signaux import SIGNAL_PHOTO_FACTURE, notifier_signal_client
         notifier_signal_client(lead, SIGNAL_PHOTO_FACTURE)
         # CAD136 — et le GESTE qu'elle appelle entre dans la file : la tâche
         # de production « Préparer et envoyer le devis (ou fixer un rappel) »,
         # jamais une relance. Seulement pour une photo de FACTURE — un
         # compteur ou un tableau ne suffit pas à chiffrer. Best-effort.
         if est_photo_de_facture(data, filename):
-            from .services import poser_etape_preparer_devis
+            from .cadence_signaux import poser_etape_preparer_devis
             poser_etape_preparer_devis(
                 lead, origine='photo de facture reçue du site')
 

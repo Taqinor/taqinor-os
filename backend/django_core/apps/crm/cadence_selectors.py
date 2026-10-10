@@ -718,7 +718,7 @@ def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
     from .models import Lead, LeadActivity, RelanceEtape
     from .controle_suivi import etape_en_retard, seuil_retard
     from .serializers import pii_masquee_pour
-    from .services import ISSUES_CLIENT_JOINT
+    from .cadence_plan import ISSUES_CLIENT_JOINT
 
     today = aujourd_hui_local()
     # ALEA32 — LA définition unique de « en retard » (jours COMPTÉS).
@@ -1237,7 +1237,7 @@ def journal_relance(company, user, lead_id):
     from . import stages
     from .controle_suivi import etape_en_retard
     from .models import Lead, LeadActivity, RelanceEtape
-    from .services import prefixe_activite_touche
+    from .cadence_reperes import prefixe_activite_touche
 
     lead = scope_queryset(
         Lead.objects.filter(company=company, pk=lead_id), user,

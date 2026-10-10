@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
-from apps.crm import services
+from apps.crm import visites_retour_lead
 from apps.crm.models import Lead, LeadActivity
 from apps.visites import services as visites_services
 from apps.visites.models import VisiteTerrain
@@ -43,7 +43,7 @@ class NoteBesoinSecours(TestCase):
     def _notes(self):
         return LeadActivity.objects.filter(
             lead=self.lead, kind=LeadActivity.Kind.NOTE,
-            body=services.NOTE_BESOIN_SECOURS)
+            body=visites_retour_lead.NOTE_BESOIN_SECOURS)
 
     def test_besoin_declare_pose_une_note_du_valideur(self):
         visites_services.valider_visite(self._visite(True), self.bureau)
@@ -53,10 +53,10 @@ class NoteBesoinSecours(TestCase):
 
     def test_la_note_ne_dimensionne_ni_ne_chiffre(self):
         self.assertIn('orienter vers une étude de secours',
-                      services.NOTE_BESOIN_SECOURS)
+                      visites_retour_lead.NOTE_BESOIN_SECOURS)
         for interdit in ('kWh', 'kWc', 'kVA', 'MAD', 'DH', 'autonomie de',
                          'heures'):
-            self.assertNotIn(interdit, services.NOTE_BESOIN_SECOURS)
+            self.assertNotIn(interdit, visites_retour_lead.NOTE_BESOIN_SECOURS)
 
     def test_revalider_garde_une_seule_note(self):
         visite = self._visite(True)

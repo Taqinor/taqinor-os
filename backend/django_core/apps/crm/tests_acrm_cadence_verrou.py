@@ -21,7 +21,8 @@ from django.test import TransactionTestCase
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import stages, cadence_touche
+from apps.crm import cadence_plan
 from apps.crm.models import Lead, RelanceEtape
 
 User = get_user_model()
@@ -61,13 +62,13 @@ class CadenceVerrouTests(TransactionTestCase):
     def _initialiser(self):
         lead = Lead.objects.get(pk=self.lead.pk)
         user = User.objects.get(pk=self.user.pk)
-        return services.initialiser_plan_relance(lead, user, cadence='contact')
+        return cadence_plan.initialiser_plan_relance(lead, user, cadence='contact')
 
     def test_entrelacement_un_seul_plan(self):
         """Le premier appel est RETENU au milieu de son calcul pendant
         qu'un second démarre : sans verrou, le second crée le plan puis le
         premier en crée un autre ; avec le verrou, le second attend."""
-        vrai_calcul = services.calculer_echeances_cadence
+        vrai_calcul = cadence_plan.calculer_echeances_cadence
         second_lance = threading.Event()
         resultats = {}
         fils = []
@@ -80,7 +81,7 @@ class CadenceVerrouTests(TransactionTestCase):
                 fils[0].join(timeout=1.5)
             return vrai_calcul(*args, **kwargs)
 
-        services.calculer_echeances_cadence = calcul_retenu
+        cadence_plan.calculer_echeances_cadence = calcul_retenu
         try:
             premier = {}
             fil = _dans_un_thread(self._initialiser, premier, 'premier')
@@ -88,7 +89,7 @@ class CadenceVerrouTests(TransactionTestCase):
             for autre in fils:
                 autre.join(timeout=30)
         finally:
-            services.calculer_echeances_cadence = vrai_calcul
+            cadence_plan.calculer_echeances_cadence = vrai_calcul
         for valeur in list(premier.values()) + list(resultats.values()):
             self.assertNotIsInstance(valeur, Exception, valeur)
         ouvertes = self._ouvertes_par_cle()
@@ -112,7 +113,7 @@ class CadenceVerrouTests(TransactionTestCase):
         self.assertEqual(ouvertes[('contact', 1)], 1, ouvertes)
 
     def test_double_fait_une_suivante(self):
-        services.initialiser_plan_relance(
+        cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact')
         touche = (RelanceEtape.objects
                   .filter(lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE)
@@ -127,7 +128,7 @@ class CadenceVerrouTests(TransactionTestCase):
                 pk=touche.pk)
             user = User.objects.get(pk=self.user.pk)
             depart.wait(timeout=10)
-            return services.marquer_etape_relance(
+            return cadence_touche.marquer_etape_relance(
                 etape, user, RelanceEtape.Statut.FAIT, outcome=issue)
 
         fils = [_dans_un_thread(fait, resultats, i) for i in range(2)]

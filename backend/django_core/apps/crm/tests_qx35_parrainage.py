@@ -23,7 +23,7 @@ from django.utils import timezone
 from authentication.models import Company
 
 from apps.crm.models import Client, Lead, LeadActivity, Parrainage
-from apps.crm.services import handle_parrainage_signup
+from apps.crm.clients_pilotage import handle_parrainage_signup
 from apps.notifications.models import Notification
 from apps.records.models import Activity
 from apps.ventes.models import Devis
@@ -148,7 +148,7 @@ class HandleParrainageSignupTests(TestCase):
         salariés d'un même client (adresse contact@ partagée) ou un foyer au
         même mobile faisaient disparaître la 2e recommandation du CRM. Elle
         laisse désormais une note sobre sur le NOUVEAU lead."""
-        from apps.crm.services import PARRAINAGE_DEJA_ENREGISTRE_MARKER
+        from apps.crm.clients_pilotage import PARRAINAGE_DEJA_ENREGISTRE_MARKER
 
         lead1 = self._lead()
         handle_parrainage_signup(lead1)

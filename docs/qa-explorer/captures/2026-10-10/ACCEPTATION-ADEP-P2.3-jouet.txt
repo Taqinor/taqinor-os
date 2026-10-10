@@ -1,0 +1,16 @@
+# ADEP99 P2.3-jouet — build jouet FROM scratch / COPY . : avec les .dockerignore ACTUELS (django_core, fastapi_ia) aucun .pyc/.log/.env/__pycache__/staticfiles imbriqué copié ; avec ceux d'AVANT le correctif, les 5 fuient
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P2_toy_dockerignore.log
+== django_core (django_core/.dockerignore) — fichiers copiés :
+   ./.dockerignore
+   ./Dockerfile.jouet
+   ./apps/foo/garde.py
+   fichiers exclus présents : 0
+== fastapi_ia (fastapi_ia/.dockerignore) — fichiers copiés :
+   ./.dockerignore
+   ./Dockerfile.jouet
+   ./apps/foo/garde.py
+   fichiers exclus présents : 0
+== backend/django_core/.dockerignore AVANT le correctif (eda88f134, commit du correctif 660e87df1) — fichiers exclus qui fuient : ./apps/foo/__pycache__/nested.pyc ./apps/foo/mod.pyc ./apps/foo/nested.log ./apps/foo/staticfiles/n.css ./apps/foo/sub/.env 
+== backend/fastapi_ia/.dockerignore AVANT le correctif (2fa4d99d5, commit du correctif 841b4aa48) — fichiers exclus qui fuient : ./apps/foo/__pycache__/nested.pyc ./apps/foo/mod.pyc ./apps/foo/nested.log ./apps/foo/staticfiles/n.css ./apps/foo/sub/.env 

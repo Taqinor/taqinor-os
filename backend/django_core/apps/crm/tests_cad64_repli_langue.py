@@ -26,8 +26,10 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, RelanceEtape
-from apps.crm.services import (
-    langue_relance_du_lead, message_pour_etape, texte_en_repli_de_langue,
+from apps.crm.cadence_messages import (
+    langue_relance_du_lead,
+    message_pour_etape,
+    texte_en_repli_de_langue,
 )
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import MessageTemplate

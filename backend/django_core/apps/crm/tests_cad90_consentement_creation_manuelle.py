@@ -30,7 +30,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from core.models import ConsentRecord
 
-from apps.crm import services
+from apps.crm import leads_consentement
 from apps.crm.models import Lead
 from apps.parametres.models import CompanyProfile
 
@@ -83,8 +83,8 @@ class SaisieManuelleTests(_Base):
         self.assertEqual(len(entrees), 1, entrees)
         entree = entrees[0]
         self.assertEqual(entree.purpose,
-                         services.CONSENT_PURPOSE_PROSPECTION)
-        self.assertIn(services.CONSENT_SOURCE_SAISIE_MANUELLE, entree.source)
+                         leads_consentement.CONSENT_PURPOSE_PROSPECTION)
+        self.assertIn(leads_consentement.CONSENT_SOURCE_SAISIE_MANUELLE, entree.source)
         self.assertIn('loi 09-08 art. 5', entree.source)
         # Aucune case cochée : on ne fabrique pas un consentement.
         self.assertFalse(entree.granted)
@@ -96,7 +96,7 @@ class SaisieManuelleTests(_Base):
         `LeadSerializer.validate_telephone` avant CAD90) : c'est elle qui est
         en base, jamais la graphie `06…` postée.
         """
-        with patch.object(services, 'enregistrer_consentement_lead',
+        with patch.object(leads_consentement, 'enregistrer_consentement_lead',
                           side_effect=RuntimeError('registre indisponible')):
             resp = self._api().post(LEADS_URL, {
                 'nom': 'Chraibi', 'telephone': '0600000012',
@@ -111,9 +111,9 @@ class SaisieManuelleTests(_Base):
     def test_lead_sans_email_ni_telephone_n_ecrit_rien(self):
         """Sans identifiant de personne, il n'y a rien à inscrire."""
         lead = Lead.objects.create(company=self.company, nom='Anonyme')
-        self.assertIsNone(services.enregistrer_base_legale_lead(
-            lead, source=services.CONSENT_SOURCE_SAISIE_MANUELLE,
-            base_legale=services.BASE_LEGALE_SOLLICITATION))
+        self.assertIsNone(leads_consentement.enregistrer_base_legale_lead(
+            lead, source=leads_consentement.CONSENT_SOURCE_SAISIE_MANUELLE,
+            base_legale=leads_consentement.BASE_LEGALE_SOLLICITATION))
 
 
 class BasesLegalesTests(_Base):
@@ -122,9 +122,9 @@ class BasesLegalesTests(_Base):
     def test_donnees_non_collectees_citent_art5_3_et_le_decret(self):
         lead = Lead.objects.create(
             company=self.company, nom='Import', telephone='0600000013')
-        services.enregistrer_base_legale_lead(
-            lead, source=services.CONSENT_SOURCE_DOCUMENT,
-            base_legale=services.BASE_LEGALE_NON_COLLECTEE)
+        leads_consentement.enregistrer_base_legale_lead(
+            lead, source=leads_consentement.CONSENT_SOURCE_DOCUMENT,
+            base_legale=leads_consentement.BASE_LEGALE_NON_COLLECTEE)
         entree = self._entrees('0600000013')[0]
         self.assertIn('art. 5', entree.source)
         self.assertIn('2-09-165', entree.source)
@@ -132,22 +132,22 @@ class BasesLegalesTests(_Base):
     def test_sollicitation_cite_la_relation_precontractuelle(self):
         lead = Lead.objects.create(
             company=self.company, nom='Entrant', telephone='0600000014')
-        services.enregistrer_base_legale_lead(
-            lead, source=services.CONSENT_SOURCE_WHATSAPP_ENTRANT,
-            base_legale=services.BASE_LEGALE_SOLLICITATION)
+        leads_consentement.enregistrer_base_legale_lead(
+            lead, source=leads_consentement.CONSENT_SOURCE_WHATSAPP_ENTRANT,
+            base_legale=leads_consentement.BASE_LEGALE_SOLLICITATION)
         entree = self._entrees('0600000014')[0]
         self.assertIn('précontractuelle', entree.source)
-        self.assertIn(services.CONSENT_SOURCE_WHATSAPP_ENTRANT, entree.source)
+        self.assertIn(leads_consentement.CONSENT_SOURCE_WHATSAPP_ENTRANT, entree.source)
 
     def test_la_source_tient_dans_la_colonne(self):
         """`ConsentRecord.source` fait 120 caractères : rien n'est tronqué
         en silence au point de perdre la base légale."""
-        for base in (services.BASE_LEGALE_NON_COLLECTEE,
-                     services.BASE_LEGALE_SOLLICITATION):
-            for source in (services.CONSENT_SOURCE_SAISIE_MANUELLE,
-                           services.CONSENT_SOURCE_META_LEAD_ADS,
-                           services.CONSENT_SOURCE_WHATSAPP_ENTRANT,
-                           services.CONSENT_SOURCE_DOCUMENT):
+        for base in (leads_consentement.BASE_LEGALE_NON_COLLECTEE,
+                     leads_consentement.BASE_LEGALE_SOLLICITATION):
+            for source in (leads_consentement.CONSENT_SOURCE_SAISIE_MANUELLE,
+                           leads_consentement.CONSENT_SOURCE_META_LEAD_ADS,
+                           leads_consentement.CONSENT_SOURCE_WHATSAPP_ENTRANT,
+                           leads_consentement.CONSENT_SOURCE_DOCUMENT):
                 self.assertLessEqual(len(f'{source} — {base}'), 120,
                                      f'{source} / {base}')
 
@@ -157,9 +157,9 @@ class BasesLegalesTests(_Base):
         CompanyProfile.objects.get_or_create(company=autre)
         lead = Lead.objects.create(
             company=autre, nom='Voisin', telephone='0600000015')
-        services.enregistrer_base_legale_lead(
-            lead, source=services.CONSENT_SOURCE_SAISIE_MANUELLE,
-            base_legale=services.BASE_LEGALE_SOLLICITATION)
+        leads_consentement.enregistrer_base_legale_lead(
+            lead, source=leads_consentement.CONSENT_SOURCE_SAISIE_MANUELLE,
+            base_legale=leads_consentement.BASE_LEGALE_SOLLICITATION)
         self.assertEqual(self._entrees('0600000015'), [])
         self.assertEqual(ConsentRecord.objects.filter(
             company=autre, subject_identifier='0600000015').count(), 1)

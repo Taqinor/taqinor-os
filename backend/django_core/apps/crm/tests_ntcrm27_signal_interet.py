@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity, SalleVente, SalleVenteVue
-from apps.crm.services import detecter_signal_interet_salle_vente
+from apps.crm.clients_pilotage import detecter_signal_interet_salle_vente
 
 
 class SignalInteretServiceTests(TestCase):
