@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import services
+from apps.crm import fiche_ecritures
 from apps.crm.models import Lead
 
 User = get_user_model()
@@ -40,26 +40,26 @@ class PeriodicitePureTests(SimpleTestCase):
 
     def test_un_montant_bimestriel_est_ramene_au_mois(self):
         self.assertEqual(
-            services.facture_au_mois(CONTRAT['corps']['facture_hiver'],
-                                     CONTRAT['corps']['facture_periodicite']),
+            fiche_ecritures.facture_au_mois(CONTRAT['corps']['facture_hiver'],
+                                            CONTRAT['corps']['facture_periodicite']),
             Decimal(CONTRAT['exemple']['facture_hiver']))
 
     def test_arrondi_au_centime_moitie_vers_le_haut(self):
-        self.assertEqual(services.facture_au_mois('1301', 'bimestrielle'),
+        self.assertEqual(fiche_ecritures.facture_au_mois('1301', 'bimestrielle'),
                          Decimal('650.50'))
-        self.assertEqual(services.facture_au_mois('1301.01', 'bimestrielle'),
+        self.assertEqual(fiche_ecritures.facture_au_mois('1301.01', 'bimestrielle'),
                          Decimal('650.51'))
 
     def test_mensuelle_ne_change_rien_et_rien_n_est_invente(self):
-        self.assertEqual(services.facture_au_mois('650', 'mensuelle'),
+        self.assertEqual(fiche_ecritures.facture_au_mois('650', 'mensuelle'),
                          Decimal('650.00'))
-        self.assertIsNone(services.facture_au_mois(None, 'bimestrielle'))
+        self.assertIsNone(fiche_ecritures.facture_au_mois(None, 'bimestrielle'))
 
     def test_une_periode_inconnue_est_refusee_en_nommant_le_champ(self):
         self.assertEqual(
-            services.refus_periodicite_facture('trimestrielle'),
+            fiche_ecritures.refus_periodicite_facture('trimestrielle'),
             CONTRAT['exemple_erreur_periodicite']['facture_periodicite'][0])
-        self.assertIsNone(services.refus_periodicite_facture('bimestrielle'))
+        self.assertIsNone(fiche_ecritures.refus_periodicite_facture('bimestrielle'))
 
 
 class PeriodiciteApiTests(TestCase):

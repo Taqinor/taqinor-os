@@ -20,7 +20,7 @@ Run :
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.crm import services
+from apps.crm import fiche_archivage
 from apps.crm.models import (
     Lead, LeadActivity, LeadActivityArchive,
 )
@@ -64,7 +64,7 @@ class Yopsb11ArchiveTests(TestCase):
         _bulk_activities(self.company_a, self.lead_a, 10, age_days=400)
         now = timezone.now()
         # jours=0 → OFF (défaut) : rien ne bouge.
-        moved = services.archiver_anciens(now, 0, apply_=True)
+        moved = fiche_archivage.archiver_anciens(now, 0, apply_=True)
         self.assertEqual(moved, 0)
         self.assertEqual(LeadActivity.objects.count(), 10)
         self.assertEqual(LeadActivityArchive.objects.count(), 0)
@@ -72,7 +72,7 @@ class Yopsb11ArchiveTests(TestCase):
     def test_dry_run_counts_without_moving(self):
         _bulk_activities(self.company_a, self.lead_a, 7, age_days=400)
         now = timezone.now()
-        would = services.archiver_anciens(now, 90, apply_=False)
+        would = fiche_archivage.archiver_anciens(now, 90, apply_=False)
         self.assertEqual(would, 7)
         # Rien n'a bougé en dry-run.
         self.assertEqual(LeadActivity.objects.count(), 7)
@@ -92,7 +92,7 @@ class Yopsb11ArchiveTests(TestCase):
             kind=LeadActivity.Kind.NOTE, body='recent3')
 
         now = timezone.now()
-        moved = services.archiver_anciens(now, 90, apply_=True)
+        moved = fiche_archivage.archiver_anciens(now, 90, apply_=True)
 
         self.assertEqual(moved, 12000)
         # Les 3 récentes restent vives ; les 12 000 anciennes sont parties.
@@ -116,7 +116,7 @@ class Yopsb11ArchiveTests(TestCase):
             kind=LeadActivity.Kind.NOTE, body='recent_b')
 
         now = timezone.now()
-        moved = services.archiver_anciens(now, 90, apply_=True)
+        moved = fiche_archivage.archiver_anciens(now, 90, apply_=True)
 
         self.assertEqual(moved, 10000)
         # B garde son entrée récente vive.

@@ -2341,7 +2341,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if plan is None:
             return Response({'detail': 'Plan introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
-        from .services import appliquer_plan_activite
+        from .fiche_ecritures import appliquer_plan_activite
         try:
             activites = appliquer_plan_activite(
                 lead=lead, plan=plan, user=request.user)

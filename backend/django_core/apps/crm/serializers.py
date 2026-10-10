@@ -1400,7 +1400,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # qui NOMME le champ : période inconnue, ou période sans montant.
         periodicite = (attrs.pop('facture_periodicite', '') or '').strip()
         if periodicite:
-            from .services import facture_au_mois, refus_periodicite_facture
+            from .fiche_ecritures import facture_au_mois, refus_periodicite_facture
             refus = refus_periodicite_facture(periodicite)
             if refus:
                 raise serializers.ValidationError(

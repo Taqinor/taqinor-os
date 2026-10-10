@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import EtapePlanActivite, Lead, PlanActivite
-from apps.crm.services import appliquer_plan_activite
+from apps.crm.fiche_ecritures import appliquer_plan_activite
 from apps.records.models import Activity, ActivityType
 
 User = get_user_model()
