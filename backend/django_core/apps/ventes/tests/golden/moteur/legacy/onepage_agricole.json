@@ -2,13 +2,13 @@
   "cas": "onepage_agricole",
   "graphes_etude": [],
   "graphes_roi_mensuel_masques": 0,
-  "octets": 886490,
+  "octets": 24247,
   "ordre": 4,
   "pages": 1,
   "polices_masquees": 6,
-  "sha256": "18c87145deeba9c3e20271ab709ec33a49c08caf55678fa6c40574d4d2d0b66f",
+  "sha256": "ce9f4bd4387b0eea5cb15eca9480be464e1be4b236e285c5e3cd6f0453d4d56e",
   "sha256_par_segment": [
     "2357db846b0271a83f293d9deb831e98d4e0f9d51c12e6dc70dd16cf50ac4286",
-    "659d262be5f797a2918b6d06aad012167a7976a80bc4996856e526bc26211ac3"
+    "7590291abf0b8322a77ab7b30e3a728c85af4731a1a2912299511ad1e1bd71fb"
   ]
 }
