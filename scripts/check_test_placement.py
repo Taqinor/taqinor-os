@@ -33,6 +33,8 @@ TYPE_DE_CLE = "par_symbole"  # sans objet : aucune baseline, la garde juge le di
 NOM_TEST = re.compile(r"^(?:tests?_.+|.+_test)\.py$|^tests\.py$|\.(?:test|spec)\.[cm]?[jt]sx?$", re.I)
 NOM_AVEC_ID = re.compile(r"(?:^|[/\\])tests?_[a-z]{2,6}[0-9]{1,4}_|\.[a-z]{2,6}[0-9]{1,4}\.test\.", re.I)
 NOUVEAU_FICHIER = re.compile(r"nouveau\s+fichier\s+car\s*:", re.I)
+NOUVEAU_DOSSIER = re.compile(r"nouveau\s+dossier\s+car\s*:", re.I)
+CHEMIN_CITE = re.compile(r"`([\w./-]+/[\w.-]+)(?:`|::)")
 
 
 def est_fichier_test(chemin: str) -> bool:
@@ -45,6 +47,15 @@ def cite(ligne: str, chemin: str) -> bool:
     """La ligne cite-t-elle `chemin` (en entier ou relatif a django_core), entre backticks, nu ou
     `chemin::symbole` ? Recherche directe : un backtick impair ailleurs sur la ligne n'y change rien."""
     return any(re.search(r"`" + re.escape(nom) + r"(?:`|::)", ligne) for nom in alias(chemin))
+
+
+def dossier_admis(ligne: str, chemin: str) -> bool:
+    """« Nouveau dossier car : » sur la ligne + un chemin cité DANS le dossier de `chemin` : la
+    tâche a créé une famille (un fichier par groupe), ses fichiers neufs y sont admis."""
+    if not NOUVEAU_DOSSIER.search(ligne):
+        return False
+    dossier = chemin.rsplit("/", 1)[0]
+    return any(c.rsplit("/", 1)[0] == dossier for c in CHEMIN_CITE.findall(ligne))
 
 
 def fichiers_tests_neufs(ctx) -> list:
@@ -71,7 +82,8 @@ def juger(ctx, ids_v2: set) -> tuple:
         elif NOM_AVEC_ID.search(chemin):
             erreurs.append(f"{chemin} : le nom porte un id de tâche — ajouter le test au module existant "
                            "du module touché (convention : un test par module, pas par tâche)")
-        elif not any(NOUVEAU_FICHIER.search(ligne) for _, ligne in citantes):
+        elif (not any(NOUVEAU_FICHIER.search(ligne) for _, ligne in citantes)
+              and not any(dossier_admis(ligne, chemin) for _, ligne in ctx.taches)):
             erreurs.append(f"{chemin} : fichier de test neuf sans « Nouveau fichier car : » — ajouter le test à un "
                            "module existant, ou citer ce chemin sur une tâche cochée avec « Nouveau fichier car : »")
     return erreurs, avertissements

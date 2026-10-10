@@ -71,6 +71,17 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(code, 0, sortie)
         self.assertIn("OK", sortie)
 
+    def test_nouveau_dossier_car_couvre_les_fichiers_du_dossier_cite(self):
+        # AMET90 : « nouveau dossier car : un fichier par groupe » + un chemin du dossier cité
+        # admet les autres fichiers de test NEUFS de CE dossier (pas d'un autre).
+        d = self.depot()
+        neuf = "frontend/e2e/acceptation/adep.spec.js"
+        ligne = "`frontend/e2e/acceptation/amet.spec.js` (nouveau dossier car : un fichier par groupe)"
+        code, sortie = d.scenario({neuf: "x\n", PLAN: tache("ZZ1", ligne)})
+        self.assertEqual(code, 0, sortie)
+        code, sortie = d.scenario({"frontend/e2e/autre/x.spec.js": "x\n", PLAN: tache("ZZ1", ligne)})
+        self.assertEqual(code, 1, sortie)
+
     def test_chemin_dicte_par_une_tache_v2_gelee_avertit_sans_echouer(self):
         d = self.depot()
         chemin = "apps/ventes/tests/test_zzv2_solde.py"  # nom par id ET dicte par une v2 gelee
