@@ -39,6 +39,7 @@ from django.test import TestCase
 from testkit.time import frozen
 
 from apps.crm import horaires, services
+from apps.crm import cadence_messages
 from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.notifications.models import Notification
@@ -867,7 +868,7 @@ class MessageVisiteTests(VisiteCadenceBase):
     def test_rend_la_date_en_francais_parle(self):
         self.lead.visite_prevue_le = datetime.date(2026, 9, 22)
         self.lead.save(update_fields=['visite_prevue_le'])
-        rendu = services.message_visite_pour_lead(
+        rendu = cadence_messages.message_visite_pour_lead(
             self.lead, 'visite_confirmation', user=self.acteur)
         self.assertIn('mardi 22 septembre', rendu['corps_fr'])
         self.assertNotIn('{date_visite}', rendu['corps_fr'])
@@ -875,7 +876,7 @@ class MessageVisiteTests(VisiteCadenceBase):
 
     def test_sans_date_la_phrase_est_omise_jamais_un_trou(self):
         self.assertIsNone(self.lead.visite_prevue_le)
-        rendu = services.message_visite_pour_lead(
+        rendu = cadence_messages.message_visite_pour_lead(
             self.lead, 'visite_confirmation', user=self.acteur)
         self.assertNotIn('{date_visite}', rendu['corps_fr'])
         self.assertNotIn('la visite technique prévue', rendu['corps_fr'])
@@ -897,19 +898,19 @@ class MessageVisiteTests(VisiteCadenceBase):
             libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
             template_cle='visite_confirmation',
             due_date=datetime.date(2026, 9, 21))
-        rendu = services.message_pour_etape(etape, user=self.acteur)
+        rendu = cadence_messages.message_pour_etape(etape, user=self.acteur)
         self.assertIn('mardi 22 septembre', rendu['message'])
         self.assertNotIn('{date_visite}', rendu['message'])
         self.assertNotIn('date_visite', rendu['placeholders_manquants'])
 
     def test_le_conseiller_est_le_responsable_du_lead(self):
-        rendu = services.message_visite_pour_lead(
+        rendu = cadence_messages.message_visite_pour_lead(
             self.lead, 'visite_proposition', user=self.acteur)
         self.assertIn('Nadia', rendu['corps_fr'])
         self.assertNotIn('{conseiller}', rendu['corps_fr'])
 
     def test_une_cle_inconnue_rend_none(self):
-        self.assertIsNone(services.message_visite_pour_lead(
+        self.assertIsNone(cadence_messages.message_visite_pour_lead(
             self.lead, 'apres_visite', user=self.acteur))
 
     def test_aucun_chiffre_ni_prenom_code_en_dur_dans_les_defauts(self):
@@ -917,7 +918,7 @@ class MessageVisiteTests(VisiteCadenceBase):
             MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
         )
 
-        for cle in services.CLES_MESSAGE_VISITE:
+        for cle in cadence_messages.CLES_MESSAGE_VISITE:
             for source in (MESSAGE_TEMPLATE_DEFAULTS,
                            MESSAGE_TEMPLATE_DEFAULTS_DARIJA):
                 texte = source.get(cle, '')
@@ -1027,9 +1028,9 @@ class DateVisiteFrancaisTests(TestCase):
 
     def test_rend_le_jour_et_le_mois(self):
         self.assertEqual(
-            services._date_visite_francais(datetime.date(2026, 9, 16)),
+            cadence_messages._date_visite_francais(datetime.date(2026, 9, 16)),
             'mercredi 16 septembre')
 
     def test_une_date_absente_rend_une_chaine_vide(self):
-        self.assertEqual(services._date_visite_francais(None), '')
-        self.assertEqual(services._date_visite_francais('pas une date'), '')
+        self.assertEqual(cadence_messages._date_visite_francais(None), '')
+        self.assertEqual(cadence_messages._date_visite_francais('pas une date'), '')

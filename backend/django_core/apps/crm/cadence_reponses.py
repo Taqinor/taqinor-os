@@ -30,9 +30,6 @@ from .services import (
     CADENCE_DEUXIEME_AFFAIRE,
     CAUSE_RDV_NE_PLUS_CONTACTER,
     CadenceActiveConflit,
-    ETIQUETTES_RAISON_ATTENTE,
-    PREFIXE_LIEN_LOCATAIRE,
-    RAISONS_ATTENTE,
     _TAG_DECISION_A_PLUSIEURS,
     _config_visite,
     _debrief_ouvert,
@@ -58,6 +55,7 @@ from .services import (
     reporter_prochaine_touche,
     retirer_tag_lead,
 )
+from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
 from .cadence_reperes import (
     FILET_JOINT_DELAI_JOURS,
     PASSATION_LIBELLE,

@@ -6746,7 +6746,7 @@ def lead_en_attente_ou_veille(lead_id, today, *, company):
     ne jamais parquer au Froid un lead qui attend. Lecture seule ; un lead
     d'une autre société n'est jamais lu (``False``)."""
     from .models import Lead, RelanceEtape
-    from .services import ETIQUETTES_RAISON_ATTENTE
+    from .cadence_messages import ETIQUETTES_RAISON_ATTENTE
     from .cadence_reperes import _lead_porte_tag
 
     if not lead_id or company is None:

@@ -24,7 +24,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, Parrainage, RelanceEtape
-from apps.crm.services import cle_identite_pour_lead, message_pour_etape
+from apps.crm.cadence_messages import cle_identite_pour_lead, message_pour_etape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import (
     CLE_IDENTITE_PAR_CANAL, CLES_IDENTITE_PAR_ORIGINE,

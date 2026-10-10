@@ -1846,9 +1846,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         from .models import LeadActivity
         from .serializers import pii_masquee_pour
-        from .services import (
-            _corps_pour_segment, _nom_affiche_conseiller, _nom_affiche_marque,
-            _omettre_phrases_incompletes, _societe_du_lead,
+        from .cadence_messages import (
+            _corps_pour_segment,
+            _nom_affiche_conseiller,
+            _nom_affiche_marque,
+            _omettre_phrases_incompletes,
+            _societe_du_lead,
         )
 
         if pii_masquee_pour(request.user):
@@ -3329,7 +3332,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
         from .serializers import pii_masquee_pour
-        from .services import cles_message_visite_du_lead, message_visite_pour_lead
+        from .cadence_messages import cles_message_visite_du_lead, message_visite_pour_lead
 
         cle = (request.query_params.get('cle') or '').strip()
         lead = self.get_object()
@@ -3366,9 +3369,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         issue, aucune touche avancée. ``etape`` (une touche à faire de CE lead)
         rattache l'ouverture à la touche, que son panneau « Fait » reconnaît.
         Refus 400 nommant le champ (``cle``, ``langue``, ``etape``)."""
-        from .services import (
-            LANGUES_MESSAGE_VISITE, cle_message_visite_autorisee,
-            cles_message_visite_du_lead, journaliser_message_visite_ouvert,
+        from .cadence_messages import (
+            LANGUES_MESSAGE_VISITE,
+            cle_message_visite_autorisee,
+            cles_message_visite_du_lead,
+            journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
         cle = (request.data.get('cle') or '').strip()
@@ -4919,7 +4924,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         une fois pour toutes — seulement si la touche a bien été enregistrée
         (un refus 400 ne change rien). Une langue inconnue est refusée AVANT
         tout, en 400 ``{"erreurs": {"langue": …}}``."""
-        from .services import definir_langue_preferee, refus_langue_relance
+        from .cadence_messages import definir_langue_preferee, refus_langue_relance
         langue = (request.data.get('langue') or '').strip()
         if langue:
             refus = refus_langue_relance(langue)
@@ -5000,7 +5005,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         à l'aperçu, sans toucher la fiche (le basculeur FR / Darija). Une
         autre valeur est refusée en 400 nommant le champ ``langue``."""
         etape = self.get_object()
-        from .services import message_pour_etape, refus_langue_relance
+        from .cadence_messages import message_pour_etape, refus_langue_relance
         from .cadence_reponses import CLES_MESSAGE_REPONSE
         cle = (request.query_params.get('cle') or '').strip()
         if cle and cle not in CLES_MESSAGE_REPONSE:
@@ -5034,7 +5039,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
         pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
-        from .services import message_pour_etape, refus_langue_relance
+        from .cadence_messages import message_pour_etape, refus_langue_relance
         from .cadence_reperes import journaliser_whatsapp_ouvert
         from .leads_premier_contact import marquer_premier_contact
         langue = (request.data.get('langue') or '').strip()
@@ -5049,7 +5054,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             # CAD70 — sans réalisation publiée, le message J4 se réduit à une
             # phrase orpheline : il n'est pas « ouvert ». Levée (même motif
             # que la langue) : la forme versionnée reste celle du rendu.
-            from .services import REFUS_PREUVE_MANQUANTE
+            from .cadence_messages import REFUS_PREUVE_MANQUANTE
             raise DRFValidationError(
                 {'erreurs': {'preuve': REFUS_PREUVE_MANQUANTE}})
         if not rendu.get('wa_url'):
@@ -5108,7 +5113,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         Écriture → garde ``IsResponsableOrAdmin`` par défaut de
         ``get_permissions``."""
         etape = self.get_object()
-        from .services import definir_langue_preferee, refus_langue_relance
+        from .cadence_messages import definir_langue_preferee, refus_langue_relance
         langue = (request.data.get('langue') or '').strip()
         refus = (refus_langue_relance(langue) if langue else
                  '« Langue du client » : choisissez la langue à enregistrer.')

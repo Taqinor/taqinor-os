@@ -21,7 +21,8 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import generer_playbook_progress, seed_playbooks_segment
+from apps.crm.services import generer_playbook_progress
+from apps.crm.cadence_messages import seed_playbooks_segment
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

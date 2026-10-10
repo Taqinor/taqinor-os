@@ -24,8 +24,10 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead, Playbook
-from apps.crm.services import (
-    PLAYBOOKS_SEGMENT_CAD125, cle_message_segment, playbooks_recommandes,
+from apps.crm.services import playbooks_recommandes
+from apps.crm.cadence_messages import (
+    PLAYBOOKS_SEGMENT_CAD125,
+    cle_message_segment,
     seed_playbooks_segment,
 )
 from apps.parametres.models_messages import (

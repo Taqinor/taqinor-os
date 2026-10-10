@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_messages
 from apps.crm import cadence_reponses
 from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -101,11 +101,11 @@ class LocataireApiTests(TestCase):
         self.assertEqual(proprietaire.ville, 'Casablanca')
         # Le lien : une note de chaque côté, jamais une fusion.
         self.assertTrue(proprietaire.activites.filter(
-            body__startswith=services.PREFIXE_LIEN_LOCATAIRE).exists())
+            body__startswith=cadence_messages.PREFIXE_LIEN_LOCATAIRE).exists())
         self.assertTrue(self.locataire.activites.filter(
             body__contains=f'#{proprietaire.pk}').exists())
         # Le locataire reste le prescripteur — son PRÉNOM, lu sur le lien.
-        self.assertEqual(services._nom_prescripteur(proprietaire), 'Salma')
+        self.assertEqual(cadence_messages._nom_prescripteur(proprietaire), 'Salma')
         self.locataire.refresh_from_db()
         self.assertEqual(self.locataire.ownership, Lead.Ownership.LOCATAIRE)
         self.assertFalse(self.locataire.perdu)
@@ -158,4 +158,4 @@ class LocataireApiTests(TestCase):
         self.assertEqual(Lead.objects.filter(company=self.company).count(),
                          avant)
         self.assertFalse(LeadActivity.objects.filter(
-            body__startswith=services.PREFIXE_LIEN_LOCATAIRE).exists())
+            body__startswith=cadence_messages.PREFIXE_LIEN_LOCATAIRE).exists())

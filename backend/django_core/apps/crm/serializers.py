@@ -2600,7 +2600,7 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
         """AGR526 — la ``cle_message`` de l'entrée ``PLAYBOOKS_SEGMENT_CAD125``
         dont le ``nom`` est celui du playbook de la tâche, SEULEMENT si
         ``cle_message_segment(lead)`` la confirme ; ``None`` sinon."""
-        from .services import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
+        from .cadence_messages import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
         playbook = getattr(getattr(obj.tache, 'etape', None), 'playbook', None)
         nom = getattr(playbook, 'nom', None)
         entree = next((e for e in PLAYBOOKS_SEGMENT_CAD125 if e['nom'] == nom),

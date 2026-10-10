@@ -22,7 +22,7 @@ from authentication.models import Company
 
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
-from apps.crm.services import message_pour_etape
+from apps.crm.cadence_messages import message_pour_etape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import (
     MESSAGE_TEMPLATE_DEFAULTS, MessageTemplate)
@@ -362,8 +362,8 @@ class AucunEnvoiReseauTests(_Base):
         import ast
         import inspect
 
-        from apps.crm import services
-        source = inspect.getsource(services.message_pour_etape)
+        from apps.crm import cadence_messages
+        source = inspect.getsource(cadence_messages.message_pour_etape)
         # La docstring de la fonction EXPLIQUE volontairement l'absence de
         # BSP (« Aucun BSP, aucun appel réseau sortant ») : un grep littéral
         # sur la source complète se prend lui-même au mot. On retire la
