@@ -168,7 +168,7 @@ def factures_du_client_portail(company, client_id, *, limit=200):
         # facture ANNULÉE n'a rien d'exigible. `montant_du` reste servi
         # pour l'affichage.
         'montant_exigible': ('0.00' if f.statut == Facture.Statut.ANNULEE
-                             else str(f.montant_exigible)),
+                             else f'{f.montant_exigible:.2f}'),
         'payee': f.statut == Facture.Statut.PAYEE,
         'payable': (f.statut not in (
             Facture.Statut.ANNULEE, Facture.Statut.PAYEE)
