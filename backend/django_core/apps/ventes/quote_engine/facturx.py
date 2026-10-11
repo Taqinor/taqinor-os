@@ -46,6 +46,9 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Pack pays qui ouvre la porte. Tout autre pack (dont le défaut marocain)
 #: laisse le PDF rigoureusement inchangé.
@@ -458,6 +461,7 @@ def _declarer_fichier_associe(document, nom_fichier):
                               f'[ {xref_fichier} 0 R ]')
         return True
     except Exception:  # noqa: BLE001 — jamais au prix du PDF lui-même
+        logger.warning("facturx._declarer_fichier_associe : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -512,6 +516,7 @@ def pack_pays_de(company) -> str:
         profil = CompanyProfile.get(company)
         return str(getattr(profil, 'pack_pays', '') or '').upper()
     except Exception:  # noqa: BLE001 — jamais bloquant pour une facture
+        logger.warning("facturx.pack_pays_de : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
 

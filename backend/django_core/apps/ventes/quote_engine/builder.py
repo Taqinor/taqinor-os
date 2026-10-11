@@ -105,6 +105,7 @@ def _roof_photo_data_uri(devis) -> str:
         return (f"data:{att.mime};base64,"
                 + base64.b64encode(data).decode())
     except Exception:
+        logger.warning("builder._roof_photo_data_uri : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
 
 
@@ -513,6 +514,7 @@ def tranches_echeancier_en_montant(devis):
                                                   tranches_normalisees)
         tranches = tranches_normalisees(devis)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        logger.warning("builder.tranches_echeancier_en_montant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if len(tranches) in (2, 3) and any(
             t.get("unite") == UNITE_MONTANT for t in tranches):
@@ -558,6 +560,7 @@ def reference_remplacee(devis) -> str:
         ref = (devis.remplace.order_by("-id")
                .values_list("reference", flat=True).first())
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        logger.warning("builder.reference_remplacee : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
     return ref or ""
 
@@ -872,6 +875,7 @@ def _kwc_du_registre_origine(devis):
         if _source_kwc != 'auto' and _kwc_impose:
             return round(float(_kwc_impose), 2)
     except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge.
+        logger.warning("builder._kwc_du_registre_origine : erreur ignorée (mode dégradé)", exc_info=True)
         pass
     return None
 
@@ -902,6 +906,7 @@ def _kwc_du_registre(devis):
         if _kwc:
             return round(float(_kwc), 2)
     except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge.
+        logger.warning("builder._kwc_du_registre : erreur ignorée (mode dégradé)", exc_info=True)
         pass
     return None
 
@@ -1199,6 +1204,7 @@ def _ville_du_devis(devis, etude):
         reference = ville_effective(_lead)
         return reference, _libelle_ville(getattr(_lead, "ville", ""), reference)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        logger.warning("builder._ville_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return "", ""
 
 
@@ -1223,6 +1229,7 @@ def _marqueurs_cgv_ci(devis, tva_note, langue=None):
     try:
         tranches = tranches_normalisees(devis)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un texte
+        logger.warning("builder._marqueurs_cgv_ci : erreur ignorée (mode dégradé)", exc_info=True)
         tranches = []
     for t in tranches:
         try:
@@ -1335,6 +1342,7 @@ def _entreprise_avec_logo(devis, entreprise, pdf_options):
             entreprise = dict(entreprise, logo_uri=_pdf._to_data_uri(
                 _rogne, _ext or _cle_logo))
     except Exception:  # noqa: BLE001 — un logo illisible ne casse rien
+        logger.warning("builder._entreprise_avec_logo : erreur ignorée (mode dégradé)", exc_info=True)
         pass
     return entreprise
 
@@ -1630,6 +1638,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 client=getattr(devis, 'client', None),
                 company=getattr(devis, 'company', None))
         except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+            logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             _langue = None
         if _langue in LANGUES_SORTIE_PDF and _langue != 'fr':
             opts['langue_sortie'] = _langue
@@ -2442,6 +2451,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _co_tranches, _co_charges_fixes = _reglages_tarifaires(
             getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         _co_tranches = None
     # COUV-HOR/CAD167 — Q7 : TOUT distributeur (ONEE, Lydec, Redal, SRM,
     # « autre ») lit LA grille nationale, éditable par société. Réservée à
@@ -2778,6 +2788,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             from .constants_82_21 import MENTION_MT
             tarif_mt_mention = MENTION_MT
         except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+            logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             tarif_mt_mention = ""
 
     # ── QF2 — modèle « deux factures » (économies réelles, par tranche) ──────
@@ -3245,6 +3256,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 getattr(_prof, "delai_installation", "") or "").strip(),
         }
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un réglage
+        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         _delais = {"visite_technique": "", "installation": ""}
 
     # ── M7 — date de validité RÉELLE du devis (voir le commentaire du dict) ───
@@ -3260,6 +3272,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 _valid_until_txt = _exp.strftime("%d/%m/%Y")
                 _validity_days = _jours
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur une date
+        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         _valid_until_txt = _validity_days = None
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
@@ -3575,6 +3588,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             from apps.parametres.models_documents import DocumentTemplates
             return DocumentTemplates.get(company=_company).as_doc_texts()
         except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+            logger.warning("builder.build_quote_data._load_doc_texts : erreur ignorée (mode dégradé)", exc_info=True)
             return {}
 
     from core import request_cache
@@ -3596,6 +3610,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.parametres.selectors import company_identity
         entreprise = company_identity(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         entreprise = {}
     # APDF4 — logo TÉLÉVERSÉ de la société, sur le seul chemin de RENDU.
     entreprise = _entreprise_avec_logo(devis, entreprise, pdf_options)
@@ -3685,6 +3700,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except _PasDeLienSigner:
         links = {}
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         links = {}
 
     # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
@@ -3705,6 +3721,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             # Repli sur le téléphone société quand l'utilisateur n'en a pas.
             seller["telephone"] = _tel or (entreprise.get("telephone") or "")
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         seller = {"nom": "", "telephone": ""}
 
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
@@ -4453,6 +4470,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             _regle_fda = regle_fda_pompage_pour(
                 getattr(devis, "company", None))
         except Exception:  # noqa: BLE001 — repli daté du module
+            logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             _regle_fda = {}
         if _regle_fda:
             data["regle_fda_societe"] = _regle_fda
@@ -4504,6 +4522,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             from apps.crm.selectors import entrees_ci_du_lead
             _entrees_ci = entrees_ci_du_lead(getattr(devis, "lead", None))
         except Exception:  # noqa: BLE001 — la synthèse omet, jamais ne casse
+            logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             _entrees_ci = None
         if _entrees_ci:
             data["_entrees_ci_lead"] = _entrees_ci
@@ -4528,6 +4547,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 _ttc_noyau = float(_totaux_noyau(
                     devis, vue=_Vue.NET, unitaire=True).ttc)
             except Exception:  # noqa: BLE001 — une garde ne casse jamais
+                logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
                 _ttc_noyau = None
         for _e in ecarts_totaux_imprimes(data, _ttc_noyau):
             _msg = (f"total imprimé incohérent ({_e['etage']}) : "
@@ -4682,6 +4702,7 @@ def services_ci_du_devis(devis):
                      .values_list("delai_intervention_suivi_heures",
                                   flat=True).first())
         except Exception:  # noqa: BLE001
+            logger.warning("builder.services_ci_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
             delai = None
     return om, delai
 
@@ -5138,6 +5159,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
             if "nomenclature trop longue" in str(_hors_perimetre):
                 _refus_contrat_pages = True
         except Exception:
+            logger.warning("builder.generate_premium_devis_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             _journaliser_repli(
                 _marche, "erreur inattendue du renderer", _reference,
                 trace=True)
@@ -5276,6 +5298,7 @@ def cle_pdf_a_jour(devis, pdf_options=None) -> str:
             attendue = empreinte_donnees_pdf(
                 build_quote_data(devis, _opts_empreinte))
         except Exception:  # noqa: BLE001 — un devis illisible se re-rend
+            logger.warning("builder.cle_pdf_a_jour : erreur ignorée (mode dégradé)", exc_info=True)
             attendue = None
         if attendue and attendue == empreinte_stockee:
             return devis.fichier_pdf

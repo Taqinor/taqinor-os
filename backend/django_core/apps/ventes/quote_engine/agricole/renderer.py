@@ -18,6 +18,9 @@ ni ``constants.py``, ni ``cover.py`` ne sont ressuscités.
 from __future__ import annotations
 
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Unsupported(Exception):
@@ -73,6 +76,7 @@ def mesurer_talon(pdf_bytes: bytes) -> dict:
     try:
         import fitz
     except Exception:  # noqa: BLE001
+        logger.warning("renderer.mesurer_talon : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     sortie = {}
     try:
@@ -94,6 +98,7 @@ def mesurer_talon(pdf_bytes: bytes) -> dict:
                 sortie[i + 1] = round(min(vide, VIDE_MAX_MM), 1)
         doc.close()
     except Exception:  # noqa: BLE001
+        logger.warning("renderer.mesurer_talon : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     return sortie
 
@@ -107,6 +112,7 @@ def debordement(pdf_bytes: bytes, nb_pages: int, attendu: int) -> bool:
     try:
         import fitz
     except Exception:  # noqa: BLE001
+        logger.warning("renderer.debordement : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -119,6 +125,7 @@ def debordement(pdf_bytes: bytes, nb_pages: int, attendu: int) -> bool:
                     return True
         doc.close()
     except Exception:  # noqa: BLE001
+        logger.warning("renderer.debordement : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     return False
 

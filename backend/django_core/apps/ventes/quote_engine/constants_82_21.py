@@ -27,6 +27,9 @@ from core.reglementaire.regime_8221 import (  # noqa: F401  (ré-exports)
     SEUIL_DECLARATION_KW,
     regime_8221_suggere,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── Tarif de l'excédent injecté (décision ANRE n° 04/26), DH/kWh HT ─────────
 # Source : décision ANRE n° 04/26, art. 6-7 — prix hors impôts, taxes et TSS,
@@ -79,6 +82,7 @@ def _aujourdhui_casablanca():
         from zoneinfo import ZoneInfo
         return _dt.datetime.now(ZoneInfo("Africa/Casablanca")).date()
     except Exception:  # noqa: BLE001 — base tz absente : date UTC
+        logger.warning("constants_82_21._aujourdhui_casablanca : erreur ignorée (mode dégradé)", exc_info=True)
         return _dt.datetime.now(_dt.timezone.utc).date()
 
 

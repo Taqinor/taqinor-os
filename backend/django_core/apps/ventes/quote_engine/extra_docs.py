@@ -31,6 +31,9 @@ from .generate_devis_premium import (
     _font_face,
 )
 from .montants import fmt_centimes_mad
+import logging
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -402,6 +405,7 @@ def _level_message_for(facture, niveau):
             FollowupLevel.objects.filter(company=facture.company)
             .order_by("delai_jours", "ordre"))
     except Exception:
+        logger.warning("extra_docs._level_message_for : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     idx = int(niveau) - 1
     if 0 <= idx < len(levels):

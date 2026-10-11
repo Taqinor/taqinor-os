@@ -12,6 +12,9 @@ Rendu seul : ``generate_premium_pdf(data, out_path)`` / ``render_html_for(data)`
 """
 import base64, html, io, re, subprocess, sys, tempfile, threading
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 # NTI18N5 — catalogue des libellés structurels du document (fr/en/ar). Données
 # pures : ni Django, ni ``apps``, ni I/O — ce moteur vendoré reste donc
@@ -155,6 +158,7 @@ def _load_gfont(filename):
     try:
         return base64.b64encode(path.read_bytes()).decode()
     except Exception:
+        logger.warning("generate_devis_premium._load_gfont : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 def _font_face(family, weight, style, b64):
@@ -1020,6 +1024,7 @@ def fmt(v):
     try:
         float(v)
     except Exception:
+        logger.warning("generate_devis_premium.fmt : erreur ignorée (mode dégradé)", exc_info=True)
         return str(v)
     return fmt_dirhams(v) + "\u00a0MAD"
 
@@ -1034,6 +1039,7 @@ def fnum(v):
     try:
         return f"{int(round(float(v))):,}".replace(",", "\u202f")
     except Exception:
+        logger.warning("generate_devis_premium.fnum : erreur ignorée (mode dégradé)", exc_info=True)
         return str(v)
 
 def kwc_fr(v):
@@ -1173,6 +1179,7 @@ def logo_html(h="36px"):
     try:
         b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
     except Exception:
+        logger.warning("generate_devis_premium.logo_html : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
         return f'<img src="data:image/png;base64,{b64_data}" alt="TAQINOR" style="height:{h};width:auto;object-fit:contain;">'
@@ -1205,6 +1212,7 @@ def logo_p1_dark():
     try:
         b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
     except Exception:
+        logger.warning("generate_devis_premium.logo_p1_dark : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
         return (f'<img src="data:image/png;base64,{b64_data}" alt="TAQINOR" '
@@ -3853,6 +3861,7 @@ def _onepage_qr_uri(href):
         return _rtheme.qr_data_uri(href, logo=False, correction="M",
                                    box_size=10, border=4)
     except Exception:
+        logger.warning("generate_devis_premium._onepage_qr_uri : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
 
 
@@ -4534,6 +4543,7 @@ def _mesure_onepage(html):
     try:
         from weasyprint import HTML as _HTML
     except Exception:  # noqa: BLE001 \u2014 pas de WeasyPrint : aucune mesure
+        logger.warning("generate_devis_premium._mesure_onepage : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     try:
         pages = _HTML(string=_html_sans_base(html)).render().pages
@@ -4576,6 +4586,7 @@ def _mesure_onepage(html):
             hauteur_ligne = hauteurs[len(hauteurs) // 2]
         return (max(0.0, bas_totaux - limite), hauteur_ligne)
     except Exception:  # noqa: BLE001 \u2014 un PDF ne casse jamais sur une mesure
+        logger.warning("generate_devis_premium._mesure_onepage : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -4847,6 +4858,7 @@ def apply_quote_data(data: dict) -> None:
             from .agricole.synthese import synthese_agricole
             SYNTHESE_AGRICOLE = synthese_agricole(data)
         except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+            logger.warning("generate_devis_premium.apply_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             SYNTHESE_AGRICOLE = None
     # CIQ210 (complément) — le une-page C&I lit production, économie et
     # retour dans ``synthese_ci`` (moteur C&I + bloc ``economie_ci``), comme
@@ -4860,6 +4872,7 @@ def apply_quote_data(data: dict) -> None:
             from .ci.synthese import chiffres_cles, synthese_ci
             CHIFFRES_CI = chiffres_cles(synthese_ci(data) or {})
         except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+            logger.warning("generate_devis_premium.apply_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             CHIFFRES_CI = {}
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))

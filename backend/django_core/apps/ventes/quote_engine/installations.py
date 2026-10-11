@@ -18,6 +18,9 @@ from __future__ import annotations
 import base64
 import re
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 _DIR = Path(__file__).resolve().parent / "assets" / "installations"
 _MODES = ("residentiel", "industriel", "commercial", "agricole")
@@ -66,4 +69,5 @@ def pick_b64(kwc=None, mode=None) -> str:
     try:
         return base64.b64encode(best["path"].read_bytes()).decode()
     except Exception:  # noqa: BLE001 — a cover must never break on a bad file
+        logger.warning("installations.pick_b64 : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
