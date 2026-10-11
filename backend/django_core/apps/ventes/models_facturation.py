@@ -631,7 +631,8 @@ class PromessePaiement(models.Model):
         ROMPUE = 'rompue', 'Rompue'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='promesses_paiement')
     facture = models.ForeignKey(
         'facturation.Facture', on_delete=models.CASCADE,  # on_delete: promesse sans objet si facture supprimée
@@ -674,7 +675,8 @@ class ParametrageRelanceClient(models.Model):
         'crm.Client', on_delete=models.CASCADE,  # on_delete: paramétrage sans objet si client supprimé
         related_name='parametrage_relance')
     responsable = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: responsable de relance informatif — le paramétrage survit à son départ
+        # on_delete: responsable de relance informatif — le paramétrage survit à son départ
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='clients_relance_responsable')
     mode = models.CharField(
         max_length=10, choices=Mode.choices, default=Mode.AUTO)

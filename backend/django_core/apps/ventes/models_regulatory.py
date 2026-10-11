@@ -214,7 +214,8 @@ class DossierChecklistItem(models.Model):
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='dossier_checklist_items', verbose_name='Société')
     dossier = models.ForeignKey(
-        RegulatoryDossier, on_delete=models.CASCADE,  # on_delete: étape/élément de RegulatoryDossier — n'existe pas sans lui
+        # on_delete: étape/élément de RegulatoryDossier — n'existe pas sans lui
+        RegulatoryDossier, on_delete=models.CASCADE,
         related_name='checklist_items', verbose_name='Dossier')
     # Code stable de la pièce (aligné sur regulatory_docs.required_documents).
     code = models.CharField(max_length=60, verbose_name='Code pièce/étape')
@@ -270,7 +271,8 @@ class DossierExchange(models.Model):
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='dossier_exchanges', verbose_name='Société')
     dossier = models.ForeignKey(
-        RegulatoryDossier, on_delete=models.CASCADE,  # on_delete: DossierExchange est le détail de RegulatoryDossier — n'existe pas sans lui
+        # on_delete: DossierExchange est le détail de RegulatoryDossier — n'existe pas sans lui
+        RegulatoryDossier, on_delete=models.CASCADE,
         related_name='exchanges', verbose_name='Dossier')
     sens = models.CharField(
         max_length=5, choices=Sens.choices, default=Sens.ENVOI,

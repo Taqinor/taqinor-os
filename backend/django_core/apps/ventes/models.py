@@ -1105,7 +1105,8 @@ class ShareLink(models.Model):
     # PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR — le jeton reste
     # imprévisible + expirant, et le lien n'est JAMAIS exposé dans l'UI client.
     bon_commande_fournisseur = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: lien sans objet si BC fournisseur supprimé
+        # on_delete: lien sans objet si BC fournisseur supprimé
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
         null=True, blank=True, related_name='share_links')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(default=_default_share_expiry)
@@ -1947,7 +1948,9 @@ class FicheTechnique(models.Model):
     # Un produit du catalogue porte au plus UNE fiche normalisée par société.
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.PROTECT,  # on_delete: PROTECT — la fiche porte des paramètres constructeur saisis à la main + le PDF datasheet (catalogue RÉEL, non reconstructible) ; refuser la suppression du produit
+        # on_delete: PROTECT — la fiche porte des paramètres constructeur saisis à la main + le PDF datasheet (catalogue
+        # RÉEL, non reconstructible) ; refuser la suppression du produit
+        on_delete=models.PROTECT,
         related_name='fiches_techniques',
         verbose_name='Produit',
     )
@@ -2101,7 +2104,9 @@ class LignePrixListe(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='lignes')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — prix unitaire convenu dans une liste de prix (donnée réelle) ; refuser la suppression du produit plutôt que d'effacer la ligne tarifaire
+        # on_delete: PROTECT — prix unitaire convenu dans une liste de prix (donnée réelle) ; refuser la suppression du
+        # produit plutôt que d'effacer la ligne tarifaire
+        'stock.Produit', on_delete=models.PROTECT,
         related_name='lignes_liste_prix')
     prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -2134,7 +2139,9 @@ class RegleListePrix(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='regles')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — règle de prix réelle ; SET_NULL serait DANGEREUX ici (produit=NULL = portée « tout le catalogue » : une règle produit deviendrait une remise globale silencieuse)
+        # on_delete: PROTECT — règle de prix réelle ; SET_NULL serait DANGEREUX ici (produit=NULL = portée « tout le
+        # catalogue » : une règle produit deviendrait une remise globale silencieuse)
+        'stock.Produit', on_delete=models.PROTECT,
         null=True, blank=True,
         related_name='regles_liste_prix')
     categorie_nom = models.CharField(max_length=150, blank=True, default='')
