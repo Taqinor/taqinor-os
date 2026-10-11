@@ -213,6 +213,25 @@ def _id_connu(nom, valeur):
     return ids[valeur % len(ids)]
 
 
+def _remplacer_ids_fk(objet):
+    """Remplace, dans ``objet`` (dict), les FK inconnues par des ids réels.
+
+    ENF11 (achats) — récursif dans les listes d'objets : ``lignes[].produit``
+    d'un BCF, ``lignes[].ligne_commande`` d'une réception… sont des FK comme
+    les champs de premier niveau, et sans cela chaque création à lignes
+    imbriquées partait avec « Clé primaire 0 non valide »."""
+    for nom, valeur in list(objet.items()):
+        if nom in FK_IDS and not isinstance(valeur, dict):
+            if isinstance(valeur, list):
+                objet[nom] = [_id_connu(nom, v) for v in valeur]
+            else:
+                objet[nom] = _id_connu(nom, valeur)
+        elif isinstance(valeur, list):
+            for element in valeur:
+                if isinstance(element, dict):
+                    _remplacer_ids_fk(element)
+
+
 def _ids_fk_connus(case):
     meta = case.meta
     if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
@@ -220,13 +239,7 @@ def _ids_fk_connus(case):
     corps = case.body
     if not isinstance(corps, dict):
         return
-    for nom, valeur in list(corps.items()):
-        if nom not in FK_IDS:
-            continue
-        if isinstance(valeur, list):
-            corps[nom] = [_id_connu(nom, v) for v in valeur]
-        else:
-            corps[nom] = _id_connu(nom, valeur)
+    _remplacer_ids_fk(corps)
 
 
 # ── 4. Ids RÉELS pour les paramètres de chemin (ENF11) ─────────────────

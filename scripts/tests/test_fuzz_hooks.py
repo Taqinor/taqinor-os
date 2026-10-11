@@ -222,6 +222,36 @@ class IdsCheminTests(unittest.TestCase):
             self.assertNotEqual(cas.path_parameters['id'], 4)
 
 
+class IdsFkImbriquesTests(unittest.TestCase):
+    """ENF11 (achats) — les FK des LIGNES imbriquées reçoivent des ids réels."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hooks = _charger_hooks({
+            'user_id': 4, 'company_id': 2, 'role_id': 7,
+            'fk_ids': {'produit': [11, 12], 'fournisseur': [5]}})
+
+    def _corps(self, mode='POSITIVE'):
+        cas = _cas(self.hooks, 'POST', '/api/django/achats/retours-fournisseur/',
+                   {'fournisseur': 99999, 'motif': 'x',
+                    'lignes': [{'produit': 0, 'quantite': 3},
+                               {'produit': 12, 'quantite': 1}]}, mode=mode)
+        self.hooks.before_call(None, cas, {})
+        return cas.body
+
+    def test_produit_de_ligne_remplace_par_un_id_reel(self):
+        corps = self._corps()
+        self.assertEqual(corps['fournisseur'], 5)
+        self.assertIn(corps['lignes'][0]['produit'], (11, 12))
+        self.assertEqual(corps['lignes'][1]['produit'], 12)
+        self.assertEqual(corps['lignes'][0]['quantite'], 3)
+
+    def test_cas_negatif_jamais_touche(self):
+        corps = self._corps(mode='NEGATIVE')
+        self.assertEqual(corps['fournisseur'], 99999)
+        self.assertEqual(corps['lignes'][0]['produit'], 0)
+
+
 def _charger_inventaire():
     sys.path.insert(0, str(ROOT / 'scripts' / 'fuzz'))
     try:
