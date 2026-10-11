@@ -23,14 +23,9 @@
 // catalogue de produits réaliste.
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorAvisPalier.test.jsx
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 // Module PUR (aucun JSX, aucune dépendance React) : rejoué avec la VRAIE
 // fonction, jamais une réplique qui pourrait diverger.
 // CIQ128 — l'arrondi au palier de 5 kWc a quitté solar.js : le test le
@@ -38,34 +33,21 @@ import ventesReducer from '../../features/ventes/store/ventesSlice'
 const auPalier5 = (k) => Math.max(5, Math.round(k / 5) * 5)
 
 // APIs mockées (aucun appel réseau réel au montage).
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock({
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR308 — chemin résidentiel de `createAutoQuote` : composition ET
     // création côté serveur, l'écran ne transmet que la puissance cible.
     creerDevisAuto: vi.fn(() => Promise.resolve({ data: { id: 501, reference: 'DEV-2026-09-0501' } })),
-  },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { declarerBeforeEachDevis, renderGeneratorPage } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue minimal : l'effet « arrivée depuis le lead » (?lead=…) n'applique
 // le lead qu'une fois les produits chargés (résidentiel n'en a pas besoin
@@ -74,45 +56,10 @@ const PRODUITS = [
   { id: 10, nom: 'Panneau Solaire 710W', prix_vente: 1200, tva: 20, is_archived: false },
 ]
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Directeur', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const renderGenerator = ({ leads, produits = PRODUITS, route } = {}) =>
+  renderGeneratorPage(DevisGenerator, { crmApi, stockApi, leads, produits, route })
 
-function renderGenerator({ leads = [], produits = PRODUITS, route } = {}) {
-  crmApi.getClients.mockResolvedValue({ data: [] })
-  crmApi.getLeads.mockResolvedValue({ data: leads })
-  stockApi.getProduits.mockResolvedValue({ data: produits })
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={[route]}>
-        <DevisGenerator />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+declarerBeforeEachDevis({ stockApi, crmApi, ventesApi })
 
 describe('QJR308 → QJR602 — runAutoQuote : plus aucun avis de palier, la taille explicite est souveraine', () => {
   it('QJR602 — un lead à 6,5 kWc : AUCUN avis, la taille part TELLE QUELLE (10 panneaux de 710 W)', async () => {

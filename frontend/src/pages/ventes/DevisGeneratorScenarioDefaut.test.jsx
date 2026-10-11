@@ -9,47 +9,23 @@
 // Le vocabulaire des scénarios est le contrat EXACT du moteur PDF
 // (SCENARIO_* d'apps/ventes/services.py) : il n'est jamais reformulé.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 
 // APIs mockées (aucun appel réseau réel au montage).
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock({
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    // TAILLES (fondateur 26/08/2026) — DevisOffresTailles (monté sous
-    // DevisGenerator, résidentiel par défaut avant même la résolution du
-    // devis serveur) interroge ce endpoint au montage (best-effort) ; sans
-    // mock l'effet lève sur `undefined(...)`.
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    // QJR214/215 — le panneau Surcharges charge le registre au montage en
-    // édition ; sans mock l'effet lève sur `undefined(...)` et la page meurt.
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-  },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { declarerBeforeEachDevis, renderGeneratorPage } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue minimal : l'effet « arrivée depuis le lead » (?lead=…) n'applique
 // le lead qu'une fois les produits chargés.
@@ -57,50 +33,15 @@ const PRODUITS = [
   { id: 10, nom: 'Panneau Solaire 710W', prix_vente: 1200, tva: 20, is_archived: false },
 ]
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Directeur', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
 // `editId` / le lead d'arrivée sont lus dans l'URL en pleine page.
-function renderGenerator({ leads = [], produits = [], route = '/ventes/devis/nouveau' } = {}) {
-  crmApi.getClients.mockResolvedValue({ data: [] })
-  crmApi.getLeads.mockResolvedValue({ data: leads })
-  stockApi.getProduits.mockResolvedValue({ data: produits })
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={[route]}>
-        <DevisGenerator />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderGenerator = ({ leads, produits, route = '/ventes/devis/nouveau' } = {}) =>
+  renderGeneratorPage(DevisGenerator, { crmApi, stockApi, leads, produits, route })
 
 // Le Select « Scénario » est un Radix Select : son déclencheur porte l'id
 // gen-scenario et affiche le LIBELLÉ de l'item sélectionné.
 const scenarioAffiche = () => document.getElementById('gen-scenario')?.textContent ?? ''
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+declarerBeforeEachDevis({ stockApi, crmApi, ventesApi })
 
 describe('scénario par défaut d’un devis vierge', () => {
   it('résidentiel : « Les deux (Sans + Avec) » d’entrée de jeu', async () => {

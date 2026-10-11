@@ -18,27 +18,13 @@
 // textuel ne peut pas prouver que le comportement RUNTIME est correct —
 // celui-ci le prouve en observant l'écran après un vrai clic.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
 // QJR577 (D-QJR5-9) — `composerDevis` est désormais MOCKÉ (plus de repli
 // local en résidentiel : un dry-run absent rendrait une erreur, sans
 // composition). Le mock compose sur le catalogue du test, ce qui exerce le
@@ -53,11 +39,9 @@ vi.mock('../../api/parametresApi', () => ({
 // permettrait plus d'observer le garde-fou F1. La recommandation servie suit
 // la facture demandée pour que deux factures très différentes donnent deux
 // tailles différentes, exactement comme le vrai moteur.
-vi.mock('../../api/ventesApi', () => ({
-  default: {
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock({
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
     getPrixApplicable: vi.fn(() => Promise.resolve({ data: { source: 'standard' } })),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR577 (D-QJR5-9) — le résidentiel n'a PLUS de repli local : la
     // composition vient du dry-run serveur, simulé ici sur le catalogue
     // ci-dessous (mêmes produits, prix HT = prix catalogue).
@@ -91,69 +75,22 @@ vi.mock('../../api/ventesApi', () => ({
         },
       })
     }),
-  },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { PRODUITS_COMPOSITION as PRODUITS, bancCreation } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue solaire complet (même fixture que DevisGeneratorMarquesPinning.
 // test.jsx) : assez de rôles réels (panneau, onduleur, structures, socles,
 // accessoires, tableau, installation, transport) pour que le balayage
 // palier/payback (`computeAutoSizing`) chiffre de
 // VRAIS paliers, pas des lignes placeholder à 0 MAD.
-const PRODUITS = [
-  { id: 1, nom: 'Onduleur réseau Huawei 10kW Triphasé', prix_vente: 16666.67, tva: 20, is_archived: false },
-  { id: 2, nom: 'Panneau Canadien Solar 710W', prix_vente: 1166.67, tva: 10, is_archived: false, marque: 'Canadian Solar' },
-  { id: 3, nom: 'Structures acier', prix_vente: 416.67, tva: 20, is_archived: false },
-  { id: 4, nom: 'Socles', prix_vente: 66.67, tva: 20, is_archived: false },
-  { id: 5, nom: 'Accessoires', prix_vente: 1666.67, tva: 20, is_archived: false },
-  { id: 6, nom: 'Tableau De Protection AC/DC', prix_vente: 1666.67, tva: 20, is_archived: false },
-  { id: 7, nom: 'Installation', prix_vente: 4000, tva: 20, is_archived: false },
-  { id: 8, nom: 'Transport', prix_vente: 833.33, tva: 20, is_archived: false },
-]
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Directeur', permissions: ['stock_creer'],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const { renderGenerator } = bancCreation({ DevisGenerator, crmApi, stockApi, produits: PRODUITS })
 
-function renderGenerator() {
-  crmApi.getClients.mockResolvedValue({ data: [] })
-  crmApi.getLeads.mockResolvedValue({ data: [] })
-  stockApi.getProduits.mockResolvedValue({ data: PRODUITS })
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter>
-        <DevisGenerator />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
 
 const nbPanneauxField = () => screen.getByLabelText(/Nombre de panneaux/)
 const hiverField = () => screen.getByLabelText(/Facture Hiver/)

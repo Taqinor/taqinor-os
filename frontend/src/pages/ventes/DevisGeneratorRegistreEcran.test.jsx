@@ -7,60 +7,26 @@
 // lu sur les API mockées (garde QJR239 : aucun regex sur le source).
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorRegistreEcran.test.jsx
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiAvecLead())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock({
     lireOverrides: vi.fn(),
-    poserOverrides: vi.fn(),
-    regenererOverride: vi.fn(),
     getPrixApplicable: vi.fn(),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-    patchEtudeParams: vi.fn(),
-  },
 }))
 
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { ONDULEUR, PANNEAU, declarerBeforeEachDevis, lignesResidentielles, makeDevisStore, renderEditionPage } from './devisGenerator.testHelpers.jsx'
 
 const LES_DEUX = 'Les deux (Sans + Avec)'
-const PANNEAU = {
-  id: 101, nom: 'Panneau Canadien Solar 715W', prix_vente: 1200, tva: 10,
-  is_archived: false, prix_achat: 800,
-}
-const ONDULEUR = {
-  id: 102, nom: 'Onduleur réseau 5kW Monophasé', prix_vente: 9000, tva: 20,
-  is_archived: false, prix_achat: 6000,
-}
 
 function devisRouvert() {
   const contrat = exempleContrat('ventes', 'devis_modifiabilite', 'exemple_brouillon')
@@ -69,14 +35,7 @@ function devisRouvert() {
       ...contrat, client: 9, lead: null,
       mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
       etude_params: { scenario: LES_DEUX },
-      lignes: [
-        { id: 1, produit: PANNEAU.id, designation: PANNEAU.nom, quantite: '8',
-          prix_unitaire: '1200.00', taux_tva: '10.00', ordre: 0,
-          type_ligne: 'produit', optionnelle: false },
-        { id: 2, produit: ONDULEUR.id, designation: ONDULEUR.nom, quantite: '1',
-          prix_unitaire: '9000.00', taux_tva: '20.00', ordre: 1,
-          type_ligne: 'produit', optionnelle: false },
-      ],
+      lignes: lignesResidentielles(PANNEAU, ONDULEUR),
     },
   }
 }
@@ -89,55 +48,25 @@ const REGISTRE_VIDE = registre({
   scenario: { auto: LES_DEUX, manuel: null, effectif: LES_DEUX, source: 'auto' },
 })
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const makeStore = () => makeDevisStore('normal', 'Commercial')
 
 function renderEdition(id) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={[`/ventes/devis/nouveau?edit=${id}`]}>
-        <Routes>
-          <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
-          <Route path="*" element={<div>APRES-ENREGISTREMENT</div>} />
-        </Routes>
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderEditionPage(DevisGenerator, makeStore(), id, 'APRES-ENREGISTREMENT')
 }
 
 const scenarioAffiche = () => document.getElementById('gen-scenario')?.textContent ?? ''
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+declarerBeforeEachDevis({
+  stockApi, ventesApi, produits: [PANNEAU, ONDULEUR], localStorage: true,
+  extra: () => {
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert())
+    ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
+    ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
+    ventesApi.poserOverrides.mockImplementation((_id, patch) => Promise.resolve({
+      data: registre({ scenario: { auto: LES_DEUX, manuel: patch.scenario?.valeur,
+        effectif: patch.scenario?.valeur, source: 'manuel' } }),
     }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-  stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR] })
-  ventesApi.getDevisById.mockResolvedValue(devisRouvert())
-  ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
-  ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
-  ventesApi.poserOverrides.mockImplementation((_id, patch) => Promise.resolve({
-    data: registre({ scenario: { auto: LES_DEUX, manuel: patch.scenario?.valeur,
-      effectif: patch.scenario?.valeur, source: 'manuel' } }),
-  }))
+  },
 })
 
 async function enregistrer() {
