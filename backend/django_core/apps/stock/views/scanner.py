@@ -26,7 +26,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 
 
-@extend_schema(parameters=[P('code', STR, True, 'Code scanné')], responses={
+@extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=r'\S')], responses={
     200: inline_serializer('StockScannerResoudreResultat', {
         'type': serializers.CharField(),
         'id': serializers.IntegerField(),
@@ -121,7 +121,7 @@ def scanner_mouvement_view(request):
     }, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU'), P('quantite', INT)], responses={
+@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU', pattern=r'\S'), P('quantite', INT)], responses={
     200: inline_serializer('StockScannerRetourFournisseurLigne', {
         'produit': serializers.IntegerField(),
         'produit_nom': serializers.CharField(),
