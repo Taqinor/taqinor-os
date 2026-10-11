@@ -1138,7 +1138,8 @@ class OrdreDemontageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
         # ERR116 — la création borne aussi l'ordre parent (société +
         # statut PLANIFIE), comme la mise à jour.
         self._check_parent(serializer)
-        serializer.save()
+        # ACHT100 (jumeau) — ligne saisie à la main : survit à la régénération.
+        serializer.save(origine=OrdreDemontageLigne.Origine.AJOUT)
 
     def perform_update(self, serializer):
         self._check_parent(serializer)

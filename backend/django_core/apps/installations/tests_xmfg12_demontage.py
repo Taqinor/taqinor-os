@@ -82,6 +82,32 @@ class TestOrdreDemontage(TestCase):
         self.assertEqual(by_produit[self.comp1.id].quantite_recuperee, 2)
         self.assertEqual(by_produit[self.comp2.id].quantite_attendue, 8)
 
+    def test_changement_de_quantite_garde_les_lignes_manuelles(self):
+        """ACHT100 (jumeau) — la quantité change : lignes du kit recalculées,
+        ligne ajoutée à la main conservée telle quelle."""
+        from apps.installations.models import OrdreDemontageLigne
+        resp = self.api.post(f'{BASE}/ordres-demontage/', {
+            'kit': self.kit.id, 'quantite': 1}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        ordre = OrdreDemontage.objects.get(id=resp.data['id'])
+        manuel = make_produit(self.company, nom='Visserie perso')
+        OrdreDemontageLigne.objects.create(
+            ordre=ordre, produit=manuel, quantite_attendue=7,
+            quantite_recuperee=6, origine=OrdreDemontageLigne.Origine.AJOUT)
+        for _ in range(2):
+            r = self.api.patch(f'{BASE}/ordres-demontage/{ordre.id}/',
+                               {'quantite': 2}, format='json')
+            self.assertEqual(r.status_code, 200, r.content)
+            lignes = list(ordre.lignes.all())
+            self.assertEqual(len(lignes), 3)
+            kit_l = {x.produit_id: x.quantite_attendue for x in lignes
+                     if x.origine == OrdreDemontageLigne.Origine.KIT}
+            self.assertEqual(kit_l, {self.comp1.id: 2, self.comp2.id: 8})
+            aj = ordre.lignes.get(origine=OrdreDemontageLigne.Origine.AJOUT)
+            self.assertEqual(
+                (aj.produit_id, aj.quantite_attendue, aj.quantite_recuperee),
+                (manuel.id, 7, 6))
+
     def test_terminer_restocke_composants_et_sort_composite(self):
         resp = self.api.post(f'{BASE}/ordres-demontage/', {
             'kit': self.kit.id, 'quantite': 2,

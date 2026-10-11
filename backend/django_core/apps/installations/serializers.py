@@ -2445,9 +2445,9 @@ class OrdreDemontageLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         model = OrdreDemontageLigne
         fields = [
             'id', 'ordre', 'produit', 'produit_nom', 'designation',
-            'quantite_attendue', 'quantite_recuperee',
+            'quantite_attendue', 'quantite_recuperee', 'origine',
         ]
-        read_only_fields = ['quantite_attendue']
+        read_only_fields = ['quantite_attendue', 'origine']
 
 
 class ControleQualiteItemModeleSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
