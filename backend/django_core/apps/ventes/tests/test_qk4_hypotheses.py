@@ -187,7 +187,10 @@ class TestHypothesesRender(TestCase):
         # a réseau-only quote renders as single-option full on the legacy engine.
         html, doc = self._render(devis)
         self.assertIn('Nos hypoth', html)
-        self.assertIn('82-21', html)
+        # AMOT25 : la note « Loi 82-21 … » est remplacée par la mention sourcée
+        # unique MENTION_BT (qui ne cite plus « 82-21 » littéralement) — même
+        # péremption que test_qk4 plus haut, corrigée pour le nocturne (CAD177).
+        self.assertIn('Revente du surplus non ouverte en basse tension', html)
         self.assertEqual(len(doc.pages), 3)
 
     def test_residential_renderer_keeps_hypotheses_off_the_pdf(self):
