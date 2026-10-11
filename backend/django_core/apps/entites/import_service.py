@@ -45,6 +45,11 @@ def _valider(rows):
     {ligne, motif}. Vérifie code présent, unicité intra-fichier, et que tout
     `code_parent` existe (dans le fichier OU déjà en base — vérifié au commit)."""
     erreurs = []
+    if not rows:
+        # ENF11 — fichier vide ou illisible (non UTF-8 lu avec remplacement) :
+        # l'aperçu le DIT au lieu d'annoncer « 0 erreur ».
+        erreurs.append({'ligne': 1, 'motif': (
+            'Aucune ligne lisible (en-têtes attendus : code, nom).')})
     codes_fichier = set()
     valides = []
     for ligne, row in rows:
