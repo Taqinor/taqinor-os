@@ -448,6 +448,11 @@ _CONFORMITE = inline_serializer('AnnonceConformite', {
 })
 
 
+# Actions ouvertes à tout rôle (module-level : la garde check_action_permission_override
+# lit les constantes de module pour voir que accuser_lecture n'atteint pas le repli admin).
+_ANNONCE_ANY_ROLE_ACTIONS = ['list', 'retrieve', 'accuser_lecture']
+
+
 @extend_schema_view(list=extend_schema(parameters=[
     _q('active', OpenApiTypes.STR, 'Publiées et non expirées seulement.',
        enum=['1', 'true', 'True']),
@@ -467,10 +472,9 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     # accuser_lecture : « J'ai lu et compris » est ouvert à tout rôle
     # destinataire — seules création/édition/publication/conformité restent
     # réservées à l'admin (voir docstrings des actions ci-dessous).
-    ANY_ROLE_ACTIONS = READ_ACTIONS + ['accuser_lecture']
 
     def get_permissions(self):
-        if self.action in self.ANY_ROLE_ACTIONS:
+        if self.action in _ANNONCE_ANY_ROLE_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
 

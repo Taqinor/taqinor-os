@@ -539,7 +539,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         }),
         responses={201: EquipementDowntimeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='downtime',
-            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+            permission_classes=[IsAdminRole])
     def downtime(self, request, pk=None):
         """XSAV16 — Journal d'immobilisation de cet équipement.
 
@@ -589,7 +589,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         responses=EquipementDowntimeSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'downtime/(?P<downtime_id>[^/.]+)/cloturer',
-            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+            permission_classes=[IsAdminRole])
     def cloturer_downtime(self, request, pk=None, downtime_id=None):
         """XSAV16 — Ferme une fenêtre d'immobilisation en cours (idempotent)."""
         equipement = self.get_object()
@@ -658,7 +658,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
                 'id': drf_serializers.IntegerField(),
                 'reference': _CharF()}, null=True)}, extra=True)})
     @action(detail=True, methods=['get', 'post'], url_path='releves-compteur',
-            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+            permission_classes=[IsAdminRole])
     def releves_compteur(self, request, pk=None):
         """XSAV17 — Relevés compteur (heures/kWh) de cet équipement.
 

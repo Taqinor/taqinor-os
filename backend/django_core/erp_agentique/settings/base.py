@@ -1986,3 +1986,8 @@ GED_PADES_KEY_PATH = os.environ.get('GED_PADES_KEY_PATH', '').strip()
 CMI_ENABLED = (
     os.environ.get('CMI_ENABLED', '').strip().lower() in ('1', 'true'))
 CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
+
+# ENF28 (ADEP20) — apps.notifications : seuils du filet « lead chaud non contacté »
+# (`sweeps._sweep_hot_leads`), mêmes valeurs que les défauts du module.
+HOT_LEAD_SCORE_THRESHOLD = 60
+HOT_LEAD_MINUTES_OUVREES = 30
