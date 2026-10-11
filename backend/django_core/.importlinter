@@ -111,7 +111,10 @@ ignore_imports =
 # `apps.ventes.models -> apps.{crm,stock,sav,installations}.models` — ou une
 # façade qui se mettrait à importer un modèle d'un autre domaine — serait
 # toujours détecté. Même motif exact que les exceptions `cpq.selectors`.
-    apps.ventes.domain.argent -> apps.ventes.selectors
+# ENF20 — l'arête `domain.argent -> ventes.selectors` est RETIRÉE : la façade lit
+# le noyau dans la feuille pure `apps.ventes.domain.noyau_totaux` (aucun import
+# d'app) et `nombre_proprietes` dans `apps.ventes.multivilla` (feuille). Reste
+# `-> utils.options` (le filtre d'option tire `domain.overrides`, non feuille).
     apps.ventes.domain.argent -> apps.ventes.utils.options
 # AUD105-107 (2026-09-06) — le mixin partagé `apps.facturation.totaux`
 # (TotauxDocumentMixin, remise globale honnête sur les 3 documents) délègue
