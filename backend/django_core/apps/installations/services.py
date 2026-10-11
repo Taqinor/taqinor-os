@@ -6241,14 +6241,16 @@ def notifier_reception_solde_a_facturer(installation, user=None):
     return notifier_jalon_a_facturer(jalon, user)
 
 
-def chantiers_a_facturer(company):
+def chantiers_a_facturer(company, user=None):
     """YSERV7 — sélecteur : chantiers ayant au moins une tranche due (jalon
     atteint ou chantier réceptionné) non encore facturée. Renvoie une liste de
     dicts plats `{installation_id, reference, tranche, jalon_id}` — un par
     tranche due (un chantier peut apparaître plusieurs fois si plusieurs
-    tranches sont dues). Lecture seule ; import ventes via selectors seulement."""
+    tranches sont dues). Lecture seule ; import ventes via selectors seulement.
+    ``user`` (optionnel) borne aux chantiers de SA portée, comme la liste des
+    chantiers (``selectors.scoper_chantiers``)."""
     from apps.ventes.selectors import tranche_facturee
-    from .models import JalonProjet
+    from .models import Installation, JalonProjet
     out = []
     jalons = (
         JalonProjet.objects
@@ -6258,6 +6260,11 @@ def chantiers_a_facturer(company):
         .select_related('installation', 'installation__devis')
         .order_by('installation_id', 'ordre', 'id')
     )
+    if user is not None:
+        from .selectors import scoper_chantiers
+        visibles = scoper_chantiers(
+            Installation.objects.filter(company=company), user)
+        jalons = jalons.filter(installation__in=visibles)
     for jalon in jalons:
         installation = jalon.installation
         devis = getattr(installation, 'devis', None)
