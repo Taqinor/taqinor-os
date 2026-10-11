@@ -40,6 +40,7 @@ from ..serializers_facturation import (  # noqa: F401
     AvoirSerializer,
     RelanceLogSerializer,
 )
+from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
