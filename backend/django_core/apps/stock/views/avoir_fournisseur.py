@@ -39,7 +39,9 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            # ASTK246 — montants réglés : règle UNIQUE des règlements fournisseur.
+            from .paiement_fournisseur import PeutLirePaiementsFournisseur
+            return [PeutLirePaiementsFournisseur()]
         elif self.action in WRITE_ACTIONS + ['valider', 'imputer']:
             # ASTK19 (D-ASTK-3) — créer/valider/imputer un avoir = « payer ».
             return [HasPermissionOrLegacy('achats_payer')()]
