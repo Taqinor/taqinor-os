@@ -2901,6 +2901,7 @@ def generer_document(modele, contexte, *, company, created_by=None,
         return existant, False
     pdf_bytes = rendre_modele(modele, contexte)
     if existant is not None:
+        assert_aucune_signature_en_attente(existant)  # ADOC178 (409, ADOC175)
         key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
         add_version(
             existant, file_key=key, company=existant.company,

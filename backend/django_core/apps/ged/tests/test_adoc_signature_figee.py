@@ -136,6 +136,38 @@ class SignatureFigeeTests(SignatureFigeeBase):
             stocke.assert_not_called()
         self.assertEqual(self.doc.versions.count(), 1)
 
+    def test_generer_refuse_pendant_signature(self):
+        """ADOC178 (sonde C-ADOC-VER-006) — « Générer depuis un modèle »
+        après modification du modèle ne versionne pas un document dont une
+        signature est en attente (409, même refus que ADOC175) ; une fois la
+        demande close, la régénération ajoute v2."""
+        from apps.ged.models import ModeleDocument, SIGNATURE_ANNULE
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='Attestation',
+            corps_html='<p>Attestation {{ nom }}</p>')
+        url = f'/api/django/ged/modeles-document/{modele.pk}/generer/'
+        corps = {'contexte': {'nom': 'ALPHA'}}
+        resp = self.api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        genere = Document.objects.get(pk=resp.data['document'])
+        demande = services.demander_signature(
+            genere, signataire_nom='Client', signataire_email='c@x.ma',
+            company=self.co_a)
+        modele.corps_html = '<p>Attestation corrigée {{ nom }}</p>'
+        modele.save()
+        resp = self.api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['detail'], (
+            "Une demande de signature est en cours sur ce document : "
+            "aucune nouvelle version tant qu'elle n'est pas close."))
+        self.assertEqual(genere.versions.count(), 1)
+        demande.statut = SIGNATURE_ANNULE
+        demande.save(update_fields=['statut'])
+        resp = self.api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['document'], genere.pk)
+        self.assertEqual(genere.versions.count(), 2)
+
     def test_editeur_office_refuse_pendant_signature(self):
         with self.settings(GED_OFFICE_URL='http://office.test'):
             with self.assertRaises(services.SignatureEnCoursError):
