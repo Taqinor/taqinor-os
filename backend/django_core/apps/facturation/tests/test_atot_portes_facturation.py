@@ -285,7 +285,13 @@ class NumeroEmissionTests(TestCase):
                      .order_by('date_emission', 'id')
                      .values_list('reference', flat=True))
         self.assertEqual(serie, [f'FAC-{mois}-0001', f'FAC-{mois}-0002'])
-        self.assertTrue(audit_company(self.company)['conforme'])
+        # Le bloc FACTURE de l'audit (aucun trou, aucun doublon). Le verdict
+        # global ``conforme`` couvre aussi DEV/BC, dont les références sont
+        # FORGÉES par les fixtures (``DEV-ATOT2-<compteur>``,
+        # ``BC-ATOT2-<compteur>`` : compteur de module, donc à trous) — hors
+        # du sujet de ce test, la série des factures.
+        rapport = audit_company(self.company)
+        self.assertEqual(rapport['facture'], [], rapport)
 
     def test_portes_emises_numerotees_dans_l_ordre(self):
         mois = self._mois()
