@@ -376,6 +376,26 @@ class ParcoursCompletsTests(ParcoursBase):
             self.assertEqual(leads['Relance saisie'].relance_date, saisie, f'passe {passe}')
             self.assertNotEqual(leads['Sans saisie'].relance_date, saisie, f'passe {passe}')
 
+    def test_fusion_garde_un_zero_saisi(self):
+        """AMET21 — ``merge_leads`` : un 0 saisi du survivant survit (ACRM13), une clé de
+        ``saisies_humaines`` du survivant n'est jamais remplacée (même vidée à la main), un
+        champ réellement vide et non saisi prend la valeur du doublon."""
+        from apps.crm.leads_fusion import merge_leads
+        from apps.crm.models import Lead
+        survivant = Lead.objects.create(
+            company=self.company, nom='Survivant', owner=self.acteur, nb_etages=0,
+            ville='', saisies_humaines=['nb_etages', 'ville'])
+        doublon = Lead.objects.create(
+            company=self.company, nom='Doublon', owner=self.acteur, nb_etages=2,
+            ville='Fès', email='doublon.amet21@example.com')
+        merge_leads(survivant, [doublon], self.acteur)
+        survivant = Lead.objects.get(pk=survivant.pk)
+        self.assertEqual(survivant.nb_etages, 0)
+        self.assertEqual(survivant.ville, '')
+        self.assertEqual(survivant.email, 'doublon.amet21@example.com')
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=survivant, user__isnull=True, field__in=('nb_etages', 'ville')).exists())
+
     def _moment(self, jour, heure):
         return datetime.datetime.combine(jour, heure, tzinfo=horaires.CASABLANCA)
 
