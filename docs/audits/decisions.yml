@@ -544,13 +544,17 @@ decisions:
     taches: [CIQ627]
 
   - id: D-CIQ-26
-    question: "QXG6 (b) : bande de prix par kWc ?"
+    question: "QXG6 (b) : bande de prix par kWc C&I > 100 kWc ?"
     options:
       - cle: a
-        texte: "Bande prix/kWc : reste au fondateur (non tranchee)."
-    reponse: ouverte
-    date: "2026-10-03"
-    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-4, derniere phrase)"
+        texte: "Bande 6 000-9 000 DH/kWc HT (estimation recherche) gardee comme repere INTERNE du generateur, flag « estimation a verifier fondateur », jamais imprimee sur un PDF client ; remplacee par les offres reelles le jour ou le fondateur les fournit"
+      - cle: b
+        texte: "Bande derivee de trois offres fournisseurs reelles (100/250/500 kWc) fournies par le fondateur, marquee SOURCEE"
+      - cle: c
+        texte: "Aucune bande : pas de controle de plausibilite prix/kWc sur les devis C&I"
+    reponse: a
+    date: "2026-10-11"
+    source: "question interactive du 11/10/2026 (session audit-script-update-strategy) ; docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-4)"
     taches: [QXG6]
 
   - id: D-QJR5-612
@@ -1080,10 +1084,10 @@ decisions:
         texte: "ecran retire, routes d'ecriture fermees"
       - cle: b
         texte: "requires_approval appele dans le chemin de remise"
-    reponse: ouverte
+    reponse: a
     date: "2026-10-09"
-    source: "docs/claude-memory/apar-decisions-fondateur.md (reste gatee par D-APAR-2, APAR2)"
-    taches: [APAR2]
+    source: "docs/claude-memory/apar-decisions-fondateur.md (choisie par Reda via la question interactive du 09/10/2026 ; registre aligne le 11/10)"
+    taches: [APAR2, APAR44]
 
   - id: D-APDF-1
     question: "Bande legale du devis ?"
