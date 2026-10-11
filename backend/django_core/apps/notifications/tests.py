@@ -324,7 +324,7 @@ class DigestTaskTests(TestCase):
     def test_digest_noop_without_recipients(self):
         """Société sans utilisateur → aucune notification, aucune erreur."""
         from .digests import daily_digest
-        empty = _make_company('VideCo')  # noqa: F841 - société sans user
+        empty = _make_company('VideCo')  # société sans user
         emitted = daily_digest()
         # Aucune notification pour la société vide ; pas de crash.
         self.assertEqual(
@@ -336,7 +336,8 @@ class WebPushTests(TestCase):
     """N92 — Web push (PWA) : abonnement par appareil + no-op sans clés VAPID."""
 
     def setUp(self):
-        from .models import PushSubscription  # noqa: F401 - import vérifie le modèle
+        from .models import PushSubscription
+        self.assertTrue(PushSubscription._meta.db_table)  # le modèle existe
         self.company = _make_company('PushCo')
         self.user = _make_user(self.company, username='pushuser')
         self.client = APIClient()
