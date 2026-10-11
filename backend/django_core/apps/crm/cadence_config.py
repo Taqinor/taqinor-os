@@ -7,7 +7,7 @@ Le moteur (``services.py``, ``suite_touche.py``) posait et RECONNAISSAIT ces
 les deux gabarits de Paramètres (``parametres.CadenceRelanceEtape``, cadences
 ``apres_contact`` et ``visite``) :
 
-* ``etape_configuree`` — ce que la société a réglé pour une CLÉ (libellé,
+* ``_etape_configuree`` — ce que la société a réglé pour une CLÉ (libellé,
   délai, canal, heure, gabarit de message), avec repli sur le défaut du gabarit ;
 * ``est_etape`` / ``cle_de`` / ``q_etape`` — LE prédicat qui remplace toute
   comparaison de libellé : une étape posée depuis la clé porte ``cle`` ; une
@@ -34,8 +34,8 @@ __all__ = [
     'CLE_DECIDER_SUITE', 'CLE_DERNIER_APPEL', 'CLE_DEVIS',
     'CLE_DEVIS_MODIFIE', 'CLE_MESSAGE_CRENEAU', 'CLE_PLANIFIER',
     'CLE_RAPPEL_CONVENU', 'LIBELLE_DEVIS_ANCIEN', 'cle_de', 'cles_actives',
-    'config_cle', 'est_etape', 'etape_configuree', 'libelles_par_defaut',
-    'palier_actif', 'q_etape',
+    'config_cle', 'est_etape', 'libelles_par_defaut',
+    'q_etape',
 ]
 
 #: Les clés de chaque gabarit du moteur, dans l'ordre du gabarit.
@@ -122,7 +122,7 @@ def _depuis_barreau(barreau):
     }
 
 
-def etape_configuree(company, cadence, cle):
+def _etape_configuree(company, cadence, cle):
     """Ce que ``company`` a réglé pour l'étape ``cle`` de ``cadence``.
 
     ``dict(cle, libelle, delai_jours, delai_minutes, heure_cible, canal,
@@ -154,8 +154,8 @@ def etape_configuree(company, cadence, cle):
 
 
 def config_cle(company, cle):
-    """``etape_configuree`` pour une clé du moteur, sa cadence déduite."""
-    return etape_configuree(company, CADENCE_DE_LA_CLE[cle], cle)
+    """``_etape_configuree`` pour une clé du moteur, sa cadence déduite."""
+    return _etape_configuree(company, CADENCE_DE_LA_CLE[cle], cle)
 
 
 def cles_actives(company_id, cadence):
@@ -171,6 +171,6 @@ def cles_actives(company_id, cadence):
     return frozenset(cle for cle, actif in lignes if actif and cle)
 
 
-def palier_actif(cle, actives):
+def _palier_actif(cle, actives):
     """Un palier optionnel est-il à poser ? (Un pilier l'est toujours.)"""
     return cle not in CLES_PALIERS or cle in actives

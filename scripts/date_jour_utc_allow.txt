@@ -14,7 +14,6 @@ frontend/src/features/offlinesync/mobile/aFaireItems.js = 1
 frontend/src/features/ventes/FacturerDevisDialog.jsx = 1
 frontend/src/lib/dateLocale.js = 1
 frontend/src/lib/hijriDate.js = 2
-frontend/src/pages/crm/RelancesSuiviPage.jsx = 1
 frontend/src/pages/installations/PlanificationPage.jsx = 2
 frontend/src/pages/interventions/MaJourneePage.jsx = 1
 frontend/src/pages/monitoring/CleaningsPage.jsx = 1

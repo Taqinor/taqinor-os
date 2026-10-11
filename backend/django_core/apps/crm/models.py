@@ -2036,7 +2036,8 @@ class Lead(SoftDeleteModel):
             models.UniqueConstraint(
                 fields=['company', 'external_system', 'external_id'],
                 name='uniq_lead_external_ref',
-                condition=models.Q(external_id__isnull=False),
+                # ENF15 — un lead supprimé (soft-delete) ne bloque plus un réimport.
+                condition=models.Q(external_id__isnull=False, is_deleted=False),
             ),
         ]
 

@@ -9,6 +9,7 @@ import {
   Button, Input, Progress,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
+import ArretCadenceChamps from '../../features/crm/relances/ArretCadenceChamps'
 import { familleCanal } from '../../features/crm/relances/parcours'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import { toastError } from '../../lib/toast'
@@ -150,31 +151,12 @@ function ArreterCadenceControl({ leadId, onArreter }) {
 
   return (
     <li className="flex flex-wrap items-center gap-1.5 pb-1 pl-1" data-testid="cad50-arreter">
-      {!ouvert ? (
-        <Button
-          type="button" size="sm" variant="outline" disabled={busy}
-          onClick={() => setOuvert(true)}
-        >
-          Arrêter la cadence
-        </Button>
-      ) : (
-        <>
-          <Input
-            placeholder="Motif d'arrêt (obligatoire)" value={motif}
-            onChange={(e) => setMotif(e.target.value)}
-            data-testid="cad50-arreter-motif"
-          />
-          <Button
-            type="button" size="sm" variant="outline" disabled={busy}
-            onClick={() => { setOuvert(false); setMotif('') }}
-          >
-            Annuler
-          </Button>
-          <Button type="button" size="sm" disabled={busy || !motif.trim()} onClick={confirmer}>
-            Confirmer
-          </Button>
-        </>
-      )}
+      <ArretCadenceChamps
+        ouvert={ouvert} motif={motif} busy={busy}
+        onOuvrir={() => setOuvert(true)}
+        onFermer={() => { setOuvert(false); setMotif('') }}
+        onMotif={setMotif} onConfirmer={confirmer}
+      />
     </li>
   )
 }

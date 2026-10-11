@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import ChatterTimeline from '../../../components/ChatterTimeline'
-import { matchesTimelineFilter, TIMELINE_FILTERS } from './TimelineTab'
+import { matchesTimelineFilter, TIMELINE_FILTERS } from './timelineFiltres'
 
 /* CRX37 — les jalons devis entrent dans l'historique du lead.
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import ScoreBadge, { scoreTooltip } from '../../../../features/crm/ScoreBadge'
+import ScoreBadge from '../../../../features/crm/ScoreBadge'
+import { scoreTooltip } from '../../../../features/crm/scoreTooltip'
 
 /* VX221 — le score de lead dit POURQUOI : le badge expose un tooltip des 2-3
    facteurs dominants, construit depuis la décomposition score_reasons du

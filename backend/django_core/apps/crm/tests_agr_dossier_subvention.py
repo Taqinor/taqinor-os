@@ -44,7 +44,7 @@ class RegleDuContrat(SimpleTestCase):
         self.assertIn('dossier_subvention_le', activity.TRACKED_FIELDS)
 
     def test_trois_mois_apres_le_10_10_c_est_le_10_01(self):
-        libelle = cadence_filet.libelle_rappel_subvention(
+        libelle = cadence_filet._libelle_rappel_subvention(
             datetime.date(2026, 10, 10))
         self.assertIn('Approbation préalable du 10/10', libelle)
         self.assertIn('avant le 10/01', libelle)

@@ -5,12 +5,6 @@
 backend/django_core/apps/compta/models.py::Immobilisation.piece_origine_ligne_facture_fournisseur_id
 backend/django_core/apps/crm/models.py::Client.code_parrainage
 #
-# (b) KNOWN GAP to fix in a targeted crm task (out of this DB-free core lane):
-#     crm.Lead inherits SoftDeleteModel but its (company, external_system,
-#     external_id) UniqueConstraint has no condition=Q(is_deleted=False) — a
-#     re-imported lead whose predecessor was soft-deleted will collide. The
-#     fix is a crm model + partial-index migration (needs DB verification).
-backend/django_core/apps/crm/models.py::Lead(company,external_system,external_id)
 #
 # NTEXT13 — extensions.ExtensionPackage is a GLOBAL marketplace catalogue (no
 # company FK, reviewed global-by-design in tenant_exempt_models.txt); its `code`

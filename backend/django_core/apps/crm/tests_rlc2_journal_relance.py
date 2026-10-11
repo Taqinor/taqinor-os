@@ -170,8 +170,11 @@ class CausesTests(_Base):
         message = next(
             (e for e in self.etapes
              if e.canal == RelanceEtape.Canal.WHATSAPP), None)
-        if message is None:  # gabarit sans touche message : rien à prouver ici
-            self.skipTest("le gabarit de contact ne porte aucune touche message")
+        if message is None:  # gabarit sans touche message : on en fabrique une
+            message = self.etapes[0]
+            RelanceEtape.objects.filter(pk=message.pk).update(
+                canal=RelanceEtape.Canal.WHATSAPP)
+            message.canal = RelanceEtape.Canal.WHATSAPP
         journaliser_whatsapp_ouvert(message, self.acteur)
 
         ouverts = self._lignes(self._journal(), 'message_ouvert')

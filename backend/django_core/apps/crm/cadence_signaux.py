@@ -266,7 +266,7 @@ def _libelles_touche_signal():
     return tuple(TOUCHES_SIGNAL.values()) + (RAPPEL_DEMANDE_LIBELLE,)
 
 
-def refus_touche_signal(lead):
+def _refus_touche_signal(lead):
     """CAD130 — la raison (FR) pour laquelle AUCUNE touche signal ne se pose
     sur ce lead, ou ``''``. Garde 4 : ne plus contacter, perdu, archivé,
     signé — dans cet ordre, la première qui s'applique."""
@@ -362,7 +362,7 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
             logger.warning('CAD130 : lead #%s illisible', lead.pk,
                            exc_info=True)
             return None
-    if refus_touche_signal(lead):
+    if _refus_touche_signal(lead):
         return None
     try:
         # 1. Idempotence : le signal est déjà couvert par une touche ouverte.
@@ -480,7 +480,7 @@ def poser_etape_preparer_devis(lead, *, origine, user=None, jours=None,
       (la note du retour terrain), jamais une seconde ligne de chatter."""
     from . import horaires
 
-    if getattr(lead, 'pk', None) is None or refus_touche_signal(lead):
+    if getattr(lead, 'pk', None) is None or _refus_touche_signal(lead):
         return None
     try:
         ouverte = (lead.relance_etapes
@@ -604,7 +604,7 @@ def notify_client_contact_request(devis_reference: str, lead,
             # CAD129 — la demande entre dans la FILE, pas seulement dans la
             # cloche : une notification noyée faisait disparaître la demande
             # la plus forte qu'un prospect puisse faire.
-            poser_touche_rappel_demande(lead, user=None)
+            _poser_touche_rappel_demande(lead, user=None)
 
         recipients = lead_notification_recipients(lead)
         if not recipients:
@@ -750,7 +750,7 @@ def _touche_rappel_demande_ouverte(lead):
             .first())
 
 
-def poser_touche_rappel_demande(lead, *, user=None, quand=None):
+def _poser_touche_rappel_demande(lead, *, user=None, quand=None):
     """CAD129 — un rappel demandé devient une TOUCHE datée, pas une notification.
 
     ``quand`` (instant ou date) par défaut = maintenant ; l'échéance réelle est

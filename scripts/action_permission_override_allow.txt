@@ -11,7 +11,6 @@
 # est refusée à un rôle que sa déclaration dit autoriser (403 servi), jamais
 # ouverte plus largement ; la correction appartient à l'app propriétaire.
 
-backend/django_core/apps/crm/clients_views.py::SalleVenteViewSet.analytics  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) — à corriger : C-ACRM-020 / ACRM2 (famille sans écran appelant)
 backend/django_core/apps/stock/views/emplacement.py::EmplacementStockViewSet.van_stock_a_reapprovisionner  # déclare IsAnyRole mais atteint le repli IsAdminRole (plus strict) : action refusée au rôle déclaré, jamais ouverte plus large ; à aligner par l'app propriétaire (stock)
 backend/django_core/apps/stock/views/emplacement.py::EmplacementStockViewSet.van_stock_creer_transfert  # déclare IsResponsableOrAdmin mais atteint le repli IsAdminRole (plus strict) : action refusée au rôle déclaré, jamais ouverte plus large ; à aligner par l'app propriétaire (stock)
 backend/django_core/apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet.pdf  # déclare IsResponsableOrAdmin mais atteint le repli IsAdminRole (plus strict) : action refusée au rôle déclaré, jamais ouverte plus large ; à aligner par l'app propriétaire (stock)

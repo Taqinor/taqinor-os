@@ -12,7 +12,7 @@ from django.test import TestCase
 from authentication.models import Company
 from apps.crm import horaires, stages
 from apps.crm.cadence_reveil_saison import (
-    REVEIL_SAISON_CLE, motif_de_refus, poser_reveil_saisonnier,
+    REVEIL_SAISON_CLE, _motif_de_refus, _poser_reveil_saisonnier,
     poser_reveils_saisonniers,
 )
 from apps.crm.models import Lead, RelanceEtape
@@ -42,15 +42,15 @@ class ReveilOppositionTests(TestCase):
 
     def test_oppose_refuse(self):
         lead = self._froid('Opposé', ne_plus_contacter=True)
-        motif = motif_de_refus(lead, maintenant=EN_SAISON)
+        motif = _motif_de_refus(lead, maintenant=EN_SAISON)
         self.assertIsNotNone(motif)
         self.assertIn('opposition (ne plus contacter)', motif.lower())
-        self.assertIsNone(poser_reveil_saisonnier(lead, maintenant=EN_SAISON))
+        self.assertIsNone(_poser_reveil_saisonnier(lead, maintenant=EN_SAISON))
         poser_reveils_saisonniers(self.company, maintenant=EN_SAISON)
         self.assertEqual(self._touches(lead), 0)
 
     def test_non_oppose_inchange(self):
         lead = self._froid('Dormant')
-        self.assertIsNone(motif_de_refus(lead, maintenant=EN_SAISON))
+        self.assertIsNone(_motif_de_refus(lead, maintenant=EN_SAISON))
         poser_reveils_saisonniers(self.company, maintenant=EN_SAISON)
         self.assertEqual(self._touches(lead), 1)

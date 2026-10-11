@@ -22,8 +22,11 @@ from .serializers import (
 )
 
 
-class SalleVenteItemSerializer(serializers.ModelSerializer):
+class SalleVenteItemSerializer(_CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
     """NTCRM17 — un élément (devis/document/lien vidéo/note) d'une salle de vente."""
+
+    scoped_relations = ('salle',)
 
     class Meta:
         model = SalleVenteItem
@@ -178,7 +181,11 @@ class VisiteExterneSerializer(serializers.ModelSerializer):
             'ip', 'user_agent', 'langue', 'appareil_id', 'duree_s',
             'terminee', 'lead', 'lead_nom', 'created_at',
         ]
-        read_only_fields = fields
+        read_only_fields = [
+            'id', 'point', 'point_display', 'contexte', 'token_suffixe',
+            'ip', 'user_agent', 'langue', 'appareil_id', 'duree_s',
+            'terminee', 'lead', 'lead_nom', 'created_at',
+        ]
 
 
 class AppareilEquipeSerializer(serializers.ModelSerializer):
@@ -615,7 +622,10 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
         return value
 
 
-class EtapePlanActiviteSerializer(serializers.ModelSerializer):
+class EtapePlanActiviteSerializer(_CompanyScopedRelationsMixin,
+                                  serializers.ModelSerializer):
+    scoped_relations = ('plan', 'activity_type', 'assigne_par_defaut')
+
     class Meta:
         model = EtapePlanActivite
         fields = [
@@ -690,7 +700,10 @@ class ForecastSnapshotSerializer(serializers.ModelSerializer):
             'id', 'semaine_iso', 'categorie', 'montant_total', 'nb_leads',
             'owner', 'created_at',
         ]
-        read_only_fields = fields
+        read_only_fields = [
+            'id', 'semaine_iso', 'categorie', 'montant_total', 'nb_leads',
+            'owner', 'created_at',
+        ]
 
 
 class RevueCompteSerializer(_CompanyScopedRelationsMixin,
@@ -740,7 +753,9 @@ class PlaybookTacheSerializer(serializers.ModelSerializer):
         fields = ['id', 'etape', 'libelle', 'obligatoire', 'ordre']
 
 
-class PlaybookEtapeSerializer(serializers.ModelSerializer):
+class PlaybookEtapeSerializer(_CompanyScopedRelationsMixin,
+                              serializers.ModelSerializer):
+    scoped_relations = ('playbook',)
     stage_display = serializers.SerializerMethodField()
     taches = PlaybookTacheSerializer(many=True, read_only=True)
 
@@ -764,7 +779,9 @@ class PlaybookSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
-class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
+class LeadPlaybookProgressSerializer(_CompanyScopedRelationsMixin,
+                                     serializers.ModelSerializer):
+    scoped_relations = ('lead',)
     tache_libelle = serializers.CharField(source='tache.libelle', read_only=True)
     tache_obligatoire = serializers.BooleanField(
         source='tache.obligatoire', read_only=True)

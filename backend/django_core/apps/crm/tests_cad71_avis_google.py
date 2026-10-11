@@ -9,7 +9,7 @@ le lien de SA proposition à la place d'un lien vers la fiche Google.
 
 Fix : placeholder dédié `{lien_google}`, alimenté par
 `CompanyProfile.lien_avis_google` (réglage société) ; et
-`verifier_gabarit_assignable` refuse l'assignation du gabarit tant que ce
+`_verifier_gabarit_assignable` refuse l'assignation du gabarit tant que ce
 réglage est vide, en nommant le réglage manquant.
 """
 import datetime
@@ -26,7 +26,7 @@ from apps.crm.models import Client, Lead, RelanceEtape
 from apps.crm.cadence_messages import (
     GabaritNonAssignable,
     message_pour_etape,
-    verifier_gabarit_assignable,
+    _verifier_gabarit_assignable,
 )
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
@@ -50,20 +50,20 @@ class VerifierGabaritAssignableTests(TestCase):
     def test_refuse_avis_google_sans_lien_google(self):
         company = _company('cad71-vide', lien_avis_google='')
         with self.assertRaises(GabaritNonAssignable) as ctx:
-            verifier_gabarit_assignable(company, 'avis_google')
+            _verifier_gabarit_assignable(company, 'avis_google')
         self.assertIn('lien de la fiche Google', str(ctx.exception))
 
     def test_accepte_avis_google_avec_lien_google(self):
         company = _company(
             'cad71-rempli',
             lien_avis_google='https://g.page/r/exemple-taqinor/review')
-        verifier_gabarit_assignable(company, 'avis_google')  # ne lève rien
+        _verifier_gabarit_assignable(company, 'avis_google')  # ne lève rien
 
     def test_un_gabarit_sans_exigence_nest_jamais_refuse(self):
         """`identite` (et tout gabarit hors `_GABARITS_REGLAGE_REQUIS`) n'a
         aucune exigence — comportement historique inchangé."""
         company = _company('cad71-sans-exigence', lien_avis_google='')
-        verifier_gabarit_assignable(company, 'identite')  # ne lève rien
+        _verifier_gabarit_assignable(company, 'identite')  # ne lève rien
 
     def test_sans_profil_du_tout_le_refus_tient_quand_meme(self):
         """Une société sans `CompanyProfile` (jamais créé) ne doit pas planter
@@ -71,7 +71,7 @@ class VerifierGabaritAssignableTests(TestCase):
         company, _ = Company.objects.get_or_create(
             slug='cad71-sans-profil', defaults={'nom': 'cad71-sans-profil'})
         with self.assertRaises(GabaritNonAssignable):
-            verifier_gabarit_assignable(company, 'avis_google')
+            _verifier_gabarit_assignable(company, 'avis_google')
 
 
 class MessagePourEtapeAvisGoogleTests(TestCase):

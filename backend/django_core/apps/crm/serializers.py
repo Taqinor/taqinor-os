@@ -1575,7 +1575,11 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
             'remote_addr', 'received_at', 'processed', 'error', 'lead',
             'lead_nom',
         ]
-        read_only_fields = fields
+        read_only_fields = [
+            'id', 'company', 'source', 'source_display', 'payload',
+            'remote_addr', 'received_at', 'processed', 'error', 'lead',
+            'lead_nom',
+        ]
 
 
 # DC12 — Profil site/énergie réutilisable par client ─────────────────────────
@@ -1751,6 +1755,16 @@ class SavedViewSerializer(serializers.ModelSerializer):
         model = SavedView
         fields = ['id', 'page', 'name', 'rank', 'payload', 'created_at', 'user']
         read_only_fields = ['created_at']
+
+    def validate_user(self, value):
+        # ENF17 — `user` est un `HiddenField` (utilisateur courant, jamais
+        # lu du corps) : filet même-société, au cas où le défaut changerait.
+        request = self.context.get('request')
+        company_id = getattr(getattr(request, 'user', None), 'company_id', None)
+        if (company_id is not None
+                and getattr(value, 'company_id', company_id) != company_id):
+            raise serializers.ValidationError('Utilisateur introuvable.')
+        return value
 
 
 # ── QJ-EQUIPE-2 (14/09/2026) — visiteurs externes + registre appareils équipe ──

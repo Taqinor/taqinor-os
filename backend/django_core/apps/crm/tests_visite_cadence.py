@@ -418,7 +418,7 @@ class RetourVisiteTests(VisiteCadenceBase):
 
     def test_la_note_est_tronquee_sans_perdre_le_debut(self):
         long = 'x' * 4000
-        corps = cadence_visite.composer_note_retour_visite({'notes': long})
+        corps = cadence_visite._composer_note_retour_visite({'notes': long})
         self.assertLessEqual(len(corps), cadence_visite.RETOUR_VISITE_MAX)
         self.assertTrue(corps.endswith('…'))
         self.assertIn('Visite technique terminée', corps)

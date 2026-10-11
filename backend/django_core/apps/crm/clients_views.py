@@ -125,7 +125,7 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='analytics',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def analytics(self, request, pk=None):
         """NTCRM19 — nombre de vues, dernière vue, délai création→première
         vue (signal d'intérêt). Le suivi PAR ITEM n'est pas câblé
@@ -1149,7 +1149,21 @@ class LeadClientsActionsMixin:
         return Response(result)
 
 
-@extend_schema(responses=sd.OBJ)
+@extend_schema(responses=inline_serializer('CrmEquipesStatistiques', {
+    'equipes': serializers.ListField(child=inline_serializer('CrmEquipeStatistiques', {
+        'id': serializers.IntegerField(),
+        'nom': serializers.CharField(),
+        'responsable': serializers.CharField(allow_null=True),
+        'nb_membres': serializers.IntegerField(),
+        'pipeline_ouvert_count': serializers.IntegerField(),
+        'pipeline_ouvert_valeur': serializers.CharField(),
+        'pipeline_pondere': serializers.CharField(),
+        'activites_en_retard': serializers.IntegerField(),
+        'ca_signe_mois': serializers.CharField(),
+        'cible_ca_signe_mois': serializers.CharField(),
+        'avancement_pct': serializers.FloatField(allow_null=True),
+    })),
+}))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def equipes_statistiques(request):
@@ -1202,7 +1216,12 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
                 pass
         serializer.save(**extra)
 
-    @extend_schema(responses=sd.OBJ)
+    @extend_schema(responses=inline_serializer('CrmParrainageStats', {
+        'total': serializers.IntegerField(),
+        'par_statut': serializers.DictField(child=serializers.IntegerField()),
+        'recompenses_total': serializers.CharField(),
+        'recompenses_versees': serializers.CharField(),
+    }))
     @action(detail=False, methods=['get'], url_path='stats',
             permission_classes=[IsAnyRole])
     def stats(self, request):

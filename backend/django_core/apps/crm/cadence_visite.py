@@ -76,7 +76,7 @@ def _touche_pendante_du_plan(lead):
             .first())
 
 
-def suspendre_plan_jusqu_apres_visite(lead, user, date_prevue):
+def _suspendre_plan_jusqu_apres_visite(lead, user, date_prevue):
     """AMENDEMENT FONDATEUR (15/09/2026) — le plan se TAIT, il ne meurt pas.
 
     La touche pendante du protocole est REPORTÉE à ``date_prevue +
@@ -116,7 +116,7 @@ def suspendre_plan_jusqu_apres_visite(lead, user, date_prevue):
 
 # ── CAD-B ── CAD28 ──────────────────────────────────────────────────────────
 
-def reprendre_plan_apres_retour_visite(lead, user):
+def _reprendre_plan_apres_retour_visite(lead, user):
     """CAD28 — la reprise du protocole part du RETOUR RÉELLEMENT SAISI.
 
     La suspension calait la reprise sur la date PRÉVUE de la visite. Une
@@ -127,7 +127,7 @@ def reprendre_plan_apres_retour_visite(lead, user):
     Le retour de visite, lui, est déjà saisi (``appliquer_retour_visite``).
     On recale donc la touche pendante du protocole sur CE jour-là plus le
     délai de débrief, par la mécanique EXISTANTE — jamais une seconde :
-    ``suspendre_plan_jusqu_apres_visite`` avec la date du jour. Elle apporte
+    ``_suspendre_plan_jusqu_apres_visite`` avec la date du jour. Elle apporte
     ses deux garde-fous tels quels : aucune touche pendante ⇒ on ne CRÉE
     rien ; une touche déjà postérieure à la reprise ⇒ on ne la tire jamais EN
     AVANT (un retour tardif ne doit pas accélérer une relance).
@@ -139,7 +139,7 @@ def reprendre_plan_apres_retour_visite(lead, user):
 
     Rend la touche déplacée, ou ``None`` (les deux no-op ci-dessus).
     """
-    deplacee = suspendre_plan_jusqu_apres_visite(
+    deplacee = _suspendre_plan_jusqu_apres_visite(
         lead, user, aujourd_hui_local())
     if deplacee is None:
         return None
@@ -224,7 +224,7 @@ AVERTISSEMENT_VISITE_PRO = (
 MENTION_VISITE_PRO = 'Visite technique avant devis (règle site professionnel).'
 
 
-def visite_sans_devis(lead):
+def _visite_sans_devis(lead):
     """CAD123 — ce lead n'a-t-il encore reçu AUCUN devis (sorti du
     brouillon) ? Lecture par le sélecteur de ``ventes`` (frontière M3).
     Best-effort : dans le doute (lecture en échec), on répond NON — un
@@ -247,14 +247,14 @@ NOTE_DEVIS_APRES_VISITE = ('visite planifiée : le devis se prépare après la '
                            'visite')
 #: … et la phrase ajoutée, dans ce cas, à la note de planification.
 #: PARAM-CADENCE — la phrase porte le libellé RÉEL de l'étape annulée
-#: (``mention_devis_apres_visite``) ; cette constante est la phrase au
+#: (``_mention_devis_apres_visite``) ; cette constante est la phrase au
 #: libellé par défaut.
 MENTION_DEVIS_APRES_VISITE = (
     f'Étape « {FILET_JOINT_LIBELLE} » mise en attente : le devis se prépare '
     'après la visite.')
 
 
-def mention_devis_apres_visite(libelle):
+def _mention_devis_apres_visite(libelle):
     """La phrase de ``MENTION_DEVIS_APRES_VISITE`` au libellé réel."""
     return (f'Étape « {libelle or FILET_JOINT_LIBELLE} » mise en attente : '
             'le devis se prépare après la visite.')
@@ -289,15 +289,15 @@ def phrase_notification_retour_visite(etape):
     return NOTIF_RETOUR_VISITE_RAPPELER
 
 
-def aucun_devis_parti(lead):
+def _aucun_devis_parti(lead):
     """Décision fondateur du 24/09/2026 — AUCUN devis n'est encore parti vers
-    ce client : ni devis sorti du brouillon dans l'ERP (``visite_sans_devis``,
+    ce client : ni devis sorti du brouillon dans l'ERP (``_visite_sans_devis``,
     CAD123), ni suivi de proposition démarré sur un devis envoyé hors ERP.
 
     C'est le cas d'une visite qui PRÉCÈDE le devis : le devis se prépare
     APRÈS elle, et c'est lui — pas un débrief « rappeler le client » — que la
     visite doit faire naître."""
-    return visite_sans_devis(lead) and not _suivi_de_proposition_existe(lead)
+    return _visite_sans_devis(lead) and not _suivi_de_proposition_existe(lead)
 
 
 def avertissement_visite(lead):
@@ -305,7 +305,7 @@ def avertissement_visite(lead):
     l'écran qui planifie une visite : les deux textes quand aucun devis n'est
     parti, deux chaînes VIDES (jamais null) sinon. Aucun blocage : c'est une
     information, pas un refus."""
-    if visite_sans_devis(lead):
+    if _visite_sans_devis(lead):
         # AGR408 (D-AGR-4) — pompage au point d'eau inconnu : la visite de
         # relevé vient AVANT le devis, c'est la règle (le rappel juridique,
         # lui, est inchangé).
@@ -331,7 +331,7 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     1. la fiche porte la date (``Lead.visite_prevue_le``) — c'est elle que lit
        le message de confirmation ``{date_visite}`` ;
     2. sur un lead ACTIF : le plan après-devis en cours est SUSPENDU PAR
-       DÉCALAGE (``suspendre_plan_jusqu_apres_visite``) — jamais annulé. Le
+       DÉCALAGE (``_suspendre_plan_jusqu_apres_visite``) — jamais annulé. Le
        lead garde sa position exacte dans le protocole et, si la visite
        n'aboutit pas, le suivi reprend tout seul là où il en était ;
     3. UNE note de chatter, toujours — même sur un dossier qu'on ne relance
@@ -342,7 +342,7 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
        lendemain. Le filet « planifier la visite convenue », s'il traînait, est
        ANNULÉ : lui seul, et parce qu'il a rempli son office ;
     5. décision fondateur du 24/09/2026 — SANS devis parti
-       (``aucun_devis_parti``), l'étape « préparer et envoyer le devis »
+       (``_aucun_devis_parti``), l'étape « préparer et envoyer le devis »
        restée ouverte est ANNULÉE (le devis se prépare APRÈS la visite, le
        retour terrain la re-pose) et la note de l'étape 3 le dit.
 
@@ -362,9 +362,9 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
 
     relancable = _lead_relancable(lead)
     # Le décalage AVANT la note : c'est lui qui décide de la dernière phrase.
-    decalee = (suspendre_plan_jusqu_apres_visite(lead, user, date_prevue)
+    decalee = (_suspendre_plan_jusqu_apres_visite(lead, user, date_prevue)
                if relancable else None)
-    sans_devis = visite_sans_devis(lead)
+    sans_devis = _visite_sans_devis(lead)
     # Décision fondateur du 24/09/2026 — une visite planifiée SANS devis met
     # le devis EN ATTENTE d'elle : l'étape « préparer et envoyer le devis »
     # restée ouverte (filet « client joint », datée de demain) est ANNULÉE —
@@ -406,7 +406,7 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
                       if visite_point_eau_requise(lead)
                       else f' {MENTION_VISITE_SANS_DEVIS}')
     if devis_en_attente:
-        corps += f' {mention_devis_apres_visite(libelle_devis)}'
+        corps += f' {_mention_devis_apres_visite(libelle_devis)}'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
     # lead — même motif que ``arreter_cadence`` / ``initialiser_plan_relance``
     # (garde QJ7, qui traiterait sinon cette note comme un premier contact).
@@ -484,7 +484,7 @@ def clore_etape_apres_planification(etape, user, *, note='',
     COCKPIT-CONTRÔLE B8 — UNE ÉTAPE CLOSE GARDE L'ÉCHÉANCE QU'ELLE AVAIT
     QUAND ON L'A TRAITÉE. La planification vient de décaler le suivi pendant
     — cette touche comprise — jusqu'après la visite
-    (``suspendre_plan_jusqu_apres_visite``, un déplacement du MOTEUR) ; close
+    (``_suspendre_plan_jusqu_apres_visite``, un déplacement du MOTEUR) ; close
     telle quelle, la touche se lisait due APRÈS la visite, « traitée en
     avance », et le contrôle du suivi la jugeait sur un jour à venir.
     ``echeance_avant`` = ``(due_at, due_date, due_initial_at)`` lus par
@@ -633,7 +633,7 @@ def _lignes_qualification(qualification):
         return []
 
 
-def composer_note_retour_visite(retour, auteur='', qualification=None):
+def _composer_note_retour_visite(retour, auteur='', qualification=None):
     """La note de chatter du RETOUR TERRAIN, tronquée à ``RETOUR_VISITE_MAX``.
 
     La QUALIFICATION vient EN TÊTE (amendement fondateur n°2 du 15/09/2026) :
@@ -758,11 +758,11 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
        (visite faite sans avoir été planifiée dans l'ERP) ? On le pose, à
        condition que le lead soit encore relançable ;
     4. CAD28 — la reprise du PROTOCOLE est recalée sur CE retour plutôt que
-       sur la date prévue de la visite (``reprendre_plan_apres_retour_visite``),
+       sur la date prévue de la visite (``_reprendre_plan_apres_retour_visite``),
        et jamais tirée en avant.
 
     VISITE SANS DEVIS (décision fondateur du 24/09/2026 — « et même après ça
-    rien ne se passe »). Quand aucun devis n'est parti (``aucun_devis_parti``)
+    rien ne se passe »). Quand aucun devis n'est parti (``_aucun_devis_parti``)
     et que le terrain ne dit pas « devis à modifier / à refaire », la suite du
     retour n'est PAS un débrief « rappeler le client » — il n'y a encore rien
     à conclure — mais la tâche de PRODUCTION « Préparer et envoyer le devis
@@ -773,8 +773,8 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
     l'étape devis.
 
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
-    corps = composer_note_retour_visite(retour, auteur=auteur,
-                                        qualification=qualification)
+    corps = _composer_note_retour_visite(retour, auteur=auteur,
+                                         qualification=qualification)
     # Relevé du 25/09/2026 — la visite a EU LIEU : une « Confirmer la visite
     # (veille) » encore ouverte (retour saisi avant que la confirmation soit
     # cochée) n'a plus d'objet. Annulée par le moteur (CKP1, jamais « sautée
@@ -787,7 +787,7 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
             traite_le=timezone.now())
     cle, jours, rappel_choisi = _plan_du_debrief(qualification, lead)
     if (cle == CLE_DEBRIEF and _lead_relancable(lead)
-            and aucun_devis_parti(lead)):
+            and _aucun_devis_parti(lead)):
         etape = poser_etape_preparer_devis(
             lead, origine='retour de visite technique', user=user,
             jours=jours if rappel_choisi else None,
@@ -816,10 +816,10 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
         return None
     # CAD28 — la reprise du protocole part d'ICI, du retour réellement saisi,
     # et plus de la date PRÉVUE de la visite (voir
-    # ``reprendre_plan_apres_retour_visite``). Best-effort : un recalage
+    # ``_reprendre_plan_apres_retour_visite``). Best-effort : un recalage
     # impossible ne doit jamais faire échouer la redescente du terrain.
     try:
-        reprendre_plan_apres_retour_visite(lead, user)
+        _reprendre_plan_apres_retour_visite(lead, user)
     except Exception:  # noqa: BLE001 — jamais bloquant pour le retour terrain
         logger.warning(
             'CAD28: reprise du plan non recalée sur le retour (lead #%s)',

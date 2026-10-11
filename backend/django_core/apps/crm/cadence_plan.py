@@ -1628,9 +1628,9 @@ def _saisie_relance_echue(lead):
 # se déclenche par un appel explicite, jamais à l'insu de la commerciale.
 
 
-def poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
+def _poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
     """CAD74 — pose LA touche `reveil_b` sur un dormant (ou ``None``)."""
-    from .cadence_reveil_saison import poser_reveil_saisonnier as _poser
+    from .cadence_reveil_saison import _poser_reveil_saisonnier as _poser
     return _poser(lead, user, maintenant=maintenant)
 
 
@@ -1700,7 +1700,7 @@ MOTIF_VALIDITE_ATTENTE = "en attente d'un accord (réglage société)"
 CADENCE_DEUXIEME_AFFAIRE = 'deuxieme_affaire'
 
 
-def homonymes_signes(lead):
+def _homonymes_signes(lead):
     """Les fiches SIGNÉES qui partagent le téléphone ou l'e-mail de ``lead``.
 
     Lecture pure (aucune écriture) : sert à la garde, au geste manuel et au
@@ -1724,7 +1724,7 @@ def _demarrer_deuxieme_affaire(lead, user):
     même tolérance que le reste du moteur : jamais d'exception vers
     l'appelant).
     """
-    anciens = homonymes_signes(lead)
+    anciens = _homonymes_signes(lead)
     refs = ', '.join(f'#{autre.pk}' for autre in anciens[:3])
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
