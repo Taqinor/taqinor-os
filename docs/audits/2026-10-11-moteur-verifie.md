@@ -55,8 +55,8 @@ correction AMOT77 déposée au plan, conformément à la règle « pas de consta
 
 | Tâche | Constat | Écart de | Grav. | Cause | Suite |
 |---|---|---|---|---|---|
-| AMOT77 | C-AMOT-VER-001 | AMOT73 | S2 | `generate_devis_premium.py::apply_quote_data` garde `float(data.get("taux_tva",20) or 20)` (whitelisté `A_CORRIGER`, pas corrigé) → un devis 0 % rendu en premium calcule 20 % ; le DONE LOG l'admet | tâche v3 déposée (`PLAN_AUDIT_MOTEUR.md`, @model opus) |
-| AMOT78 | C-AMOT-VER-002 | AMOT58 | S3 | la déduction unique du rendement batterie ne couvre que le modèle HORAIRE ; le modèle factures/estimation reste BRUT (double comptage), commit AMOT58 « volet factures/estimation non traité » | tâche v3 déposée |
+| AMOT77 | C-AMOT-VER-001 | AMOT73 | S2 | `generate_devis_premium.py::apply_quote_data` garde `float(data.get("taux_tva",20) or 20)` (whitelisté `A_CORRIGER`, pas corrigé) → un devis 0 % rendu en premium calcule 20 % ; le DONE LOG l'admet | tâche v3 déposée (`PLAN_AUDIT_TRANSVERSE.md`, multi-propriétaires moteur + deploy, @model opus) |
+| AMOT78 | C-AMOT-VER-002 | AMOT58 | S3 | la déduction unique du rendement batterie ne couvre que le modèle HORAIRE ; le modèle factures/estimation reste BRUT (double comptage), commit AMOT58 « volet factures/estimation non traité » | tâche v3 déposée (`PLAN_AUDIT_TRANSVERSE.md`, multi-propriétaires moteur + devis, @atomique) |
 
 **Constats S1 : 0.** AMOT73 est jugé S2 (le trigger est étroit — devis exonéré 0 % — et le chemin courant des totaux
 vient du noyau, correct ; `builder.py` résout déjà `is not None` pour les nouveaux rendus). AMOT ne devient donc pas
