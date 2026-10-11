@@ -178,9 +178,9 @@ CHARGES_FIXES_SOURCE = (
 # Facture A : 592,77 en virement/prélèvement, 594,25 en espèces — soit
 # exactement +0,25 %. C'est un FRAIS DE MODE DE PAIEMENT, pas une composante
 # du prix du kWh : l'inclure ferait dépendre l'économie solaire de la façon
-# dont le client règle sa facture. Exposé comme constante pour qui veut
-# l'afficher, jamais appliqué par :func:`facture_mad`.
-TIMBRE_ESPECES_PCT = 0.0025
+# dont le client règle sa facture. Jamais appliqué par :func:`facture_mad` ;
+# le taux (0,25 %) ne vit que dans le test qui reproduit la facture A
+# (ENF15/AMOT75 : aucune constante publique sans lecteur de production).
 
 
 # ════════════════════════════════════════════════════════════════════════════

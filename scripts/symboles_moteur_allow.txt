@@ -7,4 +7,3 @@
 backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TSS_C_KWH
 backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURD_C_KWH
 backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURT_C_KWH
-backend/django_core/apps/ventes/quote_engine/bareme.py::TIMBRE_ESPECES_PCT
