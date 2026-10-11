@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from .models import (
     AbonnementMonitoring, CleaningEvent, MonitoringConfig, MonitoringSettings,
-    ProductionReading, ProductionWarranty,
+    ProductionReading, ProductionWarranty, SlaDisponibilite,
 )
 from .providers import available_providers
 
@@ -166,3 +166,36 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
             'client_id', 'statut', 'prochaine_echeance', 'motif_resiliation',
             'date_creation',
         ]
+
+
+class SlaDisponibiliteSerializer(serializers.ModelSerializer):
+    """ASAV101 — SLA de disponibilité d'un système. Le taux garanti est SAISI
+    (aucun défaut, CIQ644) ; la compensation par jour vient de la saisie
+    (0 = aucune compensation chiffrée). ``company`` posée côté serveur."""
+
+    class Meta:
+        model = SlaDisponibilite
+        fields = [
+            'id', 'installation', 'disponibilite_garantie_pct',
+            'compensation_mad_par_jour_indispo', 'note', 'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {'disponibilite_garantie_pct': {
+            'required': True, 'allow_null': False}}
+
+    def validate_installation(self, value):
+        request = self.context.get('request')
+        if request is not None and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Système inconnu.')
+        return value
+
+    def validate_disponibilite_garantie_pct(self, value):
+        if value is None or value <= 0 or value > 100:
+            raise serializers.ValidationError('Saisir le taux garanti.')
+        return value
+
+    def validate_compensation_mad_par_jour_indispo(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError('Compensation invalide.')
+        return value

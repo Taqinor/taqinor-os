@@ -38,12 +38,12 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
     AbonnementMonitoring, CleaningEvent, MonitoringConfig, MonitoringSettings,
-    ProductionReading, ProductionWarranty,
+    ProductionReading, ProductionWarranty, SlaDisponibilite,
 )
 from .providers import available_providers
 from .serializers import (
     AbonnementMonitoringSerializer, CleaningEventSerializer,
-    MonitoringConfigSerializer,
+    MonitoringConfigSerializer, SlaDisponibiliteSerializer,
     MonitoringSettingsSerializer, ProductionReadingSerializer,
     ProductionWarrantySerializer,
 )
@@ -927,3 +927,58 @@ class AbonnementMonitoringViewSet(TenantMixin, viewsets.ModelViewSet):
         except AbonnementMonitoringError as exc:
             raise serializers.ValidationError(_erreur_abonnement(exc))
         return Response(self.get_serializer(abonnement).data)
+
+
+@extend_schema_view(list=extend_schema(
+    parameters=_FILTRE_INSTALLATION))
+class SlaDisponibiliteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ASAV101 (D-ASAV-4 option (b), ASAV93) — SLA de disponibilité par
+    système : saisie du taux garanti (aucun défaut) et action ``ecart`` qui
+    compare l'indice de suivi mesuré au taux garanti
+    (``selectors.disponibilite_vs_garantie``). Responsable/admin seulement ;
+    société forcée côté serveur (TenantMixin.perform_create). Contrat :
+    ``contract_samples/sla_disponibilite.json``."""
+    queryset = SlaDisponibilite.objects.select_related('installation').all()
+    serializer_class = SlaDisponibiliteSerializer
+    parser_classes = [JSONParser]
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = identifiant(self.request, 'installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        return qs
+
+    @extend_schema(parameters=[_WINDOW], responses=inline_serializer(
+        'MonitoringSlaDisponibiliteEcart', {
+            'has_sla': serializers.BooleanField(),
+            'installation': serializers.IntegerField(required=False),
+            'window_days': serializers.IntegerField(required=False),
+            'libelle_indicateur': serializers.CharField(required=False),
+            'disponibilite_garantie_pct': serializers.FloatField(
+                required=False, allow_null=True),
+            'disponibilite_mesuree_pct': serializers.FloatField(
+                required=False, allow_null=True),
+            'ecart_pct': serializers.FloatField(
+                required=False, allow_null=True),
+            'sous_garantie': serializers.BooleanField(required=False),
+            'jours_indisponibilite_excedentaire': serializers.FloatField(
+                required=False, allow_null=True),
+            'penalite_mad': serializers.FloatField(
+                required=False, allow_null=True),
+        }))
+    @action(detail=True, methods=['get'], url_path='ecart',
+            permission_classes=[IsResponsableOrAdmin])
+    def ecart(self, request, pk=None):
+        """Indice de suivi mesuré vs taux garanti + pénalité (tarif saisi ;
+        ``null`` tant que l'engagement de production n'est pas validé).
+        ?window_days=365 (défaut, 1..1825). 404 hors société."""
+        from .selectors import disponibilite_vs_garantie
+        sla = self.get_object()
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
+        return Response(disponibilite_vs_garantie(
+            sla.installation, window_days=window))

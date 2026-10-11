@@ -50,18 +50,11 @@
     {
       "id": "sla_disponibilite",
       "libelle": "Disponibilité mesurée comparée au SLA de disponibilité garanti",
-      "manquante": true,
-      "raison": "`SlaDisponibilite` et son sélecteur `disponibilite_vs_garantie` existent et sont testés, mais aucun appelant du code vivant (vue, tâche, rapport) ne les lit, et aucune vue n'écrit un `SlaDisponibilite`.",
-      "attendu": "Une action ou un rapport qui appelle `disponibilite_vs_garantie` et un écran de saisie du taux garanti (tâche ASAV).",
-      "declencheur": {"manquant": true},
-      "fonction_entree": {"manquant": true},
-      "checkpoint": {"persistance": "apps/monitoring/models.py::SlaDisponibilite", "description": "Taux garanti par système, sans valeur par défaut (CIQ644)."},
+      "declencheur": {"type": "http", "source": "apps/monitoring/views.py::SlaDisponibiliteViewSet.ecart"},
+      "fonction_entree": "apps/monitoring/selectors.py::disponibilite_vs_garantie",
+      "checkpoint": {"persistance": "apps/monitoring/models.py::SlaDisponibilite", "description": "Taux garanti par système, sans valeur par défaut (CIQ644), saisi depuis l'écran SAV/monitoring (ASAV101)."},
       "regles_aval": [
-        {"regle": "Le sélecteur compare la disponibilité mesurée au taux garanti et chiffre la compensation.", "source": "apps/monitoring/selectors.py::disponibilite_vs_garantie"}
-      ],
-      "preuves_absence": [
-        {"motif": "disponibilite_vs_garantie", "racine": "apps", "fichiers_autorises": ["apps/monitoring/models.py", "apps/monitoring/selectors.py"]},
-        {"motif": "SlaDisponibilite\\b", "racine": "apps", "fichiers_autorises": ["apps/monitoring/models.py", "apps/monitoring/selectors.py"]}
+        {"regle": "La pénalité (tarif saisi par jour d'indisponibilité excédentaire) n'est chiffrée que si la société a validé l'engagement de production.", "source": "apps/monitoring/selectors.py::_garantie_production_autorisee"}
       ]
     },
     {

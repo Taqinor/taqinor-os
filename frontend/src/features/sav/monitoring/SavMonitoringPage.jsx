@@ -2,10 +2,12 @@
 // les fonctions monitoring jusque-là dormantes (sans route ni écran) rendues
 // utilisables. Responsable/admin (route gardée par le module SAV, chaque
 // endpoint gardé côté serveur). Une section par fonction :
-//   * ASAV100 — abonnements de supervision (création, résiliation).
+//   * ASAV100 — abonnements de supervision (création, résiliation) ;
+//   * ASAV101 — SLA de disponibilité (taux garanti saisi, écart, pénalité).
 import { TooltipProvider } from '../../../ui'
 import useSupervisedSystems from '../../../pages/monitoring/useSupervisedSystems'
 import AbonnementsSection from './AbonnementsSection'
+import SlaDisponibiliteSection from './SlaDisponibiliteSection'
 
 export default function SavMonitoringPage() {
   const { systems, loading } = useSupervisedSystems()
@@ -19,6 +21,7 @@ export default function SavMonitoringPage() {
           </p>
         </header>
         <AbonnementsSection systems={systems} loadingSystems={loading} />
+        <SlaDisponibiliteSection systems={systems} loadingSystems={loading} />
       </div>
     </TooltipProvider>
   )

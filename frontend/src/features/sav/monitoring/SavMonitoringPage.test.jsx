@@ -6,8 +6,11 @@ import userEvent from '@testing-library/user-event'
 // viennent des exemples COMMITTÉS que le test backend affirme (PACT10) —
 // jamais un mock écrit à la main.
 import ABONNEMENTS from '../../../../../backend/django_core/apps/monitoring/contract_samples/abonnements_monitoring.json'
+import SLA from '../../../../../backend/django_core/apps/monitoring/contract_samples/sla_disponibilite.json'
 
-const serveur = vi.hoisted(() => ({ abonnements: null, creations: [], resiliations: [] }))
+const serveur = vi.hoisted(() => ({
+  abonnements: null, creations: [], resiliations: [], slas: null, slaSaves: [], ecarts: [],
+}))
 
 vi.mock('../../../api/monitoringApi', () => ({
   default: {
@@ -15,6 +18,15 @@ vi.mock('../../../api/monitoringApi', () => ({
       { id: 5, installation: 87 },
     ] } })),
     getAbonnements: vi.fn(() => Promise.resolve({ data: serveur.abonnements })),
+    getSlasDisponibilite: vi.fn(() => Promise.resolve({ data: serveur.slas })),
+    saveSlaDisponibilite: vi.fn((id, data) => {
+      serveur.slaSaves.push({ id, data })
+      return Promise.resolve({ data: SLA.exemple_liste.reponse.results[0] })
+    }),
+    getSlaEcart: vi.fn((id) => {
+      serveur.ecarts.push(id)
+      return Promise.resolve({ data: SLA.exemple })
+    }),
     creerAbonnement: vi.fn((data) => {
       serveur.creations.push(data)
       return Promise.resolve({ data: ABONNEMENTS.exemple.results[0] })
@@ -41,11 +53,16 @@ afterEach(() => {
   cleanup()
   serveur.creations.length = 0
   serveur.resiliations.length = 0
+  serveur.slaSaves.length = 0
+  serveur.ecarts.length = 0
 })
+
+const vide = { count: 0, next: null, previous: null, results: [] }
 
 describe('SavMonitoringPage — ASAV100 abonnements de supervision', () => {
   it('liste les abonnements servis, en crée un et le résilie (motif obligatoire)', async () => {
     serveur.abonnements = ABONNEMENTS.exemple
+    serveur.slas = vide
     const user = userEvent.setup()
     render(<SavMonitoringPage />)
 
@@ -72,5 +89,33 @@ describe('SavMonitoringPage — ASAV100 abonnements de supervision', () => {
     ]))
     await waitFor(() => expect(within(section).getByRole('listitem')).toHaveTextContent('Résilié'))
     expect(screen.queryByRole('button', { name: 'Résilier' })).not.toBeInTheDocument()
+  }, 60000)
+})
+
+describe('SavMonitoringPage — ASAV101 SLA de disponibilité', () => {
+  it('saisit le taux garanti et affiche l’écart servi par le serveur', async () => {
+    serveur.abonnements = vide
+    serveur.slas = SLA.exemple_liste.reponse
+    const user = userEvent.setup()
+    render(<SavMonitoringPage />)
+
+    const section = await screen.findByRole('region', { name: 'SLA de disponibilité' })
+    const ligne = await within(section).findByRole('listitem')
+    expect(ligne).toHaveTextContent('CHT-87 — Alami')
+
+    // Le système a déjà un SLA : l'enregistrement le MODIFIE (PATCH, id servi).
+    await user.type(within(section).getByLabelText('Taux de disponibilité garanti (%)'), '97', { delay: null })
+    await user.click(within(section).getByRole('button', { name: 'Enregistrer le SLA' }))
+    await waitFor(() => expect(serveur.slaSaves).toHaveLength(1))
+    expect(serveur.slaSaves[0]).toMatchObject({
+      id: SLA.exemple_liste.reponse.results[0].id,
+      data: { installation: 87, disponibilite_garantie_pct: '97' },
+    })
+
+    await user.click(within(section).getByRole('button', { name: "Calculer l'écart" }))
+    await waitFor(() => expect(serveur.ecarts).toEqual([SLA.exemple_liste.reponse.results[0].id]))
+    expect(await within(section).findByText('Sous la garantie')).toBeInTheDocument()
+    expect(ligne).toHaveTextContent(SLA.exemple.libelle_indicateur)
+    expect(ligne).toHaveTextContent(/456,50/)
   }, 60000)
 })

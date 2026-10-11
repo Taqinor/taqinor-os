@@ -85,6 +85,15 @@ const monitoringApi = {
   creerAbonnement: (data) => api.post('/monitoring/abonnements/', data),
   resilierAbonnement: (id, motif) =>
     api.post(`/monitoring/abonnements/${id}/resilier/`, { motif }),
+
+  // ── ASAV101 — SLA de disponibilité (écran SAV/monitoring) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/sla_disponibilite.json
+  getSlasDisponibilite: (params) => api.get('/monitoring/sla-disponibilite/', { params }),
+  saveSlaDisponibilite: (id, data) => id
+    ? api.patch(`/monitoring/sla-disponibilite/${id}/`, data)
+    : api.post('/monitoring/sla-disponibilite/', data),
+  getSlaEcart: (id, params) =>
+    api.get(`/monitoring/sla-disponibilite/${id}/ecart/`, { params }),
 }
 
 export default monitoringApi
