@@ -203,7 +203,9 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         """
         return Response(selectors.consolidation_groupe(request.user.company))
 
-    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
+    @extend_schema(responses={
+        (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY,
+    })
     @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
     def export(self, request):
         """NTADM28 — export xlsx du référentiel (code/nom/parent/actif).
