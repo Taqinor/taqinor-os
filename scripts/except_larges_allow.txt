@@ -396,9 +396,6 @@ backend/django_core/apps/statuspage/tasks.py::rafraichir_composants
 backend/django_core/apps/statuspage/views.py::_envoyer_email_confirmation
 backend/django_core/apps/trash/serializers.py::ElementSupprimeSerializer.get_avertissement_restauration
 backend/django_core/apps/uxviews/views.py::FavoriUtilisateurViewSet.importer
-backend/django_core/apps/ventes/domain/encaissements.py::_verifier_delai_acompte_domicile
-backend/django_core/apps/ventes/domain/facturation_ops.py::generer_facture_intervention
-backend/django_core/apps/ventes/domain/facturation_ops.py::generer_facture_ticket_sav
 backend/django_core/apps/ventes/quote_engine/agricole/garanties.py::_est_panneau
 backend/django_core/apps/ventes/quote_engine/agricole/renderer.py::debordement
 backend/django_core/apps/ventes/quote_engine/agricole/renderer.py::mesurer_talon

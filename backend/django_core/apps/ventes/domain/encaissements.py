@@ -19,9 +19,12 @@ NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom
 précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
 """
+import logging
 from decimal import Decimal
 
 from apps.stock.services import qr_svg_for
+
+logger = logging.getLogger("apps.ventes.services")
 
 # Tolérance d'arrondi partagée par toutes les gardes d'argent de ce module :
 # un centime, exactement comme le chemin unitaire (ERR72, `views/facture.py`)
@@ -1382,6 +1385,7 @@ def _verifier_delai_acompte_domicile(facture, date_paiement=None):
     except AcompteAvantDelaiLegal:
         raise
     except Exception:  # noqa: BLE001 — une chaîne incomplète ne bloque rien
+        logger.warning("encaissements._verifier_delai_acompte_domicile : erreur ignorée (mode dégradé)", exc_info=True)
         return
     bon.verifier_encaissement_acompte(a_la_date=date_paiement)
 
