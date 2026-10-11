@@ -1,4 +1,4 @@
-﻿"""ASTK249 — sortie de stock d'un chantier hors quarantaine.
+"""ASTK249 — sortie de stock d'un chantier hors quarantaine.
 
 Module séparé : `services.py` est un fichier-mur.
 """
