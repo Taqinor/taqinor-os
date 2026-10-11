@@ -218,7 +218,7 @@ class _HelperCollector(ast.NodeVisitor):
         self.helpers: dict[str, dict] = {}
         self.functions: dict[str, ast.FunctionDef] = {}
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.functions.setdefault(node.name, node)
         creation = None
         for child in ast.walk(node):

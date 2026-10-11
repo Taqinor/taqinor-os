@@ -218,7 +218,7 @@ def is_test_file(path: Path) -> bool:
 
 def load_canonical() -> list[str]:
     namespace: dict = {}
-    exec(STAGES_FILE.read_text(encoding="utf-8"), namespace)  # noqa: S102 — our own file
+    exec(STAGES_FILE.read_text(encoding="utf-8"), namespace)  # our own file
     stages = namespace.get("STAGES")
     if not isinstance(stages, (list, tuple)):
         sys.exit("STAGES.py must define STAGES as a list of stage names.")

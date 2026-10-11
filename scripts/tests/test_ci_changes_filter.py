@@ -226,7 +226,7 @@ def _expr(cond, results, outputs):
     texte = texte.replace("&&", " and ").replace("||", " or ")
     if re.search(r"contains\(|github\.|failure\(\)|cancelled\(\)", texte):
         raise AssertionError(f"condition hors du sous-ensemble emule : {cond}")
-    return bool(eval(texte, {"__builtins__": {}}, {"R": results, "O": outputs}))  # noqa: S307
+    return bool(eval(texte, {"__builtins__": {}}, {"R": results, "O": outputs}))
 
 
 def _verdict(jobs, nom, results, outputs):
