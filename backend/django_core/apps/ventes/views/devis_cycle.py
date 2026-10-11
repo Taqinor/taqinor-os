@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
+from ..utils.corps import valider_corps
 from rest_framework import status
 from rest_framework import serializers
 from rest_framework.decorators import action
@@ -309,19 +310,12 @@ class DevisCycleActionsMixin:
             GAMME_NOMS_DEFAUT, creer_variante_gamme, gamme_info,
         )
         source = self.get_object()
+        corps = valider_corps(request, D.DupliquerVarianteGammeRequest)
         nom = (str(request.data.get('nom') or '').strip()
                or GAMME_NOMS_DEFAUT[1])
         nom_source = (str(request.data.get('nom_source') or '').strip()
                       or None)
-        brut_recommandee = request.data.get('recommandee')
-        recommandee = brut_recommandee in (True, 'true', 'True', '1', 1, 'on')
-        # ENF11 — un « recommandee » qui n'est pas un booléen reconnu est
-        # refusé (il valait silencieusement « non »).
-        if not recommandee and brut_recommandee not in (
-                None, '', False, 'false', 'False', '0', 0, 'off'):
-            return Response(
-                {'recommandee': 'Booléen attendu (true ou false).'},
-                status=status.HTTP_400_BAD_REQUEST)
+        recommandee = bool(corps.get('recommandee', False))
         try:
             soeur = creer_variante_gamme(
                 source, nom, user=request.user,
@@ -566,6 +560,7 @@ class DevisCycleActionsMixin:
         from datetime import date as _date
         from ..services import accept_devis, AcceptError
         devis = self.get_object()
+        valider_corps(request, D.AccepterRequest)
         nom = (request.data.get('nom') or '').strip()
         date_str = (request.data.get('date') or '').strip()
         try:
@@ -680,6 +675,7 @@ class DevisCycleActionsMixin:
         # rangé sous son libellé exact ; un nom inconnu/archivé ⇒ 400 et le
         # devis reste en l'état. Un refus SANS motif reste accepté tant que la
         # question fondateur AGRM37 (motif obligatoire ?) est ouverte.
+        valider_corps(request, D.RefuserRequest)
         motif_saisi = (request.data.get('motif') or '').strip()
         motif = ''
         if motif_saisi:

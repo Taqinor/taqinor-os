@@ -11,6 +11,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers as s
 
+from core.champs_stricts import BooleenStrict, ChaineStricte
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
@@ -26,7 +27,7 @@ def _ser(name, fields, **kwargs):
 
 
 # ---------------------------------------------------------------- devis
-GAMME_ENVOI = s.CharField(required=False, allow_blank=True)
+GAMME_ENVOI = ChaineStricte(required=False, allow_blank=True)
 
 _SECTIONS_LIEN = ('roof3d', 'sld', 'pdf', 'bankable', 'economies',
                   'jour_type', 'gammes', 'taille_eco', 'taille_max')
@@ -53,10 +54,10 @@ ShareLinkResponse = _ser('DevisShareLinkResponse', {
 })
 
 EnvoyerEmailRequest = _ser('DevisEnvoyerEmailRequest', {
-    'to_email': s.CharField(required=False, allow_blank=True),
-    'sujet': s.CharField(required=False, allow_blank=True),
-    'corps': s.CharField(required=False, allow_blank=True),
-    'pdf_mode': s.CharField(required=False, allow_blank=True),
+    'to_email': ChaineStricte(required=False, allow_blank=True),
+    'sujet': ChaineStricte(required=False, allow_blank=True),
+    'corps': ChaineStricte(required=False, allow_blank=True),
+    'pdf_mode': ChaineStricte(required=False, allow_blank=True),
     'gamme_envoi': GAMME_ENVOI,
 })
 EnvoyerEmailResponse = _ser('DevisEnvoyerEmailResponse', {
@@ -74,7 +75,7 @@ EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
 })
 
 WhatsappRequest = _ser('DevisWhatsappRequest', {
-    'langue': s.CharField(required=False, allow_blank=True),
+    'langue': ChaineStricte(required=False, allow_blank=True),
     'gamme_envoi': GAMME_ENVOI,
 })
 WhatsappResponse = _ser('DevisWhatsappResponse', {
@@ -98,7 +99,7 @@ PdfPartageResponse = _ser('DevisPdfPartageResponse', {
     'devis_statut': s.CharField(),
 })
 ContacterSuperieurRequest = _ser('DevisContacterSuperieurRequest', {
-    'message': s.CharField(required=False, allow_blank=True),
+    'message': ChaineStricte(required=False, allow_blank=True),
 })
 ContacterSuperieurResponse = _ser('DevisContacterSuperieurResponse', {
     'detail': s.CharField(),
@@ -119,9 +120,9 @@ DupliquerVarianteRequest = _ser('DevisDupliquerVarianteRequest', {
     'variante_pct': s.FloatField(required=False),
 })
 DupliquerVarianteGammeRequest = _ser('DevisDupliquerVarianteGammeRequest', {
-    'nom': s.CharField(required=False, allow_blank=True),
-    'nom_source': s.CharField(required=False, allow_blank=True),
-    'recommandee': s.BooleanField(required=False),
+    'nom': ChaineStricte(required=False, allow_blank=True),
+    'nom_source': ChaineStricte(required=False, allow_blank=True),
+    'recommandee': BooleenStrict(required=False),
 })
 
 PrefillSiteResponse = _ser('DevisPrefillSiteResponse', {
@@ -142,7 +143,7 @@ ExclureRelanceRequest = _ser('FactureExclureRelanceRequest', {
 })
 FactureWhatsappRequest = _ser('FactureWhatsappRequest', {
     'modele': s.ChoiceField(choices=['facture', 'relance'], required=False),
-    'langue': s.CharField(required=False, allow_blank=True),
+    'langue': ChaineStricte(required=False, allow_blank=True),
 })
 FactureWhatsappResponse = _ser('FactureWhatsappResponse', {
     'wa_url': s.CharField(),
@@ -517,18 +518,18 @@ DeriveResponse = _ser('DevisDeriveResponse', {
 })
 
 AccepterRequest = _ser('DevisAccepterRequest', {
-    'nom': s.CharField(required=False, allow_blank=True),
-    'date': s.CharField(required=False, allow_blank=True),
-    'option': s.CharField(required=False, allow_blank=True),
+    'nom': ChaineStricte(required=False, allow_blank=True),
+    'date': ChaineStricte(required=False, allow_blank=True),
+    'option': ChaineStricte(required=False, allow_blank=True),
     'entreprise': s.DictField(required=False, allow_null=True),
-    'override_credit': s.BooleanField(required=False),
-    'override_avertissement': s.BooleanField(required=False),
+    'override_credit': BooleenStrict(required=False),
+    'override_avertissement': BooleenStrict(required=False),
 })
 RefuserRequest = _ser('DevisRefuserRequest', {
-    'motif': s.CharField(required=False, allow_blank=True),
-    'note': s.CharField(required=False, allow_blank=True),
-    'date': s.CharField(required=False, allow_blank=True),
-    'marquer_lead_perdu': s.BooleanField(required=False),
+    'motif': ChaineStricte(required=False, allow_blank=True),
+    'note': ChaineStricte(required=False, allow_blank=True),
+    'date': ChaineStricte(required=False, allow_blank=True),
+    'marquer_lead_perdu': BooleenStrict(required=False),
 })
 #: Au moins un caractère non blanc (le serveur ``strip()`` puis refuse le vide).
 _NON_BLANC = r'\S'
@@ -689,8 +690,8 @@ ErreurEconomie = _ser('DevisErreurEconomie', {
 FacturerCompletRequest = _ser('DevisFacturerCompletRequest', {
     'paiements': s.ListField(child=s.DictField(), required=False,
                              max_length=5),
-    'override_credit': s.BooleanField(required=False),
-    'override_avertissement': s.BooleanField(required=False),
+    'override_credit': BooleenStrict(required=False),
+    'override_avertissement': BooleenStrict(required=False),
 })
 FacturerCompletResponse = _ser('DevisFacturerCompletResponse', {
     'facture_id': s.IntegerField(),
@@ -788,10 +789,10 @@ ErreurRetenue = _ser('FactureErreurChamp', {
     'action_attendue': s.CharField(required=False),
 })
 EnvoyerEmailFactureRequest = _ser('FactureEnvoyerEmailRequest', {
-    'to_email': s.CharField(required=False, allow_blank=True),
-    'sujet': s.CharField(required=False, allow_blank=True),
-    'corps': s.CharField(required=False, allow_blank=True),
-    'attach_pdf': s.BooleanField(required=False),
+    'to_email': ChaineStricte(required=False, allow_blank=True),
+    'sujet': ChaineStricte(required=False, allow_blank=True),
+    'corps': ChaineStricte(required=False, allow_blank=True),
+    'attach_pdf': BooleenStrict(required=False),
 })
 EnvoyerEmailFactureResponse = _ser('FactureEnvoyerEmailResponse', {
     'detail': s.CharField(),

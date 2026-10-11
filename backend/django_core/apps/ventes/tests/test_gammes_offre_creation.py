@@ -84,7 +84,13 @@ class TestCreerVarianteGamme(GammeBase):
                              format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertFalse(Devis.objects.filter(version_parent=d).exists())
-        for brut in (True, False, 'true', '0'):
+        # ENF11 — strictement booléen (le schéma dit « boolean ») : "true",
+        # "0" ou 1 sont refusés, un vrai booléen JSON passe.
+        for brut in ('true', '0', 1, None):
+            ko = self.api.post(url_gamme(d.id), {'recommandee': brut},
+                               format='json')
+            self.assertEqual(ko.status_code, 400, (brut, ko.data))
+        for brut in (True, False):
             ok = self.api.post(url_gamme(d.id), {'recommandee': brut},
                                format='json')
             self.assertEqual(ok.status_code, 201, (brut, ok.data))

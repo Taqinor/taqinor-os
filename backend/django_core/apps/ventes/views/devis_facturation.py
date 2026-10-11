@@ -21,6 +21,7 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin,
 )
 from ..utils.references import create_with_reference
+from ..utils.corps import valider_corps
 import logging
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,7 @@ class DevisFacturationActionsMixin:
         marge dans la réponse.
         """
         devis = self.get_object()
+        valider_corps(request, D.FacturerCompletRequest)
         from ..models import Facture
         from ..domain.encaissements import EncaissementRefuse
         from ..domain.facturation_ops import (

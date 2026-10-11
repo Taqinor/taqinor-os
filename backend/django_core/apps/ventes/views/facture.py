@@ -27,6 +27,7 @@ from ..serializers import (  # noqa: F401
     DevisWriteSerializer,
     LigneDevisSerializer,
     DevisActivitySerializer,
+    EmailLogSerializer,
 )
 from ..serializers_facturation import (  # noqa: F401
     BonCommandeSerializer,
@@ -42,7 +43,7 @@ from ..serializers_facturation import (
     FactureActivitySerializer,
     RelancerFactureSerializer,
 )
-from ..serializers import EmailLogSerializer
+from ..utils.corps import valider_corps
 from rest_framework.permissions import BasePermission
 from authentication.permissions import (
     IsAnyRole,
@@ -1345,8 +1346,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        modele = request.data.get('modele', 'facture')
-        langue = request.data.get('langue', 'fr')
+        saisie = valider_corps(request, D.FactureWhatsappRequest)
+        modele, langue = saisie.get('modele', 'facture'), saisie.get('langue', 'fr')
         message, link = build_facture_whatsapp(request, facture, modele, langue)
         # L856 — trace l'action dans le chatter de la facture (Historique).
         # Acteur et société posés côté serveur, jamais lus du corps de requête.
@@ -1452,14 +1453,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         être surchargés dans le body de la requête."""
         from ..email_service import send_document_email
         facture = self.get_object()
+        saisie = valider_corps(request, D.EnvoyerEmailFactureRequest)
         log = send_document_email(
-            facture,
-            to_email=(request.data.get('to_email') or '').strip() or None,
-            sujet=(request.data.get('sujet') or '').strip() or None,
-            corps=(request.data.get('corps') or '').strip() or None,
-            user=request.user,
-            attach_pdf=request.data.get('attach_pdf', True),
-        )
+            facture, user=request.user,
+            to_email=saisie.get('to_email', '').strip() or None,
+            sujet=saisie.get('sujet', '').strip() or None,
+            corps=saisie.get('corps', '').strip() or None,
+            attach_pdf=saisie.get('attach_pdf', True))
         if log.statut == EmailLog.Statut.ECHEC:
             return Response(
                 {'detail': log.erreur or 'Envoi impossible.',

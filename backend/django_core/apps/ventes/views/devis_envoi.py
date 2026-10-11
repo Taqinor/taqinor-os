@@ -16,6 +16,7 @@ from ..models import Devis
 from ..domain.modifiabilite import ENVOYER
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
+from ..utils.corps import valider_corps
 import logging
 
 logger = logging.getLogger(__name__)
@@ -236,6 +237,7 @@ class DevisEnvoiActionsMixin:
         from ..utils.pdf import download_pdf
 
         devis = self.get_object()
+        valider_corps(request, D.EnvoyerEmailRequest)
         # ADEV7 — une version remplacée ne s'envoie plus (409).
         _exiger_version_en_jeu(devis, ENVOYER)
         # QJR539 — garde T17 AVANT tout effet (gamme, PDF, lien, `_send`).
@@ -433,6 +435,7 @@ class DevisEnvoiActionsMixin:
         )
 
         devis = self.get_object()
+        valider_corps(request, D.WhatsappRequest)
         # QJR539 — garde T17 : l'aperçu précède un envoi, il est refusé
         # d'emblée (sans écrire l'approbation implicite d'un admin).
         _exiger_remise_envoi(devis, request.user, enregistrer=False)
@@ -488,6 +491,7 @@ class DevisEnvoiActionsMixin:
         from ..services import mark_devis_sent
 
         devis = self.get_object()
+        valider_corps(request, D.WhatsappRequest)
         # ADEV7 — une version remplacée ne s'envoie plus (409).
         _exiger_version_en_jeu(devis, ENVOYER)
         # QJR539 — garde T17 AVANT tout effet (gamme, lien, statut).
@@ -574,6 +578,7 @@ class DevisEnvoiActionsMixin:
         Body optionnel : ``message`` (max 500 caractères).
         """
         devis = self.get_object()
+        valider_corps(request, D.ContacterSuperieurRequest)
         handler = devis.created_by or request.user
         from apps.crm.services import user_and_superior_recipients
         recipients = [
