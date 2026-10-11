@@ -42,6 +42,10 @@ class AdsengineConfig(AppConfig):
         from . import capi_crm
         capi_crm.connect()
 
+        # ENF11 — déclarations OpenAPI des APIView (hors views.py).
+        from . import schema_apply
+        schema_apply.appliquer()
+
         # ADSDEEP17 — abonne le récepteur domaine ``meta_lead_captured`` (le
         # webhook CRM existant l'émet) pour matérialiser un MetaLeadMirror sans
         # que ``adsengine`` importe ``apps.crm``.

@@ -22,7 +22,6 @@ from authentication.permissions import HasPermissionOrLegacy
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
-from . import schema_docs as sd
 from .metrics import cout_par_lead
 from .models import (
     AdCampaignMirror, AdEngineActivity,
@@ -49,7 +48,6 @@ from .serializers import (
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
     FactEntrySerializer, FactTableSerializer, FieldTestResultSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
-    InsightBreakdownSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
     MetaConnectionSerializer, ProposalTemplateSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
@@ -79,7 +77,6 @@ class StatusView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=sd.STATUS)
     def get(self, request):
         return Response({'ok': True})
 
@@ -177,7 +174,6 @@ class WiringHealthView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=sd.WIRING_HEALTH)
     def get(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_view'):
             return Response({'detail': 'Permission refusée.'}, status=403)
@@ -248,7 +244,6 @@ class CostPerSignatureView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=sd.COST_PER_SIGNATURE)
     def get(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_view'):
             return Response({'detail': 'Permission refusée.'}, status=403)
@@ -276,14 +271,12 @@ class EngagementAudienceView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=sd.ENGAGEMENT_CATALOG)
     def get(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_view'):
             return Response({'detail': 'Permission refusée.'}, status=403)
         from .audiences import engagement_preset_catalog
         return Response({'presets': engagement_preset_catalog()})
 
-    @extend_schema(request=sd.ENGAGEMENT_CREATE_REQUEST, responses=sd.ENGAGEMENT_CREATE)
     def post(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_manage'):
             return Response({'detail': 'Permission refusée.'}, status=403)
@@ -319,9 +312,6 @@ class GroundedGenerationView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        request=sd.GROUNDED_REQUEST,
-        responses={200: sd.GROUNDED_RESPONSE, 202: sd.GROUNDED_RESPONSE})
     def post(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_manage'):
             return Response({'detail': 'Permission refusée.'}, status=403)
@@ -368,7 +358,6 @@ class AudienceDeliveryEstimateView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(request=sd.DELIVERY_ESTIMATE_REQUEST, responses=sd.DELIVERY_ESTIMATE)
     def post(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_view'):
             return Response({'detail': 'Permission refusée.'}, status=403)
@@ -591,10 +580,6 @@ class AssumptionNodeViewSet(AdsengineViewSet):
             })
         return Response(rows)
 
-    @extend_schema(
-        parameters=[OpenApiParameter('test_id', int, OpenApiParameter.PATH)],
-        responses=sd._rows('AdsTestLead', id=sd._int(), nom=sd._str(allow_blank=True),
-                           stage_label=sd._str(allow_blank=True), url=sd._str()))
     @action(detail=False, methods=['get'],
             url_path=r'tests/(?P<test_id>[^/.]+)/leads',
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
@@ -752,7 +737,6 @@ class AdChatterView(APIView):
         _qp('entity_type', str, "Type d'entité (campagne, annonce…)."),
         _qp('entity_id', str, "Identifiant de l'entité."),
     ])
-    @extend_schema(responses=sd.CHATTER_TIMELINE)
     def get(self, request):
         company, err = self._resolve(request, 'adsengine_view')
         if err is not None:
@@ -766,7 +750,6 @@ class AdChatterView(APIView):
         from . import chatter
         return Response(chatter.build_timeline(company, entity_type, entity_id))
 
-    @extend_schema(request=sd.CHATTER_REQUEST, responses={201: sd.CHATTER_NOTE})
     def post(self, request):
         company, err = self._resolve(request, 'adsengine_manage')
         if err is not None:
@@ -801,7 +784,6 @@ class ImportChantierPhotoView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.IMPORT_PHOTO_REQUEST, responses={201: sd.IMPORT_PHOTO})
     def post(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -942,7 +924,6 @@ class AlertSnoozeView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.ALERT_SNOOZE_REQUEST, responses=EngineAlertSerializer)
     def post(self, request, alert_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -2042,9 +2023,6 @@ class ProposeCuratedActionView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(
-        request=sd.PROPOSE_CURATED_REQUEST,
-        responses={201: EngineActionSerializer})
     def post(self, request, kind):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -2111,7 +2089,6 @@ class VariantReportView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=sd.VARIANT_REPORT)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2136,9 +2113,6 @@ class CampaignFunnelView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        parameters=[_qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."), _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ).")],
-        responses=sd.CAMPAIGN_FUNNEL)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2171,9 +2145,6 @@ class AttributionBilanView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        parameters=[_qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ).")],
-        responses=sd.ATTRIBUTION_BILAN)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2197,7 +2168,6 @@ class LeadsTimeseriesView(APIView):
         _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
         _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
     ])
-    @extend_schema(responses=sd.LEADS_TIMESERIES)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2223,9 +2193,6 @@ class AudienceView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        parameters=[_qp('ad', str, "Identifiant Meta de l'annonce.")],
-        responses=sd.AUDIENCE)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2241,7 +2208,6 @@ class VariantFunnelView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=sd.VARIANT_FUNNEL)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2257,9 +2223,6 @@ class CohortReportView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        parameters=[_qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."), _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ).")],
-        responses=sd.COHORTS)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2289,7 +2252,6 @@ class ReportExportView(APIView):
         _qp('table', str, "Table à exporter (variantes par défaut)."),
         _qp('date', OpenApiTypes.DATE, "Jour ciblé (AAAA-MM-JJ)."),
     ])
-    @extend_schema(responses={(200, 'text/csv'): OpenApiTypes.BINARY})
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2355,7 +2317,6 @@ class CreativeLeaderboardView(APIView):
         _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
         _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
     ])
-    @extend_schema(responses=sd.CREATIVE_LEADERBOARD)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2377,9 +2338,6 @@ class RegretRegistryView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        parameters=[_qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."), _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ).")],
-        responses=sd.REGRET_REGISTRY)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2418,7 +2376,6 @@ class MdeCalculatorView(APIView):
         _qp('p', float, "Taux de conversion de base."),
         _qp('volume', float, "Volume hebdomadaire disponible."),
     ])
-    @extend_schema(responses=sd.MDE_CALCULATOR)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2466,9 +2423,6 @@ class ExplorationLedgerView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        parameters=[_qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."), _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ).")],
-        responses=sd.EXPLORATION_LEDGER)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2491,7 +2445,6 @@ class CreativeScatterView(APIView):
         _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
         _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
     ])
-    @extend_schema(responses=sd.CREATIVE_SCATTER)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2511,7 +2464,6 @@ class AccountAuditView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.ACCOUNT_AUDIT)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2531,7 +2483,6 @@ class CommentFaqView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.COMMENT_FAQ)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2547,7 +2498,6 @@ class AdObjectionsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.AD_OBJECTIONS)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2563,7 +2513,6 @@ class VisualFatigueView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.VISUAL_FATIGUE)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2579,7 +2528,6 @@ class WeatherTriggerView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.WEATHER_TRIGGER)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2595,9 +2543,6 @@ class CoverageReportView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(
-        parameters=[_qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."), _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ).")],
-        responses=sd.COVERAGE_REPORT)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2616,9 +2561,6 @@ class FactoryLaneRoiView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(
-        parameters=[_qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."), _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ).")],
-        responses=sd.FACTORY_LANE_ROI)
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2643,7 +2585,6 @@ class MetaConnectionStatusView(APIView):
         _w = self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE')
         return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')()]
 
-    @extend_schema(responses=sd.CONNECTION_STATUS)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -2657,7 +2598,6 @@ class MetaConnectionStatusView(APIView):
             'currency': (conn.currency if conn else '') or 'MAD',
         })
 
-    @extend_schema(request=sd.CONNECTION_REGISTER_REQUEST, responses=sd.CONNECTION_REGISTER)
     def post(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -2695,7 +2635,6 @@ class MetaConnectionHealthView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.CONNECTION_HEALTH)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -2800,7 +2739,6 @@ class SyncStatusView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.SYNC_STATUS)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -2818,7 +2756,6 @@ class TodayQueueView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.TODAY_QUEUE)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -2875,7 +2812,6 @@ class GuardrailSingletonView(APIView):
         data['require_approval_above_mad'], data['ceiling_currency'] = None, cfg.ceiling_currency or ''
         return data
 
-    @extend_schema(responses=sd.GUARDRAIL_SINGLETON)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -2883,7 +2819,6 @@ class GuardrailSingletonView(APIView):
         cfg, _ = GuardrailConfig.objects.get_or_create(company=company)
         return Response(self._payload(cfg))
 
-    @extend_schema(request=sd.GUARDRAIL_SINGLETON_REQUEST, responses=sd.GUARDRAIL_SINGLETON)
     def patch(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -2968,7 +2903,6 @@ class MetricsDashboardView(APIView):
         _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
         _qp('compare', bool, "Comparer à la période précédente."),
     ])
-    @extend_schema(responses=sd.METRICS_DASHBOARD)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3053,7 +2987,6 @@ class MetricsLeadsView(APIView):
     @extend_schema(parameters=[
         _qp('metric', str, "Métrique demandée."),
     ])
-    @extend_schema(responses=sd.METRICS_LEADS)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3128,7 +3061,6 @@ class MetricsPacingView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.METRICS_PACING)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3166,7 +3098,6 @@ class MetricsDashboardV2View(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.DASHBOARD_V2)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3183,7 +3114,6 @@ class ReconciliationListView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.RECONCILIATION_LIST)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3229,9 +3159,6 @@ class ReconciliationBackfillView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(
-        request=sd.RECONCILIATION_BACKFILL_REQUEST,
-        responses=sd.RECONCILIATION_BACKFILL)
     def post(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -3301,7 +3228,6 @@ class BriefLatestView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.BRIEF_LATEST)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3513,7 +3439,6 @@ class SimulationDetailView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.SIMULATION_DETAIL)
     def get(self, request, key):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3532,7 +3457,6 @@ class BacklogListView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.BACKLOG_LIST)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3591,7 +3515,6 @@ class BacklogLotApproveView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=None, responses=CreativeGenerationBatchSerializer)
     def post(self, request, lot_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -3616,9 +3539,6 @@ class BacklogDropAssetView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(
-        request={'multipart/form-data': sd.BACKLOG_DROP_REQUEST},
-        responses={201: CreativeBacklogItemSerializer})
     def post(self, request, campagne_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -3673,7 +3593,6 @@ class BreakdownsView(APIView):
         _qp('dimension', str, "Dimension de ventilation."),
         _qp('since', OpenApiTypes.DATE, "Depuis le jour (AAAA-MM-JJ)."),
     ])
-    @extend_schema(responses=InsightBreakdownSerializer(many=True))
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3728,7 +3647,6 @@ class MediaResolveView(APIView):
     @extend_schema(parameters=[
         _qp('kind', str, "Type de média : video (défaut) ou image."),
     ])
-    @extend_schema(responses=sd.MEDIA_RESOLVE)
     def get(self, request, ref):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3805,7 +3723,6 @@ class AdPreviewsView(APIView):
     @extend_schema(parameters=[
         _qp('ad_format', str, "Format d'aperçu (MOBILE_FEED_STANDARD par défaut)."),
     ])
-    @extend_schema(responses=sd.AD_PREVIEWS)
     def get(self, request, ad_meta_id):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3856,7 +3773,6 @@ class AdFullStoryView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.AD_FULL_STORY)
     def get(self, request, meta_id):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3877,7 +3793,6 @@ class RealLeadsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.REAL_LEADS)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3907,7 +3822,6 @@ class AdsCockpitView(APIView):
         _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
         _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
     ])
-    @extend_schema(responses=sd.ADS_COCKPIT)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3982,13 +3896,6 @@ class CommentListView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(parameters=[
-        _qp('ad_id', str, "Identifiant Meta de l'annonce."),
-        _qp('post_id', str, 'Identifiant du post.'),
-        _qp('hidden', bool, 'Filtre masqués.'),
-        _qp('unanswered', bool, 'Seulement les non répondus.'),
-    ],
-        responses=CommentMirrorSerializer(many=True))
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4024,7 +3931,6 @@ class CommentCountsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.COMMENT_COUNTS)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4062,7 +3968,6 @@ class CommentHideView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.COMMENT_HIDE_REQUEST, responses={201: EngineActionSerializer})
     def post(self, request, comment_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4087,7 +3992,6 @@ class CommentReplyView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.COMMENT_MESSAGE_REQUEST, responses={201: EngineActionSerializer})
     def post(self, request, comment_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4112,7 +4016,6 @@ class CommentDeleteView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=None, responses={201: EngineActionSerializer})
     def post(self, request, comment_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4136,7 +4039,6 @@ class CommentPrivateReplyView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.COMMENT_MESSAGE_REQUEST, responses={201: EngineActionSerializer})
     def post(self, request, comment_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4196,7 +4098,6 @@ class InstagramMediaListView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=InstagramMediaMirrorSerializer(many=True))
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4213,7 +4114,6 @@ class InstagramQuotaView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.IG_QUOTA)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4236,7 +4136,6 @@ class InstagramPublishView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.IG_PUBLISH_REQUEST, responses={201: EngineActionSerializer})
     def post(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4263,9 +4162,6 @@ class InstagramCommentListView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(
-        parameters=[_qp('media_id', str, 'Identifiant Meta du média.')],
-        responses=InstagramCommentMirrorSerializer(many=True))
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4289,7 +4185,6 @@ class InstagramCommentHideView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.COMMENT_HIDE_REQUEST, responses={201: EngineActionSerializer})
     def post(self, request, comment_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4314,7 +4209,6 @@ class InstagramCommentReplyView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.COMMENT_MESSAGE_REQUEST, responses={201: EngineActionSerializer})
     def post(self, request, comment_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4339,7 +4233,6 @@ class InstagramCommentDeleteView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=None, responses={201: EngineActionSerializer})
     def post(self, request, comment_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4367,7 +4260,6 @@ class InstagramMediaToggleCommentsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
-    @extend_schema(request=sd.IG_TOGGLE_REQUEST, responses={201: EngineActionSerializer})
     def post(self, request, media_meta_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
         if err is not None:
@@ -4568,7 +4460,6 @@ class SignalsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
-    @extend_schema(responses=sd.SIGNALS)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4622,7 +4513,6 @@ class SignalCohortView(APIView):
     @extend_schema(parameters=[
         _qp('signal', str, "Signal de cohorte (creatif par défaut)."),
     ])
-    @extend_schema(responses=sd.SIGNAL_COHORT)
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
