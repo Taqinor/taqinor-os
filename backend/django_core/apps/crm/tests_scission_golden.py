@@ -736,7 +736,10 @@ class ScissionGoldenHttpTests(TestCase):
         self.fx = _Fixture()
         self.company = self.fx.noter('company', Company.objects.create(
             nom='Golden HTTP crm', slug='golden-http-crm'))
-        CompanyProfile.objects.get_or_create(company=self.company)
+        # ACRM65 — salles de vente parquées par défaut : le golden capture la
+        # réponse d'une société qui les a ALLUMÉES (réponse inchangée).
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.resp = self.fx.noter('user', User.objects.create_user(
             username='golden-http-resp', password='x',
             role_legacy='responsable', company=self.company))

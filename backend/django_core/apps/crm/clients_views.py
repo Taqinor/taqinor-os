@@ -74,7 +74,24 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
+    def get_queryset(self):
+        # ACRM65 (D-ACRM-6 (ii)=(b)) — salles PARQUÉES quand le réglage
+        # société est éteint : liste vide, détail / analytics / items 404
+        # (get_object lit ce queryset). Rien n'est supprimé.
+        from .parcage import salles_vente_actives
+        qs = super().get_queryset()
+        if not salles_vente_actives(self.request.user.company_id):
+            return qs.none()
+        return qs
+
     def perform_create(self, serializer):
+        # ACRM65 — réglage éteint : aucune salle ne se crée (404, comme les
+        # autres routes `salles-vente/`).
+        from rest_framework.exceptions import NotFound
+
+        from .parcage import salles_vente_actives
+        if not salles_vente_actives(self.request.user.company_id):
+            raise NotFound()
         serializer.save(company=self.request.user.company,
                         created_by=self.request.user)
 

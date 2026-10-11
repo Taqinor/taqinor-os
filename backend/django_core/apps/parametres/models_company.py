@@ -128,6 +128,16 @@ class CompanyProfile(models.Model):
         help_text='OFF = comportement actuel (round-robin simple ou '
                   "responsable par défaut). ON = plafond de leads ouverts "
                   'par commercial appliqué avant rotation.')
+    # ── ACRM65 (D-ACRM-6 (ii)=(b), 09/10/2026) — salles de vente PARQUÉES ──
+    # Aucune salle ne se crée depuis l'ERP. OFF par défaut : `salles-vente/`
+    # rend une liste vide (détail/analytics/items 404) et la page publique par
+    # jeton répond « introuvable » — aucune salle n'est supprimée. ON :
+    # comportement d'avant. Lu UNIQUEMENT par `apps.crm.parcage`.
+    salles_vente_actif = models.BooleanField(
+        default=False,
+        verbose_name='Salles de vente digitales actives',
+        help_text='OFF = salles de vente parquées (rien servi, rien '
+                  'supprimé). ON = salles de vente servies comme avant.')
     round_robin_plafond_leads_ouverts = models.PositiveIntegerField(
         default=20,
         verbose_name='Plafond de leads ouverts par commercial',
