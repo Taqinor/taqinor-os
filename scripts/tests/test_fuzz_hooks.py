@@ -41,11 +41,18 @@ def _bouchon_schemathesis():
     return mod
 
 
-def _charger_hooks(etat):
+def _charger_hooks(etat, ids_chemin=None):
     with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False,
                                      encoding='utf-8') as fh:
         json.dump(etat, fh)
     os.environ['FUZZ_STATE_FILE'] = fh.name
+    ids_fichier = None
+    if ids_chemin is not None:
+        with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False,
+                                         encoding='utf-8') as fi:
+            json.dump(ids_chemin, fi)
+        ids_fichier = fi.name
+        os.environ['FUZZ_IDS_FILE'] = ids_fichier
     precedent = sys.modules.get('schemathesis')
     sys.modules['schemathesis'] = _bouchon_schemathesis()
     sys.modules.setdefault('requests', types.ModuleType('requests'))
@@ -59,6 +66,9 @@ def _charger_hooks(etat):
         sys.path.pop(0)
         os.unlink(fh.name)
         os.environ.pop('FUZZ_STATE_FILE', None)
+        os.environ.pop('FUZZ_IDS_FILE', None)
+        if ids_fichier:
+            os.unlink(ids_fichier)
         if precedent is None:
             sys.modules.pop('schemathesis', None)
         else:
@@ -143,6 +153,110 @@ class CrochetsFuzzTests(unittest.TestCase):
         # ENF11 — run 38129616897 : reauth_count 0, reauth_broke true.
         self.assertEqual(_charger_hooks.auth_kwargs,
                          {'refresh_interval': 600, 'retry_on': []})
+
+
+class IdsCheminTests(unittest.TestCase):
+    """ENF11 — ids réels pour `{id}`/`{pk}` (1 273 opérations 404-seules)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hooks = _charger_hooks(
+            {'user_id': 4, 'company_id': 2, 'role_id': 7, 'fk_ids': {}},
+            ids_chemin={'/api/django/ventes/devis/': [11, 12, 13],
+                        '/api/django/docs/': ['aaa', 'bbb']})
+
+    def _appel(self, chemin, params, mode='POSITIVE', methode='GET'):
+        cas = _cas(self.hooks, methode, chemin, params=params, mode=mode)
+        self.hooks.before_call(None, cas, {})
+        return cas
+
+    def _valeurs(self, chemin, nb=200, **kw):
+        return [self._appel(chemin, {'id': 10**6 + i}, **kw)
+                .path_parameters['id'] for i in range(nb)]
+
+    def test_id_reel_substitue_et_part_invalide_conservee(self):
+        vals = self._valeurs('/api/django/ventes/devis/{id}/proposal/')
+        reels = [v for v in vals if v in (11, 12, 13)]
+        gardes = [v for v in vals if v >= 10**6]
+        self.assertEqual(len(reels) + len(gardes), 200)
+        self.assertTrue(0.15 < len(gardes) / 200 < 0.35, len(gardes))
+        self.assertEqual(set(reels), {11, 12, 13})
+
+    def test_deterministe(self):
+        self.assertEqual(self._valeurs('/api/django/ventes/devis/{id}/'),
+                         self._valeurs('/api/django/ventes/devis/{id}/'))
+
+    def test_cas_negatifs_jamais_touches(self):
+        vals = self._valeurs('/api/django/ventes/devis/{id}/', mode='NEGATIVE')
+        self.assertTrue(all(v >= 10**6 for v in vals))
+
+    def test_parametres_non_id_intacts(self):
+        for gabarit, nom in (
+                ('/api/django/ventes/devis/{token}/', 'token'),
+                ('/api/django/ventes/devis/{jeton}/', 'jeton'),
+                ('/api/django/ventes/devis/{slug}/', 'slug'),
+                ('/api/django/ventes/devis/{key}/', 'key')):
+            cas = self._appel(gabarit, {nom: 'abc'})
+            self.assertEqual(cas.path_parameters[nom], 'abc')
+
+    def test_sans_inventaire_ou_type_incompatible_intact(self):
+        cas = self._appel('/api/django/inconnu/{id}/', {'id': 5})
+        self.assertEqual(cas.path_parameters['id'], 5)
+        # ids str (uuid) : jamais posés à la place d'un entier généré.
+        vals = self._valeurs('/api/django/docs/{id}/')
+        self.assertTrue(all(isinstance(v, int) for v in vals))
+
+    def test_id_imbrique_second_parametre_intact(self):
+        cas = self._appel('/api/django/ventes/devis/{id}/lignes/{ligne_id}/',
+                          {'id': 10**6, 'ligne_id': 77})
+        self.assertEqual(cas.path_parameters['ligne_id'], 77)
+
+    def test_fuzz_admin_reste_protege_apres_substitution(self):
+        h = _charger_hooks(
+            {'user_id': 4, 'company_id': 2, 'role_id': 7, 'fk_ids': {}},
+            ids_chemin={'/api/django/users/': [4]})
+        for i in range(40):
+            cas = _cas(h, 'DELETE', '/api/django/users/{id}/',
+                       params={'id': 10**6 + i})
+            h.before_call(None, cas, {})
+            self.assertNotEqual(cas.path_parameters['id'], 4)
+
+
+def _charger_inventaire():
+    sys.path.insert(0, str(ROOT / 'scripts' / 'fuzz'))
+    try:
+        sys.modules.pop('inventorier_ids_chemin', None)
+        return importlib.import_module('inventorier_ids_chemin')
+    finally:
+        sys.path.pop(0)
+
+
+class InventaireIdsTests(unittest.TestCase):
+    def setUp(self):
+        self.inv = _charger_inventaire()
+
+    def test_liste_paginee_et_nue(self):
+        self.assertEqual(
+            self.inv.parser_ids({'count': 2, 'results': [{'id': 3}, {'id': 5}]}),
+            [3, 5])
+        self.assertEqual(self.inv.parser_ids([{'id': 'u1'}, {'pk': 2}, {}]),
+                         ['u1', 2])
+        self.assertEqual(self.inv.parser_ids({'detail': 'x'}), [])
+        self.assertEqual(self.inv.parser_ids([{'id': True}, 5]), [])
+
+    def test_collections_et_inventaire(self):
+        doc = {'paths': {
+            '/api/django/a/': {'get': {}},
+            '/api/django/a/{id}/': {'get': {}},
+            '/api/django/a/{id}/sub/': {'get': {}},
+            '/api/django/b/': {'post': {}},
+            '/api/django/b/{pk}/': {'get': {}},
+            '/api/django/c/{token}/': {'get': {}}}}
+        self.assertEqual(self.inv.collections_du_schema(doc),
+                         ['/api/django/a/'])
+        table = self.inv.inventorier(
+            doc, lambda p: {'results': [{'id': 9}]})
+        self.assertEqual(table, {'/api/django/a/': [9]})
 
 
 def _charger_portee():
@@ -341,4 +455,3 @@ class PorteePRTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

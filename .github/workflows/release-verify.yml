@@ -696,6 +696,16 @@ jobs:
           python manage.py spectacular --format openapi-json --file ../../openapi-brut.json
           python ../../scripts/fuzz/api_fuzz_scope.py schema \
             --in ../../openapi-brut.json --out ../../openapi-schema.json
+      - name: Ids réels pour les paramètres de chemin (ENF11)
+        # Les listes `GET /x/` de fuzz_admin → {préfixe: [ids]} ; lu par le
+        # crochet before_call (substitution des cas positifs, 1 sur 4 garde
+        # un id aléatoire). Fichier dans RUNNER_TEMP, réutilisé par la phase
+        # stateful (même processus de crochets).
+        run: |
+          set -euo pipefail
+          FUZZ_IDS_FILE="$RUNNER_TEMP/fuzz-ids-chemin.json"
+          echo "FUZZ_IDS_FILE=$FUZZ_IDS_FILE" >> "$GITHUB_ENV"
+          python scripts/fuzz/inventorier_ids_chemin.py             --schema openapi-schema.json --out "$FUZZ_IDS_FILE"
       - name: schemathesis run (fuzzing + stateful, tous les checks — BLOQUANT)
         # Lancé depuis la RACINE : `schemathesis.toml` y est découvert.
         run: |

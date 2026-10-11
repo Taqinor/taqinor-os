@@ -49,7 +49,9 @@ from __future__ import annotations
 
 import json
 import os
+import atexit
 import re
+import zlib
 
 import requests
 import schemathesis
@@ -60,6 +62,13 @@ BASE_URL = BASE_URL.rstrip('/')
 USERNAME = os.environ.get('FUZZ_USERNAME', 'fuzz_admin')
 PASSWORD = os.environ.get('FUZZ_PASSWORD', '')
 STATE_FILE = os.environ.get('FUZZ_STATE_FILE', '')
+
+# ENF11 — inventaire d'ids de chemin ({préfixe de collection: [ids]}), écrit
+# par inventorier_ids_chemin.py ; fichier absent => aucune substitution.
+IDS_FILE = os.environ.get('FUZZ_IDS_FILE', '')
+IDS_SEED = os.environ.get('FUZZ_IDS_SEED', 'enf11')
+# 1 cas positif sur N garde son id aléatoire : la classe « 404 » reste fuzzée.
+PART_INVALIDE = 4
 
 # Id garanti inexistant (borne haute d'un entier PostgreSQL).
 ID_INEXISTANT = 2147483647
@@ -82,6 +91,17 @@ FK_IDS = {
     for nom, ids in (_ETAT.get('fk_ids') or {}).items() if ids
 }
 _FK_IDS_SET = {nom: set(ids) for nom, ids in FK_IDS.items()}
+
+
+def _charger_ids_chemin():
+    if not IDS_FILE or not os.path.exists(IDS_FILE):
+        return {}
+    with open(IDS_FILE, encoding='utf-8') as fh:
+        brut = json.load(fh)
+    return {p: list(ids) for p, ids in brut.items() if ids}
+
+
+IDS_CHEMIN = _charger_ids_chemin()
 
 
 # ── 1. Authentification ────────────────────────────────────────────────
@@ -209,8 +229,59 @@ def _ids_fk_connus(case):
             corps[nom] = _id_connu(nom, valeur)
 
 
+# ── 4. Ids RÉELS pour les paramètres de chemin (ENF11) ─────────────────
+# Seul le PREMIER paramètre, nommé id/pk, est substitué : `{token}`,
+# `{jeton}`, `{slug}`, `{key}`… et les ids imbriqués restent intacts.
+_PREMIER_ID = re.compile(r'^(.*?/)\{(id|pk)\}(?:/|$)')
+_COUVERTURE = {'reel': set(), 'aleatoire': set(), 'sans_inventaire': set()}
+
+
+def _bucket(cle, ids):
+    return ids[zlib.crc32(f'{IDS_SEED}|{cle}'.encode()) % len(ids)]
+
+
+def _ids_chemin_reels(case):
+    meta = case.meta
+    if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
+        return
+    gabarit = case.operation.path
+    m = _PREMIER_ID.match(gabarit)
+    if not m or m.group(2) not in (case.path_parameters or {}):
+        return
+    ops = f'{case.operation.method.upper()} {gabarit}'
+    ids = IDS_CHEMIN.get(m.group(1))
+    if not ids:
+        _COUVERTURE['sans_inventaire'].add(ops)
+        return
+    nom = m.group(2)
+    valeur = case.path_parameters[nom]
+    cle = f'{ops}|{valeur}'
+    if zlib.crc32(f'{IDS_SEED}#{cle}'.encode()) % PART_INVALIDE == 0:
+        _COUVERTURE['aleatoire'].add(ops)
+        return
+    choisi = _bucket(cle, ids)
+    if isinstance(choisi, int) != isinstance(valeur, int):
+        _COUVERTURE['aleatoire'].add(ops)
+        return
+    case.path_parameters[nom] = choisi
+    _COUVERTURE['reel'].add(ops)
+
+
+def _journal_couverture():
+    if not IDS_CHEMIN and not any(_COUVERTURE.values()):
+        return
+    reel, sans = _COUVERTURE['reel'], _COUVERTURE['sans_inventaire']
+    print(f'ENF11 ids de chemin : {len(reel)} opérations avec id réel, '
+          f'{len(sans)} sans inventaire, '
+          f'{len(_COUVERTURE["aleatoire"])} avec id aléatoire conservé')
+
+
+atexit.register(_journal_couverture)
+
+
 @schemathesis.hook
 def before_call(context, case, kwargs):
+    _ids_chemin_reels(case)
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
