@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
+import { usePermissionAchats, useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags, CreditCard, FileMinus2, Users, Plus,
@@ -1489,6 +1489,10 @@ export default function FournisseurFiche360({
   // prix d'achat) n'existent que pour un compte qui VOIT les prix d'achat :
   // jamais montés (donc jamais de requête 403) sans `prix_achat_voir`.
   const voitPrix = useVoitPrixAchat()
+  // ASTK246 — « Acomptes » / « Avoirs » : miroir de PeutLirePaiementsFournisseur
+  // (achats_payer OU prix_achat_voir) — jamais un onglet que le serveur refuse.
+  const peutPayer = usePermissionAchats('achats_payer')
+  const litReglements = voitPrix || peutPayer
   // VX108 — tap-to-call : la fiche n'affichait aucun téléphone.
   const tel = telHref(fournisseurTelephone)
 
@@ -1557,8 +1561,8 @@ export default function FournisseurFiche360({
     { value: 'bcf', label: 'Bons de commande', icon: PackageCheck, Comp: OngletBcf },
     { value: 'factures', label: 'Factures / solde', icon: Receipt, Comp: OngletFactures },
     { value: 'retours', label: 'Retours', icon: Undo2, Comp: OngletRetours },
-    { value: 'acomptes', label: 'Acomptes', icon: CreditCard, Comp: OngletAcomptes },
-    { value: 'avoirs', label: 'Avoirs', icon: FileMinus2, Comp: OngletAvoirs },
+    { value: 'acomptes', label: 'Acomptes', icon: CreditCard, Comp: OngletAcomptes, reglements: true },
+    { value: 'avoirs', label: 'Avoirs', icon: FileMinus2, Comp: OngletAvoirs, reglements: true },
     { value: 'contacts', label: 'Contacts', icon: Users, Comp: OngletContacts },
     { value: 'documents', label: 'Conformité', icon: ShieldCheck, Comp: OngletDocuments },
     // ASTK226 — incidents qualité (NTSCM9), jusqu'ici sans écran.
@@ -1571,7 +1575,8 @@ export default function FournisseurFiche360({
     { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix, prix: true },
     // WIR268/XPUR14 — export/import xlsx du tarif fournisseur.
     { value: 'tarif', label: 'Tarif', icon: Wallet, Comp: OngletTarif, prix: true },
-  ].filter((t) => (voitPrix || !t.prix) && (isAdmin || !t.admin))), [voitPrix, isAdmin])
+  ].filter((t) => (voitPrix || !t.prix) && (litReglements || !t.reglements)
+    && (isAdmin || !t.admin))), [voitPrix, litReglements, isAdmin])
 
   if (!fournisseurId) {
     return (
