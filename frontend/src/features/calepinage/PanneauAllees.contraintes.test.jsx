@@ -15,7 +15,8 @@ vi.mock('../../api/calepinageApi', () => ({
   },
 }))
 
-const { default: PanneauAllees, PRESET_FM_DS_1_15, MESSAGE_SANS_SOURCE } = await import('./PanneauAllees')
+const { default: PanneauAllees, MESSAGE_SANS_SOURCE } = await import('./PanneauAllees')
+const { PRESET_FM_DS_1_15 } = await import('./PanneauAllees.helpers')
 
 const CONTRAT = documentContrat('calepinage', 'calepinage_detail')
 const FM = CONTRAT.exemple.contraintes_site

@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
-import BadgePerime, { estPerime } from './BadgePerime'
+import BadgePerime from './BadgePerime'
+import { estPerime } from './BadgePerime.helpers'
 
 /* ============================================================================
    CAL188 — LE BADGE, NOURRI PAR LE CONTRAT COMMITTÉ, PAS PAR UN MOCK ÉCRIT

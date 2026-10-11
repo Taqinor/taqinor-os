@@ -16,6 +16,7 @@ import { urlImage } from './urlImage'
 import BadgePerime from './BadgePerime'
 // CALX344 — le filtre par étiquette libre (`?etiquette=`, CALX343).
 import { FiltreEtiquettes } from './Etiquettes'
+import { STATUTS_CALEPINAGE } from './CalepinageList.helpers'
 
 /* ============================================================================
    CAL35 — L'ÉCRAN LISTE `/calepinage` : la porte autonome, enfin.
@@ -43,16 +44,6 @@ import { FiltreEtiquettes } from './Etiquettes'
    contre `calepinage_liste.json.statuts_publies` ; le libellé d'une ligne reste
    celui du serveur (`statut_libelle`).
    ========================================================================== */
-
-/* ACAL197 — LES TROIS STATUTS SERVIS (contrat `calepinage_liste.json`,
-   `statuts_publies`) : le filtre les propose TOUJOURS, pas seulement ceux de la
-   page courante. Gardée par un vitest contre l'échantillon de contrat. */
-// eslint-disable-next-line react-refresh/only-export-components -- constante gardée par un vitest
-export const STATUTS_CALEPINAGE = [
-  ['brouillon', 'Brouillon'],
-  ['valide', 'Validé'],
-  ['perime', 'Périmé'],
-]
 
 /* ACAL197 — `image.url` RELATIVE préfixée par l'origine de l'API : le helper
    partagé avec la fiche (`urlImage.js`). */

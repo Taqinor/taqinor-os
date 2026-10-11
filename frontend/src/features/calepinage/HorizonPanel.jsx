@@ -5,7 +5,8 @@ import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDo
 import {
   sortedHorizonPoints, horizonMaxHeightDeg, hourlyHorizonFactors, maskedHourCount,
 } from '@rooflib/horizonEngine'
-import SunDiagram, { COURBES_REPERE } from './SunDiagram'
+import SunDiagram from './SunDiagram'
+import { COURBES_REPERE } from './SunDiagram.helpers'
 import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================

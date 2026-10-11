@@ -27,7 +27,8 @@ vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: { equipements: (...a) => equipements(...a) } },
 }))
 
-const { default: FichesIncompletes, impactChamp } = await import('./FichesIncompletes')
+const { default: FichesIncompletes } = await import('./FichesIncompletes')
+const { impactChamp } = await import('./FichesIncompletes.helpers')
 
 const rendre = () => render(
   <MemoryRouter><FichesIncompletes calepinageId={1} /></MemoryRouter>,

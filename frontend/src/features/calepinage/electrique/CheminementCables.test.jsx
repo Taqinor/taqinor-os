@@ -37,7 +37,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import CheminementCables, { celluleLongueur, libelleCote, libelleOrigine } from './CheminementCables'
+import CheminementCables from './CheminementCables'
+import { celluleLongueur, libelleCote, libelleOrigine } from './CheminementCables.helpers'
 
 const servir = (data) => { calepinageApi.calepinages.troncons.mockResolvedValue({ data }) }
 const refuser404 = () => {

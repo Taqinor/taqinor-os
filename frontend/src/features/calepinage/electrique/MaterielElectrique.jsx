@@ -1,6 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   `ROLES` et `libelleProvenance` sont une table et une fonction PURES que le test
-   confronte directement (même dérogation que `Raccordement.jsx`). */
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Cpu } from 'lucide-react'
@@ -8,6 +5,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { Badge, Button, Card, Label, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { refusParChamp } from './entreeElectrique'
+import { ROLES, libelleProvenance } from './MaterielElectrique.helpers'
 
 /* ============================================================================
    ACAL149 — L'ONGLET « MATÉRIEL ÉLECTRIQUE » DE L'ATELIER.
@@ -23,21 +21,6 @@ import { refusParChamp } from './entreeElectrique'
    Après l'enregistrement l'écran RELIT le GET : ce qu'il affiche est ce que le serveur a
    stocké (provenance « désigné »), pas ce qui a été tapé.
    ========================================================================== */
-
-/** Les trois rôles : clé du corps posté, clé de `materiel`, clé de `candidats`, libellé. */
-export const ROLES = [
-  { role: 'module', champ: 'module_produit', candidats: 'modules', libelle: 'Module photovoltaïque' },
-  { role: 'onduleur', champ: 'onduleur_produit', candidats: 'onduleurs', libelle: 'Onduleur' },
-  { role: 'optimiseur', champ: 'optimiseur_produit', candidats: 'optimiseurs', libelle: 'Optimiseur (facultatif)' },
-]
-
-/** La provenance rendue en FRANÇAIS ; `null` = rien de désigné. */
-export function libelleProvenance(materiel) {
-  if (!materiel) return 'à désigner'
-  if (materiel.provenance === 'devis') return 'ligne du devis'
-  if (materiel.provenance === 'explicite') return 'désigné'
-  return 'à désigner'
-}
 
 const idChamp = (champ) => `acal149-champ-${champ}`
 

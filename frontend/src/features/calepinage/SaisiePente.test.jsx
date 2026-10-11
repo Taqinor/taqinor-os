@@ -27,7 +27,8 @@ vi.mock('../../api/calepinageApi', () => ({
   },
 }))
 
-const { default: SaisiePente, mesuresDeVisite } = await import('./SaisiePente')
+const { default: SaisiePente } = await import('./SaisiePente')
+const { mesuresDeVisite } = await import('./SaisiePente.helpers')
 
 const VISITE = exempleContrat('calepinage', 'calepinage_releve_visite')
 const mesure = (code) => VISITE.mesures.find((m) => m.code === code)

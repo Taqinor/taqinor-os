@@ -1,11 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   `TYPES_EQUIPEMENT`/`LIBELLES_TYPE`/`libelleType`/`libelleProduit` sont des
-   constantes et fonctions PURES que le test unitaire de la tâche confronte
-   directement à l'énumération du contrat (`electrique_equipements.json`,
-   CALX201). Les sortir dans un `.js` voisin séparerait la table de son unique
-   lecteur pour satisfaire une règle de fast-refresh qui ne s'applique pas à
-   une constante — même dérogation que `AffectationChaines.jsx` et
-   `PanneauMasseLestage.jsx` du même module. */
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Zap } from 'lucide-react'
@@ -13,6 +5,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, EmptyState, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
+import { TYPES_EQUIPEMENT, libelleProduit, libelleType } from './EquipementsElectriques.helpers'
 
 /* ============================================================================
    CALX222 — L'ONGLET « ÉQUIPEMENTS ÉLECTRIQUES » DE L'ATELIER.
@@ -58,32 +51,6 @@ import RetourAtelier from '../atelier/RetourAtelier'
    inventé. L'écran affiche donc la RÉFÉRENCE brute (« Fiche produit #12 »)
    quand `produitId` est renseigné, et le dit explicitement sinon.
    ========================================================================== */
-
-/** Les huit types posables — ÉNUMÉRATION FERMÉE (électrique_equipements.json). */
-export const LIBELLES_TYPE = {
-  onduleur: 'Onduleur',
-  coffret_dc: 'Coffret DC',
-  coffret_ac: 'Coffret AC',
-  compteur_production: 'Compteur de production',
-  compteur_reseau: 'Compteur réseau',
-  tgbt: 'TGBT',
-  batterie: 'Batterie',
-  parafoudre: 'Parafoudre',
-}
-
-export const TYPES_EQUIPEMENT = Object.keys(LIBELLES_TYPE)
-
-/** Le libellé français d'un type — un type hors énumération est NOMMÉ, jamais tu. */
-export function libelleType(type) {
-  return LIBELLES_TYPE[type] ?? `Type inconnu : ${type}`
-}
-
-/** La RÉFÉRENCE du produit rattaché — jamais une désignation devinée. */
-export function libelleProduit(produitId) {
-  return produitId === null || produitId === undefined
-    ? 'Aucune fiche produit rattachée'
-    : `Fiche produit #${produitId}`
-}
 
 const LIBELLES_SOURCE = { saisie: 'saisie', import: 'import' }
 

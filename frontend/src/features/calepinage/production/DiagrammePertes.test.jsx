@@ -22,7 +22,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import DiagrammePertes, { construireCascadeDetaillee } from './DiagrammePertes'
+import DiagrammePertes from './DiagrammePertes'
+import { construireCascadeDetaillee } from './DiagrammePertes.helpers'
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
