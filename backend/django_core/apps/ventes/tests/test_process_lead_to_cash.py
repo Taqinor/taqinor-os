@@ -128,7 +128,8 @@ class TestProcessLeadToCash(TenantAPITestCase):
         facture = Facture.objects.get(id=facture_id)
         self.assertEqual(facture.bon_commande_id, bc.id)
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
-        self.assertRegex(facture.reference, r'^FAC-\d{6}-\d{4}$')
+        # ATOT27 (D-ATOT-5) — brouillon hors série, numéro légal à l'émission.
+        self.assertEqual(facture.reference, f'BROUILLON-{facture.pk}')
         self.assertTrue(facture.lignes.exists())
 
         # ── 8. Facture brouillon → émise ────────────────────────────────────
@@ -138,6 +139,7 @@ class TestProcessLeadToCash(TenantAPITestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.EMISE)
+        self.assertRegex(facture.reference, r'^FAC-\d{6}-\d{4}$')
 
         # ── 9. Paiement intégral → facture soldée automatiquement ──────────
         montant_du_avant = facture.montant_du

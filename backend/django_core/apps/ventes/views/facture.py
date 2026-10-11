@@ -327,8 +327,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE):
             save_kwargs['revue_statut'] = Facture.RevueStatut.A_VALIDER
 
-        create_numbered(
-            Facture, company, 'facture',
+        from ..utils.company_settings import create_provisoire  # ATOT27
+        create_provisoire(  # brouillon hors série « BROUILLON-<id> »
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
 
@@ -1834,7 +1834,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reste indicative tant que non facturée — cette action la matérialise
         volontairement en un nouveau document, séparé)."""
         from decimal import Decimal
-        from ..utils.company_settings import create_numbered
+        from ..utils.company_settings import create_provisoire
 
         facture = self.get_object()
         # AFAC24 (C-AFAC-040, base) — UNE formule : la pénalité facturée est
@@ -1901,8 +1901,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         liaison.facture_penalite.statut != \
                         Facture.Statut.ANNULEE:
                     return _deja_facturee(liaison)
-                facture_penalite = create_numbered(
-                    Facture, facture.company, 'facture', _create)
+                facture_penalite = create_provisoire(  # ATOT27
+                    _create)
                 emettre_facture(
                     facture_penalite, user=request.user,
                     source='penalites_retard')

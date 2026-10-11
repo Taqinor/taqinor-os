@@ -456,7 +456,22 @@ class Facture(TotauxDocumentMixin, models.Model):
             libelle = getattr(self.condition_paiement_ref, 'libelle', '')
             if libelle:
                 self.conditions_paiement = libelle
+        # ATOT27 (D-ATOT-5) — une facture créée SANS numéro (les portes de
+        # création passent par ``create_provisoire``) naît sous la référence
+        # provisoire « BROUILLON-<id> », hors série légale : un brouillon ne
+        # consomme aucun numéro, le numéro légal est posé par l'émission
+        # (``emettre_facture``). Placé APRÈS le bloc ARC24 (``pk is None``).
+        provisoire = self.pk is None and not (self.reference or '').strip()
+        if provisoire:
+            from core.numbering import PREFIXE_PROVISOIRE, reserver_id
+            self.pk = reserver_id(type(self), kwargs.get('using'))
+            if self.pk is not None:
+                self.reference = f'{PREFIXE_PROVISOIRE}{self.pk}'
         super().save(*args, **kwargs)
+        if provisoire and not self.reference:  # hors PostgreSQL
+            self.reference = f'{PREFIXE_PROVISOIRE}{self.pk}'
+            type(self).objects.filter(pk=self.pk).update(
+                reference=self.reference)
 
     # AUD106 — `_remise_globale_active`, `total_ht`, `tva_par_taux`,
     # `total_tva`, `total_ttc` et `totaux_affichage` vivent désormais dans

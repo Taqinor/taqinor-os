@@ -189,6 +189,41 @@ def create_numbered(model, company, key, save_fn):
         padding=cfg['padding'], period=cfg['period'])
 
 
+def create_provisoire(save_fn):
+    """ATOT27 (D-ATOT-5) — crée une FACTURE BROUILLON hors série légale.
+
+    Remplace ``create_numbered``/``create_with_reference`` à TOUTES les
+    portes de création d'une facture : ``save_fn`` reçoit une référence
+    vide et ``Facture.save`` pose « BROUILLON-<id> » dès l'INSERT. Aucun
+    numéro légal n'est consommé (un brouillon supprimé ne laisse aucun
+    trou) ; le numéro naît à l'émission (``numeroter_a_l_emission``)."""
+    return save_fn('')
+
+
+def numeroter_a_l_emission(document, key='facture'):
+    """ATOT27 (D-ATOT-5) — attribue le numéro LÉGAL au moment de l'émission.
+
+    Seule une référence provisoire est numérotée : la série configurée
+    (``numbering_config``) reçoit le plus-haut-utilisé + 1, savepoint +
+    retry sur course (``create_numbered``) — l'ordre des numéros est donc
+    l'ordre d'émission, sans trou ni réutilisation. Une facture déjà
+    numérotée (réémise après « remettre en brouillon », brouillon antérieur
+    à ATOT27) garde son numéro : jamais de renumérotation. Renvoie ``True``
+    si un numéro a été posé."""
+    from core.numbering import est_reference_provisoire
+    if not est_reference_provisoire(document.reference):
+        return False
+    modele = type(document)
+
+    def _poser(reference):
+        modele.objects.filter(pk=document.pk).update(reference=reference)
+        document.reference = reference
+        return document
+
+    create_numbered(modele, document.company, key, _poser)
+    return True
+
+
 def tva_standard(company):
     """Taux de TVA standard (défaut 20)."""
     prof = _profile(company)

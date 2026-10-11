@@ -618,10 +618,11 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 copier_devis_sur_facture(facture, bc.devis)
             return facture
 
-        # create_with_reference runs _create_facture inside a transaction, so
-        # the facture and its copied lines stay atomic like before.
-        facture = create_numbered(
-            Facture, company, 'facture', _create_facture)
+        # ATOT27 (D-ATOT-5) — brouillon hors série « BROUILLON-<id> » (numéro
+        # légal à l'émission) ; facture + lignes recopiées restent atomiques.
+        from ..utils.company_settings import create_provisoire
+        with transaction.atomic():
+            facture = create_provisoire(_create_facture)
         data = FactureSerializer(facture).data
         # FG51 — avertissement DOUX (jamais bloquant) : on facture la livraison
         # de matériel sans preuve de livraison (PV/signature). Le facturier voit

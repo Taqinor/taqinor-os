@@ -219,3 +219,97 @@ class SoldeFacturationTermineeTests(TestCase):
             r = self._porte('tranche', en_tranches)
             self.assertEqual(r.status_code, 201, r.data)
             self.assertIs(self._terminee(en_tranches), attendu)
+
+
+class NumeroEmissionTests(TestCase):
+    """ATOT27 (D-ATOT-5, C-ATOT-018) — le numéro légal d'une facture naît à
+    l'ÉMISSION : un brouillon porte « BROUILLON-<id> » hors série, un
+    brouillon supprimé ne consomme aucun numéro, la série émise suit l'ordre
+    d'émission. Rejoue la sonde V1 TNUM-1 (``-0002`` réutilisé)."""
+    setUp = PortesFacturationTests.setUp
+    _devis = PortesFacturationTests._devis
+    _porte = PortesFacturationTests._porte
+
+    def _emettre(self, facture_id):
+        return self.api.post(
+            f'/api/django/ventes/factures/{facture_id}/emettre/', {},
+            format='json')
+
+    def _mois(self):
+        from django.utils import timezone
+        return timezone.now().strftime('%Y%m')
+
+    def test_brouillons_hors_serie_numero_a_l_emission(self):
+        from apps.ventes.models import Facture
+        from apps.ventes.utils.numbering_audit import audit_company
+        mois = self._mois()
+        premier = self.api.post(
+            '/api/django/ventes/factures/',
+            {'client': self.client_obj.id, 'taux_tva': '20.00'},
+            format='json')
+        second = self._porte('bc', self._devis())
+        troisieme = self._porte('bc', self._devis())
+        for r in (premier, second, troisieme):
+            self.assertEqual(r.status_code, 201, r.data)
+            f = Facture.objects.get(pk=r.data['id'])
+            self.assertEqual(f.statut, Facture.Statut.BROUILLON)
+            self.assertEqual(f.reference, f'BROUILLON-{f.pk}')
+            self.assertEqual(r.data['reference'], f.reference)
+        su = User.objects.create_superuser(
+            username=f'atot27_su_{_nxt()}', password='x', email='')
+        su.company = self.company
+        su.role_legacy = 'admin'
+        su.save(update_fields=['company', 'role_legacy'])
+        api_su = APIClient()
+        api_su.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(su)}')
+        resp = api_su.delete(
+            f"/api/django/ventes/factures/{premier.data['id']}/")
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
+        for r, attendu in ((second, f'FAC-{mois}-0001'),
+                           (troisieme, f'FAC-{mois}-0002')):
+            resp = self._emettre(r.data['id'])
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data['reference'], attendu)
+            self.assertEqual(
+                Facture.objects.get(pk=r.data['id']).reference, attendu)
+        # CLAUSE PERSISTANCE — la série relue est continue, triée par
+        # date d'émission ; l'audit de numérotation n'y voit aucun trou.
+        serie = list(Facture.objects.filter(company=self.company)
+                     .exclude(statut=Facture.Statut.BROUILLON)
+                     .order_by('date_emission', 'id')
+                     .values_list('reference', flat=True))
+        self.assertEqual(serie, [f'FAC-{mois}-0001', f'FAC-{mois}-0002'])
+        self.assertTrue(audit_company(self.company)['conforme'])
+
+    def test_portes_emises_numerotees_dans_l_ordre(self):
+        mois = self._mois()
+        brouillon = self._porte('bc', self._devis())
+        self.assertEqual(brouillon.status_code, 201, brouillon.data)
+        refs = []
+        for porte in ('tranche', 'complete', 'consolidee'):
+            r = self._porte(porte, self._devis())
+            self.assertEqual(r.status_code, 201, r.data)
+            refs.append(r.data.get('facture_reference')
+                        or r.data['reference'])
+        self.assertEqual(refs, [f'FAC-{mois}-{n:04d}' for n in (1, 2, 3)])
+        resp = self._emettre(brouillon.data['id'])
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['reference'], f'FAC-{mois}-0004')
+
+    def test_pdf_brouillon_porte_brouillon(self):
+        """CLAUSE CLIENT — le PDF d'un brouillon imprime « BROUILLON-<id> »,
+        jamais un numéro de la série."""
+        from apps.ventes.models import Facture
+        from apps.ventes.utils.pdf import _render_html
+        r = self._porte('bc', self._devis())
+        self.assertEqual(r.status_code, 201, r.data)
+        facture = Facture.objects.get(pk=r.data['id'])
+        html = _render_html('facture.html', {
+            'facture': facture, 'entreprise_nom': 'ATOT27',
+            'entreprise_adresse': '', 'entreprise_email': '',
+            'entreprise_telephone': '', 'entreprise_siret': '',
+            'entreprise_tva_intra': '', 'couleur_principale': '#059669',
+            'logo_uri': None, 'signature_uri': None, 'rib': '',
+            'banque': ''})
+        self.assertIn(f'BROUILLON-{facture.pk}', html)
