@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
 import { AlertOctagon, Gauge, RotateCcw, Timer } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import { Card, CardContent, EmptyState, Spinner } from '../../ui'
+import { EmptyState, Spinner } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { Table } from './Table'
+import KpiCard from './KpiCard'
+import { useChargementRapport } from './useChargementRapport'
 
 /* ============================================================================
    XFSM16 — Analytics field service consolidés (`reporting/reports/field/`).
@@ -16,33 +17,8 @@ const pct = (v) => (v == null ? '—' : `${v} %`)
 const jours = (v) => (v == null ? '—' : `${v} j`)
 const min = (v) => (v == null ? '—' : `${v} min`)
 
-function KpiCard({ icon, label, value }) {
-  return (
-    <Card className="flex-1 min-w-[160px]">
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="text-muted-foreground">{icon}</div>
-        <div>
-          <div className="text-xs text-muted-foreground">{label}</div>
-          <div className="text-lg font-semibold">{value}</div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function FieldServiceReportPage() {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    reportingApi.fieldServiceReport()
-      .then((r) => { if (active) { setData(r.data); setError(false) } })
-      .catch(() => { if (active) setError(true) })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [])
+  const { data, loading, error } = useChargementRapport(reportingApi.fieldServiceReport)
 
   return (
     <div className="page">

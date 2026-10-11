@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertOctagon, Clock, HardHat, ReceiptText, RotateCcw } from 'lucide-react'
 import api from '../../api/axios'
-import { Card, CardContent, EmptyState, Spinner } from '../../ui'
+import { EmptyState, Spinner } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { Table } from './Table'
+import KpiCard from './KpiCard'
 
 /* ============================================================================
    CHT27 — Cockpit KPI chantier (`reporting/reports/chantier/`).
@@ -20,21 +21,6 @@ import { Table } from './Table'
 
 const jours = (v) => (v == null ? '—' : `${v} j`)
 const pct = (v) => (v == null ? '—' : `${v} %`)
-
-function KpiCard({ icon, label, value, sub }) {
-  return (
-    <Card className="flex-1 min-w-[200px]">
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="text-muted-foreground">{icon}</div>
-        <div>
-          <div className="text-xs text-muted-foreground">{label}</div>
-          <div className="text-lg font-semibold">{value}</div>
-          {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 export default function PilotageChantiersPage() {
   const [report, setReport] = useState(null)
@@ -75,19 +61,19 @@ export default function PilotageChantiersPage() {
       ) : (
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap gap-3">
-            <KpiCard
+            <KpiCard className="flex-1 min-w-[200px]"
               icon={<RotateCcw />}
               label="Taux de reprise post-MES"
               value={pct(report.taux_reprise_post_mes?.taux_pct)}
-              sub={`${report.taux_reprise_post_mes?.nb_avec_reprise ?? 0}/${report.taux_reprise_post_mes?.nb_eligibles ?? 0} chantiers · fenêtre ${report.taux_reprise_post_mes?.fenetre_jours ?? 30} j`}
+              hint={`${report.taux_reprise_post_mes?.nb_avec_reprise ?? 0}/${report.taux_reprise_post_mes?.nb_eligibles ?? 0} chantiers · fenêtre ${report.taux_reprise_post_mes?.fenetre_jours ?? 30} j`}
             />
-            <KpiCard
+            <KpiCard className="flex-1 min-w-[200px]"
               icon={<Clock />}
               label="Chantiers en retard"
               value={report.chantiers_en_retard?.total ?? 0}
-              sub="vs date de pose prévue"
+              hint="vs date de pose prévue"
             />
-            <KpiCard
+            <KpiCard className="flex-1 min-w-[200px]"
               icon={<ReceiptText />}
               label="Tranches à facturer en attente"
               value={aFacturer.length}

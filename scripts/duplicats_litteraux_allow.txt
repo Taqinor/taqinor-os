@@ -907,7 +907,6 @@ c608ee3dc4db|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/sr
 c63eb488f9d7|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/ventes/BonCommandeList.jsx
 c6c701ca35c2|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/impact-taqinor.astro
 c6c9aa36795e|frontend/src/pages/stock/InventairesAnnuels.test.jsx,frontend/src/pages/stock/RevalorisationsStock.test.jsx
-c6f08e172312|frontend/src/pages/reporting/FieldServiceReportPage.jsx,frontend/src/pages/reporting/PilotageChantiersPage.jsx
 c73b6d26d147|frontend/src/features/installations/statuses.js,frontend/src/features/sav/equipement.js,frontend/src/features/sav/ticketStatuses.js
 c742d1dcce83|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 c768e8c38e16|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src/pages/installations/ParcInstallePage.jsx,frontend/src/pages/interventions/InterventionsPage.jsx
@@ -1011,7 +1010,6 @@ d81e1cd976cf|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.j
 d8267f49c9e2|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 d84e7a6a035e|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/Journal.jsx,frontend/src/pages/admin/GouvernanceAccesPage.jsx,frontend/src/pages/ia/OcrUpload.jsx,frontend/src/pages/installations/PlanificationPage.jsx,frontend/src/pages/parametres/AvanceSection.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/parametres/EquipeSection.jsx,frontend/src/pages/parametres/GammesMarquesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx,frontend/src/pages/ventes/DossiersReglementairesPage.jsx,frontend/src/pages/ventes/generator/PanneauSurcharges.jsx
 d870fa4c928c|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.nestedShortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.paletteActions.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceCreate.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
-d91077ca5c6e|frontend/src/pages/reporting/FieldServiceReportPage.jsx,frontend/src/pages/reporting/QuoteToCashPage.jsx,frontend/src/pages/reporting/SavSlaPage.jsx
 d937d52879d7|backend/django_core/apps/ventes/quote_engine/builder.py,backend/django_core/apps/ventes/quote_engine/residential/sample_data.py
 d9e3e6251265|frontend/src/features/calepinage/PhotoSiteCalage.jsx,frontend/src/pages/visites/CalageToitPage.jsx
 d9fbe729a925|frontend/src/pages/crm/leads/views/ChartsView.jsx,frontend/src/pages/crm/leads/views/KanbanView.jsx
@@ -1128,7 +1126,6 @@ f4c1534d347e|frontend/src/features/ventes/HistoriqueConfiguration.test.jsx,front
 f4c2e075ca96|apps/web/src/pages/api/lead-ref-lookup.ts,apps/web/src/pages/api/proposition-accept.ts,apps/web/src/pages/api/proposition-otp.ts
 f54204523fc4|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 f580f4a17fe9|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
-f58e54bce0bd|frontend/src/pages/reporting/FieldServiceReportPage.jsx,frontend/src/pages/reporting/QuoteToCashPage.jsx,frontend/src/pages/reporting/SavSlaPage.jsx
 f5f641825104|frontend/src/pages/ventes/DevisLineRow.test.jsx,frontend/src/pages/ventes/DevisLineRowRemise.test.jsx
 f63bbd705a74|apps/web/src/pages/ar/guides/loi-82-21-expliquee.astro,apps/web/src/pages/ar/regularization-article-33.astro
 f6ae5225e82a|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
