@@ -686,6 +686,26 @@ class PucesCgvLangueHtmlTests(SimpleTestCase):
                     self._puces(langue, doc_texts={"cgv_bullets": perso}),
                     ["Clause société 40&#37; non traduite"])
 
+    def test_suite_des_cgv_bornees_en_et_ar(self):
+        """Puces trop longues (page 3 résidentielle, APDF13) ou tronquées par
+        le contrat de pages C&I (``_cgv_max``) : la ligne « suite »
+        (``ci_cgv_suite``) existe en en / ar — plus de KeyError au rendu."""
+        from apps.ventes.quote_engine import i18n_labels as L
+        from apps.ventes.quote_engine.ci import blocs
+        from apps.ventes.quote_engine.residential import trust
+        longues = [f"Clause {n} : " + "texte contractuel long " * 6
+                   for n in range(1, 9)]
+        for langue in ("en", "ar"):
+            with self.subTest(langue=langue):
+                attendu = L.libelle("ci_cgv_suite", langue)
+                d = {"langue_sortie": langue}
+                self.assertIn(attendu,
+                              trust.puces_cgv_bornees(d, longues)[-1])
+                d.update(doc_texts={"cgv_bullets": longues}, _cgv_max=2)
+                self.assertIn(attendu, blocs.puces_conditions(d)[-1])
+        self.assertEqual(L.libelle("ci_cgv_suite", "fr"),
+                         "Suite des conditions : proposition en ligne")
+
 
 @tag("pdf")
 class PucesCgvLangueTests(TestCase):

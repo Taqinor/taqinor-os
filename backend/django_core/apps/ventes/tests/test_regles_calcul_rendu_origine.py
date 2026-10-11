@@ -149,6 +149,8 @@ CLES_HORS_RENDU_ORIGINE = (
     ('entreprise', 'capital_social'), ('entreprise', 'forme_juridique'),
     ('regles_calcul_origine',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
+    # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
+    ('libelles_document', 'ci_cgv_suite'),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 
