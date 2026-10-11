@@ -31,19 +31,12 @@ backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::ff3b5
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::cdfb2513215b | Ratio d'AFFICHAGE : prix au kWc (QJR160 -- total et kWc de la MEME branche).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._scale_tot::9284748ed227 | Multi-villa : montant de TVA d'affichage multiplie par le nombre de villas.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::566a598356ce | Multi-villa : total d'affichage multiplie par le nombre de villas.
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::c1b18a5faf41 | Total HT d'AFFICHAGE d'une ligne d'option (PU HT x quantite).
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::3df65d0bc891 | Total TTC d'AFFICHAGE d'une ligne d'option (PU TTC x quantite).
 
 # --- backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::fdd393eb39d1 | Carte option "Sans batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() pour ne plus diverger du bloc totaux page 2 sur un TTC au centime -- affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::4aa80d83238a | Carte option "Avec batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() -- affichage seul, jumeau du site ci-dessus.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::ede41a9a2000 | Prix barre (avant remise) de la carte "Sans batterie" -- QJR53 : doit suivre le meme arrondi que le total qu'il barre, affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::e0078433f1a0 | Prix barre (avant remise) de la carte "Avec batterie" -- QJR53, affichage seul, jumeau du site ci-dessus.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::954cddadc518 | Tranche "Acompte" de l'echeancier (page Devis Final) : arrondi au millier avant affichage, montant deja clampe (ERR76) dans [0, total-solde].
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::fbd79f54bc63 | Tranche "Solde" de l'echeancier (page Devis Final) : arrondi au millier avant affichage, meme chaine que le site ci-dessus.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::1427d8eaee01 | Pourcentage affiche de la tranche "Acompte" (derive du montant deja arrondi) -- QJR145(c) documente que la somme des trois peut deriver de 100%, connu et accepte.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::9eb3fbb89e23 | Pourcentage affiche de la tranche "Solde" (cas standard 3 cases) -- jumeau des deux sites ci-dessus.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::b084ae3970cf | Pourcentage affiche de la tranche "Solde" (variante 2 cases, QX7b, quand la case Materiel est vide) -- meme famille que les trois sites ci-dessus.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::a379dbcff3dd | "Prix par kWc" affiche en case-resume du one-page (total/KWC) -- indicateur d'affichage, non persiste.
 
 # --- backend/django_core/apps/ventes/quote_engine/pricing.py
@@ -55,12 +48,6 @@ backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::
 
 # --- backend/django_core/apps/ventes/quote_engine/bareme.py
 backend/django_core/apps/ventes/quote_engine/bareme.py::_tranche::28414c7ffdff | Prix MAD/kWh de la tranche tarifaire ONEE dans le descripteur JSON-serialisable _tranche -- constante de bareme reproduite au client, arrondie a 6 decimales (precision du tarif officiel).
-
-# --- backend/django_core/apps/ventes/quote_engine/commercial/equip.py
-backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::b3af1360cab3 | Total TTC d'une ligne d'equipement (PU TTC x quantite) dans le tableau "Equipements & investissement" du PDF commercial.
-backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::b800525fcef3 | P.U. TTC affiche par ligne dans le meme tableau -- meme montant que le total ci-dessus, affichage seul.
-backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::1a0be99387dc | Ligne "Remise" de la chaine Sous-total HT -> Remise -> Total HT -> TVA -> Total TTC exigee par la regle #4, rendue seulement si remise > 0.
-backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::8de073d61e02 | Ligne "TVA" de la meme chaine de totaux -- maillon entre Total HT et Total TTC.
 
 # --- backend/django_core/apps/ventes/public/payload_economie.py
 backend/django_core/apps/ventes/public/payload_economie.py::_monthly_consumption._kwh::016f23b2fff9 | pas un montant : kWh mensuels ENTIERS derives d'une facture MAD (QJR405 a bascule l'inversion sur facture_totale=True) — grandeur physique d'AFFICHAGE de la courbe de consommation, jamais persistee ; l'argent est en amont dans kwh_from_bill (deja allowliste).
@@ -116,16 +103,7 @@ backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::7f663e
 # --- backend/django_core/apps/ventes/domain/resynchronisation.py
 backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
 backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::9fb8f2d7d278 | ERR120 (30/09/2026) — total affiché arrondi au dirham, MÊME règle que fmt ; rendu PDF seul (règle #4)
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::24abb0b7c93f | ERR120 — case Acompte (k MAD) du Devis Final, affichage ; ex-page3 déplacé dans l'aide pure
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::b764d8f56ead | ERR120 — case Solde (k MAD) du Devis Final, affichage ; ex-page3 déplacé dans l'aide pure
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::902d129345e7 | ERR120 — pourcentage affiché de l'acompte (somme 100), affichage
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::ef3d91e1582a | ERR120 — pourcentage affiché du solde, affichage
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::0ebbb3916cfe | ERR120 — pourcentage affiché du solde (chemin deux cases), affichage
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::4607e45338ff | ERR-QAC-MULTIVILLA-TOTAL-XN (30/09/2026) — total ×N des cases de paiement (Devis Final), affichage ; même arrondi que le total imprimé
 backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::7799b0034dd5 | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
-backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::092a819e6272 | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
-backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::a7ad3de2928f | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::f4b512886cc4 | QJR616 — total d'option ×N villas affiché par le PDF (moteur en float), jamais persisté
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::1a21ab458ac6 | QJR616 — prix TTC d'option affiché par le one-page (moteur en float), jamais persisté
 backend/django_core/apps/ventes/selectors.py::promesse_production_devis::c78ef06fb352 | CIQ627 — ratio de performance modélisé (sans unité, 3 décimales), jamais un montant
