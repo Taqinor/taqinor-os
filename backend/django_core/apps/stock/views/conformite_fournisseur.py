@@ -62,7 +62,8 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
 
 @extend_schema_view(
     list=extend_schema(responses=AchatsParametresSerializer),
-    partial_update=extend_schema(parameters=[PID], request=AchatsParametresSerializer, responses=AchatsParametresSerializer))
+    partial_update=extend_schema(parameters=[PID], request=AchatsParametresSerializer,
+                                 responses=AchatsParametresSerializer))
 class AchatsParametresViewSet(viewsets.ViewSet):
     """XPUR1 — paramètres achats de la société connectée (singleton par
     company). GET renvoie (en le créant si besoin) le réglage courant ; PATCH

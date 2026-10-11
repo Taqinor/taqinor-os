@@ -30,7 +30,9 @@ class PlanEchantillonnage(TenantModel):
     """
 
     categorie = models.ForeignKey(
-        'stock.Categorie', on_delete=models.CASCADE,  # on_delete: CASCADE — un plan n'a de sens QUE pour sa catégorie ; sans elle il ne s'appliquerait à rien (composition stricte)
+        # on_delete: CASCADE — un plan n'a de sens QUE pour sa catégorie ; sans elle il ne s'appliquerait à rien
+        # (composition stricte)
+        'stock.Categorie', on_delete=models.CASCADE,
         null=True, blank=True, related_name='plans_echantillonnage',
         help_text='Catégorie visée. Vide = plan par défaut de la société.')
     taux_echantillon_pct = models.PositiveIntegerField(
@@ -89,7 +91,9 @@ class ControleReception(TenantModel):
         NON_CONFORME = 'non_conforme', 'Non conforme'
 
     reception = models.OneToOneField(
-        'achats.ReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE — le verdict n'existe QUE pour sa réception ; sans elle il n'a plus d'objet (composition stricte)
+        # on_delete: CASCADE — le verdict n'existe QUE pour sa réception ; sans elle il n'a plus d'objet (composition
+        # stricte)
+        'achats.ReceptionFournisseur', on_delete=models.CASCADE,
         related_name='controle_reception_stock')
     resultat = models.CharField(max_length=20, choices=Resultat.choices)
     unites_controlees = models.PositiveIntegerField(default=0)

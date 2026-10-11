@@ -71,7 +71,9 @@ def parse_bool_strict(valeur):
 from .fournisseur_scm import ScmFournisseurActionsMixin  # noqa: E402
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('categorie', INT, False, 'Catégorie fournisseur (id)'), P('show_archived', STR, False, 'true pour inclure les archivés', ['true', 'false'])]))
+@extend_schema_view(list=extend_schema(parameters=[P('categorie', INT, False, 'Catégorie fournisseur (id)'),
+                                                   P('show_archived', STR, False, 'true pour inclure les archivés',
+                                                     ['true', 'false'])]))
 class FournisseurViewSet(ScmFournisseurActionsMixin,
                          CompanyScopedModelViewSet):
     queryset = Fournisseur.objects.all()
@@ -316,7 +318,9 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
             pass
 
-    @extend_schema(request=corps('FournisseurDeciderCandidatureCorps', valider=serializers.BooleanField()), responses=corps('FournisseurDeciderCandidatureReponse', id=serializers.IntegerField(), statut_validation=serializers.CharField()))
+    @extend_schema(request=corps('FournisseurDeciderCandidatureCorps', valider=serializers.BooleanField()),
+                   responses=corps('FournisseurDeciderCandidatureReponse', id=serializers.IntegerField(),
+                                   statut_validation=serializers.CharField()))
     @action(detail=True, methods=['post'], url_path='decider-candidature',
             permission_classes=[IsAdminRole])
     def decider_candidature(self, request, *args, **kwargs):
@@ -488,7 +492,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'progression': stock_selectors.progression_onboarding(dossier),
         })
 
-    @extend_schema(parameters=[P('debut', DATE), P('fin', DATE), P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
+    @extend_schema(parameters=[P('debut', DATE), P('fin', DATE), P('export', STR, False, 'xlsx pour télécharger',
+                                                                   ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='export-conformite')
     def export_conformite(self, request):
         """NTP2P19 — audit achats : conformité par fournisseur actif.

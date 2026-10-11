@@ -27,10 +27,13 @@ class DepotConsignation(TenantModel):
         CLOS = 'clos', 'Clos'
 
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.PROTECT,  # on_delete: PROTECT — un dépôt engage de la marchandise RÉELLE chez ce client ; on refuse la suppression plutôt que d'orpheliner du stock physique
+        # on_delete: PROTECT — un dépôt engage de la marchandise RÉELLE chez ce client ; on refuse la suppression plutôt
+        # que d'orpheliner du stock physique
+        'crm.Client', on_delete=models.PROTECT,
         related_name='depots_consignation_stock')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — trace de stock physique déposé (aligné sur MouvementStock)
+        # on_delete: PROTECT — trace de stock physique déposé (aligné sur MouvementStock)
+        'stock.Produit', on_delete=models.PROTECT,
         related_name='depots_consignation')
     quantite_deposee = models.PositiveIntegerField(default=0)
     quantite_consommee_declaree = models.PositiveIntegerField(default=0)
@@ -79,7 +82,9 @@ class DeclarationConsommation(TenantModel):
         FACTUREE = 'facturee', 'Facturée'
 
     depot = models.ForeignKey(
-        DepotConsignation, on_delete=models.CASCADE,  # on_delete: CASCADE — une déclaration n'existe QUE pour son dépôt (composition stricte, aucune valeur orpheline)
+        # on_delete: CASCADE — une déclaration n'existe QUE pour son dépôt (composition stricte, aucune valeur
+        # orpheline)
+        DepotConsignation, on_delete=models.CASCADE,
         related_name='declarations')
     quantite = models.PositiveIntegerField()
     date_declaration = models.DateField()

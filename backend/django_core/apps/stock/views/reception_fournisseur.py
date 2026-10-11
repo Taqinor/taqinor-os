@@ -50,7 +50,8 @@ from .catch_weight import PeseeLigneActionsMixin  # noqa: E402
 from .document_fige import DocumentFigeMixin  # noqa: E402
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT, False, 'BCF (id)'), P('statut', STR, False, 'Statut')]))
+@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT, False, 'BCF (id)'), P('statut', STR, False,
+                                                                                                'Statut')]))
 class ReceptionFournisseurViewSet(DocumentFigeMixin,
                                   ControleReceptionActionsMixin,
                                   PeseeLigneActionsMixin,
@@ -140,7 +141,12 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
 
-    @extend_schema(parameters=[P('code', STR, True, 'Code GS1-128 / DataMatrix')], responses=corps('ReceptionScanGs1Reponse', produit_id=serializers.IntegerField(), produit_nom=serializers.CharField(), numeros_serie=serializers.ListField(child=serializers.CharField(), allow_null=True), numero_lot=serializers.CharField(allow_null=True), date_peremption=serializers.CharField(allow_null=True)))
+    @extend_schema(parameters=[P('code', STR, True, 'Code GS1-128 / DataMatrix')],
+                   responses=corps('ReceptionScanGs1Reponse', produit_id=serializers.IntegerField(),
+                                   produit_nom=serializers.CharField(),
+                                   numeros_serie=serializers.ListField(child=serializers.CharField(), allow_null=True),
+                                   numero_lot=serializers.CharField(allow_null=True),
+                                   date_peremption=serializers.CharField(allow_null=True)))
     @action(detail=False, methods=['get'], url_path='scan-gs1')
     def scan_gs1(self, request):
         """XSTK4 — décompose un code GS1-128/DataMatrix (query param
@@ -182,7 +188,8 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 if parsed.get('date_peremption') else None),
         })
 
-    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False, 'html pour la version HTML', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
+    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False,
+                                                                                              'html pour la version HTML', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes')
     def etiquettes(self, request, pk=None):
         """ZSTK6 — planche d'étiquettes lot/série depuis les lignes de CETTE
@@ -271,7 +278,9 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             'lignes': proposer_cross_dock(reception),
         })
 
-    @extend_schema(request=corps('ReceptionCrossDockCorps', lignes=serializers.ListField(child=serializers.IntegerField(), required=False), unite_logistique=serializers.IntegerField(required=False)), responses={
+    @extend_schema(request=corps('ReceptionCrossDockCorps',
+                                 lignes=serializers.ListField(child=serializers.IntegerField(), required=False),
+                                 unite_logistique=serializers.IntegerField(required=False)), responses={
         200: inline_serializer('StockReceptionCrossDockAffectation', {
             'unite_logistique': serializers.IntegerField(allow_null=True),
             'sscc': serializers.CharField(),

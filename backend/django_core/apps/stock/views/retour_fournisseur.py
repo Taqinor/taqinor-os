@@ -117,7 +117,8 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(retour).data)
 
-    @extend_schema(request=corps('RetourValiderScanneCorps', bins_source=serializers.DictField(required=False)), responses={
+    @extend_schema(request=corps('RetourValiderScanneCorps', bins_source=serializers.DictField(required=False)),
+                   responses={
         200: inline_serializer('StockRetourValideScanne', {
             'id': serializers.IntegerField(),
             'reference': serializers.CharField(),

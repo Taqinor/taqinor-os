@@ -27,7 +27,9 @@ class CompatibiliteHazmatCasier(TenantModel):
     """Un casier autorisé à recevoir UNE classe de danger."""
 
     bin = models.ForeignKey(
-        'installations.BinLocation', on_delete=models.CASCADE,  # on_delete: CASCADE — l'autorisation ne décrit QUE ce casier ; le casier supprimé, elle n'autorise plus rien (composition stricte)
+        # on_delete: CASCADE — l'autorisation ne décrit QUE ce casier ; le casier supprimé, elle n'autorise plus rien
+        # (composition stricte)
+        'installations.BinLocation', on_delete=models.CASCADE,
         related_name='compatibilites_hazmat_stock')
     classe_danger = models.CharField(
         max_length=20,

@@ -195,7 +195,9 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(depot).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('DeclarerConsommationCorps', quantite=serializers.IntegerField(), date_declaration=serializers.DateField(required=False, allow_null=True), note=serializers.CharField(required=False, allow_blank=True)),
+    @extend_schema(request=corps('DeclarerConsommationCorps', quantite=serializers.IntegerField(),
+                                 date_declaration=serializers.DateField(required=False, allow_null=True),
+                                 note=serializers.CharField(required=False, allow_blank=True)),
                    responses={201: DeclarationFactureeSerializer})
     @action(detail=True, methods=['post'], url_path='declarer-consommation',
             permission_classes=[IsResponsableOrAdmin])
@@ -493,7 +495,8 @@ class AtpProduitMixin:
         return Response(atp_produit(request.user.company, self.get_object()))
 
 
-@extend_schema(parameters=[P('client', INT), P('categorie', INT), P('marque', STR), P('q', STR), P('limite', INT), P('offset', INT)], responses={
+@extend_schema(parameters=[P('client', INT), P('categorie', INT), P('marque', STR), P('q', STR), P('limite', INT),
+                           P('offset', INT)], responses={
     200: inline_serializer('StockCatalogueB2b', {
         'client': serializers.IntegerField(allow_null=True),
         'total': serializers.IntegerField(),

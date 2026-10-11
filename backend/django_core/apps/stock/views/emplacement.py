@@ -45,7 +45,10 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('type_proprietaire', STR, False, 'Propriétaire', ['interne', 'chez_tiers', 'de_tiers']), P('tiers_nom', STR, False, 'Nom du tiers (contient)')]))
+@extend_schema_view(list=extend_schema(parameters=[P('type_proprietaire', STR, False, 'Propriétaire', ['interne',
+                                                                                                       'chez_tiers',
+                                                                                                       'de_tiers']),
+                                                   P('tiers_nom', STR, False, 'Nom du tiers (contient)')]))
 class EmplacementStockViewSet(CompanyScopedModelViewSet):
     """N15 — emplacements de stock (dépôt principal + camionnette amorcés au
     premier accès). Lecture tout rôle, écriture admin. Le principal ne peut être
@@ -150,7 +153,9 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         from ..selectors import van_stock_a_reapprovisionner
         return Response(van_stock_a_reapprovisionner(request.user.company))
 
-    @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=serializers.IntegerField(), emplacement_id=serializers.IntegerField()), responses={200: TransfertStockSerializer, 201: TransfertStockSerializer})
+    @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=serializers.IntegerField(),
+                                 emplacement_id=serializers.IntegerField()), responses={200: TransfertStockSerializer,
+                                                                                        201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='van-stock/creer-transfert',
             permission_classes=[IsAdminRole])
     def van_stock_creer_transfert(self, request):
@@ -209,7 +214,11 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             TransfertStockSerializer(transfert).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule'), P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
+    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule'), P('symbology', STR, False,
+                                                                                          'Symbologie', ['qr',
+                                                                                                         'code128']),
+                               P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200,
+                                                                                                                  'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes-kanban')
     def etiquettes_kanban(self, request, *args, **kwargs):
         """XSTK20 — Cartes kanban deux-bacs pour CET emplacement : une carte

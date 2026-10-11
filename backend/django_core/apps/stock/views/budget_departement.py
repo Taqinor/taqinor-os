@@ -128,7 +128,14 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
             many=True).data
         return Response(detail)
 
-    @extend_schema(parameters=[P('montant', NUM, False, 'Montant demandé (MAD)')], responses=corps('BudgetDisponibleReponse', controle_actif=serializers.BooleanField(), restant=serializers.FloatField(allow_null=True), depassement=serializers.FloatField(), suffisant=serializers.BooleanField(), montant_manquant=serializers.FloatField(), budget_id=serializers.IntegerField(allow_null=True), montant_alloue=serializers.CharField(allow_null=True), montant_demande=serializers.FloatField()))
+    @extend_schema(parameters=[P('montant', NUM, False, 'Montant demandé (MAD)')],
+                   responses=corps('BudgetDisponibleReponse', controle_actif=serializers.BooleanField(),
+                                   restant=serializers.FloatField(allow_null=True),
+                                   depassement=serializers.FloatField(), suffisant=serializers.BooleanField(),
+                                   montant_manquant=serializers.FloatField(),
+                                   budget_id=serializers.IntegerField(allow_null=True),
+                                   montant_alloue=serializers.CharField(allow_null=True),
+                                   montant_demande=serializers.FloatField()))
     @action(detail=False, methods=['get'])
     def disponible(self, request):
         """NTP2P23 — simulateur : reste-t-il ``montant`` sur le budget de la

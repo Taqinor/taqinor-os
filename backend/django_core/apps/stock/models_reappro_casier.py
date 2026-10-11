@@ -31,10 +31,14 @@ class SeuilReapproCasier(TenantModel):
     """
 
     bin = models.OneToOneField(
-        'installations.BinLocation', on_delete=models.CASCADE,  # on_delete: CASCADE — le seuil ne décrit QUE ce casier ; sans lui il ne déclenche plus rien (composition stricte)
+        # on_delete: CASCADE — le seuil ne décrit QUE ce casier ; sans lui il ne déclenche plus rien (composition
+        # stricte)
+        'installations.BinLocation', on_delete=models.CASCADE,
         related_name='seuil_reappro_stock')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: CASCADE — un seuil vise UN produit dans UN casier ; le produit supprimé, le seuil n'a plus d'objet (paramétrage reconstructible, aucune donnée réelle)
+        # on_delete: CASCADE — un seuil vise UN produit dans UN casier ; le produit supprimé, le seuil n'a plus d'objet
+        # (paramétrage reconstructible, aucune donnée réelle)
+        'stock.Produit', on_delete=models.CASCADE,
         related_name='seuils_reappro_casier')
     seuil = models.PositiveIntegerField(
         default=0,
@@ -76,10 +80,12 @@ class TacheReapproInterne(TenantModel):
         ANNULEE = 'annulee', 'Annulée'
 
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — trace d'exécution magasin (aligné sur MouvementStock/LignePicking)
+        # on_delete: PROTECT — trace d'exécution magasin (aligné sur MouvementStock/LignePicking)
+        'stock.Produit', on_delete=models.PROTECT,
         related_name='taches_reappro_interne')
     bin_cible = models.ForeignKey(
-        'installations.BinLocation', on_delete=models.CASCADE,  # on_delete: CASCADE — la tâche remplit CE casier ; sans lui elle n'a plus de destination (composition stricte)
+        # on_delete: CASCADE — la tâche remplit CE casier ; sans lui elle n'a plus de destination (composition stricte)
+        'installations.BinLocation', on_delete=models.CASCADE,
         related_name='taches_reappro_cible_stock')
     bin_source = models.ForeignKey(
         'installations.BinLocation', on_delete=models.SET_NULL,

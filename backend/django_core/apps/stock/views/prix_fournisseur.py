@@ -107,7 +107,10 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, True, 'Fournisseur (id)'), P('quantite', INT, False, 'Quantité (défaut 1)')], responses=corps('PrixFournisseurEffectifReponse', prix_effectif=serializers.CharField(allow_null=True)))
+    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, True,
+                                                                          'Fournisseur (id)'), P('quantite', INT,
+                                                                                                 False,
+                                                                                                 'Quantité (défaut 1)')], responses=corps('PrixFournisseurEffectifReponse', prix_effectif=serializers.CharField(allow_null=True)))
     @action(detail=False, methods=['get'], url_path='effectif')
     def effectif(self, request):
         """XPUR14 (AUDV04/DRAFT165-117) — prix d'achat EFFECTIF pour un
@@ -159,7 +162,12 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return export_prix_fournisseur_xlsx(request.user.company, fournisseur)
 
-    @extend_schema(request={'multipart/form-data': corps('PrixFournisseurImportCorps', fournisseur=serializers.IntegerField(), file=serializers.FileField(), apercu=serializers.BooleanField(required=False), ecraser=serializers.BooleanField(required=False))}, responses=OBJET)
+    @extend_schema(request={'multipart/form-data': corps('PrixFournisseurImportCorps',
+                                                         fournisseur=serializers.IntegerField(),
+                                                         file=serializers.FileField(),
+                                                         apercu=serializers.BooleanField(required=False),
+                                                         ecraser=serializers.BooleanField(required=False))},
+                   responses=OBJET)
     @action(detail=False, methods=['post'], url_path='import-xlsx',
             parser_classes=[MultiPartParser])
     def import_xlsx(self, request):

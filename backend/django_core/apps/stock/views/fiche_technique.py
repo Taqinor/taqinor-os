@@ -47,7 +47,11 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(produit_id=produit_id)
         return qs
 
-    @extend_schema(request={'multipart/form-data': corps('FicheImporterDatasheetCorps', produit=serializers.IntegerField(), file=serializers.FileField(), confirmer=serializers.BooleanField(required=False))}, responses=OBJET)
+    @extend_schema(request={'multipart/form-data': corps('FicheImporterDatasheetCorps',
+                                                         produit=serializers.IntegerField(),
+                                                         file=serializers.FileField(),
+                                                         confirmer=serializers.BooleanField(required=False))},
+                   responses=OBJET)
     @action(detail=False, methods=['post'], url_path='importer-datasheet')
     def importer_datasheet(self, request):
         """CAL117 — import OPTIONNEL d'une fiche constructeur .PAN/.OND.

@@ -99,7 +99,11 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
 
     # ── NTRET7 — cycle en deux temps (OPT-IN, le direct reste inchangé) ────
 
-    @extend_schema(request=corps('TransfertDemanderCorps', produit=serializers.IntegerField(), source=serializers.IntegerField(), destination=serializers.IntegerField(), quantite=serializers.IntegerField(), note=serializers.CharField(required=False, allow_blank=True)), responses={201: TransfertStockSerializer})
+    @extend_schema(request=corps('TransfertDemanderCorps', produit=serializers.IntegerField(),
+                                 source=serializers.IntegerField(), destination=serializers.IntegerField(),
+                                 quantite=serializers.IntegerField(), note=serializers.CharField(required=False,
+                                                                                                 allow_blank=True)),
+                   responses={201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='demander')
     def demander(self, request):
         """NTRET7 — ouvre un transfert EN DEUX TEMPS : rien n'a encore bougé.
@@ -137,7 +141,9 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
         transfert.refresh_from_db()
         return Response(self.get_serializer(transfert).data)
 
-    @extend_schema(request=corps('TransfertReceptionnerCorps', quantite_recue=serializers.IntegerField(required=False)), responses={200: TransfertStockSerializer})
+    @extend_schema(request=corps('TransfertReceptionnerCorps',
+                                 quantite_recue=serializers.IntegerField(required=False)),
+                   responses={200: TransfertStockSerializer})
     @action(detail=True, methods=['post'], url_path='receptionner')
     def receptionner(self, request, pk=None):
         """Arrivée : la destination n'incrémente QUE le réellement compté

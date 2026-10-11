@@ -26,7 +26,8 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     parser_classes = [JSONParser]
 
-    @extend_schema(request=corps('InventaireAnnuelFigerCorps', exercice=serializers.IntegerField()), responses={201: InventaireAnnuelSerializer})
+    @extend_schema(request=corps('InventaireAnnuelFigerCorps', exercice=serializers.IntegerField()),
+                   responses={201: InventaireAnnuelSerializer})
     @action(detail=False, methods=['post'], url_path='figer')
     def figer(self, request):
         """Fige l'inventaire de l'exercice donné (`{"exercice": 2026}`) —

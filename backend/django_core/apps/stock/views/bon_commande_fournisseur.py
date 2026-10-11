@@ -157,7 +157,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             return True
         return False
 
-    @extend_schema(request=None, responses=corps('BcfWhatsappReponse', wa_url=serializers.CharField(), phone=serializers.CharField(), message=serializers.CharField(), url=serializers.CharField(), statut=serializers.CharField()))
+    @extend_schema(request=None, responses=corps('BcfWhatsappReponse', wa_url=serializers.CharField(),
+                                                 phone=serializers.CharField(), message=serializers.CharField(),
+                                                 url=serializers.CharField(), statut=serializers.CharField()))
     @action(detail=True, methods=['post'], url_path='whatsapp')
     def whatsapp(self, request, pk=None):
         """QS3 — Lien wa.me PRÊT à envoyer vers le FOURNISSEUR + lien tokenisé
@@ -207,8 +209,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         })
 
     @extend_schema(
-        request=corps('BcfEnvoyerEmailCorps', to_email=serializers.EmailField(required=False), sujet=serializers.CharField(required=False), corps=serializers.CharField(required=False)),
-        responses=corps('BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(), email_statut=serializers.CharField(), statut=serializers.CharField()))
+        request=corps('BcfEnvoyerEmailCorps', to_email=serializers.EmailField(required=False),
+                      sujet=serializers.CharField(required=False), corps=serializers.CharField(required=False)),
+        responses=corps('BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(),
+                        email_statut=serializers.CharField(), statut=serializers.CharField()))
     @action(detail=True, methods=['post'], url_path='envoyer-email')
     def envoyer_email(self, request, pk=None):
         """QS3 — Envoie le BCF (PDF joint) au FOURNISSEUR par email + EmailLog.
@@ -391,7 +395,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     @extend_schema(
-        request=corps('BcfReviserCorps', date_commande=serializers.DateField(required=False, allow_null=True), date_livraison_prevue=serializers.DateField(required=False, allow_null=True), note=serializers.CharField(required=False, allow_blank=True), lignes=serializers.ListField(child=serializers.DictField(), required=False)),
+        request=corps('BcfReviserCorps', date_commande=serializers.DateField(required=False, allow_null=True),
+                      date_livraison_prevue=serializers.DateField(required=False, allow_null=True),
+                      note=serializers.CharField(required=False, allow_blank=True),
+                      lignes=serializers.ListField(child=serializers.DictField(), required=False)),
         responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='reviser')
     def reviser(self, request, pk=None):
@@ -469,7 +476,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         bc.save(update_fields=['statut'])
         return Response(self.get_serializer(bc).data)
 
-    @extend_schema(request=corps('BcfAnnulerCorps', motif_annulation=serializers.CharField()), responses=BonCommandeFournisseurSerializer)
+    @extend_schema(request=corps('BcfAnnulerCorps', motif_annulation=serializers.CharField()),
+                   responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         bc = self.get_object()
@@ -532,7 +540,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(bc).data)
 
     @extend_schema(
-        request=corps('BcfConfirmerCorps', date_confirmee_fournisseur=serializers.DateField(required=False, allow_null=True), numero_confirmation_fournisseur=serializers.CharField(required=False, allow_blank=True)),
+        request=corps('BcfConfirmerCorps', date_confirmee_fournisseur=serializers.DateField(required=False,
+                                                                                            allow_null=True),
+                      numero_confirmation_fournisseur=serializers.CharField(required=False, allow_blank=True)),
         responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):
@@ -554,7 +564,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
         return Response(self.get_serializer(bc).data)
 
-    @extend_schema(parameters=[P('fournisseur', INT, True, 'Fournisseur (id)'), P('produits', STR, False, 'Ids produits séparés par virgule')], responses=LISTE)
+    @extend_schema(parameters=[P('fournisseur', INT, True, 'Fournisseur (id)'), P('produits', STR, False,
+                                                                                  'Ids produits séparés par virgule')],
+                   responses=LISTE)
     @action(detail=False, methods=['get'], url_path='bcf-similaires')
     def bcf_similaires(self, request):
         """XPUR11 — panneau « BCF ouverts similaires » : BCF brouillon/envoyé
@@ -576,7 +588,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             produit_ids=produit_ids)
         return Response(similaires)
 
-    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, False, 'Fournisseur (id)')], responses=LISTE)
+    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, False,
+                                                                          'Fournisseur (id)')], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='historique-prix')
     def historique_prix(self, request):
         """XPUR13 — popover « historique des prix » : derniers achats (toutes
@@ -594,7 +607,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             request.user.company, produit_id, fournisseur_id=fournisseur_id)
         return Response(historique)
 
-    @extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('date_debut', DATE), P('date_fin', DATE)], responses=LISTE)
+    @extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('date_debut', DATE), P('date_fin',
+                                                                                                          DATE)],
+                   responses=LISTE)
     @action(detail=False, methods=['get'], url_path='achats-hors-contrat')
     def achats_hors_contrat(self, request):
         """XPUR13 — rapport « achats hors contrat » : lignes de BCF dont le
@@ -634,7 +649,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         en_retard = bcf_en_retard_list(request.user.company)
         return Response(self.get_serializer(en_retard, many=True).data)
 
-    @extend_schema(request=corps('BcfRecevoirCorps', receptions=serializers.ListField(child=serializers.DictField())), responses=BonCommandeFournisseurSerializer)
+    @extend_schema(request=corps('BcfRecevoirCorps', receptions=serializers.ListField(child=serializers.DictField())),
+                   responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='recevoir')
     def recevoir(self, request, pk=None):
         """Réception (totale ou partielle) — incrémente le stock par ENTREE.
@@ -814,7 +830,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(
             self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('BcfFusionnerCorps', bons_commande=serializers.ListField(child=serializers.IntegerField())), responses={201: BonCommandeFournisseurSerializer})
+    @extend_schema(request=corps('BcfFusionnerCorps',
+                                 bons_commande=serializers.ListField(child=serializers.IntegerField())),
+                   responses={201: BonCommandeFournisseurSerializer})
     @action(detail=False, methods=['post'], url_path='fusionner')
     def fusionner(self, request):
         """ZPUR6 — fusionne plusieurs BCF BROUILLON du MÊME fournisseur (et
