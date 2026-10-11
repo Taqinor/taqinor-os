@@ -447,7 +447,7 @@ def classer_ia(texte):  # pragma: no cover - dépend d'un provider externe non c
         return ''
     provider = None
     try:
-        from . import classification_provider as provider  # noqa: F401
+        from . import classification_provider as provider
     except ImportError:
         provider = None
     if provider is None:
@@ -512,7 +512,7 @@ def compute_embedding(text):
     # n'est câblé, on reste no-op même flag activé — jamais d'appel fantôme.
     provider = None
     try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import embedding_provider as provider  # noqa: F401
+        from . import embedding_provider as provider
     except ImportError:
         provider = None
     if provider is None:
@@ -691,7 +691,7 @@ def assign_tag(document, tag, *, created_by=None):
     Le tag et le document doivent appartenir à la même société (jamais de fuite
     cross-société). Renvoie (assignment, created).
     """
-    from .models import DocumentTag, DocumentTagAssignment  # noqa: F401
+    from .models import DocumentTagAssignment
     if tag.company_id != document.company_id:
         raise ValueError("Le tag doit appartenir à la même société.")
     assignment, created = DocumentTagAssignment.objects.get_or_create(
@@ -3160,7 +3160,7 @@ def demander_signature(document, *, signataire_nom, signataire_email,
         # fantôme ni de dépendance nouvelle.
         prov = None
         try:
-            from . import esign_provider as prov  # noqa: F401
+            from . import esign_provider as prov
         except ImportError:
             prov = None
         if prov is not None:
@@ -4614,7 +4614,7 @@ def _pades_signer_disponible():
     reconstruite, etc.), le scellement dégrade proprement en no-op plutôt que
     de lever au chargement du module."""
     try:
-        import pyhanko  # noqa: F401
+        __import__('pyhanko')  # sonde de disponibilité de la lib
         return True
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
         return False
@@ -5224,7 +5224,7 @@ def checklist_dossier(folder):
 # s'abonne pas au registre de handlers générique (celui-ci route vers
 # leads/tickets, pas vers des documents).
 
-import re as _re_mod  # noqa: E402 — regroupé ici, section XGED9 auto-contenue.
+_re_mod = re  # alias local de la section XGED9 auto-contenue.
 
 # Clé réservée dans `Document.custom_data` traçant le Message-ID source d'un
 # import email — ancre d'idempotence (un même message retraité ne duplique pas).
@@ -5595,7 +5595,7 @@ def _decoder_barcode(image):
 def barcode_lib_disponible():
     """XGED11 — True si `pyzbar` est installé (dégrade proprement sinon)."""
     try:
-        import pyzbar.pyzbar  # noqa: F401
+        __import__('pyzbar.pyzbar')  # sonde de disponibilité de la lib
     except Exception:
         return False
     return True
