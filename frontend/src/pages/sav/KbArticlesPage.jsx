@@ -2,7 +2,7 @@
 // onduleur, pannes de strings, problèmes terrain récurrents). Cherchable par
 // texte libre + filtrable par catégorie. Lecture tout rôle, écriture
 // responsable/admin (gardée côté serveur).
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { Plus, Pencil, BookOpen, Search } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -36,8 +36,10 @@ export default function KbArticlesPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [search])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerListe = useEffectEvent(load)
+  useEffect(() => { Promise.resolve().then(() => chargerListe()) }, [search])
 
   const create = async () => {
     if (!form.titre.trim() || !form.corps.trim()) return

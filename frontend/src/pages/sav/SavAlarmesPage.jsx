@@ -1,7 +1,7 @@
 // FG280 — Alarmes / défauts onduleur, DISTINCTES du ticket SAV (cycle de vie
 // propre : active → acquittée → escaladée/résolue). Liste + acquitter +
 // escalader (ouvre/relie un ticket SAV).
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 import { AlertTriangle, Plus, ShieldAlert } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -98,8 +98,10 @@ export default function SavAlarmesPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [statutFiltre])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerListe = useEffectEvent(load)
+  useEffect(() => { Promise.resolve().then(() => chargerListe()) }, [statutFiltre])
 
   const acquitter = async (row) => {
     setBusyId(row.id)

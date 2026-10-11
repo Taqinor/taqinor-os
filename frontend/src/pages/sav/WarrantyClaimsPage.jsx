@@ -3,7 +3,7 @@
 // signalement jusqu'à la résolution (remplacement/avoir/réparation/refus).
 // Même patron d'écran que ContratsMaintenance (création + édition inline +
 // DataTable).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import {
   Plus, Pencil, Check, X, ShieldAlert,
 } from 'lucide-react'
@@ -89,8 +89,10 @@ export default function WarrantyClaimsPage() {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [statutFiltre])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerListe = useEffectEvent(load)
+  useEffect(() => { Promise.resolve().then(() => chargerListe()) }, [statutFiltre])
   useEffect(() => {
     lireTout(savApi.getEquipements)
       .then(setEquipements).catch(() => {})

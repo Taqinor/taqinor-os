@@ -4,7 +4,7 @@
 // installation + durée), édition/désactivation inline, revenu récurrent par
 // ligne, badges « À renouveler » / « Visite proche », comptes de visites
 // générées et choix de la date du rapport PDF.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import {
   Download, Cog, Plus, CalendarClock, ClipboardList, AlertTriangle, Pencil,
   Check, X,
@@ -300,10 +300,14 @@ export function Component() {
       .finally(() => setRentabiliteLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { if (vue === 'tournee') loadTournee() }, [vue])
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { if (vue === 'rentabilite' && canSeeCouts) loadRentabilite() }, [vue, canSeeCouts])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerTournee = useEffectEvent(loadTournee)
+  useEffect(() => { if (vue === 'tournee') Promise.resolve().then(() => chargerTournee()) }, [vue])
+  const chargerRentabilite = useEffectEvent(loadRentabilite)
+  useEffect(() => {
+    if (vue === 'rentabilite' && canSeeCouts) Promise.resolve().then(() => chargerRentabilite())
+  }, [vue, canSeeCouts])
   useEffect(() => {
     // Best-effort (réservé admin) — sinon dropdown technicien vide, comme
     // TicketsPage.jsx pour la même liste.
@@ -345,8 +349,10 @@ export function Component() {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [dueOnly])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerListe = useEffectEvent(load)
+  useEffect(() => { Promise.resolve().then(() => chargerListe()) }, [dueOnly])
   useEffect(() => {
     // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
     fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))

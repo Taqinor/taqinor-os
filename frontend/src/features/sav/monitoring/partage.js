@@ -1,7 +1,7 @@
 // Briques communes aux sections du suivi SAV (abonnements, SLA, certificats) :
 // lecture de toutes les pages d'une liste, chargement/rechargement et
 // libellé d'un système.
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 
 // `lire` = méthode de monitoringApi prenant { page, page_size }.
@@ -17,8 +17,10 @@ export function useListeServeur(lire) {
     setLoading(true)
     lireToutesLesPages(lire).then(setRows).catch(() => setRows([])).finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
-  useEffect(() => { load() }, [])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerAuMontage = useEffectEvent(load)
+  useEffect(() => { Promise.resolve().then(() => chargerAuMontage()) }, [])
 
   return { rows, loading, load }
 }

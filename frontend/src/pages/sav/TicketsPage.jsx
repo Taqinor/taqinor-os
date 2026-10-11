@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -416,7 +416,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       .then((r) => setInterventions(r.data?.results ?? r.data ?? [])).catch(() => {})
   }
 
-  useEffect(() => {
+  const chargerFiche = useEffectEvent(() => {
     loadHistorique()
     loadInterventions()
     loadPieces()
@@ -443,8 +443,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     if (savApi.getRemedesDefaillance) {
       lireTout(savApi.getRemedesDefaillance).then(setRemedes).catch(() => {})
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  })
+  useEffect(() => { chargerFiche() }, [id])
 
   // NTMOB15 — scanner le QR/n° de série de l'équipement concerné sélectionne
   // directement l'option correspondante (même endpoint de résolution N20 que
@@ -1858,7 +1858,9 @@ export default function TicketsPage() {
   }
 
   const reload = () => dispatch(fetchTickets())
-  useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
+  const chargerAuMontage = useEffectEvent(reload)
+  useEffect(() => { chargerAuMontage() }, [])
 
   // VX79 — lien interne partageable : /sav?id=<pk> ouvre la fiche du ticket
   // ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet). Fermer retire
@@ -1936,6 +1938,9 @@ export default function TicketsPage() {
     setSelected(rows[cible])
   }, [rows, detailTicket])
 
+  // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
+  // l'effet-événement en lit toujours la version courante.
+  const fermerDetail = useEffectEvent(() => closeDetail())
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
@@ -1949,14 +1954,11 @@ export default function TicketsPage() {
         e.preventDefault()
         setSelected(rows[0])
       } else if (e.key === 'Escape' && detailTicket) {
-        closeDetail()
+        fermerDetail()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-    // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
-    // on dépend des valeurs qu'il lit, pas de son identité.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deplacerSelection, detailTicket, rows, searchParams])
 
   const hasFilters = filters.q || filters.statut || filters.type || filters.priorite

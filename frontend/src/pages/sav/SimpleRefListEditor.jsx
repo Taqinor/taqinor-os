@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { Plus, Archive, ArchiveRestore } from 'lucide-react'
 import { Button, Input, EmptyState, Skeleton, toast } from '../../ui'
 
@@ -33,7 +33,9 @@ export default function SimpleRefListEditor({
 
   const charger = () => { setLoading(true); return load() }
 
-  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
+  const chargerAuMontage = useEffectEvent(load)
+  useEffect(() => { chargerAuMontage() }, [])
 
   const add = async () => {
     const nom = newName.trim()

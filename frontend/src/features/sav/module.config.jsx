@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
 import { Boxes, Wrench, LayoutDashboard } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -54,8 +54,9 @@ import { appGlyph } from '../../lib/apps/appGlyph'
       complet ; SAV n'obtient PAS de tuile Monitoring séparée.
    ========================================================================== */
 
-// eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
-const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
+// ENF28 — rendu par createElement : l'icône (composant polymorphe) est une
+// valeur lue, plus un paramètre « inutilisé » aux yeux de no-unused-vars.
+const navIcon = (icone) => createElement(icone, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 // ODY19 — cockpit de l'app (porte d'entrée), en tête de nav.

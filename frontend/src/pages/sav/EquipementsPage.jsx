@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -135,7 +135,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
     ).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
     tout((p) => stockApi.getProduits(p)).then(setProduits).catch(() => {})
     tout((p) => installationsApi.getInstallations(p)).then(setInstallations).catch(() => {})
-  }, [correcting]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [correcting, produits.length])
 
   const dirty = useMemo(
     () => Object.keys(initial).some((k) => (fields[k] ?? '') !== (initial[k] ?? ''))
@@ -453,7 +453,9 @@ export default function EquipementsPage() {
   const [scannerOpen, setScannerOpen] = useState(false)
 
   const reload = () => dispatch(fetchEquipements())
-  useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
+  const chargerAuMontage = useEffectEvent(reload)
+  useEffect(() => { chargerAuMontage() }, [])
 
   const setF = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
 
@@ -485,7 +487,9 @@ export default function EquipementsPage() {
   const hasFilters = filters.q || filters.produit || filters.marque || filters.garantie || filters.statut
 
   // L625 — clic sur un badge de ligne : pose le filtre garantie à cet état.
-  const filterByGarantie = (etat) => setF('garantie', filters.garantie === etat ? '' : etat)
+  const filterByGarantie = useCallback(
+    (etat) => setFilters((f) => ({ ...f, garantie: filters.garantie === etat ? '' : etat })),
+    [filters.garantie])
 
   // WIR116/FG85/XSAV19 — imprime les étiquettes QR du parc filtré. `pub=true`
   // encode le lien public « Signaler un problème » (/e/<token>) ; `pub=false`
@@ -593,7 +597,7 @@ export default function EquipementsPage() {
         </button>
       ),
     },
-  ], [filters.garantie]) // eslint-disable-line react-hooks/exhaustive-deps
+  ], [filterByGarantie])
 
   return (
     <TooltipProvider delayDuration={200}>
