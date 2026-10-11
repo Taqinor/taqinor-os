@@ -226,7 +226,6 @@
 305acce9be12|frontend/src/features/calepinage/DossiersReglementaires.jsx,frontend/src/features/calepinage/SchemaUnifilairePanel.jsx,frontend/src/features/calepinage/production/DiagrammePertes.jsx,frontend/src/features/calepinage/production/PanneauProduction.jsx
 3099046a32f6|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 30e18de4db2f|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-30f1276bf1d2|frontend/src/features/installations/statuses.js,frontend/src/features/sav/ticketStatuses.js
 310a063a8e03|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 31568c6d92ec|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src/pages/interventions/InterventionsPage.jsx,frontend/src/pages/sav/TicketsPage.jsx
 31a05c397a60|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/ensoleillement-maroc.astro,frontend/src/pages/admin/ImpersonationConsentement.jsx,frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/ventes/FactureForm.jsx,frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/PaiementsPage.jsx,frontend/src/pages/ventes/devisList/DevisRow.jsx
@@ -296,7 +295,6 @@
 3f41409ca1bf|frontend/src/pages/parametres/ApplicationsSection.jsx,frontend/src/pages/parametres/ApprobationsPolitiquesSection.jsx,frontend/src/pages/parametres/ConfidentialiteSection.jsx,frontend/src/pages/parametres/ExportsPlanifiesSection.jsx,frontend/src/pages/parametres/ModelesBrandesSection.jsx
 3f6bb1451cf8|frontend/src/features/uxviews/quickcreate/TicketQuickCreateModal.jsx,frontend/src/pages/ventes/ClientQuickCreateModal.jsx
 3f98a4bf9655|apps/web/src/pages/ar/garanties.astro,apps/web/src/pages/ar/équipement.astro
-3fbc8d68c9c0|frontend/src/features/installations/statuses.js,frontend/src/features/sav/ticketStatuses.js
 40e5059f088a|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 411fd8005192|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 415b786184df|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceCreate.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
@@ -888,7 +886,6 @@ c608ee3dc4db|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/sr
 c63eb488f9d7|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/ventes/BonCommandeList.jsx
 c6c701ca35c2|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/impact-taqinor.astro
 c6c9aa36795e|frontend/src/pages/stock/InventairesAnnuels.test.jsx,frontend/src/pages/stock/RevalorisationsStock.test.jsx
-c73b6d26d147|frontend/src/features/installations/statuses.js,frontend/src/features/sav/equipement.js,frontend/src/features/sav/ticketStatuses.js
 c742d1dcce83|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 c768e8c38e16|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src/pages/installations/ParcInstallePage.jsx,frontend/src/pages/interventions/InterventionsPage.jsx
 c78d68e6dc6d|apps/web/src/scripts/roofPro11/edges.ts,apps/web/src/scripts/roofPro11/scene3d.ts

@@ -2,6 +2,8 @@
 // L'état de garantie est calculé côté serveur (champ `garantie_etat`) ; on en
 // garde ici les libellés/couleurs et un repli local de cohérence.
 
+import { trierPar } from './listesCommun.js'
+
 export const EQUIP_STATUTS = [
   { value: 'en_service', label: 'En service' },
   { value: 'remplace', label: 'Remplacé' },
@@ -83,24 +85,11 @@ export function filterEquipements(items, filters) {
 
 // Tri : par défaut par date de fin de garantie (les vides en fin).
 export function sortEquipements(items, key, dir) {
-  const sign = dir === 'asc' ? 1 : -1
-  const arr = [...(items ?? [])]
   const EMPTY = dir === 'asc' ? '9999-99-99' : ''
-  arr.sort((a, b) => {
-    let va
-    let vb
-    if (key === 'date_fin_garantie') {
-      va = a.date_fin_garantie_effective ?? a.date_fin_garantie ?? EMPTY
-      vb = b.date_fin_garantie_effective ?? b.date_fin_garantie ?? EMPTY
-    } else {
-      va = a[key] ?? ''
-      vb = b[key] ?? ''
-    }
-    if (va < vb) return -1 * sign
-    if (va > vb) return 1 * sign
-    return 0
-  })
-  return arr
+  if (key === 'date_fin_garantie') {
+    return trierPar(items, dir, (e) => e.date_fin_garantie_effective ?? e.date_fin_garantie ?? EMPTY)
+  }
+  return trierPar(items, dir, (e) => e[key] ?? '')
 }
 
 // NTMOB15 — décision PURE post-résolution d'un code scanné (stock/produits/
