@@ -21,6 +21,7 @@ import parametresApi from '../../api/parametresApi'
 import api from '../../api/axios'
 import importApi from '../../api/importApi'
 import FactureForm from './FactureForm'
+import ListeTableSkeleton from './ListeTableSkeleton'
 import FactureKanbanBoard from './FactureKanbanBoard'
 import FactureRow, { AnnulationFactureDialog } from './factureList/FactureRow'
 // SPL212 — exports comptables (état, gestes, dialogues) extraits en factureList/.
@@ -31,7 +32,7 @@ import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
   // APX12 — le langage UNIQUE des KPI d'argent.
   Stat,
-  Skeleton, SkeletonTableRow,
+  Skeleton,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -77,32 +78,10 @@ import { downloadBlobInGesture } from '../../utils/downloadBlob'
 // les 8 colonnes du vrai tableau pour que la mise en page ne saute pas à
 // l'arrivée des données. Affiché dans la même carte que le tableau réel, en
 // gardant l'en-tête de page visible.
+const FACTURETABLESKELETON_ENTETES = [['Référence'], ['Client'], ['Émission'], ['Échéance'], ['Total TTC', 'ta-right'], ['Statut'], ['Actions']]
+
 function FactureTableSkeleton() {
-  return (
-    <Card className="mt-4 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th className="w-10" />
-              <th>Référence</th>
-              <th>Client</th>
-              <th>Émission</th>
-              <th>Échéance</th>
-              <th className="ta-right">Total TTC</th>
-              <th>Statut</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: 6 }).map((unused, i) => (
-              <SkeletonTableRow key={i} columns={8} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  )
+  return <ListeTableSkeleton largeurSelection="w-10" entetes={FACTURETABLESKELETON_ENTETES} />
 }
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).

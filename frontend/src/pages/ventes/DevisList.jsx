@@ -15,7 +15,7 @@ import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import {
   Button, Card, EmptyState, Spinner,
-  Skeleton, SkeletonTableRow,
+  Skeleton,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, toast,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
   Textarea,
@@ -63,36 +63,15 @@ import {
   estDevisCi, corpsAcceptation, raisonSocialeConnue, ENTREPRISE_VIDE,
 } from '../../features/ventes/quote/acceptationEntreprise'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import ListeTableSkeleton from './ListeTableSkeleton'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
 // carte que le tableau réel, en gardant l'en-tête de page visible.
+const DEVISTABLESKELETON_ENTETES = [['Référence'], ['Client'], ['Créé le'], ['Validité'], ['Total TTC', 'ta-right'], ['Statut'], ['Actions']]
+
 function DevisTableSkeleton() {
-  return (
-    <Card className="mt-4 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th className="w-8" />
-              <th>Référence</th>
-              <th>Client</th>
-              <th>Créé le</th>
-              <th>Validité</th>
-              <th className="ta-right">Total TTC</th>
-              <th>Statut</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: 6 }).map((unused, i) => (
-              <SkeletonTableRow key={i} columns={8} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  )
+  return <ListeTableSkeleton largeurSelection="w-8" entetes={DEVISTABLESKELETON_ENTETES} />
 }
 
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
