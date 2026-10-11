@@ -180,6 +180,20 @@ class RelanceEtape(TenantModel):
             models.Index(fields=['company', 'lead', 'cadence', 'statut'],
                          name='crm_relance_lead_cad_idx'),
         ]
+        constraints = [
+            # ACRM55 — filet STRUCTUREL sous le verrou ACRM35 : UNE seule
+            # touche À FAIRE par barreau (lead, cadence, ordre, devis) des
+            # cadences à barreaux ; filets/gestes (``cle`` posée) et cadence
+            # générique hors contrainte. ``devis`` vide compte comme une
+            # valeur (NULLS NOT DISTINCT, Postgres ≥ 15).
+            models.UniqueConstraint(
+                fields=['lead', 'cadence', 'ordre', 'devis'],
+                condition=models.Q(
+                    statut='a_faire', cle='',
+                    cadence__in=('contact', 'apres_devis', 'reveil')),
+                nulls_distinct=False,
+                name='crm_relance_une_ouverte_par_barreau'),
+        ]
 
     def __str__(self):
         return (f'{self.lead_id} — {self.cadence} #{self.ordre} '

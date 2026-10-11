@@ -352,29 +352,51 @@ class ParcoursCompletsTests(ParcoursBase):
         self.assertFalse(ecrire_si_libre(lead, 'whatsapp', '0662000000', journal=False))
         self.assertTrue(ecrire_si_libre(lead, 'ville', 'Fès', journal=False))
 
-    def test_placement_respecte_une_relance_saisie(self):
-        """AMET20 — le placement des anciens leads (moteur ``_recaler_file``) ne remplace
-        jamais une ``relance_date`` saisie à la main ; un lead sans saisie est placé comme
-        avant ; un second placement ne change rien."""
-        from django.utils import timezone
-
-        from apps.crm.cadence_placement import placer_anciens_leads
+    def _lead_relance_saisie(self, jour, touches):
+        """Lead à ``relance_date`` saisie à la main + ses touches de contact
+        ``[(ordre, jour, statut)]``."""
         from apps.crm.models import Lead
-        saisie = self.aujourdhui() - datetime.timedelta(days=10)
-        leads = {}
-        for nom, saisies in (('Relance saisie', ['relance_date']), ('Sans saisie', [])):
-            leads[nom] = Lead.objects.create(
-                company=self.company, nom=nom, stage=stages.CONTACTED, owner=self.acteur,
-                relance_date=saisie, saisies_humaines=saisies)
-        Lead.objects.filter(pk__in=[le.pk for le in leads.values()]).update(
-            date_creation=timezone.now() - datetime.timedelta(days=60))
-        for passe in (1, 2):
-            placer_anciens_leads(self.company, self.acteur, apply=True)
-            for lead in leads.values():
-                lead.refresh_from_db()
-                self.assertTrue(RelanceEtape.objects.filter(lead=lead).exists(), lead.nom)
-            self.assertEqual(leads['Relance saisie'].relance_date, saisie, f'passe {passe}')
-            self.assertNotEqual(leads['Sans saisie'].relance_date, saisie, f'passe {passe}')
+        lead = Lead.objects.create(
+            company=self.company, nom='Relance saisie', owner=self.acteur,
+            relance_date=jour, saisies_humaines=['relance_date'])
+        for ordre, quand, statut in touches:
+            RelanceEtape.objects.create(
+                company=self.company, lead=lead, cadence='contact', ordre=ordre,
+                due_date=quand, canal=RelanceEtape.Canal.APPEL, statut=statut)
+        return lead
+
+    def _recaler(self, lead):
+        from apps.crm.cadence_plan import _recaler_file
+        _recaler_file(lead, self.acteur)
+        lead.refresh_from_db()
+        return lead
+
+    def test_relance_saisie_a_venir_gardee(self):
+        """AMET20 (décision fondateur 11/10) — une date saisie À VENIR dont la
+        touche est ouverte prime : le moteur ne la déplace pas."""
+        j5, j2 = self.jour_ouvre(5), self.jour_ouvre(2)
+        lead = self._recaler(self._lead_relance_saisie(
+            j5, [(1, j2, A_FAIRE), (2, j5, A_FAIRE)]))
+        self.assertEqual(lead.relance_date, j5)
+        self.assertIn('relance_date', lead.saisies_humaines)
+
+    def test_relance_saisie_passee_le_moteur_reprend(self):
+        """AMET20 — la date saisie est passée : le moteur la déplace sur la
+        prochaine touche ouverte et elle n'est plus une saisie humaine."""
+        passee = self.aujourdhui() - datetime.timedelta(days=3)
+        j2 = self.jour_ouvre(2)
+        lead = self._recaler(self._lead_relance_saisie(passee, [(1, j2, A_FAIRE)]))
+        self.assertEqual(lead.relance_date, j2)
+        self.assertNotIn('relance_date', lead.saisies_humaines)
+
+    def test_relance_saisie_touche_close_le_moteur_reprend(self):
+        """AMET20 — la touche couverte par la date saisie est close : le moteur
+        reprend la main."""
+        j5, j7 = self.jour_ouvre(5), self.jour_ouvre(7)
+        lead = self._recaler(self._lead_relance_saisie(
+            j5, [(1, j5, RelanceEtape.Statut.FAIT), (2, j7, A_FAIRE)]))
+        self.assertEqual(lead.relance_date, j7)
+        self.assertNotIn('relance_date', lead.saisies_humaines)
 
     def test_fusion_garde_un_zero_saisi(self):
         """AMET21 — ``merge_leads`` : un 0 saisi du survivant survit (ACRM13), une clé de

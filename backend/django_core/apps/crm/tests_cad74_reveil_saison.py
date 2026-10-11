@@ -165,6 +165,25 @@ class PoseDuReveilSaisonnierTests(_Base):
                              statut=RelanceEtape.Statut.A_FAIRE)
         self.assertIsNone(poser_reveil_saisonnier(lead, self.acteur))
 
+    def test_course_sur_le_barreau_ouvert_relit_l_existant(self):
+        """ACRM55 (jumeau) — deux passages concurrents : le second passe la
+        garde avant que le premier n'écrive (simulé en neutralisant
+        ``motif_de_refus``) ; la contrainte refuse le doublon, la pose relit
+        la touche ouverte au lieu de lever."""
+        from unittest import mock
+
+        from apps.crm import cadence_reveil_saison
+        lead = self._dormant()
+        ouverte = self._reveil_pose_le(lead, datetime.date(2026, 7, 16),
+                                       ordre=REVEIL_SAISON_ORDRE,
+                                       statut=RelanceEtape.Statut.A_FAIRE)
+        with mock.patch.object(cadence_reveil_saison, 'motif_de_refus',
+                               return_value=None):
+            etape = poser_reveil_saisonnier(lead, self.acteur)
+        self.assertEqual(etape, ouverte)
+        self.assertEqual(RelanceEtape.objects.filter(
+            lead=lead, cadence='reveil', ordre=REVEIL_SAISON_ORDRE).count(), 1)
+
     def test_un_lead_qui_n_est_pas_au_Froid_n_est_pas_un_dormant(self):
         lead = self._dormant(nom='Actif', stage=stages.FOLLOW_UP)
         self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
