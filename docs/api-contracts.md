@@ -349,7 +349,7 @@
 - frontend/src/api/publicapiApi.js :: ocrToCrm -> /api/django/publicapi/ocr-to-crm
     detail:texte, devis_id:inconnu, devis_reference:inconnu, lead_id:inconnu, mode:inconnu
 - frontend/src/api/publicapiApi.js :: sandboxTry -> /api/django/publicapi/sandbox/try
-    detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
+    resource:inconnu, results:inconnu, sandbox:booleen
 - frontend/src/api/recordsApi.js :: getMyActivities -> /api/django/records/activities/mine
     a_venir:liste, aujourdhui:liste, en_retard:liste
 - frontend/src/api/recordsApi.js :: snoozeApprobation -> /api/django/records/activities/snooze-approbation
@@ -509,7 +509,7 @@
 - frontend/src/api/ventesApi.js :: dgiConformiteFacture -> /api/django/ventes/factures/<>/dgi-conformite
     conforme:booleen, detail:texte, problemes:inconnu
 - frontend/src/api/ventesApi.js :: dupliquerVarianteGamme -> /api/django/ventes/devis/<>/dupliquer-variante-gamme
-    detail:texte, gamme:inconnu, gammes:liste, source:inconnu
+    detail:texte, gamme:inconnu, gammes:liste, recommandee:texte, source:inconnu
 - frontend/src/api/ventesApi.js :: envoyerEmailDevis -> /api/django/ventes/devis/<>/envoyer-email
     detail:inconnu, devis_statut:inconnu, email_statut:inconnu, log_id:inconnu, proposal_path:inconnu, statut:texte
 - frontend/src/api/ventesApi.js :: envoyerEmailFacture -> /api/django/ventes/factures/<>/envoyer-email
@@ -527,11 +527,9 @@
 - frontend/src/api/ventesApi.js :: genererPdfFacture -> /api/django/ventes/factures/<>/generer-pdf
     detail:texte, task_id:inconnu
 - frontend/src/api/ventesApi.js :: getCashFlowForecast -> /api/django/ventes/insights/cash-flow
-    buckets:inconnu, rows:inconnu, total_en_cours:inconnu
+    buckets:inconnu, mode:texte, rows:inconnu, total_en_cours:inconnu
 - frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
     buckets:inconnu, devis:inconnu, wa_drafts:inconnu
-- frontend/src/api/ventesApi.js :: getHistoriqueConfigurationDevis -> /api/django/ventes/devis/<>/historique-configuration
-    detail:texte, diff:inconnu, snapshots:liste
 - frontend/src/api/ventesApi.js :: getLectureClientDevis -> /api/django/ventes/devis/<>/lecture-client
     friction:inconnu, sections:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site

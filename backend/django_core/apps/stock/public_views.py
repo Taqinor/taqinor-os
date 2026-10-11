@@ -13,7 +13,6 @@ de marge. Le fournisseur peut :
 Protections : X-Robots-Tag noindex sur chaque réponse ; throttle cache-based
 par IP + jeton (sans dépendance externe).
 """
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -128,7 +127,11 @@ def portail_fournisseur_documents_view(request, token):
             'numero_confirmation_fournisseur': serializers.CharField(
                 allow_null=True),
         }),
-        400: OpenApiTypes.OBJECT,
+        400: inline_serializer('StockPortailFournisseurConfirmerRefus', {
+            # `detail` pour un corps/date manquant, sinon les erreurs par champ
+            # (`exc.erreurs`) — jamais un objet sans propriété (ENF11).
+            'detail': serializers.CharField(required=False),
+        }),
         404: inline_serializer('StockPortailFournisseurErreurConfirmer', {
             'detail': serializers.CharField(),
         }),
