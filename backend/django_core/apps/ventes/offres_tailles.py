@@ -2036,6 +2036,7 @@ def _porter_modules_batterie(devis, modules):
     from decimal import Decimal as _Decimal
 
     from apps.ventes.domain.dimensionnement_devis import lignes_vendues
+    from apps.ventes.domain.lignes import porter_quantite
     from apps.ventes.services import _is_battery
 
     if not modules:
@@ -2050,8 +2051,7 @@ def _porter_modules_batterie(devis, modules):
     dominante = max(candidats, key=lambda li: _num(getattr(li, 'quantite', 0)))
     if int(_num(getattr(dominante, 'quantite', 0))) == int(modules):
         return int(modules)
-    dominante.quantite = _Decimal(str(int(modules)))
-    dominante.save(update_fields=['quantite'])
+    porter_quantite(dominante, _Decimal(str(int(modules))))
     return int(modules)
 
 
@@ -2078,6 +2078,7 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
     from decimal import Decimal as _Decimal
 
     from apps.ventes.domain.dimensionnement_devis import lignes_vendues
+    from apps.ventes.domain.lignes import poser_prix_unitaire
     from apps.ventes.services import _est_au_prix_catalogue
 
     if not equipements:
@@ -2116,8 +2117,8 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
             ligne.designation = (getattr(produit, 'nom', '')
                                  or ligne.designation)
             prix = getattr(produit, 'prix_vente', None)
-            if prix is not None:
-                ligne.prix_unitaire = _Decimal(str(prix))
+            poser_prix_unitaire(
+                ligne, None if prix is None else _Decimal(str(prix)))
             tva = getattr(produit, 'tva', None)
             if tva is not None:
                 ligne.taux_tva = _Decimal(str(tva))

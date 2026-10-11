@@ -344,7 +344,8 @@ def reconcilier(devis, intention):
             raise SyncLayoutError('Devis introuvable.')
         # ADEV30 — compte de panneaux AVANT toute écriture : un envoyé n'est
         # re-tarifé que si la resynchronisation le change.
-        from .lignes import comptes_panneaux_du_devis
+        from .lignes import (comptes_panneaux_du_devis, porter_quantite,
+                             poser_prix_unitaire)
         comptes_avant = comptes_panneaux_du_devis(verrou)
 
         # PVMRQ — gamme RÉELLE de ce devis, calculée une fois et transmise à
@@ -604,8 +605,7 @@ def reconcilier(devis, intention):
                         'de panneaux de l\'option « %s » : elle a été ramenée '
                         'à 0, les autres lignes n\'ont pas été touchées.'
                         % variante)
-                dominante.quantite = Decimal(str(nouvelle))
-                dominante.save(update_fields=['quantite'])
+                porter_quantite(dominante, Decimal(str(nouvelle)))
                 lignes_modifiees += 1
                 panneaux_ont_change = True
             total_panneaux = _total_de(VARIANTE_SANS)
@@ -637,8 +637,7 @@ def reconcilier(devis, intention):
                         'Le retrait demandé dépasse la plus grosse ligne de '
                         'panneaux : elle a été ramenée à 0, les autres lignes '
                         'n\'ont pas été touchées.')
-                dominante.quantite = Decimal(str(nouvelle))
-                dominante.save(update_fields=['quantite'])
+                porter_quantite(dominante, Decimal(str(nouvelle)))
                 lignes_modifiees += 1
                 total_panneaux = sum(
                     int(li.quantite or 0) for li in lignes_panneau)
@@ -717,8 +716,7 @@ def reconcilier(devis, intention):
             nouvelle = Decimal(str(cible))
             if Decimal(str(dominante.quantite or 0)) == nouvelle:
                 return False
-            dominante.quantite = nouvelle
-            dominante.save(update_fields=['quantite'])
+            porter_quantite(dominante, nouvelle)
             return True
 
         if panneaux_ont_change and kwc > 0:
@@ -949,7 +947,7 @@ def reconcilier(devis, intention):
                 return False
             ligne.produit = remplacant
             ligne.designation = remplacant.nom
-            ligne.prix_unitaire = Decimal(remplacant.prix_vente)
+            poser_prix_unitaire(ligne, Decimal(remplacant.prix_vente))
             ligne.save(update_fields=['produit', 'designation',
                                       'prix_unitaire'])
             return True
@@ -1250,6 +1248,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
     sans fiche)."""
     from apps.ventes.domain.etape_composer import refus_modeles_designes
     from apps.ventes.domain.geometrie import _produit_designe
+    from apps.ventes.domain.lignes import porter_quantite
 
     refus = refus_modeles_designes(verrou.company, [
         m for m in modeles if m.get('produit_id') and not any(
@@ -1277,8 +1276,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
             return
         dominante = max(libres, key=lambda li: Decimal(str(li.quantite or 0)))
         nouvelle = max(0, int(dominante.quantite or 0) + (cible - total))
-        dominante.quantite = Decimal(str(nouvelle))
-        dominante.save(update_fields=['quantite'])
+        porter_quantite(dominante, Decimal(str(nouvelle)))
         modifiees += 1
         change = True
 
@@ -1337,8 +1335,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
         avertissements.append(
             'La ligne de panneaux « %s » ne correspond à aucun module posé '
             'sur le calepinage : elle a été ramenée à 0.' % ligne.designation)
-        ligne.quantite = Decimal('0')
-        ligne.save(update_fields=['quantite'])
+        porter_quantite(ligne, Decimal('0'))
         modifiees += 1
         change = True
     return modifiees, change, residuel
