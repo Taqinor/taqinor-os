@@ -14,6 +14,7 @@ import { EnteteStock } from './EnteteStock'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { AlerteErreurStock } from './BandeauxListeStock'
+import CellulesProduitQuantite from './CellulesProduitQuantite'
 
 // L744 — Liste consultable des RETOURS FOURNISSEUR (RetourFournisseurViewSet
 // existait sans écran). Référence RF, fournisseur, statut, date + consultation
@@ -94,10 +95,7 @@ export function RetourDetail({ retour, onClose, onAvoirGenere, peutPayer = true 
               )}
               {lignes.map((l) => (
                 <tr key={l.id} className="border-t border-border">
-                  <td className="px-3 py-2">
-                    {l.produit_nom}{l.produit_sku ? ` (${l.produit_sku})` : ''}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums">{l.quantite}</td>
+                  <CellulesProduitQuantite l={l} />
                   <td className="px-3 py-2">{l.motif || <span className="text-muted-foreground">—</span>}</td>
                 </tr>
               ))}

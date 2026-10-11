@@ -419,7 +419,6 @@
 6620fe759ceb|apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/realisations/index.astro
 6628e5eafe7c|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/contact.astro,apps/web/src/pages/en/contact.astro
 666c9c46d8ac|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-6699652b4637|frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx
 6699bc2ce038|frontend/src/features/parametres/IaDiagnostic.jsx,frontend/src/pages/Dashboard.jsx,frontend/src/pages/installations/PlanificationPage.jsx,frontend/src/pages/parametres/ClotureAchatsWizardPage.jsx,frontend/src/pages/ventes/DossiersReglementairesPage.jsx
 66bbe2c99a04|apps/web/src/pages/ar/garanties.astro,apps/web/src/pages/en/garanties.astro,apps/web/src/pages/garanties.astro
 6787c431c503|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro

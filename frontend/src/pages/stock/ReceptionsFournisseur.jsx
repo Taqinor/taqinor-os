@@ -22,6 +22,7 @@ import { EnteteStock } from './EnteteStock'
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 import { frErrForm } from '../../lib/frErr'
+import CellulesProduitQuantite from './CellulesProduitQuantite'
 
 const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
@@ -192,10 +193,7 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                     const reste = resteLigne(l)
                     return (
                       <tr key={l.id} className="border-t border-border">
-                        <td className="px-3 py-2">
-                          {l.produit_nom}{l.produit_sku ? ` (${l.produit_sku})` : ''}
-                        </td>
-                        <td className="px-3 py-2 tabular-nums">{l.quantite}</td>
+                        <CellulesProduitQuantite l={l} />
                         <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>
                         <td className="px-3 py-2 tabular-nums">{reste}</td>
                         <td className="px-3 py-2">
@@ -350,10 +348,7 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
               )}
               {lignes.map((l) => (
                 <tr key={l.id} className="border-t border-border">
-                  <td className="px-3 py-2">
-                    {l.produit_nom}{l.produit_sku ? ` (${l.produit_sku})` : ''}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums">{l.quantite}</td>
+                  <CellulesProduitQuantite l={l} />
                 </tr>
               ))}
             </tbody>
