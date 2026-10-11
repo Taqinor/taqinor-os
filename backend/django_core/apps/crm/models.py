@@ -3066,7 +3066,6 @@ from .models_clients import (  # noqa: E402,F401,F811
     LeadPlaybookProgress, ObjectifCommercial, Parrainage, Partenaire,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape, PlaybookTache,
     RevueCompte, SalleVente, SalleVenteItem, SalleVenteVue,
-    SoumissionLeadPartenaire, SPECIALITES_PARTENAIRE,
-    SPECIALITES_PARTENAIRE_CLES, VisiteExterne)
+    SoumissionLeadPartenaire, VisiteExterne)
 from .models_cadence import (  # noqa: E402,F401
     GesteRelanceAppareil, MessageTemplate, PeriodeAbsence, RelanceEtape)

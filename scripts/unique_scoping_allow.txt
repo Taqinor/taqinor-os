@@ -3,7 +3,7 @@
 #
 # (a) business unique=True fields judged legitimately global for now:
 backend/django_core/apps/compta/models.py::Immobilisation.piece_origine_ligne_facture_fournisseur_id
-backend/django_core/apps/crm/models_clients.py::Client.code_parrainage
+backend/django_core/apps/crm/models.py::Client.code_parrainage
 #
 # (b) KNOWN GAP to fix in a targeted crm task (out of this DB-free core lane):
 #     crm.Lead inherits SoftDeleteModel but its (company, external_system,

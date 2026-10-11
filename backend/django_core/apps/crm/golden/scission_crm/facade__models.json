@@ -48,8 +48,6 @@
   "RelanceEtape": "RelanceEtape",
   "RevueCompte": "RevueCompte",
   "SALLE_VENTE_TTL_DAYS": "int",
-  "SPECIALITES_PARTENAIRE": "tuple",
-  "SPECIALITES_PARTENAIRE_CLES": "tuple",
   "STAGE_CHOICES": "list",
   "SalleVente": "SalleVente",
   "SalleVenteItem": "SalleVenteItem",
