@@ -9,6 +9,7 @@ import Capture from './Capture.astro';
 import type { Locale } from '../i18n/config';
 import { AFFIRMATIONS, type Affirmation as Aff } from '../lib/claims';
 import { publiables, type Module } from '../lib/affirmer';
+import { capturesPubliables } from '../data/productScreens';
 
 interface Props {
   locale: Locale;
@@ -17,9 +18,13 @@ interface Props {
   modules: readonly Module[];
   /** Surcharge du registre — réservée aux tests (fixture). */
   registre?: readonly Aff[];
+  /** Écran de la bande produit au-dessus : sans capture revue, la PREMIÈRE capture des modules devient l'image LCP de la page (YBW80 : jamais en lazy). */
+  heroEcran?: string;
 }
-const { locale, surtitre, titre, modules, registre = AFFIRMATIONS } = Astro.props;
+const { locale, surtitre, titre, modules, registre = AFFIRMATIONS, heroEcran } = Astro.props;
 const visibles = modules.map((m) => ({ ...m, ids: publiables(m.affirmations, registre) })).filter((m) => m.ids.length > 0);
+const heroSansImage = heroEcran !== undefined && capturesPubliables(heroEcran).length === 0;
+const premiereCapture = heroSansImage ? visibles.find((m) => m.ecran && capturesPubliables(m.ecran).length > 0)?.id : undefined;
 ---
 <section id="modules" class="section" aria-labelledby="modules-titre">
   <div class="conteneur">
@@ -34,7 +39,7 @@ const visibles = modules.map((m) => ({ ...m, ids: publiables(m.affirmations, reg
             <h3 id={`module-${m.id}`}>{m.titre}</h3>
             {m.ids.map((id) => <Affirmation id={id} locale={locale} />)}
           </div>
-          {m.ecran && <Capture ecran={m.ecran} locale={locale} />}
+          {m.ecran && <Capture ecran={m.ecran} locale={locale} prioritaire={m.id === premiereCapture} />}
         </article>
       ))}
     </div>
