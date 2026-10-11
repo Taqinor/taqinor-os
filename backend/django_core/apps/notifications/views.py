@@ -448,17 +448,16 @@ _CONFORMITE = inline_serializer('AnnonceConformite', {
 })
 
 
+# Actions ouvertes à tout rôle (module-level : la garde check_action_permission_override
+# lit les constantes de module pour voir que accuser_lecture n'atteint pas le repli admin).
+_ANNONCE_ANY_ROLE_ACTIONS = ['list', 'retrieve', 'accuser_lecture']
+
+
 @extend_schema_view(list=extend_schema(parameters=[
     _q('active', OpenApiTypes.STR, 'Publiées et non expirées seulement.',
        enum=['1', 'true', 'True']),
     _q('epinglee', OpenApiTypes.STR, 'Annonces épinglées ou non.',
        enum=_BOOL_01)]))
-# Actions ouvertes à tout rôle (module-level : la garde check_action_permission_override
-# lit les constantes de module pour voir que accuser_lecture n'atteint pas le repli admin).
-_ANNONCE_READ_ACTIONS = ['list', 'retrieve']
-_ANNONCE_ANY_ROLE_ACTIONS = _ANNONCE_READ_ACTIONS + ['accuser_lecture']
-
-
 class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     """XKB5 — Annonces internes ciblées et programmées.
 
