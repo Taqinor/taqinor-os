@@ -615,7 +615,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='bon-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def bon_pdf(self, request, pk=None):
         """ZMFG10 — bon d'assemblage PDF (worksheet atelier). STRICTEMENT
         INTERNE : aucun prix (test dédié « aucun prix dans le PDF »)."""
@@ -697,7 +697,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(responses=OrdreAssemblageActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def historique(self, request, pk=None):
         """XMFG4 — chatter complet de l'ordre."""
         ordre = self.get_object()
