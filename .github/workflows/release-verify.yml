@@ -685,8 +685,17 @@ jobs:
         # (drf-spectacular) en ligne de commande, sans limite de worker, et
         # Schemathesis le lit en fichier ; les requêtes de fuzzing visent
         # toujours le serveur gunicorn via `--url`.
+        # ENF11 — rendu JSON (lu 56x plus vite, WOW-CI3), puis schéma FUZZÉ :
+        # miroir `/api/v1/` retiré et liens stateful CRUD déclarés
+        # (`scripts/fuzz/api_fuzz_scope.py schema`, sans filtre de portée : le
+        # nocturne fuzze TOUTE l'API). Le run 38129616897 n'avait que des liens
+        # inférés : « API Links: 3 covered / 36872 selected ».
         working-directory: backend/django_core
-        run: python manage.py spectacular --file ../../openapi-schema.yml
+        run: |
+          set -euo pipefail
+          python manage.py spectacular --format openapi-json --file ../../openapi-brut.json
+          python ../../scripts/fuzz/api_fuzz_scope.py schema \
+            --in ../../openapi-brut.json --out ../../openapi-schema.json
       - name: schemathesis run (fuzzing + stateful, tous les checks — BLOQUANT)
         # Lancé depuis la RACINE : `schemathesis.toml` y est découvert.
         run: |
@@ -700,7 +709,7 @@ jobs:
             --max-time 1800 \
             --report junit,json \
             --report-dir schemathesis-report \
-            openapi-schema.yml \
+            openapi-schema.json \
             2>&1 | tee schemathesis-output.log
       - name: Ventilation des constats (résumé du job)
         if: ${{ !cancelled() }}
@@ -725,6 +734,12 @@ jobs:
           for w in d.get('warnings', []) or []:
               print(f"\n- avertissement : {json.dumps(w, ensure_ascii=False)[:300]}")
           PY
+          # ENF11 — lignes de la dette gelée du job PR que ce run COMPLET ne
+          # revoit plus : à retirer de scripts/fuzz/api_fuzz_dette.txt.
+          rapport=$(ls schemathesis-report/json-*.json 2>/dev/null | tail -1)
+          if [ -n "$rapport" ]; then
+            python scripts/fuzz/api_fuzz_scope.py soldes --rapport "$rapport" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Upload le rapport Schemathesis
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

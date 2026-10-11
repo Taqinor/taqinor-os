@@ -34,6 +34,10 @@ de ``scripts/fuzz/``) :
     ``scripts/fuzz/api_fuzz_dette.txt``. Le NOCTURNE, lui, n'a pas de dette :
     ``schemathesis run`` y échoue sur le moindre constat (release-verify.yml).
 
+``soldes``
+    Résumé du nocturne : lignes de la dette qu'un run COMPLET ne revoit plus
+    (à retirer du fichier). Un rapport, pas un contrôle : sort toujours 0.
+
 Usage :
     git diff --name-only BASE HEAD | python scripts/fuzz/api_fuzz_scope.py proprietaires
     python ../../scripts/fuzz/api_fuzz_scope.py schema --in brut.json --out fuzz.json \\
@@ -271,6 +275,22 @@ def verdict(rapport: dict, dette: set) -> tuple[list, list]:
     return sorted(constats - dette), sorted(constats & dette)
 
 
+def soldes(rapport: dict, dette: set) -> list:
+    """Lignes de la dette absentes d'un rapport — PROBANT seulement sur un run
+    COMPLET (le nocturne) : le job PR, plafonné et partiel, ne prouve rien."""
+    vus = constats_du_rapport(rapport)
+    return sorted(ligne for ligne in dette if ligne not in vus)
+
+
+def _cmd_soldes(args) -> int:
+    rapport = json.loads(Path(args.rapport).read_text(encoding="utf-8"))
+    lignes = soldes(rapport, charger_dette(Path(args.dette)))
+    print(f"\n### Dette gelée api-fuzz : {len(lignes)} ligne(s) soldée(s) par ce run\n")
+    for ligne in lignes:
+        print(f"- `{ligne}`")
+    return 0
+
+
 def _cmd_proprietaires(_args) -> int:
     for nom in proprietaires_modifies(sys.stdin.read().splitlines()):
         print(nom)
@@ -317,6 +337,10 @@ def main(argv=None) -> int:
     p_verdict.add_argument("--rapport", required=True)
     p_verdict.add_argument("--dette", default=str(DETTE_PATH))
     p_verdict.set_defaults(func=_cmd_verdict)
+    p_soldes = sous.add_parser("soldes")
+    p_soldes.add_argument("--rapport", required=True)
+    p_soldes.add_argument("--dette", default=str(DETTE_PATH))
+    p_soldes.set_defaults(func=_cmd_soldes)
     args = parser.parse_args(argv)
     return args.func(args)
 
