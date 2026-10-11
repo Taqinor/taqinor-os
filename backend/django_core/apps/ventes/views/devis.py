@@ -618,7 +618,9 @@ class DevisViewSet(DevisEditionActionsMixin,
         nombre, quand = revoquer_liens_publics(devis)
         return Response({'revoques': nombre, 'revoque_le': quand})
 
-    @extend_schema(parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=True)], responses=D.PrefillSiteResponse)
+    @extend_schema(
+        parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=True)],
+        responses=D.PrefillSiteResponse)
     @action(detail=False, methods=['get'], url_path='prefill-site',
             permission_classes=[IsAnyRole])
     def prefill_site(self, request):

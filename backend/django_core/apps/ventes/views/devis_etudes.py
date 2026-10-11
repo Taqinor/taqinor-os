@@ -68,7 +68,8 @@ class DevisEtudesActionsMixin:
             bloc = deriver(devis, data)
         except Exception:  # noqa: BLE001 — un écran d'édition ne tombe jamais
             logger.warning(
-                "devis_etudes.DevisEtudesActionsMixin._offres_tailles_reponse : erreur ignorée (mode dégradé)", exc_info=True)
+                "devis_etudes.DevisEtudesActionsMixin._offres_tailles_reponse "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
             logging.getLogger(__name__).warning(
                 'offres_tailles indisponibles sur %s',
                 getattr(devis, 'reference', '?'), exc_info=True)
@@ -265,7 +266,8 @@ class DevisEtudesActionsMixin:
             rafraichir_etudes_du_devis(devis)
         except Exception:  # noqa: BLE001
             logger.warning(
-                "devis_etudes.DevisEtudesActionsMixin._rafraichir_etudes_apres_surcharge : erreur ignorée (mode dégradé)", exc_info=True)
+                "devis_etudes.DevisEtudesActionsMixin._rafraichir_etudes_apres_surcharge "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
 
     @extend_schema(methods=['GET'], responses=D.EtudeParamsGetResponse)
     @extend_schema(methods=['PATCH'], request=D.EtudeParamsPatchRequest,

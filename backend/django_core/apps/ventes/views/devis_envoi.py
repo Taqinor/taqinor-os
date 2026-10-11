@@ -301,7 +301,8 @@ class DevisEnvoiActionsMixin:
                     lien_rdv = public_booking_url(devis.lead, request=request)
                 except Exception:  # noqa: BLE001 — jamais bloquer l'envoi
                     logger.warning(
-                        "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
+                        "devis_envoi.DevisEnvoiActionsMixin.envoyer_email "
+                        ": erreur ignorée (mode dégradé)", exc_info=True)
                     lien_rdv = ''
             rendu = EmailTemplate.render(
                 devis.company, 'envoi_devis',

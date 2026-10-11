@@ -284,7 +284,8 @@ class DevisFacturationActionsMixin:
                 period='monthly')
         except Exception as exc:
             logger.warning(
-                "devis_facturation.DevisFacturationActionsMixin.proforma_pdf : erreur ignorée (mode dégradé)", exc_info=True)
+                "devis_facturation.DevisFacturationActionsMixin.proforma_pdf "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': f'PDF indisponible : {exc}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         pdf_bytes = rendu['pdf']
