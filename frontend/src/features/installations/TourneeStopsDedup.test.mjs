@@ -11,6 +11,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (p) => readFileSync(join(HERE, p), 'utf8')
 
 const PARTAGE = read('TourneeStops.jsx')
+const HELPERS = read('TourneeStops.helpers.js')
 const PLANIF = read('../../pages/installations/PlanificationPage.jsx')
 const JOURNEE = read('../../pages/interventions/MaJourneePage.jsx')
 const MAPVIEW = read('../../components/MapView.jsx')
@@ -45,8 +46,8 @@ test('zéro endpoint nouveau : la tournée vient de getMaTournee, déjà appelé
 })
 
 test('les arrêts sans GPS ne sont jamais posés à une position inventée', () => {
-  assert.match(PARTAGE, /const aGps = \(s\) => s\?\.gps_lat != null && s\?\.gps_lng != null/)
-  assert.match(PARTAGE, /\.filter\(\(\{ stop \}\) => aGps\(stop\)\)/)
+  assert.match(HELPERS, /const aGps = \(s\) => s\?\.gps_lat != null && s\?\.gps_lng != null/)
+  assert.match(HELPERS, /\.filter\(\(\{ stop \}\) => aGps\(stop\)\)/)
 })
 
 test('MapView gagne le tracé + la pastille numérotée, de façon ADDITIVE', () => {
