@@ -92,4 +92,4 @@ class UploadLimitSettingsTests(TestCase):
             '/api/django/core/sauvegardes/', data=oversized,
             content_type='application/x-www-form-urlencoded')
         with self.assertRaises(RequestDataTooBig):
-            request.POST  # noqa: B018 — l'accès déclenche le parsing/la garde
+            request.POST  # l'accès déclenche le parsing/la garde

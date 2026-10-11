@@ -29,7 +29,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import generics, serializers, status
-from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
+from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes,
 )

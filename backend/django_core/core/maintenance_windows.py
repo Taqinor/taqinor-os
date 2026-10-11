@@ -22,7 +22,7 @@ from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
-from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
+from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import (

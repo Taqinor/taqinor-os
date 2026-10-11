@@ -29,7 +29,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
-from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
+from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 

@@ -32,7 +32,7 @@ from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
-from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
+from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import (
     api_view, authentication_classes, parser_classes, permission_classes,
     throttle_classes,

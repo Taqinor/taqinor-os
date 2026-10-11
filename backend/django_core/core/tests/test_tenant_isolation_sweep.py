@@ -261,9 +261,9 @@ class TenantIsolationSweepTests(TestCase):
         def _rapport(titre, entrees):
             if not entrees:
                 return
-            print(f"\n{titre} ({len(entrees)}) :")  # noqa: T201
+            print(f"\n{titre} ({len(entrees)}) :")
             for nom, detail in sorted(entrees):
-                print(f"  - {nom}: {detail}")  # noqa: T201
+                print(f"  - {nom}: {detail}")
 
         _rapport("YRBAC12 — viewsets non exercés par la factory générique",
                  skipped)
@@ -274,7 +274,7 @@ class TenantIsolationSweepTests(TestCase):
         _rapport("CRX17 — création non synthétisable (dette)", create_dette)
         _rapport("CRX17 — @action de détail servant 200 sur l'objet du voisin",
                  action_fuites)
-        print(  # noqa: T201
+        print(
             f"\nCRX17 — découverts={len(entries)} construits={constructed} "
             f"listes exercées={exercised} actions exercées={actions_exercees}")
 
