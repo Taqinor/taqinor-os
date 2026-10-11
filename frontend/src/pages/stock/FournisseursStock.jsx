@@ -11,15 +11,12 @@ import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
 import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import {
-  Button, IconButton, DataTable, Spinner,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormField,
-  Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Badge, EmptyState,
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Button, IconButton, DataTable, Spinner, Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription, DialogFooter, Form, FormField, Input,
+  Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Badge, EmptyState, AlertDialog,
 } from '../../ui'
+import DialogueSuppressionDefinitive from './DialogueSuppressionDefinitive'
 import { EnteteStock } from './EnteteStock'
 // ASTK184 — confirmation maison (AlertDialog) : plus aucune boîte native.
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
@@ -493,46 +490,23 @@ function ScorecardModal({ fournisseur, onClose }) {
 
 // ── WIR190 — confirmation de suppression définitive (patron StockList) ──────
 function ForceDeleteFournisseurModal({ fournisseur, onCancel, onConfirm, loading }) {
-  const [typed, setTyped] = useState('')
-  const expected = fournisseur.nom
-  const isValid = typed.trim() === expected.trim()
-
   return (
-    <AlertDialog open onOpenChange={(o) => { if (!o) onCancel() }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="text-destructive">Suppression définitive</AlertDialogTitle>
-          <AlertDialogDescription>
-            Cette action supprimera le fournisseur et son historique. Elle est{' '}
-            <strong>irréversible</strong>.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm leading-relaxed">
+    <DialogueSuppressionDefinitive
+      description={(
+        <>
+          Cette action supprimera le fournisseur et son historique. Elle est{' '}
+          <strong>irréversible</strong>.
+        </>
+      )}
+      resume={(
+        <>
           <div><span className="inline-block min-w-32 text-muted-foreground">Fournisseur</span><strong>{fournisseur.nom}</strong></div>
           <div><span className="inline-block min-w-32 text-muted-foreground">Produits liés</span>{fournisseur.nb_produits ?? 0}</div>
           <div><span className="inline-block min-w-32 text-muted-foreground">Bons de commande</span>{fournisseur.nb_bons_commande ?? 0}</div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor="fdf-confirm">
-            Tapez <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">{expected}</code> pour confirmer
-          </label>
-          <Input id="fdf-confirm" value={typed} onChange={(e) => setTyped(e.target.value)}
-                 placeholder={`Saisir : ${expected}`} autoFocus />
-        </div>
-
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Annuler</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={!isValid || loading}
-            onClick={(e) => { e.preventDefault(); onConfirm(fournisseur) }}
-          >
-            {loading ? 'Suppression…' : 'Supprimer définitivement'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+        </>
+      )}
+      expected={fournisseur.nom} idChamp="fdf-confirm" loading={loading}
+      onCancel={onCancel} onConfirm={() => onConfirm(fournisseur)} />
   )
 }
 

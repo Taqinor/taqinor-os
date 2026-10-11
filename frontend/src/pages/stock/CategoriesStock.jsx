@@ -14,6 +14,7 @@ import { EnteteStock } from './EnteteStock'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { frErrChamps as frErr } from '../../lib/frErr'
+import { TYPES_EQUIPEMENT } from './typesEquipement'
 
 // L693/L694 — Écran de gestion des CATÉGORIES (renommer / ordre / type
 // d'équipement) et des MARQUES produit. Le free-text par société est préservé :
@@ -21,26 +22,6 @@ import { frErrChamps as frErr } from '../../lib/frErr'
 // comportement historique). Une marque utilisée par des produits ne peut pas
 // être supprimée (le backend renvoie 409) — on affiche alors « archivez-la
 // plutôt » au lieu d'une erreur brute.
-
-// Types d'équipement — alignés sur stock.Categorie.TypeEquipement (backend).
-// `__none` = sentinelle d'ecran (« Non typee »), jamais envoyee telle quelle.
-// source-choix: stock.Categorie.type_equipement +__none
-const TYPES_EQUIPEMENT = [
-  { value: '__none', label: '— Non typée —' },
-  { value: 'panneau', label: 'Panneau' },
-  { value: 'onduleur', label: 'Onduleur' },
-  { value: 'batterie', label: 'Batterie' },
-  { value: 'structure', label: 'Structure' },
-  { value: 'cable', label: 'Câble' },
-  { value: 'protection', label: 'Protection' },
-  { value: 'pompe', label: 'Pompe' },
-  { value: 'variateur', label: 'Variateur' },
-  { value: 'compteur', label: 'Compteur' },
-  { value: 'accessoire', label: 'Accessoire' },
-  // STKCAT2 — « Services & prestations » n'est pas un équipement : sans cette
-  // valeur, la catégorie restait NULL (indistinguable d'une non typée).
-  { value: 'service', label: 'Service' },
-]
 
 // STKCAT5 — assistant « Typer mes catégories ». Table nom exact → type,
 // MIROIR de `seed_catalogue.TYPES_PAR_CATEGORIE` (backend, STKCAT3) : les

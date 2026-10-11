@@ -19,6 +19,7 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { SelectFournisseur } from './ComposantsStock'
 import { EnteteStock } from './EnteteStock'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import {
@@ -752,14 +753,8 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="bcf-fou">Fournisseur</label>
-            <Select value={fournisseur ? String(fournisseur) : '__none'} disabled={!editableLignes}
-                    onValueChange={(v) => setFournisseur(v === '__none' ? '' : v)}>
-              <SelectTrigger id="bcf-fou"><SelectValue placeholder="— Choisir un fournisseur —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Choisir un fournisseur —</SelectItem>
-                {fournisseurs.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SelectFournisseur id="bcf-fou" value={fournisseur} onChange={setFournisseur}
+                               fournisseurs={fournisseurs} disabled={!editableLignes} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="bcf-date">Date de commande</label>

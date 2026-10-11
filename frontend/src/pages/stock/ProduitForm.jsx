@@ -55,6 +55,7 @@ import {
   typeFicheFormulaire, COURBES_FICHE, CHOIX_CHIMIE_BATTERIE, ligneCourbeVide,
   erreursCourbesPourType, messageRefusFiche, LIBELLES_FICHE, CHOIX_TRI,
 } from './pvondFicheTechnique.js'
+import { TYPES_EQUIPEMENT } from './typesEquipement'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
    point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
@@ -122,24 +123,8 @@ function EditeurCourbeFiche({ cle, lignes, erreurs, onCellule, onAjouter, onReti
 const PHOTO_ACCEPT = 'image/*'
 const PHOTO_MAX_SIZE = 10 * 1024 * 1024
 
-// STKCAT5 — types d'équipement pour la création inline de catégorie et pour
-// afficher le type à côté du nom dans le sélecteur. `__none` = sentinelle
-// d'écran (« Non typée »), jamais envoyée telle quelle.
-// source-choix: stock.Categorie.type_equipement +__none
-const TYPES_EQUIPEMENT = [
-  { value: '__none', label: '— Non typée —' },
-  { value: 'panneau', label: 'Panneau' },
-  { value: 'onduleur', label: 'Onduleur' },
-  { value: 'batterie', label: 'Batterie' },
-  { value: 'structure', label: 'Structure' },
-  { value: 'cable', label: 'Câble' },
-  { value: 'protection', label: 'Protection' },
-  { value: 'pompe', label: 'Pompe' },
-  { value: 'variateur', label: 'Variateur' },
-  { value: 'compteur', label: 'Compteur' },
-  { value: 'accessoire', label: 'Accessoire' },
-  { value: 'service', label: 'Service' },
-]
+// STKCAT5 — libellé du type à côté du nom dans le sélecteur de catégorie
+// (liste des types : ./typesEquipement.js, source unique).
 const TYPE_LABEL_PAR_VALEUR = Object.fromEntries(
   TYPES_EQUIPEMENT.filter((t) => t.value !== '__none').map((t) => [t.value, t.label]))
 

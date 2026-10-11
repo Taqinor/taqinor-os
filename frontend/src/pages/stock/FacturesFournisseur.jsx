@@ -7,11 +7,12 @@ import { formatMAD } from '../../lib/format'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { usePermissionAchats, useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import {
-  Button, StatusPill, DataTable, Badge,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, StatusPill, Badge, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, Input, Textarea, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { TableauStock, SelectFournisseur } from './ComposantsStock'
+
 import { EnteteStock } from './EnteteStock'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
@@ -112,14 +113,8 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="ff-fou">Fournisseur</label>
-            <Select value={fournisseur ? String(fournisseur) : '__none'}
-                    onValueChange={(v) => setFournisseur(v === '__none' ? '' : v)}>
-              <SelectTrigger id="ff-fou"><SelectValue placeholder="— Choisir —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Choisir un fournisseur —</SelectItem>
-                {fournisseurs.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SelectFournisseur id="ff-fou" value={fournisseur} onChange={setFournisseur}
+                               fournisseurs={fournisseurs} placeholder="— Choisir —" />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="ff-bon">Bon de commande (optionnel)</label>
@@ -642,11 +637,7 @@ export default function FacturesFournisseur() {
         </div>
       )}
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(f) => f.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (référence, fournisseur)…"
         globalColumns={['reference', 'fournisseur_nom', 'ref_fournisseur']}
         onRowClick={openFacture}

@@ -5,11 +5,12 @@ import { Plus, LayoutTemplate, Trash2, PlayCircle,
 import stockApi from '../../api/stockApi'
 import BcfProduitPicker from './BcfProduitPicker'
 import {
-  Button, IconButton, DataTable,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, IconButton, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, Input, Textarea, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { TableauStock, SelectFournisseur } from './ComposantsStock'
+
 import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -194,14 +195,8 @@ function GenererModal({ modele, fournisseurs, onClose, onGenere }) {
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium" htmlFor="gen-fou">Fournisseur</label>
-          <Select value={fournisseur ? String(fournisseur) : '__none'}
-                  onValueChange={(v) => setFournisseur(v === '__none' ? '' : v)}>
-            <SelectTrigger id="gen-fou"><SelectValue placeholder="— Choisir un fournisseur —" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none">— Choisir un fournisseur —</SelectItem>
-              {fournisseurs.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SelectFournisseur id="gen-fou" value={fournisseur} onChange={setFournisseur}
+                             fournisseurs={fournisseurs} />
         </div>
         {error && (
           <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -314,11 +309,7 @@ export default function ModelesBcf() {
         </div>
       )}
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(m) => m.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (nom, fournisseur)…"
         globalColumns={['nom', 'fournisseur_nom']}
         onRowClick={openModele}

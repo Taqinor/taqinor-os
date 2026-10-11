@@ -43,7 +43,6 @@
 05d628799e95|frontend/src/pages/sav/SavActionBoardPage.jsx,frontend/src/pages/ventes/DevisActionBoardPage.jsx
 0624efd418ff|frontend/src/pages/monitoring/CleaningsPage.jsx,frontend/src/pages/monitoring/ClientPortalPage.jsx,frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/OmAnalyticsPage.jsx,frontend/src/pages/monitoring/OmReportPage.jsx,frontend/src/pages/reporting/CohortsPage.jsx
 0655e6aac354|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-07211d0b006f|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/LotsEntrepot.jsx
 07295b4bda60|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 0746f2198898|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
 077cee63dd50|frontend/src/features/uxviews/quickcreate/TicketQuickCreateModal.jsx,frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ProduitDetail.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx,frontend/src/pages/ventes/ClientQuickCreateModal.jsx,frontend/src/pages/ventes/ListesPrixPage.jsx
@@ -59,14 +58,12 @@
 0938b12351f6|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 096958d0bcf3|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx
 0997734a11df|apps/web/src/pages/ar/garanties.astro,apps/web/src/pages/en/garanties.astro,apps/web/src/pages/garanties.astro
-09beb1934406|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/FournisseurFiche360.jsx,frontend/src/pages/stock/InventairesAnnuels.jsx,frontend/src/pages/stock/LotsEntrepot.jsx,frontend/src/pages/stock/RevalorisationsStock.jsx
 0a53987afd1c|frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
 0a6a19cf0ebb|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 0a86669e1cfd|frontend/src/pages/installations/InstallationDetail.cht20.test.jsx,frontend/src/pages/installations/InstallationDetail.cht21.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx
 0a997289056f|apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/marocains-du-monde.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 0ada0f516c93|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 0b98a906ac8c|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro
-0bdeca9469b8|frontend/src/pages/stock/MouvementsPage.jsx,frontend/src/pages/stock/OcrStockImport.jsx
 0c9e7a8115a5|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/nos-solutions.astro
 0ccdd8ef605c|frontend/src/pages/crm/ClientDetailPanel.jsx,frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/RelancesPage.jsx
 0cf451320fb5|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
@@ -96,7 +93,6 @@
 15172fc7e9b7|apps/web/src/pages/ar/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/en/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/batterie-lithium-ou-gel.astro
 152c88ea99f1|frontend/src/pages/crm/leads/FilterBar.jsx,frontend/src/pages/crm/leads/LeadsPage.jsx
 15e8b2bded18|apps/web/src/pages/ar/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/en/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/batterie-lithium-ou-gel.astro
-1613f4cd1328|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/FournisseurFiche360.jsx
 16260728b930|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 166d808c0a6c|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro,apps/web/src/pages/à-propos.astro
 16b8acfd5379|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
@@ -129,7 +125,6 @@
 1eaaebe21ab6|frontend/src/pages/crm/ClientDetailPanel.jsx,frontend/src/pages/ventes/RelancesPage.jsx
 1ecd3d1998e5|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 1ed8831d6ada|frontend/src/features/adsengine/AdDetailScreen.jsx,frontend/src/features/adsengine/AdsCockpitScreen.jsx
-1eea6f49d57f|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx
 1eee6fd2ed15|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
 1f140a5c2f07|frontend/src/pages/crm/leads/urlFilters.js,frontend/src/pages/crm/leads/urlFilters.test.mjs
 1f1cea9047fa|apps/web/src/pages/api/lead-ref-lookup.ts,apps/web/src/pages/api/proposition-accept.ts,apps/web/src/pages/api/proposition-contact.ts,apps/web/src/pages/api/proposition-engagement.ts,apps/web/src/pages/api/proposition-otp.ts,apps/web/src/pages/api/proposition-taille.ts,apps/web/src/pages/api/questionnaire-repondre.ts,apps/web/src/pages/api/visite.ts
@@ -154,7 +149,6 @@
 24d7df2c0f64|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 2549078a4514|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 2591bdff1406|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
-259951b92fc9|frontend/src/pages/stock/InventairesAnnuels.jsx,frontend/src/pages/stock/RevalorisationsStock.jsx
 259bb85dff07|apps/web/src/lib/roofConfig.ts,apps/web/src/scripts/roofPro11/viewerOnly.ts
 25fbbe8909a2|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 26574f820536|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
@@ -255,7 +249,6 @@
 3d3118f08fcd|frontend/src/pages/installations/InstallationDetail.cht20.test.jsx,frontend/src/pages/installations/InstallationDetail.cht21.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx
 3da247afd48e|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 3daf03717f91|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
-3dfda3b866a2|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx
 3e16abab9b2b|frontend/src/pages/installations/InstallationDetail.cht20.test.jsx,frontend/src/pages/installations/InstallationDetail.cht21.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx
 3e321f721b27|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts
 3e5daa935e04|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts
@@ -300,7 +293,6 @@
 4a1490c1ecaa|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 4a95228fdf3c|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 4a95acbda332|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
-4b01b9bf39d4|frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx
 4b090f0f9ba8|apps/web/src/pages/ar/politique-de-confidentialite.astro,apps/web/src/pages/en/politique-de-confidentialite.astro,apps/web/src/pages/politique-de-confidentialite.astro
 4b15532edcc3|frontend/src/pages/sav/KbArticlesPage.jsx,frontend/src/pages/sav/SavAlarmesPage.jsx
 4be1011c2ae2|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src/pages/installations/ParcInstallePage.jsx,frontend/src/pages/interventions/InterventionsPage.jsx
@@ -465,7 +457,6 @@
 6e9e2ad40dd9|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro,apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 6f4ba071277e|frontend/src/pages/monitoring/CleaningsPage.jsx,frontend/src/pages/monitoring/OmAnalyticsPage.jsx,frontend/src/pages/monitoring/OmReportPage.jsx
 6f7ef0085ad6|frontend/src/pages/crm/RelancesDuJourWidget.jsx,frontend/src/pages/crm/RelancesSuiviPage.jsx
-6fdf6a202575|frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx
 7016c428ed4f|apps/web/src/pages/en/guides/loi-82-21-expliquee.astro,apps/web/src/pages/en/loi-82-21.astro,apps/web/src/pages/en/regularization-article-33.astro
 7043c5b19754|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 7062b43c1b95|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
@@ -515,7 +506,6 @@
 7d16a62d5c53|frontend/src/features/audit/ObjectHistoryButton.test.jsx,frontend/src/features/calepinage/production/DiagrammePertes.test.jsx,frontend/src/features/calepinage/production/TapisHoraire.test.jsx,frontend/src/features/crm/ConcurrentsPerte.test.jsx,frontend/src/pages/crm/VisiteursPage.test.jsx,frontend/src/pages/crm/leads/views/ChartsView.test.jsx,frontend/src/pages/installations/ChantierPhotos.test.jsx,frontend/src/pages/installations/InstallationDetail.cht20.test.jsx,frontend/src/pages/installations/InstallationDetail.cht21.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx,frontend/src/pages/installations/InstallationsPage.cht28.test.jsx,frontend/src/pages/interventions/MaJourneePage.test.jsx,frontend/src/pages/outillage/OutillagePage.test.jsx,frontend/src/pages/parametres/ReglesApprobationAchatSection.test.jsx,frontend/src/pages/reporting/DashboardsTvPage.test.jsx,frontend/src/pages/tiers/TiersPage.test.jsx,frontend/src/pages/ui/UIShowcase.test.jsx
 7d4ffe831f05|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 7da87e0d82c6|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
-7dbea7246635|frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/stock/ProduitForm.jsx
 7e3d174b60ad|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
 7e6eae94e740|frontend/src/pages/monitoring/CleaningsPage.jsx,frontend/src/pages/monitoring/ClientPortalPage.jsx,frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/OmAnalyticsPage.jsx,frontend/src/pages/monitoring/OmReportPage.jsx,frontend/src/pages/monitoring/ProductionPage.jsx,frontend/src/pages/reporting/CohortsPage.jsx
 7ebd043a6ec2|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
@@ -526,7 +516,6 @@
 7f69f8af9a47|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/Journal.jsx,frontend/src/pages/admin/GouvernanceAccesPage.jsx,frontend/src/pages/ia/OcrUpload.jsx,frontend/src/pages/installations/PlanificationPage.jsx,frontend/src/pages/parametres/AvanceSection.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/parametres/EquipeSection.jsx,frontend/src/pages/parametres/GammesMarquesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx,frontend/src/pages/ventes/DossiersReglementairesPage.jsx,frontend/src/pages/ventes/generator/PanneauSurcharges.jsx
 7fb22cb3e1e9|apps/web/src/pages/ar/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/en/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/batterie-lithium-ou-gel.astro
 7fc1baefd69e|apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/production-mesuree.astro
-7fdac96ac6bc|frontend/src/pages/stock/FournisseursStock.jsx,frontend/src/pages/stock/StockList.jsx
 7fe747d29971|frontend/src/features/adsengine/FactTableScreen.jsx,frontend/src/features/adsengine/VeilleScreen.jsx
 800fce292aca|apps/web/src/pages/en/prix-panneaux-solaires-maroc.astro,apps/web/src/pages/prix-panneaux-solaires-maroc.astro
 8027b71495ac|frontend/src/features/calepinage/ComparaisonProjets.jsx,frontend/src/features/calepinage/SchemaUnifilairePanel.jsx
@@ -574,7 +563,6 @@
 8e022af54fa3|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 8e18983b0e2a|frontend/src/features/calepinage/documents/deposerImage.js,frontend/src/features/calepinage/exportImage.js
 8e1fce6f3982|frontend/src/features/crm/workspace/LeadWorkspace.nestedShortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.paletteActions.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx
-8e65319eacea|frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx
 8e741b38fa9f|apps/web/src/components/Header.astro,apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 8e8745299bf3|apps/web/src/scripts/roofPro11/entreeMoteur.test.ts,apps/web/src/scripts/roofPro11/mapDraw.ts,frontend/src/features/calepinage/__tests__/panneau_calques.test.jsx
 8ec89c205103|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
@@ -762,7 +750,6 @@ c1c5e6a555e3|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 c1ce2060c086|frontend/src/features/crm/module.config.jsx,frontend/src/features/installations/module.config.jsx,frontend/src/features/ventes/module.config.jsx
 c1e6f05c7cd0|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
 c20be32dbef8|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-c22cbe5ec058|frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx
 c296fd778d4f|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 c309d4a5d1fa|apps/web/src/pages/api/roof-estimate.ts,apps/web/src/pages/api/roof-production.ts,apps/web/src/pages/api/roof-yield.ts
 c319e20ac149|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
@@ -806,7 +793,6 @@ cc0f46ee0714|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 cc1d9ec3abbd|frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/devisList/DevisListChrome.jsx
 cc62e631cdad|apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/methodologie-estimation.astro
 cc7afc998ff1|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-cc8cd37e7ca7|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/FournisseurFiche360.jsx,frontend/src/pages/stock/InventairesAnnuels.jsx,frontend/src/pages/stock/LotsEntrepot.jsx,frontend/src/pages/stock/RevalorisationsStock.jsx
 ccb66ee7f6d5|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro
 ccbc261cf221|frontend/src/features/pwa/CameraCapture.jsx,frontend/src/features/pwa/useBarcodeScanner.js
 cd13add8115a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
@@ -901,10 +887,8 @@ e08dbc76e9e2|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 e0bdc55a598e|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 e16008840f03|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro
 e1c28bd9a548|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-e27a4bc550a4|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/RevalorisationsStock.jsx
 e2aad6f9b913|frontend/src/features/crm/relances/RelanceEtapeRow.cad176.test.jsx,frontend/src/features/crm/relances/RelanceEtapeRow.canaux.test.jsx,frontend/src/features/crm/relances/RelanceEtapeRow.cle_avant_libelle.test.jsx,frontend/src/features/crm/relances/RelanceEtapeRow.visite_infos.test.jsx
 e34079aa369a|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
-e3a620691c70|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/FournisseurFiche360.jsx
 e3b7f63d113d|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
 e3dcadeae547|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 e3e89288f416|frontend/src/pages/admin/ImpersonationConsentement.jsx,frontend/src/pages/parametres/RestaurationMasseDialog.jsx
@@ -933,7 +917,6 @@ eaba3145c0b6|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 eb3a13ac6b6a|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 eb496b7f4ded|frontend/src/pages/stock/MouvementsPage.jsx,frontend/src/pages/ventes/BonCommandeList.jsx
 eb5836907416|frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx,frontend/src/pages/parametres/ClientsSection.jsx,frontend/src/pages/parametres/ParametresEntreprise.jsx
-eb92c68371fd|frontend/src/pages/stock/ConditionnementsProduit.jsx,frontend/src/pages/stock/FournisseurFiche360.jsx,frontend/src/pages/stock/InventairesAnnuels.jsx,frontend/src/pages/stock/LotsEntrepot.jsx,frontend/src/pages/stock/RevalorisationsStock.jsx
 ebe08b5d9b7d|frontend/src/pages/crm/leads/ConvertirClientDialog.jsx,frontend/src/pages/crm/leads/PlanActiviteDialog.jsx
 ecc123a6bc47|frontend/src/pages/installations/ChantierGateTimeline.jsx,frontend/src/pages/installations/InstallationDetail.jsx
 ed06f83bb9d7|apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
@@ -967,7 +950,6 @@ f6ae5225e82a|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/pr
 f6b471788070|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 f6d5b09f02e8|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/équipement.astro
 f7302c3ceef8|apps/web/src/lib/estimatorAgricole.ts,apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-f745c86bf30c|frontend/src/pages/stock/FournisseursStock.jsx,frontend/src/pages/stock/StockList.jsx
 f79a1cad5ead|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/Journal.jsx,frontend/src/pages/admin/GouvernanceAccesPage.jsx,frontend/src/pages/ia/OcrUpload.jsx,frontend/src/pages/installations/PlanificationPage.jsx,frontend/src/pages/parametres/AvanceSection.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/parametres/EquipeSection.jsx,frontend/src/pages/parametres/GammesMarquesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx,frontend/src/pages/ventes/DossiersReglementairesPage.jsx,frontend/src/pages/ventes/generator/PanneauSurcharges.jsx
 f7a4c26f582b|apps/web/src/pages/ar/ressources/10-questions-avant-de-signer.astro,apps/web/src/pages/ressources/10-questions-avant-de-signer.astro
 f82df9e6a9e6|frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx

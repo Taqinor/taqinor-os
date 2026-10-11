@@ -2,9 +2,9 @@ import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
-  Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine,
-  History, LineChart, PackageX,
+  Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle, Archive,
+  PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine, LineChart,
+  PackageX,
 } from 'lucide-react'
 import {
   fetchProduits,
@@ -37,14 +37,13 @@ import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import {
-  Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  EmptyState, DataTable, Progress,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  Button, Badge, Input, Spinner, Skeleton, Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription, DialogFooter, AlertDialog, EmptyState,
+  DataTable, Progress, Select, SelectTrigger, SelectValue, SelectContent,
+  SelectItem, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem,
 } from '../../ui'
+import DialogueSuppressionDefinitive from './DialogueSuppressionDefinitive'
 import { MoreHorizontal } from 'lucide-react'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
@@ -659,27 +658,21 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
 
 // ── Confirmation suppression définitive (AlertDialog + saisie de confirmation) ──
 function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
-  const [typed, setTyped] = useState('')
-  const expected = produit.sku || produit.nom
-  const isValid  = typed.trim() === expected.trim()
-
   const fmtDate = (iso) => {
     if (!iso) return '—'
     return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   }
 
   return (
-    <AlertDialog open onOpenChange={(o) => { if (!o) onCancel() }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="text-destructive">Suppression définitive</AlertDialogTitle>
-          <AlertDialogDescription>
-            Cette action supprimera le produit et tout son historique de mouvements.
-            Elle est <strong>irréversible</strong>.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm leading-relaxed">
+    <DialogueSuppressionDefinitive
+      description={(
+        <>
+          Cette action supprimera le produit et tout son historique de mouvements.
+          Elle est <strong>irréversible</strong>.
+        </>
+      )}
+      resume={(
+        <>
           <div><span className="inline-block min-w-32 text-muted-foreground">Produit</span><strong>{produit.nom}</strong></div>
           <div><span className="inline-block min-w-32 text-muted-foreground">SKU / Référence</span><code className="rounded bg-muted px-1.5 py-0.5">{produit.sku || '—'}</code></div>
           <div><span className="inline-block min-w-32 text-muted-foreground">Créé le</span>{fmtDate(produit.date_creation)}</div>
@@ -692,27 +685,10 @@ function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
               )}
             </div>
           )}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor="fd-confirm">
-            Tapez <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">{expected}</code> pour confirmer
-          </label>
-          <Input id="fd-confirm" value={typed} onChange={e => setTyped(e.target.value)}
-                 placeholder={`Saisir : ${expected}`} autoFocus />
-        </div>
-
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Annuler</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={!isValid || loading}
-            onClick={(e) => { e.preventDefault(); onConfirm(produit) }}
-          >
-            {loading ? 'Suppression…' : 'Supprimer définitivement'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+        </>
+      )}
+      expected={produit.sku || produit.nom} idChamp="fd-confirm" loading={loading}
+      onCancel={onCancel} onConfirm={() => onConfirm(produit)} />
   )
 }
 

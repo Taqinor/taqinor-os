@@ -11,12 +11,11 @@ import {
   createMouvement,
 } from '../../features/stock/store/stockSlice'
 import {
-  Button, Badge, Segmented, DataTable,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormField, FormActions,
-  Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, Badge, Segmented, DataTable, Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription, DialogFooter, Form, FormField, Input,
+  Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { OptionsProduits } from './ComposantsStock'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -578,11 +577,7 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
                 <SelectValue placeholder="— Sélectionner un produit —" />
               </SelectTrigger>
               <SelectContent>
-                {produits.map(p => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    {p.nom}{p.sku ? ` (${p.sku})` : ''} — stock : {p.quantite_stock}
-                  </SelectItem>
-                ))}
+                <OptionsProduits produits={produits} detail />
               </SelectContent>
             </Select>
           </FormField>

@@ -3,10 +3,11 @@ import { Undo2, FileMinus2,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
-  StatusPill, DataTable,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Button,
+  StatusPill, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, Button,
 } from '../../ui'
+import { TableauStock } from './ComposantsStock'
+
 import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -183,11 +184,7 @@ export default function RetoursFournisseur() {
         </div>
       )}
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(r) => r.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (référence, fournisseur)…"
         globalColumns={['reference', 'fournisseur_nom']}
         onRowClick={openRetour}

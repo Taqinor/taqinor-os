@@ -13,6 +13,7 @@ import {
   Input, Segmented, Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { OptionsProduits } from './ComposantsStock'
 // NTMOB13 — scan de document structuré vers OCR (recadrage auto/manuel).
 import DocumentScanCapture from '../../features/pwa/DocumentScanCapture'
 import {
@@ -1003,11 +1004,7 @@ function LigneCard({ ligne, produits, categories, onChange, docType, canCreatePr
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none">— Sélectionner un produit existant —</SelectItem>
-              {produits.map(p => (
-                <SelectItem key={p.id} value={String(p.id)}>
-                  {p.nom}{p.sku ? ` (${p.sku})` : ''} — stock : {p.quantite_stock}
-                </SelectItem>
-              ))}
+              <OptionsProduits produits={produits} detail />
             </SelectContent>
           </Select>
           {hasMatchError && <p className="text-xs text-destructive">Sélectionnez un produit existant</p>}

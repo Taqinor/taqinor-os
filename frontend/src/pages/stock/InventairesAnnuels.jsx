@@ -7,16 +7,16 @@ import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import {
-  Button, Spinner, Input,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormField,
+  Button, Input, FormField,
 } from '../../ui'
 import { EnteteStock, ReserveAdminStock } from './EnteteStock'
+import { ListeStock } from './BandeauxListeStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { frErrDetail as frErr } from '../../lib/frErr'
+import DialogueFormulaireStock from './DialogueFormulaireStock'
 
 /* WIR109 — XSTK13 : inventaire annuel légal FIGÉ (CGNC, support du bilan).
    LECTURE SEULE côté modèle : un snapshot n'est créé QUE par l'action
@@ -57,34 +57,25 @@ function FigerDialog({ onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Figer un exercice</DialogTitle>
-          <DialogDescription>
+    <DialogueFormulaireStock title="Figer un exercice"
+      description={<>
             Snapshot immuable de la valorisation du stock au 31/12. Un exercice
             déjà figé pour cette société ne peut pas être re-figé.
-          </DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Exercice (année)" required htmlFor="inv-exercice" fullWidth
-                     error={exerciceError}>
-            <Input id="inv-exercice" type="number" step="1" value={exercice} invalid={!!exerciceError}
-                   onChange={(e) => { setExercice(e.target.value); setExerciceError(null) }} />
-          </FormField>
-          {error && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>{saving ? 'Figement…' : 'Figer'}</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-      {dialogueConfirmation}
-    </Dialog>
+          </>}
+      onClose={onClose}
+      onSubmit={submit}
+      error={error}
+      saving={saving}
+      libelle="Figer"
+      libelleEnCours="Figement…"
+      size="max-w-sm"
+      apres={dialogueConfirmation}>
+      <FormField label="Exercice (année)" required htmlFor="inv-exercice" fullWidth
+                 error={exerciceError}>
+        <Input id="inv-exercice" type="number" step="1" value={exercice} invalid={!!exerciceError}
+               onChange={(e) => { setExercice(e.target.value); setExerciceError(null) }} />
+      </FormField>
+    </DialogueFormulaireStock>
   )
 }
 
@@ -130,17 +121,8 @@ export default function InventairesAnnuels() {
         )}
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {items === null ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Aucun exercice figé pour l&apos;instant.</p>
-      ) : (
+      <ListeStock error={error} items={items} vide={<>Aucun exercice figé pour l&apos;instant.</>}>
+        {() => (
         <ul className="flex flex-col gap-2">
           {items.map((inv) => (
             <li key={inv.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
@@ -158,7 +140,8 @@ export default function InventairesAnnuels() {
             </li>
           ))}
         </ul>
-      )}
+        )}
+      </ListeStock>
 
       {showFiger && (
         <FigerDialog onClose={() => setShowFiger(false)} onDone={reload} />

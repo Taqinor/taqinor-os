@@ -13,6 +13,8 @@ import {
   // EZ10 — le sélecteur de bon de commande passe au Combobox (recherche).
   Combobox,
 } from '../../ui'
+import { TableauStock } from './ComposantsStock'
+
 import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -497,11 +499,7 @@ export default function ReceptionsFournisseur() {
         </div>
       )}
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(r) => r.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (référence, BCF, fournisseur)…"
         globalColumns={['reference', 'bon_commande_reference', 'fournisseur_nom']}
         onRowClick={openReception}

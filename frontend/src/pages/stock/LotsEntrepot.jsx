@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
-import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { PackageMinus, Search, Layers,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
-  Button, DataTable, Spinner, Badge, Input, Checkbox,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormField, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, DataTable, Badge, Input, Checkbox, Dialog, FormField, Textarea,
+  Select, SelectTrigger, SelectValue, SelectContent,
 } from '../../ui'
 import { EnteteStock } from './EnteteStock'
+import { AlerteErreurStock } from './BandeauxListeStock'
+import usePeutEcrireStock from './usePeutEcrireStock'
+import { OptionsProduits } from './ComposantsStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { frErrDetail as frErr } from '../../lib/frErr'
+import DialogueFormulaireStock from './DialogueFormulaireStock'
 
 /* WIR109 — XSTK6 : registre de lots en entrepôt (FEFO — péremption la plus
    proche d'abord). LECTURE SEULE côté modèle (alimenté à la confirmation
@@ -57,46 +57,36 @@ function SortirLotDialog({ lot, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Sortir du lot {lot.numero_lot}</DialogTitle>
-          <DialogDescription>
+    <DialogueFormulaireStock title={<>Sortir du lot {lot.numero_lot}</>}
+      description={<>
             Restant : {lot.quantite_restante} · {lot.produit_nom}
-          </DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Quantité" required htmlFor="lot-qte">
-            <Input id="lot-qte" type="number" step="any" value={quantite}
-                   onChange={(e) => setQuantite(e.target.value)} />
-          </FormField>
-          {perimeBloque && (
-            <>
-              <FormField htmlFor="lot-forcer" fullWidth>
-                <label className="flex items-center gap-2 text-sm" htmlFor="lot-forcer">
-                  <Checkbox id="lot-forcer" checked={forcer}
-                            onCheckedChange={(v) => setForcer(!!v)} />
-                  Forcer la sortie (lot périmé) — motif tracé requis
-                </label>
-              </FormField>
-              <FormField label="Motif" htmlFor="lot-motif" fullWidth>
-                <Textarea id="lot-motif" rows={2} value={motif}
-                          onChange={(e) => setMotif(e.target.value)} />
-              </FormField>
-            </>
-          )}
-          {error && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>{saving ? 'Sortie…' : 'Sortir'}</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+          </>}
+      onClose={onClose}
+      onSubmit={submit}
+      error={error}
+      saving={saving}
+      libelle="Sortir"
+      libelleEnCours="Sortie…">
+        <FormField label="Quantité" required htmlFor="lot-qte">
+          <Input id="lot-qte" type="number" step="any" value={quantite}
+                 onChange={(e) => setQuantite(e.target.value)} />
+        </FormField>
+        {perimeBloque && (
+          <>
+            <FormField htmlFor="lot-forcer" fullWidth>
+              <label className="flex items-center gap-2 text-sm" htmlFor="lot-forcer">
+                <Checkbox id="lot-forcer" checked={forcer}
+                          onCheckedChange={(v) => setForcer(!!v)} />
+                Forcer la sortie (lot périmé) — motif tracé requis
+              </label>
+            </FormField>
+            <FormField label="Motif" htmlFor="lot-motif" fullWidth>
+              <Textarea id="lot-motif" rows={2} value={motif}
+                        onChange={(e) => setMotif(e.target.value)} />
+            </FormField>
+          </>
+        )}
+    </DialogueFormulaireStock>
   )
 }
 
@@ -133,9 +123,7 @@ function OutilFefo({ produits }) {
           <Select value={produitId} onValueChange={setProduitId}>
             <SelectTrigger><SelectValue placeholder="Choisir un produit…" /></SelectTrigger>
             <SelectContent>
-              {produits.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
-              ))}
+              <OptionsProduits produits={produits} />
             </SelectContent>
           </Select>
         </div>
@@ -163,10 +151,7 @@ function OutilFefo({ produits }) {
 }
 
 export default function LotsEntrepot() {
-  const hasFinePermissions = useSelector((s) => (s.auth.permissions || []).length > 0)
-  const canWriteViaPerm = useHasPermission('stock_modifier')
-  const canWriteViaRole = useIsAdminOrResponsable()
-  const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  const canWrite = usePeutEcrireStock()
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -234,11 +219,7 @@ export default function LotsEntrepot() {
         subtitle="Traçabilité par lot (batteries, produits d'étanchéité…) — péremption la plus proche d'abord."
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <AlerteErreurStock error={error} />
 
       <OutilFefo produits={produits} />
 
