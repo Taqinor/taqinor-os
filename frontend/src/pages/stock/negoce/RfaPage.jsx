@@ -4,6 +4,7 @@ import { Button, Input } from '../../../ui'
 import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import rfaApi from '../../../features/stock/api/rfaApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
+import { useVoitPrixAchat } from '../../../features/stock/useVoitPrixAchat'
 
 /* ASTK222 — Remises arrière fournisseur (RFA) : accords, calcul de
    progression, génération de l'avoir — UNE seule fois.
@@ -35,6 +36,9 @@ export default function RfaPage() {
   const [enCours, setEnCours] = useState(null) // id de l'accord en cours d'envoi
   const [erreur, setErreur] = useState(null)
   const [occupe, setOccupe] = useState(false)
+  // ERR-STK-PRIX-ACHAT-SUITE — calcul (CA d'achat, montant dû) réservé à
+  // prix_achat_voir : jamais un bouton que le serveur refuse (403).
+  const voitPrix = useVoitPrixAchat()
 
   const charger = useCallback(async () => {
     try {
@@ -145,12 +149,16 @@ export default function RfaPage() {
                     <span>{fmtDate(a.periode_debut)} → {fmtDate(a.periode_fin)}</span>
                     <span>{a.statut === 'actif' ? 'Actif' : 'Clos'}</span>
                     <span>
-                      {a.taux_pct != null ? `${a.taux_pct} %` : (a.montant_fixe != null ? `${a.montant_fixe} fixe` : '—')}
+                      {/* Clé absente = montant masqué sans prix_achat_voir (jamais « undefined »). */}
+                      {a.taux_pct != null ? `${a.taux_pct} %` : (a.montant_fixe != null ? `${a.montant_fixe} fixe`
+                        : ('montant_fixe' in a ? '—' : 'Montant fixe'))}
                     </span>
                     <Link className="underline" to={`/stock/fournisseurs/${a.fournisseur}/360`}>Fiche fournisseur</Link>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => voirCalcul(a.id)}>Voir le calcul</Button>
+                    {voitPrix && (
+                      <Button size="sm" variant="outline" onClick={() => voirCalcul(a.id)}>Voir le calcul</Button>
+                    )}
                     {dejaGenere ? (
                       <Button size="sm" disabled>Avoir déjà généré</Button>
                     ) : (

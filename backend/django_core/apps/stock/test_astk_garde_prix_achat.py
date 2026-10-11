@@ -34,6 +34,9 @@ from apps.stock.models import (
     FactureFournisseur, Fournisseur, LigneBonCommandeFournisseur, LigneFactureFournisseur, LotEntrepot,
     PaiementFournisseur, PalierPrixFournisseur, PrixFournisseur, Produit,
 )
+from apps.stock.models import BudgetDepartement, EngagementBudget
+from apps.stock.models_incident_fournisseur import IncidentQualiteFournisseur
+from apps.stock.models_rfa import AccordRFAFournisseur
 from apps.stock.models_wms import UniteLogistique
 from authentication.models import Company
 
@@ -46,9 +49,14 @@ RACINES = {
 CLES_EXACTES = {
     'prix_achat', 'prix_unitaire_ht', 'prix_convenu', 'montant_achete',
     'frais_annexes', 'paiements', 'montant',
+    # ERR-STK-PRIX-ACHAT-SUITE — valeurs de stock/pertes au coût d'achat.
+    'total_valeur', 'valeur',
 }
 PREFIXES_CLES = ('prix_achat_', 'total_achat', 'montant_', 'cout_')
 RE_PK = re.compile(r'\(\?P<pk>[^)]*\)')
+#: ERR-STK-PRIX-ACHAT-SUITE — chemins SIMPLES (hors routeur) balayés aussi.
+CHEMINS_SIMPLES = ('/api/django/stock/tableau-bord-achats/',
+                   '/api/django/stock/entrepot/pertes/')
 #: ASTK243 — paramètres VALIDES (objets de démo du ``setUp``) des routes qui
 #: répondent 400 sans eux : suffixe de gabarit → fabrique(test).
 PARAMETRES_PAR_ROUTE = {
@@ -117,6 +125,7 @@ def routes_get():
             else:
                 kind = 'detail_action' if detail else 'liste_action'
             trouvees.append((base + gabarit, kind))
+    trouvees += [(chemin, 'liste_action') for chemin in CHEMINS_SIMPLES]
     return sorted(set(trouvees))
 
 
@@ -127,8 +136,9 @@ def refus_declare(cible, utilisateur):
     from rest_framework.request import Request
     from rest_framework.test import APIRequestFactory
     route = resolve(cible)
-    vue = route.func.cls(**route.func.initkwargs)
-    vue.action_map, vue.action = route.func.actions, route.func.actions['get']
+    vue = route.func.cls(**(getattr(route.func, 'initkwargs', None) or {}))
+    if getattr(route.func, 'actions', None):  # viewset ; sinon @api_view
+        vue.action_map, vue.action = route.func.actions, route.func.actions['get']
     vue.args, vue.kwargs, vue.format_kwarg = (), route.kwargs, None
     vue.request = Request(APIRequestFactory().get(cible))
     vue.request.user = utilisateur
@@ -247,6 +257,22 @@ class GardePrixAchat(TestCase):
             fournisseur=self.fournisseur, montant_ht=Decimal('100'),
             montant_tva=Decimal('20'), montant_ttc=Decimal('120'),
             statut=AvoirFournisseur.Statut.VALIDE)
+        # ERR-STK-PRIX-ACHAT-SUITE — un objet de chaque type à montant d'achat.
+        from apps.stock.services import creer_expedition_transporteur
+        budget = BudgetDepartement.objects.create(
+            company=self.company, annee=2026, montant_alloue=Decimal('50000'))
+        EngagementBudget.objects.create(
+            company=self.company, budget=budget, montant=Decimal('820'))
+        creer_expedition_transporteur(
+            company=self.company, unite=self.unite, cout_reel=Decimal('180'))
+        IncidentQualiteFournisseur.objects.create(
+            company=self.company, fournisseur=self.fournisseur,
+            date_incident=datetime.date(2026, 9, 2), cout_impact_mad=Decimal('300'))
+        AccordRFAFournisseur.objects.create(
+            company=self.company, fournisseur=self.fournisseur,
+            periode_debut=datetime.date(2026, 1, 1),
+            periode_fin=datetime.date(2026, 12, 31),
+            seuil_ca_achat=Decimal('5000'), montant_fixe=Decimal('400'))
 
     def test_introspection_non_vide(self):
         """Le balayage découvre bien les routes (garde contre une
@@ -304,6 +330,31 @@ class GardePrixAchat(TestCase):
         self.assertEqual((rep.status_code, set(rep.json())),
                          (200, {'controle_actif', 'suffisant', 'budget_id'}))
         self.assertIn('montant_alloue', admin.get(budget).json())
+
+    def test_suite_routes_masquees_mais_administrateur_servi(self):
+        """ERR-STK-PRIX-ACHAT-SUITE — l'Administrateur (prix_achat_voir) garde
+        les montants des cinq ressources et des deux chemins simples ; le
+        Commercial reçoit les mêmes lignes SANS ces clés (ou un 403 déclaré)."""
+        def lignes(donnees):
+            return donnees['results'] if isinstance(donnees, dict) else donnees
+        admin, commercial = _api(self.admin), _api(self.commercial)
+        for suffixe, cle in (('budgets-departement/', 'montant_alloue'),
+                             ('engagements-budget/', 'montant'),
+                             ('expeditions/', 'cout_reel'),
+                             ('incidents-qualite-fournisseur/', 'cout_impact_mad'),
+                             ('accords-rfa-fournisseur/', 'montant_fixe')):
+            url = f'/api/django/stock/{suffixe}'
+            self.assertIn(cle, lignes(admin.get(url).json())[0], url)
+            rep = commercial.get(url)
+            self.assertEqual(rep.status_code, 200, url)
+            self.assertNotIn(cle, lignes(rep.json())[0], url)
+        pertes = '/api/django/stock/entrepot/pertes/'
+        self.assertIn('total_valeur', admin.get(pertes).json())
+        self.assertNotIn('total_valeur', commercial.get(pertes).json())
+        tableau = '/api/django/stock/tableau-bord-achats/'
+        self.assertEqual(admin.get(tableau).status_code, 200)
+        self.assertEqual(commercial.get(tableau).status_code, 403)
+        self.assertTrue(refus_declare(tableau, self.commercial))
 
     def test_controle_positif_administrateur(self):
         """L'Administrateur voit ces clés sur les mêmes données : la garde

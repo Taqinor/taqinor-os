@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -31,7 +33,11 @@ function brancher() {
   })
 }
 
-const monter = () => render(<MemoryRouter><RfaPage /></MemoryRouter>)
+// Compte légacy par défaut (aucun code fin) : comportement historique.
+const monter = (permissions = []) => render(
+  <Provider store={configureStore({ reducer: { auth: () => ({ role: 'responsable', permissions }) } })}>
+    <MemoryRouter><RfaPage /></MemoryRouter>
+  </Provider>)
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
 afterEach(() => { cleanup() })
@@ -114,5 +120,27 @@ describe('ASTK222 — RfaPage', () => {
     fireEvent.change(screen.getByLabelText('Fin de période'), { target: { value: '2026-12-31' } })
     fireEvent.click(screen.getByRole('button', { name: /Créer l'accord/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Renseignez soit un taux (%), soit un montant fixe.')
+  })
+})
+
+/* ERR-STK-PRIX-ACHAT-SUITE — sans `prix_achat_voir`, le serveur retire
+   `seuil_ca_achat`/`montant_fixe` et refuse le calcul (403) : l'écran n'offre
+   pas « Voir le calcul » et nomme « Montant fixe » sans chiffre. */
+describe('ERR-STK-PRIX-ACHAT-SUITE — RfaPage sans prix_achat_voir', () => {
+  it('ni bouton de calcul ni « undefined » ; « Montant fixe » nommé', async () => {
+    const masque = { ...ACCORDS.results[0], taux_pct: null }
+    delete masque.seuil_ca_achat
+    delete masque.montant_fixe
+    etat = { ...ACCORDS, results: [masque] }
+    monter(['stock_voir', 'stock_modifier'])
+    expect(await screen.findByText('Montant fixe')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Voir le calcul/i })).toBeNull()
+    expect(document.body.textContent).not.toMatch(/undefined/)
+    expect(api.get).not.toHaveBeenCalledWith('/stock/accords-rfa-fournisseur/3/calcul/')
+  })
+
+  it('avec prix_achat_voir : le calcul reste offert', async () => {
+    monter(['stock_voir', 'prix_achat_voir'])
+    expect(await screen.findByRole('button', { name: /Voir le calcul/i })).toBeInTheDocument()
   })
 })

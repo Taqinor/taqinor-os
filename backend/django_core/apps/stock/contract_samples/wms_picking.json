@@ -353,6 +353,8 @@
       }
     },
     "entrepot_pertes": {
+      "cles_masquees_sans_prix_achat": ["total_valeur", "par_motif[].valeur"],
+      "cles_masquees_pourquoi": "ERR-STK-PRIX-ACHAT-SUITE (D-ASTK-2) — clés RETIRÉES de la réponse pour un rôle sans prix_achat_voir (PeutVoirPrixAchat) ; présentes sinon",
       "endpoint": "GET /api/django/stock/entrepot/pertes/?debut=YYYY-MM-DD&fin=YYYY-MM-DD",
       "pourquoi": "NTWMS24 — pertes par motif sur une période (`entrepot_pertes_view`, views/wms.py:1185, responsable/admin, JAMAIS client-facing). Ne compte que les déclarations de rebut motivées (MouvementRebut), pas les ajustements d'inventaire. `total_valeur` et `par_motif[].valeur` sont des valeurs INTERNES (coût d'achat, Decimal rendu en texte) : l'exemple les met à zéro à dessein — aucun montant d'achat dans ce fichier. `motif` ∈ casse / perime / vol / erreur_reception (+ valeurs éventuelles de MouvementRebut.Motif) ; `libelle` = libellé français.",
       "exemple": {
