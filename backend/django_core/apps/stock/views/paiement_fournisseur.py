@@ -123,8 +123,10 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        facture_id = self.request.query_params.get('facture')
-        if facture_id:
+        from ..utils.params import entier_ou_400
+        facture_id = entier_ou_400(
+            self.request.query_params.get('facture'), 'facture')
+        if facture_id is not None:
             qs = qs.filter(facture_id=facture_id)
         return qs
 

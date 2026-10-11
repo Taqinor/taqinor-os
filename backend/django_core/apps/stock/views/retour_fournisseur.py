@@ -71,7 +71,9 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     def get_queryset(self):
         """ASTK178 — liste filtrable par `?fournisseur=<id>` (fiche 360)."""
         from ..selectors import filtrer_par_fournisseur
-        fournisseur = self.request.query_params.get('fournisseur')
+        from ..utils.params import entier_ou_400
+        fournisseur = entier_ou_400(
+            self.request.query_params.get('fournisseur'), 'fournisseur')
         return filtrer_par_fournisseur(super().get_queryset(), fournisseur)
 
     def get_permissions(self):

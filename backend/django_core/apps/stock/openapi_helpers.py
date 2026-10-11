@@ -30,8 +30,10 @@ XLSX = (
 CSV = (200, 'text/csv')
 
 
-def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None):
+def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, pattern=None):
     """Paramètre de requête (query string) ; ``mini``/``maxi`` bornent un entier."""
+    if typ == STR and pattern is not None:
+        typ = {'type': 'string', 'pattern': pattern}
     if typ == INT and (mini is not None or maxi is not None):
         typ = {'type': 'integer', **({'minimum': mini} if mini is not None else {}),
                **({'maximum': maxi} if maxi is not None else {})}

@@ -1804,7 +1804,7 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     recu_par_username = serializers.CharField(
-        source='recu_par.username', read_only=True)
+        source='recu_par.username', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
     total_recu = serializers.IntegerField(read_only=True)
@@ -1909,7 +1909,7 @@ class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
     # produit est optionnel (ligne libre/service, XPUR16) — default=None
     # évite une AttributeError DRF quand produit est vide.
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, default=None, allow_null=True)
     total_ht = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
     # XPUR17 — TVA par ligne (taux marocains). total_tva = 0 si taux_tva vide
@@ -2050,7 +2050,7 @@ class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
     statut_controle_display = serializers.CharField(
         source='get_statut_controle_display', read_only=True)
     resolu_par_username = serializers.CharField(
-        source='resolu_par.username', read_only=True)
+        source='resolu_par.username', read_only=True, allow_null=True)
     # XPUR17 — sous-totaux HT/TVA PAR TAUX (20/14/10/7 %/exonéré), dérivés des
     # lignes. Vide si la facture n'a pas de lignes ventilées (comportement
     # historique inchangé : montant_tva global reste la source de vérité).

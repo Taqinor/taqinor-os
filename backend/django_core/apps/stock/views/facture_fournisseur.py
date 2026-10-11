@@ -106,8 +106,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        fournisseur_id = self.request.query_params.get('fournisseur')
-        if fournisseur_id:
+        from ..utils.params import entier_ou_400
+        fournisseur_id = entier_ou_400(
+            self.request.query_params.get('fournisseur'), 'fournisseur')
+        if fournisseur_id is not None:
             qs = qs.filter(fournisseur_id=fournisseur_id)
         statut = self.request.query_params.get('statut')
         if statut:
@@ -329,12 +331,13 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         from ..permissions import PeutVoirPrixAchat
         from ..selectors import suggerer_bcf_pour_facture
 
-        fournisseur_id = request.query_params.get('fournisseur')
+        from ..utils.params import decimal_ou_400, entier_ou_400
+        fournisseur_id = entier_ou_400(
+            request.query_params.get('fournisseur'), 'fournisseur')
         if not fournisseur_id:
             return Response(
                 {'detail': 'Le paramètre fournisseur est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from ..utils.params import decimal_ou_400
         montant = decimal_ou_400(
             request.query_params.get('montant'), 'montant')
         suggestions = suggerer_bcf_pour_facture(

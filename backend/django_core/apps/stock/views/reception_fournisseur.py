@@ -123,8 +123,10 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
 
     def get_queryset(self):
         qs = super().get_queryset()
-        bon_id = self.request.query_params.get('bon_commande')
-        if bon_id:
+        from ..utils.params import entier_ou_400
+        bon_id = entier_ou_400(
+            self.request.query_params.get('bon_commande'), 'bon_commande')
+        if bon_id is not None:
             qs = qs.filter(bon_commande_id=bon_id)
         statut = self.request.query_params.get('statut')
         if statut:
@@ -141,7 +143,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
 
-    @extend_schema(parameters=[P('code', STR, True, 'Code GS1-128 / DataMatrix')],
+    @extend_schema(parameters=[P('code', STR, True, 'Code GS1-128 / DataMatrix (AI 01 + GTIN 14 chiffres en tête)', pattern=r'^01[0-9]{14}')],
                    responses=corps('ReceptionScanGs1Reponse', produit_id=serializers.IntegerField(),
                                    produit_nom=serializers.CharField(),
                                    numeros_serie=serializers.ListField(child=serializers.CharField(), allow_null=True),

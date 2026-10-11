@@ -1,4 +1,5 @@
 import io
+import logging
 import zipfile
 
 from django.db import transaction  # noqa: F401
@@ -41,6 +42,8 @@ from authentication.permissions import (  # noqa: F401
     HasPermissionOrLegacy,
 )
 
+logger = logging.getLogger(__name__)
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -56,6 +59,21 @@ def _flag(valeur):
     l'option DÉSACTIVÉE — un écrasement du tarif réel ne peut donc jamais
     résulter d'une valeur mal comprise (même règle que `dataimport.views`)."""
     return str(valeur).strip().lower() in ('1', 'true', 'yes', 'on', 'oui')
+
+
+def _classeur_lisible(contenu):
+    """``True`` si ``contenu`` s'ouvre comme un classeur xlsx : une archive zip
+    qui n'est pas un classeur (ou un classeur corrompu) est un fichier illisible
+    (400), jamais un 500 levé par openpyxl au milieu de l'import."""
+    if not zipfile.is_zipfile(io.BytesIO(contenu)):
+        return False
+    from openpyxl import load_workbook
+    try:
+        load_workbook(io.BytesIO(contenu), read_only=True).close()
+    except Exception:  # noqa: BLE001 — tout échec d'ouverture = fichier illisible
+        logger.warning("prix_fournisseur._classeur_lisible : classeur illisible", exc_info=True)
+        return False
+    return True
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('produit', INT, False, 'Produit (id)')]))
@@ -93,8 +111,10 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        produit_id = self.request.query_params.get('produit')
-        if produit_id:
+        from ..utils.params import entier_ou_400
+        produit_id = entier_ou_400(
+            self.request.query_params.get('produit'), 'produit')
+        if produit_id is not None:
             qs = qs.filter(produit_id=produit_id)
         return qs
 
@@ -204,7 +224,7 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Fournisseur introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
         contenu = upload.read()
-        if not zipfile.is_zipfile(io.BytesIO(contenu)):
+        if not _classeur_lisible(contenu):
             return Response(
                 {'detail': 'Fichier xlsx illisible ou vide.'},
                 status=status.HTTP_400_BAD_REQUEST)

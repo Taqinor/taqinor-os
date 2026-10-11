@@ -81,9 +81,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         # ASTK178 — `?fournisseur=<id>` filtré côté serveur (fiche 360).
         from ..selectors import filtrer_par_fournisseur
+        from ..utils.params import entier_ou_400
         return filtrer_par_fournisseur(
-            super().get_queryset(),
-            self.request.query_params.get('fournisseur'))
+            super().get_queryset(), entier_ou_400(
+                self.request.query_params.get('fournisseur'), 'fournisseur'))
 
     def get_permissions(self):
         # QS1 — le PDF (interne) est une LECTURE : il rend exactement les
@@ -401,7 +402,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': (
                     "Ce BCF a été envoyé : utilisez l'action « réviser » "
                     'pour le modifier (traçabilité + ré-approbation).')},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
             self._attach_prix_warnings(response, request)
@@ -631,8 +632,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         prix dépasse le prix convenu du contrat en vigueur, filtrable par
         fournisseur/période. LECTURE SEULE."""
         from ..services import rapport_achats_hors_contrat
-        fournisseur_id = request.query_params.get('fournisseur')
-        from ..utils.params import date_ou_400
+        from ..utils.params import date_ou_400, entier_ou_400
+        fournisseur_id = entier_ou_400(
+            request.query_params.get('fournisseur'), 'fournisseur')
         date_debut = date_ou_400(
             request.query_params.get('date_debut'), 'date_debut')
         date_fin = date_ou_400(request.query_params.get('date_fin'), 'date_fin')

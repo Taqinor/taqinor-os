@@ -110,3 +110,84 @@ class TestODX20Routes(TestCase):
         r = self.api.get('/api/django/achats/bons-commande-fournisseur/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(ids_of(r), [])
+
+
+class TestEnf11FuzzAchats(TestCase):
+    """ENF11 (api-fuzz achats) — une déclaration OpenAPI exacte : entrées
+    illisibles refusées en 400, champs nullables rendus (jamais omis), fichier
+    xlsx illisible en 400 au lieu d'un 500."""
+
+    def setUp(self):
+        self.company = make_company('enf11-ach', 'ENF11 Achats')
+        self.user = make_user(self.company, 'enf11_admin', role='admin')
+        self.fournisseur = make_fournisseur(self.company)
+        self.api = auth(self.user)
+
+    def test_filtre_entier_illisible_refuse_en_400_sur_les_listes(self):
+        base = '/api/django/achats/'
+        for ressource, param in (
+                ('bons-commande-fournisseur', 'fournisseur'),
+                ('factures-fournisseur', 'fournisseur'),
+                ('retours-fournisseur', 'fournisseur'),
+                ('paiements-fournisseur', 'facture'),
+                ('prix-fournisseurs', 'produit'),
+                ('receptions-fournisseur', 'bon_commande')):
+            r = self.api.get(f'{base}{ressource}/', {param: 'abc'})
+            self.assertEqual(r.status_code, 400, (ressource, r.content))
+            self.assertIn(param, r.json())
+            ok = self.api.get(f'{base}{ressource}/', {param: '999999'})
+            self.assertEqual(ok.status_code, 200, (ressource, ok.content))
+            self.assertEqual(ids_of(ok), [])
+
+    def test_facture_sans_resolveur_rend_resolu_par_username_nul(self):
+        from apps.achats.models import (
+            FactureFournisseur, LigneFactureFournisseur)
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-ENF11-1',
+            fournisseur=self.fournisseur)
+        LigneFactureFournisseur.objects.create(
+            facture=facture, designation='Transport', quantite=1,
+            prix_unitaire_ht=10)
+        r = self.api.get(
+            f'/api/django/achats/factures-fournisseur/{facture.id}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.json()
+        self.assertIn('resolu_par_username', data)
+        self.assertIsNone(data['resolu_par_username'])
+        self.assertIsNone(data['lignes'][0]['produit_nom'])
+
+    def test_import_xlsx_archive_non_classeur_refusee_en_400(self):
+        import io
+        import zipfile
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        tampon = io.BytesIO()
+        with zipfile.ZipFile(tampon, 'w') as archive:
+            archive.writestr('lisez-moi.txt', 'pas un classeur')
+        fichier = SimpleUploadedFile(
+            'tarif.xlsx', tampon.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument'
+                         '.spreadsheetml.sheet')
+        r = self.api.post(
+            '/api/django/achats/prix-fournisseurs/import-xlsx/',
+            {'fournisseur': self.fournisseur.id, 'file': fichier},
+            format='multipart')
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_bcf_envoye_modification_directe_est_un_conflit_409(self):
+        from apps.achats.models import BonCommandeFournisseur
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ENF11-1',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        r = self.api.patch(
+            f'/api/django/achats/bons-commande-fournisseur/{bcf.id}/',
+            {'note': 'x'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
+    def test_rapports_fournisseur_illisible_refuse_en_400(self):
+        base = '/api/django/achats/'
+        for chemin in ('bons-commande-fournisseur/achats-hors-contrat/',
+                       'factures-fournisseur/suggestions-bcf/'):
+            r = self.api.get(base + chemin, {'fournisseur': 'abc'})
+            self.assertEqual(r.status_code, 400, (chemin, r.content))
+            self.assertIn('fournisseur', r.json())
