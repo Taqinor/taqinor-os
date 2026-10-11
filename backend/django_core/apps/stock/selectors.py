@@ -3538,7 +3538,7 @@ def recherche_sans_accents_disponible():
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.
-from .selectors_wms import (  # noqa: E402,F401
+from .selectors_wms import (  # noqa: E402
     classe_abc_produit,
     classes_abc_produits,
     comparer_tarifs_transporteurs,
@@ -3552,7 +3552,7 @@ from .selectors_wms import (  # noqa: E402,F401
     tracabilite_produit,
 )
 # -- Groupe NTWMS (vague 3) -- pilotage d'entrepot (cockpit, capacite) --
-from .selectors_entrepot import (  # noqa: E402,F401
+from .selectors_entrepot import (  # noqa: E402
     cockpit_entrepot,
     remplissage_par_zone,
     simuler_capacite,
@@ -3560,7 +3560,7 @@ from .selectors_entrepot import (  # noqa: E402,F401
     zones_en_surcapacite,
 )
 # -- Groupe NTSCM -- performance fournisseur (OTIF, delais, TCO) --
-from .selectors_fournisseur import (  # noqa: E402,F401
+from .selectors_fournisseur import (  # noqa: E402
     comparer_tco_fournisseurs,
     cout_total_acquisition,
     delai_mesure_vs_annonce,
@@ -3568,13 +3568,24 @@ from .selectors_fournisseur import (  # noqa: E402,F401
     point_de_commande_avec_delai_reel,
 )
 # -- SPL114 -- lecture fiche technique (PV6 / CALX109), déplacée (move only) --
-from .selectors_fiche_technique import (  # noqa: E402,F401
+from .selectors_fiche_technique import (  # noqa: E402
     dimensions_de_pose,
     kit_from_produit,
     produits_modules_qs,
     specs_for_produit,
     type_fiche_produit,
 )
+
+__all__ = [
+    'classe_abc_produit', 'classes_abc_produits', 'cockpit_entrepot',
+    'comparer_tarifs_transporteurs', 'comparer_tco_fournisseurs', 'cout_total_acquisition',
+    'delai_mesure_vs_annonce', 'dimensions_de_pose', 'kit_from_produit', 'localisation_casiers',
+    'otif_fournisseur', 'planning_quais', 'point_de_commande_avec_delai_reel',
+    'productivite_operateur', 'produits_modules_qs', 'remplissage_par_zone',
+    'resoudre_allocation_picking', 'resoudre_code_scanne', 'simuler_capacite', 'specs_for_produit',
+    'strategie_picking_produit', 'suggerer_reslotting', 'suggerer_tache_retour',
+    'tracabilite_produit', 'type_fiche_produit', 'zones_en_surcapacite',
+]
 
 
 # ACAL56 — sélecteur MINCE par type de fiche (lecture cross-app du calepinage :

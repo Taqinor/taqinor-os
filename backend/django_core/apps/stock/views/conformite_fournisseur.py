@@ -1,4 +1,3 @@
-from django.db import transaction  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status
@@ -14,12 +13,7 @@ from ..serializers import (
     DocumentConformiteFournisseurSerializer, AchatsParametresSerializer,
     ToleranceRapprochementCategorieSerializer,
 )
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsAdminRole,
-    IsResponsableOrAdmin,
-    HasPermissionOrLegacy,
-)
+from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']

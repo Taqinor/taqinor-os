@@ -1,39 +1,19 @@
 from django.db import transaction
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
+from django.db.models import ProtectedError, Count
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
-from rest_framework import viewsets, filters, status  # noqa: F401
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import PTOKEN, BINARY, DATE, INT, LISTE, OBJET, P, STR, XLSX, corps
 from ..serializers import PortailFournisseurTokenSerializer
 from core.viewsets import CompanyScopedModelViewSet
-from apps.ventes.utils.references import create_with_reference  # noqa: F401
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur, CategorieFournisseur, ContactFournisseur,
+from ..models import (
+    Fournisseur, BonCommandeFournisseur, RetourFournisseur, FactureFournisseur,
+    CategorieFournisseur, ContactFournisseur,
 )
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
-    CategorieFournisseurSerializer,
-    ContactFournisseurSerializer,
-)
+from ..serializers import FournisseurSerializer, CategorieFournisseurSerializer, ContactFournisseurSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,

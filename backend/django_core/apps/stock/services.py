@@ -9088,11 +9088,10 @@ def produits_par_ids(company, ids):
 # -- Groupe NTWMS -- couche ENTREPOT (rangement, vagues, colisage, quais) --
 # Definis dans `services_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.services import ...`.
-from .services_wms import (  # noqa: E402,F401
+from .services_wms import (  # noqa: E402
     FENETRE_ROTATION_JOURS,
     affecter_reception_cross_dock,
     appliquer_quarantaine_rappel,
-    blocages_du_rappel,
     ajouter_ligne_unite_logistique,
     ajouter_unite_plan_chargement,
     assurer_plans_comptage_tournant,
@@ -9133,7 +9132,6 @@ from .services_wms import (  # noqa: E402,F401
     receptionner_retour_client,
     resoudre_token_portail_tiers,
     sceller_unite_logistique,
-    seuil_approbation_transfert,
     solde_portail_tiers,
     suggestions_rangement_reception,
     demande_transfert_approuvee_existe,
@@ -9141,6 +9139,26 @@ from .services_wms import (  # noqa: E402,F401
     valeur_transfert,
     verifier_capacite_plan,
 )
+
+__all__ = [
+    'FENETRE_ROTATION_JOURS', 'affecter_reception_cross_dock', 'ajouter_ligne_unite_logistique',
+    'ajouter_unite_plan_chargement', 'appliquer_quarantaine_rappel',
+    'assurer_plans_comptage_tournant', 'cloturer_alerte_rappel', 'configurer_liberation_vague',
+    'controler_scan_emballage', 'creer_expedition_transporteur', 'creer_plan_chargement',
+    'creer_retour_client', 'creer_unite_logistique', 'creer_vague_depuis_besoins',
+    'declarer_mouvement_rebut', 'decrementer_stock_expedition',
+    'demande_transfert_approuvee_existe', 'deplacer_unite_logistique',
+    'enregistrer_arrivee_chauffeur', 'enregistrer_mouvement_scanne', 'exporter_asn',
+    'generer_comptages_tournants', 'generer_etiquette_expedition', 'impact_rappel', 'importer_asn',
+    'inspecter_retour_client', 'lancer_vague', 'lever_quarantaine', 'lever_quarantaine_bin',
+    'liberer_vagues_planifiees', 'mettre_en_quarantaine', 'notifier_rappel',
+    'ordonner_parcours_serpentin', 'prelever_ligne_picking', 'proposer_cross_dock',
+    'quantite_disponible_hors_quarantaine', 'quantite_en_quarantaine', 'rapport_pertes_entrepot',
+    'recalculer_parcours_vague', 'reception_est_cross_dock', 'receptionner_retour_client',
+    'reference_sortie_expedition', 'resoudre_token_portail_tiers', 'sceller_unite_logistique',
+    'solde_portail_tiers', 'suggestions_rangement_reception', 'transfert_exige_approbation',
+    'valeur_transfert', 'verifier_capacite_plan',
+]
 
 
 def creer_produit(company, **champs):
