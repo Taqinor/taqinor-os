@@ -705,13 +705,10 @@ def _realigner_nomenclature_revision(chantier, devis):
     a_des_reservations = StockReservation.objects.filter(
         installation=chantier).exists()
 
-    anciens = _bom_quantities(chantier)
-    chantier.bom = _freeze_bom(devis)
-    chantier.save(update_fields=['bom'])
-    nouveaux = _bom_quantities(chantier)
     # AMET14 — DA déjà émises : marquées « à revoir (V2) », jamais modifiées.
-    from .revision_achats import marquer_achats_a_revoir
-    marquer_achats_a_revoir(chantier, anciens, nouveaux)
+    from .revision_achats import figer_bom_revisee
+    nouveaux = figer_bom_revisee(
+        chantier, devis, _freeze_bom, _bom_quantities)
 
     if (not a_des_reservations
             and methode_reservation_stock(chantier.company)
@@ -1300,9 +1297,9 @@ def consume_reservations(installation, user):
     from django.utils import timezone
     from apps.stock.selectors import lock_produit
     from apps.stock.services import (
-        mouvement_type_sortie, quantite_disponible_hors_quarantaine,
-        record_stock_movement,
+        mouvement_type_sortie, record_stock_movement,
     )
+    from .sortie_quarantaine import detail_manques, sortie_hors_quarantaine
 
     consumed = 0
     manques = []
@@ -1327,9 +1324,8 @@ def consume_reservations(installation, user):
             # réconciliation terrain et les pièces SAV.
             # ASTK249 — la part en quarantaine (rappel, réception non
             # conforme) ne sort jamais au nom du chantier.
-            dispo = min(qte_avant, quantite_disponible_hors_quarantaine(
-                installation.company, produit))
-            qte_sortie = min(resa.quantite, dispo) if dispo > 0 else 0
+            qte_sortie, en_q = sortie_hors_quarantaine(
+                installation.company, produit, qte_avant, resa.quantite)
             qte_apres = qte_avant - qte_sortie
             record_stock_movement(
                 company=installation.company, produit=produit,
@@ -1341,7 +1337,6 @@ def consume_reservations(installation, user):
                 created_by=user)
             manquant = resa.quantite - qte_sortie
             if manquant > 0:
-                en_q = min(manquant, max(qte_avant - dispo, 0))
                 manques.append((produit.sku or produit.nom, manquant, en_q))
             resa.consomme = True
             resa.date_consommation = timezone.now()
@@ -1349,10 +1344,7 @@ def consume_reservations(installation, user):
             consumed += 1
     if manques:
         from . import activity
-        detail = ', '.join(
-            f'{ref} (manque {manquant}'
-            + (f', dont {en_q} en quarantaine)' if en_q else ')')
-            for ref, manquant, en_q in manques)
+        detail = detail_manques(manques)
         activity.log_note(
             installation, user,
             f"Consommation stock incomplète — {detail}.")

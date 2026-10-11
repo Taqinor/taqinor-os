@@ -91,3 +91,15 @@ def _avertir(chantier, references, user):
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
         pass
+
+def figer_bom_revisee(chantier, devis, figer, quantites):
+    """Fige la nomenclature de la V2 sur `chantier` puis marque les DA émises
+    « à revoir (V2) » ; rend les quantités de la nouvelle nomenclature.
+    `figer(devis)` / `quantites(chantier)` : `services._freeze_bom` /
+    `services._bom_quantities` (injectés : pas d'import circulaire)."""
+    anciens = quantites(chantier)
+    chantier.bom = figer(devis)
+    chantier.save(update_fields=['bom'])
+    nouveaux = quantites(chantier)
+    marquer_achats_a_revoir(chantier, anciens, nouveaux)
+    return nouveaux
