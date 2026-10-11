@@ -63,6 +63,33 @@ class FiltreCheminsTests(unittest.TestCase):
                 "// voir '../../../../backend/django_core/apps/crm/platform.py'\n", encoding="utf-8")
             self.assertEqual(cf.verifier(r), [])
 
+    def test_join_compose_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = _arbre(tmp, REGLE_BACKEND)
+            (r / "backend/django_core/fix").mkdir()
+            (r / "backend/django_core/fix/a.json").write_text("{}", encoding="utf-8")
+            (r / "frontend/src/features/crm/Planner.test.mjs").write_text(
+                "const D = join(HERE, '..', '..', 'backend', 'django_core', 'fix')\n"
+                "const P = join(D, 'a.json')\n", encoding="utf-8")
+            erreurs = cf.verifier(r)
+            self.assertEqual(len(erreurs), 1, erreurs)
+            self.assertIn("fix/a.json", erreurs[0])
+
+    def test_module_frontend_scripts_importe_par_un_test_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = _arbre(tmp, REGLE_BACKEND)
+            (r / "backend/django_core/fix").mkdir()
+            (r / "backend/django_core/fix/a.json").write_text("{}", encoding="utf-8")
+            (r / "frontend/scripts").mkdir()
+            (r / "frontend/scripts/mod.mjs").write_text(
+                "const D = join(HERE, '..', '..', 'backend', 'django_core', 'fix')\n"
+                "export const P = join(D, 'a.json')\n", encoding="utf-8")
+            (r / "frontend/src/features/crm/Planner.test.mjs").write_text(
+                "import { P } from '../../../scripts/mod.mjs'\n", encoding="utf-8")
+            erreurs = cf.verifier(r)
+            self.assertEqual(len(erreurs), 1, erreurs)
+            self.assertIn("fix/a.json", erreurs[0])
+
     def test_depot_reel_vert(self):
         self.assertEqual(cf.verifier(ROOT), [])
 
