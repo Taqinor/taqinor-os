@@ -163,7 +163,9 @@ def _urlconfs_traverses(resolveur, chemin: str) -> list:
             motif.resolve(chemin)
         except Exception:  # cette branche ne mène pas à la vue
             continue
-        nom = motif.urlconf_name if isinstance(motif.urlconf_name, str) else None
+        # `include('apps.x.urls')` a déjà importé le module : on lit son nom.
+        conf = motif.urlconf_name
+        nom = conf if isinstance(conf, str) else getattr(conf, "__name__", None)
         return ([nom] if nom else []) + _urlconfs_traverses(motif, correspondance[0])
     return []
 
