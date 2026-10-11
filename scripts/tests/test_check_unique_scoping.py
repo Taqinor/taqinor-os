@@ -154,6 +154,18 @@ class TestUniqueScoping(unittest.TestCase):
     def test_softdelete_unique_with_condition_ok(self):
         self.assertEqual(self._codes(SOFTDELETE_WITH_CONDITION), set())
 
+    def test_modele_deplace_garde_sa_cle_models_py(self):
+        """Scission SPL : la clé gelée ``<app>/models.py::M.f`` couvre le
+        modèle déplacé dans ``<app>/models_<x>.py`` — jamais une autre app,
+        jamais un fichier hors ``models_*``."""
+        allow = {"apps/crm/models.py::Client.code_parrainage"}
+        self.assertTrue(cus._autorise(
+            "apps/crm/models_clients.py::Client.code_parrainage", allow))
+        self.assertFalse(cus._autorise(
+            "apps/ventes/models_x.py::Client.code_parrainage", allow))
+        self.assertFalse(cus._autorise(
+            "apps/crm/autre.py::Client.code_parrainage", allow))
+
 
 if __name__ == "__main__":
     unittest.main()

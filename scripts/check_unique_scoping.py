@@ -255,6 +255,19 @@ def check_file(path: Path):
     return unique_sites, findings
 
 
+def _autorise(key, allow):
+    """``key`` est-il gelé ? Un modèle DÉPLACÉ de ``models.py`` vers un
+    ``models_<x>.py`` de la même app (scission SPL, move only) garde sa clé
+    d'origine ``<app>/models.py::Modele.champ`` : Django le charge toujours
+    via ``<app>.models``, et la baseline ne fait que rétrécir (C20)."""
+    if key in allow:
+        return True
+    chemin, sep, reste = key.partition("::")
+    dossier, _, fichier = chemin.rpartition("/")
+    return bool(sep) and fichier.startswith("models_") and (
+        f"{dossier}/models.py::{reste}" in allow)
+
+
 def main(argv):
     list_mode = "--list" in argv
     allow = _load_allowlist()
@@ -266,7 +279,7 @@ def main(argv):
         for model, field in sites:
             all_sites.append(f"{rel}::{model}.{field}")
         for code, key, msg in findings:
-            if key in allow:
+            if _autorise(key, allow):
                 continue
             offenders.append(f"[{code}] {key}: {msg}")
 

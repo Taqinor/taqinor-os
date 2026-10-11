@@ -45,6 +45,14 @@ ENVOI = datetime.datetime(2026, 9, 7, 10, 0, tzinfo=horaires.CASABLANCA)
 FIN_DU_SUIVI = datetime.date(2026, 9, 22)
 
 
+def _liberer_barreau_j9(lead, devis):
+    """ACRM55 — une seule touche OUVERTE par barreau : l'envoi (rétrodaté)
+    a déjà matérialisé la touche J9 ; le test pose la sienne à sa place."""
+    RelanceEtape.objects.filter(
+        lead=lead, cadence='apres_devis', ordre=7, devis=devis,
+        statut=RelanceEtape.Statut.A_FAIRE).delete()
+
+
 class _Base(TestCase):
     slug = 'cad57'
     financement = None
@@ -205,6 +213,7 @@ class SubventionDeposeeTests(_SubventionBase):
         self.profil.quote_validity_days = 30
         self.profil.save(update_fields=['quote_validity_days'])
         devis = self._envoyer('DEV-AGR523-J9')
+        _liberer_barreau_j9(self.lead, devis)
         etape = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
             ordre=7, due_at=ENVOI + datetime.timedelta(days=9),
@@ -246,6 +255,7 @@ class MessageJ9Tests(_Base):
         from apps.crm.cadence_messages import message_pour_etape
 
         devis = self._envoyer()
+        _liberer_barreau_j9(self.lead, devis)
         etape = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
             ordre=7, due_at=ENVOI + datetime.timedelta(days=9),

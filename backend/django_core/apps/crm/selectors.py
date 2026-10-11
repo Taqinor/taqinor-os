@@ -36,10 +36,6 @@ from .leads_selectors import (  # noqa: F401
     lead_known_field_codes, lead_ids_by_contact, lead_ids_par_identifiant,
     doublons_foyer_probables,
 )
-# ACRM62 — liste d'opposition (vit près des normalize_* importés par models).
-from .leads_doublons import (  # noqa: F401
-    empreintes_contact, porte_une_opposition,
-)
 from .clients_selectors import (  # noqa: F401
     client_base_qs, find_client_by_email, clients_pour_controle_ice,
     find_client_by_ice_or_libelle, find_client_by_phone, client_credit_warning,
