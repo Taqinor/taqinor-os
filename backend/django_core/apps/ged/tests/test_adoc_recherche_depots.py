@@ -81,3 +81,29 @@ class RechercheDepotsTests(TestCase):
         services.versionner_si_modifie(
             document, b'%PDF-2', stocker=lambda: stockage)
         self.assertIn(document.pk, self._ids_recherche('forage'))
+
+    def test_migration_reindexe_les_vecteurs_nuls(self):
+        """ADOC181 — la migration indexe les documents à vecteur NULL, laisse
+        la corbeille et `updated_at` intacts, et se rejoue sans effet."""
+        import importlib
+        from django.apps import apps as registre
+        from django.utils import timezone
+        migration = importlib.import_module(
+            'apps.ged.migrations.0057_adoc181_reindexer_documents')
+        cabinet = services.ensure_cabinet(self.co, 'Documentation')
+        dossier = services.ensure_root_folder(
+            self.co, cabinet=cabinet, nom='Anciens')
+        actif = Document.objects.create(
+            company=self.co, folder=dossier, nom='Contrat Berrada')
+        corbeille = Document.objects.create(
+            company=self.co, folder=dossier, nom='Contrat Alaoui',
+            supprime_le=timezone.now())
+        avant = Document.objects.get(pk=actif.pk).updated_at
+        self.assertIsNone(Document.objects.get(pk=actif.pk).search_vector)
+        migration.reindexer_documents(registre, None)
+        self.assertIsNotNone(Document.objects.get(pk=actif.pk).search_vector)
+        self.assertIsNone(Document.objects.get(pk=corbeille.pk).search_vector)
+        self.assertEqual(Document.objects.get(pk=actif.pk).updated_at, avant)
+        self.assertIn(actif.pk, self._ids_recherche('Berrada'))
+        migration.reindexer_documents(registre, None)  # idempotent
+        self.assertIsNotNone(Document.objects.get(pk=actif.pk).search_vector)

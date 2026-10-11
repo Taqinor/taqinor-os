@@ -1274,7 +1274,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """YSERV7 — chantiers à tranche d'échéancier due (jalon atteint ou
         réceptionné, non facturé). Liste plate, une entrée par tranche due."""
         from ..services import chantiers_a_facturer
-        return Response(chantiers_a_facturer(request.user.company))
+        return Response(chantiers_a_facturer(request.user.company, request.user))
 
     @oa.extend_schema(request=None, responses=oa.OBJ)
     @action(detail=True, methods=['post'], url_path='reserver-stock',

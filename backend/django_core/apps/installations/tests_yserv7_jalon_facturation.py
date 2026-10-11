@@ -247,3 +247,47 @@ class TestChantiersAFacturerSelector(TestCase):
             tranche_echeancier=JalonProjet.TRANCHE_ACOMPTE)
         result = chantiers_a_facturer(self.company)
         self.assertEqual(result, [])
+
+
+class TestChantiersAFacturerPortee(TestCase):
+    """ERR-CHANTIERS-A-FACTURER-SANS-PORTEE : la liste suit la portée de
+    l'utilisateur, comme la liste des chantiers."""
+
+    def setUp(self):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import SCOPE_TEAM
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+        role = Role.objects.create(
+            company=self.company, nom='resp-equipe-portee',
+            permissions=['installation_voir', SCOPE_TEAM])
+        self.proprio = User.objects.create_user(
+            username=f'yserv7-p-{next(_seq)}', password='x',
+            company=self.company, role_legacy='responsable', role=role)
+        self.autre = User.objects.create_user(
+            username=f'yserv7-a-{next(_seq)}', password='x',
+            company=self.company, role_legacy='responsable', role=role)
+        devis = make_devis(self.company, self.client_obj)
+        self.inst = make_installation(self.company, self.client_obj, devis)
+        self.inst.technicien_responsable = self.proprio
+        self.inst.created_by = self.proprio
+        self.inst.save()
+        JalonProjet.objects.create(
+            company=self.company, installation=self.inst,
+            phase=JalonProjet.Phase.POSE, libelle='Pose', atteint=True,
+            tranche_echeancier=JalonProjet.TRANCHE_ACOMPTE)
+
+    def _get(self, user):
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        r = api.get('/api/django/installations/chantiers/a-facturer/')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+        return r.data
+
+    def test_hors_portee_liste_vide(self):
+        self.assertEqual(self._get(self.autre), [])
+
+    def test_proprietaire_voit_sa_tranche(self):
+        data = self._get(self.proprio)
+        self.assertEqual([d['installation_id'] for d in data], [self.inst.id])
