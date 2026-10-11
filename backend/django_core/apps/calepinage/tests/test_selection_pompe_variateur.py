@@ -25,9 +25,7 @@ Run :
 """
 import unittest
 
-from apps.calepinage.services.pompage import (
-    selection_pompe, selection_variateur,
-)
+from core.pompage.selection import selection_pompe, selection_variateur
 
 #: Courbe DÉCROISSANTE : plus le débit monte, plus la HMT délivrable baisse
 #: (patron constructeur réel, MÊME forme que ``frontend/…/solar.js

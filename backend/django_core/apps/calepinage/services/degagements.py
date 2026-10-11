@@ -50,6 +50,7 @@ from __future__ import annotations
 import re
 
 from .parametres import ReglageInvalide
+from .preset_fm_ds_1_15 import PRESET_FM_DS_1_15
 
 #: La section des réglages que ce module porte (CAL45).
 SECTION = 'degagements'
@@ -468,7 +469,6 @@ CLES_DEGAGEMENT_PROJET = ('lanterneau', 'exutoire', 'joint_dilatation',
 #: Le préréglage FM Global DS 1-15 (chaque valeur citée section par section)
 #: vit dans ``preset_fm_ds_1_15`` : ce module ne porte AUCUN chiffre de
 #: largeur écrit en dur (garde de surface CALX402).
-from .preset_fm_ds_1_15 import DOCUMENT_FM, PRESET_FM_DS_1_15  # noqa: E402,F401
 
 
 class ContraintesSiteInvalides(ValueError):

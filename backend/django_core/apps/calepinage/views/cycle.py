@@ -50,6 +50,7 @@ from rest_framework.response import Response
 from ..permissions import PeutGererCalepinage
 from ..services.variantes import DuplicationEnConflit, VarianteRefusee
 from ..services.variantes import dupliquer as service_dupliquer
+from .calepinages import CalepinageViewSet
 
 __all__ = ['dupliquer']
 
@@ -133,8 +134,6 @@ def dupliquer(self, request, pk=None):
         'layout_hash': copie.layout_hash or '',
     }, status=status.HTTP_201_CREATED)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF découvre
 # l'action par ``get_extra_actions()`` et reconstruit le mapping depuis

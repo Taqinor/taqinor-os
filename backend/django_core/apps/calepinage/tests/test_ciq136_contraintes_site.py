@@ -14,9 +14,9 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.degagements import (
-    PRESET_FM_DS_1_15, ContraintesSiteInvalides, degagement_effectif,
-    normaliser_contraintes_site,
+    ContraintesSiteInvalides, degagement_effectif, normaliser_contraintes_site,
 )
+from apps.calepinage.services.preset_fm_ds_1_15 import PRESET_FM_DS_1_15
 from apps.calepinage.services.traduction import entree_depuis_layout
 
 from .test_api_liste import BaseApiCalepinage, url_detail

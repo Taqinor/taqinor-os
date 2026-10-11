@@ -13,7 +13,7 @@ Run :
 """
 import unittest
 
-from apps.calepinage.services.pompage import selection_variateur, tension_produit
+from core.pompage.selection import selection_variateur, tension_produit
 
 
 class TensionNomStricteTest(unittest.TestCase):

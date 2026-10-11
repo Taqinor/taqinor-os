@@ -43,6 +43,7 @@ from ..permissions import PeutGererCalepinage
 from ..services.creation import (
     CreationRefusee, corps_conflit, ouvrir_ou_creer_pour_lead,
 )
+from .calepinages import CalepinageViewSet
 
 __all__ = ['depuis_lead']
 
@@ -108,8 +109,6 @@ def depuis_lead(self, request):
     return Response(_reponse(calepinage, cree=True),
                     status=status.HTTP_201_CREATED)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

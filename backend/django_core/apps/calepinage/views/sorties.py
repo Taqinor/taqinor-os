@@ -38,6 +38,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
+from ..services.planche import (
+    MOTIF_SANS_PARCELLE as SANS_PARCELLE)
 
 __all__ = ['SortiesMixin', 'reponse_de_fichier', 'inventaire_des_sorties']
 
@@ -59,8 +61,6 @@ SANS_RESULTAT = ("Aucune conception enregistrée : la note de calcul ne se rend 
                  "pas à partir de grandeurs absentes.")
 SANS_GEOMETRIE = ("Aucune conception enregistrée : la géométrie exportée "
                   "serait vide.")
-from ..services.planche import (  # noqa: E402 - ACAL232 : UNE constante
-    MOTIF_SANS_PARCELLE as SANS_PARCELLE)
 SANS_IMAGE = "Aucun rendu 3D enregistré pour ce calepinage."
 SANS_PIECE = ("Aucune pièce disponible : un dossier technique ne se remet pas "
               "amputé en silence.")
