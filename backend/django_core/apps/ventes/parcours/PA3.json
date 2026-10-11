@@ -238,7 +238,7 @@
    "id": "PA3-13",
    "nom": "Désacceptation (le lead quitte « Signé »)",
    "proprietaire": "ventes",
-   "declencheur": {"type": "evenement", "source": "apps/crm/services.py::desaccepter_devis_du_lead"},
+   "declencheur": {"type": "evenement", "source": "apps/crm/fiche_funnel.py::desaccepter_devis_du_lead"},
    "ecran": {"route": "—", "composant": "aucun écran direct", "action": "déplacer le lead hors de « Signé »"},
    "fonction_entree": "apps/ventes/domain/cycle_vie.py::annuler_acceptation",
    "checkpoint": {"modifiable": true, "champs": ["Devis.statut"], "persistance": "apps/ventes/models.py::Devis"},
