@@ -965,6 +965,27 @@ class GelCompletLectureTests(TestCase):
         self.assertEqual(data['doc_texts']['cgv_titre'], 'TITRE-B')
         self.assertEqual(data['doc_texts']['bpa_mention'], 'BPA-B')
 
+    def test_correction_ancien_envoye_garde_les_cgv_recues(self):
+        """Envoyé d'avant APDF20 (CGV A gelées seules), CGV éditées en B,
+        puis correction sur place : ``figer_clauses_devis`` pose un
+        ``doc_texts_geles`` aux CGV B — le rendu imprime toujours A.
+        Test-du-test : rappliquer ``cgv_gelees`` AVANT le choix de
+        ``_doc_texts_geles`` (builder) ⇒ ce test échoue."""
+        from apps.ventes.domain.envoi import figer_clauses_devis
+        self._envoyer()
+        Devis.objects.filter(pk=self.devis.pk).update(clauses_appliquees=[
+            c for c in self.devis.clauses_appliquees
+            if c.get('type') != 'doc_texts_geles'])
+        self.devis.refresh_from_db()
+        self._textes(TEXTES_B)
+        self.assertTrue(figer_clauses_devis(self.devis))
+        geles = [c['textes'] for c in self.devis.clauses_appliquees
+                 if c.get('type') == 'doc_texts_geles']
+        self.assertEqual(geles[0]['cgv_bullets'], ['CGV-B puce'])
+        data = build_quote_data(self.devis, {})
+        self.assertEqual(data['doc_texts']['cgv_bullets'], ['CGV-A puce'])
+        self.assertEqual(cgv_imprimees(data)['puces'], ['CGV-A puce'])
+
     @tag('pdf')
     def test_defaut_premium_imprime_textes_A(self):
         from apps.ventes.tests.test_pdf_apdf_identite import (

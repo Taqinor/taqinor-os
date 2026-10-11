@@ -1289,16 +1289,19 @@ def _doc_texts_envoyes(devis, doc_texts):
     APDF14 — devis envoyé ou signé : l'ENSEMBLE des textes gelés à l'envoi
     (CGV, titre, garanties, bon pour accord…) prime sur les textes vifs ; la
     boucle ERR-QJR668 ne sert plus qu'aux envoyés d'avant ce gel.
+    Les puces ``cgv_gelees`` (posées à l'ENVOI) priment toujours, appliquées
+    APRÈS le choix des textes : un ``doc_texts_geles`` posé plus tard par une
+    correction sur place d'un envoyé d'avant APDF20 porte les CGV du jour.
     """
+    _geles = _doc_texts_geles(devis)
+    doc_texts = doc_texts if _geles is None else _geles
     for _c in (getattr(devis, "clauses_appliquees", None) or []):
         if (isinstance(_c, dict) and _c.get("type") == "cgv_gelees"
                 and not _c.get("mode")
                 and isinstance(_c.get("bullets"), list) and _c["bullets"]):
-            doc_texts = dict(doc_texts, cgv_bullets=[
+            return dict(doc_texts, cgv_bullets=[
                 str(b) for b in _c["bullets"]])
-            break
-    _geles = _doc_texts_geles(devis)
-    return doc_texts if _geles is None else _geles
+    return doc_texts
 
 
 def _entreprise_avec_logo(devis, entreprise, pdf_options):
