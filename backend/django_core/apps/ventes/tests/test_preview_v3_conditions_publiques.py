@@ -321,7 +321,7 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.assertNotIn('33,5', joint)
         # Et le PDF de ce devis imprime le même chiffre (même fonction).
         from apps.ventes.quote_engine.builder import build_quote_data
-        from apps.ventes.quote_engine.generate_devis_premium import (
+        from apps.ventes.quote_engine.clauses_cgv import (
             cgv_bullets_remplies)
         import html as _html
         pdf = [t for t in (_html.unescape(str(p)).strip()

@@ -66,8 +66,8 @@ export function reinitialiserEtat(): void {
 const MESSAGES_GLOBAUX: Record<Locale, { limite: string; indisponible: string; corps: string }> = {
   fr: {
     limite: 'Trop de demandes en même temps. Réessayez dans un instant.',
-    indisponible: "L'envoi de demandes n'est pas encore ouvert. Utilisez WhatsApp en attendant.",
-    corps: "La demande n'a pas pu être lue. Rechargez la page puis réessayez.",
+    indisponible: "L’envoi de demandes n’est pas encore ouvert. Utilisez WhatsApp en attendant.",
+    corps: "La demande n’a pas pu être lue. Rechargez la page puis réessayez.",
   },
   en: {
     limite: 'Too many requests at once. Please try again in a moment.',

@@ -355,6 +355,32 @@ remettre l'exemption `SOUS_PAQUET_RENDU` / `DEPENDANCES_RENDU` de
 les allowlister dans `core/tests/test_acal_core_calepinage_orphelins.py`), puis re-lancer
 les 10 tests revenus — recette détaillée dans `backend/parked/core_calepinage/README.md`.
 
+### 5.2 Hors registre — l'EDI X12 de `publicapi` (AANA51, D-AANA51 = parquer)
+
+Pas une app : un SOUS-MODULE de l'app vivante `publicapi` (qui reste dans le MVP, hors
+`APPS_PARQUEES`) — `publicapi/edi/` (X12 810/850), `publicapi/edi_partners.py`, le modèle
+`PartenaireEdi`, le drapeau `PUBLICAPI_EDI_ACTIF` et les deux modules de tests
+`tests_ntapi35_edi_x12.py` / `tests_ntapi36_partenaires_edi.py`. Zéro appelant de production
+(grep du 05/10 et du 09/10), aucune route. Adaptation de la recette §2 à un sous-module :
+
+- **Le code et les tests PARTENT** (fichiers supprimés). Source de restauration unique : l'archive
+  `archive/full-erp-2026-09-20`, qui contient ces 5 fichiers **identiques** au dernier état
+  (`git diff` archive/HEAD vide avant suppression) — pas de miroir `backend/parked/`.
+- **Pas de « coquille » d'app** (l'app reste vivante) : la migration `0018_ntapi36_partenaireedi`
+  est conservée verbatim et `0021_aana51_parquer_edi` fait `SeparateDatabaseAndState(DeleteModel,
+  database_operations=[])` — le modèle quitte l'ÉTAT, la table `publicapi_partenaireedi` et ses
+  données restent (jamais de `DROP TABLE`) ; aucun talon de `models.py` n'est nécessaire (aucune
+  migration ne référence un symbole du module).
+- `PUBLICAPI_EDI_ACTIF` n'est lu nulle part (absent de `.env.example` et des settings) ; son
+  entrée de `scripts/settings_non_declares_allow.txt` est retirée.
+- **Retour** : `python manage.py migrate publicapi 0020` (état seul) ; supprimer
+  `0021_aana51_parquer_edi.py` ; `git checkout archive/full-erp-2026-09-20 --
+  backend/django_core/apps/publicapi/edi backend/django_core/apps/publicapi/edi_partners.py
+  backend/django_core/apps/publicapi/tests_ntapi35_edi_x12.py
+  backend/django_core/apps/publicapi/tests_ntapi36_partenaires_edi.py` ; recopier la classe
+  `PartenaireEdi` (+ `__all__ += ['PartenaireEdi']`) depuis `models.py` de l'archive ; retirer
+  `EdiParqueTests` de `publicapi/tests.py` ; `makemigrations --check` doit répondre « No changes ».
+
 ## 6. Note déployeur (21/09/2026, arrêtée par SOLMVP53)
 
 **Rien à faire à la main.** L'auto-deploy suffit : `migrate` puis le redémarrage habituel.

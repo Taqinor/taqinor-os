@@ -32,7 +32,14 @@ describe('affirmations (registre YBW18) — aides', () => {
 
   it('texteAffirmation() lève sur une affirmation non publiable ou sans anglais approuvé', () => {
     expect(() => texteAffirmation('MB-EN-SERVICE', 'fr')).toThrow(/non publiable/);
-    expect(() => texteAffirmation('SB-CRM', 'en')).toThrow(/anglaise/);
+    expect(() => texteAffirmation('MB-EN-SERVICE', 'en')).toThrow(/non publiable/);
+  });
+
+  it('YBW70 : toute affirmation publiable a son anglais (traduction du français approuvé)', () => {
+    for (const a of AFFIRMATIONS.filter((x) => x.publiable)) {
+      expect(a.texte_en, a.id).toBeTruthy();
+      expect(texteAffirmation(a.id, 'en'), a.id).toBe(a.texte_en);
+    }
   });
 });
 
@@ -260,6 +267,6 @@ describe('YBW65 — Société', () => {
     const doc = new JSDOM(await container.renderToString(Societe, { props: { locale: 'fr', legal: LEGAL_COMPLET } })).window.document;
     expect(doc.querySelector('[data-entite="editeur"]')?.textContent).toContain('Fixture Test Ltd');
     expect(doc.querySelector('[data-entite="editeur"]')?.textContent).toContain('Angleterre et pays de Galles');
-    expect(doc.querySelector('[data-entite="maroc"]')?.textContent).toContain("SARL d'associé unique");
+    expect(doc.querySelector('[data-entite="maroc"]')?.textContent).toContain("SARL d’associé unique");
   });
 });

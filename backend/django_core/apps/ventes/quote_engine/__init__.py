@@ -20,8 +20,9 @@ from .builder import (
     cle_pdf_a_jour,
     empreinte_donnees_pdf,
     generate_premium_devis_pdf,
-    puissance_panneaux_lignes,
 )
+# SPL162 — la dérivation panneaux vit dans ``lignes_classement`` (move only).
+from .lignes_classement import puissance_panneaux_lignes
 from .pricing import calculate_savings_roi
 
 __all__ = [

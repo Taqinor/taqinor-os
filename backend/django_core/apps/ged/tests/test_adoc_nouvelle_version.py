@@ -13,7 +13,9 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ged import services
-from apps.ged.models import Cabinet, Document, DocumentVersion, Folder
+from apps.ged.models import (
+    Cabinet, Document, DocumentVersion, Folder, QuotaStockage,
+)
 from authentication.models import Company
 
 User = get_user_model()
@@ -24,12 +26,6 @@ def auth(user):
     api = APIClient()
     api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
     return api
-
-
-def _store(file, company=None, **kwargs):
-    return ({'file_key': f'attachments/{company.pk}/v.pdf',
-             'filename': file.name, 'size': file.size,
-             'mime': 'application/pdf'}, None)
 
 
 class NouvelleVersionTests(TestCase):
@@ -51,10 +47,13 @@ class NouvelleVersionTests(TestCase):
             filename='d1.pdf', uploaded_by=self.resp)
         self.url = f'/api/django/ged/documents/{self.doc.pk}/nouvelle-version/'
 
-    def _post(self, user):
-        upload = SimpleUploadedFile('d-v2.pdf', PDF,
+    def _post(self, user, octets=PDF, nom='d-v2.pdf'):
+        """Seul le client MinIO de `records.storage` est simulé : la vraie
+        `store_attachment` (10 Mo, octets magiques) s'exécute."""
+        upload = SimpleUploadedFile(nom, octets,
                                     content_type='application/pdf')
-        with mock.patch('apps.ged.views.store_attachment', side_effect=_store):
+        with mock.patch('apps.records.storage.get_minio_client') as client,                 mock.patch('apps.records.storage.ensure_uploads_bucket'):
+            self.client_minio = client.return_value
             return auth(user).post(self.url, {'file': upload},
                                    format='multipart')
 
@@ -62,15 +61,41 @@ class NouvelleVersionTests(TestCase):
         resp = self._post(self.resp)
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.data['version'], 2)
+        self.client_minio.upload_fileobj.assert_called_once()
         v2 = DocumentVersion.objects.get(pk=resp.data['id'])
         self.assertEqual(v2.uploaded_by_id, self.resp.pk)
         self.assertEqual(v2.size, len(PDF))
         self.assertEqual(v2.checksum, services.compute_checksum(PDF))
+        self.assertTrue(v2.file_key.startswith(f'attachments/{self.co.pk}/'))
         liste = auth(self.resp).get(
             f'/api/django/ged/versions/?document={self.doc.pk}')
         data = liste.data['results'] if isinstance(liste.data, dict) \
             else liste.data
-        self.assertEqual(sorted(v['version'] for v in data), [1, 2])
+        # Ordre servi (plus récente d'abord), pas seulement l'ensemble.
+        self.assertEqual([v['version'] for v in data], [2, 1])
+
+    def test_non_pdf_400(self):
+        resp = self._post(self.resp, octets=b'ceci est du texte, pas un PDF',
+                          nom='faux.pdf')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('file', resp.data)
+        self.client_minio.upload_fileobj.assert_not_called()
+        self.assertEqual(self.doc.versions.count(), 1)
+
+    def test_fichier_trop_gros_400(self):
+        resp = self._post(self.resp, octets=PDF + b'0' * (10 * 1024 * 1024))
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('file', resp.data)
+        self.client_minio.upload_fileobj.assert_not_called()
+        self.assertEqual(self.doc.versions.count(), 1)
+
+    def test_quota_atteint_403(self):
+        QuotaStockage.objects.create(company=self.co, quota_octets=1)
+        resp = self._post(self.resp)
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertIn('detail', resp.data)
+        self.client_minio.upload_fileobj.assert_not_called()
+        self.assertEqual(self.doc.versions.count(), 1)
 
     def test_checkout_409(self):
         services.checkout_document(self.doc, self.resp)

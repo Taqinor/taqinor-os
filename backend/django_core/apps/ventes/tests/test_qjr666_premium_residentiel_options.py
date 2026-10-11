@@ -183,7 +183,7 @@ class Langue(SimpleTestCase):
         html = _html(langue_sortie="ar",
                      libelles_document=i18n_labels.libelles("ar"),
                      devis_final=True, montants_tranches=MONTANTS)
-        self.assertIn('<html lang="ar">', html)
+        self.assertRegex(html, r'<html lang="ar"(?: dir="rtl")?>')  # APDF11 : racine RTL
         self.assertIn('<span class="i18n-rtl" dir="rtl">', html)
         self.assertIn(i18n_labels.libelle("total_ttc", "ar"), html)
         self.assertIn(i18n_labels.libelle("conditions_paiement", "ar"), html)

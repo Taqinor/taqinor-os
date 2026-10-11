@@ -8,7 +8,8 @@ from pathlib import Path
 from . import theme
 from . import charts as charts_mod
 from . import cover, options, trust
-from .. import montants
+from .. import i18n_labels
+from ..premium_base import build_ctx as _ctx_socle
 
 # QRES62 — joints élastiques : marqueurs inertes posés par les gabarits de
 # page ; le second passage de rendu les remplace par des espaceurs
@@ -22,26 +23,18 @@ def build_ctx(data: dict, compact_p3: bool = False) -> dict:
     # « Pourquoi … », signature, cover, liens) lit ``ident`` et retombe sur le
     # littéral Taqinor historique quand le champ correspondant est vide → un
     # devis sans profil enrichi reste rendu strictement à l'identique.
-    ident = theme.company_identity(data)
-    return {
-        "d": data,
-        "C": theme.C,
-        "fmt": theme.fmt,
-        # QJR614 — montants dérivés du prix (P.U., total de ligne, chaîne de
-        # totaux, prix TTC) au CENTIME, ROUND_HALF_UP ; ``fmt`` (entier)
-        # reste pour kWh, CO2, panneaux, économies estimées.
-        "fmt_mad": montants.fmt_centimes,
-        "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
-                  "sans": theme.FONT_SANS},
-        "logo_dark": theme.logo_dark_b64(),
-        "logo_color": theme.logo_color_b64(),
-        "hero_img": theme.hero_image_b64(data.get("puissance_kwc"), "residentiel"),
+    # Le socle (identité, palette, formats, polices, logo APDF4) est celui
+    # de ``premium_base.build_ctx`` — UNE définition (check_duplicats).
+    ctx = _ctx_socle(data)
+    ctx.update({
+        "hero_img": theme.hero_image_b64(data.get("puissance_kwc"),
+                                         "residentiel"),
         "charts": charts_mod.build_all(data),
-        "ident": ident,
         # ERR114 — rythme vertical resserré de la page 3, demandé par le
         # renderer UNIQUEMENT après avoir MESURÉ un débordement réel.
         "compact_p3": bool(compact_p3),
-    }
+    })
+    return ctx
 
 
 def _apply_elastic(inner: str, slack_mm: float) -> str:
@@ -178,8 +171,13 @@ def build_html(data: dict, elastic: dict | None = None,
     # QJR666 — langue du document : un document français garde la racine
     # ``<html>`` d'origine (octet pour octet) ; en / ar portent ``lang``, et
     # l'arabe la police de ses libellés traduits.
+    # APDF11 — l'arabe est une page RTL (``dir="rtl"`` sur la racine, comme le
+    # commercial et l'industriel : WeasyPrint en tire l'alignement à droite et
+    # l'ordre miroir des tableaux) ; fr et en gardent leur racine d'hier.
     langue = theme.langue_doc(data)
     racine = "<html>" if langue == "fr" else f'<html lang="{langue}">'
+    if i18n_labels.est_rtl(langue):
+        racine = f'<html lang="{langue}" dir="rtl">'
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{theme.css_langue(data)}</style></head>"
             f"<body>{body}</body></html>")

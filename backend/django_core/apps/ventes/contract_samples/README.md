@@ -102,7 +102,7 @@ rougit pas tant que la route n'existe pas.
 
 | Fichier | Endpoint / ce qu'il apparie |
 | --- | --- |
-| `devis_solde.json` | GET ventes/devis/<id>/ (et la liste, même sérialiseur) : bloc `solde` {total_ttc, facture, paye, avoirs, restant, tranches_total, tranches_facturees — tout en texte} + NOUVELLE clé `porte_facturation` (`libre`/`tranche`/`aucune`), la porte de facturation dite par le serveur (ATOT18 ; producteur ATOT2, consommateur ATOT31) |
+| `devis_solde.json` | GET ventes/devis/<id>/ (et la liste, même sérialiseur) : bloc `solde` {total_ttc, facture, paye, avoirs, restant, tranches_total, tranches_facturees — tout en texte} + NOUVELLE clé `porte_facturation` (`libre`/`tranche`/`aucune`), la porte de facturation dite par le serveur (ATOT18 ; producteur ATOT2, consommateur ATOT31) + `facturation_terminee` (`'True'`/`'False'` en texte, AMET9 ; consommateurs ATOT37/ATOT38) |
 
 ## Groupe AGNR — M0 contrats posés SEULS (08/10/2026)
 

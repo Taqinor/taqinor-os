@@ -1,0 +1,17 @@
+{
+  "cas": "annexe_technique",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 61104,
+  "ordre": 7,
+  "pages": 4,
+  "polices_masquees": 6,
+  "sha256": "f07a448e6acfebb6b121338f45c68e2d5b509546cd0eedeaf5f6d07b4c79c29c",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "7b02f97c9ad63a90a10a58220e52d4dfe1c13d18e799ea9722cb2e5205d41b23",
+    "d38d1bf4f3559389fbb98c1f44eaf5ffd1947789514e34d8f6d15b77c16796d4",
+    "df9ee06fb5979f6c1f960b84b19d9847cdd89889d9ee9732801e9742057248fb",
+    "eec6635d9dcfd6917f87f8dfa8ff1987cbbf9df4a125a16744641dcc81cd6639"
+  ]
+}

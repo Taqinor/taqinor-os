@@ -1285,10 +1285,11 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertIn('10&#37; après la mise en marche', html)
         self.assertIn('+ acompte 30&#37;', html)
         # Résidentiel — one-page
+        # APDF13 — le une-page imprime les puces CGV (``cgv_imprimees``).
         html1, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte&#160;: 30&#37;', html1)
-        self.assertIn('60&#37; &#224; la r&#233;ception du mat&#233;riel', html1)
-        self.assertIn('10&#37; apr&#232;s mise en marche', html1)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html1)
+        self.assertIn('60&#37; à la réception du matériel', html1)
+        self.assertIn('10&#37; après la mise en marche', html1)
         # Industriel — 30/40/(20+10) partout (CIQ212)
         self.devis.mode_installation = 'industriel'
         self.devis.save(update_fields=['mode_installation'])
@@ -1298,8 +1299,8 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertIn('+ acompte 30&#37;', html2)
         self.assertNotIn('Acompte à la commande&#160;: 50&#37;', html2)
         html3, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte&#160;: 30&#37;', html3)
-        self.assertIn('40&#37; &#224; la r&#233;ception du mat&#233;riel', html3)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html3)
+        self.assertIn('40&#37; à la réception du matériel', html3)
         # Bloc « Modalités de paiement » (devis final) suit aussi le mode
         html4, _ = self._render({'devis_final': True})
         self.assertIn('Modalit', html4)
@@ -1308,7 +1309,7 @@ class TestPdfFormats4(TestPdfFormats):
         self.devis.mode_installation = 'agricole'
         self.devis.save(update_fields=['mode_installation'])
         html5, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte&#160;: 30&#37;', html5)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html5)
 
     def test_panel_performance_warranty_is_30_years(self):
         """Performance panneau : 30 ans, jamais 25 — mais LUE sur la fiche.
@@ -1852,8 +1853,17 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # premium agricole imprime clauses/CGV gelées). Ré-épinglée depuis
         # le message d'échec du run CI de la PR #886 (shard fast tier) —
         # jamais calculée à la main.
+        # Lane APDF (2026-10-10) — CHANGEMENTS VOULUS : APDF4 (société
+        # identifiée « TAQINOR Fixture QJR307 » sans logo téléversé ⇒ en-tête
+        # neutre, plus le logo TAQINOR) et APDF13 (+ suite AGR310) — la ligne
+        # de conditions imprime les puces CGV de ``cgv_imprimees`` (« Acompte à
+        # la commande », « … après la mise en marche », sans la puce
+        # ONEE/SRM en agricole) ; APDF9/APDF10 laissent le français
+        # octet-identique. Toujours 1 page (garde ci-dessus, verte dans le
+        # même run). Valeur recopiée du message d'échec du gate image de la
+        # lane (gate_moteur2) — jamais calculée à la main.
         EMPREINTE_EPINGLEE = (
-            '9ece669334e9ed5db57aff6372bd52a2fb7e3ba986a18afb9dcc3c012efe39aa')
+            'eee219be00191833eb4b5e98cc9e3680afc920958f95fa5400011b2a04676bfa')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,

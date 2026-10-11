@@ -18,7 +18,8 @@ vi.mock('react-router-dom', async (orig) => ({
   useNavigation: () => ({ state: 'idle' }),
 }))
 
-import Layout, { APPS_SHELL_ENABLED } from './Layout'
+import Layout from './Layout'
+import * as LayoutModule from './Layout'
 
 // Store minimal.
 function makeStore() {
@@ -83,14 +84,16 @@ describe('Layout — U2 scroll architecture', () => {
   })
 })
 
-/* ──────────────────────────────────────────────────────────────────────
-   ODY30 — kill-switch build-time coquille "apps" (défaut ON), posé AVANT
-   la bascule ODY4. Sans override VITE_APPS_SHELL (cas de ce run de test,
-   comme en prod par défaut), le flag doit rester activé — et le rendu de
-   Layout reste inchangé (voir les tests U2 ci-dessus).
-   ────────────────────────────────────────────────────────────────────── */
-describe('Layout — ODY30 kill-switch coquille apps', () => {
-  it('APPS_SHELL_ENABLED est ON par défaut (aucun VITE_APPS_SHELL="0")', () => {
-    expect(APPS_SHELL_ENABLED).toBe(true)
+/* ODY33 — UNE seule coquille : plus de kill-switch VITE_APPS_SHELL ni de
+   chemin legacy ; Layout monte toujours Sidebar + Header (mode Apps). */
+describe('Layout — coquille unique (ODY33)', () => {
+  it("n'exporte plus le flag APPS_SHELL_ENABLED", () => {
+    expect('APPS_SHELL_ENABLED' in LayoutModule).toBe(false)
+  })
+
+  it('monte toujours la Sidebar et le Header de la coquille', () => {
+    const { container } = renderLayout(<p>sentinel-ody33</p>)
+    expect(container.querySelector('.sidebar')).not.toBeNull()
+    expect(container.querySelector('header.header')).not.toBeNull()
   })
 })

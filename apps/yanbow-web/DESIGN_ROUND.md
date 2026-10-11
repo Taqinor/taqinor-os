@@ -88,3 +88,37 @@ Non vérifié par le critique (vérifié ici après corrections, voir « Gardes 
 - `npm run build` : vert ; `npm run check` : 0 erreur (astro check + tsc).
 - `npx vitest run` : 26 fichiers, 417 tests verts (dont `tests/designCandidates.test.ts` : contrastes calculés par candidat, schéma et portée ; règles YBW38 ; règles C et B corrigées ; routes privées hors registre et non liées ; logo ; légendes).
 - `npx playwright test` : 86 verts — débordement 320/375/768/1440, axe, crawl CSP/console/stockage sur les six pages en clair ; A et B en sombre (débordement aux 4 largeurs, axe, cibles 44 px, fond sombre effectif) ; C reste blanc sous un système sombre ; menu mobile ouvert à 320 px pour les trois.
+
+## YBW81 — critique visuelle finale (10/10/2026)
+
+Critique : Fable, contexte frais, 89 captures du site complet FR+EN (48 vues mesurées : 0 débordement). Captures avant = scratchpad de la critique ; après = même script (`cap-after/`), jamais commitées ; `REVIEW_FR.md` + `review/*.jpg` régénérés. Aucun texte visible modifié.
+
+**Corrections appliquées (`src/styles/site.css`)**
+1. Surtitres dans `.prose` (grands et gris) : `.prose p:not(.surtitre)`. Garde ajoutée dans `tests/styleTokens.test.ts` (aucune règle `.prose p` ne bat `.surtitre`, qui reste en `--texte-xs` ; vérifiée rouge sur l'ancien CSS). Avant `marketingbow-fr-1440`, `societe-fr-375` → après : surtitres petits, orange, en capitales.
+2. Modules sans capture : une seule colonne (`.module:not(:has(.capture))`) ; après `marketingbow-fr-1440` : plus de colonne vide.
+3. Menu mobile ouvert : `min-block-size: calc(100dvh - 100%)` sur le panneau ; avant `menu-fr-320` / `menu-en-320` (deux boutons orange à 40 px) → après `menu-fr-320` : panneau plein écran, un seul bouton.
+4. Sélecteur de langue visible dès 40rem (le bouton RDV reste dès 64rem) ; e2e `chrome.spec.ts` « en-tête sur une seule ligne » : 37/37 verts.
+5. Actions du héros produit en colonne dans les deux langues (`.bande-nuit-actions`).
+6. `.bande-nuit h1 { text-wrap: pretty }` ; après `marketingbow-en-375-ecran1` : plus de dernier mot seul ; FR sans régression.
+7. A-4 (tranché par Reda le 10/10/2026 : oui) : `.capture-emplacement` en `aspect-ratio: 16 / 9` ; vérifié à 375 et 1440 (0 débordement, légende « Données fictives » lisible).
+
+**Constats optionnels de la critique (goût / finition, non appliqués ce tour — un par ligne, page · langue · largeurs · capture)** :
+- Toutes pages · 768 (40-64rem) · `accueil-fr-768.jpg` — en-tête logo + « Menu » avec ~500 px vides ; la nav bureau tiendrait dès ~52rem (le sélecteur de langue est désormais visible dès 40rem — point 4 appliqué).
+- SolarBow + MarketingBow · FR/EN · 1440 · `solarbow-fr-1440-t1of5.jpg` — titre du héros sur 6 lignes dans la colonne 5fr, héros ≈ 1 000 px de haut (option B-4 du tour design, à trancher).
+- MarketingBow · EN · 375 · `marketingbow-en-375-t1of5.jpg` — h1 avec une ligne d'un seul mot (corrigé par `text-wrap: pretty`, point 6).
+- Accueil · FR/EN · 1440 · `accueil-fr-1440-t2of6.jpg` — cadre « Capture d'écran en préparation » du héros ≈ 1135×760 px (A-4 appliqué : 16:9).
+- Accueil · FR/EN · 1440 · `accueil-fr-1440-t3of6.jpg` — deux cartes produit vides de ~340 px côte à côte (même cause, même remède A-4).
+- Accueil, SolarBow, MarketingBow, Sur-mesure, Société · 1440 · `zoom/accueil-fr-1440-z1680-320.jpg` — le h2 de `.section-tete` démarre en colonne 4/12 (x≈447), aligné sur aucune autre colonne.
+- Société · FR/EN · toutes largeurs · `societe-fr-1440-t1of4.jpg` — « Your Arrow Needs 1Bow » est un paragraphe gris ordinaire ; la signature ne se distingue pas (à trancher : styler sans changer le texte).
+- Société · FR/EN · toutes largeurs · `societe-fr-1440.jpg` — page la plus « petite » du site (5 phrases + 3 liens sur 2 800 px) ; seule la mise en page peut compenser (liste « Ce que nous faisons » en cartes).
+- Sur-mesure · FR/EN · 1440 · `surMesure-fr-1440-t2of3.jpg` — « La preuve » : deux cartes réduites à un nom + un lien, lues comme inachevées.
+- Rendez-vous · FR/EN · 1440 · `rendezVous-fr-1440-t1of2.jpg` — colonne « Ce qui se passe ensuite » = 1 phrase ; 60 % de l'écran vide à droite du formulaire.
+- Toutes pages · 320/375 · `accueil-fr-375-t6of6.jpg` — pied : « Prendre rendez-vous » est un lien gris souligné au milieu des 4 liens de plan, coupé par le retour à la ligne.
+- Toutes pages · 1440 · `accueil-fr-1440-t6of6.jpg` — pied sans ligne d'identité (ni ©, ni contact, ni mention) : le signal « nouveau/petit » le plus fort du site — bloqué par YBWM4/5/6 (Reda, 10/10 : « pas encore »), rien à inventer.
+- Toutes pages · 320/375 · `accueil-fr-375-t1of6.jpg` — sous 40rem la trajectoire-flèche pointe vers le bord droit et le bouton est en dessous à gauche (design A accepté au tour design, noté pour mémoire).
+- Rendez-vous · toutes largeurs · `rdv-fr-375-soumis-vide.jpg` — seules cibles < 44 px = les `<label>` (27 px, non tactiles ; les champs font 48 px) — conforme, noté.
+**Vérifié conforme par la critique** : direction A partout, bandes produit = principe B avec les jetons de A, aucune police étrangère ; CTA trouvable sur chaque page ; placeholders étiquetés « Données fictives / Fictional data » ; parité FR/EN sans casse ; focus clavier visible ; erreurs de formulaire sous chaque champ ; mode sombre FR cohérent.
+
+**Décisions fondateur encore à trancher par Reda** : grille du héros 5fr/7fr → 6fr/6fr ; mise en forme de la signature « Your Arrow Needs 1Bow » ; ligne d'identité du pied de page (bloquée : YBWM4 contact, YBWM5/6 sociétés, « pas encore » — le pied reste sans identité). A-4 est tranché (ci-dessus).
+
+**Non inspecté** : mode sombre EN, largeurs 832-1024 px, états survol / succès / 404.

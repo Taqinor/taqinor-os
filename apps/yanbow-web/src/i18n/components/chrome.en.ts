@@ -1,28 +1,27 @@
 /**
- * Shared chrome dictionary (YBW60) — SKELETON: same keys as the French one,
- * empty strings. No English copy before Reda approves the French text
- * (YBWM13); filled by YBW70 from the approved French.
+ * Shared chrome dictionary (YBW60) — same keys as the French one, translated
+ * from the approved French (YBWM13, YBW70). No new statement.
  */
 import type { DictEn } from '../config';
 import type { fr } from './chrome.fr';
 
 export const en: DictEn<typeof fr> = {
-  evitement: '',
-  accueil: '',
+  evitement: 'Skip to content',
+  accueil: 'YanBow, home',
   nav: {
-    aria: '',
-    ariaMobile: '',
-    menu: '',
-    surMesure: '',
-    societe: '',
-    rdv: '',
+    aria: 'Main navigation',
+    ariaMobile: 'Navigation',
+    menu: 'Menu',
+    surMesure: 'Custom software',
+    societe: 'Company',
+    rdv: 'Book a meeting',
   },
   pied: {
-    aria: '',
-    nav: '',
+    aria: 'Footer',
+    nav: 'Site map',
   },
   capture: {
-    attente: '',
-    note: '',
+    attente: 'Screenshot in preparation',
+    note: 'Real software screen, fictional company, cropped to the useful area.',
   },
 };

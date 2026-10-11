@@ -144,6 +144,7 @@ export default function RelancesPage() {
   const openParametrage = async (r) => {
     const p = parametrages[r.client_id]
     setParamTarget(r)
+    setParamErreur('')
     setParamMode(p?.mode || r.relance_mode || 'auto')
     const resp = p?.responsable ?? r.relance_responsable_id
     setParamResponsable(resp ? String(resp) : 'none')
@@ -152,7 +153,10 @@ export default function RelancesPage() {
       try {
         const res = await api.get('/users/')
         setUsers(Array.isArray(res.data) ? res.data : (res.data?.results || []))
-      } catch { /* sans liste, le mode reste réglable (responsable inchangé) */ }
+      } catch (err) {
+        // Sans liste, le mode reste réglable (responsable inchangé) — mais la raison s'affiche.
+        setParamErreur(frenchError(err, 'Liste des responsables indisponible : le responsable reste inchangé.'))
+      }
     }
   }
 

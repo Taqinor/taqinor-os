@@ -137,6 +137,52 @@ class RappelTests(TestCase):
         plan = resoudre_allocation_picking(self.produit, 3)
         self.assertEqual(plan[0]['numero_lot'], 'LOT-RAPPEL')
 
+    def test_sorties_hors_lot_respectent_la_quarantaine(self):
+        """ASTK248 — rejoue la sonde C-ASTK-VER-004 : stock 15 dont 10
+        rappelés. Une SORTIE de 12 est refusée (400 / ValueError nommant le
+        produit et les 10 unités) par le poste scanner, le mouvement manuel et
+        la confirmation d'expédition : stock 15, aucun mouvement. Une sortie de
+        5 passe ; après levée du rappel, l'expédition (part bloquée comprise)
+        passe."""
+        from unittest import mock
+        from apps.stock.models import MouvementStock
+        from apps.stock.providers import NoOpProvider
+        from apps.stock.services import (
+            ajouter_ligne_unite_logistique, creer_expedition_transporteur,
+            creer_unite_logistique, generer_etiquette_expedition,
+            sceller_unite_logistique,
+        )
+        alerte_id = self._declarer().json()['id']
+        colis = creer_unite_logistique(company=self.co)
+        ajouter_ligne_unite_logistique(
+            company=self.co, unite=colis, produit=self.produit, quantite=12)
+        sceller_unite_logistique(unite=colis, user=self.admin)
+        expedition = creer_expedition_transporteur(company=self.co, unite=colis)
+        corps = {'produit': self.produit.id, 'type_mouvement': 'sortie',
+                 'quantite': 12}
+        for url in ('/api/django/stock/scanner/mouvement/',
+                    '/api/django/stock/mouvements/'):
+            rep = self.api.post(url, corps, format='json')
+            self.assertEqual(rep.status_code, 400, rep.content)
+            self.assertIn('Batterie ASTK199', str(rep.json()))
+            self.assertIn('10 unité(s) en quarantaine', str(rep.json()))
+        with mock.patch.object(NoOpProvider, 'creer_expedition',
+                               return_value=('INT-ASTK248', b'')):
+            with self.assertRaisesMessage(ValueError, '10 unité(s) en quarantaine'):
+                generer_etiquette_expedition(expedition=expedition, user=self.admin)
+            self.produit.refresh_from_db()
+            self.assertEqual(self.produit.quantite_stock, 15)
+            self.assertFalse(
+                MouvementStock.objects.filter(produit=self.produit).exists())
+            rep = self.api.post('/api/django/stock/mouvements/',
+                                {**corps, 'quantite': 5}, format='json')
+            self.assertEqual(rep.status_code, 201, rep.content)
+            self.assertEqual(
+                self.api.post(f'{URL}{alerte_id}/cloturer/').status_code, 200)
+            generer_etiquette_expedition(expedition=expedition, user=self.admin)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 0)
+
     def test_reponse_conforme_contrat(self):
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
         route = contrat['routes']['alertes_rappel']

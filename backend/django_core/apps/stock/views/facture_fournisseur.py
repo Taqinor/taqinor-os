@@ -84,9 +84,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + ['suggestions_bcf']:
             return [IsAnyRole()]
         if self.action == 'paiements' and self.request.method == 'GET':
-            # Lister les règlements d'une facture reste une LECTURE (palier
-            # historique inchangé) ; seul le POST « payer » exige le code.
-            return [IsResponsableOrAdmin()]
+            # ASTK241 — lire les règlements = règle UNIQUE de /paiements-fournisseur/.
+            from .paiement_fournisseur import PeutLirePaiementsFournisseur
+            return [PeutLirePaiementsFournisseur()]
         elif self.action in WRITE_ACTIONS + [
             'paiements', 'echeancier', 'resoudre_exception',
             'depuis_ocr', 'depuis_ubl',
@@ -316,6 +316,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         ne lie JAMAIS rien — l'utilisateur confirme via un PATCH classique
         (``factures-fournisseur/{id}/`` avec ``bon_commande``), qui déclenche
         alors l'évaluation 3 voies (``perform_update``)."""
+        from ..permissions import PeutVoirPrixAchat
         from ..selectors import suggerer_bcf_pour_facture
 
         fournisseur_id = request.query_params.get('fournisseur')
@@ -324,9 +325,15 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Le paramètre fournisseur est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         montant = request.query_params.get('montant')
-        return Response(suggerer_bcf_pour_facture(
+        suggestions = suggerer_bcf_pour_facture(
             request.user.company, fournisseur_id=fournisseur_id,
-            montant=montant))
+            montant=montant)
+        # ASTK240 (D-ASTK-2) — sans `prix_achat_voir`, aucun montant d'achat :
+        # ni `montant_*` ni l'écart (montant saisi ± écart = total du BCF).
+        if not PeutVoirPrixAchat().has_permission(request, self):
+            suggestions = [{k: v for k, v in s.items() if not k.startswith(
+                'montant') and k != 'ecart'} for s in suggestions]
+        return Response(suggestions)
 
     @extend_schema(
         request={'multipart/form-data': corps('FactureDepuisUblMultipart', file=serializers.FileField())},
@@ -416,12 +423,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         paiement (montant/date/mode), recalcule le statut + le solde dû."""
         facture = self.get_object()
         if request.method.lower() == 'get':
-            # ASTK11 (D-ASTK-2) — lecture des règlements = montants d'achat.
-            if not getattr(request.user, 'can_view_buy_prices', True):
-                return Response(
-                    {'detail': ("Permission « prix_achat_voir » requise "
-                                "(prix et montants d'achat).")},
-                    status=status.HTTP_403_FORBIDDEN)
+            # ASTK241 — gardé par get_permissions (PeutLirePaiementsFournisseur).
             qs = facture.paiements.select_related('created_by').all()
             return Response(
                 PaiementFournisseurSerializer(qs, many=True).data)

@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/public/stock/portail-fournisseur/<token>/",
-  "pourquoi": "ASTK167 (M0, PACT10, C-ASTK-045 / C-ASTK-040 / C-ASTK-041) — contrat posé SEUL sur main avant la gestion des accès fournisseur et la page publique à jeton (ASTK179-ASTK181 affirment leurs formes contre ce fichier ; ASTK227/ASTK228 en sont nourris). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; les entrées NOUVEAU (jetons_revoques ASTK179, 409 ASTK180, 400 de corps ASTK181, 404 fournisseur archivé/bloqué) sont hors de ce test. La page à jeton ne porte que les champs fournisseur — jamais prix de vente, marge ni note interne. Le portail COMPTE (apps/portail, /portail/fournisseur/commandes) a son propre contrat (propriétaire documents) — non dupliqué ; la réservation de créneau est dans `wms_quais`.",
+  "pourquoi": "ASTK167 (M0, PACT10, C-ASTK-045 / C-ASTK-040 / C-ASTK-041) — contrat posé SEUL sur main avant la gestion des accès fournisseur et la page publique à jeton (ASTK179-ASTK181 affirment leurs formes contre ce fichier ; ASTK227/ASTK228 en sont nourris). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; les entrées NOUVEAU (jetons_revoques ASTK179, 404 fournisseur archivé/bloqué) sont hors de ce test ; le 409 (ASTK180) et les 400 de valeur (ASTK181) servis y sont affirmés par égalité (ASTK253). La page à jeton ne porte que les champs fournisseur — jamais prix de vente, marge ni note interne. Le portail COMPTE (apps/portail, /portail/fournisseur/commandes) a son propre contrat (propriétaire documents) — non dupliqué ; la réservation de créneau est dans `wms_quais`.",
   "forme_serveur": "partielle",
   "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `public_portail_fournisseur`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
   "exemple": {
@@ -194,7 +194,7 @@
     },
     "public_portail_confirmer_bcf": {
       "endpoint": "POST /api/django/public/stock/portail-fournisseur/<token>/bcf/<bcf_id>/confirmer/",
-      "pourquoi": "XPUR22 — le fournisseur confirme un BCF et propose une date d'arrivée (public_views.py:75 ; même cœur que l'action interne `confirmer`). Corps {date_confirmee_fournisseur:'YYYY-MM-DD', numero_confirmation_fournisseur?}. La date DEMANDÉE d'origine n'est jamais écrasée (OTD préservé) ; seul l'accusé fournisseur est posé. 200 {id, reference, date_confirmee_fournisseur, numero_confirmation_fournisseur}. 400 RÉEL {detail:'date_confirmee_fournisseur est requise.'} (date absente). 404 INDISTINCT {detail} pour un jeton invalide OU un BCF d'un autre fournisseur/société (jamais de fuite d'existence).",
+      "pourquoi": "XPUR22 — le fournisseur confirme un BCF et propose une date d'arrivée (public_views.py:75 ; même cœur que l'action interne `confirmer`). Corps {date_confirmee_fournisseur:'YYYY-MM-DD', numero_confirmation_fournisseur?}. La date DEMANDÉE d'origine n'est jamais écrasée (OTD préservé) ; seul l'accusé fournisseur est posé. 200 {id, reference, date_confirmee_fournisseur, numero_confirmation_fournisseur}. 400 RÉEL {detail:'date_confirmee_fournisseur est requise.'} (date absente) ; 400 de valeur `exemples_erreur_400` ; 409 `exemple_erreur_409` (BCF non envoyé ou déjà reçu, ASTK180). 404 INDISTINCT {detail} pour un jeton invalide OU un BCF d'un autre fournisseur/société (jamais de fuite d'existence).",
       "exemple": {
         "id": 47,
         "reference": "BCF-2026-0047",
@@ -211,29 +211,24 @@
       "exemple_erreur_404": {
         "detail": "Ce lien du portail fournisseur est invalide, révoqué ou expiré."
       },
-      "nouveau_astk181": {
-        "nouveau": "NOUVEAU — ASTK181 (validation de corps non construite : exclue du test de forme ; les textes sont des PROPOSITIONS que ASTK181 fige)",
-        "statut": 400,
+      "exemples_erreur_400": {
+        "pourquoi": "ASTK181/ASTK253 — 400 SERVIS (services._valider_confirmation_bcf, public_views) : date illisible, numéro > NUMERO_CONFIRMATION_MAX (100) caractères, corps JSON non objet ; affirmés par ÉGALITÉ dans test_contrats_wms_astk.py.",
         "exemple_date": {
           "date_confirmee_fournisseur": [
-            "Date invalide : utilisez le format AAAA-MM-JJ."
+            "Date invalide (AAAA-MM-JJ)."
           ]
         },
         "exemple_numero": {
           "numero_confirmation_fournisseur": [
-            "Numéro de confirmation trop long (120 caractères maximum)."
+            "100 caractères maximum."
           ]
         },
-        "exemple_corps": {
+        "exemple_corps_non_objet": {
           "detail": "Corps JSON attendu."
         }
       },
-      "nouveau_astk180": {
-        "nouveau": "NOUVEAU — ASTK180 (garde d'état non construite : exclue du test de forme ; texte = PROPOSITION que ASTK180 fige)",
-        "statut": 409,
-        "exemple": {
-          "detail": "Ce bon de commande ne peut plus être confirmé (statut non envoyé ou déjà reçu)."
-        }
+      "exemple_erreur_409": {
+        "detail": "Seul un bon de commande envoyé et non reçu peut être confirmé."
       }
     }
   }

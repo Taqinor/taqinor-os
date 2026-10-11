@@ -218,3 +218,17 @@ describe('YBW38 — aucun hex brut hors tokens.css', () => {
     expect(hexBruts([{ rel: 'styles/site.css', contenu: '.x{color:#fff}' }])).toEqual(['styles/site.css']);
   });
 });
+
+describe('YBW81 — les surtitres gardent leur taille', () => {
+  it('aucune règle de paragraphe (.prose p, .module p…) ne bat .surtitre : font-size reste --texte-xs', () => {
+    const regles = [...sansCommentaires(SITE).matchAll(/([^{}@]+)\{([^{}]*)\}/g)];
+    const fautives = regles
+      .filter((r) => /font-size|color\s*:/.test(r[2]))
+      .flatMap((r) => r[1].split(',').map((s) => s.trim()))
+      .filter((sel) => /^\.prose p(\.[\w-]+)?$/.test(sel) && !sel.includes(':not(.surtitre)') && !sel.endsWith('.accent'));
+    expect(fautives).toEqual([]);
+    const surtitre = regles.find((r) => r[1].trim() === '.surtitre')?.[2] ?? '';
+    expect(surtitre).toMatch(/font-size:\s*var\(--texte-xs\)/);
+    expect(SITE).toMatch(/\.prose p:not\(\.surtitre\)/);
+  });
+});

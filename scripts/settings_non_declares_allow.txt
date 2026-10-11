@@ -8,7 +8,6 @@ backend/django_core/apps/automation/actions.py::CONTACT_FROM_EMAIL  # ADEP20 cl�
 backend/django_core/apps/identity/anomaly.py::GEOIP2_CITY_DB  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_MINUTES_OUVREES  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_SCORE_THRESHOLD  # ADEP20 clé non déclarée
-backend/django_core/apps/publicapi/edi/x12.py::PUBLICAPI_EDI_ACTIF  # ADEP20 clé non déclarée
 backend/django_core/apps/publicapi/oauth.py::PUBLIC_API_OAUTH_TOKEN_TTL  # ADEP20 clé non déclarée
 backend/django_core/apps/publicapi/webhook_health.py::WEBHOOK_AUTO_DISABLE_THRESHOLD  # ADEP20 clé non déclarée
 backend/django_core/apps/publicapi/webhook_health.py::WEBHOOK_AUTO_DISABLE_WINDOW_HOURS  # ADEP20 clé non déclarée

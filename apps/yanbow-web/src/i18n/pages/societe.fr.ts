@@ -27,8 +27,8 @@ export const fr = {
   },
   offre: {
     surtitre: 'Ce que nous faisons',
-    titre: 'Deux produits et du sur mesure',
-    surMesure: 'Sur mesure',
+    titre: 'Deux produits et du sur-mesure',
+    surMesure: 'Sur-mesure',
   },
   appel: {
     titre: 'Parlons de votre projet',

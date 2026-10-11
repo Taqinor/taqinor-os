@@ -4184,13 +4184,20 @@ def fusionner_bcf(company, user, bon_commande_ids):
 # installations (sens de dépendance préservé).
 
 def definir_frais_annexes_ligne_bcf(company, bon_commande_id, produit_id,
-                                    frais_annexes):
+                                    frais_annexes, via_cout_debarque=False):
     """DC38 — pose les frais annexes (coût débarqué) sur la/les ligne(s) de BCF
     d'un produit donné, dans la société. Setter STOCK pur (aucun import
     installations). Si plusieurs lignes portent le même produit sur ce BCF, le
     montant est réparti à parts égales pour que la somme sur les lignes reste
-    exacte dans le coût moyen. Renvoie le nombre de lignes mises à jour."""
+    exacte dans le coût moyen. Renvoie le nombre de lignes mises à jour.
+
+    ERR-ASTK63 (D-ASTK63 = a) — coût figé une fois reçu : sur une ligne déjà
+    reçue, seuls les frais du flux coût débarqué DC38 (``via_cout_debarque``)
+    passent, sinon ValueError nommant la ligne (rien n'est écrit) ; chaque
+    passage DC38 sur une ligne reçue trace au chatter du BCF l'ancien/nouveau
+    frais et le coût moyen pondéré recalculé. Ligne non reçue : inchangé."""
     from decimal import Decimal
+    from apps.audit.recorder import current_user
     from .models import LigneBonCommandeFournisseur
 
     if not bon_commande_id or not produit_id:
@@ -4198,14 +4205,30 @@ def definir_frais_annexes_ligne_bcf(company, bon_commande_id, produit_id,
     lignes = list(LigneBonCommandeFournisseur.objects.filter(
         bon_commande_id=bon_commande_id,
         bon_commande__company=company,
-        produit_id=produit_id))
+        produit_id=produit_id).select_related('bon_commande', 'produit'))
     if not lignes:
         return 0
+    recues = [ligne for ligne in lignes if (ligne.quantite_recue or 0) > 0]
+    if recues and not via_cout_debarque:
+        r = recues[0]
+        raise ValueError(
+            f'Ligne {r.id} « {r.produit.nom} » du {r.bon_commande.reference} '
+            'déjà reçue : coût figé, frais annexes modifiables uniquement par '
+            "le coût débarqué (dossier d'import).")
+    avant = average_cost_with_source(recues[0].produit)[0] if recues else None
     total = Decimal(str(frais_annexes or 0))
     part = (total / Decimal(len(lignes))).quantize(Decimal('0.01'))
+    anciens = {ligne.id: ligne.frais_annexes for ligne in lignes}
     for ligne in lignes:
         ligne.frais_annexes = part
         ligne.save(update_fields=['frais_annexes'])
+    if recues:
+        apres = average_cost_with_source(recues[0].produit)[0]
+        for ligne in recues:
+            log_bcf_chatter(ligne.bon_commande, user=current_user(), body=(
+                f'Ligne {ligne.id} — frais_annexes : {anciens[ligne.id]} → '
+                f'{part} (coût débarqué DC38) ; coût moyen pondéré : '
+                f'{avant} → {apres}.'))
     return len(lignes)
 
 
@@ -6252,22 +6275,23 @@ def evaluer_tolerance_ecart(company, bon_commande_id):
 
 def _montant_attendu_bcf_ht(bon_commande_id):
     """ASTK107 — HT ATTENDU d'un BCF pour le rapprochement 3 voies :
-    somme (quantité reçue sur réceptions CONFIRMÉES × PU du BCF) pour les
-    lignes « sur réception », somme (quantité commandée × PU) pour les lignes
-    « sur commande » (ZPUR1, facturées avant réception)."""
+    somme (quantité ENTRÉE sur réceptions CONFIRMÉES × PU du BCF — ASTK245 :
+    ``quantite_entree_ligne_reception``, la sur-livraison plafonnée ne compte
+    pas) pour les lignes « sur réception », somme (quantité commandée × PU)
+    pour les lignes « sur commande » (ZPUR1, facturées avant réception)."""
     from .models import (
         LigneBonCommandeFournisseur, LigneReceptionFournisseur, Produit,
         ReceptionFournisseur,
     )
     recu = {}
-    for ligne_id, qte in (LigneReceptionFournisseur.objects
-                          .filter(reception__bon_commande_id=bon_commande_id,
-                                  reception__statut=ReceptionFournisseur
-                                  .Statut.CONFIRME,
-                                  ligne_commande__isnull=False)
-                          .values_list('ligne_commande_id', 'quantite')):
-        recu[ligne_id] = recu.get(ligne_id, Decimal('0')) + Decimal(
-            str(qte or 0))
+    for lr in (LigneReceptionFournisseur.objects
+               .filter(reception__bon_commande_id=bon_commande_id,
+                       reception__statut=ReceptionFournisseur.Statut.CONFIRME,
+                       ligne_commande__isnull=False)
+               .only('ligne_commande_id', 'quantite', 'quantite_appliquee')):
+        recu[lr.ligne_commande_id] = recu.get(
+            lr.ligne_commande_id, Decimal('0')) + Decimal(
+            quantite_entree_ligne_reception(lr))
     attendu = Decimal('0')
     for ligne in (LigneBonCommandeFournisseur.objects
                   .filter(bon_commande_id=bon_commande_id)

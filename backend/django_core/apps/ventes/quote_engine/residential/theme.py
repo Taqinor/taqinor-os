@@ -85,6 +85,51 @@ def logo_color_b64() -> str:
     return base64.b64encode(p.read_bytes()).decode()
 
 
+#: APDF4 — PNG 1×1 transparent : en-tête d'une société identifiée SANS logo
+#: (bandeau neutre, comme ``extra_docs._logo_block`` — jamais le logo TAQINOR).
+_PIXEL_TRANSPARENT_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+                          "nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==")
+
+
+def _png_b64(uri: str) -> str:
+    """APDF4 — data URI d'une image raster → base64 PNG ; '' si illisible."""
+    import io
+    try:
+        from PIL import Image
+        entete, _, charge = (uri or "").partition(",")
+        if ";base64" not in entete:
+            return ""
+        img = Image.open(io.BytesIO(base64.b64decode(charge)))
+        buf = io.BytesIO()
+        img.convert("RGBA").save(buf, "PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:  # noqa: BLE001 — SVG / corrompu : traité comme absent
+        return ""
+
+
+def logo_societe_b64(data):
+    """APDF4 (C-APDF-001) — logo d'en-tête d'une SOCIÉTÉ, en base64 PNG.
+
+    Logo téléversé (``entreprise['logo_uri']``, lu par le builder comme la
+    facture) → ce logo ; profil sans logo → pixel transparent (bandeau
+    neutre) ; aucun profil → ``None`` (l'appelant garde le logo TAQINOR)."""
+    from ..identite import profil_renseigne
+    ent = (data or {}).get("entreprise") or {}
+    png = _png_b64(ent.get("logo_uri") or "") if ent.get("logo_uri") else ""
+    if png:
+        return png
+    return _PIXEL_TRANSPARENT_B64 if profil_renseigne(ent) else None
+
+
+def logo_imprime_b64(data, sombre: bool = True) -> str:
+    """APDF4 — LE logo imprimé par les gabarits premium : celui de la société
+    (``logo_societe_b64``), sinon l'asset TAQINOR (sombre ou couleur)."""
+    societe = logo_societe_b64(data)
+    if societe is not None:
+        return societe
+    return logo_dark_b64() if sombre else logo_color_b64()
+
+
 # This renderer's own bundled assets (the page-1 hero photo).
 _RESID_ASSETS = Path(__file__).resolve().parent / "assets"
 
@@ -335,7 +380,8 @@ def warranties_for(d):
     sous-libellé) — pour que tous les consommateurs restent inchangés. Un devis
     sans donnée produit rend EXACTEMENT la constante d'aujourd'hui."""
     try:
-        from .. import builder
+        # SPL162 — les prédicats de classement vivent dans ``lignes_classement``.
+        from .. import lignes_classement
         # QJR424 — SEULE définition du texte de classement (QJR301,
         # ``apps.ventes.utils.options.texte_classement``), importée au lieu
         # d'être recopiée ici.
@@ -350,14 +396,14 @@ def warranties_for(d):
         return texte_classement(it.get('designation', ''), it.get('_produit_nom', ''))
 
     def _est_panneau(it):
-        return builder._is_panel(it.get("designation", "") or "",
-                                 it.get("_produit_nom", "") or "")
+        return lignes_classement._is_panel(
+            it.get("designation", "") or "", it.get("_produit_nom", "") or "")
 
     def _est_onduleur(it):
-        return builder._is_inverter(_nom(it))
+        return lignes_classement._is_inverter(_nom(it))
 
     def _est_batterie(it):
-        return builder._is_battery(_nom(it))
+        return lignes_classement._is_battery(_nom(it))
 
     out = [_WARRANTY_FALLBACK["Installation"]]  # pose : constante 2 ans
 
@@ -917,41 +963,27 @@ def bande_legale(d: dict, ident: dict) -> str:
     composition, servie par ``premium_base.bande_legale`` au résidentiel et
     aux pages de confiance commerciale et industrielle.
 
-    Profil société d'un TENANT (nom non-TAQINOR) → SES identifiants, champs
-    absents omis ; sinon le repli fondateur."""
-    # SCA27 (fix règle-#4-permis) — pour un TENANT (profil au nom non-TAQINOR),
-    # la bande se compose de SES identifiants (nom/RC/ICE/email/téléphone/site,
-    # champs absents omis — capital et gérant n'ont pas de champ profil). Le
-    # littéral fondateur reste le repli byte-identique (profil vide OU marque
-    # TAQINOR — même sémantique par-la-donnée que _footer_brand/DC1).
+    APDF3 (D-APDF-1) — tout profil société, QUEL QUE SOIT SON NOM, imprime
+    SES mentions (``identite.mentions_legales``, la fonction de la ligne
+    légale du legacy) puis son contact et son site, champs vides omis ; le
+    repli historique ne sert que sans aucun profil."""
     from html import escape as _esc
+    from ..identite import LEGALE_TAQINOR_PREMIUM, mentions_legales
     ent = d.get("entreprise") or {}
-    ent_nom = (ent.get("nom") or "").strip()
-    if ent_nom and "TAQINOR" not in ent_nom.upper():
-        parts = [f"<b>{_esc(ent_nom)}</b>"]
-        if (ent.get("rc") or "").strip():
-            parts.append("RC " + _esc(ent["rc"].strip()))
-        if (ent.get("ice") or "").strip():
-            parts.append("ICE " + _esc(ent["ice"].strip()))
-        if (ent.get("email") or "").strip():
-            parts.append(_esc(ent["email"].strip()))
-        if (ent.get("telephone") or "").strip():
-            parts.append(_esc(ent["telephone"].strip()))
-        _site_tenant = (d.get("site_url") or "").strip()
-        if _site_tenant and "taqinor" not in _site_tenant.lower():
-            parts.append(_esc(_site_tenant))
-        legal = " &middot; ".join(parts)
-    else:
-        legal = (
-            '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
-            ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
-            ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
-            # QRES10 — contact lu depuis l'identité RÉSOLUE (profil société →
-            # repli littéraux fondateur) : la bande légale affiche toujours LE
-            # MÊME email/téléphone que le pied de page (le PDF réel imprimait
-            # « contact@taqinor.ma » en pied et « contact@taqinor.com » ici).
-            f' &middot; {ident.get("email") or "contact@taqinor.com"}'
-            f' &middot; {ident.get("phone") or "+212 6 61 85 04 10"}'
-            ' &middot; taqinor.ma'
-        )
-    return legal
+    parts = mentions_legales(ent)
+    if parts is None:
+        # QRES10 — contact lu depuis l'identité RÉSOLUE : la bande légale
+        # affiche LE MÊME email/téléphone que le pied de page.
+        return (LEGALE_TAQINOR_PREMIUM
+                + f' &middot; {ident.get("email") or "contact@taqinor.com"}'
+                f' &middot; {ident.get("phone") or "+212 6 61 85 04 10"}'
+                ' &middot; taqinor.ma')
+    for cle in ("email", "telephone"):
+        if (ent.get(cle) or "").strip():
+            parts.append(_esc(ent[cle].strip()))
+    # Le site imprimé est celui DU PROFIL (``site_url`` normalisé par le
+    # builder) : le repli « taqinor.ma » des renderers C&I n'est jamais repris.
+    _site = (d.get("site_url") or "").strip()
+    if _site and (ent.get("site_web") or "").strip():
+        parts.append(_esc(_site))
+    return " &middot; ".join(parts)

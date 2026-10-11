@@ -791,6 +791,10 @@ LIBELLES = {
     'ci_cgv_titre': {'fr': 'Conditions générales du devis',
                      'en': 'General terms of the quote',
                      'ar': 'الشروط العامة للعرض'},
+    # AMOT36 / APDF13 — puces CGV tronquées : la suite est DÉCLARÉE.
+    'ci_cgv_suite': {'fr': 'Suite des conditions : proposition en ligne',
+                     'en': 'Terms continued in the online proposal',
+                     'ar': 'تتمة الشروط في العرض عبر الإنترنت'},
     'ci_pour_la_societe': {'fr': 'pour la société', 'en': 'for the company',
                            'ar': 'عن الشركة'},
     'ci_signataire': {'fr': 'Nom et qualité du signataire',
@@ -1064,6 +1068,286 @@ LIBELLES = {
         'en': 'no discount rate declared by the client',
         'ar': 'لم يصرح الزبون بأي معدل خصم'},
     'ci_ind_pct_an': {'fr': '% / an', 'en': '% / yr', 'ar': '% / سنة'},
+    # ── APDF8 — devis RÉSIDENTIEL premium (couverture, détail, confiance) ──
+    # Préfixe ``res_``. Le français est le littéral EXACT du gabarit (le
+    # gabarit le garde : ``cover.libelle_fixe`` le rend tel quel en fr) ; les
+    # ``{…}`` reçoivent des valeurs DÉJÀ formatées (date, nombre, marque).
+    'res_valable_jusqu': {'fr': "Valable jusqu'au {date}",
+                          'en': 'Valid until {date}',
+                          'ar': 'صالح إلى غاية {date}'},
+    'res_ref_devis': {'fr': 'Réf. devis', 'en': 'Quote ref.',
+                      'ar': 'مرجع العرض'},
+    'res_kicker': {'fr': 'Proposition commerciale — Installation solaire',
+                   'en': 'Commercial proposal - Solar installation',
+                   'ar': 'عرض تجاري — تركيب شمسي'},
+    'res_bonjour': {'fr': 'Bonjour {nom},', 'en': 'Hello {nom},',
+                    'ar': 'مرحبًا {nom}،'},
+    'res_votre_installation_solaire': {'fr': 'Votre installation solaire',
+                                       'en': 'Your solar installation',
+                                       'ar': 'منشأتكم الشمسية'},
+    'res_facture_reduite': {
+        'fr': "Votre facture d'électricité réduite d'environ {pct}&nbsp;%",
+        'en': 'Your electricity bill reduced by about {pct}&nbsp;%',
+        'ar': 'فاتورة الكهرباء لديكم تنخفض بنحو {pct}&nbsp;%'},
+    'res_perf_garantie': {'fr': 'performance garantie {ans}&nbsp;ans',
+                          'en': 'performance guaranteed {ans}&nbsp;years',
+                          'ar': 'أداء مضمون لمدة {ans}&nbsp;سنة'},
+    'res_perf_trust': {'fr': 'Performance garantie {ans} ans &middot; ',
+                       'en': 'Performance guaranteed {ans} years &middot; ',
+                       'ar': 'أداء مضمون لمدة {ans} سنة &middot; '},
+    'res_pourquoi_pas_cov': {
+        'fr': ('Pourquoi pas \u2212{cov} % ? Seuls les kWh autoconsommés '
+               "réduisent la facture (loi 82-21) — le surplus injecté n'est "
+               'pas rémunéré.'),
+        'en': ('Why not -{cov} %? Only self-consumed kWh reduce the bill '
+               '(law 82-21) - the surplus fed into the grid is not paid for.'),
+        'ar': ('لماذا ليس \u2212{cov} %؟ وحدها الكيلوواط ساعة المستهلكة ذاتيًا '
+               'تخفض الفاتورة (القانون 82-21) — الفائض المحقون في الشبكة غير '
+               'مؤدى عنه.')},
+    'res_consultez_proposition': {
+        'fr': 'Consultez votre proposition interactive',
+        'en': 'View your interactive proposal',
+        'ar': 'اطلعوا على عرضكم التفاعلي'},
+    'res_scannez_code': {'fr': '— scannez le code', 'en': '- scan the code',
+                         'ar': '— امسحوا الرمز'},
+    'res_recommande': {'fr': 'Recommandé', 'en': 'Recommended',
+                       'ar': 'موصى به'},
+    'res_detail_page2': {'fr': 'Détail &amp; équipement en page 2',
+                         'en': 'Details &amp; equipment on page 2',
+                         'ar': 'التفاصيل والمعدات في الصفحة 2'},
+    'res_ingenieurs': {'fr': 'Ingénieurs solaires', 'en': 'Solar engineers',
+                       'ar': 'مهندسو الطاقة الشمسية'},
+    'res_suivi_temps_reel': {'fr': 'Suivi en temps réel',
+                             'en': 'Real-time monitoring',
+                             'ar': 'تتبع في الوقت الحقيقي'},
+    'res_votre_installation': {'fr': 'Votre installation',
+                               'en': 'Your installation', 'ar': 'منشأتكم'},
+    'res_detail_projet': {'fr': 'Le détail de votre projet',
+                          'en': 'Your project in detail',
+                          'ar': 'تفاصيل مشروعكم'},
+    'res_kwc_installes': {'fr': 'kWc installés', 'en': 'kWp installed',
+                          'ar': 'كيلوواط ذروة مركبة'},
+    'res_kwc_installes_sans_avec': {
+        'fr': 'kWc installés (sans · avec)',
+        'en': 'kWp installed (without · with)',
+        'ar': 'كيلوواط ذروة مركبة (بدون · مع)'},
+    'res_kwh_produits': {'fr': 'kWh / an produits',
+                         'en': 'kWh / year produced',
+                         'ar': 'كيلوواط ساعة / سنة منتجة'},
+    'res_kwh_produits_sans_avec': {
+        'fr': 'kWh / an produits (sans · avec)',
+        'en': 'kWh / year produced (without · with)',
+        'ar': 'كيلوواط ساعة / سنة منتجة (بدون · مع)'},
+    'res_votre_equipement': {'fr': 'Votre équipement',
+                             'en': 'Your equipment', 'ar': 'معداتكم'},
+    'res_equipement_commun': {'fr': 'Équipement commun aux deux options',
+                              'en': 'Equipment common to both options',
+                              'ar': 'معدات مشتركة بين الخيارين'},
+    'res_equipement_deux': {'fr': 'Équipement des deux options',
+                            'en': 'Equipment of both options',
+                            'ar': 'معدات الخيارين'},
+    'res_pourquoi_avec': {
+        'fr': ('Pourquoi nous la recommandons : vos soirées et les coupures '
+               'passent sur batterie.'),
+        'en': 'Why we recommend it: your evenings and power cuts run on the '
+              'battery.',
+        'ar': 'لماذا نوصي به: أمسياتكم وانقطاعات التيار تمر عبر البطارية.'},
+    'res_pourquoi_sans': {
+        'fr': ("Pourquoi nous la recommandons : l'investissement le plus "
+               'court à rembourser.'),
+        'en': 'Why we recommend it: the investment with the shortest '
+              'payback.',
+        'ar': 'لماذا نوصي به: الاستثمار الأسرع استردادًا.'},
+    'res_pourquoi_hybride': {
+        'fr': ("Pourquoi nous la recommandons : l'onduleur hybride est prêt "
+               "pour la batterie — vous l'ajoutez quand vous voulez, sans "
+               "changer d'onduleur."),
+        'en': ('Why we recommend it: the hybrid inverter is battery-ready - '
+               'you add the battery whenever you like, without changing the '
+               'inverter.'),
+        'ar': ('لماذا نوصي به: العاكس الهجين جاهز للبطارية — تضيفونها متى '
+               'شئتم دون تغيير العاكس.')},
+    'res_confiance': {'fr': 'Confiance &amp; Engagement',
+                      'en': 'Trust &amp; Commitment',
+                      'ar': 'الثقة والالتزام'},
+    'res_pourquoi_marque': {'fr': 'Pourquoi {marque}', 'en': 'Why {marque}',
+                            'ar': 'لماذا {marque}'},
+    'res_nos_garanties': {'fr': 'Nos garanties', 'en': 'Our warranties',
+                          'ar': 'ضماناتنا'},
+    'res_garanties_note': {
+        'fr': ('Les garanties fabricant sont attachées au matériel : elles '
+               'suivent votre installation, restent transférables avec le '
+               "bien et demeurent valables quel que soit l'installateur."),
+        'en': ('Manufacturer warranties are attached to the equipment: they '
+               'follow your installation, remain transferable with the '
+               'property and stay valid whoever the installer is.'),
+        'ar': ('ضمانات المصنع مرتبطة بالمعدات: تتبع منشأتكم، وتبقى قابلة '
+               'للتحويل مع العقار، وتظل سارية أيًا كان المركب.')},
+    'res_preuve_en_ligne': {'fr': 'La preuve, en ligne',
+                            'en': 'The proof, online',
+                            'ar': 'الدليل، على الإنترنت'},
+    'res_realisations_avis': {'fr': 'Réalisations et avis clients',
+                              'en': 'Projects and customer reviews',
+                              'ar': 'إنجازات وآراء العملاء'},
+    'res_fiches_produits': {'fr': 'Fiches techniques produits',
+                            'en': 'Product datasheets',
+                            'ar': 'البطاقات التقنية للمنتجات'},
+    'res_garanties_certifs': {'fr': 'Garanties et certifications',
+                              'en': 'Warranties and certifications',
+                              'ar': 'الضمانات والشهادات'},
+    'res_conditions': {'fr': 'Conditions', 'en': 'Terms', 'ar': 'الشروط'},
+    'res_prochaines_etapes': {'fr': 'Prochaines étapes', 'en': 'Next steps',
+                              'ar': 'الخطوات التالية'},
+    'res_validite_offre': {'fr': "Validité de l'offre",
+                           'en': 'Offer validity', 'ar': 'صلاحية العرض'},
+    'res_jusqu_au': {'fr': "jusqu'au {date}", 'en': 'until {date}',
+                     'ar': 'إلى غاية {date}'},
+    'res_paiement': {'fr': 'Paiement', 'en': 'Payment', 'ar': 'الأداء'},
+    'res_signature_devis': {'fr': 'Signature du devis',
+                            'en': 'Quote signature', 'ar': 'توقيع العرض'},
+    'res_plus_acompte': {'fr': '+ acompte {pct}%', 'en': '+ {pct}% deposit',
+                         'ar': '+ تسبيق {pct}%'},
+    'res_visite_technique': {'fr': 'Visite technique',
+                             'en': 'Technical visit', 'ar': 'زيارة تقنية'},
+    'res_installation': {'fr': 'Installation', 'en': 'Installation',
+                         'ar': 'التركيب'},
+    'res_mise_en_service': {'fr': 'Mise en service', 'en': 'Commissioning',
+                            'ar': 'التشغيل'},
+    'res_tests_formation': {'fr': 'tests + formation',
+                            'en': 'tests + training',
+                            'ar': 'اختبارات + تكوين'},
+    'res_offre_valable': {'fr': "Offre valable jusqu'au {date}",
+                          'en': 'Offer valid until {date}',
+                          'ar': 'العرض صالح إلى غاية {date}'},
+    'res_cta_offre': {'fr': " Offre valable jusqu'au {date}.",
+                      'en': ' Offer valid until {date}.',
+                      'ar': ' العرض صالح إلى غاية {date}.'},
+    'res_cochez_option': {'fr': 'Cochez votre option :',
+                          'en': 'Tick your option:',
+                          'ar': 'ضعوا علامة على خياركم:'},
+    'res_bon_pour_accord': {'fr': 'Bon pour accord',
+                            'en': 'Approved and agreed',
+                            'ar': 'موافقة وقبول'},
+    'res_bpa_client': {'fr': 'Bon pour accord — le client',
+                       'en': 'Approved and agreed - the client',
+                       'ar': 'موافقة وقبول — العميل'},
+    'res_bpa_mention': {
+        'fr': 'Nom, date, mention « Bon pour accord » &amp; signature',
+        'en': 'Name, date, the words "Approved and agreed" &amp; signature',
+        'ar': 'الاسم والتاريخ وعبارة «موافقة وقبول» والتوقيع'},
+    'res_pour_marque': {'fr': 'Pour {marque}', 'en': 'For {marque}',
+                        'ar': 'عن {marque}'},
+    'res_cachet_signature': {'fr': 'Cachet et signature',
+                             'en': 'Stamp and signature',
+                             'ar': 'الختم والتوقيع'},
+    'res_devis_fait_foi': {
+        'fr': "Le devis fait foi dès réception de l'acompte",
+        'en': 'The quote is binding upon receipt of the deposit',
+        'ar': 'يصبح العرض ملزمًا عند استلام التسبيق'},
+    'res_pret_solaire': {'fr': 'Prêt à passer au solaire ?',
+                         'en': 'Ready to go solar?',
+                         'ar': 'مستعدون للانتقال إلى الطاقة الشمسية؟'},
+    'res_validez_devis': {
+        'fr': 'Validez votre devis en quelques clics, sans vous déplacer.',
+        'en': 'Approve your quote in a few clicks, without travelling.',
+        'ar': 'صادقوا على عرضكم ببضع نقرات دون أن تتنقلوا.'},
+    'res_signez_en_ligne': {'fr': 'Signez en ligne', 'en': 'Sign online',
+                            'ar': 'وقعوا عبر الإنترنت'},
+    'res_scannez_signer': {'fr': 'Scannez pour signer', 'en': 'Scan to sign',
+                           'ar': 'امسحوا للتوقيع'},
+    # ── APDF9 — UNE PAGE legacy + titre des clauses particulières ──────────
+    # Préfixe ``op_``. Le français est le littéral EXACT du gabarit legacy
+    # (entités comprises) : ``_L`` le rend tel quel, octet pour octet.
+    'op_consultez_proposition': {
+        'fr': 'Consultez votre<br>proposition interactive',
+        'en': 'View your<br>interactive proposal',
+        'ar': 'اطلعوا على<br>عرضكم التفاعلي'},
+    'op_devis': {'fr': 'DEVIS', 'en': 'QUOTE', 'ar': 'عرض سعر'},
+    'op_numero': {'fr': 'N&#176;', 'en': 'No.', 'ar': 'رقم'},
+    'op_puissance_crete': {'fr': 'Puissance cr&#234;te', 'en': 'Peak power',
+                           'ar': 'القدرة القصوى'},
+    'op_production_annuelle': {'fr': 'Production annuelle',
+                               'en': 'Annual production',
+                               'ar': 'الإنتاج السنوي'},
+    'op_economie_annuelle': {'fr': '&#201;conomie annuelle',
+                             'en': 'Annual savings', 'ar': 'التوفير السنوي'},
+    'op_estimation': {'fr': ' (estimation)', 'en': ' (estimate)',
+                      'ar': ' (تقدير)'},
+    'op_prix_par_kwc': {'fr': 'Prix par kWc', 'en': 'Price per kWp',
+                        'ar': 'السعر لكل كيلوواط ذروة'},
+    'op_residuel_vise': {'fr': 'R&#233;siduel vis&#233;',
+                         'en': 'Target residual', 'ar': 'المتبقي المستهدف'},
+    'op_economies_estimees_an': {'fr': '&#201;conomies estim&#233;es / an',
+                                 'en': 'Estimated savings / year',
+                                 'ar': 'التوفير المقدر / سنة'},
+    'op_retour_estime': {'fr': 'Retour estim&#233;',
+                         'en': 'Estimated payback',
+                         'ar': 'مدة الاسترداد المقدرة'},
+    'op_validite_jusqu': {
+        'fr': 'Validit&#233;&#160;: jusqu&#8217;au {date}',
+        'en': 'Valid until {date}', 'ar': 'صالح إلى غاية {date}'},
+    'op_siege': {'fr': 'Si\u00e8ge\u00a0:', 'en': 'Head office:',
+                 'ar': 'المقر:'},
+    'clauses_particulieres': {'fr': 'Clauses particulières',
+                              'en': 'Special terms', 'ar': 'شروط خاصة'},
+    # ── APDF10 — puces CGV PAR DÉFAUT et note de TVA du builder ────────────
+    # Le français est EXACTEMENT ``DEFAULT_DOC_TEXTS['cgv_bullets']`` / le
+    # texte de ``builder.tva_note_des_lignes`` : marqueurs ``{…}`` et
+    # pourcentages identiques dans les trois langues. Une puce SAISIE par la
+    # société n'est jamais traduite (décision : son texte reste souverain).
+    'cgv_validite_offre': {
+        'fr': 'Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au {date}',
+        'en': 'Offer valid until {date}',
+        'ar': 'العرض صالح إلى غاية {date}'},
+    'cgv_acompte_commande': {
+        'fr': 'Acompte à la commande&#160;: {acompte}&#37;',
+        'en': 'Down payment on order: {acompte}&#37;',
+        'ar': 'تسبيق عند الطلب: {acompte}&#37;'},
+    'cgv_reception_materiel': {
+        'fr': '{materiel}&#37; à la réception du matériel',
+        'en': '{materiel}&#37; on delivery of the equipment',
+        'ar': '{materiel}&#37; عند استلام المعدات'},
+    'cgv_mise_en_marche': {
+        'fr': '{solde}&#37; après la mise en marche',
+        'en': '{solde}&#37; after commissioning',
+        'ar': '{solde}&#37; بعد التشغيل'},
+    'cgv_tarifs_reference': {
+        'fr': 'Tarifs de référence&#160;: barème ONEE/SRM',
+        'en': 'Reference tariffs: ONEE/SRM schedule',
+        'ar': 'التعريفات المرجعية: جدول ONEE/SRM'},
+    'tva_unique': {
+        'fr': ("TVA {taux} % appliquée sur l'ensemble des équipements et "
+               "travaux."),
+        'en': 'VAT {taux} % applied to all equipment and works.',
+        'ar': 'ضريبة القيمة المضافة {taux} % مطبقة على كل المعدات والأشغال.'},
+    'tva_10_20': {
+        'fr': ('TVA : 10% panneaux photovoltaïques · 20% autres équipements '
+               'et prestations'),
+        'en': 'VAT: 10% solar panels · 20% other equipment and services',
+        'ar': ('ضريبة القيمة المضافة: 10% الألواح الكهروضوئية · 20% '
+               'المعدات والخدمات الأخرى')},
+    'tva_ligne_par_ligne': {
+        'fr': 'TVA appliquée ligne par ligne : {taux}',
+        'en': 'VAT applied line by line: {taux}',
+        'ar': 'ضريبة القيمة المضافة مطبقة سطرًا بسطر: {taux}'},
+    'tva_taux_tableau': {
+        'fr': ' — taux indiqué dans le tableau',
+        'en': ' - rate shown in the table',
+        'ar': ' — النسبة مبينة في الجدول'},
+    'tva_exoneration': {'fr': 'exonération : {base}',
+                        'en': 'exemption: {base}', 'ar': 'إعفاء: {base}'},
+    # ── APDF46 — page 3 du moteur LEGACY (étude résidentielle 4 pages) ──────
+    # Préfixe ``lg_`` ; le français est le littéral exact du gabarit.
+    'lg_confiance_bpa': {'fr': 'Confiance, Garanties &amp; Bon pour accord',
+                         'en': 'Trust, Warranties &amp; Approval',
+                         'ar': 'الثقة والضمانات والموافقة'},
+    'lg_pourquoi_choisir': {'fr': 'Pourquoi choisir {marque}&#160;?',
+                            'en': 'Why choose {marque}?',
+                            'ar': 'لماذا تختارون {marque}؟'},
+    'lg_experts_engages': {
+        'fr': 'Des experts engagés pour votre transition énergétique',
+        'en': 'Committed experts for your energy transition',
+        'ar': 'خبراء ملتزمون بانتقالكم الطاقي'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

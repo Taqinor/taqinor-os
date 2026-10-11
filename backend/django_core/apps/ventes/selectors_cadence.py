@@ -9,13 +9,38 @@ aucun import de ``.selectors`` en tête (cycle) — ``devis_a_facturer`` vient d
 module FRÈRE ``.selectors_facturation``.
 """
 
+import functools
+import json
+from pathlib import Path
+
 from .selectors_facturation import devis_a_facturer
 
 
 # ── QX29/QX30/PACT17 — « Relances du jour » : file d'action des devis ────────
 
-def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
-                         jours_avant_expiration=7, jours_non_facture=7):
+#: APRF9 — le contrat partagé de « Relances du jour » (APRF1) : il DÉCLARE
+#: ``details_par_panier``, lu ici — jamais un littéral recopié.
+CONTRAT_ACTION_REQUISE = (Path(__file__).resolve().parent
+                          / 'contract_samples' / 'devis_action_requise.json')
+
+
+@functools.lru_cache(maxsize=1)
+def details_par_panier():
+    """APRF9 (contrat APRF1) — nombre de premiers ids (ordre ``id``
+    croissant) de chaque panier dont ``devis`` porte la ligne d'affichage."""
+    contrat = json.loads(CONTRAT_ACTION_REQUISE.read_text(encoding='utf-8'))
+    return int(contrat['details_par_panier'])
+
+
+#: ADEV64 — champs propriétaires qui ouvrent un devis à la portée d'un
+#: utilisateur dans « Relances du jour » : son AUTEUR, ou le RESPONSABLE du
+#: lead d'origine (string-FK ``crm.Lead.owner``, jamais un import crm).
+_CHAMPS_PORTEE = ('created_by', 'lead__owner')
+
+
+def devis_action_requise(company, *, user=None, today=None,
+                         jours_sans_reponse=3, jours_avant_expiration=7,
+                         jours_non_facture=7):
     """PACT17 — Regroupe les devis d'une société par ACTION ATTENDUE, miroir
     exact de ``apps.sav.selectors.file_action`` (ZSAV6, parité Odoo « Activity
     view »). C'est l'agrégat que ``DevisActionBoardPage`` consomme : il
@@ -55,7 +80,8 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
         partout ailleurs.
       * ``devis`` porte de quoi RENDRE chaque ligne (référence, client,
         téléphone, WhatsApp, total, CAD115 : ``prochaine_touche_crm``) pour
-        les ids cités. Sans lui l'écran devait re-télécharger la liste des
+        les ``details_par_panier()`` premiers ids de chaque panier (APRF9,
+        contrat APRF1 : ``count``/``ids`` restent complets). Sans lui l'écran devait re-télécharger la liste des
         devis et n'y trouvait ni ``client_telephone`` ni ``client_whatsapp``
         (``DevisSerializer`` ne les publie pas) : les raccourcis « Appeler » /
         WhatsApp ne s'affichaient JAMAIS, et une référence au-delà de la
@@ -65,6 +91,13 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
     Lecture seule, bornée à ``company`` — jamais de fuite cross-société.
     Aucun prix d'achat ni marge n'est exposé (règle #4) : seul le total TTC,
     déjà visible du client, accompagne la ligne.
+
+    ADEV64 (C-ADEV-025) — ``user`` fourni (la vue passe ``request.user``) :
+    chaque panier est borné à SA portée (``core.scoping.scope_queryset`` sur
+    ``_CHAMPS_PORTEE`` — auteur du devis OU responsable du lead) ; un
+    Commercial de portée ``team`` ne voit ni les devis ni les téléphones des
+    clients hors de sa portée. ``user=None`` (appel interne) : société
+    entière, comme avant.
     """
     from datetime import timedelta
 
@@ -85,15 +118,26 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
     engagement_relance = []
     wa_drafts = {}
 
-    # ── Acceptés non facturés : ZFAC12 tel quel (jamais recodé ici) ──
-    for devis in devis_a_facturer(company, jours=jours_non_facture,
-                                  today=today):
-        acceptes_non_factures.append(devis.id)
+    # ADEV64 — la portée de l'utilisateur borne TOUS les paniers (et donc
+    # les lignes, téléphones et brouillons, tous dérivés des ids cités).
+    devis_societe = Devis.objects.filter(company=company)
+    if user is not None:
+        from core.scoping import scope_queryset
+        devis_societe = scope_queryset(devis_societe, user, _CHAMPS_PORTEE)
+
+    # ── Acceptés non facturés : ZFAC12 tel quel (jamais recodé ici), relu
+    # dans la portée (ordre ``id`` croissant, celui du contrat APRF1) ──
+    acceptes_non_factures.extend(
+        devis_societe
+        .filter(pk__in=[d.id for d in devis_a_facturer(
+            company, jours=jours_non_facture, today=today)])
+        .order_by('id')
+        .values_list('id', flat=True)
+    )
 
     # ── Refusés sans motif (QX26) ──
     refuses_sans_motif.extend(
-        devis_en_jeu(Devis.objects
-                     .filter(company=company, statut=Devis.Statut.REFUSE))
+        devis_en_jeu(devis_societe.filter(statut=Devis.Statut.REFUSE))
         .exclude(motif_refus__gt='')
         .order_by('id')
         .values_list('id', flat=True)
@@ -101,9 +145,7 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
 
     # ── Devis ENVOYÉS : un seul panier par devis, priorité au signal le plus
     # fort (engagement mesuré > échéance qui approche > simple cadence).
-    envoyes = (devis_en_jeu(Devis.objects
-                            .filter(company=company,
-                                    statut=Devis.Statut.ENVOYE))
+    envoyes = (devis_en_jeu(devis_societe.filter(statut=Devis.Statut.ENVOYE))
                .select_related('client')
                .prefetch_related('share_links')
                .order_by('id'))
@@ -141,14 +183,17 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
         'expirant_bientot': expirant_bientot,
         'engagement_relance': engagement_relance,
     }
-    cites = {i for ids in paniers.values() for i in ids}
-    # `prefetch_related('lignes')` : `Devis.total_ttc` itère les lignes — sans
-    # ce préchargement, une requête PAR devis affiché (N+1).
-    lignes = list(
+    # APRF9 (C-APRF-004/005) — lignes construites pour les SEULS
+    # ``details_par_panier()`` premiers ids (déjà en ordre ``id`` croissant)
+    # de chaque panier, totaux préchargés par ``devis_avec_totaux`` (APRF7) :
+    # requêtes et octets de détail ne croissent plus avec les paniers.
+    from .selectors import devis_avec_totaux
+    n = details_par_panier()
+    details = {i for ids in paniers.values() for i in ids[:n]}
+    lignes = list(devis_avec_totaux(
         Devis.objects
-        .filter(company=company, pk__in=cites)
-        .select_related('client', 'lead')
-        .prefetch_related('lignes'))
+        .filter(company=company, pk__in=details)
+        .select_related('client', 'lead')))
 
     # CAD115 — SIG9 : « Action requise » (vue Ventes) et la file calendaire du
     # CRM pouvaient réclamer le même devis le même jour avec deux messages

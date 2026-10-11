@@ -124,8 +124,12 @@ def normalize_insight_row(row):
     spend = _to_float(row.get('spend'), 0.0)
     results = _to_float(row.get('results'), 0.0)
     cpl = row.get('cpl')
-    cpl = _to_float(cpl) if cpl is not None else (
-        (spend / results) if results else None)
+    if cpl is not None:
+        cpl = _to_float(cpl)
+    else:
+        from ..metrics import cout_par_lead  # AACQ103 — import local (pas de cycle)
+        cpl = cout_par_lead(spend, results, source='resultats_meta').valeur
+        cpl = float(cpl) if cpl is not None else None
     actions = row.get('actions')
     # link_clicks : préfère la colonne scalaire ``inline_link_clicks`` (toujours
     # présente sur un compte non ventilé), repli sur l'action ``link_click``.

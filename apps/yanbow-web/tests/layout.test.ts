@@ -44,7 +44,7 @@ describe('YBW60 — en-tête de document', () => {
       'en=/en/custom-software/',
       'x-default=/sur-mesure/',
     ]);
-    const seul = await rendre({ page: 'surMesure' });
+    const seul = await rendre({ page: 'surMesure', locales: ['fr'] });
     expect(hreflangs(seul)).toEqual([]);
     expect(seul.documentElement.outerHTML).not.toContain('/en/');
   });
@@ -82,7 +82,7 @@ describe('YBW60 — en-tête et pied de page', () => {
     expect([...entete.querySelectorAll('.nav-bureau a')].map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['SolarBow', '/solarbow/'],
       ['MarketingBow', '/marketingbow/'],
-      ['Sur mesure', '/sur-mesure/'],
+      ['Sur-mesure', '/sur-mesure/'],
       ['Société', '/societe/'],
     ]);
     expect([...entete.querySelectorAll('.entete-actions .bouton')].map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
@@ -93,7 +93,7 @@ describe('YBW60 — en-tête et pied de page', () => {
   });
 
   it('sélecteur de langue seulement si une autre langue est active (fixture)', async () => {
-    expect((await rendre({ page: 'societe' })).querySelector('.lien-langue')).toBeNull();
+    expect((await rendre({ page: 'societe', locales: ['fr'] })).querySelector('.lien-langue')).toBeNull();
     const doc = await rendre({ page: 'societe', locales: ['fr', 'en'] });
     expect(doc.querySelector('.lien-langue')?.getAttribute('href')).toBe('/en/company/');
   });

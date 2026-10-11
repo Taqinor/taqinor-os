@@ -1,0 +1,17 @@
+{
+  "cas": "etude_optimum_publie",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 60982,
+  "ordre": 6,
+  "pages": 4,
+  "polices_masquees": 6,
+  "sha256": "3aa61de17295a6e735f183ea8ff4045d07a9e34418307602575bb1ed28f03331",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "09bd5fa9620adbdf113e65faacba2a1301daf1376bd12200a921f0a59ccf2ab7",
+    "ecf3de4ea7f60e1759e11b374764bf70eda90aa95fa825a7d8a5237ab4132808",
+    "71a930da5812d8306f49a2f8911fd12f3f753688e77b6da6baa394fac34bb299",
+    "eec6635d9dcfd6917f87f8dfa8ff1987cbbf9df4a125a16744641dcc81cd6639"
+  ]
+}

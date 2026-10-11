@@ -81,7 +81,7 @@ describe('YBW25 — fixture complète : chaque élément requis est produit', ()
     const lignes = lignesMaroc(LEGAL_COMPLET, 'fr');
     expect(lignes.map((l) => l.cle)).toEqual(['denomination', 'forme', 'capital', 'siege', 'rc', 'ice', 'if', 'gerant']);
     expect(lignes[1].valeur).toBe(FORME_SARLAU.fr);
-    expect(FORME_SARLAU.fr).toBe("SARL d'associé unique");
+    expect(FORME_SARLAU.fr).toBe("SARL d’associé unique");
   });
 
   it('champs communs (e-mail, téléphone, directeur, hébergeur sourcé, CNDP, représentant UE)', () => {

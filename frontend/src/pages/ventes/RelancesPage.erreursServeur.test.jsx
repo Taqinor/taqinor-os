@@ -90,4 +90,19 @@ describe('RelancesPage — AFAC61 : refus serveur affichés', () => {
     })
     expect(within(bilan).queryByText(/undefined/)).toBeNull()
   })
+
+  it('liste des responsables indisponible : la raison s’affiche dans le paramétrage', async () => {
+    const user = userEvent.setup()
+    api.get.mockImplementation((url) => {
+      if (url === '/users/') return Promise.reject(refus())
+      return Promise.resolve({ data: url === '/ventes/relances/' ? ROWS : [] })
+    })
+    renderPage()
+    await screen.findByText('ACME SARL')
+    await user.click(screen.getByRole('button', { name: /Plus d'actions — FAC-001/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Paramétrer les relances/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(RAISON)
+    // Le mode reste réglable : le bouton d'enregistrement est toujours là.
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeInTheDocument()
+  })
 })

@@ -211,9 +211,16 @@ export const mediaUrl   = (url) => {
       .replace(/^https?:\/\/minio(:\d+)?/, `${MEDIA_BASE.replace(/:\d+$/, '')}:9000`)
       .replace(/^\//, `${MEDIA_BASE}/`)
   }
-  // Prod (même origine) : on garde les chemins relatifs tels quels ; les URLs
-  // minio internes ne sont pas joignables du navigateur — pas de réécriture
-  // hasardeuse, l'aperçu dégrade proprement (la page, elle, vit).
+  // Sans VITE_API_URL : jamais d'hôte Docker interne (la CSP img-src ne connaît
+  // que l'origine publique MinIO, http://localhost:9000 par défaut). On réécrit
+  // l'hôte `minio` vers l'hôte de la page, port 9000 ; chemin et query présignée
+  // restent intacts. Les chemins relatifs sont gardés tels quels.
+  if (typeof window !== 'undefined' && window.location) {
+    return url.replace(
+      /^https?:\/\/minio(:\d+)?/,
+      `${window.location.protocol}//${window.location.hostname}:9000`,
+    )
+  }
   return url
 }
 

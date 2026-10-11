@@ -798,3 +798,34 @@ describe('ASTK227 — onglet Accès fournisseur', () => {
     expect(stockApi.getPortailTokensFournisseur).not.toHaveBeenCalled()
   })
 })
+
+/* ASTK246 — acomptes et avoirs fournisseur ne se lisent qu'avec `achats_payer`
+   OU `prix_achat_voir` (PeutLirePaiementsFournisseur) : sans aucun des deux,
+   les onglets n'existent pas (jamais un onglet en erreur 403). */
+describe('ASTK246 — onglets Acomptes / Avoirs gardés comme le serveur', () => {
+  const neutres = () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+  }
+
+  it.each([
+    [['stock_voir'], false],
+    [['stock_voir', 'achats_payer'], true],
+    [['stock_voir', 'prix_achat_voir'], true],
+  ])('codes %j : onglets Acomptes et Avoirs visibles = %s', async (permissions, visibles) => {
+    neutres()
+    renderPage({ authState: { role: 'normal', permissions } })
+    await screen.findByRole('tab', { name: /Conformité/ })
+    for (const nom of [/Acomptes/, /Avoirs/]) {
+      expect(screen.queryByRole('tab', { name: nom }) !== null).toBe(visibles)
+    }
+    if (!visibles) {
+      expect(stockApi.getAcomptesFournisseurDe).not.toHaveBeenCalled()
+      expect(stockApi.getAvoirsFournisseurDe).not.toHaveBeenCalled()
+    }
+  })
+})

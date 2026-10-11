@@ -141,3 +141,38 @@ class Rapprochement3VoiesTests(TestCase):
             {'montant': '1800', 'date_paiement': '2026-10-02'},
             format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_sur_livraison_plafonnee_attendu_sur_quantite_appliquee(self):
+        """ASTK245 — rejoue la sonde C-ASTK-VER-002 : BCF 10 × 100, réception
+        de 12 confirmée (10 appliqués) ⇒ 1 200 HT facturés passent en
+        exception (attendu 1 000) ; 1 000 HT restent « normale »."""
+        from apps.stock.services import confirm_reception_fournisseur
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='PAN-ASTK245',
+            prix_vente=Decimal('200'), prix_achat=Decimal('100'))
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ASTK245',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        ligne = bcf.lignes.create(
+            produit=produit, quantite=10, prix_achat_unitaire=Decimal('100'))
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-ASTK245', bon_commande=bcf,
+            statut=ReceptionFournisseur.Statut.BROUILLON, created_by=self.user)
+        rec.lignes.create(ligne_commande=ligne, produit=produit, quantite=12)
+        confirm_reception_fournisseur(rec, self.user)
+        self.assertEqual(rec.lignes.get().quantite_appliquee, 10)
+        for ht, statut, motif in (
+                (Decimal('1200'), FactureFournisseur.StatutControle.EXCEPTION,
+                 '20,00 %'),
+                (Decimal('1000'), FactureFournisseur.StatutControle.NORMALE,
+                 '')):
+            facture = FactureFournisseur.objects.create(
+                company=self.company, reference=f'FF-ASTK245-{ht}',
+                fournisseur=self.fournisseur, bon_commande=bcf, montant_ht=ht,
+                montant_tva=Decimal('0'), montant_ttc=ht)
+            evaluer_rapprochement_3_voies(facture)
+            facture = FactureFournisseur.objects.get(pk=facture.pk)
+            self.assertEqual(facture.statut_controle, statut, ht)
+            self.assertIn(motif, facture.motif_ecart or '')
+            facture.delete()

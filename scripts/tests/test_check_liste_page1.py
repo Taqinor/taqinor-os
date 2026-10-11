@@ -73,6 +73,25 @@ router.register(r'tout-en-un', ToutEnUnViewSet, basename='tout-en-un')
 """
 
 
+HELPER_UNPAGE = """
+function unpage(data) {
+  if (Array.isArray(data)) return data
+  return data?.results ?? []
+}
+
+export default function Coffres() {
+  const load = async () => {
+    const c = await gedApi.getCoffres()
+    setCoffres(unpage(c.data))
+  }
+  return null
+}
+"""
+
+HELPER_TOUTES_LES_PAGES = HELPER_UNPAGE.replace(
+    "gedApi.getCoffres()", "toutesLesPages(gedApi.getCoffres)")
+
+
 class Depot(unittest.TestCase):
     def _monter(self, fichiers, backend=None, allow="", dossier="features"):
         tmp = Path(tempfile.mkdtemp())
@@ -116,6 +135,18 @@ class TestDetection(Depot):
         self.assertIn("ComptesPortailAdmin.jsx", out)
         self.assertIn("lit la page 1 d'une liste paginée", out)
         self.assertIn("utils/fetchAllPages", out)
+
+    def test_detecte_helper_unpage(self):
+        self._monter({"ged/Coffres.jsx": HELPER_UNPAGE})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("Coffres.jsx", out)
+        self.assertIn("load lit la page 1", out)
+
+    def test_helper_unpage_avec_toutes_les_pages_ne_rougit_pas(self):
+        self._monter({"ged/Coffres.jsx": HELPER_TOUTES_LES_PAGES})
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
 
     def test_fetch_all_pages_ou_next_ne_rougit_pas(self):
         self._monter({"a/Liste.jsx": TOUTES_LES_PAGES,

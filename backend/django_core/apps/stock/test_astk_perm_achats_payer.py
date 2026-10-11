@@ -147,3 +147,35 @@ class PermAchatsPayerTests(TestCase):
         self.assertEqual(_api(self.legacy).get(url).status_code, 200)
         self.assertEqual(
             _api(self.users['Commercial']).get(url).status_code, 403)
+
+    def test_lecture_acomptes_et_avoirs_par_code(self):
+        """ASTK246 — acomptes (liste, détail, ouverts/) et avoirs (liste,
+        détail) : même règle que /paiements-fournisseur/
+        (PeutLirePaiementsFournisseur). Commercial 403 sans aucun montant ;
+        Directeur et légacy responsable 200 inchangé. (Aucun alias /achats/ :
+        ces deux viewsets ne sont routés que sous /stock/.)"""
+        from apps.stock.models import BonCommandeFournisseur
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ASTK246',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        acompte = AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=bcf, montant=Decimal('820'))
+        avoir = AvoirFournisseur.objects.create(
+            company=self.company, reference='AVF-ASTK246',
+            fournisseur=self.fournisseur, montant_ht=Decimal('100'),
+            montant_tva=Decimal('20'), montant_ttc=Decimal('120'),
+            statut=AvoirFournisseur.Statut.VALIDE)
+        urls = (f'{STOCK}acomptes-fournisseur/',
+                f'{STOCK}acomptes-fournisseur/{acompte.pk}/',
+                f'{STOCK}acomptes-fournisseur/ouverts/',
+                f'{STOCK}avoirs-fournisseur/',
+                f'{STOCK}avoirs-fournisseur/{avoir.pk}/')
+        for url in urls:
+            with self.subTest(url=url):
+                rep = _api(self.users['Commercial']).get(url)
+                self.assertEqual(rep.status_code, 403, rep.data)
+                self.assertNotIn(b'"montant', rep.content)
+                for user in (self.users['Directeur'], self.legacy):
+                    self.assertEqual(_api(user).get(url).status_code, 200,
+                                     user.username)

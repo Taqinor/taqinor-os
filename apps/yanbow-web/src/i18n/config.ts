@@ -18,7 +18,7 @@ export type Locale = (typeof LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = 'fr';
 
-export const LOCALES_ACTIVES = ['fr'] as const satisfies readonly Locale[];
+export const LOCALES_ACTIVES = ['fr', 'en'] as const satisfies readonly Locale[];
 
 /** Valeur de l'attribut `<html lang>` par locale. */
 export const LANG_HTML: Record<Locale, string> = { fr: 'fr', en: 'en' };

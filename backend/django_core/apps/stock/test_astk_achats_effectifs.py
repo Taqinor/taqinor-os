@@ -88,3 +88,36 @@ class AchatsEffectifsTests(TestCase):
             Decimal('1000'))
         self.assertEqual(self._trois_montants(),
                          (Decimal('1000'), Decimal('1000'), Decimal('1000')))
+
+    def test_trois_lectures_des_reglements_meme_regle(self):
+        """ASTK241 — /paiements-fournisseur/, …/factures-fournisseur/<id>/paiements/
+        et la clé imbriquée `paiements` du détail suivent UNE règle
+        (PeutLirePaiementsFournisseur) : un rôle `achats_payer` sans
+        `prix_achat_voir` lit les trois ; un rôle sans ces codes : 403, 403,
+        clé absente."""
+        import datetime
+        from apps.roles.models import Role
+        from apps.stock.models import FactureFournisseur, PaiementFournisseur
+        facture = FactureFournisseur.objects.create(
+            company=self.co, reference='FF-ASTK241', fournisseur=self.fournisseur,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'))
+        PaiementFournisseur.objects.create(
+            company=self.co, facture=facture, montant=Decimal('400'),
+            date_paiement=datetime.date(2026, 10, 1))
+        for nom, codes, attendu in (('payeur', ['stock_voir', 'achats_payer'], 200),
+                                    ('lecteur', ['stock_voir'], 403)):
+            user = User.objects.create_user(
+                username=f'astk241-{nom}', password='x', company=self.co,
+                role=Role.objects.create(company=self.co, nom=nom, permissions=codes))
+            api = _api(user)
+            liste = api.get(f'{BASE}/paiements-fournisseur/')
+            action = api.get(f'{BASE}/factures-fournisseur/{facture.id}/paiements/')
+            detail = api.get(f'{BASE}/factures-fournisseur/{facture.id}/')
+            self.assertEqual(
+                (liste.status_code, action.status_code, detail.status_code),
+                (attendu, attendu, 200), nom)
+            self.assertEqual('paiements' in detail.data, attendu == 200, nom)
+            if attendu == 200:
+                self.assertEqual(len(action.data), 1)
+                self.assertEqual(len(detail.data['paiements']), 1)

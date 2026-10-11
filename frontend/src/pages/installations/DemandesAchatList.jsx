@@ -469,7 +469,13 @@ export default function DemandesAchatList() {
                       : 'rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive'
                   }
                 >
-                  {budgetSim.suffisant ? (
+                  {/* ERR-STK-PRIX-ACHAT-3-ROUTES — sans `prix_achat_voir`, le
+                      serveur ne sert que le verdict (aucun montant). */}
+                  {!('restant' in budgetSim) ? (
+                    budgetSim.suffisant
+                      ? 'Budget du département suffisant pour cette demande.'
+                      : 'Cette demande dépasse le budget restant du département. La soumission sera refusée sans dérogation approuvée.'
+                  ) : budgetSim.suffisant ? (
                     <>
                       Budget du département : {formatMAD(budgetSim.restant)} restant —
                       il resterait {formatMAD(Number(budgetSim.restant) - montantForm)} après

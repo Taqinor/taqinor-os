@@ -366,6 +366,29 @@ runs:
             mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
             mc mb -p local/erp-pdf local/erp-uploads"
         fi
+    - name: Cle du dump de main (repli WOW8-INCR ordonne)
+      id: testdb-main-key
+      if: ${{ inputs.testdb-cache-into != '' }}
+      shell: bash
+      # 11/10/2026 — sur une PR, actions/cache consulte la portee de la BRANCHE
+      # avant celle de main : un vieux dump de la PR (sauve avant qu'une migration
+      # ait ete editee en place sur main — ENF12 / qhse 0058) masquait le dump
+      # FRAIS de main, le garde du manifeste le refusait a bon droit et chaque run
+      # repayait ~70 min de reconstruction a froid, que le push suivant annulait
+      # avant la sauvegarde. On donne donc a restore-keys la cle EXACTE de main
+      # (meme algorithme que hashFiles, verifie sur deux cles reelles) AVANT le
+      # prefixe generique : le delta se reduit aux migrations propres a la PR.
+      # Sans git ou sans origin/main joignable, on retombe sur le prefixe seul.
+      run: |
+        KEY='testdb-v1-'
+        if command -v git >/dev/null 2>&1; then
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+          if git fetch --no-tags --depth=1 origin main >/dev/null 2>&1 \n             && git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+            KEY="$(python scripts/ci_testdb_main_key.py origin/main)" || KEY='testdb-v1-'
+          fi
+        fi
+        echo "Cle de repli (main) : $KEY"
+        echo "key=$KEY" >> "$GITHUB_OUTPUT"
     - name: Restore cached pre-migrated DB dump (WOW8)
       id: testdb-cache
       if: ${{ inputs.testdb-cache-into != '' }}
@@ -394,6 +417,7 @@ runs:
         # migrations on top (delta) rather than the ~35-min cold replay of all
         # ~850. This is the CI twin of the local harness's -RestoreDb.
         restore-keys: |
+          ${{ steps.testdb-main-key.outputs.key }}
           testdb-v1-
     - name: Build or restore the pre-migrated database (WOW8 + WOW8-INCR)
       if: ${{ inputs.testdb-cache-into != '' }}

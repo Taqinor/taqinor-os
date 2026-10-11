@@ -20,7 +20,14 @@ from apps.adsengine.models import (
 )
 
 MODULE_DIR = pathlib.Path(metrics.__file__).resolve().parent
-SURVEILLES = ('metrics.py', 'reporting.py', 'brief.py', 'rules_engine.py')
+
+
+def modules_surveilles():
+    """AACQ103 — tout ``*.py`` d'``apps/adsengine`` hors ``tests/`` et
+    ``migrations/`` (la garde ne lit plus 4 fichiers seulement)."""
+    return sorted(
+        p for p in MODULE_DIR.rglob('*.py')
+        if not {'tests', 'migrations'} & set(p.relative_to(MODULE_DIR).parts))
 
 
 def _noms(node):
@@ -30,8 +37,16 @@ def _noms(node):
         if isinstance(n, ast.Constant) and isinstance(n.value, str)}
 
 
+def _est_nom_cpl(cible):
+    """Cible d'affectation nommée ``cpl`` / ``…_cpl`` (``cpl_norm`` : non)."""
+    nom = cible.id.lower() if isinstance(cible, ast.Name) else ''
+    return nom == 'cpl' or nom.endswith('_cpl')
+
+
 def divisions_hors_fonction(source):
-    """Divisions ``<…spend…> / <…lead…>`` hors de ``cout_par_lead``."""
+    """Divisions ``<…spend…> / <…lead…>`` hors de ``cout_par_lead``, et toute
+    division affectée à un nom ``cpl`` (AACQ103) ; un diviseur qui est lui-même
+    un CPL (``cpl_healthy / cpl``) n'est pas visé."""
     tree = ast.parse(source)
     autorisees = set()
     for fn in ast.walk(tree):
@@ -45,22 +60,57 @@ def divisions_hors_fonction(source):
             if (any('spend' in g for g in gauche)
                     and any('lead' in d for d in droite)):
                 trouvees.append(node.lineno)
-    return trouvees
+    for node in ast.walk(tree):
+        if (isinstance(node, (ast.Assign, ast.AnnAssign))
+                and node.value is not None and id(node) not in autorisees):
+            cibles = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if not any(_est_nom_cpl(c) for c in cibles):
+                continue
+            for div in ast.walk(node.value):
+                if (isinstance(div, ast.BinOp) and isinstance(div.op, ast.Div)
+                        and not any(_est_nom_cpl(n) or (
+                            isinstance(n, ast.Name) and 'cpl' == n.id.lower())
+                            for n in ast.walk(div.right))
+                        and div.lineno not in trouvees):
+                    trouvees.append(div.lineno)
+    return sorted(trouvees)
 
 
 class GardeAstTests(SimpleTestCase):
     def test_aucune_division_depense_par_leads_hors_fonction(self):
-        for nom in SURVEILLES:
-            with self.subTest(module=nom):
-                source = (MODULE_DIR / nom).read_text(encoding='utf-8')
+        modules = modules_surveilles()
+        self.assertGreater(len(modules), 20)
+        for chemin in modules:
+            with self.subTest(module=chemin.name):
+                source = chemin.read_text(encoding='utf-8')
                 self.assertEqual(divisions_hors_fonction(source), [])
 
     def test_le_garde_detecte_une_reintroduction(self):
         fautif = "def f(spend, leads):\n    return spend / leads\n"
         self.assertEqual(divisions_hors_fonction(fautif), [2])
+        # AACQ103 — division affectée à un nom ``cpl`` (diviseur sans « lead »).
+        self.assertEqual(divisions_hors_fonction(
+            "def g(a, total):\n    cpl = a / total\n"), [2])
+        self.assertEqual(divisions_hors_fonction(
+            "def g(a, total):\n    ad_cpl = (a / total) if total else None\n"),
+            [2])
+        # Diviseur lui-même un CPL, cible ``cpl_norm`` : non visé.
+        self.assertEqual(divisions_hors_fonction(
+            "def g(h, cpl):\n    cpl_norm = h / cpl\n"), [])
         self.assertEqual(divisions_hors_fonction(
             "def cout_par_lead(spend, leads, *, source):\n"
             "    return spend / leads\n"), [])
+
+    def test_normalisation_insight_passe_par_la_fonction(self):
+        """AACQ103 — le CPL « résultats » de ``normalize_insight_row`` sort de
+        ``cout_par_lead`` : mêmes chiffres, ``None`` sans résultat."""
+        from apps.adsengine.platforms.base import normalize_insight_row
+        self.assertEqual(normalize_insight_row(
+            {'spend': '1000', 'results': '40'})['cpl'], 25.0)
+        self.assertIsNone(normalize_insight_row(
+            {'spend': '1000', 'results': '0'})['cpl'])
+        self.assertEqual(normalize_insight_row(
+            {'spend': '1000', 'results': '40', 'cpl': '30'})['cpl'], 30.0)
 
 
 class PariteCplTests(TestCase):

@@ -930,6 +930,30 @@ export function prefillApresEnvoi(
 }
 
 /**
+ * ALEA46 — envoie UNE section au proxy same-origin (le jeton voyage dans le corps) et ne
+ * fusionne le « vu » (ALEA4) qu'APRÈS une réponse acceptée : un refus ou une panne réseau
+ * rend `prefill` inchangé. `fetchImpl` est injecté (la page passe `fetch`).
+ */
+export async function envoyerSectionQuestionnaire(
+  fetchImpl: typeof fetch,
+  token: string,
+  body: QuestionnairePostBody,
+  prefill: Record<string, unknown>,
+): Promise<{ result: QuestionnairePostResult; prefill: Record<string, unknown> }> {
+  try {
+    const res = await fetchImpl(QUESTIONNAIRE_PROXY_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ token, ...body }),
+    });
+    const result = parseQuestionnairePostResponse(res.status, await res.json().catch(() => null));
+    return { result, prefill: result.ok ? prefillApresEnvoi(prefill, body.reponses) : prefill };
+  } catch {
+    return { result: { ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' }, prefill };
+  }
+}
+
+/**
  * `true` si le corps POST n'a RIEN de neuf à envoyer (aucune réponse, aucune
  * photo) — la page doit alors sauter l'appel réseau plutôt que poster un
  * objet vide (ex. section déjà répondue et rouverte sans y toucher, ou

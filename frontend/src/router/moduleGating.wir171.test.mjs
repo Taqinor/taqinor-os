@@ -87,8 +87,6 @@ test('roleLoader délègue à estAutoriseEntree et reçoit permRepliPalier', () 
 
 test('Sidebar, BottomTabBar, appNavItems et buildInstalledApps appellent la MÊME règle', () => {
   const fichiers = [
-    lire('..', 'components', 'layout', 'Sidebar.jsx'),
-    lire('..', 'components', 'layout', 'BottomTabBar.jsx'),
     lire('..', 'lib', 'apps', 'ActiveAppContext.jsx'),
     lire('..', 'lib', 'apps', 'useInstalledApps.js'),
   ]

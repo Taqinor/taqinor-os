@@ -135,9 +135,12 @@ class M3WattNonLuTests(SimpleTestCase):
         self.assertEqual(nb, 16)
         self.assertIsNone(watt)
         # Le contrat HISTORIQUE (KPI interne) garde, lui, son repli documenté.
+        # SPL162 — ces deux noms vivent dans ``lignes_classement``.
+        from apps.ventes.quote_engine import lignes_classement
         self.assertEqual(
-            builder.puissance_panneaux_lignes([_L("Panneaux solaires", 16)]),
-            (16, builder._DEFAULT_WATT))
+            lignes_classement.puissance_panneaux_lignes(
+                [_L("Panneaux solaires", 16)]),
+            (16, lignes_classement._DEFAULT_WATT))
         # Puissance écrite dans la désignation → elle est LUE.
         self.assertEqual(
             builder.panneaux_et_watt_lu([_L("Panneau Jinko 585W", 10)]),

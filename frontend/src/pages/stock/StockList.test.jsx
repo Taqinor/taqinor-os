@@ -18,23 +18,15 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    rail de catégories.
    ========================================================================== */
 
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getMarques: vi.fn(() => Promise.resolve({ data: [] })),
-    getEmplacements: vi.fn(() => Promise.resolve({ data: [] })),
-    getFichesTechniques: vi.fn(() => Promise.resolve({ data: [] })),
-    inventaire: vi.fn(() => Promise.resolve({ data: {} })),
-    valorisation: vi.fn(() => Promise.resolve({ data: {} })),
-    getRapportPertes: vi.fn(() => Promise.resolve({ data: [] })),
-    bulkProduits: vi.fn(() => Promise.resolve({ data: {} })),
-    exportProduitsXlsx: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
-    etiquettesProduits: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
-    etiquettesKanbanEmplacement: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
-    resolveCode: vi.fn(() => Promise.resolve({ data: {} })),
-    // ASTK83 — « Annuler » un désarchivage ré-archive par PATCH.
-    patchProduit: vi.fn(() => Promise.resolve({ data: {} })),
-  },
+// ASTK252 — stockApi RÉEL : seule la frontière HTTP `../../api/axios` est
+// simulée ; les assertions portent sur la méthode et l'URL réellement appelées.
+const http = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn(),
 }))
+vi.mock('../../api/axios', () => ({ default: http }))
+vi.mock('../../api/stockApi', () => vi.importActual('../../api/stockApi'))
+const URL_INVENTAIRE = '/stock/produits/inventaire/'
+const postsInventaire = () => http.post.mock.calls.filter(([url]) => url === URL_INVENTAIRE)
 
 // ASTK83 — capture le rappel « Annuler » du toast de désarchivage.
 vi.mock('../../lib/toast', async (importOriginal) => {
@@ -89,7 +81,6 @@ vi.mock('../../features/uxviews/ViewsManagerPopover', () => ({
   ),
 }))
 
-import stockApi from '../../api/stockApi'
 import { toastWithUndo } from '../../lib/toast'
 import { deleteProduit } from '../../features/stock/store/stockSlice'
 import { createViewMock } from '../../features/uxviews/useServerSavedViews'
@@ -153,10 +144,11 @@ function renderPage(opts) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  stockApi.getMarques.mockResolvedValue({ data: [] })
-  stockApi.getEmplacements.mockResolvedValue({ data: [] })
-  stockApi.getFichesTechniques.mockResolvedValue({ data: [] })
-  stockApi.exportProduitsXlsx.mockResolvedValue({ data: new Blob(['x']) })
+  http.get.mockResolvedValue({ data: [] })
+  http.post.mockImplementation(async (url) => ({
+    data: url === '/stock/produits/export-xlsx/' ? new Blob(['x']) : {} }))
+  http.patch.mockResolvedValue({ data: {} })
+  http.delete.mockResolvedValue({ status: 204, data: {} })
   URL.createObjectURL = vi.fn(() => 'blob:mock-url')
   URL.revokeObjectURL = vi.fn()
   installJsdomPolyfills()
@@ -275,7 +267,8 @@ describe('StockList — export unique sur le moteur DataTable (STKCAT26)', () =>
 
     fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
 
-    await waitFor(() => expect(stockApi.exportProduitsXlsx).toHaveBeenCalledWith([onduleur.id]))
+    await waitFor(() => expect(http.post).toHaveBeenCalledWith(
+      '/stock/produits/export-xlsx/', { ids: [onduleur.id] }, { responseType: 'blob' }))
   })
 
   it('la bascule « Grouper par catégorie » change son propre libellé', () => {
@@ -308,7 +301,7 @@ describe('StockList — inventaire physique : quantités entières (ASTK209)', (
     fireEvent.click(screen.getByRole('button', { name: "Valider l'inventaire" }))
     expect(await screen.findByText('Quantité entière ≥ 0 attendue.')).toBeInTheDocument()
     expect(champ).toHaveAttribute('aria-invalid', 'true')
-    expect(stockApi.inventaire).not.toHaveBeenCalled()
+    expect(postsInventaire()).toHaveLength(0)
   })
 
   it('un négatif est refusé ; une saisie entière part telle quelle', async () => {
@@ -318,18 +311,18 @@ describe('StockList — inventaire physique : quantités entières (ASTK209)', (
     fireEvent.change(screen.getByLabelText('Compté — Onduleur Deye 5 kW'), { target: { value: '7' } })
     fireEvent.click(screen.getByRole('button', { name: "Valider l'inventaire" }))
     expect(await screen.findByText('Quantité entière ≥ 0 attendue.')).toBeInTheDocument()
-    expect(stockApi.inventaire).not.toHaveBeenCalled()
+    expect(postsInventaire()).toHaveLength(0)
 
     fireEvent.change(screen.getByLabelText('Compté — Panneau 550 Wc'), { target: { value: '7' } })
     fireEvent.click(screen.getByRole('button', { name: "Valider l'inventaire" }))
-    await waitFor(() => expect(stockApi.inventaire).toHaveBeenCalledWith({
+    await waitFor(() => expect(http.post).toHaveBeenCalledWith(URL_INVENTAIRE, {
       motif: '',
       lignes: [{ produit: 1, quantite_comptee: 7 }, { produit: 2, quantite_comptee: 7 }],
     }))
   })
 
   it('le 400 serveur par ligne est affiché sous le champ du produit', async () => {
-    stockApi.inventaire.mockRejectedValueOnce({
+    http.post.mockRejectedValueOnce({
       response: { status: 400, data: { error: 'x', lignes: { 0: ['Quantité entière ≥ 0 attendue.'] } } },
     })
     renderPage()
@@ -354,7 +347,9 @@ describe('StockList — annuler un désarchivage (ASTK83)', () => {
     await waitFor(() => expect(toastWithUndo).toHaveBeenCalled())
     const { onUndo } = toastWithUndo.mock.calls[0][0]
     await onUndo()
-    expect(stockApi.patchProduit).toHaveBeenCalledWith(7, { is_archived: true })
+    // ASTK252 — vérifié à la frontière HTTP : un PATCH de ré-archivage, aucun DELETE.
+    expect(http.patch).toHaveBeenCalledWith('/stock/produits/7/', { is_archived: true })
+    expect(http.delete).not.toHaveBeenCalled()
     expect(deleteProduit).not.toHaveBeenCalled()
     window.confirm.mockRestore()
   })

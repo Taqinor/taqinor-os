@@ -1,26 +1,27 @@
 /**
- * SolarBow page (YBW62) — SKELETON: same keys as the French one, empty strings.
- * No English before Reda approves the French (YBWM13); filled by YBW70.
+ * SolarBow page (YBW62) — same keys as the French one, translated from the
+ * approved French (YBWM13, YBW70). No new statement.
  */
 import type { DictEn } from '../config';
 import type { fr } from './solarbow.fr';
 
 export const en: DictEn<typeof fr> = {
-  titre: '',
-  description: '',
-  surtitre: '',
-  cta: '',
-  secondaire: '',
+  titre: 'SolarBow — the software for solar installers',
+  description:
+    'SolarBow: prospects and follow-ups, panel layout, prior declaration, Enedis and Consuel files, quotes and commercial proposal.',
+  surtitre: 'For solar installers',
+  cta: 'Book a meeting',
+  secondaire: 'See what SolarBow does',
   modules: {
-    surtitre: '',
-    titre: '',
-    prospects: '',
-    calepinage: '',
-    dossiers: '',
-    devis: '',
+    surtitre: 'What SolarBow does',
+    titre: 'From first contact to the proposal',
+    prospects: 'Prospects and follow-ups',
+    calepinage: 'Panel layout',
+    dossiers: 'Prior declaration, Enedis and Consuel files',
+    devis: 'Quotes and proposal',
   },
   appel: {
-    titre: '',
-    bouton: '',
+    titre: 'Let’s see SolarBow on your projects',
+    bouton: 'Book a meeting',
   },
 };

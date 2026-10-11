@@ -509,7 +509,7 @@ def config_vendue_du_devis(devis):
     Deux lectures, toutes deux la SOURCE UNIQUE de leur nombre — jamais une
     seconde dérivation :
 
-    * les panneaux, par ``quote_engine.builder.panneaux_et_watt_lu`` sur les
+    * les panneaux, par ``quote_engine.lignes_classement.panneaux_et_watt_lu`` sur les
       lignes produit non optionnelles (la lecture PVUNI, celle du moteur de
       devis et de ``profils_comparatifs``) ;
     * la capacité batterie, par
@@ -521,7 +521,8 @@ def config_vendue_du_devis(devis):
     """
     panneaux = batterie = None
     try:
-        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+        from apps.ventes.quote_engine.lignes_classement import (
+            panneaux_et_watt_lu)
         lignes = [
             li for li in devis.lignes.select_related(
                 'produit', 'produit__fiche_technique').all()

@@ -29,7 +29,7 @@ function texteLisible(doc: Document): string {
   return morceaux.join(' ');
 }
 
-const MOTS_FRANCAIS = /\b(Envoyer|demande|Société|facultatif|obligatoire|Choisir|Merci|J'accepte|Vérifiez|Écrire|Nom et prénom|Ne pas remplir|Développement|aucune donnée|Réessayez|Confidentialité)\b/i;
+const MOTS_FRANCAIS = /\b(Envoyer|demande|Société|facultatif|obligatoire|Choisir|Merci|J.accepte|Vérifiez|Écrire|Nom et prénom|Ne pas remplir|Développement|aucune donnée|Réessayez|Confidentialité)\b/i;
 
 describe('YBW55 — formulaire rendu', () => {
   it('FR : champs du registre, noValidate, POST, consentement non coché, aucun pixel', async () => {

@@ -14,19 +14,14 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    Composant réel ; seule l'API est simulée (frontière réseau).
    ========================================================================== */
 
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getCategories: vi.fn(),
-    getMarques: vi.fn(() => Promise.resolve({ data: [] })),
-    deleteCategorie: vi.fn(),
-    patchCategorie: vi.fn(),
-    createCategorie: vi.fn(),
-    saveMarque: vi.fn(),
-    deleteMarque: vi.fn(),
-  },
+// ASTK252 — stockApi RÉEL : seule la frontière HTTP `../../api/axios` est
+// simulée ; les assertions portent sur la méthode et l'URL réellement appelées.
+const http = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn(),
 }))
+vi.mock('../../api/axios', () => ({ default: http }))
+vi.mock('../../api/stockApi', () => vi.importActual('../../api/stockApi'))
 
-import stockApi from '../../api/stockApi'
 import CategoriesStock from './CategoriesStock.jsx'
 
 const DETAIL = 'Catégorie utilisée par 3 produits : réaffectez-les avant de la supprimer.'
@@ -47,10 +42,9 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  stockApi.getCategories.mockResolvedValue({
-    data: [{ id: 4, nom: 'Onduleurs', ordre: 1, nb_produits: 3, type_equipement: '' }],
-  })
-  stockApi.deleteCategorie.mockRejectedValue({ response: { status: 400, data: { detail: DETAIL } } })
+  http.get.mockImplementation(async (url) => ({ data: url === '/stock/categories/'
+    ? [{ id: 4, nom: 'Onduleurs', ordre: 1, nb_produits: 3, type_equipement: '' }] : [] }))
+  http.delete.mockRejectedValue({ response: { status: 400, data: { detail: DETAIL } } })
   // ASTK231 — l'AlertDialog commune remplace la boîte native (jamais appelée).
   vi.spyOn(window, 'confirm')
 })
@@ -65,7 +59,8 @@ describe('CategoriesStock — suppression d\'une catégorie utilisée (ASTK83)',
     expect(within(dialog).getByText(/Catégorie utilisée par 3 produits/)).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
     expect(window.confirm).not.toHaveBeenCalled()
-    await waitFor(() => expect(stockApi.deleteCategorie).toHaveBeenCalledWith(4))
+    await waitFor(() => expect(http.delete).toHaveBeenCalledWith('/stock/categories/4/'))
+    expect(http.get).toHaveBeenCalledWith('/stock/categories/', { params: { ordering: 'ordre' } })
     expect(await screen.findByText(DETAIL)).toBeInTheDocument()
     expect(screen.queryByText(/peut être protégée/)).toBeNull()
   })

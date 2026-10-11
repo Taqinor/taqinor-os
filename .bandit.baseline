@@ -239,10 +239,10 @@
    "test_name": "blacklist"
   },
   {
-   "code": "7004     url = f'{GRAPH_BASE_URL}/{leadgen_id}?{qs}'\n7005     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310\n7006         return json.loads(resp.read().decode('utf-8'))\n",
+   "code": "929     url = f'{GRAPH_BASE_URL}/{leadgen_id}?{qs}'\n930     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310\n931         return json.loads(resp.read().decode('utf-8'))\n",
    "col_offset": 9,
    "end_col_offset": 48,
-   "filename": "backend/django_core/apps/crm/services.py",
+   "filename": "backend/django_core/apps/crm/leads_meta.py",
    "issue_confidence": "HIGH",
    "issue_cwe": {
     "id": 22,
@@ -250,9 +250,9 @@
    },
    "issue_severity": "MEDIUM",
    "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
-   "line_number": 7005,
+   "line_number": 930,
    "line_range": [
-    7005
+    930
    ],
    "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
    "test_id": "B310",
@@ -699,7 +699,7 @@
    "test_name": "hardcoded_tmp_directory"
   },
   {
-   "code": "141         # Bien form\u00e9.\n142         root = ET.fromstring(\n143             xml.split('?>', 1)[1].split('-->', 1)[1])\n144         self.assertTrue(root.tag.endswith('Invoice'))\n",
+   "code": "141         # Bien formé.\n142         root = ET.fromstring(\n143             xml.split('?>', 1)[1].split('-->', 1)[1])\n144         self.assertTrue(root.tag.endswith('Invoice'))\n",
    "col_offset": 15,
    "end_col_offset": 53,
    "filename": "backend/django_core/apps/ventes/tests/test_dgi.py",
@@ -1521,7 +1521,7 @@
    "test_name": "hardcoded_sql_expressions"
   },
   {
-   "code": "508                     cursor,\n509                     f'SELECT COUNT(*) FROM (SELECT 1 FROM \"{entry.table}\" t '\n510                     f'WHERE t.\"{col}\" IS NOT NULL AND NOT EXISTS ('\n511                     f'SELECT 1 FROM \"authentication_company\" c '\n512                     f'WHERE c.id = t.\"{col}\") LIMIT {_ANOMALY_MAX}) s', [])\n513             except Exception:  # noqa: BLE001 \u2014 table KO ne bloque pas le reste\n",
+   "code": "508                     cursor,\n509                     f'SELECT COUNT(*) FROM (SELECT 1 FROM \"{entry.table}\" t '\n510                     f'WHERE t.\"{col}\" IS NOT NULL AND NOT EXISTS ('\n511                     f'SELECT 1 FROM \"authentication_company\" c '\n512                     f'WHERE c.id = t.\"{col}\") LIMIT {_ANOMALY_MAX}) s', [])\n513             except Exception:  # noqa: BLE001 — table KO ne bloque pas le reste\n",
    "col_offset": 20,
    "end_col_offset": 70,
    "filename": "backend/django_core/core/tenant_isolation_scan.py",
@@ -1667,7 +1667,7 @@
    "test_name": "blacklist"
   },
   {
-   "code": "84     \"\"\"Tous les textes du SVG \u2014 le rendu est pars\u00e9, jamais devin\u00e9.\"\"\"\n85     racine = ET.fromstring(svg)\n86     espace = \"{http://www.w3.org/2000/svg}\"\n",
+   "code": "84     \"\"\"Tous les textes du SVG — le rendu est parsé, jamais deviné.\"\"\"\n85     racine = ET.fromstring(svg)\n86     espace = \"{http://www.w3.org/2000/svg}\"\n",
    "col_offset": 13,
    "end_col_offset": 31,
    "filename": "backend/django_core/core/tests/test_electrique_schema.py",
@@ -1687,7 +1687,7 @@
    "test_name": "blacklist"
   },
   {
-   "code": "96             self.assertTrue(svg.endswith(\"</svg>\"))\n97             racine = ET.fromstring(svg)       # l\u00e8ve si le XML est cass\u00e9\n98             self.assertIn(\"viewBox\", racine.attrib)\n",
+   "code": "96             self.assertTrue(svg.endswith(\"</svg>\"))\n97             racine = ET.fromstring(svg)       # lève si le XML est cassé\n98             self.assertIn(\"viewBox\", racine.attrib)\n",
    "col_offset": 21,
    "end_col_offset": 39,
    "filename": "backend/django_core/core/tests/test_electrique_schema.py",

@@ -38,6 +38,18 @@ class ParitePaquetsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(cp.verifier_apt(_arbre(tmp, 'fonts-noto-core')), [])
 
+    def test_paquet_ci_absent_prod_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = _arbre(tmp, 'fonts-noto-core')
+            (r / cp.PROD).write_text(PROD.replace('fonts-noto-core', ''), encoding='utf-8')
+            erreurs = cp.verifier_apt(r)
+            self.assertTrue(any('fonts-noto-core : present dans .github/ci-image/Dockerfile, '
+                                'absent de backend/django_core/Dockerfile' in e for e in erreurs), erreurs)
+
+    def test_outillage_ci_seul_admis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(cp.verifier_apt(_arbre(tmp, 'fonts-noto-core procps zstd')), [])
+
     def test_dejavu_interdit(self):
         with tempfile.TemporaryDirectory() as tmp:
             erreurs = cp.verifier_apt(_arbre(tmp, 'fonts-noto-core fonts-dejavu-core'))

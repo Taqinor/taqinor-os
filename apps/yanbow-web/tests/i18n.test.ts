@@ -38,24 +38,31 @@ describe('YBW13 — fixture LOCALES_ACTIVES = [fr, en] : gabarit rendu', () => {
   });
 });
 
-describe('YBW13 — état réel LOCALES_ACTIVES = [fr]', () => {
-  it("l'anglais est inactif", () => {
-    expect([...LOCALES_ACTIVES]).toEqual(['fr']);
-  });
-
+describe('YBW13 — fixture LOCALES_ACTIVES = [fr] : mécanisme anglais inactif', () => {
   it('aucun lien hreflang ni sélecteur vers /en/', async () => {
-    const doc = await rendre({ locale: 'fr' });
+    const doc = await rendre({ locale: 'fr', locales: ['fr'] });
     expect(hreflangs(doc)).toEqual([]);
     expect(doc.querySelector('a[href^="/en/"]')).toBeNull();
     expect(doc.documentElement.outerHTML).not.toContain('/en/');
   });
+});
 
-  it('build : aucune route /en/ publiée et l’accueil FR ne lie pas /en/', () => {
+describe('YBW70 — état réel LOCALES_ACTIVES = [fr, en]', () => {
+  it('l’anglais est actif (après l’accord de Reda sur le français, YBWM13)', () => {
+    expect([...LOCALES_ACTIVES]).toEqual(['fr', 'en']);
+  });
+
+  it('hreflang fr/en/x-default et sélecteur vers la page équivalente', async () => {
+    const doc = await rendre({ locale: 'fr' });
+    expect(hreflangs(doc)).toEqual(['fr=/confidentialite/', 'en=/en/privacy/', 'x-default=/confidentialite/']);
+    expect([...doc.querySelectorAll('main nav a')].map((a) => a.getAttribute('href'))).toEqual(['/en/privacy/']);
+  });
+
+  it('build : les routes /en/ des pages ouvertes sont publiées et l’accueil FR lie son équivalent', () => {
     const client = fileURLToPath(new URL('../dist/client/', import.meta.url));
     if (!existsSync(client)) throw new Error('dist/ absent — lancer `npm run build` avant `npm test`');
-    expect(existsSync(client + 'en')).toBe(false);
-    const html = readFileSync(client + 'index.html', 'utf-8');
-    expect(html).not.toContain('/en/');
+    expect(existsSync(client + 'en/index.html')).toBe(true);
+    expect(readFileSync(client + 'index.html', 'utf-8')).toContain('href="/en/"');
   });
 });
 

@@ -77,6 +77,9 @@ _RENDER_LOCK = threading.RLock()
 
 
 from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402
+from .identite import (  # noqa: E402
+    LEGALE_TAQINOR_LEGACY, mentions_legales as _mentions_legales,
+    profil_renseigne as _profil_renseigne)
 
 
 def _esc(value):
@@ -396,10 +399,9 @@ ENT_CONTACT_LINE = ("contact@taqinor.com &nbsp;&#183;&nbsp; "
 # exact (SCA27 : reconstruit par _apply_entreprise dès qu’un email ou un site
 # de profil est fourni — plus de fuite du contact fondateur sur la page étude).
 ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
-# Ligne légale du footer page 3 (raison sociale · RC · ICE · capital · siège).
-ENT_LEGAL_LINE = ("Taqinor Solutions SARLAU &middot; RC 691213 &middot; "
-                  "ICE 003799642000067 &middot; Capital 100&#8239;000 MAD "
-                  "&middot; Siège : 5 Rue Ennoussour RDC, Casablanca")
+# Ligne légale du footer page 3 — APDF3 : repli « aucun profil » (identite).
+_ENT_DEFAULT_LEGAL_LINE = LEGALE_TAQINOR_LEGACY
+ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
 # Ligne RIB (bénéficiaire · banque · RIB · BIC) — APDF2 : LA règle unique de
 # ``quote_engine.identite`` (un seul littéral, partagé avec le résidentiel).
 
@@ -418,8 +420,10 @@ ENT_RIB_LINE = _ligne_rib_identite(None, gras=_gras_rib_legacy)
 _ENT_DEFAULT_NOM_MARQUE = ENT_NOM_MARQUE
 _ENT_DEFAULT_CONTACT_LINE = ENT_CONTACT_LINE
 _ENT_DEFAULT_ETUDE_CONTACT = ENT_ETUDE_CONTACT
-_ENT_DEFAULT_LEGAL_LINE = ENT_LEGAL_LINE
 _ENT_DEFAULT_RIB_LINE = ENT_RIB_LINE
+#: APDF4 — logo d'en-tête de la société (``theme.logo_societe_b64``) ; None =
+#: aucun profil → l'asset TAQINOR historique.
+ENT_LOGO_B64 = None
 
 
 def _apply_entreprise(ent):
@@ -431,15 +435,18 @@ def _apply_entreprise(ent):
     le devis d'un autre tenant n'affiche plus jamais l'identité de Taqinor.
     """
     global ENT_NOM_MARQUE, ENT_CONTACT_LINE, ENT_LEGAL_LINE, ENT_RIB_LINE
-    global ENT_ETUDE_CONTACT
+    global ENT_ETUDE_CONTACT, ENT_LOGO_B64
     global CA
     # Réinitialise TOUJOURS depuis les défauts d'abord : pas de fuite d'un rendu
     # précédent (les globals sont mutés sous _RENDER_LOCK).
     ENT_NOM_MARQUE = _ENT_DEFAULT_NOM_MARQUE
     ENT_CONTACT_LINE = _ENT_DEFAULT_CONTACT_LINE
     ENT_ETUDE_CONTACT = _ENT_DEFAULT_ETUDE_CONTACT
-    ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
+    # APDF9 — repli « aucun profil » : « Siège » dans la langue du document.
+    ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE.replace(
+        "Si\u00e8ge\u00a0:", _L("op_siege"))
     ENT_RIB_LINE = _ENT_DEFAULT_RIB_LINE
+    ENT_LOGO_B64 = None
     CA = _CA_DEFAULT
     if not isinstance(ent, dict):
         return
@@ -447,16 +454,12 @@ def _apply_entreprise(ent):
     adresse = (ent.get("adresse") or "").strip()
     email = (ent.get("email") or "").strip()
     tel = (ent.get("telephone") or "").strip()
-    ice = (ent.get("ice") or "").strip()
-    rc = (ent.get("rc") or "").strip()
-    if_ = (ent.get("identifiant_fiscal") or "").strip()
-    patente = (ent.get("patente") or "").strip()
-    rib = (ent.get("rib") or "").strip()
-    banque = (ent.get("banque") or "").strip()
 
-    # Aucun champ d'identité renseigné → on ne touche à rien (byte-identique).
-    if not any([nom, adresse, email, tel, ice, rc, if_, patente, rib, banque]):
+    # Aucun profil (APDF3 : la définition d'identite) → byte-identique.
+    if not _profil_renseigne(ent):
         return
+    from .residential.theme import logo_societe_b64
+    ENT_LOGO_B64 = logo_societe_b64({"entreprise": ent})
 
     if nom:
         ENT_NOM_MARQUE = _esc(nom.upper())
@@ -487,22 +490,12 @@ def _apply_entreprise(ent):
         # AMOT17 — idem pour le pied de la page Étude.
         ENT_ETUDE_CONTACT = ""
 
-    # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.
-    legal_bits = []
-    if nom:
-        legal_bits.append(_esc(nom))
-    if rc:
-        legal_bits.append("RC " + _esc(rc))
-    if ice:
-        legal_bits.append("ICE " + _esc(ice))
-    if if_:
-        legal_bits.append("IF " + _esc(if_))
-    if patente:
-        legal_bits.append("Patente " + _esc(patente))
+    # APDF3 — ligne légale par LA fonction de la bande premium (identite) :
+    # raison sociale [forme, capital] · RC · ICE · IF · Patente, puis Siège.
+    legal_bits = _mentions_legales(ent, gras=None, fiscales=True) or []
     if adresse:
-        legal_bits.append("Siège : " + _esc(adresse))
-    if legal_bits:
-        ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
+        legal_bits.append(_L("op_siege") + " " + _esc(adresse))
+    ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
 
     # APDF2 (C-APDF-001) — ligne RIB par LA règle unique (identite.py) :
     # RIB/banque du profil → sa ligne ; société identifiée SANS RIB → AUCUNE
@@ -604,6 +597,9 @@ ACCEPTE_PAR_NOM = ""
 NOTE_CLIENT = ""
 # QJR668 — clauses/CGV de l'affaire gelées (échappées à l'ingestion).
 CLAUSES_CGV = []
+# APDF13 — conditions générales imprimées (``cgv_imprimees``, APDF12), posées
+# par ``apply_quote_data`` ; la ligne de conditions du une-page les imprime.
+CGV_IMPRIMEES = {"titre": "", "puces": []}
 
 
 #: AMOT20 — vrai pendant l'ajustement du une-page quand la note et les
@@ -650,7 +646,8 @@ def _clauses_cgv_html(font_pt="7.5"):
         clauses.append({"nom": "", "corps_texte":
                         "(" + _renvoi_texte_integral() + ")"})
     return bloc_clauses_html(clauses, couleur_titre=CN,
-                             couleur_texte=CG7, taille_pt=font_pt)
+                             couleur_texte=CG7, taille_pt=font_pt,
+                             langue=LANGUE_SORTIE)
 
 
 def _note_client_html(font_pt="8"):
@@ -877,8 +874,19 @@ def _doc_text(key):
     # M7 — {validite} porte la VRAIE échéance du devis, ou rien du tout.
     if isinstance(val, str) and "{validite}" in val:
         val = (val.replace("{validite}",
-                           f"Validit&#233;&#160;: jusqu&#8217;au {VALID_UNTIL}")
+                           _L("op_validite_jusqu").format(date=VALID_UNTIL))
                if VALID_UNTIL else "")
+    return val
+
+
+def _doc_text_langue(key, cle_i18n):
+    """APDF46 — texte éditable ``key`` : resté au DÉFAUT du moteur, il suit la
+    langue du document (clé ``cle_i18n`` d'``i18n_labels``) ; une surcharge
+    société reste telle quelle. Français : :func:`_doc_text`, inchangé."""
+    val = _doc_text(key)
+    if (val == DEFAULT_DOC_TEXTS.get(key)
+            and LANGUE_SORTIE != i18n_labels.LANGUE_DE_REPLI):
+        return _L(cle_i18n)
     return val
 
 
@@ -896,86 +904,24 @@ def _pct_echeance(valeur, defaut):
     return int(f) if f == int(f) else round(f, 2)
 
 
-def _pct_nul(valeur):
-    """AMOT19 — un pourcentage d'échéancier NUL (créneau absent) ?"""
-    try:
-        return float(valeur) == 0
-    except (TypeError, ValueError):
-        return False
-
-
-def _tva_note_par_defaut(tva_pct):
-    """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
+def _tva_note_par_defaut(tva_pct, langue=None):
+    """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois.
+    APDF10 — en/ar : la clé ``tva_unique`` d'``i18n_labels``."""
     tva_lbl = pct_fr(tva_pct)  # AMOT24
+    if i18n_labels.normaliser(langue) != "fr":
+        return i18n_labels.libelle("tva_unique", langue).format(taux=tva_lbl)
     return (f"TVA {tva_lbl} % appliquée sur l'ensemble des équipements et "
             f"travaux.")
 
 
-def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
-                        valid_until):
-    """QJR668 — LA fonction qui remplit les cases des puces CGV.
-
-    Substitue {acompte}/{materiel}/{solde}/{tva_note}/{validite_offre} et rend
-    les puces NON VIDES, entités HTML conservées (le moteur ne les échappe
-    pas). Une puce au gabarit illisible (case inconnue, accolade seule) est
-    rendue telle quelle ; une puce vide après remplissage (échéance inconnue)
-    est omise. Pure (aucun global) : le PDF (:func:`_cgv_bullets_html`) et la
-    page publique de signature (``public_views._conditions_publiques``, via
-    :func:`cgv_bullets_remplies`) passent par ELLE — jamais une seconde copie
-    du remplissage."""
-    out = []
-    for raw in bullets or ():
-        # AMOT19 — un créneau ABSENT de l'échéancier (deux tranches : matériel
-        # à 0) n'est jamais imprimé « 0 % à la réception du matériel » : la
-        # puce qui le porte est omise, comme les cases du « Devis final ».
-        # Décision fondateur 08/10/2026 — devis envoyé avant AMOT19 : les puces
-        # d'hier (rien d'omis).
-        if ("{materiel}" in str(raw) and _pct_nul(materiel)
-                and not regles_origine()):
-            continue
-        try:
-            txt = raw.format(
-                acompte=acompte, materiel=materiel, solde=solde,
-                tva_note=tva_note,
-                # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
-                validite_offre=(
-                    "Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
-                    f"{valid_until}" if valid_until else ""))
-        except (KeyError, IndexError, ValueError):
-            txt = raw
-        if not str(txt).strip():
-            continue
-        out.append(txt)
-    return out
-
-
-def cgv_bullets_remplies(data):
-    """QJR668 — les puces CGV que le rendu de ``data`` (sortie de
-    ``build_quote_data``) IMPRIME, cases remplies, entités HTML conservées.
-
-    Mêmes entrées que le rendu, lues dans le MÊME dict : les puces de
-    ``data['doc_texts']`` (où le builder a déjà substitué la version GELÉE à
-    l'envoi — ``Devis.clauses_appliquees`` ``cgv_gelees``, ERR-QJR668) sinon
-    le littéral par défaut ; les pourcentages de ``data['payment_terms']``
-    (échéancier du devis rabattu par le builder, QJR623) ; ``tva_note`` ;
-    ``valid_until``. Pure : ne lit ni n'écrit aucun global de rendu."""
-    data = data or {}
-    surcharges = data.get("doc_texts") or {}
-    bullets = ((surcharges.get("cgv_bullets")
-                if isinstance(surcharges, dict) else None)
-               or DEFAULT_DOC_TEXTS["cgv_bullets"])
-    terms = data.get("payment_terms") or {}
-    try:
-        tva_pct = float(data.get("taux_tva", 20) or 20)
-    except (TypeError, ValueError):
-        tva_pct = 20.0
-    return remplir_cgv_bullets(
-        bullets,
-        acompte=_pct_echeance(terms.get("acompte"), 30),
-        materiel=_pct_echeance(terms.get("materiel"), 60),
-        solde=_pct_echeance(terms.get("solde"), 10),
-        tva_note=data.get("tva_note") or _tva_note_par_defaut(tva_pct),
-        valid_until=(data.get("valid_until") or "").strip())
+# APDF12/APDF13 (C20) — la famille PURE des conditions générales (puces
+# par défaut, remplissage, ``cgv_imprimees``, échappement des textes saisis)
+# vit dans ``clauses_cgv`` (move only). Importée ICI, après
+# DEFAULT_DOC_TEXTS, _esc, _pct_echeance et _tva_note_par_defaut
+# que ``clauses_cgv`` relit en FIN de module : le cycle d'import se résout
+# dans les deux ordres de chargement.
+from .clauses_cgv import (  # noqa: E402
+    _conditions_echappees, _puces_cgv, remplir_cgv_bullets)
 
 
 def _cgv_bullets_html():
@@ -986,11 +932,13 @@ def _cgv_bullets_html():
     :func:`remplir_cgv_bullets`, la fonction que la page publique appelle
     aussi. Défaut → puces identiques au caractère près.
     """
-    bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
+    bullets = _puces_cgv(_doc_text("cgv_bullets"), LANGUE_SORTIE,
+                         globals().get("MODE_INSTALLATION"))
     out = ""
     for txt in remplir_cgv_bullets(
             bullets, acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
-            tva_note=TVA_NOTE, valid_until=VALID_UNTIL):
+            tva_note=TVA_NOTE, valid_until=VALID_UNTIL,
+            langue=LANGUE_SORTIE):
         # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
         # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
         out += (f'\n        <li style="font-size:12px;color:{CG7};'
@@ -1223,7 +1171,7 @@ def badge(mar):
 def logo_html(h="36px"):
     """Dark logo for pages 2-3 navy headers — transparent, matching page 1 style."""
     try:
-        b64_data = _logo_dark_b64()
+        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
     except Exception:
         b64_data = None
     if b64_data:
@@ -1255,7 +1203,7 @@ def _logo_dark_b64():
 def logo_p1_dark():
     """Logo for dark header — white bg removed, dark pixels → white, rendered on navy."""
     try:
-        b64_data = _logo_dark_b64()
+        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
     except Exception:
         b64_data = None
     if b64_data:
@@ -2759,7 +2707,7 @@ def page3():
 <div class="page" style="display:block;position:relative;overflow:hidden;">
   <div style="background:{CN};padding:9px 24px;display:flex;align-items:center;justify-content:space-between;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">Confiance, Garanties &amp; Bon pour accord</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_confiance_bpa")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME}</div>
     </div>
     {logo_html("42px")}
@@ -2771,8 +2719,8 @@ def page3():
 
   <!-- QJR121 — POURQUOI NOUS : titre, marques et supervision dérivés du devis -->
   <div style="padding:6px 24px 4px;margin-bottom:5px;">
-    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">Pourquoi choisir {ENT_NOM_MARQUE}&#160;?</div>
-    <div style="font-size:9pt;color:{CG4};font-style:italic;margin-bottom:5px;">Des experts engag\u00e9s pour votre transition \u00e9nerg\u00e9tique</div>
+    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">{_L("lg_pourquoi_choisir").format(marque=ENT_NOM_MARQUE)}</div>
+    <div style="font-size:9pt;color:{CG4};font-style:italic;margin-bottom:5px;">{_L("lg_experts_engages")}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
 
       <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
@@ -2876,7 +2824,7 @@ def page3():
   <!-- BON POUR ACCORD — always pinned above footer via position:absolute -->
   <div style="position:absolute;bottom:{'28' if DEVIS_FINAL else '43'}px;left:0;right:0;padding:0 24px;">
     <div style="border-left:4px solid {CA};padding-left:10px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">
-      <div style="font-size:10pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1.5px;">{_doc_text("bpa_titre")}</div>
+      <div style="font-size:10pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1.5px;">{_doc_text_langue("bpa_titre", "bon_pour_accord")}</div>
     </div>{_acceptance_stamp_html()}
     {_opt}
     {_payment_html}
@@ -2887,7 +2835,7 @@ def page3():
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">Nom&#160;: <strong style="color:{CG7};">{CLIENT_NAME}</strong></div>
         <div style="border-bottom:1px solid {CG2};min-height:{'8' if DEVIS_FINAL else '12'}px;margin-top:3px;margin-bottom:3px;"></div>
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};">Date&#160;: _______________</div>
-        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text("bpa_mention")}</div>
+        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text_langue("bpa_mention", "ci_bpa_mention")}</div>
       </div>
       <div style="flex:1;border:1px solid {CG2};border-radius:8px;padding:{'6px 10px' if DEVIS_FINAL else '8px 12px'};min-height:{'50' if DEVIS_FINAL else '65'}px;background:white;">
         <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature {ENT_NOM_MARQUE}</div>
@@ -3928,8 +3876,9 @@ def _onepage_header_html():
     h = f"{ONEPAGE_HEADER_MM}mm"
     ref_html = (
         '<div style="text-align:right;">'
-        f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
-        f'<span style="color:{CA};">N&#176;&#160;{REF}</span></div>'
+        f'<div style="color:white;font-size:11pt;font-weight:700;">'
+        f'{_L("op_devis")}&nbsp;'
+        f'<span style="color:{CA};">{_L("op_numero")}&#160;{REF}</span></div>'
         f'<div style="color:rgba(255,255,255,0.6);font-size:8pt;'
         f'margin-top:2px;">{DATE_STR}</div>'
         + _marques_correction_html(
@@ -3951,7 +3900,7 @@ def _onepage_header_html():
         '<div style="display:table-cell;vertical-align:middle;'
         'text-align:right;padding-right:3mm;">'
         '<div style="color:rgba(255,255,255,0.80);font-size:6.2pt;'
-        'line-height:1.25;">Consultez votre<br>proposition interactive'
+        f'line-height:1.25;">{_L("op_consultez_proposition")}'
         f'<br><span style="color:{CA};">{court}</span></div></div>'
         '<div style="display:table-cell;vertical-align:middle;">'
         '<div style="background:#FFFFFF;padding:0.7mm;display:inline-block;">'
@@ -4032,20 +3981,20 @@ def _cartes_ci_onepage(chiffres):
     prod = chiffres.get("production_kwh_an")
     if prod:
         cellules.append(
-            ("Production annuelle", f"{fnum(prod)} kWh/an",
+            (_L("op_production_annuelle"), f"{fnum(prod)} kWh/an",
              _ancre_figure("production_annuelle_kwh", fnum(prod))))
     if MASQUER_ECONOMIES:
         return cellules
     eco = chiffres.get("economie_annuelle_mad")
     if eco is not None:
         base = chiffres.get("base_economie")
-        libelle = ("&#201;conomies estim&#233;es / an"
+        libelle = (_L("op_economies_estimees_an")
                    + (f" ({base})" if base else ""))
         cellules.append((libelle, f"{fnum(eco)} MAD/an",
                          _ancre_figure("economie_annuelle", fnum(eco))))
     payback = chiffres.get("payback_ans")
     if payback is not None:
-        cellules.append(("Retour estim&#233;", f"{ans(payback)} ans",
+        cellules.append((_L("op_retour_estime"), f"{ans(payback)} ans",
                          _ancre_figure("payback_ans", ans(payback))))
     return cellules
 
@@ -4146,7 +4095,7 @@ def page_onepage(items, tronquees=0):
                                _ancre_figure("puissance_kwc", kwc_fr(KWC))))
     elif KWC > 0:
         _sum_cells = [
-            ("Puissance cr&#234;te", f"{kwc_fr(KWC)} kWc",
+            (_L("op_puissance_crete"), f"{kwc_fr(KWC)} kWc",
              _ancre_figure("puissance_kwc", kwc_fr(KWC))),
         ]
         if CHIFFRES_CI is not None:
@@ -4156,7 +4105,7 @@ def page_onepage(items, tronquees=0):
             _sum_cells += _cartes_ci_onepage(CHIFFRES_CI)
         else:
             _sum_cells.append(
-                ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an",
+                (_L("op_production_annuelle"), f"{fnum(PROD_KWH)} kWh/an",
                  _ancre_figure("production_annuelle_kwh", fnum(PROD_KWH))))
             # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
             # la vignette « Économie annuelle » est OMISE. La valeur disponible
@@ -4173,14 +4122,14 @@ def page_onepage(items, tronquees=0):
                 ONEPAGE_BRANCHE)
             if not MASQUER_ECONOMIES and _eco_branche:
                 _sum_cells.append(
-                    ("&#201;conomie annuelle",
+                    (_L("op_economie_annuelle"),
                      f"{fnum(_eco_branche)} MAD/an"
-                     + (" (estimation)" if SAVINGS_ESTIMATED else ""),
+                     + (_L("op_estimation") if SAVINGS_ESTIMATED else ""),
                      _ancre_figure("economie_annuelle", fnum(_eco_branche),
                                    ONEPAGE_BRANCHE)))
         _pkwc_txt = fnum(round(total / KWC))
         _sum_cells.append(
-            ("Prix par kWc", f"{_pkwc_txt} MAD/kWc",
+            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/kWc",
              _ancre_figure("prix_kwc", _pkwc_txt, _op_opt)))
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
@@ -4194,7 +4143,7 @@ def page_onepage(items, tronquees=0):
                 # QJR163 (b) — ÉCHAPPÉ comme sur la page étude : ce libellé
                 # vient du contrat de dimensionnement, pas d'une constante.
                 _rtxt += f" ({_esc(_fctx_onepage['tranche_apres'])})"
-            _sum_cells.append(("R&#233;siduel vis&#233;", _rtxt))
+            _sum_cells.append((_L("op_residuel_vise"), _rtxt))
     else:
         _sum_cells = []
     summary_html = ""
@@ -4467,12 +4416,7 @@ def page_onepage(items, tronquees=0):
     {_note_client_html("7.5")}{_clauses_cgv_html("7")}
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option ' + _onepage_note_ceci + '. Une option ' + _onepage_note_autre + ' est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
-      <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
-      <span style="margin-right:20px;">&#183; {_L("acompte")}&#160;: {PAY_A}&#37;</span>
-      {'' if (_pct_nul(PAY_M) and not regles_origine()) else '<span style="margin-right:20px;">&#183; ' + str(PAY_M) + '&#37; ' + _L("a_la_reception_materiel") + '</span>'}
-      <span style="margin-right:20px;">&#183; {PAY_S}&#37; {_L("apres_mise_en_marche")}</span>
-      <span>&#183; {TVA_NOTE}</span>
-      {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
+      {_conditions_onepage_html()}
     </div>
   </div>
   {bpa_html}
@@ -4669,14 +4613,47 @@ def _bas_totaux_page_haute(html_cls, html, formes):
 
 def _formes_bloc_fin():
     """AMOT20 — libellés de la ligne de conditions (dernier bloc de la zone
-    du une-page), dans la langue du document et en français (filet)."""
+    du une-page), dans la langue du document et en français (filet).
+    APDF13 — la ligne porte les puces de ``cgv_imprimees`` : leur début
+    (12 caractères, lisibles sur la première ligne) sert aussi d'ancre."""
     formes = []
     for cle in ("acompte", "apres_mise_en_marche"):
         for brut in (_L(cle), i18n_labels.libelle(cle, "fr")):
             brut = html.unescape(brut or "")
             if brut and brut not in formes:
                 formes.append(brut)
+    for puce in CGV_IMPRIMEES.get("puces") or []:
+        brut = html.unescape(re.sub(r"<[^>]+>", "", str(puce)))
+        brut = brut.replace("\xa0", " ").strip()[:12]
+        if brut and brut not in formes:
+            formes.append(brut)
     return tuple(formes)
+
+
+def _conditions_onepage_html():
+    """APDF13 — la ligne de conditions du une-page : les puces de
+    ``cgv_imprimees`` (APDF12 — société gelées ou vives, défaut du moteur
+    sinon ; tronquées comme les clauses quand la page est dense), la validité
+    et la note de TVA seulement quand aucune puce ne les porte déjà, puis la
+    note de remise par ligne."""
+    puces = list(CGV_IMPRIMEES.get("puces") or [])
+    if ONEPAGE_TEXTES_TRONQUES:
+        puces = [_tronquer_texte_echappe(p, _ONEPAGE_CLAUSE_MAX)
+                 for p in puces]
+    morceaux = []
+    validite = _doc_text("validite_onepage")
+    if validite and not (VALID_UNTIL and any(VALID_UNTIL in p
+                                             for p in puces)):
+        morceaux.append(validite)
+    morceaux += [f"&#183; {p}" for p in puces]
+    if TVA_NOTE and not any(TVA_NOTE in p for p in puces):
+        morceaux.append(f"&#183; {TVA_NOTE}")
+    if DISCOUNT_PCT > 0:
+        morceaux.append(f"&#183; {_note_remise_par_ligne()}")
+    return "".join(
+        (f'<span style="margin-right:20px;">{m}</span>' if i < len(morceaux) - 1
+         else f'<span>{m}</span>')
+        for i, m in enumerate(morceaux))
 
 
 def _bas_bloc_fin(page):
@@ -4785,7 +4762,7 @@ def apply_quote_data(data: dict) -> None:
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE, LIBELLE_AVEC
     global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION, NOTE_CLIENT
-    global CLAUSES_CGV  # QJR668 — clauses/CGV gelées de l'affaire
+    global CLAUSES_CGV, CGV_IMPRIMEES  # QJR668 clauses gelées, APDF13 CGV
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -4903,7 +4880,8 @@ def apply_quote_data(data: dict) -> None:
     # L'empreinte, elle, est un TEXTE — donc échappée à l'usage.
     CALEPINAGE_SVG = data.get("calepinage_svg") or ""
     CALEPINAGE_EMPREINTE = data.get("calepinage_empreinte") or ""
-    TVA_NOTE       = data.get("tva_note") or _tva_note_par_defaut(TVA_PCT)
+    TVA_NOTE       = (data.get("tva_note") or _tva_note_par_defaut(
+        TVA_PCT, data.get("langue_sortie")))
     # FG52 — devise portée par le document (défaut MAD = comportement inchangé).
     DEVISE         = (data.get("devise") or "MAD").strip().upper()
     # NTI18N5 — langue du document + table de libellés ROUTÉE par le builder.
@@ -5073,10 +5051,7 @@ def apply_quote_data(data: dict) -> None:
     # ``services.accept_devis``) : ``_acceptance_stamp_html`` l'injectait brut.
     ACCEPTE_PAR_NOM = _esc(data.get("accepte_par_nom") or "")
     NOTE_CLIENT = _esc((data.get("note_client") or "").strip())
-    CLAUSES_CGV = [
-        {"nom": _esc(str(c.get("nom") or "")),
-         "corps_texte": _esc(str(c.get("corps_texte") or ""))}
-        for c in (data.get("clauses_cgv") or []) if isinstance(c, dict)]
+    CLAUSES_CGV, CGV_IMPRIMEES = _conditions_echappees(data)
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues

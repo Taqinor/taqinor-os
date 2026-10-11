@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 5d975d94d1faaa5c4f220ba97134b99929116b78b74f66a7d0c2d1948275a3d6
-Plan fingerprint: b37754b86f410d033fb86c95e34385641b5e71e1ff2bd2046972f99651c81665
+Structure fingerprint: 8efb4568b102494ff17bf8fa677030cb78f48fbfa0a5fe00e2b0a55c5464e9a3
+Plan fingerprint: 473c5742416d536bb28ee7dc69757e35d5f3830db1ed1b0abf098baa661ff2c6
 
 
 
@@ -222,7 +222,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | App | Prefix | Models | Role |
 |---|---|---|---|
 | `authentication` | `/` | 2 (+CustomUser) | **Tenant root**: `Company`, `CustomUser`, `UserSession`; JWT, registration, per-user locale/calendar. NOT under `apps/`. |
-| `crm` | `crm/` | 44 | Leads (funnel via STAGES.py), Clients, chatter (`LeadActivity`), canaux/tags/motifs de perte (+`MotifPerteStandardPropose`, ACRM25), liste d'opposition par empreinte hachée `EmpreinteOpposition` (ACRM62), `SiteProfile`, salle de vente, forecast, parrainage, playbooks, équipes. Modèles scindés (move only, ré-exportés en bas de `models.py`, même app_label) : `models_clients.py` = partenaires, apporteurs, deals, salle de vente, T-TRACE (SPL91) + `Client` et le pilotage — parrainage, objectifs, concurrents, plans d'activité, équipes, forecast, plans de compte, playbooks, défis (SPL92) ; `models_cadence.py` = `RelanceEtape`, `GesteRelanceAppareil`, `MessageTemplate`, `PeriodeAbsence` (SPL93). |
+| `crm` | `crm/` | 44 | Leads (funnel via STAGES.py), Clients, chatter (`LeadActivity`), canaux/tags/motifs de perte (+`MotifPerteStandardPropose`, ACRM25), `SiteProfile`, salle de vente, forecast, parrainage, playbooks, équipes. |
 | `visites` | `visites/` | 2 | Visites techniques terrain (`VisiteTerrain`, `VisiteMedia`) — autonomous app; the field rep has no CRM access. |
 | `calepinage` | `calepinage/` | 10 | Roof design studio: `Calepinage` + variantes/versions, `ReleveTerrain`, `PhotoSite`, `PoseReelle`, `DossierReglementaire`. Holds the villa engine + kit catalogue + roof-marker helper repatriated from `ao`. |
 | `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink` (ADOC131 : `suivi_prolonge_le`/`revoque_le`, action `devis/<id>/revoquer-lien-public/`), affiche de toiture servie même origine (ACAL314 : `devis/<id>/roof-image/fichier/` + public `proposal/<token>/roof-image/`, chemins fabriqués par `domain/stockage_toiture.py`), listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). Découpes SPL (move-only, goldens dans `tests/golden/` via `tests/split_golden.py`) : `selectors.py` = façade ré-exportant `selectors_{cadence,calepinage,facturation,portail,publicite,stock}.py` ; `public_views.py` garde document/proposal/suivi publics, le reste vit dans `public/` (`noyau`, `lecture_views` engagement, `paiement_views`, `signature_views`, `payload_*`) ; `etude_horaire.py` délègue à `horaire/` (`base`, `batterie_lignes`, `public`, `conso`, `ve_nocturne`) ; `views/devis.py` = viewset réparti en mixins `views/devis_{cadence,calepinage,cycle,edition,envoi,etudes,facturation,gardes,pdf}.py` ; `solar_design.py` ré-exporte `solar_{base,finance,classification}.py` ; `domain/cycle_vie.py`/`creation.py` répartis en `domain/{envoi,revision,creation_auto,creation_calepinage,creation_clone,…}.py` ; frontend `pages/ventes/DevisList.jsx` délègue à `devisList/`. |
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1170)**
+**Done (1173)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1576,6 +1576,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
+- `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
+- `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `QJR500` — Contrat d'abord : un devis dit s'il est modifiable et révisable ; la ligne devis du…
 - `QJR501` — Contrat d'abord : la proposition publique dit qu'elle est remplacée et porte le texte…
 - `QJR502` — Contrat d'abord : aperçu WhatsApp multi-devis du lead, sans aucun effet
@@ -1747,8 +1749,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR668` — [DÉCIDÉ fondateur 01/10/2026 : brancher : gel à l'envoi, re-gel à chaque correction…
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
+- `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (129)**
+**Open — to build (126)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1794,7 +1797,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
-- `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
+- `AUD504` — [GATED: coût prestataire — décision fondateur]
 - `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
@@ -1843,15 +1846,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF22` — `# noqa` (2 435) et `eslint-disable` (432) à zéro
 - `ENF23` — Tests sautés (178) à zéro
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
-- `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
+- `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
-- `CALX199` — Trancher l'achat d'une source météo bancable
-- `CALX200` — Trancher le pas infra-horaire
-- `CALX373` — (DECISION) Trancher l'aller-retour avec un configurateur de fixation constructeur
-- `CALX374` — (COST) Trancher la photogrammétrie par drone comme source de relevé
-- `CALX375` — (DECISION) Trancher les intégrations partenaires de conception et de stockage
-- `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
+- `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX199` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX200` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX375` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
 - `CRXB3` — [GATED] Fin de `__all__`
@@ -1860,7 +1862,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CRXB6` — [GATED] Frontière sortante contractée
 - `CRXB7` — [GATED] Registres LeadsPage/ListView + tests de rendu
 - `CRXB8` — [GATED] LeadViewSet dégonflé
-- `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `PUB107` — [GATED: décision WhatsApp Cloud API (même porte qu'ADSENG34)] Boîte de réception…
 - `PUB108` — [GATED: décision WhatsApp Cloud API] Réponse instantanée + qualification WhatsApp Flows
 - `PUB109` — [GATED: décision WhatsApp Cloud API] Relances drip marketing WhatsApp
@@ -1877,7 +1878,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG4` — [GATED: founder content]
 - `QXG5` — [GATED: founder ops check, 10 minutes]
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
-- `VTAG1` — [GATED: décision fondateur]
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
 **Blocked — awaiting founder decision (8)**

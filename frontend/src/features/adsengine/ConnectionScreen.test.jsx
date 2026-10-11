@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import GARDE_FOUS from '../../../../backend/django_core/apps/adsengine/contract_samples/garde_fous_singleton.json'
 
 /* ENG22 — l'écran Connexion : identifiants WRITE-ONLY (jamais relus), statuts
    de câblage (ENG12), édition plafond/band, et AUCUN toggle d'activation
@@ -158,6 +159,27 @@ describe('ConnectionScreen (ENG22)', () => {
     fireEvent.click(screen.getByTestId('ae-conn-guard-save'))
     await waitFor(() => expect(mocks.guardUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ max_daily_budget_mad: 150 })))
+  })
+
+  it('AACQ101 — plafonds libellés dans la devise du compte, plafond d\'une autre devise signalé', async () => {
+    mocks.get.mockResolvedValue({ data: { connected: true, currency: 'USD' } })
+    mocks.guardGet.mockResolvedValue({ data: { ...GARDE_FOUS.exemple } })
+    const { unmount } = renderScreen()
+    await waitFor(() => expect(mocks.guardGet).toHaveBeenCalled())
+    expect(await screen.findByText('Plafond budget quotidien (USD)')).toBeInTheDocument()
+    expect(screen.getByText('Plafond budget mensuel (USD)')).toBeInTheDocument()
+    expect(screen.getByText("Plancher d'exploration (USD/jour)")).toBeInTheDocument()
+    expect(screen.getByText(/\(USD ou %\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/\(MAD/)).toBeNull()
+    expect(screen.getByText(/Plafond quotidien actuel : 120 USD/)).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-conn-guard-devise-alert')).toBeNull()
+    unmount()
+    // Plafond enregistre en MAD (devise vide) sur un compte USD : non applique.
+    mocks.guardGet.mockResolvedValue({ data: { ...GARDE_FOUS.sans_plafond_saisi } })
+    renderScreen()
+    const alerte = await screen.findByTestId('ae-conn-guard-devise-alert')
+    expect(alerte.textContent).toContain(
+      'Plafond saisi en MAD, compte facturé en USD : non appliqué — ressaisissez-le')
   })
 
   it('PUB9 — chaque champ exposé par le singleton est éditable (13 champs, groupés)', async () => {
