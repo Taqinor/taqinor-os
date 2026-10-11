@@ -195,6 +195,9 @@ class RevisionTests(TestCase):
 
         # Même V2 rejouée : aucun écart de nomenclature, rien ne bouge.
         diff_avant = dict(emise.diff_v2)
+        # Le chantier tel que la V2 l'a laissé (bom V2), comme le relit tout
+        # appelant réel — l'instance en mémoire porte encore la bom V1.
+        self.inst.refresh_from_db()
         _realigner_nomenclature_revision(self.inst, v2)
         emise.refresh_from_db()
         self.assertEqual(emise.diff_v2, diff_avant)
