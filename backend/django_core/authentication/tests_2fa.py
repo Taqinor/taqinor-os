@@ -204,6 +204,19 @@ class TestTwoFactorSetupEnableDisable(TestCase):
         self.user.refresh_from_db()
         self.assertFalse(self.user.totp_enabled)
 
+    def test_enf11_etats_refuses_en_409(self):
+        """ENF11 — activer sans configuration / désactiver sans 2FA = conflit
+        d'état (409), plus un 400 « donnée invalide » ; corps non objet = 400."""
+        r = self.auth.post(
+            '/api/django/auth/2fa/enable/', {'code': '000000'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.auth.post(
+            '/api/django/auth/2fa/disable/', {'code': '000000'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.auth.post('/api/django/auth/2fa/setup/', {}, format='json')
+        r = self.auth.post('/api/django/auth/2fa/enable/', [1], format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_disable_rejects_bad_verification(self):
         self._enable_2fa()
         resp = self.auth.post(

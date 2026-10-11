@@ -2,6 +2,8 @@ import os
 from django.conf import settings
 from django.contrib import admin
 from django.urls import path, re_path, include
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework_simplejwt.views import TokenVerifyView
 from authentication.views import BodyTokenRefreshView, CustomTokenObtainPairView
 from drf_spectacular.views import (
@@ -113,6 +115,16 @@ _APP_URLS = [
     path('statuspage/', include('apps.statuspage.urls')),
 ]
 
+
+@extend_schema_view(post=extend_schema(responses={
+    200: OpenApiTypes.OBJECT,
+    # ENF11 — simplejwt répond 401 (``token_not_valid``) pour un jeton invalide
+    # ou expiré : refus voulu (authentification), désormais déclaré au contrat.
+    401: OpenApiResponse(description='Jeton invalide ou expiré.')}))
+class VerifierJetonView(TokenVerifyView):
+    """``POST /api/django/token/verify/`` — simplejwt inchangé, contrat exact."""
+
+
 urlpatterns = [
     path(_ADMIN_URL, admin.site.urls),
     # JWT Auth endpoints
@@ -128,7 +140,7 @@ urlpatterns = [
     ),
     path(
         'api/django/token/verify/',
-        TokenVerifyView.as_view(),
+        VerifierJetonView.as_view(),
         name='token_verify',
     ),
     # YAPIC5 — schéma OpenAPI 3 (JSON) + docs interactives, derrière

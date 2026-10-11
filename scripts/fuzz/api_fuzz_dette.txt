@@ -681,8 +681,6 @@ API rejected schema-compliant request|GET /api/django/ventes/export-comptable/
 API rejected schema-compliant request|GET /api/django/ventes/factures/{facture_id}/lettre-relance-pdf/
 API rejected schema-compliant request|GET /api/django/ventes/journal-ventes/
 API rejected schema-compliant request|GET /api/django/ventes/plans-commission/resoudre/
-API rejected schema-compliant request|PATCH /api/django/auth/me/calendrier-hegirien/
-API rejected schema-compliant request|PATCH /api/django/auth/me/langue/
 API rejected schema-compliant request|PATCH /api/django/core/ui-boutons/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/vues/{id}/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
@@ -734,8 +732,6 @@ API rejected schema-compliant request|POST /api/django/achats/prix-fournisseurs/
 API rejected schema-compliant request|POST /api/django/achats/receptions-fournisseur/
 API rejected schema-compliant request|POST /api/django/achats/retours-fournisseur/
 API rejected schema-compliant request|POST /api/django/agent/actions/automation-draft/
-API rejected schema-compliant request|POST /api/django/auth/2fa/disable/
-API rejected schema-compliant request|POST /api/django/auth/2fa/enable/
 API rejected schema-compliant request|POST /api/django/automation/approval-requests/
 API rejected schema-compliant request|POST /api/django/automation/incoming-webhooks/
 API rejected schema-compliant request|POST /api/django/automation/rules/
@@ -1468,12 +1464,8 @@ Server error|GET /api/django/stock/produits/expirant-bientot/
 Server error|GET /api/django/stock/produits/previsions-reappro/
 Server error|GET /api/django/ventes/clients/{client_id}/credit-warning/
 Server error|GET /api/django/ventes/devis/{id}/proposal/
-Server error|PATCH /api/django/auth/me/calendrier-hegirien/
-Server error|PATCH /api/django/auth/me/langue/
 Server error|POST /api/django/adminops/config-packages/appliquer/
 Server error|POST /api/django/adminops/config-packages/previsualiser/
-Server error|POST /api/django/auth/mobile-home-route/
-Server error|POST /api/django/auth/switch-company/
 Server error|POST /api/django/core/branded-templates/{id}/preview/
 Server error|POST /api/django/core/bulk-edit/appliquer/
 Server error|POST /api/django/core/data-explorer/drill/
@@ -1530,7 +1522,6 @@ Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/comparatif
 Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/
 Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/
 Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/
-Undocumented Content-Type|GET /api/django/companies/{id}/demo-kit/export.xlsx
 Undocumented Content-Type|GET /api/django/core/workflows/rapport-conformite/
 Undocumented Content-Type|GET /api/django/facturation/avoirs/{id}/telecharger-pdf/
 Undocumented Content-Type|GET /api/django/facturation/factures/{id}/telecharger-pdf/
@@ -1567,7 +1558,6 @@ Undocumented HTTP status code|POST /api/django/crm/appareils-equipe/
 Undocumented HTTP status code|POST /api/django/crm/leads/{id}/visites/planifier/
 Undocumented HTTP status code|POST /api/django/facturation/factures/{id}/creer-avoir/
 Undocumented HTTP status code|POST /api/django/facturation/factures/{id}/envoyer-email/
-Undocumented HTTP status code|POST /api/django/token/verify/
 Undocumented HTTP status code|POST /api/django/ventes/devis/auto/
 Undocumented HTTP status code|POST /api/django/ventes/devis/{id}/facturer-complet/
 Undocumented HTTP status code|POST /api/django/ventes/devis/{id}/renouveler/
