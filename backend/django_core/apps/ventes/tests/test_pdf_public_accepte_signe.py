@@ -99,10 +99,10 @@ class _StockageMemoire:
     def __init__(self):
         self.objets = {}
 
-    def put_object(self, Bucket, Key, Body, ContentType=None):  # noqa: N803
+    def put_object(self, Bucket, Key, Body, ContentType=None):
         self.objets[Key] = bytes(Body)
 
-    def get_object(self, Bucket, Key):  # noqa: N803
+    def get_object(self, Bucket, Key):
         return {'Body': io.BytesIO(self.objets[Key])}
 
 

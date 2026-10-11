@@ -281,4 +281,4 @@ def _residential_panel_count(*, taille_kwc=None, panel_watt=_AUTO_PANEL_WATT):
 
 # ── PONT M3 : nom hébergé ailleurs ───────────────────────────────────────────
 # Import EN BAS DE FICHIER, visant le module qui PORTE le corps.
-from apps.ventes.domain.catalogue import plafond_panneaux  # noqa: E402,F401
+from apps.ventes.domain.catalogue import plafond_panneaux  # noqa: E402

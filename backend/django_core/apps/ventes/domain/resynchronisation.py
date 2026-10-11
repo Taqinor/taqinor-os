@@ -1516,8 +1516,8 @@ def ecrire_conception_du_devis(devis, layout, user=None, *,
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402,F401
-from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402
+from apps.ventes.domain.catalogue import (  # noqa: E402
     SOCLES_PAR_PANNEAU,
     STRUCTURES_PAR_PANNEAU,
     _arrondi_js,
@@ -1536,7 +1536,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     metre_cable_dc,
     metre_cable_terre,
 )
-from apps.ventes.domain.composition import (  # noqa: E402,F401
+from apps.ventes.domain.composition import (  # noqa: E402
     VARIANTE_AVEC,
     VARIANTE_SANS,
     _completer_kit_residentiel,
@@ -1544,8 +1544,8 @@ from apps.ventes.domain.composition import (  # noqa: E402,F401
     _refuser_couple_panneau_onduleur_impossible,
     _v_txt,
 )
-from apps.ventes.domain.gammes import gamme_nom  # noqa: E402,F401
-from apps.ventes.domain.geometrie import (  # noqa: E402,F401
+from apps.ventes.domain.gammes import gamme_nom  # noqa: E402
+from apps.ventes.domain.geometrie import (  # noqa: E402
     _cible_panneaux_du_layout,
     _watt_du_layout,
     extract_roof_config,
@@ -1553,7 +1553,7 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     modeles_designes,
     scenario_du_layout,
 )
-from apps.ventes.domain.lignes import (  # noqa: E402,F401
+from apps.ventes.domain.lignes import (  # noqa: E402
     _classe_ligne,
     _lignes_produit,
     creer_ligne,
@@ -1563,17 +1563,17 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
 # a pas de cycle : ``pipeline`` n'importe CE module que depuis l'intérieur de
 # son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
 # toujours complètement chargé quand cette ligne s'exécute.
-from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+from apps.ventes.domain.pipeline import (  # noqa: E402
     MODE_RECONCILIER,
     ORIGINE_RESYNCHRONISATION,
     IntentionDevis,
     appliquer,
 )
-from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
+from apps.ventes.domain.etape_composer import (  # noqa: E402
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
 )
-from apps.ventes.domain.scenario import (  # noqa: E402,F401
+from apps.ventes.domain.scenario import (  # noqa: E402
     SCENARIO_LES_DEUX,
     puissance_kwc_du_devis,
     scenario_effectif,

@@ -1331,7 +1331,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     porte_bareme_par_panneau,
     prix_forfait_ht,
 )
-from apps.ventes.domain.composition import (  # noqa: E402,F401
+from apps.ventes.domain.composition import (  # noqa: E402
     VARIANTE_AVEC,
     VARIANTE_COMMUNE,
     VARIANTE_SANS,
