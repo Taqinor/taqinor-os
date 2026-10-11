@@ -45,8 +45,6 @@ apps.installations.views.kitting:OrdreAssemblageViewSet.analyse
 apps.installations.views.program:BudgetProjetViewSet.synthese
 apps.litiges.views:ReclamationViewSet.analyse_concurrents
 apps.paie.views:BulletinPaieViewSet.analyse
-apps.portail.views_externes:tableau_de_bord_fournisseur
-apps.portail.views_externes:tableau_de_bord_partenaire
 apps.pos.views:VenteComptoirViewSet.dashboard
 apps.pos.views:VenteComptoirViewSet.dashboard_export
 apps.qhse.views:IncidentViewSet.statistiques_tf_tg

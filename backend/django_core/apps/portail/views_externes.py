@@ -33,6 +33,15 @@ from apps.roles.permissions import (
 )
 
 
+@extend_schema(responses=inline_serializer('PortailFournisseurTableauDeBord', {
+    'fournisseur_nom': serializers.CharField(),
+    'bcf_a_confirmer': serializers.IntegerField(),
+    'bcf_en_cours': serializers.IntegerField(),
+    'livraisons_annoncees': serializers.IntegerField(),
+    'receptions_recentes': serializers.IntegerField(),
+    'factures_a_payer': serializers.IntegerField(),
+    'montant_a_payer': serializers.CharField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsPortalFournisseurUser])
 def tableau_de_bord_fournisseur(request):
@@ -42,6 +51,14 @@ def tableau_de_bord_fournisseur(request):
         request.user.company, portal_scope_id(request.user)))
 
 
+@extend_schema(responses=inline_serializer('PortailPartenaireTableauDeBord', {
+    'partenaire_nom': serializers.CharField(),
+    'statut_onboarding': serializers.CharField(allow_blank=True),
+    'soumissions_par_statut': serializers.DictField(
+        child=serializers.IntegerField()),
+    'commissions_dues': serializers.CharField(),
+    'commissions_payees': serializers.CharField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsPortalPartenaireUser])
 def tableau_de_bord_partenaire(request):
