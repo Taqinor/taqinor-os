@@ -48,13 +48,6 @@ backend/django_core/apps/ventes/serializers_commissioning.py::CommissioningTestS
 backend/django_core/apps/ventes/serializers_commissioning.py::TestPerformanceReceptionSerializer.chantier
 
 # AANA47 - sites PRE-EXISTANTS releves le 2026-10-07 (M2M, FK utilisateur/role, serialiseurs hors serializers*.py). CONSTATES, pas approuves : chaque ligne retiree = une fuite fermee ; correction par proprietaire.
-backend/django_core/apps/adminops/serializers.py::AnnonceProduitSerializer.auteur
-backend/django_core/apps/adminops/serializers.py::AnnonceProduitSerializer.cible_roles
-backend/django_core/apps/adminops/serializers.py::DemandeInscriptionSerializer.traite_par
-backend/django_core/apps/adminops/serializers.py::SandboxEnvironmentSerializer.cree_par
-backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer.consentement_par
-backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer.initiee_par
-backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer.utilisateur_cible
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.decided_by
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.requested_by
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.assigne_par_defaut
