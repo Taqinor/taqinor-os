@@ -7,11 +7,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 // L744 — Liste consultable des RETOURS FOURNISSEUR (RetourFournisseurViewSet
 // existait sans écran). Référence RF, fournisseur, statut, date + consultation
@@ -19,14 +19,6 @@ import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 // liste n'affiche aucun prix.
 
 // Message FR d'une erreur serveur (jamais de JSON brut).
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
-}
-
 const RETOUR_STATUTS = {
   brouillon: 'Brouillon',
   valide: 'Validé',
@@ -179,10 +171,7 @@ export default function RetoursFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Undo2}
         title="Retours fournisseur"
         subtitle={`${items.length} retour(s)`}

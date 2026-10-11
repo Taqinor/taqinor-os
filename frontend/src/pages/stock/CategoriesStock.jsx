@@ -8,12 +8,12 @@ import {
   Button, IconButton, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { frErrChamps as frErr } from '../../lib/frErr'
 
 // L693/L694 — Écran de gestion des CATÉGORIES (renommer / ordre / type
 // d'équipement) et des MARQUES produit. Le free-text par société est préservé :
@@ -98,18 +98,6 @@ function labelDuType(type) {
 }
 
 // Extrait un message FR lisible d'une erreur DRF (jamais de JSON brut).
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
-}
-
 export default function CategoriesStock() {
   const [confirmer, dialogueConfirmation] = useConfirmation()
   // ARC47 — gating via le hook partagé. `hasFinePermissions` (présence de
@@ -319,10 +307,7 @@ export default function CategoriesStock() {
 
   return (
     <div className="ui-root flex flex-col gap-5 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Boxes}
         title="Catégories & marques"
         subtitle="Gérez les catégories du catalogue (nom, ordre d'affichage, type d'équipement) et les marques produit."

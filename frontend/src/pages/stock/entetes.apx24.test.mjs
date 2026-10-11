@@ -11,6 +11,11 @@ import path from 'node:path'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
+// ENF19 — l'écran peut rendre l'en-tête via `EnteteStock` (qui pose, pour tous,
+// le liseré d'accent Inventaire et `headingAs="h1"`) au lieu de recopier ces
+// trois props : même rendu, source unique.
+const ENTETE = read('EnteteStock.jsx')
+const usesEntete = (src) => /import \{ EnteteStock \} from '\.\/EnteteStock'/.test(src) && /<EnteteStock/.test(src)
 
 // Les 15 écrans balayés (les autres fichiers du dossier sont des composants,
 // pas des pages : tableau, formulaire, sélecteur…).
@@ -38,6 +43,7 @@ test('plus aucun en-tête de page écrit à la main dans pages/stock/', () => {
 test('les 15 écrans rendent l’en-tête unique ui/PageHeader', () => {
   for (const f of BALAYES) {
     const src = read(f)
+    if (usesEntete(src)) continue
     assert.match(src, /import \{ PageHeader \} from '\.\.\/\.\.\/ui\/PageHeader'/, `${f} : import`)
     assert.match(src, /<PageHeader\b/, `${f} : non rendu`)
   }
@@ -46,8 +52,8 @@ test('les 15 écrans rendent l’en-tête unique ui/PageHeader', () => {
 test('chaque en-tête porte une icône ET l’accent de la famille inventaire', () => {
   for (const f of BALAYES) {
     const src = read(f)
-    assert.match(src, /<PageHeader[\s\S]{0,400}?icon=\{/, `${f} : icône absente`)
-    assert.match(src, /'--module-accent': INVENTAIRE_ACCENT/, `${f} : accent absent`)
+    assert.match(src, /<(PageHeader|EnteteStock)[\s\S]{0,400}?icon=\{/, `${f} : icône absente`)
+    assert.match(usesEntete(src) ? ENTETE : src, /'--module-accent': INVENTAIRE_ACCENT/, `${f} : accent absent`)
     // L'accent vient de la source unique, jamais d'une couleur en dur.
     assert.doesNotMatch(src, /'--module-accent': '#/, `${f} : couleur en dur`)
   }
@@ -63,7 +69,8 @@ test('le niveau de titre n’est pas rétrogradé en silence', () => {
   for (const f of ['BonsCommandeFournisseur.jsx', 'CategoriesStock.jsx',
     'FournisseurFiche360.jsx', 'InventairesAnnuels.jsx', 'LotsEntrepot.jsx',
     'RevalorisationsStock.jsx']) {
-    assert.match(read(f), /headingAs="h1"/, `${f} : niveau de titre perdu`)
+    const src = read(f)
+    assert.match(usesEntete(src) ? ENTETE : src, /headingAs="h1"/, `${f} : niveau de titre perdu`)
   }
   // Ceux qui portaient un <h2> restent en h2 (défaut) : pas de `headingAs`.
   for (const f of ['MouvementsPage.jsx', 'StockList.jsx', 'OcrStockImport.jsx']) {

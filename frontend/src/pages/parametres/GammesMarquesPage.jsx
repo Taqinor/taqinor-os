@@ -4,6 +4,7 @@ import ventesApi from '../../api/ventesApi'
 import { PRODUCT_CATEGORIES } from '../../features/ventes/solar'
 import { Button, Card, CardContent, Input, Label, Spinner, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 /* ============================================================================
    PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
@@ -39,14 +40,6 @@ const emptyForm = {
   nom_essentielle: SLOT_ESSENTIELLE,
   nom_premium: SLOT_PREMIUM,
   marques: { [SLOT_ESSENTIELLE]: {}, [SLOT_PREMIUM]: {} },
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
 }
 
 function normalizeMarques(marques) {

@@ -5,6 +5,7 @@ import stockApi from '../../api/stockApi'
 import { Button, Card, CardContent, Input, Label, Spinner, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
 import ReglesApprobationAchatSection from './ReglesApprobationAchatSection'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 /* ============================================================================
    WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
@@ -33,14 +34,6 @@ const emptyForm = {
   // une note de frais escaladée (NTP2P11). N'affecte jamais le calcul
   // d'escalade lui-même.
   plafond_notes_frais_actif: false,
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
 }
 
 export default function AchatsParametresPage() {

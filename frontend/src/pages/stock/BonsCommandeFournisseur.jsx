@@ -19,6 +19,7 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import {
   BCF_STATUTS,
@@ -33,8 +34,6 @@ import {
 } from '../../features/stock/procurement'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 
@@ -1458,10 +1457,7 @@ export default function BonsCommandeFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={ClipboardList}
         title="Bons de commande fournisseur"
         subtitle={`${rows.length} bon(s) de commande`}

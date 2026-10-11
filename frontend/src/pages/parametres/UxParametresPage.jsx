@@ -9,6 +9,7 @@ import {
   Button, Card, CardContent, Input, Label, MultiSelect, Spinner, Switch,
 } from '../../ui'
 import { toast } from '../../ui/confirm'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 const emptyForm = {
   duree_hover_peek_ms: 400,
@@ -17,14 +18,6 @@ const emptyForm = {
   roles_autorises_definir_defaut: [],
   max_vues_par_utilisateur: 50,
   max_favoris_par_utilisateur: 30,
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
 }
 
 export default function UxParametresPage() {

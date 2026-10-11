@@ -12,11 +12,13 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { frErrForm } from '../../lib/frErr'
+
+const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
 // G5 — Factures fournisseur / comptes à payer (AP).
 // Le solde dû = TTC − Σ paiements ; le statut de règlement est recalculé à
@@ -37,19 +39,6 @@ const MODES = {
   carte: 'Carte',
   effet: 'Effet / traite',
   autre: 'Autre',
-}
-
-function frError(err, fallback = 'Une erreur est survenue. Réessayez.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) return data.non_field_errors[0]
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
 }
 
 const fmtMad = (v) => formatMAD(v)
@@ -573,10 +562,7 @@ export default function FacturesFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={ReceiptText}
         title="Factures fournisseur"
         subtitle={`${items.length} facture(s)${aPayerSeul && totalDu != null ? ` — ${fmtMad(totalDu)} à payer` : ''}`}

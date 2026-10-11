@@ -13,13 +13,15 @@ import {
   // EZ10 — le sélecteur de bon de commande passe au Combobox (recherche).
   Combobox,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import { frErrForm } from '../../lib/frErr'
+
+const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
 // G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 // La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
@@ -34,19 +36,6 @@ const REC_STATUTS = {
 const statutLabel = (s) => REC_STATUTS[s] || s || ''
 
 // Traduit une erreur serveur DRF en phrase FR lisible (jamais de JSON brut).
-function frError(err, fallback = 'Une erreur est survenue. Réessayez.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) return data.non_field_errors[0]
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
-}
-
 const fmtDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso)
@@ -475,10 +464,7 @@ export default function ReceptionsFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={PackageCheck}
         title="Réceptions fournisseur"
         subtitle={`${items.length} réception(s)`}

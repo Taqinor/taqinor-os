@@ -21,14 +21,14 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Badge,
   Checkbox, FileUpload,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import OnboardingFournisseurWizard from '../../components/OnboardingFournisseurWizard'
 import ScoreRisqueFournisseurBadge from '../../components/ScoreRisqueFournisseurBadge'
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -50,14 +50,6 @@ const fmtMad = (v) => formatMAD(v)
 const fmtDate = (v) => {
   if (!v) return '—'
   try { return new Date(v).toLocaleDateString('fr-FR') } catch { return '—' }
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
 }
 
 function Indisponible({ message }) {
@@ -1601,10 +1593,7 @@ export default function FournisseurFiche360({
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
       {/* APX24 — en-tête UNIQUE de l'app (VX28) + icône et accent de la
           famille inventaire ; le niveau de titre (h1) est conservé. */}
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Wallet}
         title={`Fiche fournisseur 360${fournisseurNom ? ` — ${fournisseurNom}` : ''}`}
         subtitle="Vue d'ensemble achats — donnée interne, jamais client-facing."
@@ -1660,7 +1649,7 @@ export default function FournisseurFiche360({
             ]}
           />
         )}
-      </PageHeader>
+      </EnteteStock>
 
       <Card>
         <CardHeader>

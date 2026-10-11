@@ -11,25 +11,17 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormField,
 } from '../../ui'
+import { EnteteStock, ReserveAdminStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 /* WIR109 — XSTK13 : inventaire annuel légal FIGÉ (CGNC, support du bilan).
    LECTURE SEULE côté modèle : un snapshot n'est créé QUE par l'action
    `figer` (jamais réécrit ensuite) — écran admin-only, jamais client-facing
    (les coûts d'achat sont internes). */
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
-}
 
 function FigerDialog({ onClose, onDone }) {
   const [confirmer, dialogueConfirmation] = useConfirmation()
@@ -123,22 +115,11 @@ export default function InventairesAnnuels() {
     } finally { setExportingId(null) }
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="ui-root px-4 py-5 sm:px-5">
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          Réservé à l&apos;administrateur (coûts d&apos;achat internes).
-        </div>
-      </div>
-    )
-  }
+  if (!isAdmin) return <ReserveAdminStock />
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Lock}
         title="Inventaires annuels"
         subtitle="Snapshot légal figé de la valorisation du stock (CGNC). Interne, jamais client-facing."

@@ -4,6 +4,7 @@ import { AlertTriangle, CalendarClock, FileWarning } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { Button, Card, CardContent, Spinner } from '../../ui'
 import { toast } from '../../ui/confirm'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 /* ============================================================================
    NTP2P30 — Wizard de clôture de fin de mois achats. Purement AGRÉGATEUR en
@@ -11,14 +12,6 @@ import { toast } from '../../ui/confirm'
    donnée) : les 3 listes que le contrôleur achats doit traiter en fin de
    mois, chacune avec un lien direct vers son écran de résolution.
    ========================================================================== */
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
-}
 
 export default function ClotureAchatsWizardPage() {
   const navigate = useNavigate()

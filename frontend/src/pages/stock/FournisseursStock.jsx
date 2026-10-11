@@ -20,12 +20,12 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // ASTK184 — confirmation maison (AlertDialog) : plus aucune boîte native.
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { frErrChamps as frErr } from '../../lib/frErr'
 
 // XPUR4 — les 4 statuts fournisseur (miroir de `Fournisseur.Statut` côté
 // serveur — le blocage est déjà appliqué et testé serveur, cf.
@@ -70,18 +70,6 @@ const STATUT_VALIDATION_TONE = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 function emailValide(email) {
   return !email || EMAIL_RE.test(email.trim())
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
 }
 
 // ── WIR108 — gestion des catégories fournisseur (XPUR5, référentiel léger) ──
@@ -832,10 +820,7 @@ export default function FournisseursStock() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Truck}
         title="Fournisseurs"
         subtitle={`${items.length} fournisseur(s)`}

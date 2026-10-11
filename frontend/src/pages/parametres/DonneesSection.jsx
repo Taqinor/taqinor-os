@@ -22,6 +22,9 @@ import {
 } from '../../ui'
 import { SectionTitle } from './peComponents'
 import { useConfirmDialog } from '../../ui/confirm'
+import { frErrChamps } from '../../lib/frErr'
+
+const frErr = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrChamps(err, fallback)
 
 // APAR40 — liste COMPLÈTE (suit les pages DRF, 200 par page max) au lieu d'un
 // `page_size: 1000/500` que le serveur plafonne à 200 : avec 311 produits le
@@ -45,18 +48,6 @@ const fmtDateFR = (iso) => {
 }
 
 // Message FR d'une erreur serveur (jamais de JSON brut).
-function frErr(err, fallback = 'Une erreur est survenue. Réessayez.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
-}
-
 // ── Sessions d'inventaire (FG63) ─────────────────────────────────────────────
 function InventaireSessions() {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).

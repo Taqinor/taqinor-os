@@ -11,24 +11,16 @@ import {
   Form, FormField, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 /* WIR109 — XSTK6 : registre de lots en entrepôt (FEFO — péremption la plus
    proche d'abord). LECTURE SEULE côté modèle (alimenté à la confirmation
    d'une réception) : cet écran expose la consultation + les deux actions
    serveur déjà testées — `sortir` (décrémente un lot, garde périmé
    contournable avec motif tracé) et `fefo` (suggestion de sortie). */
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
-}
 
 function fmtDate(v) {
   if (!v) return '—'
@@ -236,10 +228,7 @@ export default function LotsEntrepot() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Layers}
         title="Lots en entrepôt (FEFO)"
         subtitle="Traçabilité par lot (batteries, produits d'étanchéité…) — péremption la plus proche d'abord."

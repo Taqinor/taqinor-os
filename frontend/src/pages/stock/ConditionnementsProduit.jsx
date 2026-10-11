@@ -10,30 +10,18 @@ import {
   Form, FormField, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { frErrChamps as frErr } from '../../lib/frErr'
 
 /* WIR109 — XSTK15 : conditionnements d'ACHAT d'un produit (« Touret 100 m »,
    « Carton 50 ») avec leur facteur de conversion vers l'unité de stock. Le
    stock reste stocké dans UNE SEULE unité (jamais de double comptage) :
    recevoir « 2 tourets de 100 m » incrémente 200 m via `facteur`. CRUD
    complet côté serveur, jusqu'ici sans écran. */
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
-}
 
 function ConditionnementForm({ produits, conditionnement, onClose, onSaved }) {
   const isNew = !conditionnement?.id
@@ -185,10 +173,7 @@ export default function ConditionnementsProduit() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={PackagePlus}
         title="Conditionnements produit"
         subtitle="Conditionnements d'achat (touret, carton…) — le stock reste dans une seule unité."
