@@ -59,7 +59,6 @@ backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_de
 backend/django_core/apps/stock/serializers.py::RevisionKitSerializer.user
 backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.bon_commande
 backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.demande_achat
-backend/django_core/apps/trash/serializers.py::ElementSupprimeSerializer.supprime_par
 backend/django_core/apps/ventes/serializers.py::DevisSerializer.remise_approuvee_par
 backend/django_core/apps/ventes/serializers.py::DevisWriteSerializer.updated_by
 backend/django_core/apps/ventes/serializers.py::PlanCommissionSerializer.owner
