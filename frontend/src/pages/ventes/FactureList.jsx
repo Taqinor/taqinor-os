@@ -42,6 +42,8 @@ import {
   Popover, PopoverTrigger, PopoverContent,
   toast,
 } from '../../ui'
+import { preparerApercuWhatsApp } from './whatsappFacture'
+import { LangueWhatsApp, BasculeAffichage, OngletCompteur, PageListeChargement } from './ElementsListeVentes'
 import { formatMAD, toNumber } from '../../lib/format'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
@@ -743,22 +745,10 @@ export default function FactureList() {
   // montre un aperçu (message + lien public) avant d'ouvrir wa.me ; le
   // commercial appuie lui-même sur Envoyer. Le POST consigne aussi l'action au
   // chatter de la facture (côté serveur, L856).
-  const handleWhatsApp = async (f, modele = 'facture') => {
-    setWaBusy(prev => ({ ...prev, [f.id]: true }))
-    try {
-      const res = await ventesApi.whatsappFacture(f.id, { modele, langue: waLangue })
-      setWaPreview({
-        reference: f.reference,
-        message: res.data?.message ?? '',
-        url: res.data?.url ?? '',
-        wa_url: res.data?.wa_url ?? '',
-      })
-    } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
-    } finally {
-      setWaBusy(prev => ({ ...prev, [f.id]: false }))
-    }
-  }
+  const handleWhatsApp = (f, modele = 'facture') => preparerApercuWhatsApp({
+    facture: f, params: { modele, langue: waLangue },
+    setWaBusy, setWaPreview, notifier: toast,
+  })
 
   // Ouvre wa.me après confirmation de l'aperçu.
   // VX48 — exclu volontairement : ce window.open() n'est précédé d'AUCUN await
@@ -1045,19 +1035,10 @@ export default function FactureList() {
           </DropdownMenuContent>
         </DropdownMenu>
         {/* L851 — langue des messages WhatsApp (FR par défaut). */}
-        <div role="group" aria-label="Langue des messages WhatsApp"
-             className="inline-flex items-center gap-1"
-             title="Langue du message « Envoyer par WhatsApp »">
-          <MessageCircle className="size-4 text-muted-foreground" />
-          {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
-            <Button key={val} size="sm"
-                    variant={waLangue === val ? 'default' : 'outline'}
-                    aria-pressed={waLangue === val}
-                    onClick={() => setWaLangue(val)}>
-              {label}
-            </Button>
-          ))}
-        </div>
+        <LangueWhatsApp waLangue={waLangue} setWaLangue={setWaLangue}
+          ariaLabel="Langue des messages WhatsApp"
+          className="inline-flex items-center gap-1"
+          title="Langue du message « Envoyer par WhatsApp »" />
         {/* WIR183/XFAC11 — UNE facture consolidée à partir de plusieurs devis
             acceptés du MÊME client. L'action consomme des ids de DEVIS, pas la
             sélection de factures : elle vit donc ici, avec son propre
@@ -1077,29 +1058,20 @@ export default function FactureList() {
 
   if (loading) {
     return (
-      <div className="page">
-        {pageHeader}
-        {showSpinner && (
-          <div className="mt-4 flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-            <Spinner /> Chargement des factures…
-          </div>
-        )}
-        {showSkeleton && (
-          <>
-            {/* Rangée de cartes trésorerie squelette (parité KPI ci-dessous). */}
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {Array.from({ length: 4 }).map((unused, i) => (
-                <div key={i} className="rounded-lg border border-border bg-card p-3">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="mt-2 h-6 w-20" />
-                  <Skeleton className="mt-1.5 h-3 w-16" />
-                </div>
-              ))}
+      <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
+        showSkeleton={showSkeleton} libelle="Chargement des factures…">
+        {/* Rangée de cartes trésorerie squelette (parité KPI ci-dessous). */}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((unused, i) => (
+            <div key={i} className="rounded-lg border border-border bg-card p-3">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-2 h-6 w-20" />
+              <Skeleton className="mt-1.5 h-3 w-16" />
             </div>
-            <FactureTableSkeleton />
-          </>
-        )}
-      </div>
+          ))}
+        </div>
+        <FactureTableSkeleton />
+      </PageListeChargement>
     )
   }
   if (error) {
@@ -1620,13 +1592,8 @@ export default function FactureList() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="flex-wrap">
             {TABS.map(t => (
-              <TabsTrigger key={t.key} value={t.key}
-                           className={t.key === 'overdue' && counts.overdue > 0 ? 'text-destructive data-[state=active]:text-destructive' : undefined}>
-                {t.label}
-                {counts[t.key] > 0 && (
-                  <span className="ml-1.5 rounded bg-muted px-1.5 text-xs text-muted-foreground">{counts[t.key]}</span>
-                )}
-              </TabsTrigger>
+              <OngletCompteur key={t.key} value={t.key} label={t.label} count={counts[t.key]}
+                className={t.key === 'overdue' && counts.overdue > 0 ? 'text-destructive data-[state=active]:text-destructive' : undefined} />
             ))}
           </TabsList>
         </Tabs>
@@ -1650,24 +1617,8 @@ export default function FactureList() {
         </div>
         {/* ZFAC9 — bascule Liste/Kanban : réutilise `filtered` déjà chargé,
             aucune donnée/refonte nouvelle. */}
-        <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5" role="group" aria-label="Mode d’affichage">
-          <Button
-            type="button" size="sm"
-            variant={viewMode === 'liste' ? 'secondary' : 'ghost'}
-            aria-pressed={viewMode === 'liste'}
-            onClick={() => setViewMode('liste')}
-          >
-            <LayoutList className="size-4" aria-hidden="true" /> Liste
-          </Button>
-          <Button
-            type="button" size="sm"
-            variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
-            aria-pressed={viewMode === 'kanban'}
-            onClick={() => setViewMode('kanban')}
-          >
-            <LayoutGrid className="size-4" aria-hidden="true" /> Kanban
-          </Button>
-        </div>
+        <BasculeAffichage viewMode={viewMode} setViewMode={setViewMode}
+          autreMode="kanban" autreLabel="Kanban" />
       </div>
 
       {viewMode === 'kanban' ? (

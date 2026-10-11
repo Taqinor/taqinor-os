@@ -200,7 +200,6 @@
 31568c6d92ec|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src/pages/interventions/InterventionsPage.jsx,frontend/src/pages/sav/TicketsPage.jsx
 31a05c397a60|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/ensoleillement-maroc.astro,frontend/src/pages/admin/ImpersonationConsentement.jsx,frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/ventes/FactureForm.jsx,frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/PaiementsPage.jsx,frontend/src/pages/ventes/devisList/DevisRow.jsx
 31c40147bfab|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-3204728328cf|frontend/src/pages/ventes/DevisList.jsx,frontend/src/pages/ventes/FactureList.jsx
 3238dd61a4ca|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 32c8e8fbf310|apps/web/src/pages/ar/ressources/10-questions-avant-de-signer.astro,apps/web/src/pages/ressources/10-questions-avant-de-signer.astro
 32cdd8b067b7|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
@@ -373,7 +372,6 @@
 5a918bce241b|apps/web/src/pages/en/garanties.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/garanties.astro,apps/web/src/pages/équipement.astro
 5ace2751fd2d|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts
 5afd8028b057|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
-5b540a0208c5|frontend/src/pages/ventes/DevisList.jsx,frontend/src/pages/ventes/FactureList.jsx
 5b866c9a3b04|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 5b9cddd57f44|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts
 5c3217c286fc|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
@@ -385,7 +383,6 @@
 5cd1b4097462|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro
 5ceadf90ce73|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 5cf7a802fa91|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-5d276f73b2ad|frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/RelancesPage.jsx
 5d34679799fd|frontend/src/pages/installations/AteliersPage.jsx,frontend/src/pages/installations/ParcInstallePage.jsx
 5dadefe007e6|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
 5de3b549ea80|apps/web/src/pages/en/blog/prix-installation-solaire-maroc-2026.astro,apps/web/src/pages/en/blog/rentabilite-solaire-par-ville-maroc.astro
@@ -669,8 +666,6 @@ a93ba9056b11|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/
 a99f62f81ba6|apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 aaa4738af7ba|frontend/src/features/calepinage/ModeTerrain.jsx,frontend/src/features/calepinage/Ombriere.jsx
 aaa91ab54cad|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-ab0e6c8aa2e6|frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/RelancesPage.jsx
-ab3c36d45a04|frontend/src/pages/ventes/BonCommandeList.jsx,frontend/src/pages/ventes/FactureList.jsx
 ab9a51f6bbb2|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 ac22ea62eb3b|frontend/src/features/adsengine/AdDetailScreen.jsx,frontend/src/features/adsengine/AdsCockpitScreen.jsx
 ac3f06923b67|frontend/src/pages/sav/KbArticlesPage.jsx,frontend/src/pages/sav/SavParametresPage.jsx
@@ -790,7 +785,6 @@ cbabba40545a|frontend/src/pages/installations/AteliersPage.jsx,frontend/src/page
 cc07c18b2839|apps/web/src/pages/en/garanties.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/garanties.astro,apps/web/src/pages/équipement.astro
 cc08665bfa10|frontend/src/pages/monitoring/CleaningsPage.jsx,frontend/src/pages/reporting/DashboardConfigPage.jsx
 cc0f46ee0714|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-cc1d9ec3abbd|frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/devisList/DevisListChrome.jsx
 cc62e631cdad|apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/methodologie-estimation.astro
 cc7afc998ff1|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 ccb66ee7f6d5|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro
@@ -820,7 +814,6 @@ d2f5356e92fc|apps/web/src/pages/api/proposition-engagement.ts,apps/web/src/pages
 d3130e761779|apps/web/src/components/Header.astro,apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 d315005bb134|apps/web/src/pages/ar/loi-82-21.astro,apps/web/src/pages/en/loi-82-21.astro
 d31c18a955f1|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
-d381f59aa110|frontend/src/pages/ventes/BonCommandeList.jsx,frontend/src/pages/ventes/FactureForm.jsx
 d3866765cb4d|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts
 d3db82486230|apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/résidentiel.astro
 d4abfd98f93b|apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro

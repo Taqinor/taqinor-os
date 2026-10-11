@@ -25,6 +25,8 @@ import {
   DropdownMenuLabel,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
+import { preparerApercuWhatsApp } from './whatsappFacture'
+import { LangueWhatsApp } from './ElementsListeVentes'
 import { formatMAD, formatDateTime, toNumber, normalizePhoneE164 } from '../../lib/format'
 // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
 import { toast, useConfirmDialog } from '../../ui/confirm'
@@ -432,24 +434,10 @@ export default function RelancesPage() {
   // Rappel de paiement par WhatsApp : construit le message « relance » côté
   // serveur (FR/Darija) puis montre un aperçu (message + lien public) avant
   // d'ouvrir wa.me ; le POST consigne aussi l'action au chatter (L856).
-  const whatsapp = async (r) => {
-    setWaBusy(prev => ({ ...prev, [r.id]: true }))
-    try {
-      const res = await ventesApi.whatsappFacture(r.id, {
-        modele: 'relance', langue: waLangue,
-      })
-      setWaPreview({
-        reference: r.reference,
-        message: res.data?.message ?? '',
-        url: res.data?.url ?? '',
-        wa_url: res.data?.wa_url ?? '',
-      })
-    } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
-    } finally {
-      setWaBusy(prev => ({ ...prev, [r.id]: false }))
-    }
-  }
+  const whatsapp = (r) => preparerApercuWhatsApp({
+    facture: r, params: { modele: 'relance', langue: waLangue },
+    setWaBusy, setWaPreview, notifier: toast,
+  })
 
   // Ouvre wa.me après confirmation de l'aperçu. En file (VX116), avance vers le
   // client suivant ; sinon ferme simplement l'aperçu.
@@ -837,19 +825,10 @@ export default function RelancesPage() {
             </DropdownMenu>
           )}
           {/* L851 — langue des rappels WhatsApp (FR par défaut). */}
-          <div role="group" aria-label="Langue des rappels WhatsApp"
-               className="ml-auto inline-flex items-center gap-1"
-               title="Langue du rappel « WhatsApp »">
-            <MessageCircle className="size-4 text-muted-foreground" />
-            {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
-              <Button key={val} size="sm"
-                      variant={waLangue === val ? 'default' : 'outline'}
-                      aria-pressed={waLangue === val}
-                      onClick={() => setWaLangue(val)}>
-                {label}
-              </Button>
-            ))}
-          </div>
+          <LangueWhatsApp waLangue={waLangue} setWaLangue={setWaLangue}
+            ariaLabel="Langue des rappels WhatsApp"
+            className="ml-auto inline-flex items-center gap-1"
+            title="Langue du rappel « WhatsApp »" />
         </div>
       )}
 
