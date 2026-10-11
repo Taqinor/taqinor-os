@@ -13,7 +13,7 @@ from authentication.models import Company
 
 from apps.adsengine import tasks
 from apps.adsengine.models import AdSetMirror
-from apps.adsengine.serializers import AdSetMirrorSerializer
+from apps.adsengine.serializers import AdMirrorSerializer, AdSetMirrorSerializer
 
 
 class FakeAdsetClient:
@@ -100,6 +100,20 @@ class LearningBadgeSerializerTests(TestCase):
         self.assertEqual(data['learning_status'], '')
         self.assertEqual(data['learning_badge']['tone'], 'neutral')
         self.assertFalse(data['learning_badge']['is_learning'])
+
+    def test_enf17_fk_miroir_lecture_seule_jamais_ecrite(self):
+        """ENF17 — campagne / ad set d'une autre société postés sur un miroir
+        en lecture seule : jamais écrits (bornés s'ils redeviennent
+        inscriptibles)."""
+        autre = Company.objects.create(nom='Badge Co B', slug='badge-co-b')
+        etranger = AdSetMirror.objects.create(company=autre, meta_id='as-b')
+        for cls, champ in ((AdSetMirrorSerializer, 'campaign'),
+                           (AdMirrorSerializer, 'adset')):
+            with self.subTest(serializer=cls.__name__):
+                ser = cls(data={champ: etranger.pk}, partial=True)
+                self.assertTrue(ser.is_valid(), ser.errors)
+                self.assertNotIn(champ, ser.validated_data)
+                self.assertIn(champ, cls.same_company_fields)
 
 
 class LearningResetWarningTests(TestCase):

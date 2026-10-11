@@ -66,8 +66,6 @@ backend/django_core/apps/ventes/serializers.py::PlanCommissionSerializer.owner
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.abandon_par
 
 # ASTK9 - pre-existant (releve 2026-10-07) : FK meme-app vers modele a societe, sites hors stock ; CONSTATES, pas approuves
-backend/django_core/apps/adsengine/serializers.py::AdMirrorSerializer.adset
-backend/django_core/apps/adsengine/serializers.py::AdSetMirrorSerializer.campaign
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.plan
 backend/django_core/apps/crm/serializers.py::LeadPlaybookProgressSerializer.lead
 backend/django_core/apps/crm/serializers.py::PlaybookEtapeSerializer.playbook
