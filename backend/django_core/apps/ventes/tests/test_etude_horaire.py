@@ -55,10 +55,6 @@ FACTURES_REELLES = (
 #: tolérance large : si le résidu grandit, ce test le dit.
 TOLERANCE_JOURS_NON_STANDARD = 0.10
 
-#: timbre espèces de la facture A (594,25 / 592,77) : frais de mode de
-#: paiement, DÉLIBÉRÉMENT hors du barème (bareme.py, « TIMBRE ESPÈCES »).
-TIMBRE_ESPECES_PCT = 0.0025
-
 
 class BaremeFacturesReellesTest(SimpleTestCase):
     """Le barème face aux trois factures papier du fondateur."""
@@ -75,7 +71,8 @@ class BaremeFacturesReellesTest(SimpleTestCase):
         """594,25 en espèces — vérifié, et DÉLIBÉRÉMENT hors du total."""
         total = B.facture_mad(359, jours=30, millesime=2026)['total_mad']
         self.assertAlmostEqual(
-            total * (1 + TIMBRE_ESPECES_PCT), 594.25, places=2)
+            # timbre espèces 0,25 % : frais de mode de paiement, hors barème
+            total * 1.0025, 594.25, places=2)
 
     def test_factures_b_et_c_dans_la_tolerance_mesuree(self):
         for libelle, kwh, jours, millesime, attendu in FACTURES_REELLES[1:]:
