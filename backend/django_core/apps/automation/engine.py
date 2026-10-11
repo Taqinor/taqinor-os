@@ -797,10 +797,11 @@ def enforce_requester_not_approver(
 
 def _audit_sod_blocked(user, company, label):
     try:
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
+        # ENF20 — via core.audit_registry ;
+        # 'security_alert' = AuditLog.Action.SECURITY_ALERT.
+        from core.audit_registry import record
         record(
-            AuditLog.Action.SECURITY_ALERT, user=user, company=company,
+            'security_alert', user=user, company=company,
             detail=f'SOD : auto-approbation refusée ({label}).')
     except Exception:  # pragma: no cover - best-effort
         logger.debug('automation: audit SOD (blocage) indisponible',
@@ -809,10 +810,11 @@ def _audit_sod_blocked(user, company, label):
 
 def _audit_sod_override(user, company, label):
     try:
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
+        # ENF20 — via core.audit_registry ;
+        # 'security_alert' = AuditLog.Action.SECURITY_ALERT.
+        from core.audit_registry import record
         record(
-            AuditLog.Action.SECURITY_ALERT, user=user, company=company,
+            'security_alert', user=user, company=company,
             detail=f'SOD : override admin — auto-approbation autorisée '
                    f'({label}).')
     except Exception:  # pragma: no cover - best-effort

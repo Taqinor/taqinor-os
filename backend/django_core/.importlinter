@@ -163,41 +163,13 @@ forbidden_modules =
 # ventes→notifications→audit path does not trip the forbidden contract.
 ignore_imports =
     apps.notifications.services -> apps.audit.recorder
-# XPUR11/XPUR13 — stock's services write their OWN best-effort audit trail for
-# override actions (duplicate-invoice / off-contract-price overrides). ventes
-# imports stock.services only for stock movements & QR; stock auditing itself is
-# stock's cross-cutting concern, not ventes reaching audit. Ignore this
-# stock→audit edge so the transitive ventes→stock.services→audit path is allowed.
-    apps.stock.services -> apps.audit.recorder
-    apps.stock.services -> apps.audit.models
-# ARC34 — le moteur d'automation écrit sa PROPRE trace d'audit (imports
-# fonction-locaux `audit.recorder`/`audit.models` dans `engine`, préexistants) ;
-# depuis qu'ARC34 abonne sav/contrats à `automation.engine` via leurs services,
-# le chemin transitif ventes→…→automation→audit apparaît. C'est le logging
-# transverse d'automation, PAS ventes atteignant audit directement (même motif
-# que les exceptions notifications/stock ci-dessus). Ignore ces arêtes
-# automation→audit.
-    apps.automation.engine -> apps.audit.recorder
-    apps.automation.engine -> apps.audit.models
-# SOLMVP-sweep (2026-09-21) — l'exception NTSCM47 (`apps.scm.services ->
-# apps.audit.recorder`) est retirée : `apps.scm` est sorti du MVP solaire
-# (Groupe SOLMVP), `scm/services.py` n'existe plus (coquille), et le hop
-# `dataimport.services -> scm.services` qu'elle prolongeait a déjà été retiré
-# de `dataimport/services.py`. Import-linter refusait cette exception avec
-# « No matches for ignored import » avant même d'évaluer le moindre contrat.
-# Garde-fou « écrasement » des imports — la plateforme d'import générique
-# (`dataimport.services`) écrit sa PROPRE trace d'audit best-effort dans
-# `_journaliser_maj` (imports fonction-locaux `audit.recorder`/`audit.models`,
-# posés par la vague précédente). Depuis que les importeurs MÉTIER
-# (stock : tarif fournisseur, contrats : compteurs d'usage, credit, entités…)
-# RÉUTILISENT cette primitive au lieu de recopier un journal maison, le chemin
-# transitif ventes→stock.services|contrats.services→dataimport→audit apparaît.
-# C'est le logging transverse de la plateforme d'import, PAS ventes atteignant
-# audit directement — même motif exact que les exceptions
-# notifications/stock/automation ci-dessus. Un import DIRECT
-# `apps.ventes.* -> apps.audit.*` resterait détecté.
-    apps.dataimport.services -> apps.audit.recorder
-    apps.dataimport.services -> apps.audit.models
+# ENF20 — les 6 exceptions stock.services / automation.engine /
+# dataimport.services -> apps.audit.recorder|models sont RETIRÉES : ces modules
+# journalisent désormais via `core.audit_registry` (inversion de dépendance,
+# même pattern que `core.notify_registry` ; apps.audit s'y enregistre dans son
+# ready()), donc plus aucun chemin transitif ventes→stock|automation|
+# dataimport→audit n'existe. L'exception NTSCM47 (scm) était déjà retirée
+# (SOLMVP-sweep 2026-09-21, scm sorti du MVP).
 # SOLMVP-sweep (2026-09-21) — l'exception NTMKT45/46 (`apps.marketing.services
 # -> apps.audit.recorder` / `-> apps.audit.models`) est retirée : l'arête
 # d'entrée qu'elle prolongeait (`ventes.public_views._enregistrer_ouverture_
@@ -597,8 +569,8 @@ ignore_imports =
 # suppression, via un import fonction-local `apps.audit.recorder` — exactement
 # comme `authentication.device`/`password_policy`/`services`/`views`/
 # `views_console` le font depuis longtemps, et comme les exceptions
-# `notifications|stock|automation|dataimport.services -> apps.audit.recorder`
-# plus haut dans ce fichier. grimp voit l'arête statique, donc l'arête
+# `notifications.services -> apps.audit.recorder` (stock/automation/
+# dataimport passent par `core.audit_registry` depuis ENF20) plus haut dans ce fichier. grimp voit l'arête statique, donc l'arête
 # fondation LÉGITIME `core.tests.test_wir50_security_beat -> authentication.
 # tasks` (autorisée : `authentication` n'est pas dans forbidden_modules)
 # atteint maintenant apps.ventes/stock/sav de façon TRANSITIVE via

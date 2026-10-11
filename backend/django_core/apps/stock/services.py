@@ -4199,7 +4199,7 @@ def definir_frais_annexes_ligne_bcf(company, bon_commande_id, produit_id,
     passage DC38 sur une ligne reçue trace au chatter du BCF l'ancien/nouveau
     frais et le coût moyen pondéré recalculé. Ligne non reçue : inchangé."""
     from decimal import Decimal
-    from apps.audit.recorder import current_user
+    from core.audit_registry import current_user
     from .models import LigneBonCommandeFournisseur
 
     if not bon_commande_id or not produit_id:
@@ -4989,10 +4989,10 @@ def remplacer_composant_masse(company, *, produit_ancien_id,
             + len(resultat['kits_installations']))
 
         # Ligne d'audit récapitulative (best-effort, jamais bloquante).
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
+        # ENF20 — via core.audit_registry ; 'update' = AuditLog.Action.UPDATE.
+        from core.audit_registry import record
         record(
-            AuditLog.Action.UPDATE,
+            'update',
             instance=nouveau,
             company=company, user=user,
             detail=(
@@ -6491,9 +6491,9 @@ def log_doublon_override(*, user, instance, detail):
     logger existant (apps.audit) ; un échec de journalisation ne casse
     jamais la création elle-même."""
     try:
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
-        record(AuditLog.Action.CREATE, instance=instance,
+        # ENF20 — via core.audit_registry ; 'create' = AuditLog.Action.CREATE.
+        from core.audit_registry import record
+        record('create', instance=instance,
                user=user, detail=detail)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.info('doublon override (audit indisponible): %s', detail)

@@ -657,15 +657,15 @@ def _journaliser_maj(instance, company, user, modifications, filename):
     if not modifications:
         return
     try:
-        from apps.audit.models import AuditLog
-        from apps.audit.recorder import record
+        # ENF20 — via core.audit_registry ; 'update' = AuditLog.Action.UPDATE.
+        from core.audit_registry import record
         resume = ', '.join(
             f"{m['champ']} « {m['ancienne']} » → « {m['nouvelle']} »"
             for m in modifications)
         prefixe = 'Import (écrasement)' if any(
             m['ecrasement'] for m in modifications) else 'Import'
         record(
-            AuditLog.Action.UPDATE, instance=instance, company=company,
+            'update', instance=instance, company=company,
             user=user if getattr(user, 'pk', None) else None,
             detail=f'{prefixe} « {filename} » : {resume}'[:2000],
             changes=[{'field': m['champ'], 'old': m['ancienne'],
