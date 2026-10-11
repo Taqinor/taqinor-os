@@ -1,9 +1,8 @@
 // ENF28 (ENF19) — chargement partagé des listes des portails fournisseur et
 // partenaire (« Mes bons de commande », « Mes soumissions ») : un seul
-// exemplaire au lieu de deux copies. Toutes les pages de l'enveloppe DRF sont
-// lues (ADOC32), jamais la seule page 1.
+// exemplaire au lieu de deux copies. Ces deux points d'accès rendent la liste
+// COMPLÈTE dans `results` (aucune pagination serveur, aucun `?page=` déclaré).
 import { useCallback, useEffect, useState } from 'react'
-import { chargerToutesLesPages } from './admin/chargerToutesLesPages'
 
 /** `liste(params)` = appel API stable d'UNE page ; `charger()` recharge tout. */
 export function useListePortail(liste) {
@@ -13,7 +12,8 @@ export function useListePortail(liste) {
 
   const charger = useCallback(() => {
     setLoading(true)
-    return chargerToutesLesPages((page) => liste({ page }))
+    return liste()
+      .then((r) => (Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
       .then((lignes) => {
         setRows(lignes)
         setErreur(false)
