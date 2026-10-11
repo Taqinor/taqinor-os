@@ -75,7 +75,7 @@ with no rate column at all — mono-MAD in practice.
 | sav | WarrantyClaim | `apps/sav/models.py:1414` | cout_recupere |
 | sav | ContratMaintenance | `apps/sav/models.py:1530` | prix |
 | sav | PrestationContrat | `apps/sav/models.py:1860` | prix_ht |
-| statuspage | UptimeDayBucket | `apps/statuspage/models.py:160` | echantillons_total |
+| statuspage | UptimeDayBucket | `apps/statuspage/models.py:164` | echantillons_total |
 | stock | AchatsParametres | `apps/stock/models.py:426` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | ToleranceRapprochementCategorie | `apps/stock/models.py:576` | tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | Produit | `apps/stock/models.py:704` | paliers_prix_vente, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, tva |

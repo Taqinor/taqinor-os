@@ -87,7 +87,8 @@ class ActivityType(models.Model):
         DECLENCHER = 'declencher', 'Déclencher'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='activity_types')
     nom = models.CharField(max_length=80)
     icone = models.CharField(max_length=8, blank=True, default='')
@@ -136,7 +137,8 @@ class Activity(models.Model):
         NOTE = 'note', 'Note'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='activities')
 
     # XKB4 — un « à-faire personnel » n'a PAS de cible métier : content_type/
@@ -144,7 +146,9 @@ class Activity(models.Model):
     # existante garde sa cible). `personnelle=True` marque ce cas et rend
     # l'activité visible du SEUL créateur (jamais listée pour un collègue).
     content_type = models.ForeignKey(
-        ContentType, on_delete=models.CASCADE, null=True, blank=True)  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
+        ContentType,
+        on_delete=models.CASCADE,  # on_delete: type générique — disparaît avec son ContentType (retrait du modèle seul)
+        null=True, blank=True)
     object_id = models.PositiveIntegerField(null=True, blank=True)
     content_object = GenericForeignKey('content_type', 'object_id')
     personnelle = models.BooleanField(
@@ -239,7 +243,8 @@ class Tag(models.Model):
     contrôlé : on ne crée jamais un tag à la volée sans le passer par l'API.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='tags')
     nom = models.CharField(max_length=80)
     # Couleur hex optionnelle pour le chip UI (ex. '#3b82f6'). Vide = défaut.
@@ -266,8 +271,13 @@ class TaggedItem(models.Model):
     Mêmes ALLOWED_TARGETS ; company déduit du tag (jamais du corps de requête).
     """
     tag = models.ForeignKey(
-        Tag, on_delete=models.CASCADE, related_name='tagged_items')  # on_delete: étape/élément de Tag — n'existe pas sans lui
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
+        Tag,
+        on_delete=models.CASCADE,  # on_delete: étape/élément de Tag — n'existe pas sans lui
+        related_name='tagged_items')
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,  # on_delete: type générique — disparaît avec son ContentType (retrait du modèle seul)
+    )
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -295,10 +305,14 @@ class Comment(models.Model):
     Company + auteur toujours posés côté serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='comments')
 
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,  # on_delete: type générique — disparaît avec son ContentType (retrait du modèle seul)
+    )
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
 
@@ -329,10 +343,14 @@ class Comment(models.Model):
 class Attachment(models.Model):
     """Pièce jointe rattachée à un enregistrement (générique), stockée MinIO."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='attachments')
 
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,  # on_delete: type générique — disparaît avec son ContentType (retrait du modèle seul)
+    )
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
 
@@ -373,15 +391,20 @@ class Follower(models.Model):
     existant tant que personne ne suit rien."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='followers')
 
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,  # on_delete: type générique — disparaît avec son ContentType (retrait du modèle seul)
+    )
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
 
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (Follower) — sans objet sans lui
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (Follower) — sans objet sans lui
         related_name='enregistrements_suivis')
     # Filtre déclaratif optionnel, ex. 'etape' = notifier seulement les
     # changements d'étape. Vide = tous les événements du chatter.
