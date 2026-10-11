@@ -30,7 +30,7 @@ def pourcentage_saisi(donnees, champ, defaut):
         return None, {champ: f'« {champ} » doit être un nombre fini.'}
     if valeur < 0 or valeur > 100:
         return None, {champ: f'« {champ} » doit être compris entre 0 et 100.'}
-    if valeur != valeur.quantize(Decimal('0.01')):
+    if valeur.normalize().as_tuple().exponent < -2:
         return None, {champ: f'« {champ} » : au plus 2 décimales.'}
     return valeur, None
 
@@ -51,6 +51,6 @@ def montant_saisi(valeur, champ):
         return None, {champ: f'« {champ} » doit être un nombre fini.'}
     if nombre < 0:
         return None, {champ: f'« {champ} » doit être positif ou nul.'}
-    if nombre != nombre.quantize(Decimal('0.01')):
+    if nombre.normalize().as_tuple().exponent < -2:
         return None, {champ: f'« {champ} » : au plus 2 décimales.'}
     return nombre, None
