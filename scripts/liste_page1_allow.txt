@@ -228,5 +228,4 @@ frontend/src/pages/visites/VisitesListPage.jsx::VisitesListPage
 # sites constates au releve du jour, memes regles (fichier::fonction, decroissant).
 frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog
 frontend/src/features/ged/advanced/ReglesDossierPage.jsx::JournalDialog
-frontend/src/pages/admin/GouvernanceAccesPage.jsx::RapportTab
 frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor
