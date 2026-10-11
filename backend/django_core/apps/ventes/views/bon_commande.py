@@ -1,11 +1,11 @@
-from django.db import transaction  # noqa: F401
-from django.db.models import Exists, OuterRef  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
-from django.utils import timezone  # noqa: F401
+from django.db import transaction
+from django.db.models import Exists, OuterRef
+from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
-from apps.stock.services import (  # noqa: F401
+from rest_framework.response import Response
+from apps.stock.services import (
     mouvement_type_sortie, record_stock_movement, verrouiller_produit,
     check_negative_stock_guard,
 )
@@ -28,13 +28,13 @@ from ..serializers_facturation import (  # noqa: F401
     AvoirSerializer,
     RelanceLogSerializer,
 )
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
-from ..domain.facturation_ops import StockInsuffisantError  # noqa: F401
+from ..domain.facturation_ops import StockInsuffisantError
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 

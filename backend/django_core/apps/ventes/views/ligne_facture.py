@@ -26,7 +26,7 @@ from ..serializers_facturation import (  # noqa: F401
     AvoirSerializer,
     RelanceLogSerializer,
 )
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,

@@ -37,7 +37,7 @@ except Exception:  # pragma: no cover - environnement sans PyMuPDF
 
 #: Fractions mensuelles RÉSIDENTIELLES de la branche « étude saisie ».
 # AMOT27 — LA constante (poids GHI), plus une copie littérale.
-from apps.ventes.quote_engine.pricing import (  # noqa: E402
+from apps.ventes.quote_engine.pricing import (
     CLE_SOLAIRE_MENSUELLE as _CLE_GHI)
 
 _SF_RESIDENTIEL = list(_CLE_GHI)

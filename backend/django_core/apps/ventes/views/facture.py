@@ -2,16 +2,16 @@ from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import ENTITE, qint, qstr
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
-from django.db import transaction  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
-from django.utils import timezone  # noqa: F401
+from django.db import transaction
+from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from . import openapi_docs as D
 from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.exceptions import ValidationError  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, mouvement_type_entree, record_stock_movement,
 )
@@ -36,8 +36,8 @@ from ..serializers_facturation import (  # noqa: F401
     NoteDebitSerializer,
     RelanceLogSerializer,
 )
-from rest_framework.permissions import BasePermission  # noqa: F401
-from authentication.permissions import (  # noqa: F401
+from rest_framework.permissions import BasePermission
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
