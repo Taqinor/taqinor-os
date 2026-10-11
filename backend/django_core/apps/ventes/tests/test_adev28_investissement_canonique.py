@@ -8,7 +8,9 @@ Tirages déterministes (taux 10/20, remises de ligne, remise globale 0 / 3,5 /
 (envoyé avant les corrections) garde la somme des lignes d'hier.
 
 Test-du-test : remettre ``investissement_ttc(lignes)`` inconditionnel dans
-``economie_pompage`` ⇒ ``test_pompage_egal_total_ttc`` échoue.
+``economie_pompage`` ⇒ ``test_pompage_egal_total_ttc`` échoue ; C&I : ne plus
+passer ``option_totaux`` comme ``investissement`` de ``economie_ci_pour_devis``
+⇒ ``test_ci_investissement_canonique_dans_le_cashflow`` échoue.
 """
 import itertools
 from decimal import Decimal
@@ -95,6 +97,22 @@ class InvestissementCanoniqueTests(TestCase):
             devis = self._devis(200 + n, rg, taux, rl, prix)
             self.assertEqual(Decimal(str(option_totaux(devis)['ttc'])),
                              Decimal(str(devis.total_ttc)), n)
-        # Sans étude C&I stockée le bloc est omis, mais le chemin reste
-        # appelable sans lever (aucune écriture).
-        economie_ci_pour_devis(devis, self.company)
+
+    def test_ci_investissement_canonique_dans_le_cashflow(self):
+        """ADEV75 : le flux de l'an 0 de ``economie_ci_pour_devis`` est
+        l'investissement canonique ``option_totaux`` (TVA non récupérable ⇒
+        base TTC ; ``flux_ttc.flux[0].flux_mad`` = −TTC). Mutant : remplacer
+        ``totaux`` par ``lignes_pour_economie_ci`` (O&M seulement) ou une somme
+        de lignes dans ``economie_ci_pour_devis`` ⇒ écart ⇒ rouge."""
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        from apps.ventes.utils.options import option_totaux
+        for n, (rg, taux, rl, prix) in enumerate(_tirages()):
+            devis = self._devis(300 + n, rg, taux, rl, prix)
+            devis.etude_params = {
+                'etude_ci': _apercu('mt'),
+                'saisies_economie_ci': {'tva_recuperable': 'non'}}
+            bloc = economie_ci_pour_devis(devis, self.company)
+            self.assertEqual(bloc['statut'], 'calcule', n)
+            self.assertAlmostEqual(
+                bloc['flux_ttc']['flux'][0]['flux_mad'],
+                -float(option_totaux(devis)['ttc']), places=2, msg=n)
