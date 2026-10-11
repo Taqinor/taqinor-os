@@ -8,6 +8,8 @@ import re as _re
 
 from django.utils import timezone
 
+from apps.records.provenance import ecrire_si_libre
+
 from . import activity
 from .cadence_plan import demarrer_cadence_contact
 from .leads_attribution import default_responsable_for
@@ -401,8 +403,8 @@ def _apply_meta_form_extras(lead, extras):
             setattr(lead, champ, extras[champ])
             changed.append(champ)
     if (extras.get('priorite') == Lead.Priorite.HAUTE
-            and lead.priorite == Lead.Priorite.NORMALE):
-        lead.priorite = Lead.Priorite.HAUTE
+            and lead.priorite == Lead.Priorite.NORMALE
+            and ecrire_si_libre(lead, 'priorite', Lead.Priorite.HAUTE)):
         changed.append('priorite')
     # CAD134 — le délai déclaré remplit le champ DÉJÀ scoré, et seulement
     # s'il est vide : un délai saisi à la main par la commerciale (ou venu du
@@ -422,10 +424,10 @@ def _apply_meta_form_extras(lead, extras):
         lead.contact_preference = extras['contact_preference']
         lead.contact_preference_set_at = timezone.now()
         changed.extend(['contact_preference', 'contact_preference_set_at'])
-    if lead.telephone and not lead.whatsapp:
-        # Un lead Meta arrive par mobile : le même numéro sert de lien wa.me
-        # pour la première prise de contact de Meryem.
-        lead.whatsapp = lead.telephone
+    # Un lead Meta arrive par mobile : le même numéro sert de lien wa.me pour
+    # la première prise de contact — AMET19 : jamais sur un WhatsApp saisi.
+    if (lead.telephone and not lead.whatsapp
+            and ecrire_si_libre(lead, 'whatsapp', lead.telephone)):
         changed.append('whatsapp')
     return changed
 
