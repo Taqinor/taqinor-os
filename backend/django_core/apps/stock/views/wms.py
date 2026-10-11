@@ -11,6 +11,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from ..openapi_helpers import BINARY, BOOL, DATE, INT, OBJET, P, PDF, STR, corps
+from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
@@ -32,6 +33,11 @@ from ..serializers_wms import (
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+CORPS_IMPORT_ASN = corps('UniteImportAsnCorps', version=ChaineStricte(required=False),
+                         unite=serializers.DictField(required=False),
+                         lignes=serializers.ListField(child=serializers.DictField(), required=False),
+                         totaux=serializers.DictField(required=False))
 
 
 def _relations_scopees(view, request, noms):
@@ -375,10 +381,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 f'attachment; filename="asn-{unite.sscc}.json"')
         return reponse
 
-    @extend_schema(request=corps('UniteImportAsnCorps', version=serializers.CharField(required=False),
-                                 unite=serializers.DictField(required=False),
-                                 lignes=serializers.ListField(child=serializers.DictField(), required=False),
-                                 totaux=serializers.DictField(required=False)), responses={
+    @extend_schema(request=CORPS_IMPORT_ASN, responses={
         200: inline_serializer('StockUniteAsnImport', {
             'valide': serializers.BooleanField(),
             'erreurs': serializers.ListField(child=serializers.CharField()),
@@ -392,6 +395,11 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         """NTWMS27 — import MIROIR d'un bordereau ASN : valide et rapproche,
         n'écrit RIEN (contrôle de cohérence, pas une intégration EDI)."""
         from ..services import importer_asn
+        # ENF11 : la STRUCTURE déclarée (version texte, unite/totaux objets,
+        # lignes = liste d'objets) est exigée en 400 ; le CONTENU incohérent
+        # reste rendu en 200 `valide: false` (import miroir).
+        entree = CORPS_IMPORT_ASN.__class__(data=request.data)
+        entree.is_valid(raise_exception=True)
         return Response(importer_asn(request.user.company, request.data))
 
     @extend_schema(request=None, responses=UniteLogistiqueSerializer)

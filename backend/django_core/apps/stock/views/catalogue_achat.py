@@ -163,9 +163,14 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         est silencieusement écarté, jamais stocké."""
         company = request.user.company
         if request.method == 'PUT':
-            demandes = request.data.get('produit_ids') or []
-            if not isinstance(demandes, list):
-                demandes = []
+            demandes = (request.data.get('produit_ids')
+                        if isinstance(request.data, dict) else None)
+            if not isinstance(demandes, list) or any(
+                    isinstance(i, bool) or not isinstance(i, int)
+                    for i in demandes):
+                return Response(
+                    {'produit_ids': ["Liste d'identifiants entiers attendue."]},
+                    status=400)
             valides = list(Produit.objects.filter(
                 company=company, id__in=[
                     i for i in demandes if isinstance(i, int)]

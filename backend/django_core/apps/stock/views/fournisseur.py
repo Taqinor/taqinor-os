@@ -322,8 +322,11 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         """
         from ..services import decider_candidature_fournisseur
         fournisseur = self.get_object()
-        valider = parse_bool_strict(request.data.get('valider'))
-        if valider is None:
+        # ENF11 : un VRAI booléen JSON, comme le schéma le déclare (« 1 »,
+        # « on », « true » texte ne valident plus un tiers externe).
+        valider = (request.data.get('valider')
+                   if isinstance(request.data, dict) else None)
+        if not isinstance(valider, bool):
             return Response(
                 {'detail': 'Le champ « valider » (true/false) est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)

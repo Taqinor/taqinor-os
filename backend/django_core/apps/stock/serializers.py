@@ -6,7 +6,7 @@ from drf_spectacular.utils import (extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
@@ -37,7 +37,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class MarqueSerializer(serializers.ModelSerializer):
+class MarqueSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     en_usage = serializers.SerializerMethodField()
 
     class Meta:
@@ -49,7 +49,7 @@ class MarqueSerializer(serializers.ModelSerializer):
         return Produit.objects.filter(company=obj.company, marque=obj.nom).count()
 
 
-class CategorieSerializer(serializers.ModelSerializer):
+class CategorieSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ERR-QAH-STOCK-CATEGORIE-CREATION-400-COMPANY — `company` doit être
     # LECTURE SEULE et force-assigné côté serveur (TenantMixin.perform_create,
     # jamais accepté du corps — règle multi-tenant CLAUDE.md). Sans
@@ -121,7 +121,7 @@ class ContactFournisseurSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class CategorieFournisseurSerializer(serializers.ModelSerializer):
+class CategorieFournisseurSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     class Meta:
         model = CategorieFournisseur
         fields = ['id', 'nom', 'archived']
@@ -1291,7 +1291,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         return libelle or code
 
 
-class EmplacementStockSerializer(serializers.ModelSerializer):
+class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """N15 — emplacement de stock. `company` est posé côté serveur."""
 
     class Meta:
@@ -2849,7 +2849,7 @@ class RegleCodeBarresSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class NomenclatureCodeBarresSerializer(CompanyScopedRelationsMixin,
+class NomenclatureCodeBarresSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                        serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

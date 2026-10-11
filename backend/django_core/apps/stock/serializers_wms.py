@@ -13,7 +13,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.fields import SkipField
 
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from .permissions import MasqueMontantsAchatMixin
 
 from .models_wms import (
@@ -107,7 +107,7 @@ class UniteLogistiqueLigneSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['unite', 'scanne_le', 'scanne_par']
 
 
-class UniteLogistiqueSerializer(CompanyScopedRelationsMixin,
+class UniteLogistiqueSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     """NTWMS6 — colis / palette adressable. Le SSCC est GÉNÉRÉ côté serveur
     (norme GS1) : jamais accepté du client."""
@@ -316,7 +316,7 @@ class AlerteRappelSerializer(CompanyScopedRelationsMixin,
         } for blocage in blocages_du_rappel(obj)]
 
 
-class PortailTiersTokenSerializer(CompanyScopedRelationsMixin,
+class PortailTiersTokenSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                   serializers.ModelSerializer):
     """NTWMS20 — jeton du portail 3PL. Le jeton lui-même est GÉNÉRÉ côté
     serveur et n'est jamais accepté du client ; il n'est lisible que par les
@@ -364,7 +364,7 @@ class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class PlanChargementSerializer(CompanyScopedRelationsMixin,
+class PlanChargementSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTWMS26 — plan de chargement camion. La référence est posée côté
     serveur ; les unités s'ajoutent par l'action dédiée (qui renvoie

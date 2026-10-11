@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..serializers_wms import TexteLie
@@ -24,7 +24,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class PlanEchantillonnageSerializer(CompanyScopedRelationsMixin,
+class PlanEchantillonnageSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                     serializers.ModelSerializer):
     categorie_nom = TexteLie(
         source='categorie.nom', read_only=True, default='')
