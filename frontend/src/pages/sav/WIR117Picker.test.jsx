@@ -16,15 +16,15 @@ vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock({
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({
   getPiecesCompatibles: vi.fn(() => Promise.resolve({
     data: { results: [{ piece_id: 7, nom: 'Fusible 16A', sku: 'F16', note: '' }] },
   })),
   getTicketWorksheet: vi.fn(() => Promise.resolve({ data: null })),
   getWorksheetModeles: vi.fn(() => Promise.resolve({ data: [] })),
 }))
-vi.mock('../../api/axios', async () => (await import('./ticketDetailTestKit')).axiosVideMock())
-vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailTestKit')).axiosVideMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
 import savApi from '../../api/savApi'

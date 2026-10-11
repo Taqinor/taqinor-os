@@ -7,16 +7,16 @@ import { screen, cleanup } from '@testing-library/react'
 // deep-link vers CE chantier (patron VX79 ?id=).
 
 vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) =>
-  (await import('./ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
+  (await import('./__tests__/ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
 
-vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock())
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock())
 
-vi.mock('../../api/axios', async () => (await import('./ticketDetailTestKit')).axiosVideMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailTestKit')).axiosVideMock())
 
-vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
-import { renderTicketDetail } from './ticketDetailTestKit'
+import { renderTicketDetail } from './__tests__/ticketDetailTestKit'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

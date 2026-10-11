@@ -7,9 +7,9 @@ import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
    mockés — aucun réseau réel. */
 
 vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) =>
-  (await import('./ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
+  (await import('./__tests__/ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
 
-vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock({
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({
   creerDevisTicket: vi.fn(() => Promise.resolve({
     data: { devis_id: 42, devis_reference: 'DEV-SAV-42' },
   })),
@@ -19,12 +19,12 @@ vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).
   rapportPdf: vi.fn(() => Promise.resolve({ data: new Blob() })),
 }))
 
-vi.mock('../../api/axios', async () => (await import('./ticketDetailTestKit')).axiosVideMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailTestKit')).axiosVideMock())
 
-vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
-import { renderTicketDetail } from './ticketDetailTestKit'
+import { renderTicketDetail } from './__tests__/ticketDetailTestKit'
 import savApi from '../../api/savApi'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })

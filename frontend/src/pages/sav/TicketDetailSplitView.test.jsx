@@ -8,14 +8,14 @@ import { Provider } from 'react-redux'
    tablette inchangé. On simule `matchMedia` aux deux points de rupture, comme
    `ResponsiveDialog.test.jsx` (M158) le fait déjà pour le même mécanisme. */
 
-vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock())
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock())
 
-vi.mock('../../api/axios', async () => (await import('./ticketDetailTestKit')).axiosVideMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailTestKit')).axiosVideMock())
 
-vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
-import { makeTicketStore } from './ticketDetailTestKit'
+import { makeTicketStore } from './__tests__/ticketDetailTestKit'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

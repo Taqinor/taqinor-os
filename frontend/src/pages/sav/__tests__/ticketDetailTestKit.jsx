@@ -3,7 +3,7 @@
 // même rendu (store redux minimal) ; un seul exemplaire ici. Utilisé dans les
 // fabriques `vi.mock` par import dynamique, ex. :
 //   vi.mock('../../api/savApi', async () =>
-//     (await import('./ticketDetailTestKit')).savApiDetailMock({ ... }))
+//     (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({ ... }))
 import { vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { Provider } from 'react-redux'

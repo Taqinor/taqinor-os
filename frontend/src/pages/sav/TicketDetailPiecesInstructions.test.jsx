@@ -30,7 +30,7 @@ vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
   return { ...actual, updateTicket: (...a) => updateTicketSpy(...a) }
 })
 
-vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock({
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({
   getTicketPiecesUnifiees: (...a) => getTicketPiecesUnifiees(...a),
   retirerTicketPiece: (...a) => retirerTicketPiece(...a),
 }))
@@ -46,10 +46,10 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
-vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
-import { renderTicketDetail } from './ticketDetailTestKit'
+import { renderTicketDetail } from './__tests__/ticketDetailTestKit'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

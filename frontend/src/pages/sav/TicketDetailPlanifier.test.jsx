@@ -7,9 +7,9 @@ import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
    (axios direct) + installationsApi mockés — aucun réseau réel. */
 
 vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) =>
-  (await import('./ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
+  (await import('./__tests__/ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
 
-vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock({
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({
   getTicket: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
@@ -20,10 +20,10 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
-vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
-import { renderTicketDetail } from './ticketDetailTestKit'
+import { renderTicketDetail } from './__tests__/ticketDetailTestKit'
 import api from '../../api/axios'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
