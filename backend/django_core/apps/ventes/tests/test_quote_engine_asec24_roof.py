@@ -20,13 +20,27 @@ from django.test import TestCase
 from apps.ventes.models import Devis
 from apps.ventes.quote_engine import builder
 from apps.ventes.tests._quote_engine_common import (
-    make_client, make_company, make_devis, make_user,
+    DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
 )
+from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
 PNG_VALIDE = base64.b64decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ'
     '/pLvAAAAAElFTkSuQmCC')
+
+
+#: Devis résidentiel COMPLET (deux onduleurs + batterie réelle, 14 × 550 Wc =
+#: 7,70 kWc — mêmes lignes que test_cj2b_graphe_mensuel) : le moteur résidentiel
+#: refuse tout document sans couche économique (« missing quote field »).
+LIGNES_RESIDENTIEL = [
+    ('Onduleur réseau 10kW', '1', '11700'),
+    ('Onduleur hybride 5kW', '1', '24000'),
+    ('Panneau mono 550W', '14', '1100'),
+    ('Batterie 5 kWh', '1', '14000'),
+    ('Structures acier', '14', '375'),
+    ('Installation', '1', '4000'),
+]
 
 
 class ToitPrefixeSocieteTests(TestCase):
@@ -36,7 +50,9 @@ class ToitPrefixeSocieteTests(TestCase):
         self.user = make_user(self.societe_a)
         self.devis = make_devis(
             self.societe_a, self.user, make_client(self.societe_a),
-            [('Onduleur hybride', '1', '12000')], reference='DEV-ASEC24-1')
+            LIGNES_RESIDENTIEL, reference='DEV-ASEC24-1',
+            etude_params={**DEUX_OPTIONS,
+                          'etude_horaire': bloc_horaire(7.70)})
 
     def _poser(self, cle):
         Devis.objects.filter(pk=self.devis.pk).update(roof_image=cle)

@@ -1626,3 +1626,38 @@ API accepted schema-violating request|PUT /api/django/stock/unites-logistiques/{
 Server error|POST /api/django/achats/factures-fournisseur/depuis-ocr/
 Undocumented HTTP status code|DELETE /api/django/ventes/devis/{id}/overrides/
 API rejected schema-compliant request|PATCH /api/django/core/formulaire-champs/{id}/
+API accepted schema-violating request|GET /api/django/stock/catalogue-b2b/
+API accepted schema-violating request|GET /api/django/stock/mouvements/
+API accepted schema-violating request|PATCH /api/django/core/dossiers/{id}/
+API accepted schema-violating request|PATCH /api/django/identity/service-accounts/{id}/
+API accepted schema-violating request|PATCH /api/django/stock/fournisseurs/{id}/
+API accepted schema-violating request|POST /api/django/core/dossiers/
+API accepted schema-violating request|POST /api/django/facturation/niveaux-relance/
+API accepted schema-violating request|POST /api/django/identity/service-accounts/
+API accepted schema-violating request|POST /api/django/publicapi/keys/
+API accepted schema-violating request|POST /api/django/publicapi/keys/{id}/rotate/
+API accepted schema-violating request|POST /api/django/ventes/niveaux-relance/
+API accepted schema-violating request|POST /api/django/ventes/schema-unifilaire/
+API accepted schema-violating request|PUT /api/django/accessreview/campaigns/{id}/
+API accepted schema-violating request|PUT /api/django/identity/service-accounts/{id}/
+API accepted schema-violating request|PUT /api/django/ventes/niveaux-relance/{id}/
+API rejected schema-compliant request|PATCH /api/django/ventes/devis/{id}/etude-params/
+API rejected schema-compliant request|PATCH /api/django/ventes/parametres-gammes/
+API rejected schema-compliant request|POST /api/django/core/formulaire-champs/
+API rejected schema-compliant request|POST /api/django/core/sauvegardes/
+API rejected schema-compliant request|POST /api/django/core/saved-queries/
+API rejected schema-compliant request|POST /api/django/ventes/attestations-conformite/
+API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/layout/
+API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/sync-layout/
+API rejected schema-compliant request|PUT /api/django/core/formulaire-champs/{id}/
+API rejected schema-compliant request|PUT /api/django/stock/plans-comptage-tournant/{id}/
+Server error|POST /api/django/core/dossiers/{id}/checklist/
+Server error|POST /api/django/core/dossiers/{id}/delier/
+Server error|POST /api/django/core/dossiers/{id}/lier/
+Server error|POST /api/django/core/dossiers/{id}/noter/
+Server error|POST /api/django/core/sla/credits/{id}/statut/
+Server error|POST /api/django/imports/export/{entity}/
+Server error|POST /api/django/stock/factures-fournisseur/depuis-ocr/
+Server error|POST /api/django/stock/produits/{id}/rebuter/
+Server error|POST /api/django/ventes/devis/{id}/noter/
+Server error|POST /api/django/ventes/factures/{id}/lien-paiement/
