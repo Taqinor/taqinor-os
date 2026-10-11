@@ -145,7 +145,7 @@
 - frontend/src/api/crmApi.js :: whatsappRelanceEtapeLangue -> /api/django/crm/relance-etapes/<>/whatsapp
     crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/customFieldsApi.js :: reorder -> /api/django/custom-fields/definitions/reorder
-    count:nombre, detail:texte, ok:booleen
+    count:nombre, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo
     detail:texte, slug:inconnu
 - frontend/src/api/gedApi.js :: comparerVersions -> /api/django/ged/documents/<>/comparer
