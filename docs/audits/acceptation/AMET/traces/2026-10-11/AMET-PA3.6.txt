@@ -1,0 +1,6 @@
+Devis de test DEV-202610-0006 (résidentiel, lignes réseau) créé, envoyé (share-link envoi=true) puis accepté (/accepter/ 200). L'acceptation
+n'a PAS figé l'échéancier (echeancier=None) — c'est AMET2, encore ouvert ; l'échéancier a donc été figé par la fonction d'AMET1
+`figer_echeancier(devis)` (manage.py shell) ⇒ écran (GET devis.echeancier) Acompte 30 / Livraison du matériel 60 / Solde 10.
+/proposal AVANT : « commande : 30% · 60% à la réception du matériel · 10% après la … ».
+Réglage société payment_terms.residentiel = 30/40/30 (parametres/update/) ⇒ /proposal du devis accepté : texte extrait IDENTIQUE au caractère
+près (30/60/10 = écran, échéancier de l'écran inchangé) ; le brouillon DEV-202609-0005 imprime « 30% · 40% … · 30% ». Réglage remis à null.

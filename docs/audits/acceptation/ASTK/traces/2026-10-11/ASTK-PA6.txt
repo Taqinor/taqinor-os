@@ -1,0 +1,7 @@
+Pile locale à cf66024bc, demo_admin, fournisseur démo SunPro Maroc, fiche de test « Panneau 710W premium TEST ACAL354 ».
+BCF-202610-0002 : 10 × 100,00 envoyé ; réception REC créée à 12 et confirmée ⇒ relue quantite 12, quantite_appliquee 10. Facture saisie
+TEST-ASTK245-1200.00-b (1 200 HT / 1 440 TTC) puis liée au BCF (PATCH bon_commande, geste « suggestions BCF ») ⇒ statut_controle
+« exception », motif « Rapprochement 3 voies hors tolérance : facturé 1 200,00 HT pour 1 000,00 HT reçus au prix du BCF (écart +200,00 HT,
++20,00 % ; tolérance 0,00 %). » ; paiement POST …/paiements/ ⇒ 400 « Paiement bloqué : facture FF-202610-0002 en exception de rapprochement
+3 voies … » ; GET en-exception ⇒ la facture y est. Même scénario sur BCF-202610-0003 avec une facture de 1 000 HT ⇒ « normale ».
+Écran /stock/factures-fournisseur : FF-202610-0002 « En exception » (colonne Rapprochement). Console 0 erreur, aucun 4xx.

@@ -1,0 +1,13 @@
+Données : règlement de 500 sur FF-202610-0003, acompte de 820 sur BCF-202610-0002, avoir AVF-202610-0001 validé (120 TTC). Comptes de test
+locaux : Commercial (rôle système) et « payeur » (rôle de test porteur du seul code achats_payer), mots de passe générés hors dépôt,
+supprimés en fin de rejeu.
+ASTK241 — payeur : GET /stock/paiements-fournisseur/ (grand livre) 200 [500], /factures-fournisseur/<id>/paiements/ 200 [500], détail de la
+facture 200 paiements [500] — mêmes règlements, idem sous /achats/ ; Commercial : 403 sur le grand livre et sur …/paiements/, détail sans clé
+« paiements ».
+ASTK246 — Commercial : 403 sur /stock/acomptes-fournisseur/, …/<id>/, …/ouverts/, /stock/avoirs-fournisseur/, …/<id>/ (aucun montant) ;
+administrateur (Directeur) et payeur : 200 (820 ; 120). Écran au compte Commercial : Factures fournisseur sans bouton « Acomptes ouverts »
+(le 403 sur …/ouverts/ est le refus voulu) ; fiche fournisseur 360 › onglet Acomptes : message servi « Permission « achats_payer » ou
+« prix_achat_voir » requise (règlements fournisseur). », aucun montant (le texte « Acomptes indisponibles. » de la clause est le repli de
+frErr quand le serveur ne nomme rien ; ici le serveur nomme le refus). Les alias /achats/acomptes-fournisseur et /achats/avoirs-fournisseur
+n'existent pas (apps/achats/urls.py ne les déclare pas) : 404 pour tous les rôles, aucune donnée.
+Oracles 2/3 : 403 GET /api/django/users/ sur la fiche fournisseur et Factures fournisseur au compte Commercial — défaut du shell, hors ASTK241/246 => écart accepté (ERR-SHELL-USERS-403-COMMERCIAL).

@@ -1,0 +1,36 @@
+{
+  "sha": "e380f019a0f412ae1567974390a32ae26df01538",
+  "date": "2026-10-11",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL353",
+    "ACAL354"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.9",
+      "taches": [
+        "ACAL353",
+        "ACAL354"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-11/ACAL-PA2.9.txt",
+      "notes": []
+    }
+  ]
+}

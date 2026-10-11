@@ -1,0 +1,5 @@
+Navigateur Playwright, demo_admin : /ventes/devis → bouton « PDF » de DEV-202609-0005 → dialogue « Générer le PDF » (format premium) →
+« Générer » : POST /ventes/devis/78/generer-pdf/ 202 puis téléchargement TAQINOR-Demo_Devis_Karim-Alaoui_DEV-202609-0005.pdf
+(société en langue de repli « en », remise à « fr » ensuite). Le dialogue n'offre pas de choix de langue : la langue vient du client
+(fr/ar) ou du repli société. Texte du fichier écran = texte de /proposal?langue=en (diff hors séparateurs de page vide) ; conditions en
+anglais. Console : 0 erreur ; aucun dialogue natif ; écran non cassé.
