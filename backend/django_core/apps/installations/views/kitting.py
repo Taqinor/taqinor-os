@@ -47,7 +47,7 @@ from ..services import (
     cocher_etape_ordre,
 )
 from . import _openapi as oa
-from ..serializers import RevisionKitSerializer  # noqa: E402
+from ..serializers import RevisionKitSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 

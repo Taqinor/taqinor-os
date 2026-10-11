@@ -1,44 +1,28 @@
 import logging
 
-from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework import filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin  # noqa: F401
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet
-from django.utils import timezone  # noqa: F401
+from django.utils import timezone
 
-from .. import activity  # noqa: F401
-from .. import intervention_activity  # noqa: F401
-from ..models import (  # noqa: F401
-    Installation, Intervention, TypeIntervention, ChecklistTemplate,
-    ChecklistEtapeModele, ShotListSlot, ComponentSerial,
-    ConsommationLigne, VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot,
-)
-from ..serializers import (  # noqa: F401
-    InstallationSerializer, InterventionSerializer,
-    InstallationActivitySerializer, InterventionActivitySerializer,
-    TypeInterventionSerializer, ChecklistTemplateSerializer,
-    ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
-    ShotListSlotSerializer, InterventionPreparationSerializer,
-    ComponentSerialSerializer, MaterielConsommationSerializer,
-    ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
-    ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
+from .. import activity
+from ..models import Installation, Intervention, TypeIntervention, Reserve
+from ..serializers import (
+    InstallationSerializer,
+    InterventionSerializer,
+    InstallationActivitySerializer,
+    ChantierChecklistItemSerializer,
     PhotoChecklistMetaSerializer,
 )
-from ..services import (  # noqa: F401
-    create_installation_from_devis, seed_checklist_etapes,
-    ensure_checklist_items, ensure_default_template,
-    notifier_reception_solde_a_facturer,
-)
-from .. import field_services  # noqa: F401
-from .. import field_capture  # noqa: F401
+from ..services import create_installation_from_devis, ensure_checklist_items
 from . import _openapi as oa
-from apps.records.serializers import AttachmentSerializer  # noqa: E402
-from ..serializers_commissioning import (  # noqa: E402
+from apps.records.serializers import AttachmentSerializer
+from ..serializers_commissioning import (
     CommissioningRecordSerializer, HandoverPackSerializer,
 )
 
