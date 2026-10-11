@@ -1,3 +1,100 @@
 {
-  "captures": []
+  "captures": [
+    {
+      "ecran": "approbations",
+      "largeur": 1440,
+      "avif": "approbations-1440.avif",
+      "webp": "approbations-1440.webp",
+      "width": 1200,
+      "height": 848,
+      "sha256_webp": "a8b2fdd8626ea93bcac0a29444f5d77b45ab1dedf24603b9e33e55b47b5f9e3c",
+      "capture_le": "2026-10-11",
+      "controle_texte": "ok",
+      "revue": "2026-10-11 lane YBW41 (Claude) : image ouverte en entier ; 3 propositions (mise en pause, renommage, création de campagne en pause) à approuver/rejeter, aucun montant ni devise, aucun nom réel, pas de TAQINOR, pas de veille : conforme"
+    },
+    {
+      "ecran": "approbations",
+      "largeur": 390,
+      "avif": "approbations-390.avif",
+      "webp": "approbations-390.webp",
+      "width": 390,
+      "height": 794,
+      "sha256_webp": "0da0f90efdc97d818312dbfe15a320f82ee923e745fbb193a7b53dcbe3de85c5",
+      "capture_le": "2026-10-11",
+      "controle_texte": "ok",
+      "revue": "2026-10-11 lane YBW41 (Claude) : image ouverte en entier ; 3 propositions (mise en pause, renommage, création de campagne en pause) à approuver/rejeter, aucun montant ni devise, aucun nom réel, pas de TAQINOR, pas de veille : conforme"
+    },
+    {
+      "ecran": "crm-pipeline",
+      "largeur": 1440,
+      "avif": "crm-pipeline-1440.avif",
+      "webp": "crm-pipeline-1440.webp",
+      "width": 1200,
+      "height": 848,
+      "sha256_webp": "1e24ebba8df50f8b69b9ad75eb8cb5ed2493223a96a08cce800fc66e03cf3b33",
+      "capture_le": "2026-10-11",
+      "controle_texte": "ok",
+      "revue": "2026-10-11 lane YBW41 (Claude) : image ouverte en entier ; kanban de 42 leads « Exemple NN Projet », aucun montant ni devise, aucun nom réel, pas de TAQINOR, pas de prix d'achat/marge, pas de veille : conforme"
+    },
+    {
+      "ecran": "crm-pipeline",
+      "largeur": 390,
+      "avif": "crm-pipeline-390.avif",
+      "webp": "crm-pipeline-390.webp",
+      "width": 390,
+      "height": 792,
+      "sha256_webp": "0e5bd453fd9a42ff4f792f3f84ad9e0449f855b8cca8199f3112b9cc493f0693",
+      "capture_le": "2026-10-11",
+      "controle_texte": "ok",
+      "revue": "2026-10-11 lane YBW41 (Claude) : image ouverte en entier ; kanban de 42 leads « Exemple NN Projet », aucun montant ni devise, aucun nom réel, pas de TAQINOR, pas de prix d'achat/marge, pas de veille : conforme"
+    },
+    {
+      "ecran": "garde-fous",
+      "largeur": 1440,
+      "avif": "garde-fous-1440.avif",
+      "webp": "garde-fous-1440.webp",
+      "width": 1200,
+      "height": 848,
+      "sha256_webp": "853fbff0e6f471d78ff7670958e344bb96c9d9b7d2e5b0ada2cae898f163b2ee",
+      "capture_le": "2026-10-11",
+      "controle_texte": "ok",
+      "revue": "2026-10-11 lane YBW41 (Claude) : image ouverte en entier ; catalogue de règles désarmées, mises en pause soumises à approbation, aucun montant ni devise, aucun nom réel, pas de TAQINOR, pas de veille : conforme (illustre les règles ; l'écran « Connexion & garde-fous » reste à capturer)"
+    },
+    {
+      "ecran": "garde-fous",
+      "largeur": 390,
+      "avif": "garde-fous-390.avif",
+      "webp": "garde-fous-390.webp",
+      "width": 390,
+      "height": 794,
+      "sha256_webp": "85d80d8d3785f721bddafaeb180f9e8ec0a1eaad5d24c99bc6da0c6a207382f8",
+      "capture_le": "2026-10-11",
+      "controle_texte": "ok",
+      "revue": "2026-10-11 lane YBW41 (Claude) : image ouverte en entier ; catalogue de règles désarmées, mises en pause soumises à approbation, aucun montant ni devise, aucun nom réel, pas de TAQINOR, pas de veille : conforme (illustre les règles ; l'écran « Connexion & garde-fous » reste à capturer)"
+    },
+    {
+      "ecran": "proposition-pdf",
+      "largeur": 1440,
+      "avif": "proposition-pdf-1440.avif",
+      "webp": "proposition-pdf-1440.webp",
+      "width": 1125,
+      "height": 615,
+      "sha256_webp": "e2460bc194daaa3020b46786762f06fe6e7565b082f7a378766db5d8679300c4",
+      "capture_le": "2026-10-11",
+      "controle_texte": "revue-seule",
+      "revue": "2026-10-11 lane YBW41 (Claude) : page 3 de la proposition, recadrée sur garanties/conditions/étapes ; texte extrait du recadrage sans devise ni montant ni TAQINOR (client et société fictifs absents du recadrage) ; image ouverte en entier : conforme"
+    },
+    {
+      "ecran": "proposition-pdf",
+      "largeur": 390,
+      "avif": "proposition-pdf-390.avif",
+      "webp": "proposition-pdf-390.webp",
+      "width": 390,
+      "height": 213,
+      "sha256_webp": "d4b3a11f4f5dd2837aa9ef07fca2f4aca30205b3ec3033ac3f91f68ae582f8a3",
+      "capture_le": "2026-10-11",
+      "controle_texte": "revue-seule",
+      "revue": "2026-10-11 lane YBW41 (Claude) : page 3 de la proposition, recadrée sur garanties/conditions/étapes ; texte extrait du recadrage sans devise ni montant ni TAQINOR (client et société fictifs absents du recadrage) ; image ouverte en entier : conforme"
+    }
+  ]
 }

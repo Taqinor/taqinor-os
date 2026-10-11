@@ -70,3 +70,35 @@ capture non revue.
 
 Écran refusé ou douteux → corriger les données fictives, relancer
 `--ecran <id>` (l'entrée est remplacée, jamais dupliquée).
+
+## 4. Passe du 2026-10-11 (lane YBW41) — état des écrans
+
+Pile locale (`docker compose`, `http://localhost`). Société jetable `yanbow-demo-capture`
+créée avec `seed_demo_company --slug yanbow-demo-capture` (Faker installé dans le conteneur
+local), puis renommée « YanBow — démo » (société, profil société, `TenantTheme.nom_affichage`),
+logo `src/brand/svg/yanbow-symbol-small-colour.svg` copié dans le conteneur frontend local et
+référencé par `TenantTheme.logo_url = /yanbow-logo.svg`. Utilisateur de test jetable :
+`yanbow_capture_admin` (administrateur de CETTE société ; mot de passe généré, non consigné).
+Données fictives posées dans la base locale seulement : 42 leads « Exemple NN / Projet »
+(coordonnées vidées, montants estimés vidés, devis détachés des leads pour qu'aucun montant ne
+s'affiche), 16 clients « Client Exemple NN », 3 campagnes en pause, 3 propositions en attente.
+Le script ferme les fenêtres d'accueil de l'ERP (`fermerAccueil`) avant de capturer.
+
+| Écran | État |
+|---|---|
+| `crm-pipeline` (1440 + 390) | capturé, revu |
+| `approbations` (1440 + 390) | capturé, revu |
+| `garde-fous` (1440 + 390) | capturé, revu — montre le catalogue de règles ; l'écran « Connexion & garde-fous » (coupe-circuit) reste à capturer |
+| `proposition-pdf` (1440 + 390) | capturé, revu — page 3, recadrée hors de tout montant (`/proposal` du devis fictif, rendu PDF vers PNG par PyMuPDF) |
+| `calepinage-3d` | **à capturer** — la carte 3D est « indisponible » sans clé MapTiler côté serveur local ; aucune capture inventée |
+| `packs-reglementaires` | **à capturer** — l'ERP ne fabrique aucun gabarit DP/Enedis/Consuel : il faut déposer les gabarits officiels (Réglages, Gabarits) dans la société fictive |
+| `campagnes-en-pause` | **à capturer** — la colonne « Dépense » affiche « 0 MAD » (devise) ; le script refuse l'écran (contrôle du texte), c'est le comportement voulu |
+
+### Revue des images (ouvertes une à une avec l'outil de lecture d'image)
+
+- `crm-pipeline-1440` / `-390` : kanban Nouveau, Contacté, Devis envoyé, Relance, Signé ; cartes « Exemple NN Projet » ; ni montant, ni devise, ni nom réel, ni TAQINOR, ni prix d'achat/marge, ni veille. Le bord droit du kanban est coupé par le recadrage (colonne suivante partielle) : sans incidence.
+- `approbations-1440` / `-390` : trois cartes (Mise en pause, Renommage, Création de campagne) avec Approuver/Rejeter ; textes en français sans montant ; rien d'interdit.
+- `garde-fous-1440` / `-390` : « Règles & anomalies », gabarits désarmés (Stop-loss, Revive, Fatigue créative…), « Mise en pause proposée (approbation requise) » ; aucun chiffre monétaire ; rien d'interdit.
+- `proposition-pdf-1440` / `-390` : « Pourquoi YanBow — démo », garanties (2/12/30/10 ans), conditions (échéancier en pourcentages, TVA 20 %), étapes ; aucun montant ni devise ; texte du recadrage extrait et contrôlé (aucune violation). Le 390 px est lisible mais très réduit (même page vue en petit).
+
+Relecture faite à la résolution d'export (1200 px / 390 px), pas à 200 %. Pas d'OCR.
