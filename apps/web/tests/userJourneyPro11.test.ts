@@ -661,3 +661,125 @@ describe('parcours utilisateur pro-11 — sous-parcours toit en pente (face sud-
     assertNoLeadPost();
   }, 60000);
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL356 / ACAL357 — l'atelier rouvert depuis son document (boot devis RÉEL, sérialisé par
+// `onApiReady.serializeLayout`). ACAL356 : la production VIVANTE (carte, total « Zones »,
+// `result.annualKwh`) suit le dérate horizon × ombrage de `renderConfig`. ACAL357 : les
+// ombres et la matrice appartiennent au SITE — « + Ajouter une zone » les garde.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356, ACAL357)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+    // Le cadrage d'un contour relu appelle `resize()` puis `once('idle')` : doublures inertes.
+    Object.assign(FakeMap.prototype, { resize() { return this; }, once() { return this; } });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  type Api = import('../src/scripts/roofPro11/types').RoofToolApi;
+  type Doc = Record<string, unknown> & {
+    result: { annualKwh: number };
+    zones: unknown[];
+    shadeObstructions?: Array<{ id: string }>;
+    shading12x24?: unknown;
+  };
+  const copie = <T>(d: T): T => JSON.parse(JSON.stringify(d)) as T;
+
+  /** Boot neuf (module rechargé : il ne s'initialise qu'une fois) ; sans `hydrate` = session neuve. */
+  async function boot(hydrate?: Record<string, unknown>): Promise<() => Api> {
+    setupDom();
+    fakeMaps.length = 0;
+    vi.resetModules();
+    document.body.appendChild(el('button', 'rp9-shade-add')); // WJ19 — « Tracer une ombre »
+    const init = await loadTool();
+    let api: Api | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      ...(hydrate ? { hydrate: hydrate as never } : {}),
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    return () => api!;
+  }
+  const rouvrir = (doc: unknown, id: number) =>
+    boot({ devis: { id, geometrie: { roof_layout: copie(doc) }, cibleVendue: false } });
+  const lecture = (api: Api) => ({
+    carte: intOf('rp9-reco-prod'),
+    zones: intOf('rp9-areas-total-prod'),
+    doc: (api.serializeLayout() as Doc).result.annualKwh,
+  });
+
+  it('horizon 25° (session neuve) et matrice 0,8 relue', async () => {
+    const api = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const avant = lecture(api());
+    expect(avant.doc).toBeGreaterThan(0);
+    const docSansDerate = copie(api().serializeLayout() as Doc);
+    // Horizon 25° sur six azimuts : la carte, le total « Zones » et le document baissent
+    // du MÊME facteur (horizonAnnualFactor ; l'ombrage proche reste à 1).
+    const points = [0, 60, 120, 180, 240, 300].map((azimuthDeg) => ({ azimuthDeg, heightDeg: 25 }));
+    api().appliquerSection('horizonProfile', { source: 'saisie', points });
+    const apres = lecture(api());
+    const f = apres.doc / avant.doc;
+    expect(f).toBeLessThan(0.99);
+    expect(apres.carte / avant.carte).toBeCloseTo(f, 3);
+    expect(apres.zones / avant.zones).toBeCloseTo(f, 3);
+    const docDerate = copie(api().serializeLayout() as Doc);
+
+    const relire = async (doc: Doc, geste: boolean) => {
+      const a = await rouvrir(doc, 7);
+      if (geste) {
+        vi.useFakeTimers();
+        setBill('3000');
+        vi.advanceTimersByTime(321); // la facture est débattue (320 ms) avant le recalcul
+        vi.useRealTimers();
+      }
+      return lecture(a());
+    };
+    // Persistance : enregistré dératé puis rouvert sans geste ⇒ le dératé est relu tel quel.
+    expect((await relire(docDerate, false)).doc).toBe(apres.doc);
+    // Le même toit rouvert et recalculé (facture ressaisie ; document sans production stockée,
+    // sinon ACAL31 réémet celle relue) : sans matrice (référence), puis matrice 0,8 relue.
+    const { result: _stocke, ...sansProduction } = docSansDerate;
+    const reference = await relire(sansProduction as Doc, true);
+    expect(reference.doc).toBeGreaterThan(0);
+    const matrice = Array.from({ length: 12 }, () => Array(24).fill(0.8));
+    const ombre = await relire({ ...sansProduction, shading12x24: matrice } as Doc, true);
+    for (const k of ['carte', 'zones', 'doc'] as const) expect(ombre[k] / reference[k]).toBeCloseTo(0.8, 3);
+  }, 120000);
+
+  it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const chemin = resolve(process.cwd(), '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json');
+    const exemple = (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple;
+    const matrice = Array.from({ length: 12 }, () => Array(24).fill(0.8));
+    const ouvrir = async (doc: unknown) => {
+      const a = await rouvrir(doc, 3);
+      return () => a().serializeLayout() as Doc;
+    };
+    const enregistrer = await ouvrir({ ...exemple, shading12x24: matrice });
+    expect(enregistrer().shading12x24).toEqual(matrice); // la matrice 0,8 relue
+    // Une ombre tracée sur le pan actif (pied puis bout).
+    (document.getElementById('rp9-shade-add') as HTMLButtonElement).click();
+    for (const lat of [2.9999, 3.0001]) fakeMaps[0].fire('click', { lngLat: { lng: 5, lat }, point: { x: 0, y: 0 } });
+    const avant = enregistrer();
+    expect(avant.shadeObstructions?.map((o) => o.id)).toEqual(['shade-1', 'sh-1', 'sh-2']);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    const apres = enregistrer();
+    expect(apres.zones).toHaveLength(3);
+    expect(apres.shadeObstructions).toEqual(avant.shadeObstructions);
+    expect(apres.shading12x24).toEqual(avant.shading12x24);
+    // Persistance : rouvert après l'ajout, ombres et matrice relues identiques.
+    const relu = (await ouvrir(apres))();
+    expect(relu.shadeObstructions).toEqual(apres.shadeObstructions);
+    expect(relu.shading12x24).toEqual(apres.shading12x24);
+  }, 120000);
+});
