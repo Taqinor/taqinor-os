@@ -536,8 +536,9 @@ def credit_emplacement_destination(company, produit, emplacement, quantite):
     se, _created = StockEmplacement.objects.get_or_create(
         company=company, produit=produit, emplacement=emplacement,
         defaults={'quantite': 0})
-    se.quantite = (se.quantite or 0) + quantite
-    se.save(update_fields=['quantite'])
+    # ENF15 — incrément atomique (deux réceptions concurrentes s'additionnent).
+    StockEmplacement.objects.filter(pk=se.pk).update(
+        quantite=models.F('quantite') + quantite)
 
 
 def affecter_livraison_directe_chantier(
@@ -3584,7 +3585,7 @@ def generer_bcf_reappro(company, user, fournisseur_id):
         for produit, qte, prix in lignes_produits:
             existante = lignes_par_produit.get(produit.id)
             if existante is not None:
-                existante.quantite += qte
+                existante.quantite = models.F('quantite') + qte  # ENF15 — atomique
                 existante.save(update_fields=['quantite'])
             else:
                 LigneBonCommandeFournisseur.objects.create(
@@ -4960,8 +4961,7 @@ def remplacer_composant_masse(company, *, produit_ancien_id,
             nouvelle_qte = _nouvelle_quantite(c.quantite)
             if existant is not None:
                 # Fusion : le kit contient déjà le produit nouveau.
-                existant.quantite = (
-                    (existant.quantite or Decimal('0')) + nouvelle_qte)
+                existant.quantite = models.F('quantite') + nouvelle_qte  # ENF15
                 existant.save(update_fields=['quantite'])
                 c.delete()
             else:
@@ -6202,34 +6202,9 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
     sous zéro — plafonné à ``min(montant demandé, disponible avoir, solde
     facture)``). Crée une ``ImputationAvoirFournisseur``. Lève ValueError si
     fournisseurs différents, avoir non validé, ou rien à imputer."""
-    from .models import AvoirFournisseur, ImputationAvoirFournisseur
-
-    if avoir.fournisseur_id != facture.fournisseur_id:
-        raise ValueError(
-            "L'avoir et la facture doivent appartenir au même fournisseur.")
-    if avoir.statut not in (
-            AvoirFournisseur.Statut.VALIDE, AvoirFournisseur.Statut.IMPUTE):
-        raise ValueError('Seul un avoir validé peut être imputé.')
-
-    disponible = avoir.montant_disponible
-    solde_facture = facture.solde_du
-    plafond = min(disponible, solde_facture)
-    montant_impute = Decimal(str(montant)) if montant is not None else plafond
-    montant_impute = min(montant_impute, plafond)
-    if montant_impute <= 0:
-        raise ValueError("Rien à imputer (avoir épuisé ou facture soldée).")
-
-    imputation = ImputationAvoirFournisseur.objects.create(
-        company=avoir.company, avoir=avoir, facture=facture,
-        montant=montant_impute)
-    avoir.montant_impute = (avoir.montant_impute or Decimal('0')) + montant_impute
-    avoir.statut = (AvoirFournisseur.Statut.IMPUTE
-                    if avoir.montant_disponible <= 0
-                    else AvoirFournisseur.Statut.VALIDE)
-    avoir.save(update_fields=['montant_impute', 'statut'])
-    # ASTK102 — le statut de la facture suit son solde (avoir = règlement).
-    recompute_facture_fournisseur_statut(facture)
-    return imputation
+    # ENF15 — avoir relu sous verrou, dans une transaction (services_verrous).
+    from .services_verrous import imputer_avoir_sous_verrou
+    return imputer_avoir_sous_verrou(avoir, facture, montant)
 
 
 # ── XPUR10 — tolérances 3 voies & file d'exceptions ─────────────────────────
@@ -6387,19 +6362,9 @@ def resoudre_exception_facture(facture, *, user, commentaire=''):
     """XPUR10 — résout (Responsable/Admin) une facture en exception : passe
     `statut_controle` à 'resolue', trace l'acteur/l'horodatage, débloque le
     paiement. Lève ValueError si la facture n'est pas en exception."""
-    from django.utils import timezone
-    from .models import FactureFournisseur
-    if facture.statut_controle != FactureFournisseur.StatutControle.EXCEPTION:
-        raise ValueError("Cette facture n'est pas en exception.")
-    facture.statut_controle = FactureFournisseur.StatutControle.RESOLUE
-    facture.resolu_par = user
-    facture.resolu_le = timezone.now()
-    if commentaire:
-        facture.motif_ecart = (
-            (facture.motif_ecart or '') + f'\nRésolution : {commentaire}')
-    facture.save(update_fields=[
-        'statut_controle', 'resolu_par', 'resolu_le', 'motif_ecart'])
-    return facture
+    # ENF15 — statut relu sous verrou, dans une transaction (services_verrous).
+    from .services_verrous import resoudre_exception_sous_verrou
+    return resoudre_exception_sous_verrou(facture, user, commentaire)
 
 
 def factures_en_exception(company):

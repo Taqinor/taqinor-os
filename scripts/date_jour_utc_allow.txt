@@ -3,15 +3,12 @@
 # ligne). NE PEUT QUE DECROITRE : chaque retrait = un correctif (todayLocalIso() de
 # frontend/src/lib/dateLocale.js) chez le proprietaire du site. Un fichier hors liste qui
 # introduit le motif echoue. Mesure au 08/10/2026 (DevisList.jsx : corrige par ADEV34).
-frontend/src/features/adsengine/AlertCenter.jsx = 1
-frontend/src/features/adsengine/ReportsScreen.jsx = 1
 frontend/src/features/ged/advanced/PlanificationsPage.jsx = 1
 frontend/src/features/offlinesync/PrechargementTournee.jsx = 1
 frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx = 1
 frontend/src/features/offlinesync/mobile/CommercialHome.jsx = 1
 frontend/src/features/offlinesync/mobile/EquipeTerrainHome.jsx = 1
 frontend/src/features/offlinesync/mobile/aFaireItems.js = 1
-frontend/src/features/ventes/FacturerDevisDialog.jsx = 1
 frontend/src/lib/dateLocale.js = 1
 frontend/src/lib/hijriDate.js = 2
 frontend/src/pages/crm/RelancesSuiviPage.jsx = 1
@@ -21,17 +18,4 @@ frontend/src/pages/monitoring/CleaningsPage.jsx = 1
 frontend/src/pages/monitoring/ProductionPage.jsx = 1
 frontend/src/pages/parametres/ExportSauvegarde.jsx = 1
 frontend/src/pages/sav/TicketsPage.jsx = 1
-frontend/src/pages/stock/ReceptionsFournisseur.jsx = 1
-frontend/src/pages/stock/negoce/ConsignationsPage.jsx = 1
-frontend/src/pages/stock/wms/QuaisPage.jsx = 1
-frontend/src/pages/ventes/BonCommandeList.jsx = 2
 frontend/src/pages/ventes/DevisGenerator.jsx = 2
-frontend/src/pages/ventes/DevisList.jsx = 1
-frontend/src/pages/ventes/FactureForm.jsx = 1
-frontend/src/pages/ventes/PaiementDialog.jsx = 1
-frontend/src/pages/ventes/RelancesPage.jsx = 3
-frontend/src/pages/ventes/RemisesEncaissementPage.jsx = 1
-frontend/src/pages/ventes/factureKanban.js = 1
-frontend/src/pages/ventes/factureList/factureHelpers.js = 1
-frontend/src/pages/ventes/factureList/useFactureCompta.js = 1
-frontend/src/pages/ventes/generator/CarteEconomiePompage.jsx = 1

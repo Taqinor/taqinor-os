@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ShieldCheck, Plus, Trash2, Download, AlertTriangle, ClipboardList } from 'lucide-react'
 import accessReviewApi from '../../api/accessReviewApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   Card, CardContent, CardHeader, CardTitle, Button, Input, Badge, Spinner,
   EmptyState, toast, Tabs, TabsList, TabsTrigger, TabsContent,
@@ -36,8 +37,10 @@ function CampagnesTab() {
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
 
-  const load = () => accessReviewApi.campaigns.list()
-    .then((r) => setCampaigns(asList(r.data))).catch(() => {}).finally(() => setLoading(false))
+  // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
+  const load = () => fetchAllPages((page, o) => accessReviewApi.campaigns.list({ page, ...o })
+    .then((r) => r?.data))
+    .then((data) => setCampaigns(asList(data))).catch(() => {}).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const create = async () => {
@@ -121,10 +124,10 @@ function SodTab() {
   const [loading, setLoading] = useState(true)
 
   const load = () => Promise.all([
-    accessReviewApi.sodRules.list(),
+    fetchAllPages((page, o) => accessReviewApi.sodRules.list({ page, ...o }).then((r) => r?.data)),
     accessReviewApi.sodRules.violations(),
   ]).then(([r, v]) => {
-    setRules(asList(r.data)); setViolations(asList(v.data))
+    setRules(asList(r)); setViolations(asList(v.data))
   }).catch(() => {}).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 

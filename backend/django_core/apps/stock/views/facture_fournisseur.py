@@ -403,7 +403,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses={PDF: BINARY})
     @action(detail=True, methods=['get'], url_path='pdf',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def pdf(self, request, pk=None):
         """FG55 — PDF facture fournisseur (INTERNE — montre les prix d'achat).
         Jamais un document client."""

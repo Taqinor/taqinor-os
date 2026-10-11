@@ -3,6 +3,7 @@ import { Button, Input } from '../../../ui'
 import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import quaisApi from '../../../features/stock/api/quaisApi'
 import { messageServeur, telechargerTexte } from '../../../features/stock/api/erreurs'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 /* ASTK218 — Quais & rendez-vous : quais (création / activation), planning
    d'une journée avec, pour chaque rendez-vous, le fournisseur et le BCF
@@ -19,7 +20,7 @@ const STATUTS = {
 }
 const TYPES_QUAI = { reception: 'Réception', expedition: 'Expédition', mixte: 'Mixte' }
 const selectCls = 'h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm'
-const aujourdhui = () => new Date().toISOString().slice(0, 10)
+const aujourdhui = () => todayLocalIso()
 const heure = (iso) => (iso
   ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   : '—')

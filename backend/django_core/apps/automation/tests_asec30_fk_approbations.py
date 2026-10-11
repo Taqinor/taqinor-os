@@ -8,6 +8,7 @@ d'une délégation changeait au PATCH ; ``active_delegation_for`` ne filtrait
 pas par société.
 """
 from datetime import timedelta
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -148,3 +149,26 @@ class AutomationFkTests(TestCase):
             company=self.a, delegant=self.admin_a, suppleant=self.collegue_a,
             date_debut=self.debut, date_fin=self.fin)
         self.assertEqual(services.active_delegation_for(self.admin_a), propre)
+
+    def test_enf17_fk_lecture_seule_jamais_ecrites(self):
+        """ENF17 — règle / comptes d'une autre société postés sur les
+        sérialiseurs en lecture seule : jamais écrits (bornés si redevenus
+        inscriptibles)."""
+        from apps.automation.serializers import (
+            AutomationApprovalSerializer, AutomationRuleVersionSerializer,
+            AutomationRunSerializer,
+        )
+        ctx = {'request': SimpleNamespace(user=self.admin_a)}
+        cas = (
+            (AutomationRuleVersionSerializer, 'rule', self.regle_b.pk),
+            (AutomationRunSerializer, 'rule', self.regle_b.pk),
+            (AutomationApprovalSerializer, 'rule', self.regle_b.pk),
+            (AutomationApprovalSerializer, 'requested_by', self.user_b.pk),
+            (AutomationApprovalSerializer, 'decided_by', self.user_b.pk),
+        )
+        for cls, champ, valeur in cas:
+            with self.subTest(serializer=cls.__name__, champ=champ):
+                ser = cls(data={champ: valeur}, partial=True, context=ctx)
+                self.assertTrue(ser.is_valid(), ser.errors)
+                self.assertNotIn(champ, ser.validated_data)
+                self.assertIn(champ, cls.same_company_fields)

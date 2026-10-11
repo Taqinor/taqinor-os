@@ -54,19 +54,19 @@ const parametresApi = {
   // WIR66 — référentiels société (ARC23/24/27) : taux de TVA, conditions de
   // paiement, unités de mesure. Lecture pour tout rôle ; écriture réservée
   // admin/responsable côté serveur. `company` toujours forcée serveur.
-  getTauxTva: () => api.get('/parametres/taux-tva/'),
+  getTauxTva: (params) => api.get('/parametres/taux-tva/', { params }),
   createTauxTva: (data) => api.post('/parametres/taux-tva/', data),
   updateTauxTva: (id, data) => api.patch(`/parametres/taux-tva/${id}/`, data),
   deleteTauxTva: (id) => api.delete(`/parametres/taux-tva/${id}/`),
   setDefautTauxTva: (id) => api.post(`/parametres/taux-tva/${id}/set_defaut/`),
-  getConditionsPaiement: () => api.get('/parametres/conditions-paiement/'),
+  getConditionsPaiement: (params) => api.get('/parametres/conditions-paiement/', { params }),
   createConditionPaiement: (data) =>
     api.post('/parametres/conditions-paiement/', data),
   updateConditionPaiement: (id, data) =>
     api.patch(`/parametres/conditions-paiement/${id}/`, data),
   deleteConditionPaiement: (id) =>
     api.delete(`/parametres/conditions-paiement/${id}/`),
-  getUnitesMesure: () => api.get('/parametres/unites-mesure/'),
+  getUnitesMesure: (params) => api.get('/parametres/unites-mesure/', { params }),
   createUniteMesure: (data) => api.post('/parametres/unites-mesure/', data),
   updateUniteMesure: (id, data) =>
     api.patch(`/parametres/unites-mesure/${id}/`, data),
@@ -74,8 +74,8 @@ const parametresApi = {
   // MRY28 — gabarit des trois cadences de relance (contact/apres_devis/reveil),
   // forme `cadence_relance_v2` (MRY25/MRY4). `?cadence=` filtre une seule
   // cadence ; sans lui, toutes les cadences confondues.
-  getCadenceRelance: (cadence) =>
-    api.get('/parametres/cadence-relance/', { params: cadence ? { cadence } : {} }),
+  getCadenceRelance: (cadence, extra = {}) =>
+    api.get('/parametres/cadence-relance/', { params: { ...(cadence ? { cadence } : {}), ...extra } }),
   updateCadenceRelanceEtape: (id, data) =>
     api.patch(`/parametres/cadence-relance/${id}/`, data),
   // CAD53 — l'éditeur peut AJOUTER et SUPPRIMER un barreau (décision fondateur
@@ -90,7 +90,7 @@ const parametresApi = {
   // société et leur page publique. Source de la preuve de la touche J4 :
   // le serveur y choisit celle de la ville du lead. `company` n'est jamais
   // envoyée (forcée côté serveur).
-  getRealisations: () => api.get('/parametres/realisations/'),
+  getRealisations: (params) => api.get('/parametres/realisations/', { params }),
   createRealisation: (data) => api.post('/parametres/realisations/', data),
   updateRealisation: (id, data) =>
     api.patch(`/parametres/realisations/${id}/`, data),

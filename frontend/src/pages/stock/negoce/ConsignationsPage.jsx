@@ -6,6 +6,7 @@ import negoceApi from '../../../features/stock/api/negoceApi'
 import {
   messageServeur, messageServeurBlob, ouvrirBlob,
 } from '../../../features/stock/api/erreurs'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 /* ASTK221 — Consignation : dépôts chez les clients, déclaration de
    consommation (la facture brouillon créée est affichée avec son lien),
@@ -19,7 +20,7 @@ import {
 
 const liste = (d) => (Array.isArray(d) ? d : d?.results ?? [])
 const STATUTS_DECL = { declaree: 'Déclarée', facturee: 'Facturée', annulee: 'Annulée' }
-const aujourdhui = () => new Date().toISOString().slice(0, 10)
+const aujourdhui = () => todayLocalIso()
 const selectCls = 'h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm'
 const Carte = ({ titre, children }) => (
   <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">

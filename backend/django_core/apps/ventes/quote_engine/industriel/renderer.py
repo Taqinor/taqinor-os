@@ -149,8 +149,9 @@ def _augment(data: dict) -> dict:
     # ``synthese_ci['argent']`` (revente « hors cashflow », O&M déduite
     # seulement si chiffrée) : plus aucune clé d'étude écran reprise ici.
 
-    # site + liens (repli résidentiel/théme).
-    d["site_url"] = d.get("site_url") or "taqinor.ma"
+    # ERR-APDF-CI-PIED-TAQINOR-MA — aucun repli « taqinor.ma » posé ici : le
+    # pied lit le site par ``theme.company_identity`` (site de la société,
+    # sinon rien ; TAQINOR seulement sans aucun profil — APDF5).
     return d
 
 

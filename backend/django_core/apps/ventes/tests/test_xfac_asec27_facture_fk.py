@@ -14,11 +14,18 @@ Appelants front relevés (grep) : `frontend/src/pages/ventes/FactureForm.jsx`
 envoie `statut` (sélecteur) — désormais ignoré par le serveur ; le statut ne
 bouge que par les actions dédiées (validation, paiement, abandon).
 
+ENF17 — même borne sur la facture d'une ligne, les FK du sérialiseur de
+LECTURE (`FactureSerializer`, + `abandon_par`), l'avoir, la note de débit et
+leurs lignes, la promesse, l'affectation et la ligne de remise ; les fils
+(relances, chatter) sont en lecture seule.
+
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \\
         -Modules "apps.ventes.tests.test_xfac_asec27_facture_fk"
 """
+from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -183,3 +190,86 @@ class FactureFkEtChampsServeurTests(TestCase):
             'produit': self.ma['produit'].pk,
             'source_devis': self.ma['devis'].pk}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    # ── ENF17 ────────────────────────────────────────────────────────────
+    def _facture_b(self):
+        from apps.ventes.models import Facture
+        return Facture.objects.create(
+            company=self.b, reference='FAC-ENF17-B', client=self.mb['client'],
+            statut=Facture.Statut.BROUILLON, taux_tva=Decimal('20.00'))
+
+    def _avance(self, company, client):
+        from apps.ventes.models import Paiement
+        return Paiement.objects.create(
+            company=company, client=client, facture=None,
+            statut_affectation=Paiement.StatutAffectation.NON_AFFECTE,
+            montant=Decimal('100'), date_paiement=date(2026, 10, 1),
+            mode='virement')
+
+    def _assert_borne(self, cls, champ, propre, etranger):
+        ctx = {'request': SimpleNamespace(user=self.user)}
+        with self.subTest(serializer=cls.__name__, champ=champ):
+            ser = cls(data={champ: etranger.pk}, partial=True, context=ctx)
+            self.assertFalse(ser.is_valid())
+            self.assertEqual(ser.errors[champ][0].code, 'does_not_exist')
+            champ_lie = cls(context=ctx).fields[champ]
+            self.assertEqual(champ_lie.to_internal_value(propre.pk), propre)
+
+    def test_enf17_ligne_facture_etrangere_comme_absent(self):
+        from apps.ventes.models import LigneFacture
+        facture_b = self._facture_b()
+        corps = {'designation': 'X', 'quantite': '1', 'prix_unitaire': '10',
+                 'produit': self.ma['produit'].pk}
+        url = '/api/django/ventes/factures-lignes/'
+        r = self.api.post(url, {**corps, 'facture': facture_b.id},
+                          format='json')
+        absent = self.api.post(url, {**corps, 'facture': 999999},
+                               format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['facture'][0].code, 'does_not_exist')
+        self.assertEqual(
+            str(r.data['facture'][0]).replace(str(facture_b.id), '<ID>'),
+            str(absent.data['facture'][0]).replace('999999', '<ID>'))
+        self.assertFalse(LigneFacture.objects.filter(facture=facture_b).exists())
+
+    def test_enf17_serialiseurs_facturation_bornes(self):
+        from apps.ventes import serializers_facturation as sf
+        facture_b = self._facture_b()
+        paiement_a = self._avance(self.a, self.ma['client'])
+        paiement_b = self._avance(self.b, self.mb['client'])
+        user_b = User.objects.create_user(
+            username='asec27_b', password='x', role_legacy='responsable',
+            company=self.b)
+        for champ in self.FK_FACTURE:
+            self._assert_borne(sf.FactureSerializer, champ,
+                               self.ma[champ], self.mb[champ])
+        self._assert_borne(sf.FactureSerializer, 'abandon_par',
+                           self.user, user_b)
+        facture = (self.facture, facture_b)
+        client = (self.ma['client'], self.mb['client'])
+        produit = (self.ma['produit'], self.mb['produit'])
+        paiement = (paiement_a, paiement_b)
+        for cls, champ, (propre, etranger) in (
+                (sf.AvoirSerializer, 'client', client),
+                (sf.AvoirSerializer, 'facture', facture),
+                (sf.NoteDebitSerializer, 'client', client),
+                (sf.NoteDebitSerializer, 'facture', facture),
+                (sf.LigneAvoirSerializer, 'produit', produit),
+                (sf.LigneNoteDebitSerializer, 'produit', produit),
+                (sf.PromessePaiementSerializer, 'facture', facture),
+                (sf.AffectationPaiementSerializer, 'facture', facture),
+                (sf.AffectationPaiementSerializer, 'paiement', paiement),
+                (sf.LigneRemiseEncaissementSerializer, 'paiement', paiement)):
+            self._assert_borne(cls, champ, propre, etranger)
+
+    def test_enf17_fils_facture_lecture_seule_jamais_ecrits(self):
+        from apps.ventes import serializers_facturation as sf
+        facture_b = self._facture_b()
+        ctx = {'request': SimpleNamespace(user=self.user)}
+        for cls in (sf.RelanceLogSerializer, sf.FactureActivitySerializer):
+            with self.subTest(serializer=cls.__name__):
+                ser = cls(data={'facture': facture_b.id}, partial=True,
+                          context=ctx)
+                self.assertTrue(ser.is_valid(), ser.errors)
+                self.assertNotIn('facture', ser.validated_data)
+                self.assertIn('facture', cls.same_company_fields)

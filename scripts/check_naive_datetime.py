@@ -52,7 +52,6 @@ NAIVE_DATETIME_ALLOWLIST: set[str] = set()
 # YDATA11 — DateField(auto_now[_add]=True) revus : dates-ancre de numerotation, champs
 # DATE metier (jour), pas des horodatages.
 DATEFIELD_AUTO_NOW_ALLOWLIST = {
-    "backend/django_core/apps/facturation/models.py::Facture.date_emission",
     "backend/django_core/apps/facturation/models.py::Avoir.date_emission",
     "backend/django_core/apps/facturation/models.py::RelanceLog.date",
     "backend/django_core/apps/ventes/models_facturation.py::NoteDebit.date_emission",

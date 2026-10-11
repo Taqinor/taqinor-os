@@ -3,12 +3,15 @@
 Garanties : le lancement génère un item par compte du périmètre, un manager
 atteste ou révoque, une révocation retire le rôle, tout scopé société.
 """
+from types import SimpleNamespace
+
 from apps.roles.models import Role
 from authentication.models import CustomUser
 from testkit.base import TenantAPITestCase
 from testkit.factories import UserFactory
 
 from apps.accessreview.models import AccessReviewCampaign, AccessReviewItem
+from apps.accessreview.serializers import AccessReviewItemSerializer
 from apps.accessreview.services import generate_items
 
 
@@ -91,3 +94,20 @@ class AccessReviewTests(TenantAPITestCase):
             f'{self.BASE}{my_campaign.id}/attester/',
             {'item': foreign_item.id, 'decision': 'revoque'}, format='json')
         self.assertEqual(r.status_code, 400)
+
+    def test_enf17_item_fk_bornees_societe(self):
+        """ENF17 — campagne / compte d'une autre société = id absent (400)."""
+        ctx = {'request': SimpleNamespace(user=self.user)}
+        mine = AccessReviewCampaign.objects.create(
+            company=self.company, nom='m', perimetre='all')
+        other = AccessReviewCampaign.objects.create(
+            company=self.other_company, nom='o', perimetre='all')
+        for champ, propre, etranger in (
+                ('campagne', mine, other), ('user', self.user, self.other_user)):
+            with self.subTest(champ=champ):
+                ser = AccessReviewItemSerializer(
+                    data={champ: etranger.pk}, partial=True, context=ctx)
+                self.assertFalse(ser.is_valid())
+                self.assertEqual(ser.errors[champ][0].code, 'does_not_exist')
+                champ_lie = AccessReviewItemSerializer(context=ctx).fields[champ]
+                self.assertEqual(champ_lie.to_internal_value(propre.pk), propre)

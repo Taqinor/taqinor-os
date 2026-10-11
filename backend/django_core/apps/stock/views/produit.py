@@ -692,7 +692,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='emplacements',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def emplacements(self, request, *args, **kwargs):
         """N15 — ventilation du stock de ce produit par emplacement (le dépôt
         principal détient le reste = total − somme des autres)."""
@@ -836,7 +836,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(parameters=[P('ids', STR, True, 'Ids produits (répétés ou séparés par virgule)'), P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def etiquettes(self, request):
         """N20 — Étiquettes imprimables (QR/CODE128) pour une sélection de SKU.
 
@@ -963,7 +963,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=False, methods=['get'], url_path='a-reapprovisionner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def a_reapprovisionner(self, request):
         """FG54 — Liste des produits dont le stock est <= seuil_alerte,
         avec fournisseur le moins cher et quantité suggérée. INTERNE."""
@@ -972,7 +972,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(request=corps('ProduitGenererBcfReapproCorps', fournisseur_id=serializers.IntegerField(required=False, allow_null=True)), responses={201: OBJET})
     @action(detail=False, methods=['post'], url_path='generer-bcf-reappro',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def generer_bcf_reappro(self, request):
         """FG54 — Génère un BCF BROUILLON pour tous les produits sous seuil.
         Réutilise create_with_reference('BCF'). INTERNE."""

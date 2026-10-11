@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Star } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
 import { toast } from '../../ui/confirm'
@@ -23,8 +24,10 @@ function TauxTvaList() {
   const [rows, setRows] = useState(null)
   const [draft, setDraft] = useState({ code: '', libelle: '', taux: '' })
 
-  const load = () => parametresApi.getTauxTva()
-    .then(r => setRows(asList(r.data))).catch(() => setRows([]))
+  // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
+  const load = () => fetchAllPages((page, o) => parametresApi.getTauxTva({ page, ...o })
+    .then(r => r?.data))
+    .then(data => setRows(asList(data))).catch(() => setRows([]))
   useEffect(() => { load() }, [])
 
   const create = async () => {
@@ -95,8 +98,9 @@ function ConditionsList() {
   const [rows, setRows] = useState(null)
   const [draft, setDraft] = useState({ libelle: '', delai_jours: '', escompte_pct: '' })
 
-  const load = () => parametresApi.getConditionsPaiement()
-    .then(r => setRows(asList(r.data))).catch(() => setRows([]))
+  const load = () => fetchAllPages((page, o) => parametresApi.getConditionsPaiement({ page, ...o })
+    .then(r => r?.data))
+    .then(data => setRows(asList(data))).catch(() => setRows([]))
   useEffect(() => { load() }, [])
 
   const create = async () => {
@@ -159,8 +163,9 @@ function UnitesList() {
   const [rows, setRows] = useState(null)
   const [draft, setDraft] = useState({ code: '', libelle: '' })
 
-  const load = () => parametresApi.getUnitesMesure()
-    .then(r => setRows(asList(r.data))).catch(() => setRows([]))
+  const load = () => fetchAllPages((page, o) => parametresApi.getUnitesMesure({ page, ...o })
+    .then(r => r?.data))
+    .then(data => setRows(asList(data))).catch(() => setRows([]))
   useEffect(() => { load() }, [])
 
   const create = async () => {

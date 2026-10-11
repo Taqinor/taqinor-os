@@ -34,7 +34,6 @@ from ..serializers import (  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsAdminRole,
-    IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
 
@@ -144,7 +143,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=LISTE)
     @action(detail=False, methods=['get'], url_path='van-stock/a-reapprovisionner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def van_stock_a_reapprovisionner(self, request):
         """NTFSM19 — écarts van-stock (camionnette) sous seuil, avec la
         quantité suggérée à transférer depuis le dépôt principal."""
@@ -153,7 +152,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=serializers.IntegerField(), emplacement_id=serializers.IntegerField()), responses={200: TransfertStockSerializer, 201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='van-stock/creer-transfert',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def van_stock_creer_transfert(self, request):
         """NTFSM19 — crée (ou renvoie, sans dupliquer) la demande de transfert
         dépôt principal → camionnette qui comble l'écart sous seuil pour

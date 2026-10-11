@@ -219,3 +219,277 @@ class SoldeFacturationTermineeTests(TestCase):
             r = self._porte('tranche', en_tranches)
             self.assertEqual(r.status_code, 201, r.data)
             self.assertIs(self._terminee(en_tranches), attendu)
+
+
+class NumeroEmissionTests(TestCase):
+    """ATOT27 (D-ATOT-5, C-ATOT-018) — le numéro légal d'une facture naît à
+    l'ÉMISSION : un brouillon porte « BROUILLON-<id> » hors série, un
+    brouillon supprimé ne consomme aucun numéro, la série émise suit l'ordre
+    d'émission. Rejoue la sonde V1 TNUM-1 (``-0002`` réutilisé)."""
+    setUp = PortesFacturationTests.setUp
+    _devis = PortesFacturationTests._devis
+    _porte = PortesFacturationTests._porte
+
+    def _emettre(self, facture_id):
+        return self.api.post(
+            f'/api/django/ventes/factures/{facture_id}/emettre/', {},
+            format='json')
+
+    def _mois(self):
+        from django.utils import timezone
+        return timezone.now().strftime('%Y%m')
+
+    def test_brouillons_hors_serie_numero_a_l_emission(self):
+        from apps.ventes.models import Facture
+        from apps.ventes.utils.numbering_audit import audit_company
+        mois = self._mois()
+        premier = self.api.post(
+            '/api/django/ventes/factures/',
+            {'client': self.client_obj.id, 'taux_tva': '20.00'},
+            format='json')
+        second = self._porte('bc', self._devis())
+        troisieme = self._porte('bc', self._devis())
+        for r in (premier, second, troisieme):
+            self.assertEqual(r.status_code, 201, r.data)
+            f = Facture.objects.get(pk=r.data['id'])
+            self.assertEqual(f.statut, Facture.Statut.BROUILLON)
+            self.assertEqual(f.reference, f'BROUILLON-{f.pk}')
+            # La réponse du POST /factures/ vient de FactureWriteSerializer
+            # (liste `fields` explicite, ASEC27) qui n'a jamais servi
+            # `reference` : la référence servie se lit sur la fiche.
+            fiche = self.api.get(f'/api/django/ventes/factures/{f.pk}/')
+            self.assertEqual(fiche.status_code, 200, fiche.data)
+            self.assertEqual(fiche.data['reference'], f.reference)
+        su = User.objects.create_superuser(
+            username=f'atot27_su_{_nxt()}', password='x', email='')
+        su.company = self.company
+        su.role_legacy = 'admin'
+        su.save(update_fields=['company', 'role_legacy'])
+        api_su = APIClient()
+        api_su.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(su)}')
+        resp = api_su.delete(
+            f"/api/django/ventes/factures/{premier.data['id']}/")
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
+        for r, attendu in ((second, f'FAC-{mois}-0001'),
+                           (troisieme, f'FAC-{mois}-0002')):
+            resp = self._emettre(r.data['id'])
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data['reference'], attendu)
+            self.assertEqual(
+                Facture.objects.get(pk=r.data['id']).reference, attendu)
+        # CLAUSE PERSISTANCE — la série relue est continue, triée par
+        # date d'émission ; l'audit de numérotation n'y voit aucun trou.
+        serie = list(Facture.objects.filter(company=self.company)
+                     .exclude(statut=Facture.Statut.BROUILLON)
+                     .order_by('date_emission', 'id')
+                     .values_list('reference', flat=True))
+        self.assertEqual(serie, [f'FAC-{mois}-0001', f'FAC-{mois}-0002'])
+        self.assertTrue(audit_company(self.company)['conforme'])
+
+    def test_portes_emises_numerotees_dans_l_ordre(self):
+        mois = self._mois()
+        brouillon = self._porte('bc', self._devis())
+        self.assertEqual(brouillon.status_code, 201, brouillon.data)
+        refs = []
+        for porte in ('tranche', 'complete', 'consolidee'):
+            r = self._porte(porte, self._devis())
+            self.assertEqual(r.status_code, 201, r.data)
+            refs.append(r.data.get('facture_reference')
+                        or r.data['reference'])
+        self.assertEqual(refs, [f'FAC-{mois}-{n:04d}' for n in (1, 2, 3)])
+        resp = self._emettre(brouillon.data['id'])
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['reference'], f'FAC-{mois}-0004')
+
+    def test_pdf_brouillon_porte_brouillon(self):
+        """CLAUSE CLIENT — le PDF d'un brouillon imprime « BROUILLON-<id> »,
+        jamais un numéro de la série."""
+        from apps.ventes.models import Facture
+        from apps.ventes.utils.pdf import _render_html
+        r = self._porte('bc', self._devis())
+        self.assertEqual(r.status_code, 201, r.data)
+        facture = Facture.objects.get(pk=r.data['id'])
+        html = _render_html('facture.html', {
+            'facture': facture, 'entreprise_nom': 'ATOT27',
+            'entreprise_adresse': '', 'entreprise_email': '',
+            'entreprise_telephone': '', 'entreprise_siret': '',
+            'entreprise_tva_intra': '', 'couleur_principale': '#059669',
+            'logo_uri': None, 'signature_uri': None, 'rib': '',
+            'banque': ''})
+        self.assertIn(f'BROUILLON-{facture.pk}', html)
+
+
+class PortesSavInterventionNumeroTests(TestCase):
+    """AFAC90 (sonde W5-1, classe C-ATOT-018) — portes 6 (ticket SAV) et 7
+    (intervention) : le brouillon qu'elles créent ne porte aucun numéro
+    légal ; ``emettre_facture`` lui attribue le suivant de la série. Totaux
+    au prix catalogue HT (1 000 HT, TVA 20 %, 1 200 TTC)."""
+    setUp = PortesFacturationTests.setUp
+    _emettre = NumeroEmissionTests._emettre
+    _mois = NumeroEmissionTests._mois
+
+    def _onduleur(self):
+        from apps.stock.models import Produit
+        return Produit.objects.create(
+            company=self.company, nom='Onduleur AFAC90',
+            sku=f'AFAC90-OND-{_nxt()}', prix_vente=Decimal('1000'),
+            prix_achat=Decimal('600'), tva=Decimal('20'), quantite_stock=10)
+
+    def _ticket(self, produit):
+        from apps.sav.models import PieceConsommee, Ticket
+        ticket = Ticket.objects.create(
+            company=self.company, reference=f'SAV-AFAC90-{_nxt()}',
+            client=self.client_obj, type=Ticket.Type.CORRECTIF,
+            couverture=Ticket.Couverture.FACTURABLE, created_by=self.user)
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ticket, produit=produit,
+            quantite=Decimal('1'), created_by=self.user)
+        return ticket
+
+    def _intervention(self, produit, ticket=None):
+        from apps.installations.models import (
+            ConsommationLigne, Installation, Intervention,
+            MaterielConsommation,
+        )
+        chantier = Installation.objects.create(
+            company=self.company, reference=f'CHT-AFAC90-{_nxt()}',
+            client=self.client_obj)
+        interv = Intervention.objects.create(
+            company=self.company, installation=chantier, ticket=ticket,
+            type_intervention='depannage', created_by=self.user)
+        conso = MaterielConsommation.objects.create(
+            company=self.company, intervention=interv)
+        ConsommationLigne.objects.create(
+            company=self.company, consommation=conso, produit=produit,
+            designation=produit.nom, quantite_prevue=Decimal('1'),
+            quantite_utilisee=Decimal('1'))
+        return interv
+
+    def _verifier_brouillon_puis_emission(self, facture_id, reference):
+        from apps.ventes.models import Facture
+        facture = Facture.objects.get(pk=facture_id)
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+        self.assertEqual(reference, f'BROUILLON-{facture.pk}')
+        self.assertEqual(facture.reference, reference)
+        self.assertEqual(
+            (facture.total_ht, facture.total_tva, facture.total_ttc),
+            (Decimal('1000'), Decimal('200'), Decimal('1200')))
+        resp = self._emettre(facture.pk)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        attendu = f'FAC-{self._mois()}-0001'
+        self.assertEqual(resp.data['reference'], attendu)
+        self.assertEqual(Facture.objects.get(pk=facture.pk).reference, attendu)
+
+    def test_ticket_sav_brouillon_sans_numero_legal(self):
+        ticket = self._ticket(self._onduleur())
+        r = self.api.post(
+            f'/api/django/sav/tickets/{ticket.id}/facturer/', {},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self._verifier_brouillon_puis_emission(
+            r.data['facture_id'], r.data['facture_reference'])
+
+    def test_intervention_brouillon_sans_numero_legal(self):
+        interv = self._intervention(self._onduleur())
+        r = self.api.post(
+            f'/api/django/installations/interventions/{interv.id}/'
+            'generer-facture/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self._verifier_brouillon_puis_emission(
+            r.data['facture_id'], r.data['facture_reference'])
+
+
+class PortesSavInterventionConcurrenceTests(TestCase):
+    """AFAC91 (sonde W5-1) — « double clic » : le ticket / l'intervention est
+    lu DEUX fois avant toute écriture ; le générateur appelé avec la seconde
+    instance PÉRIMÉE renvoie la MÊME facture (relecture sous verrou), une
+    seule facture non annulée existe et le lien pointe sur elle."""
+    setUp = PortesFacturationTests.setUp
+    _onduleur = PortesSavInterventionNumeroTests._onduleur
+    _ticket = PortesSavInterventionNumeroTests._ticket
+    _intervention = PortesSavInterventionNumeroTests._intervention
+
+    def _une_seule_facture(self, f1, f2):
+        from apps.ventes.models import Facture
+        self.assertEqual(f1.pk, f2.pk)
+        self.assertEqual(
+            Facture.objects.filter(company=self.company)
+            .exclude(statut=Facture.Statut.ANNULEE).count(), 1)
+
+    def test_ticket_deux_instances_une_facture(self):
+        from apps.sav.models import Ticket
+        from apps.ventes.services import generer_facture_ticket_sav
+        ticket = self._ticket(self._onduleur())
+        premiere = Ticket.objects.get(pk=ticket.pk)
+        seconde = Ticket.objects.get(pk=ticket.pk)
+        f1 = generer_facture_ticket_sav(
+            ticket=premiere, sous_garantie=False, user=self.user,
+            pieces=list(premiere.pieces.select_related('produit')))
+        f2 = generer_facture_ticket_sav(
+            ticket=seconde, sous_garantie=False, user=self.user,
+            pieces=list(seconde.pieces.select_related('produit')))
+        self._une_seule_facture(f1, f2)
+        self.assertEqual(
+            Ticket.objects.get(pk=ticket.pk).facture_id_ext, f1.pk)
+
+    def test_intervention_deux_instances_une_facture(self):
+        from apps.installations.models import Intervention
+        from apps.ventes.services import generer_facture_intervention
+        interv = self._intervention(self._onduleur())
+        premiere = Intervention.objects.get(pk=interv.pk)
+        seconde = Intervention.objects.get(pk=interv.pk)
+        f1 = generer_facture_intervention(intervention=premiere, user=self.user)
+        f2 = generer_facture_intervention(intervention=seconde, user=self.user)
+        self._une_seule_facture(f1, f2)
+        self.assertEqual(Intervention.objects.get(pk=interv.pk).facture_id, f1.pk)
+
+
+class PorteInterventionTicketTests(TestCase):
+    """AFAC92 (sonde W5-2, classe C-ATOT-001) — contrat ZFSM4 « hors
+    contrat/ticket » : une intervention rattachée à un ticket SAV déjà
+    facturé est REFUSÉE (400 français), aucune seconde facture ; une
+    intervention sans ticket reste facturable (201 puis 200)."""
+    setUp = PortesFacturationTests.setUp
+    _onduleur = PortesSavInterventionNumeroTests._onduleur
+    _ticket = PortesSavInterventionNumeroTests._ticket
+    _intervention = PortesSavInterventionNumeroTests._intervention
+
+    def _generer(self, interv):
+        return self.api.post(
+            f'/api/django/installations/interventions/{interv.id}/'
+            'generer-facture/', {}, format='json')
+
+    def test_intervention_rattachee_ticket_refusee(self):
+        from apps.ventes.models import Facture
+        onduleur = self._onduleur()
+        ticket = self._ticket(onduleur)
+        r = self.api.post(
+            f'/api/django/sav/tickets/{ticket.id}/facturer/', {},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(
+            Facture.objects.get(pk=r.data['facture_id']).total_ttc,
+            Decimal('1200'))
+        interv = self._intervention(onduleur, ticket=ticket)
+        resp = self._generer(interv)
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            resp.data['detail'],
+            'Intervention rattachée à un ticket SAV : facturez depuis le '
+            'ticket.')
+        # CLAUSE PERSISTANCE — une seule facture pour la visite (le ticket).
+        self.assertEqual(
+            Facture.objects.filter(company=self.company)
+            .exclude(statut=Facture.Statut.ANNULEE).count(), 1)
+        interv.refresh_from_db()
+        self.assertIsNone(interv.facture_id)
+
+    def test_intervention_sans_ticket_facturable(self):
+        interv = self._intervention(self._onduleur())
+        r1 = self._generer(interv)
+        self.assertEqual(r1.status_code, 201, r1.data)
+        r2 = self._generer(interv)
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertTrue(r2.data['deja_existant'])
+        self.assertEqual(r1.data['facture_id'], r2.data['facture_id'])

@@ -23,6 +23,8 @@ pas le nom sous lequel une ligne de journal est émise.
 from decimal import Decimal, ROUND_HALF_UP
 import logging
 
+from django.db import transaction
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -92,13 +94,15 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
          intégralement réglée à l'acte : le hold protège l'encours, il n'a
          aucune raison de refuser du cash immédiat ;
       4. workflow de revue XFAC18 (valideur ≠ créateur, anomalies) ;
-      5. dérivation de l'échéance depuis les conditions client (XFAC23), sans
-         jamais écraser une échéance saisie ;
-      6. pose ``EMISE`` + ``save()`` ;
+      5. pose la date d'émission du jour (AFAC14) et dérive l'échéance depuis
+         les conditions client (XFAC23), sans écraser une échéance saisie
+         postérieure à l'émission ;
+      6. attribue le numéro légal à une référence provisoire (ATOT27),
+         pose ``EMISE`` + ``save()`` ;
       7. émet ``facture_emise`` EXACTEMENT une fois.
 
     RÈGLE #4 : ce service ne touche QUE le statut de la Facture (et le
-    ``revue_statut``/``date_echeance`` qui l'accompagnent) ; il ne rend aucun
+    numéro légal, le ``revue_statut``/``date_echeance`` qui l'accompagnent) ; il ne rend aucun
     document et ne connaît pas le moteur de devis.
 
     Renvoie la liste des anomalies de revue (vide hors XFAC18). Lève
@@ -136,19 +140,40 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         anomalies = anomalies_emission_facture(facture)
         facture.revue_statut = Facture.RevueStatut.VALIDEE
 
+    if statut == Facture.Statut.BROUILLON:
+        # AFAC14 — la date d'émission est le jour du passage à ÉMISE (date
+        # locale Casablanca), jamais la création du brouillon ; une échéance
+        # antérieure à cette date est re-dérivée, une échéance saisie
+        # postérieure est conservée. Une facture déjà émise n'est pas re-datée.
+        from django.utils import timezone
+        facture.date_emission = timezone.localdate()
+        if facture.date_echeance and (
+                facture.date_echeance < facture.date_emission):
+            facture.date_echeance = None
     if not facture.date_echeance:
-        derivee = calculer_date_echeance(
-            client=facture.client, date_emission=facture.date_emission)
-        if derivee is not None:
-            facture.date_echeance = derivee
+        # AFAC48 — délai client (XFAC23), sinon LE repli émission + 30 j :
+        # une facture émise porte toujours son échéance appliquée.
+        from datetime import timedelta
+        from apps.facturation.models import DEFAULT_ECHEANCE_DAYS
+        facture.date_echeance = calculer_date_echeance(
+            client=facture.client, date_emission=facture.date_emission,
+        ) or facture.date_emission + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
-    facture.statut = Facture.Statut.EMISE
-    # APAR61 (D-APAR-4) — l'identité vendeur imprimée est FIGÉE à l'émission
-    # (un changement de RIB ne réécrit jamais une facture déjà émise).
-    if not facture.identite_vendeur:
-        from ..utils.pdf import identite_vendeur_courante
-        facture.identite_vendeur = identite_vendeur_courante(facture.company)
-    facture.save()
+    from ..utils.company_settings import numeroter_a_l_emission
+    with transaction.atomic():
+        # ATOT27 (D-ATOT-5) — le numéro LÉGAL naît ICI, après tous les refus
+        # (un refus ne consomme aucun numéro) et dans la même transaction
+        # que la pose d'EMISE : la série suit l'ordre d'émission.
+        numeroter_a_l_emission(facture)
+        facture.statut = Facture.Statut.EMISE
+        # APAR61 (D-APAR-4) — l'identité vendeur imprimée est FIGÉE à
+        # l'émission (un changement de RIB ne réécrit jamais une facture
+        # déjà émise).
+        if not facture.identite_vendeur:
+            from ..utils.pdf import identite_vendeur_courante
+            facture.identite_vendeur = identite_vendeur_courante(
+                facture.company)
+        facture.save()
 
     from core.events import facture_emise
     facture_emise.send(
@@ -641,8 +666,7 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
          (100 %, lignes du devis recopiées par ``copier_devis_sur_facture`` —
          le même geste que la facture de BC), la rattache au bon de commande
          du devis s'il en a un sans facture, l'ÉMET par le service unique
-         ``emettre_facture`` (numéro définitif déjà posé par
-         ``create_numbered``), refuse une somme de paiements > total TTC, puis
+         ``emettre_facture`` (qui pose le numéro légal — ATOT27), refuse une somme de paiements > total TTC, puis
          consigne chaque paiement par ``encaisser_sur_facture`` — le MÊME code
          que ``factures/{id}/enregistrer-paiement/``.
 
@@ -658,7 +682,7 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
     from apps.ventes.selectors_facturation import (
         DevisDejaFacture, exiger_devis_facturable,
     )
-    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.company_settings import create_provisoire
 
     if devis.statut != devis.Statut.ACCEPTE:
         raise FacturationRefusee(
@@ -697,7 +721,7 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
             )
             return copier_devis_sur_facture(facture, devis)
 
-        facture = create_numbered(Facture, company, 'facture', _create)
+        facture = create_provisoire(_create)
         emettre_facture(facture, user=user, source='facturer_devis_complet')
         facture.refresh_from_db()
 
@@ -747,7 +771,7 @@ def creer_facture_contrat(*, contrat, user, company):
     """
     from django.utils import timezone
     from apps.ventes.models import Facture
-    from apps.ventes.utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_provisoire
 
     if not contrat.facturation_active:
         raise ValueError(
@@ -807,7 +831,7 @@ def creer_facture_contrat(*, contrat, user, company):
     # (période close, hold crédit) ne laisse AUCUN brouillon orphelin.
     from django.db import transaction
     with transaction.atomic():
-        facture = create_with_reference(Facture, 'FAC', company, _create)
+        facture = create_provisoire(_create)
         emettre_facture(facture, user=user, source='contrat_maintenance')
 
         # Avancer la date de dernière facturation.
@@ -836,8 +860,8 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
 
     Statut BROUILLON (contrairement à ``creer_facture_contrat`` qui émet
     directement) : une facture de régie doit rester éditable/relisible avant
-    envoi. Numérotation via ``apps/ventes/utils/references.py`` (jamais
-    ``count()+1``). Renvoie la ``Facture`` créée.
+    envoi. Référence provisoire « BROUILLON-<id> » ; numéro légal à
+    l'émission (ATOT27). Renvoie la ``Facture`` créée.
 
     AUD181 — ``taux_tva=None`` (et non plus ``Decimal('20')`` figé) résout le
     KNOB SOCIÉTÉ ``CompanyProfile.tva_standard`` comme le font déjà les deux
@@ -846,9 +870,8 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     donc le comportement est inchangé tant que rien n'est édité.
     """
     from apps.ventes.models import Facture
-    from apps.ventes.utils.references import create_with_reference
 
-    from ..utils.company_settings import tva_standard
+    from ..utils.company_settings import create_provisoire, tva_standard
 
     taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
                 else tva_standard(company))
@@ -873,7 +896,7 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
             created_by=user,
         )
 
-    facture = create_with_reference(Facture, 'FAC', company, _create)
+    facture = create_provisoire(_create)
     logger.info(
         'XPRJ3: facture régie %s créée (company %s, montant HT %s)',
         facture.reference, company.id, montant_ht)
@@ -906,7 +929,7 @@ def creer_facture_consignation(*, company, client, user, lignes,
       ``tva_standard`` (comme ``creer_facture_regie``, AUD181) ;
     * totaux NON figés (``montant_*`` NULL) : la chaîne Sous-total → TVA →
       TTC est calculée sur les lignes, la facture reste éditable ;
-    * numérotation ``apps/ventes/utils/references.py`` (jamais count()+1) ;
+    * référence provisoire « BROUILLON-<id> », numéro légal à l'émission ;
     * IDEMPOTENTE par ``reference_origine`` (ex. ``CONSIGNATION-<id>``) :
       Facture n'a pas de champ « référence d'origine », le marqueur
       ``[origine:<ref>]`` est porté par ``Facture.note`` et relu (société +
@@ -918,9 +941,8 @@ def creer_facture_consignation(*, company, client, user, lignes,
     from django.db import transaction
 
     from apps.ventes.models import Facture, LigneFacture
-    from apps.ventes.utils.references import create_with_reference
 
-    from ..utils.company_settings import tva_standard
+    from ..utils.company_settings import create_provisoire, tva_standard
 
     reference_origine = str(reference_origine or '').strip()
     if not reference_origine:
@@ -958,7 +980,7 @@ def creer_facture_consignation(*, company, client, user, lignes,
                 created_by=user,
             )
 
-        facture = create_with_reference(Facture, 'FAC', company, _create)
+        facture = create_provisoire(_create)
         for ligne in lignes:
             produit = ligne['produit']
             quantite = Decimal(str(ligne.get('quantite') or 0))
@@ -992,8 +1014,8 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
     situation) et une retenue de garantie optionnelle (le taux, pas le suivi de
     sa libération — qui vit dans ``contrats``, jamais importé ici). Statut
     BROUILLON + ``type_facture`` ACOMPTE (chaîne standard devis→factures,
-    réutilisée ici sans devis source). Numérotation via
-    ``apps/ventes/utils/references.py`` (jamais ``count()+1``). Renvoie la
+    réutilisée ici sans devis source). Référence provisoire
+    « BROUILLON-<id> », numéro légal à l'émission (ATOT27). Renvoie la
     ``Facture`` créée.
 
     AUD180 — DÉCISION FONDATEUR du 03/09/2026 : l'ASSIETTE est le
@@ -1009,9 +1031,8 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
     20 %) au lieu de figer 20 %, comme les deux fonctions frères de ce module.
     """
     from apps.ventes.models import Facture
-    from apps.ventes.utils.references import create_with_reference
 
-    from ..utils.company_settings import tva_standard
+    from ..utils.company_settings import create_provisoire, tva_standard
 
     taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
                 else tva_standard(company))
@@ -1047,7 +1068,7 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
             created_by=user,
         )
 
-    facture = create_with_reference(Facture, 'FAC', company, _create)
+    facture = create_provisoire(_create)
     logger.info(
         'XPRJ4: facture acompte situation %s créée (company %s, montant HT '
         '%s, RG %s%% = %s retenue au règlement)',
@@ -1067,8 +1088,8 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
 
     Utilisé par ``apps.pos.services.valider_vente`` pour la facture légale
     d'une vente comptoir. ``company``/``client`` doivent déjà être validés par
-    l'appelant (scoping multi-tenant). Numérotation collision-proof (jamais
-    count()+1).
+    l'appelant (scoping multi-tenant). Numéro légal posé à l'émission
+    (ATOT27, jamais count()+1).
 
     AUD101 — la facture naît BROUILLON et passe par ``emettre_facture`` : elle
     hérite donc du verrou de période, du blocage crédit XFAC28 et de
@@ -1078,7 +1099,7 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
     du cash immédiat, le hold d'encours n'a aucune raison de la refuser."""
     from django.db import transaction
     from apps.ventes.models import Facture
-    from apps.ventes.utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_provisoire
 
     def _create(ref):
         return Facture.objects.create(
@@ -1096,7 +1117,7 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
         )
 
     with transaction.atomic():
-        facture = create_with_reference(Facture, 'FAC', company, _create)
+        facture = create_provisoire(_create)
         emettre_facture(
             facture, user=user, source='facture_classique',
             verifier_credit=not reglee_a_l_acte)
@@ -1310,6 +1331,24 @@ def _main_oeuvre_produit(company):
     return produit
 
 
+def _facture_generee_sous_verrou(instance, champ):
+    """AFAC91 — relit ``champ`` (id de la facture déjà générée) SOUS VERROU
+    de la ligne ticket/intervention (``select_for_update`` dans la transaction
+    du générateur) : deux requêtes simultanées (double clic) produisent UNE
+    facture, la seconde attend la première puis la relit. Verrou via
+    ``type(instance)`` — aucun modèle sav/installations importé ici."""
+    from ..models import Facture
+    facture_id = (type(instance).objects.select_for_update()
+                  .values_list(champ, flat=True).get(pk=instance.pk))
+    if not facture_id:
+        return None
+    setattr(instance, champ, facture_id)
+    return Facture.objects.filter(
+        pk=facture_id, company=instance.company,
+    ).exclude(statut=Facture.Statut.ANNULEE).first()
+
+
+@transaction.atomic
 def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     """XFSM1 — construit une ``Facture`` BROUILLON pour un ticket SAV hors
     garantie (réels → facture) : lignes pièces (prix de VENTE catalogue,
@@ -1323,21 +1362,17 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
 
     ``pieces`` : itérable d'objets exposant ``produit`` (stock.Produit) et
     ``quantite`` (déjà scopés société par l'appelant — sav.views). Référence
-    via ``apps.ventes.utils.references`` (jamais count()+1).
+    provisoire « BROUILLON-<id> », numéro légal à l'émission (ATOT27).
 
-    IDEMPOTENT : si ``ticket.facture_id_ext`` pointe déjà vers une facture
-    non annulée, la renvoie telle quelle plutôt que d'en créer une seconde.
-    Renvoie la ``Facture`` créée (ou réutilisée)."""
+    IDEMPOTENT, même sous concurrence (AFAC91) : ``facture_id_ext`` est relu
+    SOUS VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
+    telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
     from ..models import Facture, LigneFacture
-    from ..utils.company_settings import tva_standard
-    from ..utils.references import create_with_reference
+    from ..utils.company_settings import create_provisoire, tva_standard
 
-    if ticket.facture_id_ext:
-        existante = Facture.objects.filter(
-            pk=ticket.facture_id_ext, company=ticket.company
-        ).exclude(statut=Facture.Statut.ANNULEE).first()
-        if existante is not None:
-            return existante
+    existante = _facture_generee_sous_verrou(ticket, 'facture_id_ext')
+    if existante is not None:
+        return existante
 
     company = ticket.company
     taux_tva_defaut = tva_standard(company)
@@ -1351,7 +1386,7 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
             created_by=user,
         )
 
-    facture = create_with_reference(Facture, 'FAC', company, _create)
+    facture = create_provisoire(_create)
 
     suffixe_couvert = ' (couvert garantie/contrat)' if sous_garantie else ''
 
@@ -1402,6 +1437,7 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
 # (dépannage résidentiel facturé sur place, prestation ponctuelle) — DISTINCT
 # de XFSM1/XCTR4 qui facturent depuis un TICKET SAV.
 
+@transaction.atomic
 def generer_facture_intervention(*, intervention, user):
     """ZFSM4 — construit une ``Facture`` BROUILLON pour une intervention hors
     contrat/ticket : lignes matériel depuis ``ConsommationLigne`` (prix de
@@ -1409,23 +1445,26 @@ def generer_facture_intervention(*, intervention, user):
     ``field_capture.crew_time`` × ``CompanyProfile.taux_horaire_sav``, le
     taux horaire paramétrable réutilisé de XFSM1 — pas de nouveau champ).
 
-    Référence via ``apps.ventes.utils.references`` (jamais count()+1). PDF
+    Référence provisoire « BROUILLON-<id> » (numéro légal à l'émission). PDF
     legacy (pas ``/proposal`` — règle #4 : ce chemin ne touche jamais le
     moteur de devis client).
 
-    IDEMPOTENT : si ``intervention.facture_id`` pointe déjà vers une facture
-    non annulée, la renvoie telle quelle plutôt que d'en créer une seconde.
-    Renvoie la ``Facture`` créée (ou réutilisée)."""
+    IDEMPOTENT, même sous concurrence (AFAC91) : ``facture_id`` est relu SOUS
+    VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
+    telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
     from ..models import Facture, LigneFacture
-    from ..utils.company_settings import tva_standard
-    from ..utils.references import create_with_reference
+    from ..utils.company_settings import create_provisoire, tva_standard
 
-    if intervention.facture_id:
-        existante = Facture.objects.filter(
-            pk=intervention.facture_id, company=intervention.company
-        ).exclude(statut=Facture.Statut.ANNULEE).first()
-        if existante is not None:
-            return existante
+    # AFAC92 — contrat ZFSM4 « hors contrat/ticket » : une intervention
+    # rattachée à un ticket SAV se facture depuis le TICKET (XFSM1/XCTR4),
+    # jamais une seconde fois ici (lecture de l'entier ``ticket_id``).
+    if intervention.ticket_id:
+        raise ValueError(
+            'Intervention rattachée à un ticket SAV : facturez depuis le '
+            'ticket.')
+    existante = _facture_generee_sous_verrou(intervention, 'facture_id')
+    if existante is not None:
+        return existante
 
     installation = intervention.installation
     if installation is None or installation.client_id is None:
@@ -1446,7 +1485,7 @@ def generer_facture_intervention(*, intervention, user):
             created_by=user,
         )
 
-    facture = create_with_reference(Facture, 'FAC', company, _create)
+    facture = create_provisoire(_create)
 
     consommation = getattr(intervention, 'consommation', None)
     if consommation is not None:

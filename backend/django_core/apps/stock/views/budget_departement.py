@@ -18,6 +18,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.mixins import TenantMixin
+from core.serializers import CompanyScopedRelationsMixin
 from ..openapi_helpers import BOOL, INT, NUM, OBJET, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -63,8 +64,11 @@ class BudgetDepartementSerializer(MasqueMontantsAchatMixin,
         return attrs
 
 
-class EngagementBudgetSerializer(MasqueMontantsAchatMixin,
+class EngagementBudgetSerializer(CompanyScopedRelationsMixin,
+                                 MasqueMontantsAchatMixin,
                                  serializers.ModelSerializer):
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société (mixin) si l'une redevient inscriptible.
     champs_montants_achat = ('montant',)  # ERR-STK-PRIX-ACHAT-SUITE
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)

@@ -29,15 +29,15 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
-def _deja_notifie_aujourdhui(event_type, link):
+def _deja_notifie_aujourdhui(event_type, link, company):
     """Vrai si une notification portant CE lien a déjà été créée aujourd'hui
-    (Africa/Casablanca) — quel que soit le destinataire (idempotence PAR
-    société, pas par destinataire)."""
+    (Africa/Casablanca) POUR CETTE société — quel que soit le destinataire
+    (idempotence PAR société, pas par destinataire ; ENF15 : requête scopée)."""
     from apps.notifications.models import Notification
     today = timezone.localdate()
     try:
         return Notification.objects.filter(
-            event_type=event_type, link=link,
+            company=company, event_type=event_type, link=link,
             created_at__date=today).exists()
     except Exception:  # pragma: no cover - défensif
         return False
@@ -84,7 +84,7 @@ def recompute_reordering_task():
             result[company.id] = 0
             continue
         link = f'stock-reappro-{company.id}-{today.isoformat()}'
-        if _deja_notifie_aujourdhui(EventType.STOCK_LOW, link):
+        if _deja_notifie_aujourdhui(EventType.STOCK_LOW, link, company):
             result[company.id] = 0
             continue
         recipients = _recipients_reappro(company)
@@ -141,7 +141,7 @@ def relancer_bcf_en_retard_task():
         count = 0
         for bc in en_retard:
             link = f'stock-relance-bcf-{bc.id}-{today.isoformat()}'
-            if _deja_notifie_aujourdhui('bcf_relance_proposee', link):
+            if _deja_notifie_aujourdhui('bcf_relance_proposee', link, company):
                 continue
             try:
                 from apps.notifications.services import notify_many
@@ -252,7 +252,7 @@ def notifier_documents_fournisseur_expirants_task():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         link = (f'stock-doc-fournisseur-expirant-{company.id}-'
                 f'{today.isoformat()}')
-        if _deja_notifie_aujourdhui(EventType.SUPPLIER_DOC_EXPIRING, link):
+        if _deja_notifie_aujourdhui(EventType.SUPPLIER_DOC_EXPIRING, link, company):
             result[company.id] = 0
             continue
         try:
@@ -368,7 +368,7 @@ def alerter_surcapacite_zones_task(seuil_pct=None):
             result[company.id] = 0
             continue
         link = f'stock-surcapacite-{company.id}-{today.isoformat()}'
-        if _deja_notifie_aujourdhui('stock_low', link):
+        if _deja_notifie_aujourdhui('stock_low', link, company):
             result[company.id] = 0
             continue
         try:
@@ -422,7 +422,7 @@ def expiration_alerts_task():
             result[company.id] = 0
             continue
         link = f'stock-expiration-{company.id}-{today.isoformat()}'
-        if _deja_notifie_aujourdhui('stock_expiration_soon', link):
+        if _deja_notifie_aujourdhui('stock_expiration_soon', link, company):
             result[company.id] = 0
             continue
         try:

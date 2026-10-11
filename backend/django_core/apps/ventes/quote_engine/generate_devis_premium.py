@@ -1074,8 +1074,8 @@ def _renvoi_detail_complet():
     vers le « document complet (3 pages) » du renderer agricole.
     """
     if (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole":
-        return "le document complet (3 pages)"
-    return "le devis multi-pages"
+        return _L("op_renvoi_agricole")
+    return _L("op_renvoi_multipages")
 
 
 def _kwc_mention(prefixe="&#160;", suffixe="&#160;kWc"):
@@ -4235,12 +4235,11 @@ def page_onepage(items, tronquees=0):
         rows_html += (
             f'<tr><td colspan="6" style="padding:{pad_px}px 10px;'
             f'font-style:italic;font-size:7pt;color:{CG4};">'
-            f'&#8230; et {tronquees} autre'
-            f'{"s" if tronquees > 1 else ""} ligne'
-            f'{"s" if tronquees > 1 else ""} d&#8217;&#233;quipement '
-            f'&#8212; incluse'
-            f'{"s" if tronquees > 1 else ""} dans les totaux ci-dessous, '
-            f'd&#233;tail complet sur {_renvoi_detail_complet()}.</td></tr>')
+            # ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — phrase du catalogue.
+            + _L("op_lignes_tronquees_n" if tronquees > 1
+                 else "op_lignes_tronquees_1").format(
+                n=tronquees, renvoi=_renvoi_detail_complet())
+            + '</td></tr>')
 
     # ── Bloc totaux : Sous-total HT → Remise visible → Total HT → TVA → TTC ──
     def _tot_line(label, value, navy=False, neg=False, fig=None, taux=None):
@@ -4338,11 +4337,15 @@ def page_onepage(items, tronquees=0):
     # « sans batterie » aurait décrit une page en réalité chiffrée avec.
     # BAT-DIFF — l'option « avec » porte le libellé du builder (« Hybride,
     # batterie plus tard » quand elle est servie sans batterie chiffrée).
-    _libelle_avec_min = LIBELLE_AVEC[:1].lower() + LIBELLE_AVEC[1:]
+    # ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — noms d'option du catalogue.
+    _libelle_avec_min = i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE,
+                                               minuscule=True)
     _onepage_note_ceci = (_libelle_avec_min if ONEPAGE_BRANCHE == "avec"
-                          else "sans batterie")
-    _onepage_note_autre = ("sans batterie" if ONEPAGE_BRANCHE == "avec"
-                           else _libelle_avec_min)
+                          else i18n_labels.nom_option(
+                              "Sans batterie", LANGUE_SORTIE, minuscule=True))
+    _onepage_note_autre = (i18n_labels.nom_option(
+        "Sans batterie", LANGUE_SORTIE, minuscule=True)
+        if ONEPAGE_BRANCHE == "avec" else _libelle_avec_min)
 
     header_html = _onepage_header_html()
     # AGR313 — « Bon pour accord » compact du une-page agricole (nom, date,
@@ -4414,7 +4417,7 @@ def page_onepage(items, tronquees=0):
   <!-- CONDITIONS : sous le total -->
   <div style="padding:8px 24px;">
     {_note_client_html("7.5")}{_clauses_cgv_html("7")}
-    {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option ' + _onepage_note_ceci + '. Une option ' + _onepage_note_autre + ' est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
+    {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">' + _L('op_note_batterie').format(ceci=_onepage_note_ceci, autre=_onepage_note_autre) + '</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
       {_conditions_onepage_html()}
     </div>

@@ -32,6 +32,34 @@ from django.utils import timezone
 _SUFFIX_RE = re.compile(r'-(\d+)$')
 MAX_ATTEMPTS = 5
 
+#: ATOT27 (D-ATOT-5) — radical de la référence PROVISOIRE d'un brouillon :
+#: « BROUILLON-<id> », HORS de toute série légale (aucun « FAC-… » consommé).
+#: Le numéro légal n'est attribué qu'à l'émission.
+PREFIXE_PROVISOIRE = 'BROUILLON-'
+
+
+def est_reference_provisoire(reference):
+    """Vrai pour une référence provisoire de brouillon (hors série)."""
+    return str(reference or '').startswith(PREFIXE_PROVISOIRE)
+
+
+def reserver_id(model, using=None):
+    """Réserve l'id de la PROCHAINE ligne de ``model`` sur la séquence de sa
+    table (PostgreSQL) pour qu'une ligne connaisse son id AVANT l'INSERT : la
+    référence « BROUILLON-<id> » est posée dès la création, et tout lecteur
+    de la création (webhook ``facture.created``, journal d'audit) lit la
+    même. Renvoie ``None`` hors PostgreSQL (l'appelant pose alors la
+    référence juste après l'INSERT)."""
+    from django.db import connections, router
+    connexion = connections[using or router.db_for_write(model)]
+    if connexion.vendor != 'postgresql':
+        return None
+    with connexion.cursor() as curseur:
+        curseur.execute(
+            'SELECT nextval(pg_get_serial_sequence(%s, %s))',
+            [model._meta.db_table, model._meta.pk.column])
+        return curseur.fetchone()[0]
+
 
 def _period_segment(period):
     """Segment de date pour la période de remise à zéro. Défaut mensuel (historique)."""

@@ -33,6 +33,12 @@ AVEC site, les siens ; le lien tokenisé de la proposition reste. Test-du-test :
 remettre ``or _DEFAULT_SITE`` au site de ``theme.company_identity`` (ou le
 repli « taqinor.ma » de ``renderer._augment``) ⇒
 ``test_tenant_sans_site_aucun_lien_taqinor`` échoue.
+
+ERR-APDF-CI-PIED-TAQINOR-MA — même règle pour le pied du commercial et de
+l'industriel (``test_ci_sans_site_aucun_taqinor_ma``, ``PiedSiteCiHtmlTests``) ;
+la garde APDF45 refuse tout « taqinor.ma » hors lien de proposition.
+Test-du-test : remettre ``d["site_url"] = d.get("site_url") or "taqinor.ma"``
+dans ``commercial/renderer._augment`` ⇒ les deux cas échouent.
 """
 from unittest import mock
 
@@ -394,6 +400,12 @@ class LogoRegleTests(SimpleTestCase):
         self.assertIn(b64, G.logo_p1_dark())
 
 
+def texte_hors_proposition(texte):
+    """Texte sans le lien tokenisé de la proposition (seul « taqinor.ma »
+    permis sous le nom d'une autre société)."""
+    return texte.replace('taqinor.ma/proposition', '')
+
+
 def texte_et_liens(octets):
     """(texte, URI des annotations de lien) du PDF."""
     import fitz
@@ -453,6 +465,60 @@ class LiensSiteTests(TestCase):
                 _texte, uris = texte_et_liens(rendre_pdf(self.devis))
                 self.assertTrue([u for u in uris if '/proposition/' in u
                                  and self.lien.token in u], uris)
+
+    def test_ci_sans_site_aucun_taqinor_ma(self):
+        """Commercial et industriel, chaque format servi par /proposal : le
+        pied suit la règle du résidentiel (site de la société, sinon rien)."""
+        for marche in ('commercial', 'industriel'):
+            lignes, _etude, mode = MARCHES[marche]
+            devis = make_devis(self.company, self.devis.created_by,
+                               self.devis.client, lignes,
+                               reference=f'DEV-APDF5-{marche[:3].upper()}')
+            devis.mode_installation = mode
+            devis.save(update_fields=['mode_installation'])
+            for nom, options in FORMATS_GARDE.items():
+                with self.subTest(marche=marche, format=nom):
+                    texte, uris = texte_et_liens(rendre_pdf(devis, options))
+                    self.assertNotIn('taqinor.ma', texte_hors_proposition(
+                        texte))
+                    self.assertFalse([u for u in uris if 'taqinor.ma' in u
+                                      and '/proposition/' not in u])
+
+
+class PiedSiteCiHtmlTests(SimpleTestCase):
+    """ERR-APDF-CI-PIED-TAQINOR-MA — HTML des gabarits commercial et
+    industriel (données d'échantillon, sans base) : profil sans site ⇒ aucun
+    « taqinor.ma » ; aucun profil ⇒ le pied historique (APDF5)."""
+
+    VARIANTES = ({}, {'devis_final': True}, {'include_etude': True},
+                 {'langue_sortie': 'en'}, {'langue_sortie': 'ar'})
+
+    def _html(self, marche, entreprise, **surcharges):
+        from importlib import import_module
+        paquet = f'apps.ventes.quote_engine.{marche}'
+        render, renderer, sample = (import_module(f'{paquet}.{m}') for m in (
+            'render', 'renderer', 'sample_data'))
+        d = {k: v for k, v in sample.build().items() if k != 'site_url'}
+        d.update(entreprise=entreprise, **surcharges)
+        return render.build_html(renderer._augment(d))
+
+    def test_profil_sans_site_aucun_taqinor_ma(self):
+        ent = {'nom': 'SOLAIRE EXEMPLE SARL', 'ice': '001111111000011',
+               'email': 'contact@solaire-exemple.ma'}
+        for marche in ('commercial', 'industriel'):
+            for surcharges in self.VARIANTES:
+                with self.subTest(marche=marche, **surcharges):
+                    self.assertNotIn('taqinor.ma',
+                                     self._html(marche, ent, **surcharges))
+
+    def test_profil_avec_site_son_site_sans_profil_taqinor(self):
+        ent = {'nom': 'SOLAIRE EXEMPLE SARL', 'site_web': 'solaire-exemple.ma'}
+        for marche in ('commercial', 'industriel'):
+            with self.subTest(marche=marche):
+                html = self._html(marche, ent, site_url='solaire-exemple.ma')
+                self.assertIn('<a>solaire-exemple.ma</a>', html)
+                self.assertNotIn('taqinor.ma', html)
+                self.assertIn('<a>taqinor.ma</a>', self._html(marche, {}))
 
 
 # APDF45 (C-APDF-001) — garde de la classe « identité d'une autre société ».
@@ -553,6 +619,10 @@ class GardeIdentiteTests(TestCase):
                     self.assertTrue(texte.strip())
                     for interdit in INTERDITS:
                         self.assertNotIn(interdit, texte)
+                    # ERR-APDF-CI-PIED-TAQINOR-MA — aucun « taqinor.ma » nu
+                    # (pied compris) hors lien de proposition.
+                    self.assertNotIn('taqinor.ma',
+                                     texte_hors_proposition(texte))
                     self.assertNotIn(taille_taqinor, tailles)
         # Le test LISTE les rendus effectués : 4 marchés × 5 formats.
         self.assertEqual(len(rendus), len(MARCHES) * len(FORMATS_GARDE), rendus)

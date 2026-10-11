@@ -164,6 +164,30 @@ class OutillageTests(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_enf17_kit_item_fk_etrangere_comme_id_absent(self):
+        """ENF17 — kit / outil d'une autre société : 400 nommant le champ,
+        réponse identique à celle d'un id absent (aucun oracle d'existence)."""
+        kit = KitOutillage.objects.create(company=self.co_a, nom='Kit Z')
+        tool = Outillage.objects.create(company=self.co_a, nom='Clé Z')
+        etrangers = {
+            'kit': KitOutillage.objects.create(company=self.co_b, nom='Kit B'),
+            'outil': Outillage.objects.create(company=self.co_b, nom='Clé ZB'),
+        }
+        api = auth(self.admin_a)
+        for champ, etranger in etrangers.items():
+            with self.subTest(champ=champ):
+                corps = {'kit': kit.id, 'outil': tool.id}
+                resp = api.post('/api/django/outillage/kit-items/',
+                                {**corps, champ: etranger.id}, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data[champ][0].code, 'does_not_exist')
+                absent = api.post('/api/django/outillage/kit-items/',
+                                  {**corps, champ: 99999999}, format='json')
+                self.assertEqual(
+                    str(resp.data[champ][0]).replace(str(etranger.id), '<ID>'),
+                    str(absent.data[champ][0]).replace('99999999', '<ID>'))
+        self.assertFalse(KitOutillageItem.objects.filter(kit=kit).exists())
+
     def test_kit_type_intervention_label(self):
         TypeIntervention.objects.create(
             company=self.co_a, cle='pose', libelle='Pose')

@@ -65,6 +65,18 @@ describe('WIR134 SecuriteIdentitePage', () => {
       expect.objectContaining({ cidr: '10.0.0.0/8', policy: 7 })))
   })
 
+  it('lit TOUTES les pages des règles IP (51 objets ⇒ 51 lignes)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({ id: i + 1, cidr: `10.0.${i}.0/24`, label: '' }))
+    H.ipList.mockImplementation(({ page = 1 } = {}) => Promise.resolve({ data: {
+      count: 51,
+      next: page === 1 ? 'http://x/?page=2' : null,
+      results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+    } }))
+    renderPage()
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Supprimer la règle' })).toHaveLength(51))
+    H.ipList.mockImplementation(() => Promise.resolve({ data: [] }))
+  })
+
   it('lit la posture de sécurité', async () => {
     const user = userEvent.setup()
     renderPage()

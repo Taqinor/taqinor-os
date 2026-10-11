@@ -30,12 +30,11 @@ import { formatMAD, formatDateTime, toNumber, normalizePhoneE164 } from '../../l
 import { toast, useConfirmDialog } from '../../ui/confirm'
 // APX17 — la table de recouvrement rejoint le tableau partagé (tri + export CSV).
 import { Table } from '../reporting/Table'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
-  const d = new Date()
-  d.setDate(d.getDate() + (Number(days) || 0))
-  return d.toISOString().slice(0, 10)
+  return todayLocalIso(new Date(Date.now() + (Number(days) || 0) * 86400000))
 }
 
 // Balance âgée : libellé du bucket d'ancienneté dérivé des jours de retard,
@@ -176,7 +175,7 @@ export default function RelancesPage() {
   const promesseActive = (r) => {
     const p = r.promesse
     if (!p || p.statut !== 'en_cours') return null
-    return p.date_promise >= new Date().toISOString().slice(0, 10) ? p : null
+    return p.date_promise >= todayLocalIso() ? p : null
   }
 
   const openPromesse = (r) => {
@@ -485,7 +484,7 @@ export default function RelancesPage() {
     // PACT45 — une promesse EN COURS et non échue suspend la relance
     // automatique : la facture quitte la file automatique, exactement comme
     // `relance_reminders` l'écarte côté serveur (exclu_relances_jusquau).
-    const aujourdhui = new Date().toISOString().slice(0, 10)
+    const aujourdhui = todayLocalIso()
     const suspendue = (r) => !!r.promesse && r.promesse.statut === 'en_cours'
       && r.promesse.date_promise >= aujourdhui
     if (fileFilter === 'auto') {

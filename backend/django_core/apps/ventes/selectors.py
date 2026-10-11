@@ -1444,10 +1444,10 @@ def decomposition_remise_volume(*, company, produit, quantite, lignes=None):
     for entree in cascade:
         reste *= Decimal('1') - Decimal(entree['remise_pct']) / Decimal('100')
     totale = ((Decimal('1') - reste) * Decimal('100')).quantize(
-        cent, ROUND_HALF_UP)
+        cent, rounding=ROUND_HALF_UP)
 
     return {
-        'remise_ligne_pct': str(remise_ligne.quantize(cent, ROUND_HALF_UP)),
+        'remise_ligne_pct': str(remise_ligne.quantize(cent, rounding=ROUND_HALF_UP)),
         'remise_ligne_palier_id': ligne_palier.id if ligne_palier else None,
         'cascade': cascade,
         'remise_totale_pct': str(totale),

@@ -263,6 +263,38 @@ describe('ADOC63 ApprobationPage — lien de signature', () => {
   })
 })
 
+describe('ERR-LISTES-PAGE1-17-SITES ApprobationPage — champs de signature', () => {
+  it('lit TOUTES les pages des champs posés (51 objets ⇒ 51 lignes)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({
+      id: i + 1, type_champ: 'signature', page: 1, requis: true,
+    }))
+    gedApi.getChampsSignature.mockImplementation(({ page = 1 } = {}) => Promise.resolve({
+      data: {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      },
+    }))
+    gedApi.creerDemandeMultiSignataires.mockResolvedValue({
+      data: { id: 30, document: 4, statut: 'en_attente', lien_signature: null, signataires: [] },
+    })
+    gedApi.getDocumentsList.mockResolvedValue({ data: [{ id: 4, nom: 'Bail.pdf' }] })
+    gedApi.getModelesDocument.mockResolvedValue({ data: [] })
+    gedApi.getLotsEnvoi.mockResolvedValue({ data: [] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: /Circuit multi-signataires/i }))[0])
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByText('Choisir un document…').closest('button'))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Bail.pdf'))
+    await userEvent.type(within(dialog).getByPlaceholderText('Nom'), 'Sofia')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Créer le circuit' }))
+    await waitFor(() => expect(
+      screen.getAllByRole('button', { name: 'Supprimer le champ' })).toHaveLength(51))
+    gedApi.getChampsSignature.mockImplementation(() => Promise.resolve({ data: [] }))
+  })
+})
+
 describe('ADOC76 ApprobationPage — circuit multi-signataires', () => {
   it('le rôle est un choix fermé', async () => {
     gedApi.creerDemandeMultiSignataires.mockResolvedValue({

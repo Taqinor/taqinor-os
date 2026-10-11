@@ -167,22 +167,32 @@ def creer_facture_import(company, ligne, *, external_system=None, user=None):
 
     from apps.ventes.models import Facture
 
+    from ..utils.company_settings import create_provisoire
+
     client = _resoudre_client(company, ligne, external_system)
     if client is None:
         return ('erreur', (
             "client introuvable (client_external_id/client_email/"
             "client_nom absents ou non migrés)"), None)
 
+    statut = _statut_facture(ligne.get('statut'))
+
     def _create(ref):
         return Facture.objects.create(
             company=company, reference=ref, client=client,
             type_facture=Facture.TypeFacture.COMPLETE,
-            statut=_statut_facture(ligne.get('statut')),
+            statut=statut,
             libelle=(f"Migrée (réf. source {ligne.get('reference_source')})"
                      if ligne.get('reference_source') else ''),
         )
 
-    facture = create_with_reference(Facture, 'FAC', company, _create)
+    # ATOT27 (D-ATOT-5) — un brouillon migré reste hors série (numéro à
+    # l'émission) ; une facture migrée déjà émise/payée/annulée l'a été à la
+    # source : elle reçoit son numéro à l'import, comme avant.
+    if statut == Facture.Statut.BROUILLON:
+        facture = create_provisoire(_create)
+    else:
+        facture = create_with_reference(Facture, 'FAC', company, _create)
     return ('cree', '', facture)
 
 

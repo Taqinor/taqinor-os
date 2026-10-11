@@ -14,3 +14,5 @@
 
 **Pourquoi :** 10/10, les claims larges d'un poste ont bloqué l'autre, et les claims relâchées trop tôt ont produit des doublons ;
 les deux coûtent une vague.
+
+**Maestro (Reda, 11/10/2026, nuit « les deux sessions continuent jusqu'à vider les plans »).** Quand plusieurs sessions drainent le pool, UNE session est le maestro : à chaque refill (wake, fold, nouveau lot de tâches déposé par la session « loop audit »), elle re-planifie TOUT le pool (`plan_lanes.py` poolé + `plan_claims.py list`), répartit les lanes libres entre les sessions (apps disjointes, débloquantes d'abord, claims minimales) et envoie à chacune son affectation (ids + claims à prendre) ; les autres sessions lui signalent chaque fold/merge/blocage. Les tâches nouvelles (vérifie <G>, ERR d'acceptation) arrivent sur `main` par des PR docs-only : le maestro refait un `git fetch` + re-plan avant chaque affectation. La cadence de merge reste la vague ≥ 60 ; la session qui ne trouve plus rien à construire dans le pool fait le dernier merge.

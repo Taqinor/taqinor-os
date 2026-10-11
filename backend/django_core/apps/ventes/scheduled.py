@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 # Toute la logique de dates de ces jobs raisonne en heure du Maroc.
 CASABLANCA_TZ = 'Africa/Casablanca'
 
-# Échéance par défaut quand aucune date d'échéance n'est posée sur la facture.
-DEFAULT_ECHEANCE_DAYS = 30
+# Échéance par défaut quand aucune date d'échéance n'est posée : AFAC48 —
+# ``apps.facturation.models.DEFAULT_ECHEANCE_DAYS`` (LA seule définition).
 
 
 def casablanca_today():
@@ -57,6 +57,7 @@ def _echeance_effective(facture, today):
         client=getattr(facture, 'client', None), date_emission=base)
     if derivee is not None:
         return derivee
+    from apps.facturation.models import DEFAULT_ECHEANCE_DAYS
     return base + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
 
@@ -687,6 +688,7 @@ def engagement_followup_engine():
     touche jamais au statut. Renvoie le nombre de notifications posées."""
     from django.utils import timezone
     from apps.ventes.models import Devis, ShareLink
+    from authentication.selectors import active_companies
 
     now = timezone.now()
     posted = 0
@@ -696,7 +698,8 @@ def engagement_followup_engine():
     # ADEV45 — le lien d'une V1 remplacée par sa révision ne déclenche
     # jamais de relance : seule la version EN JEU est candidate.
     links = (ShareLink.objects
-             .filter(devis__isnull=False,
+             .filter(company__in=active_companies(),  # ENF15 — pas les suspendus
+                     devis__isnull=False,
                      devis__statut=Devis.Statut.ENVOYE,
                      devis__in=devis_en_jeu(Devis.objects.all()),
                      # ACRM11 — explicite : jamais un signal sur une V1

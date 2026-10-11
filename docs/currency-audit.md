@@ -51,10 +51,10 @@ with no rate column at all — mono-MAD in practice.
 | crm | ForecastSnapshot | `apps/crm/models.py:4062` | montant_total |
 | crm | DealEnregistre | `apps/crm/models.py:4577` | montant_commission_du, montant_commission_estime |
 | dataimport | ImportJob | `apps/dataimport/models.py:76` | total_lignes |
-| facturation | LigneFacture | `apps/facturation/models.py:723` | prix_unitaire, remise, taux_tva |
-| facturation | Paiement | `apps/facturation/models.py:789` | escompte_montant, montant |
-| facturation | Avoir | `apps/facturation/models.py:1012` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| facturation | LigneAvoir | `apps/facturation/models.py:1129` | prix_unitaire, remise, taux_tva |
+| facturation | LigneFacture | `apps/facturation/models.py:762` | prix_unitaire, remise, taux_tva |
+| facturation | Paiement | `apps/facturation/models.py:828` | escompte_montant, montant |
+| facturation | Avoir | `apps/facturation/models.py:1051` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| facturation | LigneAvoir | `apps/facturation/models.py:1168` | prix_unitaire, remise, taux_tva |
 | ged | ModeleDocument | `apps/ged/models.py:2328` | corps_html |
 | ged | LotEnvoi | `apps/ged/models.py:3240` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
@@ -116,6 +116,6 @@ with no rate column at all — mono-MAD in practice.
 | --- | --- | --- | --- | --- |
 | achats | FactureFournisseur | `apps/achats/models.py:476` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
 | crm | ConcurrentPerte | `apps/crm/models.py:3131` | concurrent_prix | no |
-| facturation | Facture | `apps/facturation/models.py:27` | abandon_montant, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva | yes |
+| facturation | Facture | `apps/facturation/models.py:33` | abandon_montant, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:14` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
 | ventes | Devis | `apps/ventes/models.py:16` | acompte_montant, acompte_pct, penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |

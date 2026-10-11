@@ -88,6 +88,7 @@ from apps.ventes.courbes_journalieres import (
     occupation_du_devis,
     profil_suppose,
 )
+from apps.ventes.domain.etude_schema import factures_hiver_ete_saisies
 from apps.ventes.horaire.base import _num, saison_du_mois
 from apps.ventes.horaire.batterie_lignes import (
     RENDEMENT_SOURCE_FICHE,
@@ -1882,12 +1883,19 @@ def profil_conso_du_devis(devis, *, bills=None, tranches=None,
     ``bills`` : le dict de ``crm.selectors.lead_bills_for_devis`` quand
     l'appelant l'a déjà lu (sinon lu ici). Rend
     ``(kwh_mensuels | None, source, detail)`` — lecture pure, aucune écriture.
+
+    AGNR6 (D-AGNR-1 option (a)) — les deux factures TAPÉES à l'écran
+    (``etude_params['factures_hiver_ete']``) priment sur celles du lead : un
+    devis sans lead à deux factures est calculé sur leurs MARCHES (source
+    ``facture_hiver_ete``), jamais sur une rampe « réelle » ; douze mois tapés
+    (``factures_mensuelles_reelles``) restent prioritaires.
     """
     from apps.crm.selectors import (
         conso_mensuelle_kwh_pour_devis, lead_bills_for_devis)
-    if bills is None:
-        bills = lead_bills_for_devis(devis) or {}
     etude_params = getattr(devis, 'etude_params', None) or {}
+    bills = (factures_hiver_ete_saisies(etude_params)
+             or (lead_bills_for_devis(devis) if bills is None else bills)
+             or {})
     # CAD166 — les kWh DÉCLARÉS sur la fiche priment sur les dirhams inversés
     # au barème (décision fondateur du 21/09/2026). Lecture cross-app par un
     # sélecteur DISTINCT de ``lead_bills_for_devis`` : ce dernier n'existe que
@@ -1927,7 +1935,8 @@ def controle_kwh_declare_du_devis(devis):
     """La garde serveur d'ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES pour un devis.
 
     Lit le kWh déclaré EXACTEMENT comme :func:`profil_conso_du_devis` (même
-    sélecteur ``conso_mensuelle_kwh_pour_devis``) et les factures du lead
+    sélecteur ``conso_mensuelle_kwh_pour_devis``) et les MÊMES factures : les
+    deux tapées à l'écran d'abord (AGNR6), sinon celles du lead
     (``lead_bills_for_devis``). Quand 12 kWh mesurés sont posés sur le devis
     (priorité 1), le kWh déclaré ne chiffre rien : aucune garde. Rend le
     résultat de :func:`coherence_kwh_declare_factures` (``None`` si rien à
@@ -1943,7 +1952,8 @@ def controle_kwh_declare_du_devis(devis):
     kwh = conso_mensuelle_kwh_pour_devis(devis)
     if _num(kwh) <= 0:
         return None
-    bills = lead_bills_for_devis(devis) or {}
+    bills = (factures_hiver_ete_saisies(etude_params)
+             or lead_bills_for_devis(devis) or {})
     factures = [bills.get('facture_hiver')]
     if bills.get('ete_differente'):
         factures.append(bills.get('facture_ete'))

@@ -14,6 +14,7 @@ import { toast, useConfirmDialog } from '../../ui/confirm'
 // AFAC61 — raison serveur affichée ; liste des paiements remisables lue sur TOUTES les pages.
 import { frenchError } from '../../lib/frenchError'
 import fetchAllPages from '../../utils/fetchAllPages'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 /* ============================================================================
    PACT46 — Remises d'encaissement terrain (XFSM19).
@@ -37,7 +38,7 @@ import fetchAllPages from '../../utils/fetchAllPages'
 const MODES_TERRAIN = ['especes', 'cheque']
 const TONE_STATUT = { ouverte: 'warning', cloturee: 'info', validee: 'success' }
 
-const aujourdhui = () => new Date().toISOString().slice(0, 10)
+const aujourdhui = () => todayLocalIso()
 
 export default function RemisesEncaissementPage() {
   const { confirm } = useConfirmDialog()

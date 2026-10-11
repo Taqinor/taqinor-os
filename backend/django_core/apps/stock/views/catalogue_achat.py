@@ -26,16 +26,20 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core.mixins import TenantMixin
+from core.serializers import CompanyScopedRelationsMixin
 
 from ..openapi_helpers import BOOL, INT, P, STR, corps
 from ..models import FavorisCatalogueAchat, Produit
 
 
-class CatalogueAchatSerializer(serializers.ModelSerializer):
+class CatalogueAchatSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
     """NTP2P3 — projection MINIMALE du produit pour un demandeur.
 
     Liste de champs volontairement FERMÉE (jamais ``prix_vente``, jamais
     ``tva``, jamais de champ dérivable en marge)."""
+    # ENF17 — ``categorie`` en lecture seule ; bornée société (mixin) si elle
+    # redevient inscriptible.
     categorie_nom = serializers.CharField(
         source='categorie.nom', read_only=True, default=None,
         allow_null=True)

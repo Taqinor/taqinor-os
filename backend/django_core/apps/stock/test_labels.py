@@ -116,6 +116,18 @@ class LabelsApiBase(TestCase):
 
 
 class TestEtiquettesAction(LabelsApiBase):
+    def test_etiquettes_declarees_admin_refusees_a_un_commercial(self):
+        # ENF15 — `etiquettes` DÉCLARE IsAdminRole, la règle réelle : un
+        # Commercial reçoit le 403 de cette permission déclarée (garde ASTK243
+        # du balayage stock), jamais un 400 de paramètre.
+        commercial = User.objects.create_user(
+            username='lbl_commercial', password='x', role_legacy='commercial',
+            company=self.company)
+        res = auth(commercial).get(
+            f'/api/django/stock/produits/etiquettes/?ids={self.p1.id}'
+            f'&sortie=html')
+        self.assertEqual(res.status_code, 403)
+
     def test_html_output_lists_selected(self):
         res = self.api.get(
             f'/api/django/stock/produits/etiquettes/?ids={self.p1.id}'

@@ -83,8 +83,6 @@ backend/django_core/apps/ventes/offres_tailles.py::_substituer::65a20b36c25d | E
 backend/django_core/apps/ventes/offres_tailles.py::_carte_du_devis::9352ee4da552 | ELARGISSEMENT QJR4 : prix TTC d'AFFICHAGE de la carte de taille (vue devis) ; meme expression que _carte_moteur, cle distincte par le qualname.
 
 # --- backend/django_core/apps/ventes/selectors.py
-backend/django_core/apps/ventes/selectors.py::decomposition_remise_volume::f1a9e5fbcb36 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/ventes/selectors.py::decomposition_remise_volume::413bb24e793f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/compta/services.py
 
@@ -93,14 +91,10 @@ backend/django_core/apps/ventes/selectors.py::decomposition_remise_volume::413bb
 # --- backend/django_core/apps/gestion_projet/services.py
 
 # --- backend/django_core/apps/facturation/models.py
-backend/django_core/apps/facturation/models.py::Facture.escompte_mention::836de5ba1034 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/facturation/models.py::Facture.calcul_escompte::a9ec1744e68a | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/credit/services.py
 
 # --- backend/django_core/apps/ventes/domain/bornes.py
-backend/django_core/apps/ventes/domain/bornes.py::pourcentage_saisi::862180f26c67 | ATOT21 (08/10/2026) : TEST de precision (valeur != valeur.quantize(0.01) => refus « au plus 2 decimales ») ; la valeur quantifiee n'est ni servie ni stockee, aucun arrondi applique.
-backend/django_core/apps/ventes/domain/bornes.py::montant_saisi::204adc14b1b3 | ATOT21 (08/10/2026) : TEST de precision (nombre != nombre.quantize(0.01) => refus « au plus 2 decimales ») ; la valeur quantifiee n'est ni servie ni stockee, aucun arrondi applique.
 
 # --- backend/django_core/apps/ventes/domain/composition.py
 backend/django_core/apps/ventes/domain/composition.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
@@ -113,14 +107,12 @@ backend/django_core/apps/ventes/domain/dimensionnement_devis.py::_echelle_palier
 backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement_avec_retenue::2665cc7c1e64 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/ventes/domain/etudes.py
-backend/django_core/apps/ventes/domain/etudes.py::compute_marge_snapshot::aa0f80f53128 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/ventes/domain/geometrie.py
 backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
 backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::7f663ec40580 | round(total_kwc, 2) -- une PUISSANCE en kWc, pas un montant.
 
 # --- backend/django_core/apps/ventes/domain/recouvrement.py
-backend/django_core/apps/ventes/domain/recouvrement.py::_s2::aae10985181f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/ventes/domain/resynchronisation.py
 backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.

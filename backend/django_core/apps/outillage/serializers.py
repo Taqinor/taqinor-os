@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import Outillage, KitOutillage, KitOutillageItem
 
 
@@ -49,26 +51,17 @@ class OutillageSerializer(serializers.ModelSerializer):
         return value
 
 
-class KitOutillageItemSerializer(serializers.ModelSerializer):
+class KitOutillageItemSerializer(SameCompanyFKSerializerMixin,
+                                 serializers.ModelSerializer):
+    # ENF17 — le kit ET l'outil d'une AUTRE société = id absent (400 « objet
+    # inexistant », plus de message propre qui trahissait leur existence).
+    same_company_fields = ('kit', 'outil')
     outil_nom = serializers.CharField(source='outil.nom', read_only=True)
 
     class Meta:
         model = KitOutillageItem
         # `company` n'est jamais exposée/écrite : posée côté serveur depuis le kit.
         fields = ['id', 'kit', 'outil', 'outil_nom', 'ordre']
-
-    def validate(self, attrs):
-        # Le kit ET l'outil doivent appartenir à la société de l'utilisateur.
-        request = self.context.get('request')
-        kit = attrs.get('kit') or getattr(self.instance, 'kit', None)
-        outil = attrs.get('outil') or getattr(self.instance, 'outil', None)
-        if request is not None:
-            cid = request.user.company_id
-            if kit is not None and kit.company_id != cid:
-                raise serializers.ValidationError({'kit': "Kit inconnu."})
-            if outil is not None and outil.company_id != cid:
-                raise serializers.ValidationError({'outil': "Outil inconnu."})
-        return attrs
 
 
 class KitOutillageSerializer(serializers.ModelSerializer):
