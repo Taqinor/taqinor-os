@@ -19,7 +19,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigateMock }
 })
 
-import { renderList, ouvrirMenu } from './devisListTestHelpers.jsx'
+import { renderList, ouvrirMenu } from './devisList.testHelpers.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

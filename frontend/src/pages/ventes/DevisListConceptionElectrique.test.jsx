@@ -28,7 +28,7 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
 })
 
 import ventesApi from '../../api/ventesApi'
-import { renderList, ouvrirMenu } from './devisListTestHelpers.jsx'
+import { renderList, ouvrirMenu } from './devisList.testHelpers.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

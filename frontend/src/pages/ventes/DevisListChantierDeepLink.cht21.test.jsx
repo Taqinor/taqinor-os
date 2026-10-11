@@ -30,7 +30,7 @@ import installationsApi from '../../api/installationsApi'
 // ARC49 — le tableau DevisList passe par le moteur `ui/datatable` (useDensity),
 // qui EXIGE un <ThemeProvider> (présent en prod via <Layout>).
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import { renderListAvecStore } from './devisListTestHelpers.jsx'
+import { renderListAvecStore } from './devisList.testHelpers.jsx'
 
 function makeStore(devis) {
   return configureStore({

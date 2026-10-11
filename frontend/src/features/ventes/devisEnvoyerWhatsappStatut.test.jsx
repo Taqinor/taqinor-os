@@ -48,7 +48,7 @@ vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVente
 
 import DevisList from '../../pages/ventes/DevisList'
 import ventesApi from '../../api/ventesApi'
-import { renderList } from '../../pages/ventes/devisListTestHelpers.jsx'
+import { renderList } from '../../pages/ventes/devisList.testHelpers.jsx'
 
 const brouillon = () => ([{
   id: 31, reference: 'DEV-QAH-ENV', client_nom: 'Alaoui', statut: 'brouillon',

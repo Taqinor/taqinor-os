@@ -16,7 +16,7 @@ vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVente
 vi.mock('../../api/crmApi', async (importOriginal) =>
   (await import('../../test/mocksVentesEcrans.js')).crmApiMotifsPerteVide(await importOriginal()))
 
-import { renderList, ouvrirMenu } from './devisListTestHelpers.jsx'
+import { renderList, ouvrirMenu } from './devisList.testHelpers.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
