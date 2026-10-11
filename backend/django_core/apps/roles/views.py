@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.decorators import action
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
@@ -78,6 +78,16 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related('users')
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        # ENF11 — une erreur négociée en ``?format=csv`` (revue d'accès) est
+        # rendue en JSON : un 4xx ne revient JAMAIS en ``text/csv``.
+        if (isinstance(response, Response) and response.status_code >= 400
+                and getattr(getattr(request, 'accepted_renderer', None),
+                            'format', None) == 'csv'):
+            request.accepted_renderer = JSONRenderer()
+            request.accepted_media_type = JSONRenderer.media_type
+        return super().finalize_response(request, response, *args, **kwargs)
 
     def _perimetre_acteur(self):
         """NTADM21 — périmètre de délégation de l'acteur (None = global)."""
@@ -282,13 +292,16 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         depuis ``roles`` est autorisée (jamais d'app métier importée)."""
         from authentication.models import CustomUser, UserSession
 
+        # ENF11 — seuil illisible ou négatif = 400 (plus remplacé en silence).
+        brut = request.query_params.get('dormant_days')
         try:
-            dormant_days = int(request.query_params.get(
-                'dormant_days', DEFAULT_DORMANT_DAYS))
+            dormant_days = (DEFAULT_DORMANT_DAYS if brut in (None, '')
+                            else int(brut))
         except (TypeError, ValueError):
-            dormant_days = DEFAULT_DORMANT_DAYS
+            dormant_days = -1
         if dormant_days < 0:
-            dormant_days = DEFAULT_DORMANT_DAYS
+            raise ValidationError(
+                {'dormant_days': ['Entier positif ou nul attendu.']})
 
         now = timezone.now()
         cutoff = now - timedelta(days=dormant_days)
@@ -344,7 +357,11 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('dormant_days', OpenApiTypes.INT, required=False),
+            OpenApiParameter(
+                'dormant_days', {'type': 'integer', 'minimum': 0},
+                required=False,
+                description='Seuil dormant en jours (défaut 90) ; illisible '
+                            'ou négatif = 400 JSON.'),
             OpenApiParameter('format', OpenApiTypes.STR, required=False),
         ],
         responses={
@@ -355,6 +372,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
                 'utilisateurs': drf_serializers.ListField(
                     child=drf_serializers.DictField())}),
             (200, 'text/csv'): OpenApiTypes.STR,
+            (400, 'application/json'): OpenApiTypes.OBJECT,
         })
     @action(detail=False, methods=['get'], url_path='revue-acces',
             renderer_classes=[JSONRenderer, _CsvOrJSONRenderer])
