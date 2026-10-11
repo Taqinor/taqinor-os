@@ -60,16 +60,20 @@ def _clean_objects(raw):
     return keys or list(DEFAULT_OBJECTS)
 
 
-def _clean_format(raw):
+def _clean_format(raw, repli=False):
     """Format demandé ; absent (None) → défaut. ENF11 — une valeur FOURNIE
     mais hors ``FORMATS`` (chaîne vide, type faux) est refusée (``None``) au
-    lieu d'être remplacée en silence par le défaut."""
+    lieu d'être remplacée en silence par le défaut. ``repli`` : export d'UN
+    objet, où une chaîne inconnue retombe sur le défaut (comportement
+    documenté et déclaré) ; un type faux reste refusé."""
     if raw is None:
         return DEFAULT_FORMAT
     if not isinstance(raw, str):
         return None
     fmt = raw.lower().strip()
-    return fmt if fmt in FORMATS else None
+    if fmt in FORMATS:
+        return fmt
+    return DEFAULT_FORMAT if repli else None
 
 
 _FORMAT_INVALIDE = {'format': 'Format invalide (csv, xlsx ou json).'}
@@ -93,7 +97,9 @@ def export_objects_list(request):
 @extend_schema(
     request=inline_serializer('ExportObjetRequete', {
         'object': champ_choix(REGISTRY),
-        'format': champ_choix(FORMATS, required=False)}),
+        'format': serializers.CharField(
+            required=False,
+            help_text='csv, xlsx ou json ; valeur inconnue ⇒ csv.')}),
     responses=_FICHIERS_EXPORT)
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
@@ -107,7 +113,7 @@ def export_object(request):
     key = (request.data.get('object') or '').strip()
     if key not in REGISTRY:
         return Response({'detail': 'Objet inconnu.'}, status=400)
-    fmt = _clean_format(request.data.get('format'))
+    fmt = _clean_format(request.data.get('format'), repli=True)
     if fmt is None:
         return Response(_FORMAT_INVALIDE, status=400)
 

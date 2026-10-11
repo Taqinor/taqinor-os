@@ -65,13 +65,15 @@ class TestObjectsList(ExportBase):
 
 
 class TestFormatStrict(ExportBase):
-    """ENF11 — un format FOURNI mais inconnu est refusé (400), plus remplacé
-    en silence par le défaut ; le corps multipart est refusé (415)."""
+    """ENF11 — un format FOURNI mais inconnu est refusé (400) par la
+    sauvegarde ; l'export d'UN objet garde son repli CSV documenté pour une
+    chaîne inconnue (``TestFormats``) mais refuse un type faux ; le corps
+    multipart est refusé (415)."""
 
     def test_format_invalide_400(self):
         for url, corps in (
                 ('/api/django/imports/export-object/',
-                 {'object': 'clients', 'format': ''}),
+                 {'object': 'clients', 'format': 12}),
                 ('/api/django/imports/sauvegarde/', {'format': 'pdf'})):
             resp = self.api.post(url, corps, format='json')
             self.assertEqual(resp.status_code, 400, (url, resp.content))
