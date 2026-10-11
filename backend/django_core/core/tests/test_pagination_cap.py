@@ -62,3 +62,42 @@ class HardCapUnitTests(SimpleTestCase):
             self.assertIn(key, resp.data)
         self.assertEqual(resp.data['count'], 30)
         self.assertEqual(len(resp.data['results']), 10)
+
+
+class PageSizeInvalideTests(SimpleTestCase):
+    """ERR-ENF11-FUZZ-PAGE-SIZE — ``page_size``/``page`` hors schéma → 400."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.paginator = StandardPagination()
+
+    def _req(self, query):
+        return Request(self.factory.get('/x/?' + query))
+
+    def test_page_size_non_entier_rejete(self):
+        from rest_framework.exceptions import ValidationError
+        for query in ('page_size=null', 'page_size=abc', 'page_size=',
+                      'page_size=1.5', 'page_size=null&page_size=null',
+                      'page_size=10&page_size=10'):
+            with self.subTest(query=query):
+                with self.assertRaises(ValidationError) as ctx:
+                    self.paginator.paginate_queryset(
+                        list(range(30)), self._req(query))
+                self.assertIn('page_size', ctx.exception.detail)
+
+    def test_page_repete_rejete(self):
+        from rest_framework.exceptions import ValidationError
+        with self.assertRaises(ValidationError) as ctx:
+            self.paginator.paginate_queryset(
+                list(range(30)), self._req('page=1&page=1'))
+        self.assertIn('page', ctx.exception.detail)
+
+    def test_entiers_conformes_toujours_acceptes(self):
+        # Entier conforme au schéma (aucun minimum déclaré) : comportement
+        # inchangé — 0/négatif → défaut, au-delà du plafond → 200.
+        cas = {'page_size=0': 50, 'page_size=-3': 50,
+               'page_size=7': 7, 'page_size=999': 200}
+        for query, attendu in cas.items():
+            with self.subTest(query=query):
+                self.assertEqual(
+                    self.paginator.get_page_size(self._req(query)), attendu)
