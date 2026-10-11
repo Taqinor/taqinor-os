@@ -17,6 +17,7 @@ Run (essais purs) :
     cd backend/django_core
     python -m pytest apps/calepinage/tests/test_calx295_page_de_garde.py -q
 """
+import importlib
 import copy
 import datetime
 import json
@@ -156,8 +157,8 @@ class LaNoteGagneUnePageTest(unittest.TestCase):
 
     def setUp(self):
         try:
-            import fitz  # noqa: F401
-            import weasyprint  # noqa: F401
+            importlib.import_module('fitz')
+            importlib.import_module('weasyprint')
         except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 

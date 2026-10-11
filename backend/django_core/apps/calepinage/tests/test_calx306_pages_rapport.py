@@ -30,6 +30,7 @@ Run (structure, pur, sans WeasyPrint) :
 Run (avec rendu réel, image prod dotée de WeasyPrint) :
     python manage.py test apps.calepinage.tests.test_calx306_pages_rapport -v2
 """
+import importlib
 import copy
 import json
 import pathlib
@@ -146,8 +147,8 @@ class RenduReelPaginationTest(unittest.TestCase):
 
     def setUp(self):
         try:
-            import fitz  # noqa: F401
-            import weasyprint  # noqa: F401
+            importlib.import_module('fitz')
+            importlib.import_module('weasyprint')
         except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 

@@ -71,12 +71,12 @@ if __name__ == '__main__':  # pragma: no cover — chemin « --write » seulemen
 
     django.setup()
 
-from django.test import SimpleTestCase  # noqa: E402
+from django.test import SimpleTestCase
 
-from apps.calepinage.services.incertitude import (  # noqa: E402
+from apps.calepinage.services.incertitude import (
     bloc_incertitude,
 )
-from apps.calepinage.services.chaine_pertes import (  # noqa: E402
+from apps.calepinage.services.chaine_pertes import (
     appliquer_chaine,
 )
 

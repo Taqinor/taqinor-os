@@ -19,6 +19,7 @@ Run (pur, sans base) :
     cd backend/django_core
     python -m pytest apps/calepinage/tests/test_calx316_manuel_proprietaire.py
 """
+import importlib
 import copy
 import json
 import pathlib
@@ -220,7 +221,7 @@ class RenduReelTest(unittest.TestCase):
 
     def setUp(self):
         try:
-            import weasyprint  # noqa: F401
+            importlib.import_module('weasyprint')
         except Exception:  # bibliothèque native absente
             self.skipTest('WeasyPrint indisponible sur ce poste')
 

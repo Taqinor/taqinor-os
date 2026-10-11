@@ -7,6 +7,7 @@ si le module de test est exécuté hors du harnais.
 """
 from __future__ import annotations
 
+import importlib
 import csv
 import io
 import unittest
@@ -230,7 +231,7 @@ class ActionRattacheeTest(unittest.TestCase):
     def test_url_mapping_et_garde(self):
         try:
             from apps.calepinage.views.calepinages import CalepinageViewSet
-            from apps.calepinage.views import export_csv  # noqa: F401
+            importlib.import_module('apps.calepinage.views.export_csv')
         except Exception as erreur:  # pragma: no cover - hors harnais Django
             self.skipTest(f'Réglages Django indisponibles : {erreur}')
         # CALX7 — l'action de CE fichier s'appelle ``export_csv_simulation``

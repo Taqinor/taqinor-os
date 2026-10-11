@@ -33,6 +33,8 @@ from unittest import mock
 
 from apps.calepinage.services import images_document
 from apps.calepinage.services.rapport import ombrage as section_ombrage
+from apps.calepinage.models import Calepinage
+from .test_api_liste import BaseApiCalepinage, url_detail
 
 # ── Un PNG 20×20 RÉEL, produit avec Pillow (dépendance déjà pinnée) ────────
 try:
@@ -241,10 +243,6 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
 
 
 # ── ORM/DB/MinIO/HTTP — exécutés par le job backend-tests (MinIO présent) ──
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
 
 
 def _data_uri_png():

@@ -14,6 +14,7 @@ stockage MinIO n'est pas l'objet de ces essais.
 Run :
     python manage.py test apps.calepinage.tests.test_acal_rapport_etude_servi
 """
+import importlib
 import unittest
 from html import escape
 from unittest import mock
@@ -69,8 +70,8 @@ class RapportEtudeServiTest(unittest.TestCase):
     def setUpClass(cls):
         super().setUpClass()
         try:
-            import fitz  # noqa: F401
-            import weasyprint  # noqa: F401
+            importlib.import_module('fitz')
+            importlib.import_module('weasyprint')
         except Exception:  # bibliotheques natives absentes
             raise unittest.SkipTest('WeasyPrint ou PyMuPDF indisponible')
         cls.pivot = calepinage_simule_reel()

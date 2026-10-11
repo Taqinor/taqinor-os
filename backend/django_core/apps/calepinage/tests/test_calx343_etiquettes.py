@@ -20,6 +20,7 @@ Run :
 """
 from __future__ import annotations
 
+import importlib
 import json
 import pathlib
 from unittest import mock
@@ -45,7 +46,7 @@ def _contrat():
 
 
 def _actions():
-    from apps.calepinage import urls  # noqa: F401
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return CalepinageViewSet, {methode.__name__: methode
