@@ -223,6 +223,14 @@ class CorbeilleApiTests(CorbeilleBase):
 class NTUX24ExportXlsxTests(CorbeilleBase):
     """NTUX24 — export .xlsx du journal de corbeille (audit de rétention)."""
 
+    def test_enf11_borne_vide_refusee_400(self):
+        """ENF11 — `?jusqua=` / `?depuis=` vides ne sont plus ignorés (400)."""
+        api = auth(self.directeur)
+        for param in ('jusqua', 'depuis'):
+            self.assertEqual(
+                api.get(f'{self.BASE}export-xlsx/', {param: ''}).status_code, 400)
+            self.assertEqual(api.get(self.BASE, {param: ''}).status_code, 400)
+
     def test_export_xlsx_forbidden_for_commercial(self):
         resp = auth(self.commercial).get(f'{self.BASE}export-xlsx/')
         self.assertEqual(resp.status_code, 403)

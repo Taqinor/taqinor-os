@@ -353,7 +353,6 @@ API accepted schema-violating request|GET /api/django/stock/transferts/
 API accepted schema-violating request|GET /api/django/stock/unites-logistiques/
 API accepted schema-violating request|GET /api/django/stock/vagues-picking/
 API accepted schema-violating request|GET /api/django/trash/corbeille/
-API accepted schema-violating request|GET /api/django/trash/corbeille/export-xlsx/
 API accepted schema-violating request|GET /api/django/users/
 API accepted schema-violating request|GET /api/django/uxviews/favoris/
 API accepted schema-violating request|GET /api/django/uxviews/saved-views/
