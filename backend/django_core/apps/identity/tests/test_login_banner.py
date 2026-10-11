@@ -66,6 +66,13 @@ class LoginBannerTests(TestCase):
         self.assertEqual(row.company_id, self.company.id)
         self.assertEqual(row.action, AuditLog.Action.SECURITY_ALERT)
 
+    def test_enf11_ack_corps_mal_forme_400(self):
+        """ENF11 — corps non objet (500 avant) / username non texte = 400."""
+        for corps in (-123, {'username': {}}):
+            resp = self.api.post(
+                '/api/django/identity/login-banner/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_ack_noop_without_banner(self):
         self._profile('')
         before = AuditLog.objects.count()

@@ -7,6 +7,7 @@ création, par les vues dédiées.
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChaineStricte
 from core.mixins import SameCompanyFKSerializerMixin
 from core.models import ApiUsagePlan
 
@@ -158,6 +159,9 @@ class ApiUsagePlanSerializer(serializers.ModelSerializer):
 
 class ServiceAccountSerializer(serializers.ModelSerializer):
     """NTSEC24 — compte de service (jeton renvoyé UNE fois à la création)."""
+    # ENF11 — liste de textes (le JSONField générique laissait passer ``null``
+    # et des entiers : schéma « any », refus 400 inattendu sur ``scopes: null``).
+    scopes = serializers.ListField(child=ChaineStricte(), required=False)
 
     class Meta:
         model = ServiceAccount

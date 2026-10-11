@@ -26,6 +26,7 @@ from .serializers import (
 from . import delivery as delivery_service
 from rest_framework.parsers import JSONParser
 
+from core.champs_stricts import ChaineStricte
 from core.parseurs import PARSEURS_JSON
 
 
@@ -144,7 +145,7 @@ class RotationCleSerializer(drf_serializers.Serializer):
 class ServiceAccountCreerSerializer(drf_serializers.Serializer):
     nom = drf_serializers.CharField(max_length=120)
     scopes = drf_serializers.ListField(
-        child=drf_serializers.CharField(), required=False)
+        child=ChaineStricte(), required=False)
     expire_le = drf_serializers.DateTimeField(required=False, allow_null=True)
 
 

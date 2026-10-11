@@ -31,6 +31,13 @@ LIST_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:ListResponse'
 ERROR_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:Error'
 
 
+# ENF11 — un id ou un slug qui ne correspond pas au gabarit d'URL (``<int:pk>``,
+# ``<slug:…>``) est refusé par le résolveur Django AVANT la vue : ce 404 est rendu
+# par le gestionnaire d'erreurs plateforme, donc en ``application/json`` (et non
+# ``application/scim+json`` comme les erreurs produites par ``_error``).
+_URL_404 = {(404, 'application/json'): OpenApiTypes.OBJECT}
+
+
 def _error(detail, http_status):
     return Response(
         {'schemas': [ERROR_SCHEMA], 'detail': detail,
@@ -103,10 +110,10 @@ def _extract(body):
     get=extend_schema(
         parameters=[OpenApiParameter('filter', OpenApiTypes.STR,
                                      required=False)],
-        responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+        responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
     post=extend_schema(
         request=OpenApiTypes.OBJECT,
-        responses={(201, 'application/scim+json'): OpenApiTypes.OBJECT, (409, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+        responses={(201, 'application/scim+json'): OpenApiTypes.OBJECT, (409, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
 )
 class ScimUsersView(APIView):
     """SCIM ``/Users`` : GET (liste + filtre userName), POST (création)."""
@@ -168,12 +175,12 @@ class ScimUsersView(APIView):
 
 
 @extend_schema_view(
-    get=extend_schema(responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+    get=extend_schema(responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
     put=extend_schema(request=OpenApiTypes.OBJECT,
-                      responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+                      responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
     patch=extend_schema(request=OpenApiTypes.OBJECT,
-                        responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
-    delete=extend_schema(responses={204: None, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+                        responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
+    delete=extend_schema(responses={204: None, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
 )
 class ScimUserDetailView(APIView):
     """SCIM ``/Users/{id}`` : GET, PUT/PATCH (remplacement), DELETE (désactive)."""
@@ -300,10 +307,10 @@ def _apply_membership(mapping, op, member_ids):
 
 
 @extend_schema_view(
-    get=extend_schema(responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+    get=extend_schema(responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
     post=extend_schema(
         request=OpenApiTypes.OBJECT,
-        responses={(201, 'application/scim+json'): OpenApiTypes.OBJECT, (409, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+        responses={(201, 'application/scim+json'): OpenApiTypes.OBJECT, (409, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
 )
 class ScimGroupsView(APIView):
     """SCIM ``/Groups`` : GET (liste), POST (création d'un mapping groupe→rôle)."""
@@ -352,10 +359,10 @@ class ScimGroupsView(APIView):
 
 
 @extend_schema_view(
-    get=extend_schema(responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+    get=extend_schema(responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
     patch=extend_schema(request=OpenApiTypes.OBJECT,
-                        responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
-    delete=extend_schema(responses={204: None, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT}),
+                        responses={(200, 'application/scim+json'): OpenApiTypes.OBJECT, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
+    delete=extend_schema(responses={204: None, (401, 'application/scim+json'): OpenApiTypes.OBJECT, (403, 'application/scim+json'): OpenApiTypes.OBJECT, (404, 'application/scim+json'): OpenApiTypes.OBJECT, **_URL_404}),
 )
 class ScimGroupDetailView(APIView):
     """SCIM ``/Groups/{id}`` : GET, PATCH (add/remove membres), DELETE."""

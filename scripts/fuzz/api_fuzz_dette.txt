@@ -472,8 +472,6 @@ API accepted schema-violating request|POST /api/django/ged/exigences-dossier/
 API accepted schema-violating request|POST /api/django/ged/roles-signataire/
 API accepted schema-violating request|POST /api/django/ged/tags/
 API accepted schema-violating request|POST /api/django/ged/tampons-societe/
-API accepted schema-violating request|POST /api/django/identity/login-banner/
-API accepted schema-violating request|POST /api/django/identity/service-accounts/
 API accepted schema-violating request|POST /api/django/imports/export-object/
 API accepted schema-violating request|POST /api/django/imports/sauvegarde/
 API accepted schema-violating request|POST /api/django/installations/categories-stockage/
@@ -689,7 +687,6 @@ API rejected schema-compliant request|PATCH /api/django/core/ui-boutons/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/vues/{id}/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PATCH /api/django/facturation/factures-lignes/{id}/
-API rejected schema-compliant request|PATCH /api/django/identity/service-accounts/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/checklist-etapes/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-tickets/{id}/
@@ -1225,8 +1222,6 @@ Response violates schema|GET /api/django/ged/documents/
 Response violates schema|GET /api/django/ged/documents/{id}/
 Response violates schema|GET /api/django/ged/mes-recents/
 Response violates schema|GET /api/django/ged/quotas-stockage/etat/
-Response violates schema|GET /api/django/identity/providers/
-Response violates schema|GET /api/django/identity/providers/{id}/
 Response violates schema|GET /api/django/installations/chantiers/
 Response violates schema|GET /api/django/installations/chantiers/{id}/
 Response violates schema|GET /api/django/installations/chantiers/{id}/historique/
@@ -1331,7 +1326,6 @@ Response violates schema|PATCH /api/django/ged/documents/{id}/
 Response violates schema|PATCH /api/django/ged/dossiers/{id}/
 Response violates schema|PATCH /api/django/ged/planifications/{id}/
 Response violates schema|PATCH /api/django/ged/tags/{id}/
-Response violates schema|PATCH /api/django/identity/providers/{id}/
 Response violates schema|PATCH /api/django/installations/chantiers/{id}/
 Response violates schema|PATCH /api/django/installations/checklist-templates/{id}/
 Response violates schema|PATCH /api/django/installations/dossiers-import/{id}/
@@ -1390,7 +1384,6 @@ Response violates schema|POST /api/django/ged/documents/{id}/detagger/
 Response violates schema|POST /api/django/ged/documents/{id}/deverrouiller/
 Response violates schema|POST /api/django/ged/documents/{id}/mettre-en-corbeille/
 Response violates schema|POST /api/django/ged/documents/{id}/ocr-piece/
-Response violates schema|POST /api/django/identity/providers/
 Response violates schema|POST /api/django/installations/chantiers/
 Response violates schema|POST /api/django/installations/chantiers/{id}/annuler/
 Response violates schema|POST /api/django/installations/chantiers/{id}/reactiver/
@@ -1440,7 +1433,6 @@ Response violates schema|PUT /api/django/crm/leads/{id}/
 Response violates schema|PUT /api/django/crm/partenaires/{id}/
 Response violates schema|PUT /api/django/facturation/factures/{id}/
 Response violates schema|PUT /api/django/ged/documents/{id}/
-Response violates schema|PUT /api/django/identity/providers/{id}/
 Response violates schema|PUT /api/django/installations/chantiers/{id}/
 Response violates schema|PUT /api/django/installations/checklist-templates/{id}/
 Response violates schema|PUT /api/django/installations/dossiers-import/{id}/
@@ -1507,8 +1499,6 @@ Server error|POST /api/django/ged/documents/{id}/deplacer/
 Server error|POST /api/django/ged/documents/{id}/restaurer/
 Server error|POST /api/django/ged/documents/{id}/tagger/
 Server error|POST /api/django/ged/legal-holds/
-Server error|POST /api/django/identity/break-glass/
-Server error|POST /api/django/identity/login-banner/
 Server error|POST /api/django/installations/approbations-bcf/approuver/
 Server error|POST /api/django/installations/chantiers/creer-depuis-devis/
 Server error|POST /api/django/installations/lots-prelevement/
@@ -1536,8 +1526,6 @@ Server error|POST /api/django/stock/vagues-picking/
 Server error|POST /api/django/ventes/devis/{id}/layout/
 Server error|POST /api/django/ventes/devis/{id}/sync-layout/
 Server error|POST /api/django/ventes/paiements/enregistrer-avance/
-Undocumented Content-Type|DELETE /api/django/identity/scim/v2/{company_slug}/Groups/{id}
-Undocumented Content-Type|DELETE /api/django/identity/scim/v2/{company_slug}/Users/{id}
 Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/comparatif.xlsx/
 Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/
 Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/
@@ -1549,10 +1537,6 @@ Undocumented Content-Type|GET /api/django/facturation/factures/{id}/telecharger-
 Undocumented Content-Type|GET /api/django/facturation/factures/{id}/ubl/
 Undocumented Content-Type|GET /api/django/ged/documents/{id}/permissions-effectives/
 Undocumented Content-Type|GET /api/django/ged/dossiers/{id}/permissions-effectives/
-Undocumented Content-Type|GET /api/django/identity/scim/v2/{company_slug}/Groups
-Undocumented Content-Type|GET /api/django/identity/scim/v2/{company_slug}/Groups/{id}
-Undocumented Content-Type|GET /api/django/identity/scim/v2/{company_slug}/Users
-Undocumented Content-Type|GET /api/django/identity/scim/v2/{company_slug}/Users/{id}
 Undocumented Content-Type|GET /api/django/roles/revue-acces/
 Undocumented Content-Type|GET /api/django/sav/contrats-maintenance/{id}/rapport-pdf/
 Undocumented Content-Type|GET /api/django/sav/tickets/{id}/fiche-pdf/
@@ -1562,14 +1546,9 @@ Undocumented Content-Type|GET /api/django/ventes/bons-commande/{id}/pdf/
 Undocumented Content-Type|GET /api/django/ventes/factures/{id}/telecharger-pdf/
 Undocumented Content-Type|GET /api/django/ventes/factures/{id}/ubl/
 Undocumented Content-Type|GET /api/public/v1/calepinages/{id}/resultat/
-Undocumented Content-Type|PATCH /api/django/identity/scim/v2/{company_slug}/Groups/{id}
-Undocumented Content-Type|PATCH /api/django/identity/scim/v2/{company_slug}/Users/{id}
 Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
-Undocumented Content-Type|POST /api/django/identity/scim/v2/{company_slug}/Groups
-Undocumented Content-Type|POST /api/django/identity/scim/v2/{company_slug}/Users
 Undocumented Content-Type|POST /api/public/v1/jobs/{id}/relancer/
 Undocumented Content-Type|POST /api/public/v1/leads-write/{id}/activites/
-Undocumented Content-Type|PUT /api/django/identity/scim/v2/{company_slug}/Users/{id}
 Undocumented HTTP status code|DELETE /api/django/calepinage/calepinages/{id}/
 Undocumented HTTP status code|DELETE /api/django/crm/leads/{id}/
 Undocumented HTTP status code|DELETE /api/django/parametres/delete-logo/

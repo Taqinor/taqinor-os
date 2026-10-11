@@ -60,8 +60,19 @@ class TrustedDeviceSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+@extend_schema_field({
+    'anyOf': [{'type': 'string', 'format': 'uri', 'maxLength': 500},
+              {'type': 'string', 'maxLength': 0}]})
+class UrlFacultative(serializers.URLField):
+    """ENF11 — URL ou chaîne vide : le schéma le dit (la réponse renvoie ``""``
+    tant que l'IdP n'est pas configuré, ce que ``format: uri`` seul invalidait)."""
+
+
 class IdentityProviderSerializer(serializers.ModelSerializer):
     """CRUD d'un IdP SSO (NTSEC1). ``company`` forcée côté serveur."""
+    metadata_url = UrlFacultative(
+        max_length=500, required=False, allow_blank=True)
+    sso_url = UrlFacultative(max_length=500, required=False, allow_blank=True)
 
     class Meta:
         model = IdentityProvider
