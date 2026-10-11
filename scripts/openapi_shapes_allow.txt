@@ -37,7 +37,6 @@ apps.fiscal.views:ObligationFiscaleViewSet.tableau_conformite_action
 apps.fiscal.views:tableau_conformite_view
 apps.flotte.views:PieceFlotteViewSet.synthese
 apps.flotte.views:PleinCarburantViewSet.synthese_tva
-apps.ged.views:DemandeSignatureDocumentViewSet.tableau_bord
 apps.gestion_projet.views:ProjetViewSet.synthese_temps
 apps.innovation.views:CampagneInnovationViewSet.tableau_bord
 apps.innovation.views:IdeeViewSet.tableau_bord
@@ -49,9 +48,6 @@ apps.pos.views:VenteComptoirViewSet.dashboard
 apps.pos.views:VenteComptoirViewSet.dashboard_export
 apps.qhse.views:IncidentViewSet.statistiques_tf_tg
 apps.qhse.views:ia_suggestion_analyse
-apps.reporting.commercial:commercial_dashboard
-apps.reporting.reports:kpi_federes
-apps.reporting.views:dashboard
 apps.rh.views:PresquAccidentViewSet.stats
 apps.rh.views:RetourFeedback360ViewSet.synthese
 apps.rh.views:TableauBordHseViewSet.tableau_bord_hse
@@ -62,5 +58,3 @@ apps.stock.views.produit:ProduitViewSet.analyse_achats_export_xlsx
 apps.stock.views.produit:ProduitViewSet.analyse_achats_pdf
 apps.ventes.dashboard_view:dashboard_quote_to_cash
 apps.ventes.insights_view:analyse_facturation_view
-core.dashboard_partage:dashboard_public
-core.dashboard_partage:dashboard_tv
