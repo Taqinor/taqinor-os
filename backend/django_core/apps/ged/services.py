@@ -943,6 +943,7 @@ def versionner_si_modifie(document, contenu, *, filename='', mime='',
         size=meta.get('size') or len(contenu),
         mime=mime or meta.get('mime', ''),
         checksum=checksum, uploaded_by=uploaded_by)
+    update_search_vector(document)  # ADOC180 — trouvable comme create_document
     return version, True
 
 
