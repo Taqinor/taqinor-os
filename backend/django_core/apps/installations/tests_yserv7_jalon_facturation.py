@@ -260,7 +260,11 @@ class TestChantiersAFacturerPortee(TestCase):
         self.client_obj = make_client(self.company)
         role = Role.objects.create(
             company=self.company, nom='resp-equipe-portee',
-            permissions=['installation_voir', 'installation_gerer', SCOPE_TEAM])
+            # `a_facturer` exige IsAdminRole OU `ventes_creer` (geste commercial,
+            # ASEC11) : sans ce code l'appel est 403 avant tout scoping. Les codes
+            # installation_* + SCOPE_TEAM bornent ensuite la liste a la portee.
+            permissions=['installation_voir', 'installation_gerer',
+                         'ventes_creer', SCOPE_TEAM])
         self.proprio = User.objects.create_user(
             username=f'yserv7-p-{next(_seq)}', password='x',
             company=self.company, role_legacy='responsable', role=role)
