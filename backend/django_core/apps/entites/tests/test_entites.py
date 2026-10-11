@@ -65,6 +65,7 @@ class EntiteSignalTests(TestCase):
     def test_entite_created_signal_emis(self):
         from core.events import entite_created
         recu = []
+
         def _recoit(sender, entite, **kw):
             recu.append(entite)
 
@@ -79,6 +80,7 @@ class EntiteSignalTests(TestCase):
         from core.events import entite_deactivated
         from ..services import desactiver_entite
         recu = []
+
         def _recoit(sender, entite, **kw):
             recu.append(entite)
 
