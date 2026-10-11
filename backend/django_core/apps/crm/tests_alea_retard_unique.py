@@ -29,7 +29,7 @@ from apps.crm.models import Lead, RelanceEtape
 from apps.crm.selectors import (
     STATUT_EN_RETARD, chaine_commerciale, relance_etapes_dues,
     relance_etapes_periode)
-from apps.crm.serializers import RelanceEtapeSerializer
+from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from apps.notifications.models import Holiday
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role

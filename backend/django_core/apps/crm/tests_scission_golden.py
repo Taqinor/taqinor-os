@@ -225,14 +225,20 @@ def _permissions(cls, user):
 
 
 def _serialiseurs():
-    mod = importlib.import_module('apps.crm.serializers')
+    """Sérialiseurs de ``serializers.py`` ET des modules de la scission
+    (``serializers_*.py``, SPL74-SPL80) : un sérialiseur déplacé reste
+    comparé, retrouvé par son nom de classe."""
     out = {}
-    for nom, obj in vars(mod).items():
-        if (inspect.isclass(obj)
-                and issubclass(obj, drf_serializers.BaseSerializer)
-                and obj.__module__.startswith('apps.crm')
-                and obj.__name__ == nom):
-            out[nom] = obj
+    noms_mod = ['apps.crm.serializers'] + sorted(
+        f'apps.crm.{p.stem}' for p in _ICI.glob('serializers_*.py'))
+    for nom_mod in noms_mod:
+        mod = importlib.import_module(nom_mod)
+        for nom, obj in vars(mod).items():
+            if (inspect.isclass(obj)
+                    and issubclass(obj, drf_serializers.BaseSerializer)
+                    and obj.__module__.startswith('apps.crm')
+                    and obj.__name__ == nom):
+                out.setdefault(nom, obj)
     return dict(sorted(out.items()))
 
 

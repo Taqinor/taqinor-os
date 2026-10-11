@@ -25,7 +25,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.serializers import RelanceEtapeSerializer
+from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from apps.roles.models import Role
 
 User = get_user_model()

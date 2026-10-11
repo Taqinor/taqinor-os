@@ -5,12 +5,14 @@ from .views import (
     ConcurrentPerteViewSet, LeadViewSet,
     assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    MessageTemplateViewSet, ObjectifCommercialViewSet, PartenaireViewSet,
+    ObjectifCommercialViewSet, PartenaireViewSet,
     PlanActiviteViewSet,
-    PointContactViewSet, RelanceEtapeViewSet, SavedViewViewSet,
+    PointContactViewSet, SavedViewViewSet,
     SiteProfileViewSet, VisiteExterneViewSet,
     EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
 )
+# SPL74 — cadence de relance (cockpit des relances + modèles de message).
+from .cadence_views import MessageTemplateViewSet, RelanceEtapeViewSet
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .webhooks import demande_rdv_webhook
 from .roof_views import lead_roof_footprint

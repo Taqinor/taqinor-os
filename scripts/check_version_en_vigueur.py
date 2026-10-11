@@ -60,6 +60,10 @@ def _modules_scission_crm() -> list:
 
 
 FICHIERS += _modules_scission_crm()
+#: SPL74-SPL81 : modules de vues issus de la scission de crm/views.py — une
+#: lecture déplacée reste dans le périmètre de la garde.
+FICHIERS += [f"backend/django_core/apps/crm/{p.name}"
+             for p in sorted((APPS / "crm").glob("*_views.py"))]
 
 #: Statuts de devis dont la lecture exige la version en vigueur.
 STATUTS = {"accepte", "envoye"}

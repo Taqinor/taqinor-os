@@ -199,5 +199,5 @@ class CoutTests(_Base):
 
 
 def _serializer_read_only():
-    from apps.crm.serializers import RelanceEtapeSerializer
+    from apps.crm.serializers_cadence import RelanceEtapeSerializer
     return set(RelanceEtapeSerializer.Meta.read_only_fields)

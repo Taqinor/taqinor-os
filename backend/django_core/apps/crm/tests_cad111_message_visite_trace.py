@@ -27,7 +27,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.serializers import RelanceEtapeSerializer
+from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role
 
