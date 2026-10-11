@@ -15,7 +15,7 @@ import { RotateCcw, Save, CheckCircle2, Search, X } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { CATALOGS, LOCALES, useI18n } from '../../i18n'
 import { Card, CardContent, Input, IconButton, Button, Spinner, Badge } from '../../ui'
-import { toast } from '../../ui/confirm'
+import { marquerEnregistre, toastEnregistrementImpossible } from './enregistrement'
 
 // Libellés des colonnes de langue (ordre d'affichage = ordre du cadre N93).
 const LOCALE_LABELS = { fr: 'Français', en: 'English', ar: 'العربية' }
@@ -113,13 +113,8 @@ export default function TraductionsSection() {
       setDrafts({})
       // Effet immédiat : le provider i18n adopte les nouvelles surcharges.
       setOverrides(fresh)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
-    } finally {
-      setSaving(false)
-    }
+      marquerEnregistre(setSaved)
+    } catch (e) { toastEnregistrementImpossible(e) } finally { setSaving(false) }
   }
 
   return (

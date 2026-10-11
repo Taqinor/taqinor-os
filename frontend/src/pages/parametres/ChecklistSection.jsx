@@ -20,6 +20,7 @@ import {
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { SectionTitle } from './peComponents'
+import { EtatChargementSection } from './EtatsSection'
 
 // Types d'installation qui peuvent auto-sélectionner un modèle (miroir des
 // choix serveur Installation.TypeInstallation). « __none__ » = repli « Défaut ».
@@ -160,21 +161,9 @@ export default function ChecklistSection() {
     catch (e) { toast.error(apiErrorMessage(e, 'Suppression impossible (étape protégée ?).')) }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
-
-  if (loadError) return (
-    <div className="flex flex-col items-start gap-2">
-      <p className="flex items-center gap-2 text-sm text-destructive">
-        <AlertCircle className="size-4" aria-hidden="true" />
-        Modèles de checklist indisponibles (serveur ?).
-      </p>
-      <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
-    </div>
-  )
+  if (loading || loadError) {
+    return <EtatChargementSection loading={loading} loadError={loadError} message="Modèles de checklist indisponibles (serveur ?)." onRetry={load} />
+  }
 
   return (
     <Card>

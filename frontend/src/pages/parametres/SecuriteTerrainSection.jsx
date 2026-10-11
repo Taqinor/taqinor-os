@@ -16,6 +16,7 @@ import {
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { SectionTitle } from './peComponents'
+import { EtatChargementSection, ActionsLigneParam } from './EtatsSection'
 
 const slugify = (s) => s.trim().toLowerCase()
   .normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -98,21 +99,9 @@ export default function SecuriteTerrainSection() {
     } catch (e) { toast.error(apiErrorMessage(e, 'Enregistrement impossible.')) }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
-
-  if (loadError) return (
-    <div className="flex flex-col items-start gap-2">
-      <p className="flex items-center gap-2 text-sm text-destructive">
-        <AlertCircle className="size-4" aria-hidden="true" />
-        Réglages sécurité & terrain indisponibles (serveur ?).
-      </p>
-      <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
-    </div>
-  )
+  if (loading || loadError) {
+    return <EtatChargementSection loading={loading} loadError={loadError} message="Réglages sécurité & terrain indisponibles (serveur ?)." onRetry={load} />
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -136,30 +125,8 @@ export default function SecuriteTerrainSection() {
                 {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
                 <Input key={s.libelle} className={['min-w-[200px] flex-[1_1_200px]', s.actif ? '' : 'opacity-50'].join(' ')}
                   defaultValue={s.libelle} onBlur={(e) => rename(s, e.target.value)} />
-                <div className="ml-auto flex items-center gap-1">
-                  <IconButton size="sm" variant="ghost" label="Monter"
-                    disabled={i === 0} onClick={() => move(i, -1)}>
-                    <ChevronUp className="size-4" aria-hidden="true" />
-                  </IconButton>
-                  <IconButton size="sm" variant="ghost" label="Descendre"
-                    disabled={i === slots.length - 1} onClick={() => move(i, 1)}>
-                    <ChevronDown className="size-4" aria-hidden="true" />
-                  </IconButton>
-                  <Button type="button" size="sm"
-                    variant={s.actif ? 'success' : 'secondary'}
-                    onClick={() => toggleActif(s)}>
-                    {s.actif ? 'Actif' : 'Inactif'}
-                  </Button>
-                  {s.protege ? (
-                    <Badge tone="info">système</Badge>
-                  ) : (
-                    <IconButton size="sm" variant="outline" label="Supprimer"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => del(s)}>
-                      <Trash2 className="size-4" aria-hidden="true" />
-                    </IconButton>
-                  )}
-                </div>
+                <ActionsLigneParam s={s} i={i} total={slots.length} move={move} toggleActif={toggleActif} del={del}
+                  labelSupprimer="Supprimer" />
               </div>
             ))}
           </div>

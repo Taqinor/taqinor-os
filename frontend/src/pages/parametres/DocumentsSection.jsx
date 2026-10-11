@@ -12,7 +12,8 @@ import { Save, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, Textarea, Button, IconButton, Spinner } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { toast } from '../../ui/confirm'
+import { BoutonEnregistrer, ChargementSection } from './SectionEnregistrement'
+import { marquerEnregistre, toastEnregistrementImpossible } from './enregistrement'
 
 // Aperçu (placeholder) du littéral historique de chaque champ. Affiché en
 // indice quand le champ est vide : c'est EXACTEMENT le texte imprimé par défaut.
@@ -193,21 +194,12 @@ export default function DocumentsSection() {
         setCgvPro(Object.fromEntries(
           MODES_CGV_PRO.map(([m]) => [m, variantePro(res.data, m)])))
       }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
-    } finally {
-      setSaving(false)
-    }
+      marquerEnregistre(setSaved)
+    } catch (e) { toastEnregistrementImpossible(e) } finally { setSaving(false) }
   }
 
   if (form === null) {
-    return (
-      <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-        <Spinner className="size-4 text-primary" /> Chargement…
-      </div>
-    )
+    return <ChargementSection />
   }
 
   return (
@@ -320,12 +312,7 @@ export default function DocumentsSection() {
         </Card>
       )}
 
-      <Button type="button" size="sm" onClick={save} loading={saving}
-        disabled={saving} variant={saved ? 'success' : 'default'}>
-        {saved
-          ? <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
-          : <><Save className="size-4" aria-hidden="true" /> Enregistrer</>}
-      </Button>
+      <BoutonEnregistrer save={save} saving={saving} saved={saved} />
     </>
   )
 }
