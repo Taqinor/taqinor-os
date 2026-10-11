@@ -120,10 +120,7 @@ class TestPariteResidentiel(unittest.TestCase):
     """Même ville et même kWc → même production annuelle que le résidentiel."""
 
     def test_meme_annuelle_que_production_annuelle_pour_kwc(self):
-        try:
-            from apps.ventes.horaire.public import production_annuelle_pour_kwc
-        except ImportError as exc:      # hors image Django : dépendances absentes
-            self.skipTest(f'etude_horaire non importable ici : {exc}')
+        from apps.ventes.horaire.public import production_annuelle_pour_kwc
         for ville in ('Casablanca', 'Agadir', 'Marrakech'):
             production, _h, _a = _bloc(ville)
             kwc = 42.0
@@ -131,10 +128,7 @@ class TestPariteResidentiel(unittest.TestCase):
             self.assertEqual(round(annuelle), production_annuelle_pour_kwc(kwc, ville=ville), ville)
 
     def test_jours_types_annee_lit_la_fonction_partagee(self):
-        try:
-            from apps.ventes import etude_horaire
-        except ImportError as exc:
-            self.skipTest(f'etude_horaire non importable ici : {exc}')
+        from apps.ventes import etude_horaire
         self.assertIs(etude_horaire.production_jours_types, production_jours_types)
         jours, _av, _src = etude_horaire.jours_types_annee(
             kwc=10, conso_kwh_mensuelles=[500] * 12, ville='Casablanca',

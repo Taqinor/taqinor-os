@@ -70,8 +70,9 @@ class KwargsMoteurTests(SimpleTestCase):
             conso_kwh_mensuelles=entrees['conso_kwh_mensuelles'],
             ville='Casablanca', tranches=_TRANCHES, charges_fixes_mad=31.5,
             jour_reference=_JOUR, source_conso='facture_hiver')
-        if carte is None or devis is None:
-            self.skipTest('PVGIS non résolu dans cet environnement')
+        # Casablanca résout depuis la table PVGIS vendorisée : hors réseau.
+        self.assertIsNotNone(carte)
+        self.assertIsNotNone(devis)
         self.assertEqual(carte['annuel']['economie_sans_mad'],
                          devis['annuel']['economie_sans_mad'])
         national = EH.calculer_etude_horaire(
