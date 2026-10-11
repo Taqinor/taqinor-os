@@ -58,8 +58,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + [
-                'etiquettes_kanban', 'van_stock_a_reapprovisionner']:
+        if self.action in READ_ACTIONS + ['etiquettes_kanban']:
             # XSTK20 — impression de cartes kanban : lecture seule, même
             # garde que les autres impressions d'étiquettes N20
             # (`get_permissions` prime sur le `permission_classes` de
@@ -144,7 +143,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=LISTE)
     @action(detail=False, methods=['get'], url_path='van-stock/a-reapprovisionner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def van_stock_a_reapprovisionner(self, request):
         """NTFSM19 — écarts van-stock (camionnette) sous seuil, avec la
         quantité suggérée à transférer depuis le dépôt principal."""

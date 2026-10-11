@@ -325,10 +325,6 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
                 'casiers', 'plan_picking',
-                # ENF15 — déclarées `IsAnyRole` sur l'@action, mais jamais
-                # atteintes (repli IsAdminRole) : lecture seule, aucun prix
-                # (étiquettes = nom + SKU + jeton ; ventilation = quantités).
-                'etiquettes', 'emplacements',
                 'classe_abc', 'tracabilite',
                 # PVCOMPAT — `compatibilites` est LECTURE SEULE et ne rend
                 # AUCUN prix (que des grandeurs électriques et des verdicts) :
@@ -696,7 +692,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='emplacements',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def emplacements(self, request, *args, **kwargs):
         """N15 — ventilation du stock de ce produit par emplacement (le dépôt
         principal détient le reste = total − somme des autres)."""
@@ -840,7 +836,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(parameters=[P('ids', STR, True, 'Ids produits (répétés ou séparés par virgule)'), P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def etiquettes(self, request):
         """N20 — Étiquettes imprimables (QR/CODE128) pour une sélection de SKU.
 
