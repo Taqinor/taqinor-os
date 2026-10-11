@@ -773,6 +773,79 @@ def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
     return resultat, (), tuple(messages)
 
 
+def modules_par_pan(layout, defaut, fiches, manquants):
+    """ACAL359 — le module RÉELLEMENT posé sur chaque pan, et sa fiche.
+
+    ``defaut`` = ``{'produit_id', 'designation', 'pmax_wc', 'fiche_complete'}``
+    du module par défaut (``None`` : aucun désigné) ; ``fiches`` = ceux de
+    ``_fiches_modules_du_document`` ; ``manquants(specs)`` = les champs de
+    fiche module manquants. Un pan sans fiche résolue est dit tel (module
+    saisi ou produit introuvable) — même règle qu'``_alertes_pans_sans_fiche``.
+    """
+    defaut = defaut or {}
+    libelles = {str(m.get('id')): m.get('libelle') or m.get('designation')
+                for m in (layout or {}).get('modules') or []
+                if isinstance(m, dict)}
+    lignes = []
+    for pan in _pans_poses(layout):
+        module = pan.module
+        pid = module.produit_id if module else None
+        fiche = (fiches or {}).get(pid)
+        saisi = (pid in (None, '') and module is not None
+                 and module.pmax_wc is not None
+                 and defaut.get('pmax_wc') is not None
+                 and module.pmax_wc != defaut['pmax_wc'])
+        if saisi or not (pid in (None, '') or isinstance(fiche, dict)
+                         or str(pid) == str(defaut.get('produit_id'))):
+            produit, nom, resolue, complete = pid or None, (libelles.get(
+                str(module.module_id)) or ''), False, False
+        elif isinstance(fiche, dict):
+            produit, nom, resolue = pid, fiche.get('designation') or '', True
+            complete = not manquants(fiche.get('specs') or {})
+        else:
+            produit, nom = defaut.get('produit_id'), defaut.get(
+                'designation') or ''
+            resolue = produit is not None
+            complete = bool(defaut.get('fiche_complete')) and resolue
+        lignes.append({
+            'pan': pan.label,
+            'module_id': module.module_id if module else None,
+            'designation': nom, 'produit_id': produit,
+            'fiche_resolue': resolue, 'fiche_complete': complete})
+    return lignes
+
+
+def _alertes_pans_sans_fiche(pans, layout, module_specs, module_designation,
+                             produits_sans_fiche):
+    """ACAL358 — un pan dont le module n'a PAS de fiche résolue est nommé.
+
+    Deux cas : un ``produitId`` que l'appelant n'a pas pu résoudre
+    (``produits_sans_fiche`` : introuvable ou d'une autre société), ou un
+    module saisi à la main (sans ``produitId``) de puissance différente du
+    défaut. Le pan est chaîné avec la fiche par défaut : on le dit.
+    """
+    libelles = {str(m.get('id')): m.get('libelle') or m.get('designation')
+                for m in (layout or {}).get('modules') or []
+                if isinstance(m, dict)}
+    defaut = _nombre((module_specs or {}).get('pmax_wc'))
+    sans = {str(p) for p in produits_sans_fiche or ()}
+    alertes = []
+    for pan in pans:
+        module = pan.module
+        if module is None:
+            continue
+        saisi = (module.produit_id in (None, '') and module.pmax_wc is not None
+                 and defaut is not None and module.pmax_wc != defaut)
+        if not (saisi or str(module.produit_id) in sans):
+            continue
+        alertes.append(
+            "Pan « %s » : module « %s » sans fiche produit — chaîné avec la "
+            "fiche « %s » ; tensions et courants de ce pan non garantis"
+            % (pan.label, libelles.get(str(module.module_id)) or '?',
+               module_designation or 'non désignée'))
+    return tuple(alertes)
+
+
 def _ecarts_de_module(pans, fiches_par_pan, module_designation):
     """ACAL264 — l'écart désignation devis ↔ document, PUBLIÉ par pan."""
     return tuple(
@@ -785,7 +858,8 @@ def _ecarts_de_module(pans, fiches_par_pan, module_designation):
 
 def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                       module_designation='', onduleur_designation='',
-                      optimiseur_specs=None, fiches_modules=None, **options):
+                      optimiseur_specs=None, fiches_modules=None,
+                      produits_sans_fiche=(), **options):
     """CAL124 — le chaînage COMPLET d'un document de conception.
 
     Args:
@@ -852,7 +926,8 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     else:
         resultat = concevoir_chaines(entree)
     regle, partage, messages = _verdict_mppt(pans, onduleur, onduleur_specs)
-    messages = tuple(messages) + ecarts
+    messages = tuple(messages) + ecarts + _alertes_pans_sans_fiche(
+        pans, layout, module_specs, module_designation, produits_sans_fiche)
     # CALX53 — l'origine des coefficients de température voyage AVEC le
     # verdict : une alerte de plus, jamais un bloquant (la conception tient,
     # c'est sa SOURCE qui manque).

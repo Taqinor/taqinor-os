@@ -6,6 +6,7 @@
    même dérogation que `RemplissageProuve.jsx` (CAL79) du même module. */
 import { useEffect, useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
+import { ecrireSection } from './useDocumentCalepinage'
 
 /* ============================================================================
    CAL70 — DÉCLARER LES ALLÉES ET PASSAGES DE MAINTENANCE DANS L'ATELIER.
@@ -424,21 +425,18 @@ export default function PanneauAllees({
     }
     setEnregistrement(true)
     setMessageCalepinage(null)
-    builderApi.appliquerSection('alleeTechnique', { largeurM: largeur, source: sourceCalepinage })
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(
-      calepinageId, builderApi.serializeLayout(), documentVivant?.empreinte ?? null))
-      .then((res) => {
-        const apres = res?.data?.empreinte_document ?? null
-        if (apres) {
-          documentVivant?.appliquerSection?.('alleeTechnique', { largeurM: largeur, source: sourceCalepinage }, apres)
-        }
-        setMessageCalepinage(`Allée de ${largeur} m enregistrée pour ce calepinage.`)
-      })
-      .catch((e) => setMessageCalepinage(
-        e?.response?.data?.roof_layout?.[0] ?? e?.response?.data?.roof_layout
-        ?? e?.response?.data?.detail
-        ?? 'L’allée n’a pas pu être enregistrée pour ce calepinage.'))
-      .finally(() => setEnregistrement(false))
+    const valeur = { largeurM: largeur, source: sourceCalepinage }
+    builderApi.appliquerSection('alleeTechnique', valeur)
+    // ACAL364 — UNE section (`layout/section/`), jamais le document entier : une
+    // copie périmée de l'atelier n'écrase plus le travail des autres onglets.
+    ecrireSection({
+      calepinageId, cle: 'alleeTechnique', valeur,
+      empreinte: documentVivant?.empreinte ?? null, documentVivant,
+    }).then((res) => {
+      setMessageCalepinage(res.ok
+        ? `Allée de ${largeur} m enregistrée pour ce calepinage.`
+        : (res.motif || 'L’allée n’a pas pu être enregistrée pour ce calepinage.'))
+    }).finally(() => setEnregistrement(false))
   }
 
   const enregistrer = () => {

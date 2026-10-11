@@ -99,6 +99,52 @@ class ModuleParPanTest(SimpleTestCase):
         pose = bloc_pose(_concevoir(_layout()))
         self.assertEqual(pose['kwc'], 9.5)
 
+    def test_pan_sans_fiche_resolue_alerte_nommee(self):
+        # ACAL358 (C-ACAL-VER-005) — module saisi à la main : plus de
+        # chaînage silencieux avec la fiche par défaut.
+        layout = _layout(produit_400=None)
+        layout['modules'][1]['libelle'] = 'M400 saisi'
+        alertes = _concevoir(layout).alertes
+        self.assertTrue(any(
+            'Pan « B »' in a and 'M400 saisi' in a and 'sans fiche' in a
+            and 'Module 550' in a for a in alertes), alertes)
+        # Un produit désigné mais introuvable / d'une autre société.
+        conception = concevoir_par_pan(
+            _layout(), module_specs=FICHE_550, onduleur_specs=ONDULEUR,
+            temperatures=_temperatures(), module_designation='Module 550',
+            onduleur_designation='Onduleur 10 kW', produits_sans_fiche=(2,))
+        self.assertTrue(any('Pan « B »' in a and 'sans fiche' in a
+                            for a in conception.alertes), conception.alertes)
+        # Module par défaut ou fiche résolue : aucune alerte nouvelle.
+        for alertes in (_concevoir(_layout(), FICHES).alertes,
+                        _concevoir(_layout()).alertes):
+            self.assertFalse(any('sans fiche' in a for a in alertes),
+                             alertes)
+
+    def test_entree_servie_liste_le_module_de_chaque_pan(self):
+        # ACAL359 — ``materiel.modules_par_pan`` : un module par pan, dans
+        # l'ordre du document, avec l'état de sa fiche (cas du module saisi
+        # sans fiche ; la fiche du stock réel est lue par le test suivant).
+        from apps.calepinage.services.electrique import (
+            entree_electrique_servie,
+        )
+
+        class Nu:
+            pk = 1
+            company = None
+            devis_id = None
+            resultat = None
+            roof_layout = _layout(produit_400=None)
+
+        Nu.roof_layout['modules'][1]['libelle'] = 'M400 saisi'
+        servi = entree_electrique_servie(Nu(), {})
+        self.assertEqual(
+            [(p['pan'], p['module_id'], p['fiche_resolue'])
+             for p in servi['materiel']['modules_par_pan']],
+            [('A', 'm550', False), ('B', 'm400', False)])
+        self.assertEqual(
+            servi['materiel']['modules_par_pan'][1]['designation'], 'M400 saisi')
+
     def test_champ_mono_module_inchange(self):
         layout = copy.deepcopy(_layout())
         layout['zones'][1]['geometry']['moduleId'] = 'm550'
@@ -141,6 +187,46 @@ class ModuleParPanStockReelTest(BaseApiCalepinage):
         FicheTechnique.objects.create(company=self.company, produit=produit,
                                       type_fiche=type_fiche, **champs)
         return produit
+
+    def test_entree_servie_liste_le_module_de_chaque_pan(self):
+        # ACAL359 — fiches RÉELLES : A = fiche 550 (défaut du devis), B =
+        # fiche 400 du stock ; puis B au module saisi sans fiche.
+        from apps.calepinage.services.electrique import (
+            entree_electrique_servie,
+        )
+
+        cles = ('vmp_v', 'voc_v', 'isc_a', 'imp_a', 'pmax_wc')
+        m550 = self._produit('Module 550', 'module',
+                             **{c: FICHE_550[c] for c in cles})
+        m400 = self._produit('Module 400', 'module',
+                             **{c: FICHE_400[c] for c in cles})
+        devis = Devis.objects.create(company=self.company,
+                                     client=self.client_a,
+                                     reference='DEV-ACAL359-1')
+        LigneDevis.objects.create(
+            devis=devis, produit=m550, designation=m550.nom,
+            quantite=Decimal('1'), prix_unitaire=Decimal('100'),
+            type_ligne='produit', variante='')
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, client=self.client_a,
+            devis=devis, titre='ACAL359',
+            roof_layout=_layout(produit_550=m550.pk, produit_400=m400.pk))
+
+        pans = entree_electrique_servie(
+            calepinage, {})['materiel']['modules_par_pan']
+        self.assertEqual([p['pan'] for p in pans], ['A', 'B'])
+        self.assertEqual([p['produit_id'] for p in pans], [m550.pk, m400.pk])
+        self.assertTrue(all(p['fiche_resolue'] for p in pans))
+        self.assertEqual(pans[1]['designation'], m400.nom.strip())
+
+        calepinage.roof_layout = _layout(produit_550=m550.pk,
+                                         produit_400=None)
+        calepinage.roof_layout['modules'][1]['libelle'] = 'M400 saisi'
+        pans = entree_electrique_servie(
+            calepinage, {})['materiel']['modules_par_pan']
+        self.assertTrue(pans[0]['fiche_resolue'])
+        self.assertFalse(pans[1]['fiche_resolue'])
+        self.assertEqual(pans[1]['designation'], 'M400 saisi')
 
     def test_bloc_pose_kwc_par_module_stock_reel(self):
         m550 = self._produit('Module 550', 'module', **{

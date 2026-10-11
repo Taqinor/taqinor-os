@@ -249,6 +249,10 @@ const PROVENANCES = {
 function MaterielDuCalcul({ materiel, panneauDevis }) {
   if (!materiel) return null
   const module = materiel.module
+  /* ACAL359 — une ligne par pan dès qu'un pan porte un autre module, ou que
+     la fiche d'un pan manque ; un champ mono-module garde la ligne « Module ». */
+  const lignes = Array.isArray(materiel.modules_par_pan) ? materiel.modules_par_pan : []
+  const parPan = lignes.length > 1 || lignes.some((l) => !l.fiche_resolue) ? lignes : []
   const ecart = module && panneauDevis
     && module.produit_id != null && panneauDevis.produit != null
     && String(module.produit_id) !== String(panneauDevis.produit)
@@ -280,6 +284,26 @@ function MaterielDuCalcul({ materiel, panneauDevis }) {
           )
         })}
       </ul>
+      {parPan.length > 0 && (
+        <ul className="mt-2 space-y-1" data-testid="cal-fiches-modules-par-pan">
+          {parPan.map((ligne) => (
+            <li key={ligne.pan} className="text-sm text-lune-soft"
+              data-testid={`cal-fiches-module-pan-${ligne.pan}`}>
+              <span className="text-lune">Pan {ligne.pan}</span>
+              {' — '}
+              {ligne.designation || 'module sans désignation'}
+              {!ligne.fiche_resolue && (
+                <span className="text-red-300">
+                  {' '}— sans fiche : chaîné avec la fiche du module par défaut
+                </span>
+              )}
+              {ligne.fiche_resolue && !ligne.fiche_complete && (
+                <span className="text-red-300"> — fiche incomplète</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {ecart && (
         <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-ecart-module">
           Le calcul utilise « {module.designation} », le devis chiffre

@@ -61,7 +61,8 @@ export default function useDocumentCalepinage(calepinageId, { actif = true } = {
           cle,
           etat: 'ok',
           document: estDocument(brut) ? brut : {},
-          empreinte: donnees.empreinte_document ?? null,
+          // ACAL360 — un document vide n'a pas d'empreinte : son jeton est ''.
+          empreinte: donnees.empreinte_document ?? '',
         })
       })
       .catch(() => {
@@ -106,7 +107,8 @@ export async function ecrireSection({
   calepinageId, cle, valeur, empreinte, documentVivant = null,
 }) {
   const base = documentVivant?.empreinte || empreinte
-  if (!base) {
+  // `''` = jeton d'un document encore vide (ACAL360) ; `null` = jamais lu.
+  if (base == null) {
     return { ok: false, conflit: false, motif: MESSAGE_ILLISIBLE }
   }
   try {
@@ -120,7 +122,10 @@ export async function ecrireSection({
     return { ok: true, empreinte: apres }
   } catch (e) {
     const conflit = e?.response?.status === 409
-    const detail = e?.response?.data?.detail
-    return { ok: false, conflit, motif: typeof detail === 'string' ? detail : '' }
+    const donnees = e?.response?.data
+    // `detail` (jeton périmé) ou le refus métier du verrou (`roof_layout`).
+    const refus = donnees?.detail ?? (Array.isArray(donnees?.roof_layout)
+      ? donnees.roof_layout[0] : donnees?.roof_layout)
+    return { ok: false, conflit, motif: typeof refus === 'string' ? refus : '' }
   }
 }

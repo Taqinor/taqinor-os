@@ -293,7 +293,8 @@ class DocumentModifie(ValueError):
 
 
 #: ACAL22 — les SEULES clés racine qu'une écriture par section remplace.
-CLES_SECTION_RACINE = ('horizonProfile', 'poseSurfaces', 'underlay')
+CLES_SECTION_RACINE = ('horizonProfile', 'poseSurfaces', 'underlay',
+                       'alleeTechnique')
 #: ACAL22 — la section ``zones`` : les SEULS champs d'UNE zone qu'elle écrit.
 #: ACAL206 — l'azimut posé depuis un relevé/une visite porte sa PROVENANCE
 #: (``facingAzimuthSource``) et sa PRÉCISION (``facingAzimuthPrecisionDeg``) :
@@ -352,8 +353,11 @@ def enregistrer_section(calepinage, cle, valeur, *, base_empreinte,
     if cle not in CLES_SECTION_RACINE and cle != 'zones':
         raise LayoutRefuse(
             "Clé non autorisée : seules horizonProfile, poseSurfaces, "
-            "underlay et zones s'écrivent par section.", champ='cle')
-    if not isinstance(base_empreinte, str) or not base_empreinte:
+            "underlay, alleeTechnique et zones s'écrivent par section.",
+            champ='cle')
+    # ACAL360 — ``''`` est le jeton d'un document encore vide (comme
+    # ``If-Match: ""`` d'ACAL316) ; seul un jeton absent / non texte est refusé.
+    if not isinstance(base_empreinte, str):
         raise LayoutRefuse(
             "Jeton manquant : envoyez base_empreinte, l'empreinte du "
             "document ouvert.", champ='base_empreinte')

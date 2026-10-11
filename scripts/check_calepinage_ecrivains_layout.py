@@ -27,11 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ATELIER = "frontend/src/pages/ventes/ToitureDesign.jsx"
 # Passif gelé (ne peut que rétrécir) : fichier -> raison.
-ALLOWLIST = {
-    "frontend/src/features/calepinage/PanneauAllees.jsx":
-        "ACAL317 : PanneauAllees réécrit encore le document entier "
-        "(à corriger par D01-T05/T12/T15/T19, hors périmètre de la garde).",
-}
+# ACAL364 : PanneauAllees écrit par section (`alleeTechnique`) — plus aucun passif.
+ALLOWLIST: dict = {}
 
 _APPEL = re.compile(r"(?<![\w$])(?:[\w$.]+\.)?enregistrerLayoutCalepinage\s*\(")
 
