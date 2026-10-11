@@ -1,0 +1,10 @@
+Pile locale à e380f019a. Compte de test « acc_commercial_test » créé dans la société démo, rôle système « Commercial » (portée équipe),
+mot de passe généré, jamais écrit dans le dépôt ; compte supprimé en fin de rejeu.
+AVANT : GET /ventes/devis/action-requise/ (Commercial) => tous les paniers à 0, objet devis vide, aucun téléphone ; liste des devis : 0.
+Le Commercial crée puis refuse sans motif son propre devis DEV-202610-0033 => « refuses_sans_motif » = 1, devis [son id], téléphone = celui
+de SON client ; au même instant l'administrateur voit 27 refusés sans motif. Écran /ventes/devis/action-requise au compte Commercial
+(Chromium Playwright, contexte séparé) : « 1 devis nécessitant une action », seule ligne DEV-202610-0033 (capture ADEV-P7.4-ecran-commercial.png).
+Oracles 2/3 : 403 GET /api/django/users/ (console « Failed to load resource … 403 ») — présent aussi sur /apps, /ventes/devis, /crm/leads :
+défaut du shell, hors ADEV64 => écart accepté, ERR-SHELL-USERS-403-COMMERCIAL.
+Constat voisin hors ADEV64 : « Chantiers à facturer » du même écran montre CHT-202610-0001 au Commercial alors que sa liste de chantiers
+est vide => ERR-CHANTIERS-A-FACTURER-SANS-PORTEE.

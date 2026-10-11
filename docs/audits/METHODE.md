@@ -246,7 +246,10 @@ téléphone ; ligne de coût `H<n> S<n> O<n> F<n> · jetons sous-agents ≈ x M`
    la tâche `@acceptation` d'un groupe se coche quand ses tâches sont toutes couvertes.
 2. **`vérifie <G>` dû** quand `audit_registre.py --du` compte ≥ 50 % (mi-parcours) puis ≥ 95 % (clôture) des tâches
    constructibles cochées ; `audit next` / `loop audit` le jouent AVANT toute nouvelle unité ; le rapport de chaque merge
-   l'affiche. Échantillon : toutes les P0 / S1 + 25 % du reste, min 8, max 48, graine = SHA ; vérificateurs frais opus / high
+   l'affiche. **Ordre des dus (fondateur 11/10/2026) : par NOMBRE de tâches cochées décroissant** (le groupe le plus
+   construit d'abord), pas par rang du registre ; et on refait `git fetch origin --prune` puis on recalcule la liste des
+   dus À CHAQUE itération de boucle, car des sessions parallèles mergent de nouvelles tâches dans `main` en continu (ce qui
+   déplace aussi la graine d'échantillonnage = SHA). Échantillon : toutes les P0 / S1 + 25 % du reste, min 8, max 48, graine = SHA ; vérificateurs frais opus / high
    (≈ 22 k jetons par tâche) : texte ↔ commit(s) ↔ test nommé ↔ 7 leçons de `lecons-construction-qjr5.md`, verdict ok /
    partiel / non-fait / faux / régression / déjà-présent + cause (closed list) ; sondes rejouées ; UNE critique Fable
    seulement si des écarts S1 subsistent. Écarts confirmés = tâches v3 sous `### <G> — ÉCARTS vérifie <date> · format v3`

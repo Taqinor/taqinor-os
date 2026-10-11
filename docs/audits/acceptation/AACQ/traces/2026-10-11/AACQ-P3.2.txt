@@ -1,0 +1,10 @@
+Pile locale à cf66024bc (code = dev-all-laptop 4f82e65e9), demo_admin. Jeu de test local : MetaConnection de la société démo en USD et
+DÉSACTIVÉE (aucun appel Meta), campagne / ensemble / annonce « TEST AACQ » avec 7 jours de dépense 60 et 1 lead/jour (InsightSnapshot,
+MetaLeadMirror) ; supprimé en fin de rejeu.
+AACQ100 — GET /adsengine/guardrail/ (garde-fous jamais saisis) : ceiling_currency '' ; PATCH {max_daily_budget_mad: 120, ceiling_currency:
+'MAD'} 200 : ceiling_currency 'USD' (valeur du corps ignorée) ; GET suivant : 'USD', 120 ; mêmes clés aux deux GET.
+AACQ98 — (1) POST /adsengine/regles/ {template_key: stop_loss_cpl, enabled: true, dry_run: false} (corps du bouton « Armer ») ⇒
+threshold_currency '' ; évaluation (rules_engine.evaluate_company) ⇒ constat fired=False, blocked_fr « Seuil en MAD, compte facturé en USD :
+seuil non applicable — ressaisir le seuil dans la devise du compte (aucun taux inventé). », aucune action. (2) seuil saisi
+params.threshold_mad = 59 puis 61 (PATCH) ⇒ threshold_currency 'USD' ; CPL réel 60 : déclenché à 59, pas à 61 (dry-run, proposition seule).
+(3) seconde règle monétaire cost_per_conversation_high créée avec threshold_mad 30 ⇒ 'USD'.

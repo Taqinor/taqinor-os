@@ -1,0 +1,12 @@
+Pile locale (docker compose erp-agentique) à e380f019a, compte seed demo_admin, société taqinor-demo.
+Profil société posé par /api/django/parametres/update/ (même appel que l'écran Paramètres) : forme SARL, capital 100 000 MAD,
+ICE 001122334000055, RC RC-TEST-4471, IF IF-TEST-9081, patente PAT-TEST-3302, site_web vide ; logo téléversé par
+/parametres/upload-logo/ (pwa-192.png, 192 px). État d'avant sauvegardé puis RESTAURÉ en fin de rejeu (aucune identité, aucun logo).
+APDF3 — /proposal du devis DEV-202609-0005 (résidentiel, 3 p.) : page 3 « TAQINOR Démo SARL au capital de 100 000 MAD · RC RC-TEST-4471 ·
+ICE 001122334000055 » ; une-page : « … · ICE … · IF IF-TEST-9081 · Patente PAT-TEST-3302 · Siège : … » ; facture FAC-202610-0002
+(generer-pdf 202 puis telecharger-pdf 200) : « ICE : 001122334000055 | IF : IF-TEST-9081 | RC : RC-TEST-4471 | Patente : PAT-TEST-3302 » —
+même ICE, même RC.
+APDF4 — page 1 : image 192×192 (le logo téléversé) présente en en-tête (vue rendue contrôlée), absente du rendu témoin sans logo.
+APDF5 — société sans site : 0 annotation de lien dans les PDF 3 pages et une-page, aucune chaîne « taqinor.ma » (seul le mail
+demo@taqinor.local du profil apparaît) ; formats include_etude / devis_final / les deux aussi propres en résidentiel.
+Rendus API = téléchargement écran : le PDF généré depuis le dialogue PDF de la liste (generer-pdf → fichier) a le même texte que /proposal.

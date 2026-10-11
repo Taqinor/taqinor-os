@@ -1,0 +1,6 @@
+Pile locale à e380f019a, demo_admin. 25 devis de test refusés sans motif créés (note « ACCEPTATION APRF9 »), + DEV-DEMO-0004 déjà présent.
+GET /ventes/devis/action-requise/ : buckets.refuses_sans_motif.count = 26, ids = 26, objet « devis » = 20 entrées, toutes parmi les 20 premiers ids.
+Écran /ventes/devis/action-requise (navigateur intégré puis Chromium Playwright) : « 26 devis nécessitant une action », badge « Refusés sans
+motif 26 », 20 lignes (DEV-DEMO-0004, DEV-202610-0008 … 0026), « + 6 autre(s) » ; rechargé : identique (capture APRF-P1.1-ecran.png).
+Console Chromium Playwright : 0 erreur (le panneau intégré journalise seulement son refus d'enregistrer le service worker, environnemental).
+Devis de test supprimés en fin de rejeu.
