@@ -510,6 +510,7 @@ class FlightRunner:
         try:
             return fn() or []
         except Exception:  # noqa: BLE001 — dédup best-effort
+            logger.warning("flightrunner.FlightRunner._safe_get : erreur ignorée (mode dégradé)", exc_info=True)
             return []
 
     def _mirror_campaign(self, meta_id, name, objective):

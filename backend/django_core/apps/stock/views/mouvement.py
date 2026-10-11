@@ -37,6 +37,9 @@ from authentication.permissions import (  # noqa: F401
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -137,6 +140,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                 company=request.user.company, user=request.user,
                 mouvement_ids=ids)
         except Exception:  # noqa: BLE001 — broker down : job déjà en échec
+            logger.warning(
+                "mouvement.MouvementStockViewSet.export_xlsx : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(
                 {'detail': "L'export n'a pas pu être lancé, réessayez."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)

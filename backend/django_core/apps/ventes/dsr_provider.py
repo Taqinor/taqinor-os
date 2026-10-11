@@ -23,6 +23,9 @@ pseudonymise.
 (``'crm.Client'``) : aucun import de ``apps.crm.models``.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 PROVIDER_NAME = 'ventes'
 
@@ -171,7 +174,7 @@ def _effacer_copie_toit(devis):
             try:
                 supprimer_fichier_toiture(cle)
             except Exception:  # noqa: BLE001 — l'objet stocké est best-effort
-                pass
+                logger.warning("dsr_provider._effacer_copie_toit : erreur ignorée (mode dégradé)", exc_info=True)
     return count
 
 

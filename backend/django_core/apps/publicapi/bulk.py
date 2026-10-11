@@ -357,6 +357,7 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 if line.strip()
             ]
         except Exception:  # noqa: BLE001 — repli : repart d'un journal vide
+            logger.warning("bulk.run_import_job : erreur ignorée (mode dégradé)", exc_info=True)
             error_rows = []
 
     job.marquer_progression(total=total, cursor=start)
@@ -378,6 +379,7 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                     _process_activite_row(job.company, row)
                 succes += 1
             except Exception as exc:  # noqa: BLE001 — une ligne en erreur n'arrête PAS les suivantes
+                logger.warning("bulk.run_import_job : erreur ignorée (mode dégradé)", exc_info=True)
                 erreurs_count += 1
                 error_rows.append(
                     {'ligne': ligne, 'erreur': str(exc), 'donnees': row})

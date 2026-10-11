@@ -22,6 +22,8 @@ from .devis_gardes import (
     _refus_verrou,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _jeton(devis):
     """QJR545 — le jeton d'édition à renvoyer dans une réponse 2xx."""
@@ -64,6 +66,8 @@ class DevisEtudesActionsMixin:
             data = build_quote_data(devis, {'pdf_mode': 'full'})
             bloc = deriver(devis, data)
         except Exception:  # noqa: BLE001 — un écran d'édition ne tombe jamais
+            logger.warning(
+                "devis_etudes.DevisEtudesActionsMixin._offres_tailles_reponse : erreur ignorée (mode dégradé)", exc_info=True)
             logging.getLogger(__name__).warning(
                 'offres_tailles indisponibles sur %s',
                 getattr(devis, 'reference', '?'), exc_info=True)
@@ -249,7 +253,8 @@ class DevisEtudesActionsMixin:
         try:
             rafraichir_etudes_du_devis(devis)
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning(
+                "devis_etudes.DevisEtudesActionsMixin._rafraichir_etudes_apres_surcharge : erreur ignorée (mode dégradé)", exc_info=True)
 
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
             permission_classes=[IsResponsableOrAdmin])
@@ -341,7 +346,8 @@ class DevisEtudesActionsMixin:
             try:
                 rafraichir_etudes_du_devis(devis)
             except Exception:  # noqa: BLE001
-                pass
+                logger.warning(
+                    "devis_etudes.DevisEtudesActionsMixin.etude_params : erreur ignorée (mode dégradé)", exc_info=True)
         fin_de_geste_devis(devis, request.user, avant=avant_geste,
                            objet='étude')
         # La réponse reste LE BLOC FUSIONNÉ — ce que l'appelant vient de poser,

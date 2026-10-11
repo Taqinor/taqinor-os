@@ -223,7 +223,7 @@ def activate_optional_line(*, devis, ligne_id, user=None):
             f'Option activée par le client : « {ligne.designation} » '
             '— désormais incluse dans le total.')
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("cycle_vie.activate_optional_line : erreur ignorée (mode dégradé)", exc_info=True)
     return ligne
 
 
@@ -828,6 +828,7 @@ def signature_entreprise(devis):
     try:
         sig = devis.signature
     except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist
+        logger.warning("cycle_vie.signature_entreprise : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if sig is None or not (sig.raison_sociale or sig.signataire_qualite
                            or sig.ice_declare):
@@ -1001,6 +1002,7 @@ def _acceptance_deposit_block(devis, lignes=None):
                 "espace proposition pour informer votre conseiller.")
         return '\n'.join(lignes) + '\n\n'
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("cycle_vie._acceptance_deposit_block : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
 
@@ -1046,6 +1048,7 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
             from apps.ventes.models import DevisSignature
             preuve = DevisSignature.objects.filter(devis=devis).exists()
         except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien
+            logger.warning("cycle_vie._send_acceptance_emails : erreur ignorée (mode dégradé)", exc_info=True)
             preuve = False
         bloc_signature = (
             "Votre signature électronique a été enregistrée conformément "
@@ -1748,6 +1751,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             with transaction.atomic():
                 lignes_devis = list(devis.lignes.select_related('produit').all())
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning("cycle_vie.accept_devis : erreur ignorée (mode dégradé)", exc_info=True)
             lignes_devis = None
 
         # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
@@ -1837,7 +1841,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     try:
         devis.refresh_from_db(fields=['fichier_pdf'])
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.warning("cycle_vie.accept_devis : erreur ignorée (mode dégradé)", exc_info=True)
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
     try:
         _send_acceptance_emails(devis=devis, user=user, lignes=lignes_devis)

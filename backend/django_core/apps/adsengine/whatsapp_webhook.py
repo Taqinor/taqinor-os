@@ -122,6 +122,7 @@ def _phone_key(phone):
         from apps.crm.selectors import normalize_phone_key
         return normalize_phone_key(phone) or ''
     except Exception:  # noqa: BLE001 — la clé n'empêche jamais l'enregistrement
+        logger.warning("whatsapp_webhook._phone_key : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
 
@@ -134,6 +135,7 @@ def _lead_id_for_phone(company, phone):
         from apps.crm.selectors import find_lead_id_by_phone
         return find_lead_id_by_phone(company, phone)
     except Exception:  # noqa: BLE001 — le rattachement n'est jamais bloquant
+        logger.warning("whatsapp_webhook._lead_id_for_phone : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

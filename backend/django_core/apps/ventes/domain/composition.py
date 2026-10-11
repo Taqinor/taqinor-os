@@ -1626,6 +1626,7 @@ def structure_produit_id_du_devis(devis):
     try:
         lignes = _lignes_produit(devis)
     except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        logger.warning("composition.structure_produit_id_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     for ligne in lignes:
         produit = getattr(ligne, 'produit', None)

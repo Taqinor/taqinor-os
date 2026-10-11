@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """QJR516 (Groupe QJR5, D-QJR5-1 / D-QJR5-2 / D-QJR5-5) — UN SEUL prédicat de
 modifiabilité d'un devis, PAR GESTE, servi au front.
 
@@ -81,6 +84,7 @@ def _libelle_statut(devis):
     try:
         return devis.get_statut_display()
     except Exception:  # noqa: BLE001 — objet léger sans choices
+        logger.warning("modifiabilite._libelle_statut : erreur ignorée (mode dégradé)", exc_info=True)
         return str(getattr(devis, 'statut', '') or '')
 
 
@@ -90,6 +94,7 @@ def _reference_successeur(devis):
     try:
         return devis.superseded_by.reference
     except Exception:  # noqa: BLE001 — successeur supprimé entre-temps
+        logger.warning("modifiabilite._reference_successeur : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -315,6 +320,7 @@ def debut_de_geste_devis(devis, user=None):
         capturer_configuration_devis(frais, user=user, avant_correction=True)
         return empreinte_visible(frais)
     except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning("modifiabilite.debut_de_geste_devis : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
             'QJR518 : début de geste ignoré (devis %s)', devis.pk)
@@ -343,6 +349,7 @@ def fin_de_geste_devis(devis, user=None, *, avant=None, objet=''):
         return consigner_correction_apres_envoi(
             devis, user=user, objet=objet, resume=resume)
     except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning("modifiabilite.fin_de_geste_devis : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
             'QJR518 : fin de geste ignorée (devis %s)', devis.pk)
@@ -389,5 +396,6 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
             from apps.crm.services import noter_devis_corrige
             noter_devis_corrige(frais.reference, frais.lead, libelle)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+            logger.warning(
+                "modifiabilite.consigner_correction_apres_envoi : erreur ignorée (mode dégradé)", exc_info=True)
     return entree

@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """QJR57 — LE REGISTRE UNIQUE DES SURCHARGES D'UN DEVIS.
 
 CE QUE CE MODULE FERME. L'audit L3 du 29/08/2026 a trouvé QUATRE mécanismes de
@@ -707,16 +710,19 @@ def autos_du_devis(devis):
         try:
             autos.update(bloc(devis) or {})
         except Exception:  # noqa: BLE001 — une lecture ratée n'invente rien
+            logger.warning("overrides.autos_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
             continue
     try:
         scenario = _auto_scenario(devis)
     except Exception:  # noqa: BLE001
+        logger.warning("overrides.autos_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         scenario = None
     if scenario:
         autos['scenario'] = scenario
     try:
         jour = _jour_reference_auto(devis)
     except Exception:  # noqa: BLE001
+        logger.warning("overrides.autos_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         jour = None
     if jour is not None:
         autos['etude.jour_reference'] = jour.isoformat()

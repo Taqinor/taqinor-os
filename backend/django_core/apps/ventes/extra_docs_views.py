@@ -20,6 +20,9 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole
 
 from .models import Facture
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _scope(qs, user):
@@ -70,6 +73,7 @@ def lettre_relance_premium(request, facture_id):
     try:
         pdf_bytes = render_lettre_relance_pdf(facture, niveau)
     except Exception as exc:
+        logger.warning("extra_docs_views.lettre_relance_premium : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -93,6 +97,7 @@ def fiche_remise_premium(request, chantier_id):
     try:
         pdf_bytes = render_fiche_remise_pdf(chantier)
     except Exception as exc:
+        logger.warning("extra_docs_views.fiche_remise_premium : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')

@@ -4,6 +4,9 @@ from datetime import timedelta
 from django.utils import timezone
 
 from .models import ConfigPackage, EvenementUsage, SandboxEnvironment
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def adoption_par_module(company, jours=30):
@@ -101,6 +104,7 @@ def diagnostic_tenant(company):
         derniere_migration = MigrationRecorder.Migration.objects.order_by(
             '-applied').values_list('app', 'name', 'applied').first()
     except Exception:
+        logger.warning("selectors.diagnostic_tenant : erreur ignorée (mode dégradé)", exc_info=True)
         derniere_migration = None
 
     derniere_connexion = CustomUser.objects.filter(
@@ -114,7 +118,7 @@ def diagnostic_tenant(company):
             company=company, action=AuditLog.Action.SECURITY_ALERT
         ).order_by('-created_at').values_list('detail', 'created_at')[:5])
     except Exception:
-        pass
+        logger.warning("selectors.diagnostic_tenant : erreur ignorée (mode dégradé)", exc_info=True)
 
     return {
         'derniere_migration': derniere_migration,

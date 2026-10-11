@@ -49,6 +49,9 @@ from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered, create_provisoire
+import logging
+
+logger = logging.getLogger(__name__)
 #: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
 #: (Administrateur, Directeur, Commercial et Commercial responsable par
 #: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
@@ -1158,6 +1161,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             cle = cle_facture_pdf_a_jour(facture)
         except Exception:  # noqa: BLE001
+            logger.warning("facture.FactureViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             cle = facture.fichier_pdf
         if not cle:
             return Response(
@@ -1167,6 +1171,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             pdf_bytes = download_pdf(cle)
         except Exception:
+            logger.warning("facture.FactureViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},
                 status=status.HTTP_404_NOT_FOUND,
@@ -1527,7 +1532,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             generate_avoir_pdf(avoir.id)
             avoir.refresh_from_db()
         except Exception:
-            pass
+            logger.warning("facture.FactureViewSet.creer_avoir : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(AvoirSerializer(avoir).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1665,7 +1670,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             generate_note_debit_pdf(note_debit.id)
             note_debit.refresh_from_db()
         except Exception:
-            pass
+            logger.warning("facture.FactureViewSet.creer_note_debit : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(NoteDebitSerializer(note_debit).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1715,7 +1720,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             generate_avoir_pdf(avoir.id)
             avoir.refresh_from_db()
         except Exception:
-            pass
+            logger.warning("facture.FactureViewSet.retour_client : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(AvoirSerializer(avoir).data,
                         status=status.HTTP_201_CREATED)
 
@@ -2226,6 +2231,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'reference': facture.reference}
 
             except Exception as exc:  # noqa: BLE001 — batch: no single failure kills all
+                logger.warning("facture.FactureViewSet.bulk : erreur ignorée (mode dégradé)", exc_info=True)
                 results[fid_int] = {'ok': False, 'detail': str(exc)}
 
         return Response(results)

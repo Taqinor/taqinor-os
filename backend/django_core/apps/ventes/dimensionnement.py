@@ -698,7 +698,7 @@ def capacite_utile_batterie(produit, designation):
             if nominal and dod:
                 return float(nominal) * float(dod) / 100.0
         except Exception:  # noqa: BLE001 — fiche absente ⇒ repli sur le nom
-            pass
+            logger.warning("dimensionnement.capacite_utile_batterie : erreur ignorée (mode dégradé)", exc_info=True)
     from apps.ventes.services import _parse_kwh
     return _parse_kwh(designation)
 

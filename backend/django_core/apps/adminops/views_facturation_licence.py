@@ -255,4 +255,5 @@ def _plan_du_tenant(company):
         from apps.parametres.feature_flags import plan_code_for_company
         return plan_code_for_company(company) or ''
     except Exception:  # noqa: BLE001 — la lane plan n'est pas encore fondue
+        logger.warning("views_facturation_licence._plan_du_tenant : erreur ignorée (mode dégradé)", exc_info=True)
         return ''

@@ -37,6 +37,9 @@ from .serializers import (
     AutomationRuleVersionSerializer, AutomationRunSerializer,
     IncomingWebhookTriggerSerializer,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -273,7 +276,8 @@ class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
                 libelle="Règle d'automatisation restaurée",
                 old=f'version {version_row.version}', new=rule.nom)
         except Exception:
-            pass
+            logger.warning(
+                "views.AutomationRuleVersionViewSet.restaurer : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(AutomationRuleSerializer(rule).data)
 
 

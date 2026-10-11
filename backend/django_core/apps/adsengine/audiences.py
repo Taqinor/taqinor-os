@@ -38,6 +38,9 @@ from __future__ import annotations
 
 import os
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Flag de consentement Custom Audience (ADSDEEP57/58). OFF par défaut : sans lui,
 # AUCUNE donnée CRM ne quitte le serveur (aucun appel réseau).
@@ -107,7 +110,7 @@ def _normalize_phone(phone):
         if norme:
             return norme
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("audiences._normalize_phone : erreur ignorée (mode dégradé)", exc_info=True)
     chiffres = re.sub(r'\D', '', brut)
     if chiffres.startswith('0') and len(chiffres) == 10:
         chiffres = '212' + chiffres[1:]
@@ -251,6 +254,7 @@ def sync_crm_custom_audience(company, *, name, contacts, replace=True,
     except MetaError as exc:
         summary['error'] = str(exc)[:255]
     except Exception as exc:  # noqa: BLE001 — jamais casser l'appelant
+        logger.warning("audiences.sync_crm_custom_audience : erreur ignorée (mode dégradé)", exc_info=True)
         summary['error'] = str(exc)[:255]
     return summary
 
@@ -344,6 +348,7 @@ def create_lookalike_from_seed(company, *, name, origin_audience_id,
     except MetaError as exc:
         summary['error'] = str(exc)[:255]
     except Exception as exc:  # noqa: BLE001 — jamais casser l'appelant
+        logger.warning("audiences.create_lookalike_from_seed : erreur ignorée (mode dégradé)", exc_info=True)
         summary['error'] = str(exc)[:255]
     return summary
 

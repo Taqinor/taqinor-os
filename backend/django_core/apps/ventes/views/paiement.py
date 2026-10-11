@@ -46,6 +46,9 @@ from authentication.permissions import (  # noqa: F401
 from core.permissions import declared_action_permissions
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+import logging
+
+logger = logging.getLogger(__name__)
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -395,6 +398,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             pdf_bytes = generate_recu_pdf(paiement)
         except Exception as exc:
+            logger.warning("paiement.PaiementViewSet.recu_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': f'PDF indisponible : {exc}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')

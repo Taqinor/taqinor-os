@@ -17,6 +17,9 @@ LECTURE SEULE. ``--dry-run`` est le défaut ET le seul mode : aucun devis
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def projection(devis):
@@ -100,6 +103,8 @@ class Command(BaseCommand):
                                else devis.taux_tva) / Decimal(100)
                 ttc_apres = ttc + delta_ht * (1 + taux)
             except Exception:  # noqa: BLE001 — un total illisible est signalé
+                logger.warning(
+                    "acal_dryrun_ligne_par_modele.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 ttc, ttc_apres = '?', '?'
 
             def _txt(bloc):

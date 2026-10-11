@@ -241,6 +241,7 @@ def jour_reference_du_devis(devis):
     try:
         valeur, source = effectif(devis, 'etude.jour_reference', None)
     except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        logger.warning("entrees.jour_reference_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         valeur, source = None, 'auto'
     if source != 'auto':
         declaree = _date_lisible(valeur)

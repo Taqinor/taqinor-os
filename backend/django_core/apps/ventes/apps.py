@@ -2,6 +2,9 @@ import os
 
 from django.apps import AppConfig
 from django.core.checks import Warning as DjangoWarning, register
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @register()
@@ -18,6 +21,7 @@ def _qx10_esign_otp_channel_check(app_configs, **kwargs):
             from apps.ventes.email_service import is_email_configured
             email_ok = is_email_configured()
         except Exception:  # noqa: BLE001
+            logger.warning("apps._qx10_esign_otp_channel_check : erreur ignorée (mode dégradé)", exc_info=True)
             email_ok = False
         if not email_ok:
             warnings.append(DjangoWarning(

@@ -40,6 +40,9 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -316,7 +319,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                     f"Attention : l'ICE {ice} est déjà utilisé par "
                     f'« {dup.nom} ».')
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
-            pass
+            logger.warning(
+                "fournisseur.FournisseurViewSet._attach_ice_warning : erreur ignorée (mode dégradé)", exc_info=True)
 
     @extend_schema(request=corps('FournisseurDeciderCandidatureCorps', valider=serializers.BooleanField()),
                    responses=corps('FournisseurDeciderCandidatureReponse', id=serializers.IntegerField(),

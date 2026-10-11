@@ -790,6 +790,7 @@ def stock_valuation_method(company):
         from apps.parametres.models_company import CompanyProfile
         profile = CompanyProfile.objects.filter(company=company).first()
     except Exception:  # parametres absent / champ pas encore migré
+        logger.warning("services.stock_valuation_method : erreur ignorée (mode dégradé)", exc_info=True)
         profile = None
     method = getattr(profile, 'stock_valuation_method', None)
     return method if method in (VALUATION_WAVG, VALUATION_FIFO) else VALUATION_WAVG
@@ -1699,7 +1700,7 @@ def confirm_reception_fournisseur(reception, user):
             sender=ReceptionFournisseur, reception=reception,
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning("services.confirm_reception_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
     # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
     # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
     try:
@@ -3771,7 +3772,7 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
             sender=FactureFournisseur, instance=facture,
             company=company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning("services._construire_facture_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
     return FactureFournisseur.objects.get(pk=facture.pk)
 
 
@@ -6703,6 +6704,7 @@ def check_prix_ligne_bcf(
             company, produit_id, fournisseur_id=fournisseur_id,
             a_la_date=a_la_date)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("services.check_prix_ligne_bcf : erreur ignorée (mode dégradé)", exc_info=True)
         accord = None
     if accord and accord.get('prix_convenu') is not None:
         prix_convenu = Decimal(str(accord['prix_convenu']))
@@ -6751,6 +6753,7 @@ def rapport_achats_hors_contrat(
     try:
         from apps.installations.selectors import prix_convenu_fournisseur
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning("services.rapport_achats_hors_contrat : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
     qs = (LigneBonCommandeFournisseur.objects
@@ -6775,6 +6778,7 @@ def rapport_achats_hors_contrat(
                 a_la_date=bc.date_creation.date() if bc.date_creation
                 else None)
         except Exception:  # noqa: BLE001 — best-effort
+            logger.warning("services.rapport_achats_hors_contrat : erreur ignorée (mode dégradé)", exc_info=True)
             accord = None
         if not accord or accord.get('prix_convenu') is None:
             continue
@@ -7179,6 +7183,7 @@ def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres)
             return True
         return False
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("services._invalidate_approbation_si_hausse : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -7633,7 +7638,7 @@ def notify_bcf_confirmation_fournisseur(bc):
             author=None,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("services.notify_bcf_confirmation_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 # ── NTPRT3 — Compte fournisseur RÉEL (remplace le jeton comme voie primaire) ─
@@ -7694,7 +7699,7 @@ def _nom_affiche_societe(company):
         if theme is not None and (theme.nom_affichage or '').strip():
             return theme.nom_affichage.strip()
     except Exception:  # noqa: BLE001 — la marque ne casse jamais un accès
-        pass
+        logger.warning("services._nom_affiche_societe : erreur ignorée (mode dégradé)", exc_info=True)
     return (getattr(company, 'nom', '') or '').strip()
 
 
@@ -7730,6 +7735,8 @@ def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
         )
         return True
     except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès
+        logger.warning(
+            "services._envoyer_identifiants_portail_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -8113,7 +8120,7 @@ def notify_annonce_livraison_fournisseur(annonce):
             author=None,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("services.notify_annonce_livraison_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 # ── XPUR24 — Tableau de bord achats (analyse des dépenses) ──────────────────
@@ -8768,6 +8775,7 @@ def ecrire_identite_fournisseur(fournisseur) -> bool:
                 'rib': fournisseur.rib or '',
             })
     except Exception:
+        logger.warning("services.ecrire_identite_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -8848,7 +8856,7 @@ def _notifier_candidature_fournisseur(fournisseur):
         )
     except Exception:  # noqa: BLE001 - une notification KO ne fait jamais
         # perdre la candidature (elle reste visible dans /stock/fournisseurs).
-        pass
+        logger.warning("services._notifier_candidature_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def decider_candidature_fournisseur(fournisseur, *, valider):

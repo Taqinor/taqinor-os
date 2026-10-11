@@ -30,6 +30,9 @@ from .models import (
     NomenclatureCodeBarres, RegleCodeBarres,
     ToleranceRapprochementCategorie,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MarqueSerializer(serializers.ModelSerializer):
@@ -1280,6 +1283,8 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             libelle = self._unite_libelle_map(
                 getattr(obj, 'company', None)).get(code)
         except Exception:
+            logger.warning(
+                "serializers.ProduitSerializer.get_unite_stock_display : erreur ignorée (mode dégradé)", exc_info=True)
             libelle = None
         return libelle or code
 

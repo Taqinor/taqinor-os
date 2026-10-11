@@ -162,7 +162,7 @@ class _LazyTargets:
             from core import platform
             cibles |= set(platform.import_specs(company=None))
         except Exception:  # pragma: no cover - registre indisponible ⇒ FIELD_MAPS seul
-            pass
+            logger.warning("services._LazyTargets._resolve : erreur ignorée (mode dégradé)", exc_info=True)
         return cibles
 
     def __contains__(self, item):
@@ -200,7 +200,7 @@ def module_proprietaire_de_cible(target):
             if target in (manifeste.get('import_specs') or ()):
                 return cle
     except Exception:  # pragma: no cover - registre indisponible
-        pass
+        logger.warning("services.module_proprietaire_de_cible : erreur ignorée (mode dégradé)", exc_info=True)
     return ''
 
 

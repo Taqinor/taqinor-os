@@ -16,6 +16,9 @@ from ..models import Devis
 from ..domain.modifiabilite import ENVOYER
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _gamme_envoi_payload(devis):
@@ -267,7 +270,8 @@ class DevisEnvoiActionsMixin:
             attachment = download_pdf(key)
             attachment_name = f'Devis_{devis.reference}.pdf'
         except Exception:  # noqa: BLE001 — PDF indisponible n'empêche pas l'envoi
-            pass
+            logger.warning(
+                "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
 
         # Ajoute le lien de proposition tokenisé dans le corps si fourni.
         proposal_url = chemin_proposition(devis, link.token)
@@ -296,6 +300,8 @@ class DevisEnvoiActionsMixin:
                     from apps.crm.services import public_booking_url
                     lien_rdv = public_booking_url(devis.lead, request=request)
                 except Exception:  # noqa: BLE001 — jamais bloquer l'envoi
+                    logger.warning(
+                        "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
                     lien_rdv = ''
             rendu = EmailTemplate.render(
                 devis.company, 'envoi_devis',
@@ -370,7 +376,8 @@ class DevisEnvoiActionsMixin:
                 from apps.crm.services import noter_devis_envoye
                 noter_devis_envoye(reference, devis.lead)
             except Exception:  # noqa: BLE001 — best-effort, ne bloque jamais l'envoi
-                pass
+                logger.warning(
+                    "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
 
         return Response({
             'detail': f'Email envoyé à {dest}.' if ok else f'Échec envoi email : {err}',

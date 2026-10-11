@@ -227,6 +227,7 @@ def _sans_jeton(valeur):
     try:
         jeton = _token()
     except Exception:  # noqa: BLE001 — journaliser prime sur la config
+        logger.warning("capi_odoo._sans_jeton : erreur ignorée (mode dégradé)", exc_info=True)
         return texte
     return texte.replace(jeton, '***') if jeton else texte
 

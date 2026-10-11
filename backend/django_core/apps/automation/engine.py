@@ -68,6 +68,7 @@ def _has_company_fk(model):
         return any(
             f.name == 'company' for f in model._meta.concrete_fields)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("engine._has_company_fk : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -95,6 +96,7 @@ def _rule_disabled_module(rule, instance, company):
     try:
         from core.feature_flags import module_actif
     except Exception:  # pragma: no cover - défensif
+        logger.warning("engine._rule_disabled_module : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     candidats = []
     label = _model_label(instance)
@@ -108,6 +110,7 @@ def _rule_disabled_module(rule, instance, company):
             if not module_actif(company, module):
                 return module
         except Exception:  # pragma: no cover - défensif
+            logger.warning("engine._rule_disabled_module : erreur ignorée (mode dégradé)", exc_info=True)
             continue
     return None
 
@@ -213,6 +216,7 @@ def _motif_facture(facture):
     try:
         reste = facture.montant_exigible
     except Exception:  # pragma: no cover - défensif (facture détachée)
+        logger.warning("engine._motif_facture : erreur ignorée (mode dégradé)", exc_info=True)
         reste = None
     if reste is not None and reste <= 0:
         return 'Facture soldée : relance sans objet.'
@@ -363,6 +367,7 @@ def _rule_steps(rule):
     try:
         return list(rule.steps.all())
     except Exception:  # pragma: no cover - défensif (règle détachée)
+        logger.warning("engine._rule_steps : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
 
@@ -409,6 +414,7 @@ def _run_isole(action_source, instance, company, context, user):
         # Le point de sauvegarde est annulé : la transaction de l'émetteur
         # reste UTILISABLE. On garde le message du handler s'il a déjà
         # conclu à l'échec (ex. « value too long »), sinon celui de l'erreur.
+        logger.warning("engine._run_isole : erreur ignorée (mode dégradé)", exc_info=True)
         if not (resultat and resultat[0] == AutomationRun.Status.FAILED):
             resultat = (AutomationRun.Status.FAILED, str(exc))
     finally:
@@ -497,9 +503,10 @@ def _instance_field_context(instance):
             try:
                 out[f.attname] = getattr(instance, f.attname)
             except Exception:  # pragma: no cover - défensif
+                logger.warning("engine._instance_field_context : erreur ignorée (mode dégradé)", exc_info=True)
                 continue
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("engine._instance_field_context : erreur ignorée (mode dégradé)", exc_info=True)
     return out
 
 
@@ -623,6 +630,7 @@ def _resolve_target(target_model, target_id, company):
             lookup['company'] = company
         return model.objects.filter(**lookup).first()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("engine._resolve_target : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

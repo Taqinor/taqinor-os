@@ -36,6 +36,9 @@ import unicodedata
 # ni Django, ni modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_classification as _sc
 from core.product_roles import est_panneau as _est_panneau
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def marque_preferee(company, gamme_nom, role):
@@ -444,6 +447,7 @@ def _onduleur_complet(produit) -> bool:
         from apps.stock.selectors import onduleur_specs_manquantes
         return not onduleur_specs_manquantes(produit)
     except Exception:  # noqa: BLE001 — jamais bloquer une composition
+        logger.warning("catalogue._onduleur_complet : erreur ignorée (mode dégradé)", exc_info=True)
         return True
 
 

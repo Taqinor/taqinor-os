@@ -23,6 +23,9 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
 from ..serializers_facturation import RemiseEncaissementSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -205,7 +208,8 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             generate_bordereau_remise_pdf(remise.id)
             remise.refresh_from_db()
         except Exception:  # noqa: BLE001 — best-effort, la clôture reste valide
-            pass
+            logger.warning(
+                "remise_encaissement.RemiseEncaissementViewSet.cloturer : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
             **RemiseEncaissementSerializer(remise).data,
             'ecart_non_nul': remise.ecart != 0,

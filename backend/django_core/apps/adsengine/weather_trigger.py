@@ -17,6 +17,9 @@ automatique n'atteint Meta sans humain)."""
 from __future__ import annotations
 
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 ANGLE_POMPAGE_CLIMATISATION = 'pompage_climatisation'
 
@@ -57,6 +60,8 @@ def canicule_backlog_suggestions(company, *, seuil_temp_c=None, today=None):
                 lat, lng, target_date)
             canicule = weather.evaluate_canicule(forecast, seuil_temp_c=seuil)
         except Exception:  # noqa: BLE001 — déclencheur best-effort, jamais bloquant
+            logger.warning(
+                "weather_trigger.canicule_backlog_suggestions : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if not canicule:
             continue

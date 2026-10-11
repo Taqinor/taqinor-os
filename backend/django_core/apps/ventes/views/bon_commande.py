@@ -37,6 +37,9 @@ from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..domain.facturation_ops import StockInsuffisantError
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -53,6 +56,7 @@ def _reserver_stock_bc_actif(company):
         from apps.parametres.models import CompanyProfile
         return bool(CompanyProfile.get(company=company).reserver_stock_bc)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("bon_commande._reserver_stock_bc_actif : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -109,7 +113,8 @@ def _notifier_chantier_materiel_confirme(bc):
             link=f'/chantiers?id={installation.id}',
             company=bc.company)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning(
+            "bon_commande._notifier_chantier_materiel_confirme : erreur ignorée (mode dégradé)", exc_info=True)
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le

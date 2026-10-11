@@ -38,6 +38,9 @@ from .devis_gardes import (
 from ..domain.pipeline import (
     MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _garde_kwh_declare(devis):
@@ -310,6 +313,8 @@ class DevisEditionActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         except Exception:  # noqa: BLE001
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
+            logger.warning(
+                "devis_edition.DevisEditionActionsMixin._creer_atomique : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': MSG_ECRITURE_REFUSEE},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -466,6 +471,8 @@ class DevisEditionActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         except Exception:  # noqa: BLE001 — rollback : lignes d'origine
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
+            logger.warning(
+                "devis_edition.DevisEditionActionsMixin.replace_lines : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': MSG_ECRITURE_REFUSEE},
                             status=status.HTTP_400_BAD_REQUEST)
         # CJ2b — C'EST LE CHEMIN D'ENREGISTREMENT DU GÉNÉRATEUR. L'écran de

@@ -109,6 +109,7 @@ def _totaux_contenu(devis):
         vue = totaux_argent(devis, vue=Vue.NET)
         return {'ht_net': str(vue.ht_net), 'ttc': str(vue.ttc)}
     except Exception:  # noqa: BLE001 — un total illisible ne bloque rien
+        logger.warning("historique_config._totaux_contenu : erreur ignorée (mode dégradé)", exc_info=True)
         return {'ht_net': None, 'ttc': None}
 
 

@@ -26,6 +26,9 @@ from .serializers_facturation import (
     ParametrageRelanceClientSerializer,
     PromessePaiementSerializer,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _s(x):
@@ -66,6 +69,7 @@ def variables_relance(facture):
         # non libérée exclue).
         montant = quantize_mad(montant_exigible(facture) or 0)
     except Exception:  # pragma: no cover — facture sans montant exploitable
+        logger.warning("recouvrement.variables_relance : erreur ignorée (mode dégradé)", exc_info=True)
         montant = Decimal('0.00')
     jours = getattr(facture, 'jours_retard', 0) or 0
     return {
@@ -138,7 +142,7 @@ def facture_relancable(facture):
         try:
             libelle = facture.get_statut_display()
         except Exception:  # pragma: no cover — objet non-modèle
-            pass
+            logger.warning("recouvrement.facture_relancable : erreur ignorée (mode dégradé)", exc_info=True)
         return False, (
             f'Statut {libelle} : la relance ne concerne qu\'une facture '
             f'ouverte et due.')
@@ -722,6 +726,7 @@ def client_releve_pdf(request, client_id):
     try:
         pdf_bytes = generate_releve_pdf(client, _releve_data(client, request.user))
     except Exception as exc:
+        logger.warning("recouvrement.client_releve_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -759,6 +764,7 @@ def lettre_relance_pdf(request, facture_id):
     try:
         pdf_bytes = generate_lettre_relance_pdf(facture, niveau, message)
     except Exception as exc:
+        logger.warning("recouvrement.lettre_relance_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')

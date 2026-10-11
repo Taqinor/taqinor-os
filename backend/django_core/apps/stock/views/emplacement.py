@@ -36,6 +36,9 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
     HasPermissionOrLegacy,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -128,6 +131,8 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             try:
                 archiver = BooleanField().to_internal_value(demande)
             except Exception:
+                logger.warning(
+                    "emplacement.EmplacementStockViewSet.update : erreur ignorée (mode dégradé)", exc_info=True)
                 archiver = False  # valeur invalide : le serializer tranche
             if archiver:
                 refus = self._refus_retrait(emp, 'archivé')

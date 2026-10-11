@@ -18,6 +18,9 @@ import uuid
 from django.utils import timezone
 
 from .models import AdminOpsSettings, SandboxEnvironment
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxNonAutorise(Exception):
@@ -86,12 +89,13 @@ def cloner_sandbox_sync(sandbox_env_id):
                     nom=f'{src_profile.nom} (Sandbox)',
                     email=src_profile.email, telephone=src_profile.telephone)
         except Exception:  # pragma: no cover - profil source absent/incomplet
-            pass
+            logger.warning("sandbox_service.cloner_sandbox_sync : erreur ignorée (mode dégradé)", exc_info=True)
 
         env.sandbox_company = sandbox_company
         env.statut = SandboxEnvironment.Statut.PRET
         env.save(update_fields=['sandbox_company', 'statut'])
     except Exception as exc:  # pragma: no cover - jamais silencieux (erreur loggée)
+        logger.warning("sandbox_service.cloner_sandbox_sync : erreur ignorée (mode dégradé)", exc_info=True)
         env.statut = SandboxEnvironment.Statut.ECHEC
         env.erreur = str(exc)
         env.save(update_fields=['statut', 'erreur'])

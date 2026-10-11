@@ -684,6 +684,7 @@ def cle_facture_pdf_a_jour(facture) -> str:
         try:
             attendue = empreinte_donnees_facture_pdf(facture)
         except Exception:  # noqa: BLE001 — une facture illisible se re-rend
+            logger.warning("pdf.cle_facture_pdf_a_jour : erreur ignorée (mode dégradé)", exc_info=True)
             attendue = None
         if attendue and attendue == empreinte_stockee:
             return facture.fichier_pdf
@@ -705,6 +706,7 @@ def _contexte_langue(context, client, company, *, traduit):
     try:
         demandee = document_langue(client, company=company) or 'fr'
     except Exception:  # noqa: BLE001 — jamais de crash PDF sur la langue
+        logger.warning("pdf._contexte_langue : erreur ignorée (mode dégradé)", exc_info=True)
         demandee = 'fr'
     rendue = 'ar' if (traduit and demandee == 'ar') else 'fr'
     context['langue_document'] = rendue
@@ -914,6 +916,7 @@ def generate_proforma_pdf(devis, reference):
     try:
         context['date_validite'] = date_expiration(devis)
     except Exception:  # noqa: BLE001 — une date indéterminable n'imprime rien
+        logger.warning("pdf.generate_proforma_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         context['date_validite'] = None
     _contexte_langue(context, devis.client, devis.company, traduit=False)
     html = _render_html('proforma.html', context)

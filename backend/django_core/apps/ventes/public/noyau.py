@@ -14,6 +14,9 @@ from rest_framework.throttling import SimpleRateThrottle
 from core.throttling import IdentIpPartageeMixin
 
 from ..models import ShareLink
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Avis FR clair montré quand le lien est expiré ou introuvable. Aucune donnée
@@ -54,6 +57,7 @@ class PublicLinkRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
                 'DEFAULT_THROTTLE_RATES', {})
             return rates.get(self.scope) or self.rate
         except Exception:  # noqa: BLE001
+            logger.warning("noyau.PublicLinkRateThrottle.get_rate : erreur ignorée (mode dégradé)", exc_info=True)
             return self.rate
 
     def get_cache_key(self, request, view):
@@ -272,6 +276,7 @@ def _parse_client_ts(value):
         from django.utils.dateparse import parse_datetime
         return parse_datetime(str(value))
     except Exception:  # noqa: BLE001
+        logger.warning("noyau._parse_client_ts : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

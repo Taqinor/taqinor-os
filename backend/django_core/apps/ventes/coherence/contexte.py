@@ -20,6 +20,9 @@ from __future__ import annotations
 import contextlib
 import math
 from unittest import mock
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ErreurRendu(Exception):
@@ -83,6 +86,7 @@ class ContexteAudit:
                     self._rendus[cle] = ('ok', self._constructeur(
                         devis, options))
             except Exception as exc:  # noqa: BLE001 — isolé par devis
+                logger.warning("contexte.ContexteAudit.donnees_devis : erreur ignorée (mode dégradé)", exc_info=True)
                 self._rendus[cle] = (
                     'erreur', f'{type(exc).__name__}: {str(exc)[:200]}')
         etat, valeur = self._rendus[cle]
@@ -118,6 +122,7 @@ class ContexteAudit:
                 try:
                     c = float(entree[0])
                 except Exception:  # noqa: BLE001
+                    logger.warning("contexte.ContexteAudit.tarif : erreur ignorée (mode dégradé)", exc_info=True)
                     continue
                 if c < 1e6:
                     plafonds.append(c)
@@ -128,8 +133,8 @@ class ContexteAudit:
                 ctx['fixed_mois'] = float(
                     part_non_solarisable(cf)['montant_mad_mois'])
             except Exception:  # noqa: BLE001
-                pass
+                logger.warning("contexte.ContexteAudit.tarif : erreur ignorée (mode dégradé)", exc_info=True)
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning("contexte.ContexteAudit.tarif : erreur ignorée (mode dégradé)", exc_info=True)
         self._tarif = ctx
         return ctx

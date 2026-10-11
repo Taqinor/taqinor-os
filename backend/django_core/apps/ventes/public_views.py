@@ -256,6 +256,7 @@ def public_document(request, token):
         else:
             return _not_found()
     except Exception:
+        logger.warning("public_views.public_document : erreur ignorée (mode dégradé)", exc_info=True)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND,
@@ -304,6 +305,7 @@ def public_bcf_document(request, token):
         if pdf_bytes is None:
             return _not_found()
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
+        logger.warning("public_views.public_bcf_document : erreur ignorée (mode dégradé)", exc_info=True)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))
@@ -2002,6 +2004,7 @@ def proposal_taille_detail(request, token, cle):
         if depuis_cache is not None:
             return _noindex(Response(depuis_cache))
     except Exception:  # noqa: BLE001
+        logger.warning("public_views.proposal_taille_detail : erreur ignorée (mode dégradé)", exc_info=True)
         memo = None
 
     try:
@@ -2023,7 +2026,7 @@ def proposal_taille_detail(request, token, cle):
             from django.core.cache import cache
             cache.set(memo, detail, CACHE_SECONDES)
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning("public_views.proposal_taille_detail : erreur ignorée (mode dégradé)", exc_info=True)
     return _noindex(Response(detail))
 
 
@@ -2042,6 +2045,7 @@ def _octets_pdf_signe(devis):
     try:
         sig = devis.signature
     except Exception:  # noqa: BLE001 — pas de signature liée
+        logger.warning("public_views._octets_pdf_signe : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     cle = getattr(sig, 'signed_pdf_key', None) or None
     if not cle:
@@ -2151,6 +2155,7 @@ def proposal_pdf(request, token):
             pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
+        logger.warning("public_views.proposal_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))

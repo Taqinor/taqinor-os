@@ -1389,6 +1389,7 @@ def emettre_layout_finalise(devis, user):
         layout_finalise.send(sender='ventes.views.devis', devis=devis,
                              user=user)
     except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+        logger.warning("resynchronisation.emettre_layout_finalise : erreur ignorée (mode dégradé)", exc_info=True)
         logging.getLogger(__name__).exception(
             'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
 

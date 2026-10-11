@@ -265,6 +265,8 @@ def _localisation_pour_moteur_horaire(devis, data):
         _kwc, _conso, ville_lead, lat, lon, _occ, _equip = (
             _profil_horaire_pour_devis(devis))
     except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+        logger.warning(
+            "payload_horaire._localisation_pour_moteur_horaire : erreur ignorée (mode dégradé)", exc_info=True)
         ville_lead, lat, lon = None, None, None
     ville = data.get('client_city') or ville_lead
     return ville, lat, lon

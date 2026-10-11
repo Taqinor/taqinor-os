@@ -177,6 +177,7 @@ def _bloc_horaire_deja_a_jour(devis, kwc, cle='etude_horaire'):
             return False
         return True
     except Exception:  # noqa: BLE001 — au moindre doute, on recalcule
+        logger.warning("etudes._bloc_horaire_deja_a_jour : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -732,9 +733,11 @@ def compute_marge_snapshot(devis):
         from apps.ventes.utils.options import option_lines
         lignes = option_lines(devis)
     except Exception:  # noqa: BLE001
+        logger.warning("etudes.compute_marge_snapshot : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             lignes = list(devis.lignes.select_related('produit').all())
         except Exception:  # noqa: BLE001
+            logger.warning("etudes.compute_marge_snapshot : erreur ignorée (mode dégradé)", exc_info=True)
             return None
     ht = Decimal('0')
     cout = Decimal('0')
@@ -743,6 +746,7 @@ def compute_marge_snapshot(devis):
         try:
             ht += Decimal(str(li.total_ht))
         except Exception:  # noqa: BLE001
+            logger.warning("etudes.compute_marge_snapshot : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         produit = getattr(li, 'produit', None)
         prix_achat = getattr(produit, 'prix_achat', None) if produit else None

@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """N105 — Lecture de l'interrupteur maître DGI (``dgi_export_actif``).
 
 Source unique de vérité pour savoir si la capacité DGI locale est armée pour
@@ -23,4 +26,5 @@ def is_dgi_enabled(company):
                    .first())
         return bool(profile and profile.dgi_export_actif)
     except Exception:  # pragma: no cover - lecture best-effort, OFF si échec
+        logger.warning("toggle.is_dgi_enabled : erreur ignorée (mode dégradé)", exc_info=True)
         return False

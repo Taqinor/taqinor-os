@@ -7,6 +7,9 @@ from authentication.permissions import (
     IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -18,6 +21,7 @@ def _comptes_avant(devis):
     try:
         return comptes_panneaux_du_devis(devis)
     except Exception:  # noqa: BLE001 — best-effort, comme la re-tarification
+        logger.warning("ligne_devis._comptes_avant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -41,7 +45,7 @@ def _retarifer_forfaits(devis, comptes_avant=None):
     try:
         retarifer_forfaits_par_panneau(devis, comptes_avant=comptes_avant)
     except Exception:  # noqa: BLE001 — best-effort, comme les études
-        pass
+        logger.warning("ligne_devis._retarifer_forfaits : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _rafraichir(devis):

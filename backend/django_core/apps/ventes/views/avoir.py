@@ -37,6 +37,9 @@ from authentication.permissions import (
 )
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -238,6 +241,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
                 avoir.refresh_from_db()
             pdf_bytes = download_pdf(avoir.fichier_pdf)
         except Exception:
+            logger.warning("avoir.AvoirViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': 'PDF indisponible.'},
                             status=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -302,7 +306,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
                 generate_avoir_pdf(avoir.id)
                 avoir.refresh_from_db()
             except Exception:  # noqa: BLE001 — PDF best-effort
-                pass
+                logger.warning("avoir.NoteDebitViewSet.annuler : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(
             {'note_debit': NoteDebitSerializer(note_debit).data,
              'avoir': AvoirSerializer(avoir).data, 'cree': cree},
@@ -318,6 +322,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
                 note_debit.refresh_from_db()
             pdf_bytes = download_pdf(note_debit.fichier_pdf)
         except Exception:
+            logger.warning("avoir.NoteDebitViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': 'PDF indisponible.'},
                             status=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')

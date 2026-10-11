@@ -47,6 +47,9 @@ from authentication.permissions import (
     HasPermissionOrLegacy,
     HasPermissionAndRole,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -147,7 +150,7 @@ def emettre_produit_modifie(produit, champs, company, user):
             sender=Produit, produit=produit, company=company, user=user,
             champs=champs)
     except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture
-        pass
+        logger.warning("produit.emettre_produit_modifie : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _sans_accents(expression):

@@ -31,6 +31,9 @@ précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
 """
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ── PV16 — la CIBLE de calepinage se lit dans les LIGNES du devis ───────────
@@ -94,6 +97,7 @@ def _pmax_wc_du_produit(produit):
     try:
         from apps.stock import selectors as _stock_selectors
     except Exception:  # noqa: BLE001 — app absente / import cassé : on ignore
+        logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     lire = getattr(_stock_selectors, 'specs_for_produit', None)
     if lire is None:
@@ -105,8 +109,10 @@ def _pmax_wc_du_produit(produit):
         try:
             specs = lire(getattr(produit, 'id', None))
         except Exception:  # noqa: BLE001
+            logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
             return None
     except Exception:  # noqa: BLE001
+        logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if specs is None:
         return None

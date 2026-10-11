@@ -20,6 +20,9 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin,
 )
 from ..utils.references import create_with_reference
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DevisFacturationActionsMixin:
@@ -273,6 +276,8 @@ class DevisFacturationActionsMixin:
                 ProformaDocument, 'PF', company, _rendre_puis_creer,
                 period='monthly')
         except Exception as exc:
+            logger.warning(
+                "devis_facturation.DevisFacturationActionsMixin.proforma_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': f'PDF indisponible : {exc}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         pdf_bytes = rendu['pdf']

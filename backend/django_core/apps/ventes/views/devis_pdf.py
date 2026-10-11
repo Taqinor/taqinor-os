@@ -20,6 +20,9 @@ from rest_framework.response import Response
 from ..models import Devis
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.roles.permissions import IsInternalWriterOrPortalClientOwner
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 #: ADEV31 — le seul texte servi quand le rendu de ``/proposal`` échoue.
@@ -34,6 +37,7 @@ def _signaler_pdf_devis_genere(devis):
     try:
         document_pdf_generated.send(sender=Devis, instance=devis, kind='devis')
     except Exception:  # noqa: BLE001 — un journal raté ne casse pas le rendu
+        logger.warning("devis_pdf._signaler_pdf_devis_genere : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
             'ADEV22 : audit PDF devis ignoré (devis %s)', devis.pk)
@@ -181,6 +185,7 @@ class DevisPdfActionsMixin:
         except Exception:
             # ADEV31 (C-ADEV-043) — jamais le texte brut de l'exception au
             # client (hôte, bucket, chemin) : message neutre, pile au journal.
+            logger.warning("devis_pdf.DevisPdfActionsMixin.proposal : erreur ignorée (mode dégradé)", exc_info=True)
             import logging
             logging.getLogger(__name__).exception(
                 '/proposal : rendu échoué (devis %s)', devis.pk)
@@ -241,6 +246,8 @@ class DevisPdfActionsMixin:
             try:
                 cle = cle_pdf_a_jour(devis)
             except Exception:  # noqa: BLE001
+                logger.warning(
+                    "devis_pdf.DevisPdfActionsMixin.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
                 import logging as _logging
                 _logging.getLogger(__name__).warning(
                     'PVFRESH: rafraîchissement impossible pour %s — le fichier '
@@ -249,6 +256,8 @@ class DevisPdfActionsMixin:
                 cle = devis.fichier_pdf
             pdf_bytes = download_pdf(cle)
         except Exception:
+            logger.warning(
+                "devis_pdf.DevisPdfActionsMixin.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},
                 status=status.HTTP_404_NOT_FOUND,

@@ -632,9 +632,10 @@ def _nudge_suppressed(devis, today, engagement_days=3):
                         if fn(devis.company, lead_id):
                             return True
                     except Exception:  # noqa: BLE001
-                        pass
+                        logger.warning(
+                            "recouvrement._nudge_suppressed : erreur ignorée (mode dégradé)", exc_info=True)
     except Exception:  # noqa: BLE001
-        pass
+        logger.warning("recouvrement._nudge_suppressed : erreur ignorée (mode dégradé)", exc_info=True)
     # Engagement proposition récent (ShareLink — in-lane).
     try:
         from apps.ventes.models import ShareLink
@@ -648,7 +649,7 @@ def _nudge_suppressed(devis, today, engagement_days=3):
             if seen_date >= today - timedelta(days=engagement_days):
                 return True
     except Exception:  # noqa: BLE001
-        pass
+        logger.warning("recouvrement._nudge_suppressed : erreur ignorée (mode dégradé)", exc_info=True)
     return False
 
 
@@ -677,6 +678,8 @@ def send_devis_followup_nudges():
         def _today():
             return timezone.now().astimezone(_tz).date()
     except Exception:
+        logger.warning("recouvrement.send_devis_followup_nudges : erreur ignorée (mode dégradé)", exc_info=True)
+
         def _today():
             return timezone.localdate()
 
@@ -713,6 +716,7 @@ def send_devis_followup_nudges():
             envoi_date = devis.date_envoi.astimezone(
                 ZoneInfo('Africa/Casablanca')).date()
         except Exception:
+            logger.warning("recouvrement.send_devis_followup_nudges : erreur ignorée (mode dégradé)", exc_info=True)
             envoi_date = devis.date_envoi.date()
 
         # Which levels already fired?
@@ -745,6 +749,8 @@ def send_devis_followup_nudges():
                 from apps.ventes.utils.client_links import url_proposition
                 proposal_url = url_proposition(devis, share_link.token)
             except Exception:
+                logger.warning(
+                    "recouvrement.send_devis_followup_nudges : erreur ignorée (mode dégradé)", exc_info=True)
                 proposal_url = ''
 
             msg_fr = _NUDGE_MSG_FR.format(

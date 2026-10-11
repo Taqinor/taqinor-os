@@ -33,6 +33,9 @@ from authentication.permissions import (  # noqa: F401
 )
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -67,4 +70,5 @@ def _inbound_configured():
         from ..inbound_email import is_inbound_configured
         return is_inbound_configured()
     except Exception:
+        logger.warning("email._inbound_configured : erreur ignorée (mode dégradé)", exc_info=True)
         return False

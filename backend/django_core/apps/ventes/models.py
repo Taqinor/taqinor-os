@@ -7,6 +7,9 @@ from core.models import TenantModel
 # tuple sans pouvoir importer ``apps.ventes``. Voir ``ROLES_AUTO_COMPOSITION``
 # plus bas : le nom historique reste, la copie a disparu.
 from core.product_roles import ROLES_DEVIS
+import logging
+
+logger = logging.getLogger(__name__)
 
 # M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
 # imports no sibling app's models at load time (breaks the crm⇄ventes /
@@ -1390,6 +1393,7 @@ class ShareLink(models.Model):
         try:
             fin = date_expiration(devis)
         except Exception:  # noqa: BLE001 — jamais une date inventée
+            logger.warning("models.ShareLink.expiration_pour_devis : erreur ignorée (mode dégradé)", exc_info=True)
             fin = None
         if fin is None:
             return base

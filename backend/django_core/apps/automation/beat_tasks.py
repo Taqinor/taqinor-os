@@ -100,6 +100,7 @@ def _a_des_regles(company, trigger_type):
         return AutomationRule.objects.filter(
             company=company, enabled=True, trigger_type=trigger_type).exists()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("beat_tasks._a_des_regles : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -110,6 +111,7 @@ def _deja_declenche(company, marqueur):
         return AutomationRun.objects.filter(
             company=company, message__startswith=marqueur).exists()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("beat_tasks._deja_declenche : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -324,6 +326,8 @@ def _trigger_date_echeance_champ(company):
             try:
                 qs = model.objects.filter(**filter_kwargs)
             except Exception:  # pragma: no cover - champ FK-incompatible
+                logger.warning(
+                    "beat_tasks._trigger_date_echeance_champ : erreur ignorée (mode dégradé)", exc_info=True)
                 continue
             for obj in qs:
                 # APAR7 — seul un devis ENVOYÉ (lead non perdu) est relancé.

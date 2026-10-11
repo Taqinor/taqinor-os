@@ -16,6 +16,9 @@ LECTURE SEULE. ``--dry-run`` est le défaut ET le seul mode : aucun devis
     python manage.py acal_etudes_perimees_dry_run [--company <slug>]
 """
 from django.core.management.base import BaseCommand
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Écart toléré entre le kWc de l'étude et celui des lignes (arrondis).
 TOLERANCE_KWC = 0.01
@@ -37,6 +40,7 @@ def _kwc_lignes(devis):
     try:
         return float(puissance_kwc_du_devis(devis) or 0)
     except Exception:  # noqa: BLE001 — un devis illisible est signalé, pas fatal
+        logger.warning("acal_etudes_perimees_dry_run._kwc_lignes : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

@@ -6,6 +6,10 @@ règle de modularité). Comportement strictement identique aux requêtes inline
 d'origine.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def fournisseurs_pour_dedoublonnage(company):
     """NTDATA19 — fiches fournisseur d'une société, à plat, pour la détection
@@ -2806,6 +2810,7 @@ def _delais_demande_bcf_reception(company, *, debut=None, fin=None):
             bcf = BonCommandeFournisseur.objects.filter(
                 id=bon_commande_id, company=company).first()
         except Exception:  # pragma: no cover - défensif
+            logger.warning("selectors._delais_demande_bcf_reception : erreur ignorée (mode dégradé)", exc_info=True)
             bcf = None
         if bcf is None or bcf.date_creation is None:
             continue
@@ -3523,6 +3528,8 @@ def recherche_sans_accents_disponible():
                 curseur.execute(_SQL_SONDE_SANS_ACCENTS)
                 disponible = bool(curseur.fetchone()[0])
         except Exception:  # noqa: BLE001 — jamais bloquant pour une recherche
+            logger.warning(
+                "selectors.recherche_sans_accents_disponible : erreur ignorée (mode dégradé)", exc_info=True)
             disponible = False
     _CACHE_RECHERCHE_SANS_ACCENTS = disponible
     return disponible

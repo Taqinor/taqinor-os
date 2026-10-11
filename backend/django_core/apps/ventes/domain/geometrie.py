@@ -989,6 +989,7 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
                 company, _is_panel, watt=watt, role='panneau',
                 gamme=gamme_nom(devis) if devis is not None else None)
         except Exception:      # pragma: no cover - catalogue indisponible
+            logger.warning("geometrie._panneau_pour_calepinage : erreur ignorée (mode dégradé)", exc_info=True)
             produit = None
     if produit is None:
         return None, None

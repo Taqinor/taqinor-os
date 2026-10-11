@@ -19,6 +19,9 @@ from authentication.permissions import IsAnyRole
 from .models import Devis
 from .connection_declaration import (
     build_declaration_data, render_declaration_pdf)
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema(parameters=[qstr('regime'), qstr('format', enum=['pdf'])])
@@ -57,6 +60,8 @@ def declaration_raccordement(request, pk):
         from apps.installations.selectors import installation_for_devis
         chantier = installation_for_devis(devis)
     except Exception:
+        logger.warning(
+            "connection_declaration_view.declaration_raccordement : erreur ignorée (mode dégradé)", exc_info=True)
         chantier = None
 
     regime = request.query_params.get('regime')
@@ -78,6 +83,8 @@ def declaration_raccordement(request, pk):
         try:
             pdf_bytes = render_declaration_pdf(data)
         except Exception as exc:
+            logger.warning(
+                "connection_declaration_view.declaration_raccordement : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': f'PDF indisponible : {exc}'},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')

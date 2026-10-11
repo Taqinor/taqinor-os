@@ -27,6 +27,9 @@ from .serializers import (
     AdminOpsSettingsSerializer, ConfigPackageSerializer,
     SandboxEnvironmentSerializer,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 _VIEWS_HEALTH_SCORE_VIEW_REPONSE = inline_serializer('ViewsHealthScoreViewReponse', {
@@ -152,7 +155,8 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
                 'create', instance=env, company=env.company, user=env.cree_par,
                 detail=f'Sandbox {action_label}')
         except Exception:
-            pass
+            logger.warning(
+                "views.SandboxEnvironmentViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
@@ -163,7 +167,8 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
                     body=f"L'environnement sandbox a été {action_label} avec succès.",
                     company=env.company)
         except Exception:
-            pass
+            logger.warning(
+                "views.SandboxEnvironmentViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 _VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE = inline_serializer(
@@ -253,7 +258,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                 user=package.cree_par,
                 detail=f'Package de configuration {action_label} : {package.nom}')
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
@@ -263,7 +269,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                     f'Package de configuration {action_label}',
                     body=package.nom, company=package.company)
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
 
     def _audit_et_notifier_import(self, company, contenu, user):
         try:
@@ -272,7 +279,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                 'update', company=company, user=user,
                 detail='Package de configuration importé')
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier_import : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
@@ -281,7 +289,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                     user, EventType.DIGEST, 'Package de configuration appliqué',
                     body=contenu.get('_nom', ''), company=company)
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier_import : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 class AdminOpsSettingsView(APIView):
@@ -346,7 +355,7 @@ def support_bundle_view(request):
                 'detail': row['detail'][:200],
             })
     except Exception:
-        pass
+        logger.warning("views.support_bundle_view : erreur ignorée (mode dégradé)", exc_info=True)
 
     buf = BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:

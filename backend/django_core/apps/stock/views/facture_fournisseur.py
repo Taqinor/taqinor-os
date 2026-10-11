@@ -252,7 +252,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                             f'malgré {len(doublons)} doublon(s) potentiel(s) '
                             '(override confirmé).'))
                 except Exception:  # noqa: BLE001 — best-effort
-                    pass
+                    logger.warning(
+                        "facture_fournisseur.FactureFournisseurViewSet.create : erreur ignorée (mode dégradé)", exc_info=True)
         return response
 
     @extend_schema(

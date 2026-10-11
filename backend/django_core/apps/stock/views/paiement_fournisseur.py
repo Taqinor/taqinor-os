@@ -37,6 +37,9 @@ from authentication.permissions import (  # noqa: F401
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -211,7 +214,8 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
                         paiement.date_paiement):
                     self._escompte_flag = str(fournisseur.escompte_pct)
             except Exception:  # noqa: BLE001 — informatif, jamais bloquant
-                pass
+                logger.warning(
+                    "paiement_fournisseur.PaiementFournisseurViewSet.perform_create : erreur ignorée (mode dégradé)", exc_info=True)
 
     def perform_destroy(self, instance):
         from ..services import recompute_facture_fournisseur_statut

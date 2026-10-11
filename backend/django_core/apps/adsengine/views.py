@@ -156,6 +156,7 @@ def _page_asset_probe(company, conn):
     except MetaError:
         return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
     except Exception:  # noqa: BLE001 — jamais casser la santé sur un imprévu
+        logger.warning("views._page_asset_probe : erreur ignorée (mode dégradé)", exc_info=True)
         return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
     return {'status': 'ok',
             'message': "Accès à l'asset Page confirmé (post lisible)."}
@@ -1104,6 +1105,7 @@ class ExperimentViewSet(AdsengineViewSet):
         try:
             log = sync_ad_study_results(experiment, client=client)
         except Exception as exc:  # panne réseau/API Meta → jamais une 500 nue
+            logger.warning("views.ExperimentViewSet.sync_ad_study : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': str(exc)}, status=502)
         if log is None:
             return Response(
@@ -1973,6 +1975,7 @@ class EngineActionViewSet(AdsengineViewSet):
         except ActionNotApproved as exc:
             return Response({'detail': str(exc)}, status=409)
         except Exception as exc:  # échec Meta → action déjà passée « echouee »
+            logger.warning("views.EngineActionViewSet.apply : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': str(exc)}, status=502)
         return Response(self.get_serializer(instance).data)
 
@@ -3282,6 +3285,7 @@ class AdCampaignMirrorViewSet(AdsengineViewSet):
         try:
             _sync_company(conn)
         except Exception as exc:  # échec réseau/Meta → jamais une 500
+            logger.warning("views.AdCampaignMirrorViewSet.sync_now : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'synced': False, 'detail': str(exc)}, status=502)
         return Response({
             'synced': True,
