@@ -66,7 +66,7 @@ from html import escape
 #: (CALX307) les importe SANS toucher cet assembleur, dont les imports
 #: atteignent stock/ventes (contrat import-linter CAL5, fix CI #714). Ils
 #: sont RÉEXPORTÉS ici — même objet, même identité pour ``except``.
-from .contrat import (  # noqa: F401 — réexport (__all__)
+from .contrat import (  # réexport (__all__)
     CHEMIN_CONTRAT, CODE_DOCUMENT, RapportRefuse, sections_declarees,
 )
 

@@ -174,11 +174,8 @@ class DocumentExportableTest(unittest.TestCase):
     """
 
     def vue(self):
-        try:
-            from apps.calepinage.services.export_csv import document_exportable
-            from .acal_livrables_helpers import patch_servi_frais
-        except Exception as erreur:  # pragma: no cover - hors harnais Django
-            self.skipTest(f'Réglages Django indisponibles : {erreur}')
+        from apps.calepinage.services.export_csv import document_exportable
+        from .acal_livrables_helpers import patch_servi_frais
 
         def composer(calepinage):
             with patch_servi_frais():
@@ -229,11 +226,8 @@ class ActionRattacheeTest(unittest.TestCase):
     """L'action est bien montée sur le viewset, en lecture seule."""
 
     def test_url_mapping_et_garde(self):
-        try:
-            from apps.calepinage.views.calepinages import CalepinageViewSet
-            importlib.import_module('apps.calepinage.views.export_csv')
-        except Exception as erreur:  # pragma: no cover - hors harnais Django
-            self.skipTest(f'Réglages Django indisponibles : {erreur}')
+        from apps.calepinage.views.calepinages import CalepinageViewSet
+        importlib.import_module('apps.calepinage.views.export_csv')
         # CALX7 — l'action de CE fichier s'appelle ``export_csv_simulation``
         # depuis qu'elle a cessé de masquer ``SortiesMixin.export_csv``
         # (``export.csv``, CAL179). Son ``url_path`` public, lui, est INCHANGÉ.

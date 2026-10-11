@@ -267,13 +267,9 @@ class FormeDeLaReponseTest(SimpleTestCase):
 class ContratCommitteTest(SimpleTestCase):
     """Le contrat CALX334 (``calepinage_approbation.json``) EST ce que le
     service rend — l'état vide à l'identique, et chaque refus à la clé et au
-    message près. Posé par la lane contrats du même lot : sans lui sur la
-    branche, ces cas s'effacent en le DISANT (il est là au fold)."""
+    message près. Le contrat est au dépôt : son absence fait rougir."""
 
     def setUp(self):
-        if not CONTRAT.exists():
-            self.skipTest('contrat CALX334 absent de cette branche — la '
-                          'lane contrats le livre au fold.')
         self.contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
 
     def _refus(self, calepinage, **kwargs):
