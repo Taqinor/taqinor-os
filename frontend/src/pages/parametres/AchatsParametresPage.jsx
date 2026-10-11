@@ -65,8 +65,7 @@ export default function AchatsParametresPage() {
       .catch(() => toast.error('Chargement des paramètres achats impossible.'))
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement (setters du hook stables)
-  }, [])
+  }, [setId, setForm, setLoading])
 
   const submit = (e) => {
     e.preventDefault()

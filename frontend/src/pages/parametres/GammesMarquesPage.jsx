@@ -74,8 +74,7 @@ export default function GammesMarquesPage() {
       .catch(() => toast.error('Chargement des réglages « Gammes & marques » impossible.'))
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement (setters du hook stables)
-  }, [])
+  }, [setId, setForm, setLoading])
 
   const setMarque = (slot, role, value) => setForm((f) => ({
     ...f,
