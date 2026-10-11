@@ -438,3 +438,53 @@ class PortesSavInterventionConcurrenceTests(TestCase):
         f2 = generer_facture_intervention(intervention=seconde, user=self.user)
         self._une_seule_facture(f1, f2)
         self.assertEqual(Intervention.objects.get(pk=interv.pk).facture_id, f1.pk)
+
+
+class PorteInterventionTicketTests(TestCase):
+    """AFAC92 (sonde W5-2, classe C-ATOT-001) — contrat ZFSM4 « hors
+    contrat/ticket » : une intervention rattachée à un ticket SAV déjà
+    facturé est REFUSÉE (400 français), aucune seconde facture ; une
+    intervention sans ticket reste facturable (201 puis 200)."""
+    setUp = PortesFacturationTests.setUp
+    _onduleur = PortesSavInterventionNumeroTests._onduleur
+    _ticket = PortesSavInterventionNumeroTests._ticket
+    _intervention = PortesSavInterventionNumeroTests._intervention
+
+    def _generer(self, interv):
+        return self.api.post(
+            f'/api/django/installations/interventions/{interv.id}/'
+            'generer-facture/', {}, format='json')
+
+    def test_intervention_rattachee_ticket_refusee(self):
+        from apps.ventes.models import Facture
+        onduleur = self._onduleur()
+        ticket = self._ticket(onduleur)
+        r = self.api.post(
+            f'/api/django/sav/tickets/{ticket.id}/facturer/', {},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(
+            Facture.objects.get(pk=r.data['facture_id']).total_ttc,
+            Decimal('1200'))
+        interv = self._intervention(onduleur, ticket=ticket)
+        resp = self._generer(interv)
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            resp.data['detail'],
+            'Intervention rattachée à un ticket SAV : facturez depuis le '
+            'ticket.')
+        # CLAUSE PERSISTANCE — une seule facture pour la visite (le ticket).
+        self.assertEqual(
+            Facture.objects.filter(company=self.company)
+            .exclude(statut=Facture.Statut.ANNULEE).count(), 1)
+        interv.refresh_from_db()
+        self.assertIsNone(interv.facture_id)
+
+    def test_intervention_sans_ticket_facturable(self):
+        interv = self._intervention(self._onduleur())
+        r1 = self._generer(interv)
+        self.assertEqual(r1.status_code, 201, r1.data)
+        r2 = self._generer(interv)
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertTrue(r2.data['deja_existant'])
+        self.assertEqual(r1.data['facture_id'], r2.data['facture_id'])

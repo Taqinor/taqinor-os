@@ -1441,6 +1441,13 @@ def generer_facture_intervention(*, intervention, user):
     from ..models import Facture, LigneFacture
     from ..utils.company_settings import create_provisoire, tva_standard
 
+    # AFAC92 — contrat ZFSM4 « hors contrat/ticket » : une intervention
+    # rattachée à un ticket SAV se facture depuis le TICKET (XFSM1/XCTR4),
+    # jamais une seconde fois ici (lecture de l'entier ``ticket_id``).
+    if intervention.ticket_id:
+        raise ValueError(
+            'Intervention rattachée à un ticket SAV : facturez depuis le '
+            'ticket.')
     existante = _facture_generee_sous_verrou(intervention, 'facture_id')
     if existante is not None:
         return existante
