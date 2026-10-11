@@ -43,7 +43,7 @@ with no rate column at all — mono-MAD in practice.
 | adsengine | CreativeAsset | `apps/adsengine/models.py:984` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2310` | quota_total |
 | crm | Lead | `apps/crm/models.py:241` | carburant_prix_declare_le, carburant_prix_unitaire_mad, montant_estime, tva_recuperable |
-| crm | PointContact | `apps/crm/models.py:2393` | cout |
+| crm | PointContact | `apps/crm/models.py:2394` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:214` | total |
 | crm | CommissionPartenaire | `apps/crm/models_clients.py:273` | base_ht, montant |
 | crm | DealEnregistre | `apps/crm/models_clients.py:546` | montant_commission_du, montant_commission_estime |
