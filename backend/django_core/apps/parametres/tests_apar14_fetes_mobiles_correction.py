@@ -2,6 +2,7 @@
 est déjà passée : le passé n'est refusé que pour une date nouvelle ou
 modifiée, et une saisie partielle (correction) est acceptée (C-APAR-018)."""
 import datetime
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -79,14 +80,18 @@ class CorrectionFetesTests(TestCase):
 
 
 class CorrectionFetesEndpointTests(TestCase):
-    """Même scénario par l'API (date du jour réelle)."""
+    """Même scénario par l'API. ENF28 — le « jour » du serveur est FIGÉ
+    (`fetes_mobiles._aujourd_hui`) au lieu de sauter le test en fin/début
+    d'année : il s'exécute désormais tous les jours."""
 
     def test_post_correction_200_et_relecture(self):
-        today = datetime.date.today()
+        today = datetime.date(2026, 6, 15)
+        patcher = mock.patch(
+            'apps.parametres.fetes_mobiles._aujourd_hui', return_value=today)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         hier = today - datetime.timedelta(days=1)
         demain = today + datetime.timedelta(days=1)
-        if hier.year != today.year or demain.year != today.year:
-            self.skipTest('fenêtre de fin/début d’année')
         annee = today.year
         company = Company.objects.create(nom='APAR14 E', slug='apar14-e')
         admin = User.objects.create_user(
@@ -100,8 +105,6 @@ class CorrectionFetesEndpointTests(TestCase):
         api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
         nouvelle = demain + datetime.timedelta(days=1)
-        if nouvelle.year != annee:
-            self.skipTest('fenêtre de fin d’année')
         r = api.post('/api/django/parametres/fetes-mobiles/enregistrer/', {
             'annee': annee,
             'dates': {'aid_el_fitr': hier.isoformat(),
