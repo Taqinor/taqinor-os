@@ -344,3 +344,7 @@ money_decimal_places:
 tests_sautes_environnement:
   critere: un test n'est sauté QUE si un binaire ou service externe est absent de l'environnement (ex. pg_dump, soffice, Chrome headless), jamais pour cause de bug ou de dette; chaque saut porte condition et raison en ligne
   entrees: []
+
+except_large_journalisant:
+  critere: un `except Exception` / `except BaseException` / `except:` n'est toléré (même avec `# noqa: BLE001`) que si son corps journalise (logger.*, log.*, logging.*, capture_exception, sentry_sdk, warnings.warn) ou re-lève; les handlers silencieux sont gelés dans scripts/except_larges_allow.txt (décroissant) et corrigés un à un (D-ENF22-BLE001, 11/10/2026, check_except_larges.py)
+  entrees: []
