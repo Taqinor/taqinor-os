@@ -14,6 +14,11 @@ APDF11 — le devis résidentiel premium arabe est une page RTL
 
 APDF47 — les woff2 « NotoSansArabic » ont quitté ``assets/fonts/`` : plus
 aucun chargeur ne les lit (``test_aucune_police_vendorisee_chargee``).
+
+ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — la garde APDF46 compare aussi le devis
+résidentiel premium à son rendu FRANÇAIS (``GardeGabaritFrancaisHtmlTests``) ;
+une-page (lignes tronquées, note batterie) et échéancier des CGV C&I suivent la
+langue (``UnePageLibellesHtmlTests``, ``PucesCgvLangueHtmlTests``).
 """
 import ast
 import copy
@@ -290,6 +295,11 @@ LIBELLES_GABARIT_FR = (
     # APDF9 / APDF10 — titre des clauses et puces CGV par défaut.
     "Acompte à la commande", "Tarifs de référence",
     "CLAUSES PARTICULIÈRES",
+    # ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — relevés à l'acceptation en direct
+    # (couverture et détail résidentiels, une-page, échéancier des CGV C&I).
+    "Puissance · ", "Et pour la planète", "Spécifique à l",
+    "Ce document chiffre l", "autres lignes d", "autre ligne d",
+    "Commande : ", "Livraison du matériel : ", "Mise en service : ",
 )
 
 FORMATS = {
@@ -366,6 +376,126 @@ class GardeLanguesTests(TestCase):
                          rendus)
 
 
+# ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — la garde APDF46 COMPARE le devis
+# résidentiel premium à son rendu FRANÇAIS au lieu d'une liste figée : tout
+# mot (3 lettres et plus) du rendu français qui n'est ni une DONNÉE du devis
+# (désignations, client, puces du builder, liens) ni un mot écrit pareil en
+# anglais est un mot du GABARIT — il ne doit plus sortir en anglais ni en
+# arabe. HTML exact du gabarit (sans base ni WeasyPrint) ; cinq jeux de
+# données ouvrent les branches (économies masquées, option unique, champs PV
+# divergents, devis final, pages chargées, délais, conseiller, remise…).
+# Test-du-test : remettre « Production estimée » en dur dans
+# ``residential/cover.py`` ⇒ ``test_aucun_mot_du_gabarit_en_et_ar`` échoue.
+
+#: Mots du gabarit français qui s'écrivent pareil en anglais.
+MOTS_FR_EGAUX_EN = frozenset({
+    "batteries", "certifications", "client", "code", "constant", "date",
+    "exact", "future", "gain", "interactive", "net", "non", "note", "option",
+    "options", "page", "performance", "production", "projection",
+    "provision", "signature", "surplus", "tests", "tonnes", "total"})
+#: Mention légale de la société (une donnée : jamais traduite, cf.
+#: ``i18n_labels``) et sigles des barèmes, identiques dans les trois langues.
+MOTS_IDENTITE = frozenset({"capital", "ice", "onee", "srm"})
+#: Clés dont les mots ne sont pas des DONNÉES imprimées : libellés que le
+#: builder sert et que le rendu traduit, et le bloc « Nos hypothèses »
+#: (servi en ligne, jamais imprimé — QRES61).
+CLES_LIBELLES = frozenset({"inst_type", "libelle_avec", "savings_method",
+                           "recommended", "scenario", "libelles_document",
+                           "langue_sortie", "hypotheses"})
+VARIANTES_GARDE = {
+    "complet": ("deux", {
+        "delais": {"visite_technique": "10 j", "installation": "3 sem."},
+        "seller": {"nom": "Ali", "telephone": "+212 6 00"},
+        "note_client": "Merci.", "coverage_estimated": True,
+        "savings_model": "horaire", "savings_model_sans": "horaire",
+        "savings_model_avec": "horaire", "discount_pct": 5,
+        "roi_s_jamais": True, "nombre_proprietes": 2,
+        "display_total_multi": 111804,
+        "options_proposees": [{"designation": "Borne VE", "quantite": 1,
+                               "total_ttc": 9000}],
+        "cashflow_assumptions": {"inverter_replace_cost": 9000,
+                                 "inverter_replace_year": 12},
+        "savings_method": {
+            "model": "factures", "approximatif": True,
+            "ligne_methode": (
+                "Facture recalculée au barème réel du distributeur "
+                "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso "
+                "du mois au tarif de SA tranche) : facture actuelle moins "
+                "facture résiduelle après autoconsommation — jamais un prix "
+                "moyen inventé."),
+            "exemple": ("Facture actuelle ≈ 21 400 MAD/an → avec solaire ≈ "
+                        "9 404 MAD/an → économie ≈ 11 996 MAD/an")}}),
+    "sans_economies": ("deux", {"masquer_economies": True}),
+    "option_unique_sans": ("deux", {"deux_options": False, "avec_ok": False,
+                                    "roi_s_jamais": True}),
+    "divergent_final": ("deux", {
+        "panneaux_divergents": True, "puissance_kwc_sans": 4.26,
+        "puissance_kwc_avec": 5.68, "nb_panneaux_sans": 6,
+        "nb_panneaux_avec": 8, "watt_par_panneau_sans": 710,
+        "watt_par_panneau_avec": 710, "prod_kwh_sans": 6050,
+        "prod_kwh_avec": 8065, "batterie_kwh_total": 5.12,
+        "savings_model_sans": "estimation",
+        "savings_model_avec": "estimation",
+        "libelle_avec": "Hybride, batterie plus tard", "devis_final": True,
+        "multi_villa": {"groupes": [
+            {"label": "Villa A", "totaux": {"ht_net": 1000, "ttc": 1200}},
+            {"label": "Villa B", "totaux": {"ht_net": 2000, "ttc": 2400}}],
+            "grand_total": {"ht_net": 3000, "ttc": 3600, "arrondi": 0}}}),
+    "pages_chargees": ("plus10", {}),
+}
+
+
+def mots(texte):
+    """Mots (3 lettres et plus, minuscules) d'un texte, liens retirés
+    (découpage linéaire : aucune expression à retour arrière sur un long
+    jeton)."""
+    jetons = [j for j in texte.split() if ".ma" not in j and ".com" not in j]
+    return set(re.findall(r"[a-zà-ÿœ]{3,}", " ".join(jetons).lower()))
+
+
+def mots_donnees(valeur, cle=None):
+    """Mots de toutes les chaînes du dict d'entrée, libellés du builder
+    exceptés (``CLES_LIBELLES``)."""
+    import html as H
+    if cle in CLES_LIBELLES:
+        return set()
+    if isinstance(valeur, str):
+        # Une image en ligne (data:… ou base64 nu) n'est pas un texte.
+        image = valeur.startswith("data:") or len(valeur) > 2000
+        return set() if image else mots(H.unescape(valeur))
+    if isinstance(valeur, dict):
+        return set().union(*(mots_donnees(v, k) for k, v in valeur.items()))
+    if isinstance(valeur, (list, tuple)):
+        return set().union(*(mots_donnees(v, cle) for v in valeur))
+    return set()
+
+
+class GardeGabaritFrancaisHtmlTests(SimpleTestCase):
+
+    def test_aucun_mot_du_gabarit_en_et_ar(self):
+        from apps.ventes.quote_engine.residential import sample_data
+        gabarit_vu = set()
+        for nom, (variante, surcharges) in VARIANTES_GARDE.items():
+            donnees = dict(sample_data.build(variante), **surcharges)
+            gabarit = (mots(texte_html(html_residentiel(
+                "fr", variante=variante, **surcharges)))
+                - mots_donnees(donnees) - MOTS_IDENTITE)
+            gabarit_vu |= gabarit
+            for langue in ("en", "ar"):
+                with self.subTest(variante=nom, langue=langue):
+                    restes = gabarit & mots(texte_html(html_residentiel(
+                        langue, variante=variante, **surcharges)))
+                    if langue == "en":
+                        restes -= MOTS_FR_EGAUX_EN
+                    self.assertEqual(sorted(restes), [])
+        # La garde n'est pas vide : les libellés relevés à l'acceptation sont
+        # bien comptés comme mots du gabarit français.
+        self.assertLessEqual(
+            {"puissance", "estimée", "planète", "spécifique", "calculons",
+             "contractuelles", "indicatif", "résidentielle", "recommandé"},
+            gabarit_vu)
+
+
 # APDF8-APDF10 (C-APDF-004) — les libellés FIXES des gabarits suivent la langue
 # du document ; le français reste octet pour octet celui d'hier.
 #
@@ -403,12 +533,12 @@ def trouves(texte, libelles):
     return [lib for lib in libelles if lib.lower() in bas]
 
 
-def html_residentiel(langue, **surcharges):
+def html_residentiel(langue, variante="deux", **surcharges):
     """HTML du gabarit résidentiel premium (données d'échantillon)."""
     from apps.ventes.quote_engine import i18n_labels
     from apps.ventes.quote_engine.residential import render, renderer
     from apps.ventes.quote_engine.residential import sample_data
-    d = copy.deepcopy(dict(sample_data.build("deux")))
+    d = copy.deepcopy(dict(sample_data.build(variante)))
     d.update(copy.deepcopy(surcharges))
     if langue != "fr":
         d["langue_sortie"] = langue
@@ -587,6 +717,40 @@ class UnePageLibellesHtmlTests(SimpleTestCase):
                         "Clauses particulières"):
             self.assertIn(libelle.lower(), texte.lower())
 
+    def test_lignes_tronquees_et_note_batterie_en_et_ar(self):
+        """ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — la ligne « … et N autres
+        lignes d'équipement » d'une table tronquée et la note « Ce document
+        chiffre l'option… » suivent la langue ; le français reste celui
+        d'hier."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels
+        from apps.ventes.tests import _moteur_fixtures as mf
+        fragments = ("autres lignes d", "autre ligne d", "Ce document chiffre",
+                     "proposition complète", "sans batterie", "avec batterie",
+                     "multi-pages")
+
+        def rendu(langue, tronquees):
+            s = {"pdf_mode": "onepage", "onepage_note_batterie": True,
+                 "onepage_branche": "avec"}
+            if langue != "fr":
+                s.update(langue_sortie=langue,
+                         libelles_document=i18n_labels.libelles(langue))
+            d = mf.donnees_legacy("deux", **s)
+            G.apply_quote_data(d)
+            return texte_normalise(texte_html(G.build_html_onepage(
+                G._esc_items(d["all_items"]), tronquees)))
+
+        for tronquees in (1, 3):
+            fr = rendu("fr", tronquees)
+            self.assertIn("Ce document chiffre l’option avec batterie. Une "
+                          "option sans batterie est disponible", fr)
+            self.assertIn(f"et {tronquees} autre"
+                          + ("s lignes" if tronquees > 1 else " ligne"), fr)
+            for langue in ("en", "ar"):
+                with self.subTest(tronquees=tronquees, langue=langue):
+                    self.assertEqual(trouves(rendu(langue, tronquees),
+                                             fragments), [])
+
     def test_titre_clauses_par_langue(self):
         from apps.ventes.quote_engine import clauses_cgv
         clause = [{"nom": "A", "corps_texte": "B"}]
@@ -709,6 +873,50 @@ class PucesCgvLangueHtmlTests(SimpleTestCase):
                                 "autres équipements et prestations"),
             valid_until="01/02/2027")
         self.assertEqual(self._puces("fr"), attendu)
+
+    def test_echeancier_cgv_ci_suit_la_langue(self):
+        """ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — valeur du marqueur
+        ``{echeancier}`` des CGV C&I : libellés PAR DÉFAUT des jalons, unité
+        et retenue traduits, mêmes nombres ; un libellé de la société reste
+        tel quel ; le français est celui d'hier."""
+        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine import i18n_labels as L
+        from apps.ventes.utils import echeancier as E
+        tranches = [
+            {"key": "commande", "libelle": "Commande", "valeur": 40,
+             "unite": E.UNITE_PCT},
+            {"key": "livraison_materiel", "libelle": "Livraison du matériel",
+             "valeur": 50, "unite": E.UNITE_PCT},
+            {"key": "mise_en_service", "libelle": "Mise en service",
+             "valeur": 10, "unite": E.UNITE_PCT},
+            {"key": "perso", "libelle": "Acompte société", "valeur": "1000",
+             "unite": E.UNITE_MONTANT}]
+
+        class _Devis:
+            retenue_garantie = {"taux_pct": 5}
+
+        with mock.patch.object(E, "tranches_normalisees",
+                               lambda devis: tranches):
+            fr = builder._marqueurs_cgv_ci(_Devis(), "TVA")
+            self.assertEqual(fr["echeancier"], (
+                "Commande : 40 % ; Livraison du matériel : 50 % ; Mise en "
+                "service : 10 % ; Acompte société : 1000 MAD TTC"))
+            self.assertEqual(fr["retenue"], ("retenue de garantie de 5 %, "
+                                             "libérée à la réception "
+                                             "définitive"))
+            for langue in ("en", "ar"):
+                with self.subTest(langue=langue):
+                    v = builder._marqueurs_cgv_ci(_Devis(), "TVA", langue)
+                    self.assertEqual(trouves(
+                        v["echeancier"] + " " + v["retenue"],
+                        ("Commande", "Livraison du matériel", "Mise en service",
+                         "MAD TTC", "retenue de garantie")), [])
+                    self.assertIn("Acompte société", v["echeancier"])
+                    self.assertEqual(re.findall(r"\d+", v["echeancier"]),
+                                     re.findall(r"\d+", fr["echeancier"]))
+        # Chaque jalon par défaut a sa clé, au français mot pour mot.
+        for cle, libelle in E.TRANCHE_LABELS.items():
+            self.assertEqual(L.libelle(f"cgv_jalon_{cle}", "fr"), libelle)
 
     def test_surcharge_societe_conservee(self):
         perso = ["Clause société {acompte}&#37; non traduite"]

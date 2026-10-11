@@ -1355,6 +1355,419 @@ LIBELLES = {
         'fr': 'Des experts engagés pour votre transition énergétique',
         'en': 'Committed experts for your energy transition',
         'ar': 'خبراء ملتزمون بانتقالكم الطاقي'},
+    # ── ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — libellés fixes restés en dur ──
+    # Devis résidentiel premium (couverture, détail, confiance), une-page
+    # legacy et jalons des CGV C&I. Le français est le littéral EXACT du
+    # gabarit (ou du libellé par défaut du builder) : octet pour octet.
+    'res_tag_residentielle': {'fr': 'Résidentielle', 'en': 'Residential',
+                              'ar': 'سكني'},
+    'res_hook_titre': {'fr': 'Ce que le solaire change pour vous',
+                       'en': 'What solar changes for you',
+                       'ar': 'ما تغيّره الطاقة الشمسية لكم'},
+    'res_sur_facture': {'fr': "sur votre facture<br>d'électricité",
+                        'en': 'on your<br>electricity bill',
+                        'ar': 'من فاتورة<br>الكهرباء'},
+    'res_aujourdhui': {'fr': "aujourd'hui", 'en': 'today', 'ar': 'اليوم'},
+    'res_chiffres_reco': {
+        'fr': "Chiffres calculés pour l'option recommandée — {option}.",
+        'en': 'Figures calculated for the recommended option — {option}.',
+        'ar': 'أرقام محسوبة للخيار الموصى به — {option}.'},
+    'res_chiffres_presentee': {
+        'fr': "Chiffres calculés pour l'option présentée — {option}.",
+        'en': 'Figures calculated for the option shown — {option}.',
+        'ar': 'أرقام محسوبة للخيار المعروض — {option}.'},
+    'res_donut_titre': {'fr': 'Énergie solaire', 'en': 'Solar energy',
+                        'ar': 'الطاقة الشمسية'},
+    'res_donut_cap': {
+        'fr': ('de votre consommation<span>annuelle assurée par le '
+               'solaire{est}</span>'),
+        'en': 'of your annual<span>consumption covered by solar{est}</span>',
+        'ar': 'من استهلاككم<span>السنوي تغطيه الطاقة الشمسية{est}</span>'},
+    'res_facture_mois': {'fr': 'Votre facture mois par mois — avant / après',
+                         'en': 'Your bill month by month — before / after',
+                         'ar': 'فاتورتكم شهراً بشهر — قبل / بعد'},
+    'res_avec_marque': {'fr': 'avec {marque}', 'en': 'with {marque}',
+                        'ar': 'مع {marque}'},
+    'res_kpi_puissance_nw': {'fr': 'Puissance · {n} panneaux × {w} W',
+                             'en': 'Power · {n} panels × {w} W',
+                             'ar': 'القدرة · {n} ألواح × {w} W'},
+    'res_kpi_puissance_n': {'fr': 'Puissance · {n} panneaux',
+                            'en': 'Power · {n} panels',
+                            'ar': 'القدرة · {n} ألواح'},
+    'res_kpi_puissance': {'fr': 'Puissance', 'en': 'Power', 'ar': 'القدرة'},
+    'res_kpi_puissance_sans_avec': {
+        'fr': 'Puissance sans · avec · {s} · {a} panneaux',
+        'en': 'Power without · with · {s} · {a} panels',
+        'ar': 'القدرة بدون · مع · {s} · {a} ألواح'},
+    'res_unite_kwc': {'fr': '&nbsp;kWc', 'en': '&nbsp;kWp', 'ar': '&nbsp;kWp'},
+    'res_n_kwc': {'fr': '{n} kWc', 'en': '{n} kWp', 'ar': '{n} kWp'},
+    'res_kpi_production': {'fr': 'Production estimée',
+                           'en': 'Estimated production',
+                           'ar': 'الإنتاج المقدر'},
+    'res_kpi_production_sans_avec': {
+        'fr': 'Production estimée sans · avec',
+        'en': 'Estimated production without · with',
+        'ar': 'الإنتاج المقدر بدون · مع'},
+    'res_kpi_eco_calculee': {'fr': 'Économie calculée',
+                             'en': 'Calculated savings',
+                             'ar': 'الوفورات المحسوبة'},
+    'res_kpi_eco_estimee': {'fr': 'Économie estimée',
+                            'en': 'Estimated savings',
+                            'ar': 'الوفورات المقدرة'},
+    'res_impact_planete': {
+        'fr': ('Et pour la planète&nbsp;: ≈&nbsp;<b>{co2} tonnes de '
+               'CO<sub>2</sub></b>\n        évitées chaque année.'),
+        'en': ('And for the planet: ≈&nbsp;<b>{co2} tonnes of '
+               'CO<sub>2</sub></b> avoided every year.'),
+        'ar': ('ومن أجل الكوكب: ≈&nbsp;<b>{co2} طن من CO<sub>2</sub></b> '
+               'يتم تجنبها كل سنة.')},
+    'res_et_planete': {'fr': 'Et pour la planète', 'en': 'And for the planet',
+                       'ar': 'ومن أجل الكوكب'},
+    'res_co2_evitees': {'fr': 'de CO<sub>2</sub> évitées chaque année',
+                        'en': 'of CO<sub>2</sub> avoided every year',
+                        'ar': 'من CO<sub>2</sub> يتم تجنبها كل سنة'},
+    # Noms d'option : « Sans batterie » du gabarit, puis les deux libellés
+    # que le builder sert pour l'option 2 (``libelle_avec``, BAT-DIFF) —
+    # voir ``CLES_OPTION`` ; un libellé saisi hors catalogue reste tel quel.
+    'res_opt_sans': {'fr': 'Sans batterie', 'en': 'Without battery',
+                     'ar': 'بدون بطارية'},
+    'res_opt_avec': {'fr': 'Avec batterie', 'en': 'With battery',
+                     'ar': 'مع بطارية'},
+    'res_opt_hybride': {'fr': 'Hybride, batterie plus tard',
+                        'en': 'Hybrid, battery later',
+                        'ar': 'هجين، البطارية لاحقاً'},
+    'res_option_n': {'fr': 'Option {n}', 'en': 'Option {n}',
+                     'ar': 'الخيار {n}'},
+    'res_option_n_nom': {'fr': 'Option {n} — {option}',
+                         'en': 'Option {n} — {option}',
+                         'ar': 'الخيار {n} — {option}'},
+    'res_option_nom': {'fr': 'option {option}', 'en': 'option {option}',
+                       'ar': 'خيار {option}'},
+    'res_specifique_option': {'fr': 'Spécifique à l&rsquo;option {n} — {option}',
+                              'en': 'Specific to option {n} — {option}',
+                              'ar': 'خاص بالخيار {n} — {option}'},
+    'res_total_option': {'fr': 'Total — {option}', 'en': 'Total — {option}',
+                         'ar': 'المجموع — {option}'},
+    'res_prix_kwc': {'fr': 'soit {prix} MAD/kWc · TTC',
+                     'en': 'i.e. {prix} MAD/kWp · incl. VAT',
+                     'ar': 'أي {prix} درهم/kWp · شامل الضريبة'},
+    'res_rentabilise_en': {'fr': 'Rentabilisé en {n} ans',
+                           'en': 'Paid back in {n} years',
+                           'ar': 'مسترد خلال {n} سنوات'},
+    'res_non_rentabilise_25': {'fr': 'Non rentabilisé sur 25 ans',
+                               'en': 'Not paid back within 25 years',
+                               'ar': 'غير مسترد خلال 25 سنة'},
+    'res_non_rentabilise_maj': {'fr': 'Non rentabilisé',
+                                'en': 'Not paid back', 'ar': 'غير مسترد'},
+    'res_non_rentabilise': {'fr': 'non rentabilisé', 'en': 'not paid back',
+                            'ar': 'غير مسترد'},
+    'res_opt_eco': {'fr': 'Économie ≈ <b>{v} MAD/an</b>',
+                    'en': 'Savings ≈ <b>{v} MAD/yr</b>',
+                    'ar': 'الوفورات ≈ <b>{v} درهم/سنة</b>'},
+    'res_opt_eco_calculee': {'fr': 'Économie calculée ≈ <b>{v} MAD/an</b>',
+                             'en': 'Calculated savings ≈ <b>{v} MAD/yr</b>',
+                             'ar': 'الوفورات المحسوبة ≈ <b>{v} درهم/سنة</b>'},
+    'res_opt_eco_estimee': {'fr': 'Économie estimée ≈ <b>{v} MAD/an</b>',
+                            'en': 'Estimated savings ≈ <b>{v} MAD/yr</b>',
+                            'ar': 'الوفورات المقدرة ≈ <b>{v} درهم/سنة</b>'},
+    'res_spec_panneaux': {'fr': 'panneaux{w}', 'en': 'panels{w}',
+                          'ar': 'ألواح{w}'},
+    'res_spec_panneaux_sans_avec': {'fr': 'panneaux (sans · avec){w}',
+                                    'en': 'panels (without · with){w}',
+                                    'ar': 'ألواح (بدون · مع){w}'},
+    'res_n_ans': {'fr': '{n} ans', 'en': '{n} years', 'ar': '{n} سنوات'},
+    'res_n_m_ans': {'fr': '{a} – {b} ans', 'en': '{a} – {b} years',
+                    'ar': '{a} – {b} سنوات'},
+    'res_au_tarif_actuel': {'fr': 'au tarif actuel',
+                            'en': 'at the current tariff',
+                            'ar': 'بالتعريفة الحالية'},
+    'res_se_rembourse': {'fr': "l'installation se rembourse",
+                         'en': 'the installation pays for itself',
+                         'ar': 'المنشأة تسترد تكلفتها'},
+    'res_gain_mult': {'fr': ' — soit ≈ <b>{x}×</b> votre investissement',
+                      'en': ' — i.e. ≈ <b>{x}×</b> your investment',
+                      'ar': ' — أي ≈ <b>{x}×</b> استثماركم'},
+    'res_cmp_batteries': {'fr': 'Batteries', 'en': 'Batteries',
+                          'ar': 'البطاريات'},
+    'res_cmp_prix_ttc': {'fr': 'Prix TTC', 'en': 'Price incl. VAT',
+                         'ar': 'السعر شامل الضريبة'},
+    'res_cmp_eco': {'fr': 'Économies / an', 'en': 'Savings / yr',
+                    'ar': 'الوفورات / سنة'},
+    'res_cmp_eco_calculees': {'fr': 'Économies calculées / an',
+                              'en': 'Calculated savings / yr',
+                              'ar': 'الوفورات المحسوبة / سنة'},
+    'res_cmp_eco_estimees': {'fr': 'Économies estimées / an',
+                             'en': 'Estimated savings / yr',
+                             'ar': 'الوفورات المقدرة / سنة'},
+    'res_retour_invest': {'fr': 'Retour sur investissement',
+                          'en': 'Payback', 'ar': 'استرداد الاستثمار'},
+    'res_gain_net_25': {'fr': 'Gain net sur 25 ans',
+                        'en': 'Net gain over 25 years',
+                        'ar': 'صافي الربح على 25 سنة'},
+    'res_perf_garantie_titre': {'fr': 'Performance garantie',
+                                'en': 'Guaranteed performance',
+                                'ar': 'الأداء المضمون'},
+    'res_perf_panneaux': {'fr': 'panneaux — {sub}', 'en': 'panels — {sub}',
+                          'ar': 'الألواح — {sub}'},
+    'res_gar_pct_garanti': {'fr': '{pct} garanti', 'en': '{pct} guaranteed',
+                            'ar': '{pct} مضمون'},
+    'res_gar_lineaire': {'fr': 'performance linéaire',
+                         'en': 'linear performance', 'ar': 'أداء خطي'},
+    'res_fin_sub_deux': {
+        'fr': ('gain cumulé, deux scénarios — le point marque le retour '
+               'sur investissement'),
+        'en': 'cumulative gain, two scenarios — the dot marks the payback',
+        'ar': 'الربح التراكمي، سيناريوهان — النقطة تحدد استرداد الاستثمار'},
+    'res_fin_sub_un': {
+        'fr': 'gain cumulé — le point marque le retour sur investissement',
+        'en': 'cumulative gain — the dot marks the payback',
+        'ar': 'الربح التراكمي — النقطة تحدد استرداد الاستثمار'},
+    'res_fin_remplacement': {
+        'fr': (' · remplacement onduleur provisionné en année {an} '
+               '({montant} MAD)'),
+        'en': ' · inverter replacement provisioned in year {an} ({montant} MAD)',
+        'ar': ' · استبدال العاكس مرصود في السنة {an} ({montant} درهم)'},
+    'res_fin_cap': {
+        'fr': ("Projection <b>à tarif électricité constant</b> — toute hausse "
+               "future du prix de l'électricité accélère votre rentabilité, "
+               "votre coût solaire restant fixe."),
+        'en': ('Projection <b>at a constant electricity tariff</b> — any '
+               'future rise in electricity prices speeds up your return, '
+               'your solar cost staying fixed.'),
+        'ar': ('إسقاط <b>بتعريفة كهرباء ثابتة</b> — أي ارتفاع مستقبلي في سعر '
+               'الكهرباء يسرّع مردوديتكم، إذ تبقى تكلفتكم الشمسية ثابتة.')},
+    'res_palier': {
+        'fr': (" Le palier en année&nbsp;{an} : provision de remplacement de "
+               "l'onduleur, déjà déduite."),
+        'en': (' The step in year&nbsp;{an}: inverter replacement provision, '
+               'already deducted.'),
+        'ar': ' العتبة في السنة&nbsp;{an}: مخصص استبدال العاكس، مخصوم مسبقاً.'},
+    'res_rentabilite_25': {'fr': 'Rentabilité sur 25 ans',
+                           'en': 'Return over 25 years',
+                           'ar': 'المردودية على 25 سنة'},
+    'res_votre_rentabilite': {'fr': 'Votre rentabilité', 'en': 'Your return',
+                              'ar': 'مردوديتكم'},
+    'res_rentabilite_invest': {'fr': 'Rentabilité de votre investissement',
+                               'en': 'Return on your investment',
+                               'ar': 'مردودية استثماركم'},
+    'res_equipement_suite': {'fr': 'Équipement — suite',
+                             'en': 'Equipment — continued',
+                             'ar': 'المعدات — تتمة'},
+    'res_suite_lbl': {'fr': '{lbl} (suite)', 'en': '{lbl} (continued)',
+                      'ar': '{lbl} (تتمة)'},
+    'res_suite_page': {'fr': "Suite de l'équipement page suivante &rsaquo;",
+                       'en': 'Equipment continued on next page &rsaquo;',
+                       'ar': 'تتمة المعدات في الصفحة التالية &rsaquo;'},
+    'res_callout': {
+        'fr': ('≈ {gain} MAD de gain net sur 25 ans — <b>{x}× le prix de '
+               'votre installation</b>'),
+        'en': ('≈ {gain} MAD net gain over 25 years — <b>{x}× the price of '
+               'your installation</b>'),
+        'ar': '≈ {gain} درهم صافي ربح على 25 سنة — <b>{x}× سعر منشأتكم</b>'},
+    'res_votre_toiture': {'fr': 'Votre toiture', 'en': 'Your roof',
+                          'ar': 'سطحكم'},
+    'res_votre_calepinage': {'fr': 'Votre calepinage',
+                             'en': 'Your panel layout',
+                             'ar': 'توزيع ألواحكم'},
+    'res_deux_valeurs': {
+        'fr': 'deux valeurs&nbsp;: <b>sans</b> &middot; <b>avec</b> batterie',
+        'en': 'two values: <b>without</b> &middot; <b>with</b> battery',
+        'ar': 'قيمتان: <b>بدون</b> &middot; <b>مع</b> بطارية'},
+    'res_fiches_techniques': {'fr': ' &middot; fiches techniques&nbsp;: ',
+                              'en': ' &middot; datasheets: ',
+                              'ar': ' &middot; البطاقات التقنية: '},
+    'res_note_remise': {
+        'fr': (' &middot; Remise de {pct}\u202f% appliquée sur chaque ligne '
+               '— prix catalogue barrés, totaux après remise.'),
+        'en': (' &middot; {pct}\u202f% discount applied to each line — list '
+               'prices struck through, totals after discount.'),
+        'ar': (' &middot; خصم {pct}\u202f% مطبق على كل سطر — أسعار الكتالوج '
+               'مشطوبة، والمجاميع بعد الخصم.')},
+    'res_options_proposees': {
+        'fr': 'Options propos&eacute;es (non incluses dans le total)',
+        'en': 'Proposed options (not included in the total)',
+        'ar': 'خيارات مقترحة (غير مدرجة في المجموع)'},
+    'res_activez_option': {
+        'fr': ('Activez une option avant signature pour l&rsquo;inclure '
+               '&agrave; votre devis.'),
+        'en': 'Activate an option before signing to include it in your quote.',
+        'ar': 'فعّلوا خياراً قبل التوقيع لإدراجه في عرض السعر.'},
+    'res_multi_identiques': {
+        'fr': '&times;&nbsp;{n} propriétés identiques{total}',
+        'en': '&times;&nbsp;{n} identical properties{total}',
+        'ar': '&times;&nbsp;{n} عقارات متطابقة{total}'},
+    'res_multi_total': {'fr': ' — total pour {n} propriétés : {montant} MAD',
+                        'en': ' — total for {n} properties: {montant} MAD',
+                        'ar': ' — المجموع لـ {n} عقارات: {montant} درهم'},
+    'res_total_general': {'fr': 'Total général', 'en': 'Grand total',
+                          'ar': 'المجموع العام'},
+    'res_detail_propriete': {'fr': 'Détail par propriété',
+                             'en': 'Breakdown by property',
+                             'ar': 'التفاصيل حسب العقار'},
+    'res_propriete': {'fr': 'Propriété', 'en': 'Property', 'ar': 'العقار'},
+    'res_methode_titre': {'fr': 'Comment nous calculons vos économies',
+                          'en': 'How we calculate your savings',
+                          'ar': 'كيف نحسب وفوراتكم'},
+    # Phrases de méthode du builder (QF3), par ``savings_method['model']``.
+    'res_methode_factures': {
+        'fr': ('Facture recalculée au barème réel du distributeur (progressif '
+               '≤ 150 kWh/mois, puis sélectif : toute la conso du mois au '
+               'tarif de SA tranche) : facture actuelle moins facture '
+               'résiduelle après autoconsommation — jamais un prix moyen '
+               'inventé.'),
+        'en': ("Bill recalculated on the distributor's actual tariff "
+               '(progressive up to 150 kWh/month, then selective: the whole '
+               "month's consumption at ITS band's rate): current bill minus "
+               'the residual bill after self-consumption — never an invented '
+               'average price.'),
+        'ar': ('فاتورة أعيد حسابها وفق التعريفة الفعلية للموزع (تصاعدية حتى '
+               '150 kWh/شهر، ثم انتقائية: كل استهلاك الشهر بسعر شريحته): '
+               'الفاتورة الحالية ناقص الفاتورة المتبقية بعد الاستهلاك الذاتي — '
+               'لا سعر متوسط مختلق أبداً.')},
+    'res_methode_horaire': {
+        'fr': ('Économies intégrées heure par heure : la production solaire de '
+               'votre site (données PVGIS) confrontée à votre courbe de '
+               'consommation, mois par mois, chaque mois valorisé au barème '
+               'réel du distributeur. Le point de départ est VOTRE facture — '
+               "c'est la méthode la plus fine de ce document."),
+        'en': ('Savings integrated hour by hour: the solar production of your '
+               'site (PVGIS data) set against your consumption curve, month '
+               "by month, each month valued at the distributor's actual "
+               'tariff. The starting point is YOUR bill — the finest method '
+               'in this document.'),
+        'ar': ('وفورات محسوبة ساعة بساعة: الإنتاج الشمسي لموقعكم (بيانات '
+               'PVGIS) مقابل منحنى استهلاككم، شهراً بشهر، وكل شهر مقيّم وفق '
+               'التعريفة الفعلية للموزع. نقطة الانطلاق هي فاتورتكم — وهي أدق '
+               'طريقة في هذه الوثيقة.')},
+    'res_methode_etude_corrige': {
+        'fr': ("Économies saisies dans l'étude de consommation enregistrée "
+               'avec ce devis ; le retour sur investissement et le gain net '
+               "sur 25 ans en sont calculés pour chaque option (prix de "
+               "l'option, dégradation des panneaux, remplacement de "
+               "l'onduleur)."),
+        'en': ('Savings entered in the consumption study saved with this '
+               'quote; the payback and the 25-year net gain are calculated '
+               "from them for each option (option price, panel degradation, "
+               'inverter replacement).'),
+        'ar': ('وفورات مُدخلة في دراسة الاستهلاك المسجلة مع هذا العرض؛ ومنها '
+               'تُحسب مدة الاسترداد وصافي الربح على 25 سنة لكل خيار (سعر '
+               'الخيار، تراجع مردود الألواح، استبدال العاكس).')},
+    'res_methode_etude': {
+        'fr': ("Économies issues de l'étude de consommation enregistrée avec "
+               'ce devis (production et économies calculées sur votre profil '
+               'réel).'),
+        'en': ('Savings taken from the consumption study saved with this '
+               'quote (production and savings calculated on your actual '
+               'profile).'),
+        'ar': ('وفورات مستمدة من دراسة الاستهلاك المسجلة مع هذا العرض (الإنتاج '
+               'والوفورات محسوبان على ملفكم الفعلي).')},
+    'res_methode_estimation': {
+        'fr': ('Estimation : production annuelle × part autoconsommée × tarif '
+               "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
+               'dans nos hypothèses). Fournissez une facture réelle pour un '
+               'calcul par tranche exact.'),
+        'en': ('Estimate: annual production × self-consumed share × kWh '
+               'tariff (law 82-21: only self-consumption is valued — details '
+               'in our assumptions). Provide a real bill for an exact '
+               'band-by-band calculation.'),
+        'ar': ('تقدير: الإنتاج السنوي × الحصة المستهلكة ذاتياً × تعريفة kWh '
+               '(القانون 82-21: لا يُثمَّن إلا الاستهلاك الذاتي — التفاصيل في '
+               'فرضياتنا). قدموا فاتورة حقيقية لحساب دقيق حسب الشرائح.')},
+    'res_methode_exemple': {
+        'fr': ('Facture actuelle ≈ {a} MAD/an → avec solaire ≈ {b} MAD/an → '
+               'économie ≈ {c} MAD/an'),
+        'en': ('Current bill ≈ {a} MAD/yr → with solar ≈ {b} MAD/yr → '
+               'savings ≈ {c} MAD/yr'),
+        'ar': ('الفاتورة الحالية ≈ {a} درهم/سنة ← مع الطاقة الشمسية ≈ {b} '
+               'درهم/سنة ← الوفورات ≈ {c} درهم/سنة')},
+    'res_approximatif': {'fr': ' (approximatif)', 'en': ' (approximate)',
+                         'ar': ' (تقريبي)'},
+    'res_votre_conseiller': {'fr': 'Votre conseiller', 'en': 'Your advisor',
+                             'ar': 'مستشاركم'},
+    'res_note': {'fr': 'Note', 'en': 'Note', 'ar': 'ملاحظة'},
+    'res_delai_sous': {'fr': 'sous {delai} (indicatif)',
+                       'en': 'within {delai} (indicative)',
+                       'ar': 'خلال {delai} (إرشادي)'},
+    'res_delai_indicatif': {'fr': '{delai} (indicatif)',
+                            'en': '{delai} (indicative)',
+                            'ar': '{delai} (إرشادي)'},
+    'res_recommande_min': {'fr': 'recommandé', 'en': 'recommended',
+                           'ar': 'موصى به'},
+    'res_virement': {'fr': 'Virement bancaire&nbsp;:', 'en': 'Bank transfer:',
+                     'ar': 'تحويل بنكي:'},
+    'res_le_client': {'fr': 'Le client', 'en': 'The client', 'ar': 'العميل'},
+    'res_estimations_nc': {
+        'fr': ('Estimations non contractuelles —\n    hypothèses de calcul '
+               'détaillées sur votre proposition en ligne.'),
+        'en': ('Non-contractual estimates — detailed calculation assumptions '
+               'in your online proposal.'),
+        'ar': 'تقديرات غير تعاقدية — فرضيات الحساب مفصلة في عرضكم على الإنترنت.'},
+    'res_page': {'fr': 'Page', 'en': 'Page', 'ar': 'صفحة'},
+    # Une-page legacy (préfixe ``op_``) : lignes tronquées, note batterie.
+    'op_lignes_tronquees_1': {
+        'fr': ('&#8230; et {n} autre ligne d&#8217;&#233;quipement &#8212; '
+               'incluse dans les totaux ci-dessous, d&#233;tail complet sur '
+               '{renvoi}.'),
+        'en': ('&#8230; and {n} more equipment line &#8212; included in the '
+               'totals below, full detail in {renvoi}.'),
+        'ar': ('&#8230; و{n} سطر معدات آخر &#8212; مدرج في المجاميع أدناه، '
+               'والتفاصيل الكاملة في {renvoi}.')},
+    'op_lignes_tronquees_n': {
+        'fr': ('&#8230; et {n} autres lignes d&#8217;&#233;quipement &#8212; '
+               'incluses dans les totaux ci-dessous, d&#233;tail complet sur '
+               '{renvoi}.'),
+        'en': ('&#8230; and {n} more equipment lines &#8212; included in the '
+               'totals below, full detail in {renvoi}.'),
+        'ar': ('&#8230; و{n} أسطر معدات أخرى &#8212; مدرجة في المجاميع أدناه، '
+               'والتفاصيل الكاملة في {renvoi}.')},
+    'op_renvoi_multipages': {'fr': 'le devis multi-pages',
+                             'en': 'the multi-page quote',
+                             'ar': 'عرض السعر متعدد الصفحات'},
+    'op_renvoi_agricole': {'fr': 'le document complet (3 pages)',
+                           'en': 'the full document (3 pages)',
+                           'ar': 'الوثيقة الكاملة (3 صفحات)'},
+    'op_note_batterie': {
+        'fr': ('Ce document chiffre l&#8217;option {ceci}. Une option {autre} '
+               'est disponible &#8212; voir la proposition compl&#232;te.'),
+        'en': ('This document prices the option {ceci}. An option {autre} is '
+               'also available &#8212; see the full proposal.'),
+        'ar': ('تحدد هذه الوثيقة سعر الخيار {ceci}. يتوفر خيار {autre} '
+               '&#8212; انظروا العرض الكامل.')},
+    # Jalons des CGV C&I (marqueur ``{echeancier}``, préfixe ``cgv_``) : le
+    # français est ``apps.ventes.utils.echeancier.TRANCHE_LABELS`` mot pour
+    # mot ; un libellé renommé par la société reste tel quel.
+    'cgv_jalon_acompte': {'fr': 'Acompte', 'en': 'Down payment',
+                          'ar': 'الدفعة المقدمة'},
+    'cgv_jalon_materiel': {'fr': 'Livraison du matériel',
+                           'en': 'Equipment delivery', 'ar': 'تسليم المعدات'},
+    'cgv_jalon_solde': {'fr': 'Solde', 'en': 'Balance', 'ar': 'الرصيد'},
+    'cgv_jalon_commande': {'fr': 'Commande', 'en': 'Order', 'ar': 'الطلب'},
+    'cgv_jalon_livraison_materiel': {'fr': 'Livraison du matériel',
+                                     'en': 'Equipment delivery',
+                                     'ar': 'تسليم المعدات'},
+    'cgv_jalon_mise_en_service': {'fr': 'Mise en service',
+                                  'en': 'Commissioning', 'ar': 'التشغيل'},
+    'cgv_jalon_reception_definitive': {'fr': 'Réception définitive',
+                                       'en': 'Final acceptance',
+                                       'ar': 'الاستلام النهائي'},
+    'cgv_jalon_reception_financeur': {
+        'fr': "Règlement par l'organisme financeur à la réception signée",
+        'en': 'Payment by the financing body on signed acceptance',
+        'ar': 'أداء من طرف الجهة الممولة عند الاستلام الموقّع'},
+    'cgv_jalon_liberation_retenue': {
+        'fr': 'Libération de la retenue de garantie',
+        'en': 'Release of the retention',
+        'ar': 'تحرير اقتطاع الضمان'},
+    'cgv_jalon_format': {'fr': '{libelle} : {valeur} {unite}',
+                         'en': '{libelle}: {valeur} {unite}',
+                         'ar': '{libelle}: {valeur} {unite}'},
+    'cgv_mad_ttc': {'fr': 'MAD TTC', 'en': 'MAD incl. VAT',
+                    'ar': 'درهم شامل الضريبة'},
+    'cgv_retenue': {
+        'fr': ('retenue de garantie de {taux} %, libérée à la réception '
+               'définitive'),
+        'en': 'retention of {taux} %, released on final acceptance',
+        'ar': 'اقتطاع ضمان بنسبة {taux} %، يُحرَّر عند الاستلام النهائي'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',
@@ -1362,6 +1775,26 @@ LIBELLES = {
         'ar': 'المرجع',
     },
 }
+
+
+#: ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — noms d'option que le GABARIT
+#: (« Sans batterie ») ou le builder (``libelle_avec``, BAT-DIFF) impriment →
+#: clé du catalogue. Un nom saisi par la société n'y est pas : il reste tel
+#: quel (donnée, jamais traduite par le moteur).
+CLES_OPTION = {
+    'Sans batterie': 'res_opt_sans',
+    'Avec batterie': 'res_opt_avec',
+    'Hybride, batterie plus tard': 'res_opt_hybride',
+}
+
+
+def nom_option(nom, langue=None, minuscule=False) -> str:
+    """Nom d'option ``nom`` dans ``langue`` (français : ``nom`` lui-même,
+    octet pour octet) ; ``minuscule`` baisse la première lettre, comme les
+    gabarits le faisaient au milieu d'une phrase (« option avec batterie »)."""
+    cle = CLES_OPTION.get(nom)
+    texte = libelle(cle, langue) if cle else str(nom or '')
+    return texte[:1].lower() + texte[1:] if minuscule else texte
 
 
 def normaliser(langue) -> str:
