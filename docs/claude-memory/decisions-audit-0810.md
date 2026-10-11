@@ -21,7 +21,7 @@ note : chaque décision débloque ses tâches de construction.
 ## Facturation / PDF
 - **AFAC80** annulation d'une facture qui porte de l'argent : (a) refus 400 + choix imposé (directive d'acompte).
 - **AFAC81** paiement mal saisi : (a) état « annulé (erreur de saisie) » + contre-écriture.
-- **AFAC82** mandat de prélèvement : (b) GARDER visible et inerte (PAS parqué).
+- **AFAC82** mandat de prélèvement : (a) PARQUER (écran/menu/route/viewset/service retirés, modèles conservés) — revu le 11/10 pendant vérifie AFAC (le code mergé AFAC19 avait déjà parqué ; était (b) le 08/10).
 - **AFAC83** paiement en ligne : (a) une seule pile (lien FG53).
 - **AFAC84** note de débit émise : (a) annulation par avoir + note de débit partielle.
 - **AFAC85** abandon de créance : (a) enregistrement daté cumulable.
