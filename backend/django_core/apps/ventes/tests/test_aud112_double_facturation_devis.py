@@ -117,6 +117,7 @@ class TestDoubleFacturationDevis(TestCase):
         # vue par le solde (`facture`) et ferme la porte (`aucune`).
         self.assertEqual(solde['tranches_facturees'], 0)
         self.assertEqual(solde['porte_facturation'], 'aucune')
+        self.assertIs(solde['facturation_terminee'], True)  # AMET9
         self.assertEqual(solde['facture'], Decimal('12000.00'))
 
     # ── Le prédicat partagé lui-même ──────────────────────────────────────

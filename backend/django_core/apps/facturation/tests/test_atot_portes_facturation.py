@@ -12,8 +12,10 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \\
         -Modules "apps.facturation.tests.test_atot_portes_facturation"
 """
+import json
 from decimal import Decimal
 from itertools import permutations
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -22,6 +24,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 User = get_user_model()
 PORTES = ('tranche', 'complete', 'bc', 'consolidee')
+CONTRAT_SOLDE = (Path(__file__).resolve().parents[2] / 'ventes'
+                 / 'contract_samples' / 'devis_solde.json')
 _CTR = [0]
 
 
@@ -176,9 +180,42 @@ class PortesFacturationTests(TestCase):
         self._porte('consolidee', consolide)
         solde = solde_devis(Devis.objects.get(pk=consolide.pk))
         self.assertEqual(solde['porte_facturation'], 'aucune')
+        self.assertIs(solde['facturation_terminee'], True)  # AMET9
 
     def test_solde_api_expose_porte_en_texte(self):
         devis = self._devis()
         resp = self.api.get(f'/api/django/ventes/devis/{devis.id}/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['solde']['porte_facturation'], 'libre')
+        # AMET9 — clés servies = clés du contrat (get_solde : texte).
+        contrat = json.loads(CONTRAT_SOLDE.read_text(encoding='utf-8'))
+        self.assertEqual(set(resp.data['solde']),
+                         set(contrat['exemple']['solde']))
+        self.assertEqual(resp.data['solde']['facturation_terminee'], 'False')
+
+
+class SoldeFacturationTermineeTests(TestCase):
+    """AMET9 (C-AMET-002) — ``solde.facturation_terminee`` : le serveur DIT
+    « plus rien à facturer » (facture complète OU toutes les tranches) ;
+    ``tranches_facturees`` reste à 0 après une complète."""
+    setUp = PortesFacturationTests.setUp
+    _devis = PortesFacturationTests._devis
+    _porte = PortesFacturationTests._porte
+
+    def _terminee(self, devis):
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.echeancier import solde_devis
+        return solde_devis(
+            Devis.objects.get(pk=devis.pk))['facturation_terminee']
+
+    def test_solde_facturation_terminee_apres_facture_complete(self):
+        self.assertIs(self._terminee(self._devis()), False)
+        complet = self._devis()
+        r = self._porte('complete', complet)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIs(self._terminee(complet), True)
+        en_tranches = self._devis()
+        for attendu in (False, False, True):  # 1/3, 2/3, 3/3
+            r = self._porte('tranche', en_tranches)
+            self.assertEqual(r.status_code, 201, r.data)
+            self.assertIs(self._terminee(en_tranches), attendu)

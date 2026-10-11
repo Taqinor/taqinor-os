@@ -1118,6 +1118,7 @@ def solde_devis(devis):
     # suivante est DITE par le serveur (contrat ``devis_solde.json``).
     from apps.ventes.selectors_facturation import est_facture_de_tranche
     tranches = [f for f in actives if est_facture_de_tranche(f, devis)]
+    porte = porte_facturation(devis, actives=actives)
     return {
         'total_ttc': _q(total),
         'facture': _q(facture),
@@ -1126,7 +1127,10 @@ def solde_devis(devis):
         'restant': _q(restant),
         'tranches_total': len(schedule_for_devis(devis)),
         'tranches_facturees': len(tranches),
-        'porte_facturation': porte_facturation(devis, actives=actives),
+        'porte_facturation': porte,
+        # AMET9 (C-AMET-002) — « plus rien à facturer » DIT par le serveur :
+        # complète / BC / consolidée ou toutes les tranches = porte « aucune ».
+        'facturation_terminee': porte == 'aucune',
     }
 
 
