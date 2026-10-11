@@ -5,6 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.roles.permissions_registre import ALL_PERMISSIONS
+from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import AccessReviewCampaign, AccessReviewItem, SodRule
 
@@ -17,7 +18,11 @@ class PermissionCodeField(serializers.CharField):
     le schéma déclare l'énum que ``_valider_code`` impose côté serveur)."""
 
 
-class AccessReviewItemSerializer(serializers.ModelSerializer):
+class AccessReviewItemSerializer(SameCompanyFKSerializerMixin,
+                                 serializers.ModelSerializer):
+    # ENF17 — campagne / compte d'une AUTRE société = id absent (400).
+    same_company_fields = ('campagne', 'user')
+
     class Meta:
         model = AccessReviewItem
         fields = [

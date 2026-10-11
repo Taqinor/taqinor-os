@@ -48,7 +48,6 @@ backend/django_core/apps/ventes/serializers_commissioning.py::CommissioningTestS
 backend/django_core/apps/ventes/serializers_commissioning.py::TestPerformanceReceptionSerializer.chantier
 
 # AANA47 - sites PRE-EXISTANTS releves le 2026-10-07 (M2M, FK utilisateur/role, serialiseurs hors serializers*.py). CONSTATES, pas approuves : chaque ligne retiree = une fuite fermee ; correction par proprietaire.
-backend/django_core/apps/accessreview/serializers.py::AccessReviewItemSerializer.user
 backend/django_core/apps/adminops/serializers.py::AnnonceProduitSerializer.auteur
 backend/django_core/apps/adminops/serializers.py::AnnonceProduitSerializer.cible_roles
 backend/django_core/apps/adminops/serializers.py::DemandeInscriptionSerializer.traite_par
@@ -77,7 +76,6 @@ backend/django_core/apps/ventes/serializers.py::PlanCommissionSerializer.owner
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.abandon_par
 
 # ASTK9 - pre-existant (releve 2026-10-07) : FK meme-app vers modele a societe, sites hors stock ; CONSTATES, pas approuves
-backend/django_core/apps/accessreview/serializers.py::AccessReviewItemSerializer.campagne
 backend/django_core/apps/adsengine/serializers.py::AdMirrorSerializer.adset
 backend/django_core/apps/adsengine/serializers.py::AdSetMirrorSerializer.campaign
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.rule
