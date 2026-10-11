@@ -2574,8 +2574,7 @@ class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
     # refusée comme un id absent (« objet inexistant » de DRF).
     """NTP2P9 — grille éditable Paramètres → Achats (override par catégorie
     des tolérances 3 voies XPUR10)."""
-    categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True, allow_null=True)
+    categorie_nom = serializers.CharField(source='categorie.nom', read_only=True, allow_null=True)
 
     # SCA4 — le modèle a rejoint TenantModel (created_at/updated_at) ; l'API
     # continue d'exposer les clés historiques via source=.
