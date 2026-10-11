@@ -1489,7 +1489,7 @@ export default function FournisseurFiche360({
   // prix d'achat) n'existent que pour un compte qui VOIT les prix d'achat :
   // jamais montés (donc jamais de requête 403) sans `prix_achat_voir`.
   const voitPrix = useVoitPrixAchat()
-  // ASTK246 — « Acomptes » / « Avoirs » : miroir de PeutLirePaiementsFournisseur
+  // ASTK246 — « Acomptes » / « Avoirs » : le serveur refuse (403) ces lectures sans achats_payer ni prix_achat_voir ; les onglets suivent ce droit
   // (achats_payer OU prix_achat_voir) — jamais un onglet que le serveur refuse.
   const peutPayer = usePermissionAchats('achats_payer')
   const litReglements = voitPrix || peutPayer
