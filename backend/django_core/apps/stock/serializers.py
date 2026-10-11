@@ -2322,8 +2322,6 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
 
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
-# ENF11 — nom de composant distinct de celui de `installations` (collision).
-@extend_schema_serializer(component_name='KitProduitComposant')
 class KitComposantSerializer(CompanyScopedRelationsMixin,
                              serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est

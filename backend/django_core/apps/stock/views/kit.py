@@ -5,7 +5,7 @@ ne porte aucun prix / marque / TVA propre ; l'action ``exploser`` le décompose
 en lignes composant avec prix/TVA/marque LUS sur chaque ``Produit`` au vol.
 Multi-tenant : querysets filtrés par société + ``company`` forcée côté serveur
 (TenantMixin)."""
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_serializer, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
 from rest_framework.decorators import action
@@ -20,7 +20,12 @@ from authentication.permissions import (
 )
 
 from ..models import KitProduit
-from ..serializers import KitProduitSerializer
+from ..serializers import KitComposantSerializer, KitProduitSerializer
+
+# ENF11 — nom de composant OpenAPI distinct de celui d'`installations`
+# (collision drf-spectacular « KitComposant »). Posé ICI et non par décorateur
+# dans serializers.py (fichier-mur, C20 : aucune croissance nette).
+extend_schema_serializer(component_name='KitProduitComposant')(KitComposantSerializer)
 
 READ_ACTIONS = ['list', 'retrieve', 'exploser', 'revisions',
                 'composition_au', 'disponibilite']
