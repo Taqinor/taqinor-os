@@ -809,7 +809,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
             # « A / B » viennent du repli léger déjà calculé par display_totals
             # (chaîne canonique, mêmes prédicats). Le ROI, lui, exige le moteur
             # → None, jamais un chiffre approximé.
-            logger.warning("serializers.DevisSerializer.get_comparaison_options : erreur ignorée (mode dégradé)", exc_info=True)
+            logger.warning("serializers.DevisSerializer.get_comparaison_options "
+                           ": erreur ignorée (mode dégradé)", exc_info=True)
             repli = d.get('comparaison_repli')
             if not repli:
                 return None
@@ -852,7 +853,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         try:
             sig = obj.signature
         except Exception:
-            logger.warning("serializers.DevisSerializer.get_signature_info : erreur ignorée (mode dégradé)", exc_info=True)
+            logger.warning("serializers.DevisSerializer.get_signature_info "
+                           ": erreur ignorée (mode dégradé)", exc_info=True)
             return None
         if sig is None:
             return None
