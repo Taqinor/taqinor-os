@@ -121,6 +121,20 @@ export function routeDe(ecran, env) {
 }
 
 /**
+ * Ferme les fenêtres d'accueil / visite guidée de l'ERP (elles cachent la zone utile).
+ * @param {import('@playwright/test').Page} page
+ */
+export async function fermerAccueil(page) {
+  for (let i = 0; i < 4; i++) {
+    const bouton = page.getByRole('button', { name: /^(Passer|Plus tard)$/ });
+    if (!(await bouton.count())) break;
+    await bouton.first().click().catch(() => {});
+    await page.waitForTimeout(300);
+  }
+  await page.waitForTimeout(500);
+}
+
+/**
  * Lit le registre des captures (vide s'il n'existe pas).
  * @typedef {{ ecran: string, largeur: number, avif: string, webp: string, width: number | undefined, height: number | undefined, sha256_webp: string, capture_le: string, controle_texte: 'ok' | 'revue-seule', revue: string }} Entree
  * @returns {{ captures: Entree[] }}
@@ -229,6 +243,7 @@ async function principal(argv, env) {
         await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
         await page.goto(new URL('/crm/leads', baseErp).href);
         await page.waitForLoadState('networkidle');
+        await fermerAccueil(page);
         const corps = await page.locator('body').innerText();
         if (!corps.includes(SOCIETE_CAPTURE)) {
           throw new Error(`refus : la société affichée n'est pas « ${SOCIETE_CAPTURE} » — jamais une vraie société`);
@@ -236,6 +251,7 @@ async function principal(argv, env) {
         for (const e of aNaviguer) {
           await page.goto(new URL(routeDe(e, env), baseErp).href);
           await page.waitForLoadState('networkidle');
+          await fermerAccueil(page);
           const zone = page.locator(e.selecteur ?? 'main').first();
           await zone.waitFor({ state: 'visible', timeout: 30_000 });
           const violations = controlerTexte(await zone.innerText());

@@ -1,0 +1,28 @@
+{
+  "endpoint": "GET /api/django/stock/factures-fournisseur/suggestions-bcf/",
+  "pourquoi": "NTP2P10 / ASTK240 (D-ASTK-2) — BCF ouverts (envoyés/reçus, commandés il y a moins de 60 jours) du fournisseur `?fournisseur=<id>` (requis, sinon 400), le plus proche du `?montant=` saisi en premier (selectors.suggerer_bcf_pour_facture). Lecture IsAnyRole. Sans `prix_achat_voir` (PeutVoirPrixAchat), AUCUN montant d'achat : ni `montant_total` ni `ecart` (montant saisi ± écart = total du BCF) — forme `exemple_sans_prix_achat`. Affirmé par apps/stock/test_astk_confirmation_bcf.py ; l'écran OcrUpload.jsx n'affiche le montant que s'il est servi.",
+  "avertissement_forme": "Le corps HTTP RÉEL est DIRECTEMENT un tableau, SANS enveloppe (`views/facture_fournisseur.py::suggestions_bcf` fait `return Response(suggestions)`). `exemple` l'enveloppe sous `suggestions` uniquement parce que ce fichier de contrat exige un OBJET (scripts/check_api_shapes.py) — un test qui consomme cette fixture lit `.suggestions`.",
+  "exemple": {
+    "suggestions": [
+      {
+        "id": 47,
+        "reference": "BCF-2026-0047",
+        "montant_total": "2400.00",
+        "ecart": "0.00",
+        "date_commande": "2026-10-01"
+      }
+    ]
+  },
+  "exemple_sans_prix_achat": {
+    "suggestions": [
+      {
+        "id": 47,
+        "reference": "BCF-2026-0047",
+        "date_commande": "2026-10-01"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "suggestions": []
+  }
+}

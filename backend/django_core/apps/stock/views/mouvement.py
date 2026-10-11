@@ -246,6 +246,12 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                         {'quantite': (
                             'Stock insuffisant : la sortie dépasse le stock '
                             f'disponible ({qte_avant}).')})
+                # ASTK248 — jamais la part en quarantaine (garde unique WMS).
+                from ..services_wms import exiger_hors_quarantaine
+                try:
+                    exiger_hors_quarantaine(produit.company, produit, qte)
+                except ValueError as exc:
+                    raise ValidationError({'quantite': str(exc)})
             else:
                 # AJUSTEMENT — niveau visé → écart signé.
                 qte_apres = qte

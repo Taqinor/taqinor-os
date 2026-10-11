@@ -9,6 +9,8 @@ MAD, avec l'invite de ressaisie ; un changement de devise du compte rebascule
 la règle en « non applicable ». Aucun taux de change, aucun appel Meta.
 """
 import datetime
+import json
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -27,6 +29,8 @@ from apps.adsengine.models import (
 
 User = get_user_model()
 TODAY = datetime.date(2026, 7, 16)
+CONTRAT_GARDE_FOUS = (Path(__file__).resolve().parent.parent / 'contract_samples'
+                      / 'garde_fous_singleton.json')
 INVITE = 'ressaisir le seuil dans la devise du compte'
 
 
@@ -188,6 +192,24 @@ class SeuilsDeviseTests(TestCase):
         f = self._eval(company_b, RulePolicy.objects.get(pk=resp.data['id']))[0]
         self.assertTrue(f['fired'])
         self.assertNotIn('blocked_fr', f)
+
+    def test_guardrail_sert_sa_devise(self):
+        """AACQ100 — ``guardrail/`` sert ``ceiling_currency`` (vide tant
+        qu'aucun plafond n'est saisi, devise du compte ensuite, jamais celle
+        du corps), à la forme de ``garde_fous_singleton.json``."""
+        contrat = json.loads(CONTRAT_GARDE_FOUS.read_text(encoding='utf-8'))
+        _company, _conn, api = self._societe('aacq100-usd')
+        url = '/api/django/adsengine/guardrail/'
+        resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), set(contrat['exemple']))
+        self.assertEqual(resp.data['ceiling_currency'], '')
+        resp = api.patch(url, {'max_daily_budget_mad': 120,
+                               'ceiling_currency': 'MAD'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), set(contrat['exemple']))
+        self.assertEqual(resp.data['ceiling_currency'], 'USD')
+        self.assertEqual(api.get(url).data['ceiling_currency'], 'USD')
 
     def test_plafond_usd_borne_budget_usd(self):
         company, _conn, api = self._societe('aacq3-plafond')

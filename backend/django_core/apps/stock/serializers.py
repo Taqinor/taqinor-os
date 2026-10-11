@@ -1888,12 +1888,12 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
 CHAMPS_MONTANTS_LIGNE_FACTURE_FOURNISSEUR = (
     'prix_unitaire_ht', 'total_ht', 'total_tva',
 )
-#: ASTK11 — montants d'achat d'une facture fournisseur (en-tête, règlements,
-#: échéances, imputations), retirés sans `prix_achat_voir`.
+#: ASTK11 — montants d'achat d'une facture fournisseur (en-tête, échéances,
+#: imputations), retirés sans `prix_achat_voir` ; `paiements` : ASTK241.
 CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
     'montant_ht', 'montant_tva', 'montant_ttc', 'montant_ttc_devise',
     'total_paye', 'solde_du', 'total_acomptes_imputes',
-    'total_avoirs_imputes', 'sous_totaux_par_taux', 'paiements', 'echeances',
+    'total_avoirs_imputes', 'sous_totaux_par_taux', 'echeances',
 )
 
 
@@ -2087,16 +2087,15 @@ class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
 
     def get_fields(self):
         # ASTK11 (D-ASTK-2) — montants d'achat servis UNIQUEMENT avec
-        # `prix_achat_voir` ; les règlements imbriqués suivent EN PLUS le
-        # palier AUD419 de PaiementFournisseurViewSet (responsable/admin) —
-        # ferme le contournement « paiements-fournisseur 403 mais
-        # factures-fournisseur 200 avec date_paiement ».
+        # `prix_achat_voir` ; ASTK241 — les règlements imbriqués suivent la
+        # règle UNIQUE de lecture des règlements (PeutLirePaiementsFournisseur).
+        from .views.paiement_fournisseur import PeutLirePaiementsFournisseur
         fields = super().get_fields()
-        user = _user_du_contexte(self)
-        if not _peut_voir_montants_achat(user):
+        if not _peut_voir_montants_achat(_user_du_contexte(self)):
             for nom in CHAMPS_MONTANTS_FACTURE_FOURNISSEUR:
                 fields.pop(nom, None)
-        elif user is not None and not getattr(user, 'is_responsable', True):
+        if self.context.get('request') is not None and not \
+                PeutLirePaiementsFournisseur().has_permission(self.context['request'], None):
             fields.pop('paiements', None)
         return fields
 

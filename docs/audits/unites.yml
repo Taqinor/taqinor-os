@@ -572,7 +572,7 @@ unites:
     pr: 873
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-deploy.md
-    notes: "Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app. Audit L1 du 08/10/2026 (dossier docs/audits/2026-10-08-deploy.md) : 22 constats (1 S1 : pas de pg_dump/pg_restore dans l'image de prod), 50 tâches ADEP routées chez 10 propriétaires."
+    notes: "vérifie ADEP du 11/10/2026 (clôture, 50/50 cochées ; dossier docs/audits/2026-10-11-deploy-verifie.md) : 16 tâches échantillonnées (graine 6f3191ad7) — 14 ok, 2 partielles (gardes de classe incomplètes, S3) → ADEP100-ADEP101 dans PLAN_AUDIT_DEPLOY ; aucun S1-S2, pas de Fable. Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app. Audit L1 du 08/10/2026 (dossier docs/audits/2026-10-08-deploy.md) : 22 constats (1 S1 : pas de pg_dump/pg_restore dans l'image de prod), 50 tâches ADEP routées chez 10 propriétaires."
 
   - id: J4
     rang: 17

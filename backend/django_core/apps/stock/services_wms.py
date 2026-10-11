@@ -488,6 +488,7 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             if quantite > avant:
                 raise ValueError(
                     f'Stock insuffisant ({avant} disponible).')
+            exiger_hors_quarantaine(company, verrouille, quantite)  # ASTK248
             apres = avant - quantite
         else:  # transfert : déplacement physique, total inchangé
             apres = avant
@@ -910,6 +911,7 @@ def decrementer_stock_expedition(*, expedition, user=None):
                 sortie = min(ligne.quantite, avant) if avant > 0 else 0
                 if sortie <= 0:
                     continue
+                exiger_hors_quarantaine(company, produit, sortie)  # ASTK248
                 mouvements.append(record_stock_movement(
                     company=company, produit=produit,
                     type_mouvement=MouvementStock.TypeMouvement.SORTIE,
@@ -1747,6 +1749,18 @@ def quantite_disponible_hors_quarantaine(company, produit):
         return 0
     bloquee = quantite_en_quarantaine(company, produit=produit)
     return max((produit.quantite_stock or 0) - bloquee, 0)
+
+
+def exiger_hors_quarantaine(company, produit, quantite):
+    """ASTK248 — une SORTIE libre (scanner, mouvement manuel, expédition) ne
+    prélève jamais la part en quarantaine : ``ValueError`` nommant le produit
+    et les unités bloquées. Sans quarantaine : no-op (gardes historiques)."""
+    disponible = quantite_disponible_hors_quarantaine(company, produit)
+    bloquee = quantite_en_quarantaine(company, produit=produit)
+    if bloquee and quantite > disponible:
+        raise ValueError(
+            f'Sortie refusée pour « {produit.nom} » : {bloquee} unité(s) en '
+            f'quarantaine, {disponible} disponible(s) hors quarantaine.')
 
 
 # ═══════════════════════════════════════════════════════════════════════════
