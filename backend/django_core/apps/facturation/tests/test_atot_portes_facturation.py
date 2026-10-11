@@ -393,3 +393,48 @@ class PortesSavInterventionNumeroTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self._verifier_brouillon_puis_emission(
             r.data['facture_id'], r.data['facture_reference'])
+
+
+class PortesSavInterventionConcurrenceTests(TestCase):
+    """AFAC91 (sonde W5-1) — « double clic » : le ticket / l'intervention est
+    lu DEUX fois avant toute écriture ; le générateur appelé avec la seconde
+    instance PÉRIMÉE renvoie la MÊME facture (relecture sous verrou), une
+    seule facture non annulée existe et le lien pointe sur elle."""
+    setUp = PortesFacturationTests.setUp
+    _onduleur = PortesSavInterventionNumeroTests._onduleur
+    _ticket = PortesSavInterventionNumeroTests._ticket
+    _intervention = PortesSavInterventionNumeroTests._intervention
+
+    def _une_seule_facture(self, f1, f2):
+        from apps.ventes.models import Facture
+        self.assertEqual(f1.pk, f2.pk)
+        self.assertEqual(
+            Facture.objects.filter(company=self.company)
+            .exclude(statut=Facture.Statut.ANNULEE).count(), 1)
+
+    def test_ticket_deux_instances_une_facture(self):
+        from apps.sav.models import Ticket
+        from apps.ventes.services import generer_facture_ticket_sav
+        ticket = self._ticket(self._onduleur())
+        premiere = Ticket.objects.get(pk=ticket.pk)
+        seconde = Ticket.objects.get(pk=ticket.pk)
+        f1 = generer_facture_ticket_sav(
+            ticket=premiere, sous_garantie=False, user=self.user,
+            pieces=list(premiere.pieces.select_related('produit')))
+        f2 = generer_facture_ticket_sav(
+            ticket=seconde, sous_garantie=False, user=self.user,
+            pieces=list(seconde.pieces.select_related('produit')))
+        self._une_seule_facture(f1, f2)
+        self.assertEqual(
+            Ticket.objects.get(pk=ticket.pk).facture_id_ext, f1.pk)
+
+    def test_intervention_deux_instances_une_facture(self):
+        from apps.installations.models import Intervention
+        from apps.ventes.services import generer_facture_intervention
+        interv = self._intervention(self._onduleur())
+        premiere = Intervention.objects.get(pk=interv.pk)
+        seconde = Intervention.objects.get(pk=interv.pk)
+        f1 = generer_facture_intervention(intervention=premiere, user=self.user)
+        f2 = generer_facture_intervention(intervention=seconde, user=self.user)
+        self._une_seule_facture(f1, f2)
+        self.assertEqual(Intervention.objects.get(pk=interv.pk).facture_id, f1.pk)

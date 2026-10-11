@@ -23,6 +23,8 @@ pas le nom sous lequel une ligne de journal est émise.
 from decimal import Decimal, ROUND_HALF_UP
 import logging
 
+from django.db import transaction
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -143,7 +145,6 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         if derivee is not None:
             facture.date_echeance = derivee
 
-    from django.db import transaction
     from ..utils.company_settings import numeroter_a_l_emission
     with transaction.atomic():
         # ATOT27 (D-ATOT-5) — le numéro LÉGAL naît ICI, après tous les refus
@@ -1316,6 +1317,24 @@ def _main_oeuvre_produit(company):
     return produit
 
 
+def _facture_generee_sous_verrou(instance, champ):
+    """AFAC91 — relit ``champ`` (id de la facture déjà générée) SOUS VERROU
+    de la ligne ticket/intervention (``select_for_update`` dans la transaction
+    du générateur) : deux requêtes simultanées (double clic) produisent UNE
+    facture, la seconde attend la première puis la relit. Verrou via
+    ``type(instance)`` — aucun modèle sav/installations importé ici."""
+    from ..models import Facture
+    facture_id = (type(instance).objects.select_for_update()
+                  .values_list(champ, flat=True).get(pk=instance.pk))
+    if not facture_id:
+        return None
+    setattr(instance, champ, facture_id)
+    return Facture.objects.filter(
+        pk=facture_id, company=instance.company,
+    ).exclude(statut=Facture.Statut.ANNULEE).first()
+
+
+@transaction.atomic
 def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     """XFSM1 — construit une ``Facture`` BROUILLON pour un ticket SAV hors
     garantie (réels → facture) : lignes pièces (prix de VENTE catalogue,
@@ -1331,18 +1350,15 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     ``quantite`` (déjà scopés société par l'appelant — sav.views). Référence
     provisoire « BROUILLON-<id> », numéro légal à l'émission (ATOT27).
 
-    IDEMPOTENT : si ``ticket.facture_id_ext`` pointe déjà vers une facture
-    non annulée, la renvoie telle quelle plutôt que d'en créer une seconde.
-    Renvoie la ``Facture`` créée (ou réutilisée)."""
+    IDEMPOTENT, même sous concurrence (AFAC91) : ``facture_id_ext`` est relu
+    SOUS VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
+    telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
     from ..models import Facture, LigneFacture
     from ..utils.company_settings import create_provisoire, tva_standard
 
-    if ticket.facture_id_ext:
-        existante = Facture.objects.filter(
-            pk=ticket.facture_id_ext, company=ticket.company
-        ).exclude(statut=Facture.Statut.ANNULEE).first()
-        if existante is not None:
-            return existante
+    existante = _facture_generee_sous_verrou(ticket, 'facture_id_ext')
+    if existante is not None:
+        return existante
 
     company = ticket.company
     taux_tva_defaut = tva_standard(company)
@@ -1407,6 +1423,7 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
 # (dépannage résidentiel facturé sur place, prestation ponctuelle) — DISTINCT
 # de XFSM1/XCTR4 qui facturent depuis un TICKET SAV.
 
+@transaction.atomic
 def generer_facture_intervention(*, intervention, user):
     """ZFSM4 — construit une ``Facture`` BROUILLON pour une intervention hors
     contrat/ticket : lignes matériel depuis ``ConsommationLigne`` (prix de
@@ -1418,18 +1435,15 @@ def generer_facture_intervention(*, intervention, user):
     legacy (pas ``/proposal`` — règle #4 : ce chemin ne touche jamais le
     moteur de devis client).
 
-    IDEMPOTENT : si ``intervention.facture_id`` pointe déjà vers une facture
-    non annulée, la renvoie telle quelle plutôt que d'en créer une seconde.
-    Renvoie la ``Facture`` créée (ou réutilisée)."""
+    IDEMPOTENT, même sous concurrence (AFAC91) : ``facture_id`` est relu SOUS
+    VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
+    telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
     from ..models import Facture, LigneFacture
     from ..utils.company_settings import create_provisoire, tva_standard
 
-    if intervention.facture_id:
-        existante = Facture.objects.filter(
-            pk=intervention.facture_id, company=intervention.company
-        ).exclude(statut=Facture.Statut.ANNULEE).first()
-        if existante is not None:
-            return existante
+    existante = _facture_generee_sous_verrou(intervention, 'facture_id')
+    if existante is not None:
+        return existante
 
     installation = intervention.installation
     if installation is None or installation.client_id is None:
