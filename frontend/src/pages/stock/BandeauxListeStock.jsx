@@ -37,3 +37,23 @@ export function ListeStock({ error, items, vide, children }) {
     </>
   )
 }
+
+/** Bandeau d'information (succès) d'une liste Stock, sans rôle ARIA. */
+export function InfoStock({ info }) {
+  if (!info) return null
+  return (
+    <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+      {info}
+    </div>
+  )
+}
+
+/** Bandeau d'erreur puis d'information d'une liste Stock (l'un, l'autre ou aucun). */
+export function MessagesStock({ error, info }) {
+  return (
+    <>
+      <AlerteErreurStock error={error} />
+      <InfoStock info={info} />
+    </>
+  )
+}

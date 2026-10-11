@@ -45,7 +45,6 @@
 0655e6aac354|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 07295b4bda60|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 0746f2198898|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
-077cee63dd50|frontend/src/features/uxviews/quickcreate/TicketQuickCreateModal.jsx,frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ProduitDetail.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx,frontend/src/pages/ventes/ClientQuickCreateModal.jsx,frontend/src/pages/ventes/ListesPrixPage.jsx
 07bee9d32e02|frontend/src/pages/crm/leads/views/ForecastView.jsx,frontend/src/pages/crm/leads/views/KanbanView.jsx,frontend/src/pages/installations/views/KanbanView.jsx,frontend/src/pages/interventions/InterventionsPage.jsx
 086980b0d865|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/professionnel.astro
 088e26fa8fd8|frontend/src/features/crm/workspace/sections/CadenceFrise.mry15.test.jsx,frontend/src/features/crm/workspace/sections/CadenceFrise.visite.test.jsx
@@ -459,7 +458,6 @@
 7062b43c1b95|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
 7065e1313af8|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 70ac2fda89f3|frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/factureList/FactureRow.jsx
-70d4b088574f|frontend/src/pages/stock/FournisseursStock.jsx,frontend/src/pages/stock/MouvementsPage.jsx
 70fb662e54a2|apps/web/src/pages/en/politique-de-confidentialite.astro,apps/web/src/pages/politique-de-confidentialite.astro
 70fd22358ff6|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 7205faaf85b3|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts

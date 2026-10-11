@@ -56,6 +56,7 @@ import {
   erreursCourbesPourType, messageRefusFiche, LIBELLES_FICHE, CHOIX_TRI,
 } from './pvondFicheTechnique.js'
 import { TYPES_EQUIPEMENT } from './typesEquipement'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
    point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
@@ -2303,11 +2304,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             <PrixFournisseursSection produitId={produit.id} fournisseurs={fournisseurs} isAdmin={isAdmin} />
           )}
 
-          {errors.submit && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {errors.submit}
-            </div>
-          )}
+          <AlerteErreurStock error={errors.submit} />
           {/* CALX355 — le bandeau NOMME la cellule de courbe fautive (courbe,
               point, colonne) ; il disparaît dès qu'elle est corrigée. */}
           {courbesTentees && erreursCourbes.bandeau && (

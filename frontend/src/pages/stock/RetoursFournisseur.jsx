@@ -13,6 +13,7 @@ import { EnteteStock } from './EnteteStock'
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { frErrDetail as frErr } from '../../lib/frErr'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 // L744 — Liste consultable des RETOURS FOURNISSEUR (RetourFournisseurViewSet
 // existait sans écran). Référence RF, fournisseur, statut, date + consultation
@@ -178,11 +179,7 @@ export default function RetoursFournisseur() {
         subtitle={`${items.length} retour(s)`}
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <AlerteErreurStock error={error} />
 
       <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (référence, fournisseur)…"

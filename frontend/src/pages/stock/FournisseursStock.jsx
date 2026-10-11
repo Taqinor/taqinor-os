@@ -23,6 +23,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { frErrChamps as frErr } from '../../lib/frErr'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 // XPUR4 — les 4 statuts fournisseur (miroir de `Fournisseur.Statut` côté
 // serveur — le blocage est déjà appliqué et testé serveur, cf.
@@ -130,11 +131,7 @@ function CategorieFournisseurManager({ categories, onClose, onChanged, isAdmin }
           </Button>
         </form>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
 
         {categories.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucune catégorie.</p>
@@ -392,11 +389,7 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
                       onChange={(e) => setField('motif_blocage', e.target.value)} />
           </FormField>
 
-          {errors.submit && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {errors.submit}
-            </div>
-          )}
+          <AlerteErreurStock error={errors.submit} enForm />
 
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
@@ -459,11 +452,7 @@ function ScorecardModal({ fournisseur, onClose }) {
           </DialogDescription>
         </DialogHeader>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
         {!data && !error && (
           <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
             <Spinner /> Chargement…
@@ -839,11 +828,7 @@ export default function FournisseursStock() {
                      onDone={reload} />
       )}
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <AlerteErreurStock error={error} />
       {avertissementNom && (
         <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
           {avertissementNom}

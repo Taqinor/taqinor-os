@@ -37,6 +37,7 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
@@ -214,11 +215,7 @@ export function MotifAnnulationModal({ onClose, onConfirm, busy }) {
                     onChange={(e) => setMotif(e.target.value)}
                     placeholder="ex. commande passée par erreur, fournisseur indisponible…" />
         </div>
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           <Button type="button" variant="destructive" loading={busy} onClick={confirmer}>
@@ -1254,11 +1251,7 @@ function AchatsHorsContratModal({ fournisseurs, onClose }) {
           <Button type="button" loading={busy} onClick={generer}>{busy ? '…' : 'Générer'}</Button>
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
 
         {rows !== null && (
           rows.length === 0 ? (
@@ -1477,16 +1470,7 @@ export default function BonsCommandeFournisseur() {
         )}
       />
 
-      {fusionError && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {fusionError}
-        </div>
-      )}
-      {fusionInfo && (
-        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-          {fusionInfo}
-        </div>
-      )}
+      <MessagesStock error={fusionError} info={fusionInfo} />
 
       {/* NTP2P21 — suggestions de consolidation : ≥ 2 BCF brouillon du même
           fournisseur créés la même semaine. Lecture seule tant que l'acheteur

@@ -4,6 +4,7 @@ import { Button, Input } from '../../ui'
 import NoIndex from '../../components/NoIndex'
 import publicStockApi from '../../features/stock/publicStockApi'
 import { messageServeur } from '../../features/stock/api/erreurs'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 /* ASTK219 — Kiosque de quai PUBLIC (check-in chauffeur par code, sans session).
 
@@ -76,11 +77,7 @@ export default function KiosqueQuaiPage() {
         <Button type="submit" size="lg" disabled={occupe}>Je suis arrivé</Button>
       </form>
 
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
+      <AlerteErreurStock error={erreur} />
       {resultat && (
         <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-4 text-success">
           <p className="text-lg font-semibold">Arrivée enregistrée — quai {resultat.quai}</p>

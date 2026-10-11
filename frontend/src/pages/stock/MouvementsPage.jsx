@@ -23,6 +23,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 // ZSTK7 — options du regroupement pivot (« Vue groupée »).
 const AGREGATION_GROUP_BY = [
@@ -359,11 +360,7 @@ export default function MouvementsPage() {
         )}
       />
 
-      {exportError && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {exportError}
-        </div>
-      )}
+      <AlerteErreurStock error={exportError} />
       {exportNotice && (
         <div role="status" className="rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm">
           {exportNotice}
@@ -405,11 +402,7 @@ export default function MouvementsPage() {
         </div>
       )}
 
-      {pivotError && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {pivotError}
-        </div>
-      )}
+      <AlerteErreurStock error={pivotError} />
 
       {vuePivot ? (
         <DataTable
@@ -641,11 +634,7 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
             />
           </FormField>
 
-          {errors.submit && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {errors.submit}
-            </div>
-          )}
+          <AlerteErreurStock error={errors.submit} enForm />
 
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>

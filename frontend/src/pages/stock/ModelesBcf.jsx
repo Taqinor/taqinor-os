@@ -18,6 +18,7 @@ import { EnteteStock } from './EnteteStock'
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { frErrDetail } from '../../lib/frErr'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 const frErr = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrDetail(err, fallback)
 
@@ -198,11 +199,7 @@ function GenererModal({ modele, fournisseurs, onClose, onGenere }) {
           <SelectFournisseur id="gen-fou" value={fournisseur} onChange={setFournisseur}
                              fournisseurs={fournisseurs} />
         </div>
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
           <Button type="button" loading={busy} onClick={generer}>
