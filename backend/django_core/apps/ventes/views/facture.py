@@ -37,6 +37,8 @@ from ..serializers_facturation import (  # noqa: F401
     AvoirSerializer,
     NoteDebitSerializer,
     RelanceLogSerializer,
+)
+from ..serializers_facturation import (
     FactureActivitySerializer,
     RelancerFactureSerializer,
 )

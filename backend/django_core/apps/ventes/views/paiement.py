@@ -37,7 +37,6 @@ from ..serializers_facturation import (  # noqa: F401
     PaiementSerializer,
     AffectationPaiementSerializer,
     RetenueSubieSerializer,
-    PaiementAvecRetenueEntreeSerializer,
     AvoirSerializer,
     RelanceLogSerializer,
 )
