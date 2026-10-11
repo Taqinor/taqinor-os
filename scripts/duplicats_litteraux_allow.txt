@@ -427,7 +427,6 @@
 67d0df3800d8|frontend/src/pages/installations/InterventionRapportPublicPage.jsx,frontend/src/pages/installations/InterventionSuiviPublicPage.jsx
 683fa558740e|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
 685a1cd943e2|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
-68a210681ae8|frontend/src/features/ventes/solar.deuxOptimiseurs.test.mjs,frontend/src/features/ventes/solarOptionTotaux.test.mjs
 69a59ea11c8a|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 6a2b513d2891|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 6aab50ceb413|apps/web/src/scripts/roof-tool-pro11.ts,apps/web/src/scripts/roofPro11/optimizer.ts
