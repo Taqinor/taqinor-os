@@ -61,7 +61,7 @@ class RappelDemandeTests(TestCase):
             statut=RelanceEtape.Statut.A_FAIRE)
 
     def test_sans_plan_ouvert_une_seule_touche_est_posee(self):
-        etape = cadence_signaux.poser_touche_rappel_demande(
+        etape = cadence_signaux._poser_touche_rappel_demande(
             self.lead, user=self.acteur)
         self.assertIsNotNone(etape)
         self.assertEqual(etape.libelle, cadence_signaux.RAPPEL_DEMANDE_LIBELLE)
@@ -71,7 +71,7 @@ class RappelDemandeTests(TestCase):
                 statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
 
     def test_lecheance_tombe_dans_la_fenetre_dappel(self):
-        etape = cadence_signaux.poser_touche_rappel_demande(
+        etape = cadence_signaux._poser_touche_rappel_demande(
             self.lead, user=self.acteur)
         self.assertTrue(horaires.est_dans_fenetre(
             etape.due_at, self.company, canal=RelanceEtape.Canal.APPEL))
@@ -79,16 +79,16 @@ class RappelDemandeTests(TestCase):
     def test_un_rappel_demande_a_23h_ne_tombe_pas_a_23h(self):
         nuit = datetime.datetime(
             2026, 9, 15, 23, 0, tzinfo=horaires.CASABLANCA)
-        etape = cadence_signaux.poser_touche_rappel_demande(
+        etape = cadence_signaux._poser_touche_rappel_demande(
             self.lead, user=self.acteur, quand=nuit)
         self.assertGreater(etape.due_at, nuit)
         self.assertTrue(horaires.est_dans_fenetre(
             etape.due_at, self.company, canal=RelanceEtape.Canal.APPEL))
 
     def test_deux_clics_ne_laissent_quune_ligne(self):
-        premiere = cadence_signaux.poser_touche_rappel_demande(
+        premiere = cadence_signaux._poser_touche_rappel_demande(
             self.lead, user=self.acteur)
-        seconde = cadence_signaux.poser_touche_rappel_demande(
+        seconde = cadence_signaux._poser_touche_rappel_demande(
             self.lead, user=self.acteur)
         self.assertEqual(premiere.pk, seconde.pk)
         self.assertEqual(
@@ -114,7 +114,7 @@ class RappelDemandeTests(TestCase):
         avant_prochaine = prochaine.due_at.astimezone(datetime.timezone.utc)
         avant_suivante = suivante.due_at.astimezone(datetime.timezone.utc)
 
-        deplacee = cadence_signaux.poser_touche_rappel_demande(
+        deplacee = cadence_signaux._poser_touche_rappel_demande(
             self.lead, user=self.acteur)
         prochaine.refresh_from_db()
         suivante.refresh_from_db()
@@ -135,13 +135,13 @@ class RappelDemandeTests(TestCase):
         """CKP2 — sinon le barreau suivant renaîtrait à sa date d'origine."""
         prochaine = self._touche(ordre=1, dans_jours=3)
         ancre_avant = prochaine.cadence_depart
-        cadence_signaux.poser_touche_rappel_demande(self.lead, user=self.acteur)
+        cadence_signaux._poser_touche_rappel_demande(self.lead, user=self.acteur)
         prochaine.refresh_from_db()
         self.assertNotEqual(prochaine.cadence_depart, ancre_avant)
 
     def test_le_chatter_dit_pourquoi_le_plan_a_bouge(self):
         self._touche(ordre=1, dans_jours=3)
-        cadence_signaux.poser_touche_rappel_demande(self.lead, user=self.acteur)
+        cadence_signaux._poser_touche_rappel_demande(self.lead, user=self.acteur)
         notes = list(self.lead.activites.values_list('body', flat=True))
         self.assertTrue(
             any('Rappel demandé par le client' in n for n in notes), notes)
@@ -149,10 +149,10 @@ class RappelDemandeTests(TestCase):
     def test_un_lead_sans_societe_ne_casse_rien(self):
         orphelin = Lead(nom='Sans société')
         self.assertIsNone(
-            cadence_signaux.poser_touche_rappel_demande(orphelin))
+            cadence_signaux._poser_touche_rappel_demande(orphelin))
 
     def test_la_file_du_lead_est_recalee(self):
-        etape = cadence_signaux.poser_touche_rappel_demande(
+        etape = cadence_signaux._poser_touche_rappel_demande(
             self.lead, user=self.acteur)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.relance_date, etape.due_date)

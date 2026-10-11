@@ -255,7 +255,7 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     suivante = None
     raison_suite = None
     if suite and (statut == RelanceEtape.Statut.SAUTEE
-                  or issue_fait_naitre_la_suite(outcome, etape.cadence)):
+                  or _issue_fait_naitre_la_suite(outcome, etape.cadence)):
         try:
             suivante, raison_suite = materialiser_touche_suivante(
                 etape, user, avec_raison=True)
@@ -674,7 +674,7 @@ CADENCES_ARRETEES_PAR_ISSUE = {
 }
 
 
-def issue_fait_naitre_la_suite(outcome, cadence):
+def _issue_fait_naitre_la_suite(outcome, cadence):
     """CAD1 — cette ISSUE, sur une touche de CETTE cadence, doit-elle faire
     naître le barreau suivant du protocole ?
 

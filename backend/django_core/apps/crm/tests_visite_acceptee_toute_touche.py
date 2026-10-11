@@ -287,6 +287,6 @@ class PromessesTests(SimpleTestCase):
         self.assertEqual(cadence_touche.CADENCES_ARRETEES_PAR_ISSUE[VISITE],
                          cadence_touche.CADENCES_ARRETEES_PAR_ISSUE['joint'])
         self.assertFalse(
-            cadence_touche.issue_fait_naitre_la_suite(VISITE, 'contact'))
+            cadence_touche._issue_fait_naitre_la_suite(VISITE, 'contact'))
         self.assertIn(VISITE, cadence_reperes._OUTCOMES_SANS_CLOTURE)
         self.assertIn(VISITE, {k for k, _ in LeadActivity.OUTCOMES})

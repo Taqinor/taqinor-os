@@ -199,7 +199,7 @@ def _poser_etape_passation(lead):
         note='Posée automatiquement : le dossier change de conseiller.')
 
 
-def poser_touche_passation(lead, user, ancien_responsable=None):
+def _poser_touche_passation(lead, user, ancien_responsable=None):
     """CAD54 — la touche qui DIT au client que son dossier change de mains.
 
     Posée seulement sur un lead DÉJÀ CONTACTÉ (``first_contacted_at``) : sur
@@ -230,7 +230,7 @@ def poser_touche_passation(lead, user, ancien_responsable=None):
     return etape
 
 
-def notifier_touches_heritees(lead, nouveau_responsable):
+def _notifier_touches_heritees(lead, nouveau_responsable):
     """CAD54 — le nouveau responsable apprend CE QU'IL HÉRITE, pas seulement
     qu'un lead lui est assigné.
 
@@ -300,8 +300,8 @@ def reattribuer_lead(lead, user, nouveau_responsable):
         return None
     lead.owner = nouveau_responsable
     lead.save(update_fields=['owner'])
-    notifier_touches_heritees(lead, nouveau_responsable)
-    etape = poser_touche_passation(lead, user, ancien_responsable=ancien)
+    _notifier_touches_heritees(lead, nouveau_responsable)
+    etape = _poser_touche_passation(lead, user, ancien_responsable=ancien)
     _recaler_file(lead, user)
     return etape
 
@@ -608,7 +608,7 @@ def tracer_opposition_registre(lead, *, source, occurred_at=None):
         return None
 
 
-def marquer_lead_ne_plus_contacter(lead, user):
+def _marquer_lead_ne_plus_contacter(lead, user):
     """CAD5 — coche ``Lead.ne_plus_contacter`` et le JOURNALISE comme la
     fiche le ferait (ligne « modification » du chatter, ancien → nouveau).
 
@@ -649,7 +649,7 @@ def repondre_ne_plus_contacter(etape, user, *, note='', body=''):
     Renvoie la touche close."""
     lead = etape.lead
     spec = REPONSES_TOUCHE[REPONSE_NE_PLUS_CONTACTER]
-    marquer_lead_ne_plus_contacter(lead, user)
+    _marquer_lead_ne_plus_contacter(lead, user)
     tracer_opposition_registre(lead, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
     arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER,
                     exclure=etape)
@@ -853,7 +853,7 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
     return reprise
 
 
-def prolonger_validite_attente_accord(lead, user=None):
+def _prolonger_validite_attente_accord(lead, user=None):
     """CIQ510 — à la réponse « En attente d'un accord », le dernier devis
     ENVOYÉ du lead voit sa validité portée à ``max(validité actuelle,
     date_validite_credit(devis))`` par la façade de ventes
@@ -892,7 +892,7 @@ LIBELLE_VALIDITE_A_RENOUVELER = 'Validité à renouveler — {reference}'
 CLE_VALIDITE_A_RENOUVELER = 'validite_a_renouveler'
 
 
-def texte_validite_a_renouveler(reference, validite, decision):
+def _texte_validite_a_renouveler(reference, validite, decision):
     """CIQ512 — le texte de l'étape « validité à renouveler »."""
     return (f'La proposition {reference} expire le {validite:%d/%m}, avant '
             f'la décision attendue le {decision:%d/%m} : prévenez le client '
@@ -900,7 +900,7 @@ def texte_validite_a_renouveler(reference, validite, decision):
             'que vous re-tarifez')
 
 
-def poser_etape_validite_a_renouveler(lead, decision):
+def _poser_etape_validite_a_renouveler(lead, decision):
     """CIQ512 — la décision attendue (``decision``, une date) tombe APRÈS la
     validité effective du dernier devis ENVOYÉ du lead (après prolongation
     CIQ510) : une étape MANUELLE est posée au jour de la validité, hors
@@ -940,7 +940,7 @@ def poser_etape_validite_a_renouveler(lead, decision):
         validite, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
     etape = _poser_etape_de_filet(
         lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL, vise=vise,
-        note=texte_validite_a_renouveler(devis.reference, validite, decision))
+        note=_texte_validite_a_renouveler(devis.reference, validite, decision))
     if etape.cle != CLE_VALIDITE_A_RENOUVELER:
         etape.cle = CLE_VALIDITE_A_RENOUVELER
         etape.save(update_fields=['cle'])
@@ -1020,10 +1020,10 @@ def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
         body=corps, outcome=spec['outcome'])
     # CIQ510 — l'attente déclarée APRÈS l'envoi allonge la validité du
     # devis ENVOYÉ du lead (réglage société), jamais ne la raccourcit.
-    prolonger_validite_attente_accord(lead, user)
+    _prolonger_validite_attente_accord(lead, user)
     # CIQ512 — une décision attendue APRÈS la validité (même prolongée) :
     # une étape MANUELLE datée au jour de la validité, jamais un statut.
-    poser_etape_validite_a_renouveler(lead, jour)
+    _poser_etape_validite_a_renouveler(lead, jour)
     if reprise is None:
         etape.refresh_from_db()
         return etape
