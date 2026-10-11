@@ -96,3 +96,20 @@ class PortailPaiementTests(TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertFalse(PaiementFacturePortail.objects.filter(
             facture=facture).exists())
+
+    def test_liste_facture_a_retenue_seule_non_payable(self):
+        """AFAC100 — la LISTE sert `montant_exigible` et ne marque payable
+        que si l'exigible > 0 (`montant_du` reste servi pour l'affichage)."""
+        ouverte = self._facture('FAC-AFAC100-3')
+        seule = self._facture('FAC-AFAC100-4')
+        Paiement.objects.create(
+            company=self.company, facture=seule, client=self.client_a,
+            montant=TTC - RETENUE, date_paiement=timezone.localdate())
+        res = self.api.get('/api/django/portail/mes-factures/')
+        lignes = {x['id']: x for x in res.data['results']}
+        self.assertEqual(lignes[ouverte.id]['montant_exigible'], '31023.50')
+        self.assertEqual(lignes[ouverte.id]['montant_du'], '32023.50')
+        self.assertTrue(lignes[ouverte.id]['payable'])
+        self.assertEqual(lignes[seule.id]['montant_exigible'], '0.00')
+        self.assertEqual(lignes[seule.id]['montant_du'], '1000.00')
+        self.assertFalse(lignes[seule.id]['payable'])
