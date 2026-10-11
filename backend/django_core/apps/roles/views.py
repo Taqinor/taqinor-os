@@ -372,8 +372,8 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
                 'utilisateurs': drf_serializers.ListField(
                     child=drf_serializers.DictField())}),
             (200, 'text/csv'): OpenApiTypes.STR,
-            (400, 'application/json'): inline_serializer('RevueAccesErreur', {
-                'detail': drf_serializers.CharField()}),
+            # 400 : enveloppe ErreurApi ajoutée par core.openapi_erreurs (ENF2),
+            # c'est la forme réellement servie par taqinor_exception_handler.
         })
     @action(detail=False, methods=['get'], url_path='revue-acces',
             renderer_classes=[JSONRenderer, _CsvOrJSONRenderer])

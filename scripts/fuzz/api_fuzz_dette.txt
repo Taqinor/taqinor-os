@@ -1625,3 +1625,4 @@ API accepted schema-violating request|POST /api/django/ventes/devis/{id}/whatsap
 API accepted schema-violating request|PUT /api/django/stock/unites-logistiques/{id}/
 Server error|POST /api/django/achats/factures-fournisseur/depuis-ocr/
 Undocumented HTTP status code|DELETE /api/django/ventes/devis/{id}/overrides/
+API rejected schema-compliant request|PATCH /api/django/core/formulaire-champs/{id}/
