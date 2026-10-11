@@ -7,10 +7,11 @@ ecriture_pour_paiement_fournisseur — jamais d'import de compta ici.
 Run:
     python manage.py test apps.stock.test_yledg2_events -v 2
 """
+import re
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -100,3 +101,34 @@ class TestYledg2Events(TestCase):
         self.assertEqual(len(catcher.calls), 1)
         paiement = PaiementFournisseur.objects.get(facture=facture)
         self.assertEqual(catcher.calls[0], (paiement.id, self.company.id))
+
+
+class CatalogueAbonnesStockTests(SimpleTestCase):
+    """ASTK210 — le catalogue ne promet un « Abonné : X » pour un signal émis
+    par apps/stock que s'il existe un receiver vivant après ``django.setup()``
+    (sinon l'entrée dit « Abonné : aucun (réservé ...) »)."""
+
+    RESERVES = ('mouvement_stock_enregistre',
+                'paiement_fournisseur_enregistre')
+
+    def _signaux_stock(self):
+        from core.events import stock as bus_stock
+        return {nom: getattr(bus_stock, nom) for nom in bus_stock.__all__}
+
+    def test_abonne_annonce_a_un_receiver(self):
+        from core.event_catalog import CATALOG
+        for nom, signal in self._signaux_stock().items():
+            description = CATALOG[nom]['description']
+            annonce = re.search(r'Abonné : (?!aucun)', description)
+            if annonce:
+                self.assertGreaterEqual(
+                    len(signal.receivers), 1,
+                    f"{nom} annonce un abonné sans receiver vivant")
+
+    def test_signaux_reserves_disent_aucun(self):
+        from core.event_catalog import CATALOG
+        signaux = self._signaux_stock()
+        for nom in self.RESERVES:
+            self.assertEqual(len(signaux[nom].receivers), 0, nom)
+            self.assertIn('Abonné : aucun (réservé',
+                          CATALOG[nom]['description'], nom)
