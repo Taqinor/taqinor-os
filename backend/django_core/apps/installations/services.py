@@ -4046,10 +4046,9 @@ def recreer_nomenclature_ordre_assemblage(ordre, user=None):
 def recreer_lignes_ordre_demontage(ordre_demontage):
     """ACHT17 — jumeau démontage : lignes recopiées depuis la BOM du kit
     courant × la quantité courante (ordre planifié)."""
-    from .models import OrdreDemontageLigne
     # ACHT100 (jumeau) — les lignes ajoutées à la main sont conservées.
     ordre_demontage.lignes.filter(
-        origine=OrdreDemontageLigne.Origine.KIT).delete()
+        origine=ordre_demontage.lignes.model.Origine.KIT).delete()
     seed_lignes_demontage(ordre_demontage)
 
 

@@ -833,6 +833,11 @@ SPECTACULAR_SETTINGS = {
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
+        # ACHT100 — `origine` (kit / ajout) : jeu IDENTIQUE sur
+        # OrdreAssemblageLigne et OrdreDemontageLigne. Nommage de schéma
+        # uniquement — aucun choix ne change.
+        'OrdreLigneOrigineEnum':
+            'apps.installations.models_kitting.OrdreAssemblageLigne.Origine',
         # ALEA31 — `portee` est servi par UserSerializer ET MeSerializer
         # (/auth/me/) : même jeu, deux composants → le générateur ne savait
         # plus nommer l'enum (« PorteeB4dEnum »). On garde le nom historique.
