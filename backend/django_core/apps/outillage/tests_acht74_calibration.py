@@ -88,13 +88,13 @@ class CalibrationTests(TestCase):
         data = self._creer()
         r = self.api.post(f'{URL}{data["id"]}/calibrer/',
                           {'date_calibration': '2099-01-01'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('futur', str(r.data))
         self.api.post(f'{URL}{data["id"]}/calibrer/',
                       {'date_calibration': str(self.jour)}, format='json')
         r = self.api.post(f'{URL}{data["id"]}/calibrer/',
                           {'date_calibration': '2020-01-01'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('antérieure', str(r.data))
         outil = Outillage.objects.get(pk=data['id'])
         self.assertEqual(outil.date_derniere_calibration, self.jour)

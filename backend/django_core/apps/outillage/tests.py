@@ -155,6 +155,23 @@ class OutillageTests(TestCase):
         item = KitOutillageItem.objects.get(id=resp.data['id'])
         self.assertEqual(item.company_id, self.co_a.id)
 
+    def test_kit_actif_strictement_booleen(self):
+        # ENF11 — `actif` non booléen (0, "oui") refusé en 400 au lieu d'être
+        # coercé ; un vrai booléen reste accepté en création et en PUT.
+        api = auth(self.admin_a)
+        for mauvais in (0, 1, 'oui'):
+            resp = api.post('/api/django/outillage/kits/', {
+                'nom': 'Kit strict', 'actif': mauvais}, format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+            self.assertIn('actif', resp.data)
+        resp = api.post('/api/django/outillage/kits/', {
+            'nom': 'Kit strict', 'actif': False}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertFalse(resp.data['actif'])
+        resp = api.put(f"/api/django/outillage/kits/{resp.data['id']}/", {
+            'nom': 'Kit strict', 'actif': 'non'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_kit_item_rejects_foreign_outil(self):
         kit = KitOutillage.objects.create(company=self.co_a, nom='Kit Y')
         foreign = Outillage.objects.create(company=self.co_b, nom='Clé B')

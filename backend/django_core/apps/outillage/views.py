@@ -145,18 +145,18 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
             return Response({'date_calibration': 'Date invalide (YYYY-MM-DD).'},
                             status=status.HTTP_400_BAD_REQUEST)
         # ACHT74 — une calibration ne se date ni dans le futur ni avant la
-        # précédente.
+        # précédente (refus d'ÉTAT daté d'aujourd'hui / de l'outil : 409).
         if date_cal > datetime.date.today():
             return Response(
                 {'date_calibration': 'Date de calibration dans le futur.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         if (outil.date_derniere_calibration is not None
                 and date_cal < outil.date_derniere_calibration):
             return Response(
                 {'date_calibration': (
                     'Date antérieure à la dernière calibration '
                     f'({outil.date_derniere_calibration}).')},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         outil.date_derniere_calibration = date_cal
         # `Outillage.save()` dérive `date_prochaine_calibration` (vrais mois).
         outil.save(update_fields=[

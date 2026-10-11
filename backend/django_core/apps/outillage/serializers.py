@@ -1,6 +1,8 @@
+from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import BooleenStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Outillage, KitOutillage, KitOutillageItem
@@ -66,6 +68,11 @@ class KitOutillageItemSerializer(SameCompanyFKSerializerMixin,
 
 
 class KitOutillageSerializer(serializers.ModelSerializer):
+    # ENF11 — `actif` strictement booléen (0 / "oui" étaient coercés en silence).
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.BooleanField: BooleenStrict,
+    }
     items = KitOutillageItemSerializer(many=True, read_only=True)
     type_intervention_label = serializers.SerializerMethodField()
 
