@@ -675,11 +675,15 @@ def notify(user, event_type, title, body='', link=None, company=None,
         if not (prefs.get('in_app') or hors_app):
             return None
         try:
-            ligne = Notification.objects.create(
-                company=company, recipient=user, event_type=event_type,
-                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-                link=str(link or '')[:512], reason=reason,
-                programmee_pour=programmee_pour)
+            # APAR48 — point de sauvegarde : un échec d'écriture n'interrompt
+            # jamais la transaction de l'émetteur (encaissement, signature…).
+            with transaction.atomic():
+                ligne = Notification.objects.create(
+                    company=company, recipient=user, event_type=event_type,
+                    title=str(title)[:255],
+                    body=str(body or '')[:MAX_BODY_LEN],
+                    link=str(link or '')[:512], reason=reason,
+                    programmee_pour=programmee_pour)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification différée échouée : %s', exc)
             return None
@@ -688,10 +692,13 @@ def notify(user, event_type, title, body='', link=None, company=None,
     created = None
     if prefs.get('in_app'):
         try:
-            created = Notification.objects.create(
-                company=company, recipient=user, event_type=event_type,
-                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-                link=str(link or '')[:512], reason=reason)
+            # APAR48 — création in-app sous point de sauvegarde (cf. plus haut).
+            with transaction.atomic():
+                created = Notification.objects.create(
+                    company=company, recipient=user, event_type=event_type,
+                    title=str(title)[:255],
+                    body=str(body or '')[:MAX_BODY_LEN],
+                    link=str(link or '')[:512], reason=reason)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)
             created = None

@@ -330,13 +330,22 @@ def _router_vers_alternative(step, instance, moment):
 def _emit_etape_activee(step, company):
     """NTWFL5 — émet ``core.events.workflow_etape_activee`` (best-effort,
     jamais bloquant : une notification cassée ne doit jamais empêcher le
-    moteur BPM d'avancer)."""
+    moteur BPM d'avancer).
+
+    APAR48 — l'envoi tourne dans un point de sauvegarde et une erreur est
+    journalisée (plus d'``except: pass`` nu) : même un abonné non décoré
+    ``@abonne_best_effort`` ne peut laisser la transaction de ``avancer``
+    interrompue."""
     try:
         from core.events import workflow_etape_activee
-        workflow_etape_activee.send(
-            sender='core.workflow', step=step, company=company)
-    except Exception:  # pragma: no cover - défensif
-        pass
+        with transaction.atomic():
+            workflow_etape_activee.send(
+                sender='core.workflow', step=step, company=company)
+    except Exception:  # noqa: BLE001 — best-effort, journalisé
+        import logging
+        logging.getLogger(__name__).exception(
+            'APAR48 : émission workflow_etape_activee échouée (étape %s)',
+            getattr(step, 'pk', None))
 
 
 def _steps_apres(instance, ordre):

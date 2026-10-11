@@ -22,55 +22,48 @@ Les instances (``devis``/``facture``/``intervention``) ne sont manipulées qu'au
 travers des kwargs du signal (attributs ``company``/``created_by``/``user``) —
 aucun import de modèle d'une autre app.
 """
-import logging
-
 from django.dispatch import receiver
 
 from core.events import (
-    devis_accepted, devis_sent, facture_payee, intervention_completed,
+    abonne_best_effort, devis_accepted, devis_sent, facture_payee,
+    intervention_completed,
 )
 
 from .services import completer_par_evenement
 
-logger = logging.getLogger(__name__)
 
-
-def _safe_complete(event_key, company, user):
-    """Best-effort : une erreur ici ne doit jamais casser l'action métier
-    (l'émission du signal est déjà actée côté app émettrice)."""
-    from django.db import transaction
-    try:
-        # ADEV54 — point de sauvegarde PROPRE : une erreur base ici est
-        # annulée seule, jamais la transaction de l'action métier émettrice.
-        with transaction.atomic():
-            completer_par_evenement(event_key, company, user)
-    except Exception:  # noqa: BLE001 — best-effort
-        logger.warning('NTDMO12 : auto-complétion onboarding échouée pour '
-                       'event_key=%s', event_key, exc_info=True)
+# APAR48 — chaque abonné est ANNEXE : ``@abonne_best_effort`` (core.events)
+# l'isole dans son point de sauvegarde et journalise son erreur — il ne casse
+# jamais l'action métier émettrice (signature, encaissement, synchro terrain).
+# Remplace le filet maison d'ADEV54 (même effet, une seule définition).
 
 
 @receiver(devis_sent, dispatch_uid='onboarding_complete_devis_on_sent')
+@abonne_best_effort
 def _complete_on_devis_sent(sender, devis, user, ancien_statut, **kwargs):
-    _safe_complete('devis', getattr(devis, 'company', None), user)
+    completer_par_evenement('devis', getattr(devis, 'company', None), user)
 
 
 @receiver(devis_accepted, dispatch_uid='onboarding_complete_devis_on_accepted')
+@abonne_best_effort
 def _complete_on_devis_accepted(sender, devis, user, ancien_statut, **kwargs):
-    _safe_complete('devis', getattr(devis, 'company', None), user)
+    completer_par_evenement('devis', getattr(devis, 'company', None), user)
 
 
 @receiver(facture_payee, dispatch_uid='onboarding_complete_paiement_on_payee')
+@abonne_best_effort
 def _complete_on_facture_payee(sender, instance, company, **kwargs):
     # ``facture_payee`` ne porte pas d'utilisateur : on attribue au créateur de
     # la facture (best-effort).
     user = getattr(instance, 'created_by', None)
-    _safe_complete('paiement', company, user)
+    completer_par_evenement('paiement', company, user)
 
 
 @receiver(intervention_completed,
           dispatch_uid='onboarding_complete_chantier_on_intervention')
+@abonne_best_effort
 def _complete_on_intervention_completed(
         sender, intervention, company, user, **kwargs):
-    # WIR59 — ``user`` peut être None (action système) : ``_safe_complete``
-    # est déjà no-op sans utilisateur (cf. ``marquer_item_complete``).
-    _safe_complete('chantier', company, user)
+    # WIR59 — ``user`` peut être None (action système) :
+    # ``completer_par_evenement`` est no-op sans utilisateur.
+    completer_par_evenement('chantier', company, user)

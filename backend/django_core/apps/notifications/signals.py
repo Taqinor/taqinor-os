@@ -36,6 +36,8 @@ import logging
 
 from django.db.models.signals import post_save, pre_save
 
+from core.events import abonne_best_effort
+
 from .types_evenements import EventType
 from .services import notify, resolve_recipients_reason
 
@@ -146,6 +148,9 @@ def devis_expired_receiver(sender, devis, ancien_statut, **kwargs):
 # ``facture_paid`` (YDOCF4) porte le même fait métier — il est DÉPRÉCIÉ pour
 # l'abonnement (documenté dans la docstring du bus) : on n'écoute que
 # ``facture_payee`` pour ne jamais notifier deux fois.
+# APAR48 — ``@abonne_best_effort`` : point de sauvegarde + journal, une
+# panne ici n'empêche jamais l'encaissement.
+@abonne_best_effort
 def facture_payee_receiver(sender, instance, company, **kwargs):
     recipient = getattr(instance, 'created_by', None)
     if recipient is None:
@@ -153,21 +158,17 @@ def facture_payee_receiver(sender, instance, company, **kwargs):
         recipient = getattr(devis, 'created_by', None)
     if recipient is None:
         return
-    try:
-        notify(
-            user=recipient,
-            event_type=EventType.FACTURE_PAYEE,
-            title='Facture intégralement réglée',
-            body=(f'La facture {instance.reference} est intégralement '
-                  'réglée.'),
-            # WIR176 — `/factures/<pk>` n'existe pas côté front ; FactureList
-            # consomme `?facture=<pk>` (même patron que QX12/`/ventes/devis`).
-            link=f'/ventes/factures?facture={instance.pk}',
-            company=company,
-        )
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        logger.exception(
-            'notify FACTURE_PAYEE failed (facture %s)', instance.pk)
+    notify(
+        user=recipient,
+        event_type=EventType.FACTURE_PAYEE,
+        title='Facture intégralement réglée',
+        body=(f'La facture {instance.reference} est intégralement '
+              'réglée.'),
+        # WIR176 — `/factures/<pk>` n'existe pas côté front ; FactureList
+        # consomme `?facture=<pk>` (même patron que QX12/`/ventes/devis`).
+        link=f'/ventes/factures?facture={instance.pk}',
+        company=company,
+    )
 
 
 # ── Bon de commande créé → BON_COMMANDE_CREE (ARC36) ────────────────────────
@@ -210,21 +211,19 @@ def bon_commande_cree_receiver(sender, instance, company, **kwargs):
 # utilisateur (seulement ``step_def.role_requis``, un libellé libre sans
 # lien vers un compte réel) : on notifie les MANAGERS de la société, même
 # repli que ``automation_approval_post_save`` ci-dessus.
+# APAR48 — abonné best-effort (point de sauvegarde + journal).
+@abonne_best_effort
 def workflow_etape_activee_receiver(sender, step, company, **kwargs):
-    try:
-        from .sweeps import _managers
-        title = "Approbation demandée"
-        body = (f'L\'étape « {step.step_def.nom} » attend une décision '
-                '(processus BPM).')
-        link = '/approbations?source=workflow'
-        for approver in _managers(company, EventType.APPROVAL_REQUESTED):
-            notify(
-                approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                link=link, company=company, reason=resolve_recipients_reason(
-                    company, EventType.APPROVAL_REQUESTED))
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        logger.exception(
-            'notify APPROVAL_REQUESTED failed (workflow step %s)', step.pk)
+    from .sweeps import _managers
+    title = "Approbation demandée"
+    body = (f'L\'étape « {step.step_def.nom} » attend une décision '
+            '(processus BPM).')
+    link = '/approbations?source=workflow'
+    for approver in _managers(company, EventType.APPROVAL_REQUESTED):
+        notify(
+            approver, EventType.APPROVAL_REQUESTED, title, body=body,
+            link=link, company=company, reason=resolve_recipients_reason(
+                company, EventType.APPROVAL_REQUESTED))
 
 
 # ── Ticket SAV résolu → SAV_TICKET_RESOLU (ARC37) ───────────────────────────
