@@ -90,11 +90,8 @@ const calepinageApi = {
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
     layout: (id) => api.get(`${pivot(id)}layout/`),
-    // ACAL316 — If-Match OBLIGATOIRE (428 sans jeton) : `empreinte` est l'empreinte « document »
-    // lue avec le document (`GET layout/`, design-context) ou rendue par la dernière écriture ;
-    // un document encore vide n'en a pas, son jeton est l'ETag vide `""`.
-    enregistrerLayoutCalepinage: (id, corps, empreinte) => api.post(`${pivot(id)}layout/`, corps, jetonIfMatch(empreinte)),
-
+    // ACAL364 — plus aucun écran n'écrit le document entier par `layout/` hors de l'atelier
+    // (qui passe par `enregistrerLayoutCalepinageConditionnel`, If-Match) : la clé sans appelant est retirée.
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
     // ventes (MinIO + URL présignée) ; aucun second chemin de stockage.
     // `corps` est un FormData : on laisse axios poser sa frontière multipart.
