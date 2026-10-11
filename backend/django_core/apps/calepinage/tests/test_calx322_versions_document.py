@@ -28,6 +28,14 @@ from apps.calepinage.services.documents.versions_document import (
     VersionDocumentRefuse, _nom_fichier_version, _numero_depuis_nom,
     enregistrer_version_document, _prochain_numero, versions_du_document,
 )
+import copy
+from unittest import mock
+from django.contrib.contenttypes.models import ContentType
+from apps.calepinage.models import Calepinage
+from apps.records.models import Attachment
+from .test_api_liste import BaseApiCalepinage, url_detail
+from .test_cal171_planche import LAYOUT
+from .test_calx308_diagramme_pertes_svg import RESULTAT
 
 
 class NomFichierEtNumeroTest(unittest.TestCase):
@@ -107,18 +115,6 @@ if __name__ == '__main__':  # pragma: no cover
 #
 # Écrit ici mais NON EXÉCUTÉ localement (pas de MinIO/Postgres sur ce poste
 # de lane, et ``store_attachment`` exige les deux) : la CI valide.
-
-import copy  # noqa: E402 - après les essais purs
-from unittest import mock  # noqa: E402
-
-from django.contrib.contenttypes.models import ContentType  # noqa: E402
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-from apps.records.models import Attachment  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
-from .test_cal171_planche import LAYOUT  # noqa: E402
-from .test_calx308_diagramme_pertes_svg import RESULTAT  # noqa: E402
 
 #: Un « PDF » RÉEL au sens des octets magiques (``store_attachment`` refuse
 #: tout le reste) — le contenu lui-même n'est jamais inspecté au-delà.

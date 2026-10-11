@@ -212,12 +212,9 @@ class AucunPrixTest(unittest.TestCase):
                     self.assertNotIn(mot, cle, chemin)
 
     def test_la_garde_cal122_est_etendue_au_service(self):
-        try:
-            from apps.calepinage.tests.test_aucun_prix_achat import (
-                cles_interdites,
-            )
-        except Exception as erreur:  # noqa: BLE001 — registre Django absent
-            self.skipTest(f'registre Django non chargé ici : {erreur}')
+        from apps.calepinage.tests.test_aucun_prix_achat import (
+            cles_interdites,
+        )
         for sortie in self._toutes():
             self.assertEqual(cles_interdites(sortie), [])
 

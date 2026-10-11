@@ -16,9 +16,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import BandeauProvenanceProduction, {
-  BandeauBorneHaute, ReglagesUtilises, estIncomplet,
-} from './BandeauProvenanceProduction'
+import BandeauProvenanceProduction, { BandeauBorneHaute, ReglagesUtilises } from './BandeauProvenanceProduction'
+import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat

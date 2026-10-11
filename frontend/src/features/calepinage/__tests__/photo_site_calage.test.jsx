@@ -74,9 +74,8 @@ vi.mock('leaflet', () => {
 
 vi.mock('leaflet/dist/leaflet.css', () => ({}))
 
-const {
-  default: PhotoSiteCalage, positionsInitiales, coinsDepuisMarqueurs,
-} = await import('../PhotoSiteCalage')
+const { default: PhotoSiteCalage } = await import('../PhotoSiteCalage')
+const { positionsInitiales, coinsDepuisMarqueurs } = await import('../PhotoSiteCalage.helpers')
 
 beforeEach(() => {
   vi.clearAllMocks()

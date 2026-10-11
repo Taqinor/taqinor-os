@@ -40,6 +40,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from .calepinages import CalepinageViewSet
 
 __all__ = ['comparer_projets', 'comparatif_xlsx']
 
@@ -99,8 +100,6 @@ def comparatif_xlsx(self, request, pk=None):
         octets, mime=MIME_XLSX,
         nom_fichier='comparatif-' + nom_de_fichier(calepinage, 'xlsx'))
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7 / bug de classe #105).

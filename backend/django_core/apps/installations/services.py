@@ -4291,7 +4291,7 @@ def _log_transition_statut_chatter(instance, ancien, nouveau, *, user=None):
         log_field_change(
             instance, 'statut', ancien, nouveau, user=user,
             field_label='Statut')
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # best-effort, jamais bloquant
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P44 : journal chatter de transition échoué (%s %s)',
@@ -4388,7 +4388,7 @@ def emettre_demande_achat_approuvee(demande, *, user=None):
             company=demande.company,
             user=user,
             montant_estime=getattr(demande, 'montant_estime', None))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # best-effort, jamais bloquant
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P38 : émission demande_achat_approuvee échouée (demande %s)',
@@ -5959,7 +5959,7 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
             from . import field_capture
             with _tx.atomic():
                 field_capture.push_serials_to_parc(intervention, user)
-        except Exception:  # noqa: BLE001
+        except Exception:
             import logging
             logging.getLogger(__name__).warning(
                 'ACHT37: poussée des séries au parc échouée (intervention %s)',
@@ -7124,7 +7124,7 @@ def _notifier_prochaine_etape_approbation_achat(demande):
                   f'Objet : {demande.objet}'),
             link='/approbations?source=installations',
             company=demande.company, reason=reason)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # jamais bloquant
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P45: notification étape suivante échouée (demande %s)',

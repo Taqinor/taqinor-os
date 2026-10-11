@@ -155,7 +155,7 @@ class ActionIdempotenteMixin:
                           # deviendrait un no-op SILENCIEUX.
                           'response_body': json.loads(
                               json.dumps(reponse.data, default=str))})
-        except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT : elle
+        except Exception:  # l'idempotence est un CONFORT : elle
             # ne fait jamais échouer une action qui a déjà réussi.
             pass
         return reponse
@@ -1446,7 +1446,7 @@ def _notifier_la_note(calepinage, auteur, texte):
                '%s a noté sur votre calepinage' % nom,
                body=texte[:200], link='/calepinage/%d' % calepinage.pk,
                company=calepinage.company)
-    except Exception:  # noqa: BLE001 — une notif ne casse jamais la note
+    except Exception:  # une notif ne casse jamais la note
         logging.getLogger(__name__).exception(
             'ACAL293 : notification de la note en échec (calepinage %s)',
             calepinage.pk)

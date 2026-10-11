@@ -55,7 +55,7 @@ def _premieres(lignes, cle, couleur):
 
 class AffectationCouleurs(unittest.TestCase):
 
-    def test_lignes_portent_couleur_chaine_et_mppt_dans_l_ordre_de_premiere_apparition(self):  # noqa: E501
+    def test_lignes_portent_couleur_chaine_et_mppt_dans_l_ordre_de_premiere_apparition(self):
         lignes = affectation(_conception())
         self.assertGreaterEqual(len({ligne['chaine'] for ligne in lignes
                                      if ligne['chaine'] is not None}), 2)

@@ -32,6 +32,7 @@ from ..permissions import PeutLireOuApprouverCalepinage
 from ..services.approbation import (
     ApprobationRefusee, decider, etat_approbation,
 )
+from .calepinages import CalepinageViewSet
 
 __all__ = ['approbation']
 
@@ -58,8 +59,6 @@ def approbation(self, request, pk=None):
         return Response(refus.corps(), status=status.HTTP_400_BAD_REQUEST)
     return Response(etat)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

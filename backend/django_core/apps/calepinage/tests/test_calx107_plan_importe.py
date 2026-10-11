@@ -25,6 +25,7 @@ Run :
 """
 from __future__ import annotations
 
+import importlib
 import json
 import pathlib
 import struct
@@ -83,7 +84,7 @@ class RoutagePlanImporteTest(SimpleTestCase):
     """Sans route, l'écran irait chercher le fichier du fond dans le vide."""
 
     def _actions(self):
-        from apps.calepinage import urls  # noqa: F401
+        importlib.import_module('apps.calepinage.urls')
         from apps.calepinage.views.calepinages import CalepinageViewSet
 
         return CalepinageViewSet, {methode.__name__: methode

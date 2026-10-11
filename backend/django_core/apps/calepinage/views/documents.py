@@ -22,6 +22,8 @@ CE QUI EST GARANTI, ET PAR QUI
 """
 from __future__ import annotations
 
+import importlib
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -31,6 +33,9 @@ from rest_framework.response import Response
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from .calepinages import CalepinageViewSet
 from .sorties import porte_execution  # ACAL116
+from drf_spectacular.utils import inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.renderers import JSONRenderer
 
 
 # ── CALX297 — le rapport d'étude (PDF) ──────────────────────────────────────
@@ -119,8 +124,6 @@ CalepinageViewSet.diagramme_pertes_svg = diagramme_pertes_svg
 
 # ── CALX321 — l'inventaire des documents du lot 6, DONNÉE PAR DONNÉE ───────
 # Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
-from drf_spectacular.utils import inline_serializer  # noqa: E402
-from rest_framework import serializers as drf_serializers  # noqa: E402
 
 #: La forme du contrat ``calepinage_documents.json`` (CALX291), telle que
 #: ``services/documents.inventaire_des_documents`` la rend — jamais un
@@ -320,9 +323,6 @@ CalepinageViewSet.plan_cablage_dxf = plan_cablage_dxf
 
 # ── CALX312 — l'export JSON versionné du projet et de ses résultats ────────
 # Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
-from drf_spectacular.utils import inline_serializer  # noqa: E402
-from rest_framework import serializers as drf_serializers  # noqa: E402
-from rest_framework.renderers import JSONRenderer  # noqa: E402
 
 #: La forme du contrat ``export_projet.json`` (douze clés) — jamais un
 #: « type: object » vide, qui validerait tout (check_openapi_shapes, R1).
@@ -666,4 +666,7 @@ CalepinageViewSet.dossier_fin_chantier = dossier_fin_chantier
 # ACAL222 — la REMISE explicite (``POST remettre-document``) : rattachée au
 # viewset par l'import de son module, ici en fin de fichier (donc avant
 # ``router.register``, via ``views/rattachements.py``).
-from . import remise_document as _remise_document_action  # noqa: E402,F401
+
+# Rattache l'action de remise du document (import pour effet de bord, exécuté
+# AVANT `router.register` comme avant).
+importlib.import_module(f'{__package__}.remise_document')

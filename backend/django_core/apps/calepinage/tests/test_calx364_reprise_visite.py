@@ -36,6 +36,12 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import PhotoSite, ProvenanceTerrain, ReleveTerrain
 from apps.calepinage.services import reprise_visite as service
+from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
+from apps.calepinage.models import Calepinage
+from apps.calepinage.permissions import CAL_VOIR
+from apps.roles.models import Role
+from .test_api_liste import BaseApiCalepinage, url_detail
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
@@ -277,15 +283,6 @@ class ActionRattacheeTest(SimpleTestCase):
 
 
 # ── EN BASE — exige l'ORM (la CI est la gate de ces classes) ──────────────
-
-from django.contrib.auth import get_user_model  # noqa: E402
-from django.contrib.contenttypes.models import ContentType  # noqa: E402
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-from apps.calepinage.permissions import CAL_VOIR  # noqa: E402
-from apps.roles.models import Role  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
 
 User = get_user_model()
 

@@ -30,6 +30,13 @@ from apps.calepinage.services import journal
 from apps.calepinage.services.documents.versions_document import (
     VersionDocumentRefuse, enregistrer_version_document,
 )
+import copy
+from django.contrib.contenttypes.models import ContentType
+from apps.calepinage.models import Calepinage
+from apps.records.models import Activity
+from .test_api_liste import BaseApiCalepinage, url_detail
+from .test_cal171_planche import LAYOUT
+from .test_calx308_diagramme_pertes_svg import RESULTAT
 
 #: Les jetons de montant bannis de TOUT texte du module (D5) — même liste
 #: que la garde de dépôt ``test_aucun_prix_achat.py`` (appariement simple,
@@ -145,17 +152,6 @@ if __name__ == '__main__':  # pragma: no cover
 #
 # Écrit ici mais NON EXÉCUTÉ localement (pas de Postgres/MinIO sur ce poste
 # de lane) : la CI valide.
-
-import copy  # noqa: E402 - après les essais purs
-
-from django.contrib.contenttypes.models import ContentType  # noqa: E402
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-from apps.records.models import Activity  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
-from .test_cal171_planche import LAYOUT  # noqa: E402
-from .test_calx308_diagramme_pertes_svg import RESULTAT  # noqa: E402
 
 
 class JournalEnBaseTest(BaseApiCalepinage):

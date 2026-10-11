@@ -11,7 +11,8 @@ import RetourAtelier from '../atelier/RetourAtelier'
 import {
   LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
-import { BandeauBorneHaute, ReglagesUtilises, estIncomplet } from './BandeauProvenanceProduction'
+import { BandeauBorneHaute, ReglagesUtilises } from './BandeauProvenanceProduction'
+import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import useSuiviJob from './useSuiviJob'
 

@@ -37,6 +37,11 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import fixation
 from apps.calepinage.services.rangees import rangees_du_pan
+import io
+from apps.calepinage.models import (
+    Calepinage, ComposantFixation, SystemeFixation,
+)
+from .test_api_liste import BaseApiCalepinage, url_detail
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
@@ -259,14 +264,6 @@ class CatalogueVideTest(SimpleTestCase):
 
 
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
-
-import io  # noqa: E402
-
-from apps.calepinage.models import (  # noqa: E402
-    Calepinage, ComposantFixation, SystemeFixation,
-)
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
 
 
 def url_bom(pk, **params):

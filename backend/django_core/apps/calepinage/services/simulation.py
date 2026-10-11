@@ -1169,7 +1169,7 @@ def _annoncer_simulation(calepinage):
         events.calepinage_simule.send(
             sender=type(calepinage), calepinage=calepinage,
             company_id=getattr(calepinage, 'company_id', None))
-    except Exception:  # noqa: BLE001 — un abonné ne casse jamais le calcul
+    except Exception:  # un abonné ne casse jamais le calcul
         logger.exception('calepinage_simule : un abonné a échoué '
                          '(calepinage %s)', getattr(calepinage, 'pk', None))
 

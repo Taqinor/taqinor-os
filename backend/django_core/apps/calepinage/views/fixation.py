@@ -30,6 +30,7 @@ from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..services.fixation import (
     FixationRefusee, appliquer_systeme, bom_de_fixation, resoudre_systeme,
 )
+from .calepinages import CalepinageViewSet
 
 __all__ = ['bom_fixation', 'fixation']
 
@@ -77,8 +78,6 @@ def fixation(self, request, pk=None):
                         status=status.HTTP_400_BAD_REQUEST)
     return Response(reponse)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

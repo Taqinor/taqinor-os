@@ -22,7 +22,8 @@ vi.mock('./exportImage', () => ({
 }))
 
 import calepinageApi from '../../api/calepinageApi'
-import SchemaUnifilairePanel, { motifDuRefusDxf, corpsEdition } from './SchemaUnifilairePanel'
+import SchemaUnifilairePanel from './SchemaUnifilairePanel'
+import { motifDuRefusDxf, corpsEdition } from './SchemaUnifilairePanel.helpers'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 const servir = (data) => {

@@ -1,15 +1,9 @@
-/* eslint-disable react-refresh/only-export-components --
-   `echelleDepuisDeuxPoints` est une fonction PURE (géométrie, zéro React) : la
-   tâche exige explicitement un « test unitaire » de l'échelle, qui doit donc
-   pouvoir l'appeler sans monter l'écran. La sortir dans un `.js` voisin
-   séparerait la formule de son unique lecteur pour satisfaire une règle de
-   fast-refresh qui ne concerne pas une fonction sans état ; même dérogation
-   que `module.config.jsx` du même module. */
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import useDocumentCalepinage, { MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
+import { echelleDepuisDeuxPoints } from './PlanImporteCalage.helpers'
 
 /* ============================================================================
    CAL63 — CALER UN PLAN IMPORTÉ : rotation, ÉCHELLE SAISIE.
@@ -55,32 +49,6 @@ import RetourAtelier from './atelier/RetourAtelier'
    ========================================================================== */
 
 const RAD = Math.PI / 180
-
-/**
- * CAL63 — l'ÉCHELLE, depuis deux points de référence et la distance RÉELLE
- * saisie entre eux. Rend `{ echelle, distancePlan, source: 'saisie' }`, ou
- * `null` si l'un des deux points manque, si les deux points sont confondus,
- * ou si la distance réelle n'est pas une longueur strictement positive.
- *
- * JAMAIS de repli sur 1 : une échelle inventée produit un plan faux qui a
- * l'air juste — exactement ce que la docstring de CAL62 interdit.
- */
-export function echelleDepuisDeuxPoints(a, b, distanceReelleM) {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) {
-    return null
-  }
-  const reelle = Number(distanceReelleM)
-  if (!Number.isFinite(reelle) || reelle <= 0) return null
-  const dx = Number(b[0]) - Number(a[0])
-  const dy = Number(b[1]) - Number(a[1])
-  const distancePlan = Math.hypot(dx, dy)
-  if (!Number.isFinite(distancePlan) || distancePlan === 0) return null
-  return {
-    echelle: reelle / distancePlan,
-    distancePlan,
-    source: 'saisie',
-  }
-}
 
 /** Une valeur servie, ou le tiret de l'inconnu — jamais un zéro de repli. */
 function texte(brut, suffixe = '') {

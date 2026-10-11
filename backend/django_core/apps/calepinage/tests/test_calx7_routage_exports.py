@@ -21,6 +21,7 @@ actions que DRF construira, avant toute requête.
 Run :
     python manage.py test apps.calepinage.tests.test_calx7_routage_exports -v2
 """
+import importlib
 from django.test import SimpleTestCase
 
 
@@ -31,7 +32,7 @@ def _actions():
     classe (``views/export_csv.py``, ``views/equipements.py``…) : sans lui, la
     table serait celle du viewset nu et le test ne prouverait rien.
     """
-    from apps.calepinage import urls  # noqa: F401
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return CalepinageViewSet, {methode.__name__: methode

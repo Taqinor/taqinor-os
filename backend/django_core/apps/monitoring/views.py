@@ -391,7 +391,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             (200, 'text/csv'): OpenApiTypes.STR,
         })
     @action(detail=True, methods=['get'], url_path='history',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def history(self, request, pk=None):
         """FG84 — Historique de production mensuelle agrégée avec expected vs actual.
 
@@ -471,7 +471,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_FLEET_REPONSE)
     @action(detail=False, methods=['get'], url_path='fleet',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def fleet(self, request):
         """FG281 — Tableau de bord parc/flotte multi-systèmes : production
         totale, kWc installés, PR moyen et alertes ouvertes sur tous les
@@ -486,7 +486,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE)
     @action(detail=False, methods=['get'], url_path='benchmark',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def benchmark(self, request):
         """NTNRG33 — classement RELATIF du parc par PR (percentile), jamais
         un seuil absolu. ?window_days=365 (défaut)."""
@@ -500,7 +500,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE)
     @action(detail=True, methods=['get'], url_path='om-metrics',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def om_metrics(self, request, pk=None):
         """FG279 — Analytique O&M par système (PR, disponibilité, soiling,
         dégradation) depuis `ProductionReading`. Fenêtre : ?window_days=365
@@ -512,7 +512,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_CLIENT_REQ], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE)
     @action(detail=False, methods=['get'], url_path='client-portal',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def client_portal(self, request):
         """FG288 — synthèse environnementale cumulée des systèmes d'un client
         (production / économies / CO₂). ?client=ID requis."""
@@ -527,7 +527,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_SINCE, _UNTIL], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_REPONSE)
     @action(detail=True, methods=['get'], url_path='co2',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def co2(self, request, pk=None):
         """FG286 — CO₂ évité (kg + tonnes) par ce système (toute la production
         ou bornée par ?since=YYYY-MM-DD&until=YYYY-MM-DD)."""
@@ -540,7 +540,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_SINCE, _UNTIL], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_FLEET_REPONSE)
     @action(detail=False, methods=['get'], url_path='co2-fleet',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def co2_fleet(self, request):
         """FG286 — CO₂ évité par système ET cumulé sur le parc de la société."""
         from .selectors import co2_fleet
@@ -553,7 +553,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_SOILING_REPONSE)
     @action(detail=True, methods=['get'], url_path='soiling',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def soiling(self, request, pk=None):
         """FG283 — perte estimée par salissure (chute de PR entre nettoyages)
         + recommandation de nettoyage. ?window_days=365 (défaut)."""
@@ -595,7 +595,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         responses={(200, 'application/json'): _VIEWS_MONITORING_CONFIG_VIEW_SET_OM_REPORT_REPONSE,
                    (200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='om-report',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def om_report(self, request, pk=None):
         """FG289 — rapport O&M périodique du système. ?period=monthly|quarterly.
         ?format=pdf renvoie le PDF ; sinon les données JSON."""
@@ -641,7 +641,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         parameters=[OpenApiParameter('annee', OpenApiTypes.INT, required=False)],
         responses=_PDF)
     @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def rapport_garantie_pdf(self, request, pk=None):
         """NTNRG11 — rapport CONTRACTUEL mensuel de garantie de performance
         (PDF), distinct du rapport O&M générique ci-dessus : mention légale
@@ -675,7 +675,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_SINCE, _UNTIL], responses=_PDF)
     @action(detail=True, methods=['get'], url_path='attestation-carbone-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def attestation_carbone_pdf(self, request, pk=None):
         """NTNRG26 — attestation carbone PDF certifiable de CE système
         (au-delà du portail JSON FG286/288) : méthodologie affichée, distincte
@@ -696,7 +696,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_CLIENT_REQ, _SINCE, _UNTIL], responses=_PDF)
     @action(detail=False, methods=['get'], url_path='attestation-carbone-client-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def attestation_carbone_client_pdf(self, request):
         """NTNRG26 — attestation carbone CONSOLIDÉE (multi-sites) pour un
         client (FG288). ?client=ID requis. Sans relevé sur la période :

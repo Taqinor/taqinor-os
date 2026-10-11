@@ -1,16 +1,8 @@
-/* eslint-disable react-refresh/only-export-components --
-   Ce fichier porte À LA FOIS le composant réutilisable de provenance (la
-   pastille + son infobulle, importée par les autres écrans du module) et
-   l'écran qui le rend ATTEIGNABLE. Les deux constantes exportées (`ORIGINES`,
-   `estOrigineDeclaree`) sont la table des cinq origines admises : les sortir
-   dans un `.js` voisin séparerait la table de son unique lecteur pour
-   satisfaire une règle de fast-refresh qui ne s'applique pas à une constante —
-   même dérogation que `module.config.jsx` et `equipements/FichesIncompletes.jsx`
-   du même module. */
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
 import { Card, Spinner } from '../../../ui'
+import { ORIGINES, estOrigineDeclaree } from './Provenance.helpers'
 
 /* ============================================================================
    CAL165 — LA SOURCE DE CHAQUE PARAMÈTRE NORMATIF, AFFICHÉE AVEC LUI.
@@ -45,36 +37,6 @@ import { Card, Spinner } from '../../../ui'
    toutes lettres (« saisie par la société »). Une section vide reste vide —
    aucune valeur par défaut n'est fabriquée ici.
    ========================================================================== */
-
-/** Les CINQ origines admises. Toute autre valeur = provenance non déclarée. */
-export const ORIGINES = {
-  fiche: {
-    libelle: 'fiche technique',
-    explication: 'valeur lue sur la fiche technique du produit retenu',
-  },
-  pvgis: {
-    libelle: 'PVGIS',
-    explication: 'donnée renvoyée par PVGIS pour ce site',
-  },
-  societe: {
-    libelle: 'réglage société',
-    explication: 'paramètre enregistré dans les réglages de la société',
-  },
-  saisie: {
-    libelle: 'saisie',
-    explication: 'valeur saisie pour ce calepinage',
-  },
-  hypothese: {
-    libelle: 'hypothèse',
-    explication: 'hypothèse assumée, à confirmer avant de l’opposer à un tiers',
-  },
-}
-
-/** Vrai si `origine` est l'une des cinq origines fermées ci-dessus. */
-export function estOrigineDeclaree(origine) {
-  return typeof origine === 'string'
-    && Object.prototype.hasOwnProperty.call(ORIGINES, origine)
-}
 
 /**
  * La PASTILLE de provenance. Sans origine déclarée, elle dit « non sourcée »

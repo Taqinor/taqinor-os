@@ -25,11 +25,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import PanneauMasseLestage, {
-  CLE_POINTS_FIXATION,
-  chargeParPointDeFixation,
-  provenanceEntree,
-} from './PanneauMasseLestage'
+import PanneauMasseLestage from './PanneauMasseLestage'
+import { CLE_POINTS_FIXATION, chargeParPointDeFixation, provenanceEntree } from './PanneauMasseLestage.helpers'
 
 const echantillon = (variante) => reponseContrat(
   'calepinage', 'calepinage_masse_lestage', variante,

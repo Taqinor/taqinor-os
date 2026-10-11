@@ -39,17 +39,17 @@ if __name__ == '__main__':  # pragma: no cover — chemin « --write » seulemen
 
     django.setup()
 
-from django.test import SimpleTestCase  # noqa: E402
+from django.test import SimpleTestCase
 
-from apps.calepinage.services import chaine_pertes, simulation  # noqa: E402
-from apps.calepinage.services.chaine_pertes import (  # noqa: E402
+from apps.calepinage.services import chaine_pertes, simulation
+from apps.calepinage.services.chaine_pertes import (
     ChaineInvalide, ETAPES_PAN, appliquer_chaine,
 )
-from apps.calepinage.services.simulation import (  # noqa: E402
+from apps.calepinage.services.simulation import (
     MOTIF_ECRETAGE_SANS_AFFECTATION, simuler_calepinage,
 )
-from apps.calepinage.services.validation import ecart_vs_pvcalc  # noqa: E402
-from apps.calepinage.tests.test_calx5_simulation import (  # noqa: E402
+from apps.calepinage.services.validation import ecart_vs_pvcalc
+from apps.calepinage.tests.test_calx5_simulation import (
     MATERIEL, REGLAGES, _Calepinage, _reponse_meteo,
 )
 

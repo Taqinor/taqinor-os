@@ -27,9 +27,8 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
-const {
-  default: PlanImporteCalage, echelleDepuisDeuxPoints,
-} = await import('../PlanImporteCalage')
+const { default: PlanImporteCalage } = await import('../PlanImporteCalage')
+const { echelleDepuisDeuxPoints } = await import('../PlanImporteCalage.helpers')
 const { default: userEvent } = await import('@testing-library/user-event')
 const { exempleContrat, reponseContrat } = await import('../../../test/fixtures/contractSamples')
 

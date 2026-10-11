@@ -106,8 +106,8 @@ class ChecklistTest(SimpleTestCase):
             _conception(), norme=NORME_FR,
             decisions={'ecartes': [{'repere': repere,
                                     'motif': 'organe déjà en place'}]})
-        ligne = [l for l in checklist['organes']  # noqa: E741
-                 if l['repere'] == repere][0]
+        ligne = [o for o in checklist['organes']
+                 if o['repere'] == repere][0]
 
         self.assertFalse(ligne['retenu'])
         self.assertEqual(ligne['origine'], ORIGINE_ECARTE)

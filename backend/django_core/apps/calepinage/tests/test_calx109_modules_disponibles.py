@@ -24,6 +24,7 @@ Run :
 """
 from __future__ import annotations
 
+import importlib
 import copy
 import json
 import pathlib
@@ -271,7 +272,7 @@ class RouteTest(SimpleTestCase):
 
     def _action(self):
         from apps.calepinage.views.calepinages import CalepinageViewSet
-        from apps.calepinage.views import rattachements  # noqa: F401
+        importlib.import_module('apps.calepinage.views.rattachements')
 
         par_nom = {a.__name__: a
                    for a in CalepinageViewSet.get_extra_actions()}
