@@ -100,7 +100,7 @@ multi-société. Les reproductions sont des appels Python purs, rejoués par l'o
   - Le `restore_drill` hebdomadaire (lundi 04:00) n'a pas encore tourné depuis ADEP1 (dernier : 05/10, échec faute de
     dump). À relire après le 12/10 04:00 UTC.
   - Copie hors site des sauvegardes : `offsite: off` (non requis par les tâches échantillonnées).
-  - Preuves en direct d'origine (`x5/…`) : scripts restés dans le scratchpad de l'audit, remplacés par des équivalents.
+  - Preuves en direct d'origine (`x5/…`) : scripts jamais versionnés dans le dépôt, remplacés par des équivalents.
 - **Statut du registre.** Après ce dépôt : 50/52 cochées (96 %), dernière contre-visite sans écart S1-S2 ⇒ calculé
   `vérifié`. Sortie du cycle (METHODE §C.4.3) au second passage à zéro S1-S2, en contre-visite par différence.
 
