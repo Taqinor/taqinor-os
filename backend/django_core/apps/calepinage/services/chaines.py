@@ -803,8 +803,10 @@ def modules_par_pan(layout, defaut, fiches, manquants):
             produit, nom, resolue = pid, fiche.get('designation') or '', True
             complete = not manquants(fiche.get('specs') or {})
         else:
-            produit, nom = defaut.get('produit_id'), defaut.get(
-                'designation') or ''
+            # Aucun module par défaut désigné : le pan garde son libellé du document.
+            produit, nom = defaut.get('produit_id'), (
+                defaut.get('designation') or libelles.get(
+                    str(getattr(module, 'module_id', None))) or '')
             resolue = produit is not None
             complete = bool(defaut.get('fiche_complete')) and resolue
         lignes.append({
