@@ -81,6 +81,13 @@ class TestBulkExportAndScope(ProductBulkBase):
         body = b''.join(resp.streaming_content) if resp.streaming else resp.content
         self.assertTrue(body.startswith(b'PK'))
 
+    def test_export_xlsx_ids_non_entiers_400_jamais_500(self):
+        """ENF11 — ids non entiers / corps liste : 400."""
+        url = '/api/django/stock/produits/export-xlsx/'
+        for corps in ({'ids': [{}]}, {'ids': ['abc']}, [None, None]):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_cannot_touch_other_company(self):
         other = Company.objects.create(slug='pb-other', nom='Autre')
         foreign = Produit.objects.create(

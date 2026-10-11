@@ -338,7 +338,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         required=False,
         allow_null=True,
     )
-    fournisseur = FournisseurSerializer(read_only=True)
+    fournisseur = FournisseurSerializer(read_only=True, allow_null=True)
     fournisseur_id = serializers.PrimaryKeyRelatedField(
         queryset=Fournisseur.objects.none(),
         source='fournisseur',
@@ -1335,7 +1335,7 @@ class TransfertStockSerializer(CompanyScopedRelationsMixin,
     destination_nom = serializers.CharField(
         source='destination.nom', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
 
     # NTRET7 — cycle en deux temps. Tous LECTURE SEULE : le statut n'avance
     # que par les actions dédiées (demander/expedier/receptionner), jamais par
@@ -1388,9 +1388,9 @@ class RetourFournisseurSerializer(SameCompanyFKSerializerMixin,
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     bon_commande_reference = serializers.CharField(
-        source='bon_commande.reference', read_only=True)
+        source='bon_commande.reference', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
 
     class Meta:
         model = RetourFournisseur
@@ -1566,7 +1566,7 @@ class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     total_achat = serializers.DecimalField(
@@ -1806,7 +1806,7 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
     recu_par_username = serializers.CharField(
         source='recu_par.username', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     total_recu = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -1943,7 +1943,7 @@ class PaiementFournisseurSerializer(CompanyScopedRelationsMixin,
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     # XPUR2 — RAS-TVA : calculée côté serveur (jamais depuis le corps de
     # requête), exposée en lecture pour affichage du net payé.
     montant_net_paye = serializers.DecimalField(
@@ -2031,11 +2031,11 @@ class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     bon_commande_reference = serializers.CharField(
-        source='bon_commande.reference', read_only=True)
+        source='bon_commande.reference', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     total_paye = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
     solde_du = serializers.DecimalField(
@@ -2273,7 +2273,7 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
 
     class Meta:
         model = InventaireSession
@@ -2322,6 +2322,8 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
 
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
+# ENF11 — nom de composant distinct de celui de `installations` (collision).
+@extend_schema_serializer(component_name='KitProduitComposant')
 class KitComposantSerializer(CompanyScopedRelationsMixin,
                              serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
@@ -2573,7 +2575,7 @@ class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
     """NTP2P9 — grille éditable Paramètres → Achats (override par catégorie
     des tolérances 3 voies XPUR10)."""
     categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True)
+        source='categorie.nom', read_only=True, allow_null=True)
 
     # SCA4 — le modèle a rejoint TenantModel (created_at/updated_at) ; l'API
     # continue d'exposer les clés historiques via source=.
@@ -2602,7 +2604,7 @@ class AcompteFournisseurSerializer(SameCompanyFKSerializerMixin,
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     bon_commande_reference = serializers.CharField(
-        source='bon_commande.reference', read_only=True)
+        source='bon_commande.reference', read_only=True, allow_null=True)
     montant_non_consomme = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
 
@@ -2657,7 +2659,7 @@ class AvoirFournisseurSerializer(CompanyScopedRelationsMixin,
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     retour_reference = serializers.CharField(
-        source='retour.reference', read_only=True)
+        source='retour.reference', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     montant_disponible = serializers.DecimalField(
@@ -2807,7 +2809,7 @@ class ModeleBonCommandeFournisseurSerializer(
     same_company_fields = ('fournisseur',)
     lignes = ModeleBonCommandeFournisseurLigneSerializer(many=True, required=False)
     fournisseur_nom = serializers.CharField(
-        source='fournisseur.nom', read_only=True)
+        source='fournisseur.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = ModeleBonCommandeFournisseur

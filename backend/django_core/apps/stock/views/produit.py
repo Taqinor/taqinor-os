@@ -17,6 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from core.entite_scoping import EntiteScopeMixin
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
+from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -471,6 +472,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             getattr(self.request.user, 'company', None),
             getattr(self.request, 'user', None))
 
+    @extend_schema(responses={204: None, 200: corps('ProduitArchiveReponse', archived=serializers.BooleanField(), detail=serializers.CharField(), nb_mouvements=serializers.IntegerField())})
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()
         # ASTK81 — un produit référencé par une relation vivante (réservation
@@ -502,7 +504,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                                                                              'set_warranty',
                                                                                              'set_category',
                                                                                              'set_brand']),
-                                 ids=serializers.ListField(child=serializers.IntegerField()),
+                                 ids=serializers.ListField(child=serializers.IntegerField(), min_length=1),
                                  mode=serializers.CharField(required=False, help_text='percent ou fixed'),
                                  valeur=serializers.DecimalField(max_digits=12, decimal_places=2, required=False),
                                  garantie_mois=serializers.IntegerField(required=False, allow_null=True),
@@ -543,7 +545,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(request=corps('ProduitInventaireCorps', motif=serializers.CharField(required=False,
                                                                                        allow_blank=True),
-                                 lignes=serializers.ListField(child=serializers.DictField())), responses=OBJET)
+                                 lignes=serializers.ListField(child=serializers.DictField(),
+                                                              min_length=1)), responses=OBJET)
     @action(detail=False, methods=['post'], url_path='inventaire',
             permission_classes=[IsAdminRole])
     def inventaire(self, request):
@@ -564,14 +567,17 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(result)
 
     @extend_schema(request=corps('ProduitExportXlsxCorps',
-                                 ids=serializers.ListField(child=serializers.IntegerField())), responses={XLSX: BINARY})
+                                 ids=serializers.ListField(child=serializers.IntegerField(),
+                                                           min_length=1)), responses={XLSX: BINARY})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
         """Exporte une sélection de produits en .xlsx (prix d'achat exclu)."""
         from ..services import export_products_xlsx
-        ids = request.data.get('ids') or []
-        if not isinstance(ids, list) or not ids:
+        ids = (request.data.get('ids') or []
+               if isinstance(request.data, dict) else [])
+        if (not isinstance(ids, list) or not ids or any(
+                isinstance(i, bool) or not isinstance(i, int) for i in ids)):
             return Response({'detail': 'Sélectionnez au moins un produit.'},
                             status=status.HTTP_400_BAD_REQUEST)
         produits = (Produit.objects.filter(company=request.user.company, id__in=ids)
@@ -706,6 +712,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=PrixFournisseurSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='prix-fournisseurs',
+            pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('prix_achat_voir')])
     def prix_fournisseurs(self, request, *args, **kwargs):
         """N17 — liste de prix multi-fournisseurs de ce produit (INTERNE),
@@ -1039,10 +1046,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         """FG57 — Rapport de rotation / dead-stock (admin). Indique le dernier
         mouvement SORTIE, les jours sans mouvement, et le bucket de rotation."""
         from ..services import rotation_report
-        try:
-            jours = int(request.query_params.get('jours', 180))
-        except (TypeError, ValueError):
-            jours = 180
+        from ..utils.params import entier_ou_400
+        jours = entier_ou_400(
+            request.query_params.get('jours'), 'jours', 180, 0, 36500)
         return Response(rotation_report(request.user.company, jours=jours))
 
     @extend_schema(responses=LISTE)
@@ -1062,10 +1068,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         """FG64 — Rapport des produits expirant bientôt (admin). Paramètre
         ?jours=90 (défaut 90 jours). INTERNE."""
         from ..services import produits_expirant_bientot
-        try:
-            jours = int(request.query_params.get('jours', 90))
-        except (TypeError, ValueError):
-            jours = 90
+        from ..utils.params import entier_ou_400
+        jours = entier_ou_400(
+            request.query_params.get('jours'), 'jours', 90, 0, 36500)
         return Response(produits_expirant_bientot(request.user.company, jours=jours))
 
     @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)')], responses=LISTE)
@@ -1075,10 +1080,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         """FG65 — Prévisions de réapprovisionnement basées sur la consommation
         historique (SORTIE) des `nb_mois` derniers mois. Admin-only. INTERNE."""
         from ..services import previsions_reappro
-        try:
-            nb_mois = int(request.query_params.get('nb_mois', 6))
-        except (TypeError, ValueError):
-            nb_mois = 6
+        from ..utils.params import entier_ou_400
+        nb_mois = entier_ou_400(
+            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
     @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)'), P('date_debut', DATE),
@@ -1091,14 +1095,15 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         top produits achetés, temps de cycle DA→BCF→réception→facture.
         Admin/Responsable uniquement — JAMAIS client-facing. INTERNE."""
         from ..services import analyse_achats_dashboard
-        try:
-            nb_mois = int(request.query_params.get('nb_mois', 6))
-        except (TypeError, ValueError):
-            nb_mois = 6
+        from ..utils.params import entier_ou_400
+        nb_mois = entier_ou_400(
+            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
         return Response(analyse_achats_dashboard(
             request.user.company,
-            date_debut=request.query_params.get('date_debut'),
-            date_fin=request.query_params.get('date_fin'),
+            date_debut=date_ou_400(
+                request.query_params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(
+                request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois))
 
     @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE), P('date_fin', DATE)], responses={XLSX: BINARY})
@@ -1108,14 +1113,15 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         """XPUR24 — export xlsx du tableau de bord achats. Admin/Responsable
         uniquement — un non-autorisé reçoit 403."""
         from ..services import export_analyse_achats_xlsx
-        try:
-            nb_mois = int(request.query_params.get('nb_mois', 6))
-        except (TypeError, ValueError):
-            nb_mois = 6
+        from ..utils.params import entier_ou_400
+        nb_mois = entier_ou_400(
+            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
         return export_analyse_achats_xlsx(
             request.user.company,
-            date_debut=request.query_params.get('date_debut'),
-            date_fin=request.query_params.get('date_fin'),
+            date_debut=date_ou_400(
+                request.query_params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(
+                request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois)
 
     @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE), P('date_fin', DATE)], responses={PDF: BINARY})
@@ -1129,14 +1135,15 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         Réutilise `analyse_achats_dashboard` (jamais recalculé)."""
         from django.http import HttpResponse
         from ..utils.pdf_analyse_achats import generate_analyse_achats_pdf
-        try:
-            nb_mois = int(request.query_params.get('nb_mois', 6))
-        except (TypeError, ValueError):
-            nb_mois = 6
+        from ..utils.params import entier_ou_400
+        nb_mois = entier_ou_400(
+            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
         pdf_bytes = generate_analyse_achats_pdf(
             request.user.company,
-            date_debut=request.query_params.get('date_debut'),
-            date_fin=request.query_params.get('date_fin'),
+            date_debut=date_ou_400(
+                request.query_params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(
+                request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = (
@@ -1707,7 +1714,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         Corps : {"nom": "<nouveau nom>"} (requis).
         """
         source = self.get_object()
-        nom = (request.data.get('nom') or '').strip()
+        nom = (request.data.get('nom') if isinstance(request.data, dict)
+               else None) or ''
+        nom = nom.strip() if isinstance(nom, str) else ''
         if not nom:
             return Response(
                 {'detail': 'Le nom du nouveau produit est requis.'},

@@ -170,6 +170,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(responses={204: None, 200: corps('FournisseurArchiveReponse', archived=serializers.BooleanField(), detail=serializers.CharField(), bloquants=serializers.ListField(child=serializers.CharField()))})
     def destroy(self, request, *args, **kwargs):
         """Supprime le fournisseur — ou l'ARCHIVE quand la suppression est
         refusée par une FK PROTECT.
@@ -426,6 +427,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     @extend_schema(methods=['GET'], responses=PortailFournisseurTokenSerializer(many=True))
     @extend_schema(methods=['POST'], request=None, responses={201: PortailFournisseurTokenSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='portail-tokens',
+            pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def portail_tokens(self, request, *args, **kwargs):
         """XPUR22 — GET : liste les jetons portail de ce fournisseur (tous,
@@ -522,7 +524,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             try:
                 return _d.fromisoformat(valeur)
             except ValueError:
-                return None
+                raise serializers.ValidationError(
+                    {param: ['Date AAAA-MM-JJ attendue.']})
 
         debut, fin = _date('debut'), _date('fin')
         lignes = stock_selectors.conformite_fournisseurs(
@@ -565,7 +568,9 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         sélecteur pur, aucune mutation."""
         from .. import selectors as stock_selectors
 
-        within = request.query_params.get('within', 30)
+        from ..utils.params import entier_ou_400
+        within = entier_ou_400(
+            request.query_params.get('within'), 'within', 30, 0, 36500)
         return Response(stock_selectors.documents_fournisseur_expirant(
             request.user.company, within_days=within))
 

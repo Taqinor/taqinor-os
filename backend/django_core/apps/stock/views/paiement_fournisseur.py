@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import BasePermission
 from ..openapi_helpers import BINARY, DATE, INT, P, XLSX
+from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -235,5 +236,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         from ..services import export_ras_tva_xlsx
         return export_ras_tva_xlsx(
             request.user.company,
-            date_debut=request.query_params.get('date_debut'),
-            date_fin=request.query_params.get('date_fin'))
+            date_debut=date_ou_400(
+                request.query_params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(
+                request.query_params.get('date_fin'), 'date_fin'))

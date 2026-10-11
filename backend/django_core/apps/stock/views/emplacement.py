@@ -171,11 +171,18 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         from ..services_transfert_deux_temps import creer_demande_transfert
 
         company = request.user.company
-        produit_id = request.data.get('produit_id')
-        emplacement_id = request.data.get('emplacement_id')
+        donnees = request.data if isinstance(request.data, dict) else {}
+        produit_id = donnees.get('produit_id')
+        emplacement_id = donnees.get('emplacement_id')
         if not produit_id or not emplacement_id:
             return Response(
                 {'detail': 'produit_id et emplacement_id requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            produit_id, emplacement_id = int(produit_id), int(emplacement_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'produit_id/emplacement_id invalides.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
         # Idempotence : une demande DÉJÀ en attente pour ce (produit,

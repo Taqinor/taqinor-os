@@ -225,3 +225,9 @@ class TestEndpointsVague(Ntwms4Base):
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(
             LignePicking.objects.filter(company=self.autre).count(), 0)
+
+    def test_corps_liste_400_jamais_500(self):
+        """ENF11 — un corps JSON non-objet ne lève plus d'AttributeError."""
+        resp = self.api.post(
+            '/api/django/stock/vagues-picking/', [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)

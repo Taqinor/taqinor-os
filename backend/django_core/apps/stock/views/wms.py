@@ -98,12 +98,13 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         """Crée la vague à partir des besoins fournis (multi-source) — le
         service pose la référence, résout les casiers et TRIE par parcours."""
         from ..services import creer_vague_depuis_besoins
+        donnees = request.data if isinstance(request.data, dict) else {}
         try:
             vague = creer_vague_depuis_besoins(
                 company=request.user.company, user=request.user,
-                besoins=request.data.get('besoins'),
-                installations=request.data.get('installations'),
-                note=request.data.get('note') or '')
+                besoins=donnees.get('besoins'),
+                installations=donnees.get('installations'),
+                note=donnees.get('note') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -210,14 +211,24 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         company = request.user.company
         # ASTK6 — parent et vague bornés par les champs scopés du sérialiseur
         # (une vague étrangère n'est plus silencieusement ignorée).
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         liens = _relations_scopees(self, request, ['parent', 'vague'])
+        # Types / longueurs des champs simples validés par le sérialiseur
+        # (une `dimensions` trop longue levait une 500 en base).
+        simples = self.get_serializer(data={
+            'type_unite': request.data.get('type_unite') or 'colis',
+            'poids_kg': request.data.get('poids_kg') or None,
+            'dimensions': request.data.get('dimensions') or ''})
+        simples.is_valid(raise_exception=True)
         try:
             unite = creer_unite_logistique(
                 company=company,
-                type_unite=request.data.get('type_unite') or 'colis',
+                type_unite=simples.validated_data['type_unite'],
                 parent=liens['parent'], vague=liens['vague'],
-                poids_kg=request.data.get('poids_kg') or None,
-                dimensions=request.data.get('dimensions') or '')
+                poids_kg=simples.validated_data.get('poids_kg'),
+                dimensions=simples.validated_data.get('dimensions') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1149,9 +1160,11 @@ class PortailTiersTokenViewSet(CompanyScopedModelViewSet):
                         cree_par=self.request.user)
 
 
-def _date_param(valeur):
-    """Convertit ``YYYY-MM-DD`` en date, ou ``None`` (jamais une exception)."""
+def _date_param(valeur, nom='date'):
+    """Convertit ``YYYY-MM-DD`` en date ; ``None`` si absente ; 400 nommant
+    ``nom`` si illisible (ENF11 : plus d'entrée invalide ignorée)."""
     import datetime
+    from rest_framework.exceptions import ValidationError
 
     valeur = (valeur or '').strip()
     if not valeur:
@@ -1159,7 +1172,7 @@ def _date_param(valeur):
     try:
         return datetime.date.fromisoformat(valeur)
     except ValueError:
-        return None
+        raise ValidationError({nom: ['Date AAAA-MM-JJ attendue.']})
 
 
 @extend_schema(parameters=[P('emplacement', INT, True, 'Emplacement (id)'), P('symbology', STR, False, 'Symbologie',
@@ -1249,8 +1262,8 @@ def reslotting_suggestions_view(request):
 
     from ..selectors import suggerer_reslotting
 
-    fin = _date_param(request.query_params.get('fin')) or timezone.localdate()
-    debut = (_date_param(request.query_params.get('debut'))
+    fin = _date_param(request.query_params.get('fin'), 'fin') or timezone.localdate()
+    debut = (_date_param(request.query_params.get('debut'), 'debut')
              or fin - datetime.timedelta(days=365))
     return Response({
         'suggestions': suggerer_reslotting(
@@ -1278,8 +1291,8 @@ def entrepot_pertes_view(request):
     """
     from ..services import rapport_pertes_entrepot
 
-    debut = _date_param(request.query_params.get('debut'))
-    fin = _date_param(request.query_params.get('fin'))
+    debut = _date_param(request.query_params.get('debut'), 'debut')
+    fin = _date_param(request.query_params.get('fin'), 'fin')
     rapport = rapport_pertes_entrepot(
         request.user.company, debut=debut, fin=fin)
     # ERR-STK-PRIX-ACHAT-SUITE — valeurs au coût d'achat : prix_achat_voir ;
@@ -1314,8 +1327,8 @@ def entrepot_productivite_view(request):
     """
     from ..selectors import productivite_operateur
 
-    debut = _date_param(request.query_params.get('debut'))
-    fin = _date_param(request.query_params.get('fin'))
+    debut = _date_param(request.query_params.get('debut'), 'debut')
+    fin = _date_param(request.query_params.get('fin'), 'fin')
     return Response({
         'debut': debut.isoformat() if debut else None,
         'fin': fin.isoformat() if fin else None,

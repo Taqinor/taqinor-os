@@ -26,7 +26,8 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     parser_classes = [JSONParser]
 
-    @extend_schema(request=corps('InventaireAnnuelFigerCorps', exercice=serializers.IntegerField()),
+    @extend_schema(request=corps('InventaireAnnuelFigerCorps',
+                                 exercice=serializers.IntegerField(min_value=1, max_value=9999)),
                    responses={201: InventaireAnnuelSerializer})
     @action(detail=False, methods=['post'], url_path='figer')
     def figer(self, request):
@@ -35,7 +36,11 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         ré-écrit)."""
         from ..services import figer_inventaire_annuel
         try:
+            if not isinstance(request.data, dict):
+                raise TypeError
             exercice = int(request.data.get('exercice'))
+            if not 1 <= exercice <= 9999:
+                raise ValueError
         except (TypeError, ValueError):
             return Response(
                 {'detail': 'Exercice invalide (attendu une année).'},

@@ -133,7 +133,8 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     @extend_schema(responses=RevisionKitSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='revisions')
+    @action(detail=True, methods=['get'], url_path='revisions',
+            pagination_class=None)
     def revisions(self, request, *args, **kwargs):
         """XMFG18 — historique des révisions de nomenclature de ce kit
         (numéro, date, utilisateur, snapshot JSON — sans aucun prix).

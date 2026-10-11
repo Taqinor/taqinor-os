@@ -62,3 +62,9 @@ class FigerTests(TestCase):
     @freeze_time('2027-01-01 09:00:00')
     def test_lendemain_de_la_cloture_201(self):
         self.assertEqual(self._figer(2026).status_code, 201)
+
+    def test_corps_non_objet_ou_annee_hors_plage_400(self):
+        """ENF11 — corps liste / année 0 : 400 nommé, jamais 500."""
+        for corps in ([None, None], {'exercice': 0}, {'exercice': 10000}):
+            resp = self.api.post(URL, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))

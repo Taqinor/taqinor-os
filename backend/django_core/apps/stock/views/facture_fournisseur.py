@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, NUM, P, PDF, STR, corps
+from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import (  # noqa: F401
@@ -332,7 +333,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Le paramètre fournisseur est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        montant = request.query_params.get('montant')
+        from ..utils.params import decimal_ou_400
+        montant = decimal_ou_400(
+            request.query_params.get('montant'), 'montant')
         suggestions = suggerer_bcf_pour_facture(
             request.user.company, fournisseur_id=fournisseur_id,
             montant=montant)
@@ -392,8 +395,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         from ..selectors import releve_deductions_tva_par_taux
         releve = releve_deductions_tva_par_taux(
             request.user.company,
-            date_debut=request.query_params.get('date_debut'),
-            date_fin=request.query_params.get('date_fin'))
+            date_debut=date_ou_400(
+                request.query_params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(
+                request.query_params.get('date_fin'), 'date_fin'))
         return Response(releve)
 
     @extend_schema(responses=corps('FactureComptesAPayer', results=FactureFournisseurSerializer(many=True),
@@ -427,7 +432,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True))
     @extend_schema(methods=['POST'], request=PaiementFournisseurSerializer,
                    responses={201: FactureFournisseurSerializer})
-    @action(detail=True, methods=['get', 'post'], url_path='paiements')
+    @action(detail=True, methods=['get', 'post'], url_path='paiements',
+            pagination_class=None)
     def paiements(self, request, pk=None):
         """GET : liste des paiements de la facture. POST : enregistre un
         paiement (montant/date/mode), recalcule le statut + le solde dû."""
@@ -515,7 +521,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(facture).data)
 
     @extend_schema(responses=FactureFournisseurSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='en-exception')
+    @action(detail=False, methods=['get'], url_path='en-exception',
+            pagination_class=None)
     def en_exception(self, request):
         """XPUR10 — file « Factures en exception » (rapprochement 3 voies
         hors tolérance, non résolu). LECTURE SEULE."""
@@ -525,7 +532,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(methods=['GET'], responses=LISTE)
     @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps',
-                                                   tranches=serializers.ListField(child=serializers.DictField())),
+                                                   tranches=serializers.ListField(child=serializers.DictField(),
+                                                                                  min_length=1)),
                    responses={201: EcheanceFactureFournisseurSerializer(many=True)})
     @action(detail=True, methods=['get', 'post'], url_path='echeancier')
     def echeancier(self, request, pk=None):

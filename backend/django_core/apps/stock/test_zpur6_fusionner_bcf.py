@@ -140,6 +140,14 @@ class TestGardes(Zpur6Base):
             {'bons_commande': [bc1.id]}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_corps_illisible_ou_ids_non_entiers_400_jamais_500(self):
+        """ENF11 — un corps non-objet ou des ids non entiers répondent 400."""
+        url = '/api/django/stock/bons-commande-fournisseur/fusionner/'
+        for corps in ([None, None], {'bons_commande': [{}]},
+                      {'bons_commande': 'abc'}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
 
 class TestMultiTenant(Zpur6Base):
     def test_bcf_autre_societe_refuse(self):

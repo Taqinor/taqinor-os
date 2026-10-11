@@ -6,6 +6,7 @@ chaque ``@extend_schema`` reste sur une ligne lisible.
 """
 from typing import Any, Dict, List
 
+from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
@@ -29,8 +30,11 @@ XLSX = (
 CSV = (200, 'text/csv')
 
 
-def P(name, typ=STR, required=False, desc='', enum=None):
-    """Paramètre de requête (query string)."""
+def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None):
+    """Paramètre de requête (query string) ; ``mini``/``maxi`` bornent un entier."""
+    if typ == INT and (mini is not None or maxi is not None):
+        typ = {'type': 'integer', **({'minimum': mini} if mini is not None else {}),
+               **({'maximum': maxi} if maxi is not None else {})}
     return OpenApiParameter(
         name=name, type=typ, location=OpenApiParameter.QUERY,
         required=required, description=desc or name, enum=enum)
@@ -50,3 +54,11 @@ def corps(_nom, /, **champs):
 
 def detail_reponse(nom='DetailReponse'):
     return corps(nom, detail=serializers.CharField())
+
+
+class SchemaObjetUnique(AutoSchema):
+    """Singleton exposé par ``list`` (un OBJET, pas un tableau) : sans cela
+    drf-spectacular enveloppe la réponse du ``list`` dans un tableau (ENF11)."""
+
+    def _is_list_view(self, serializer=None):
+        return False

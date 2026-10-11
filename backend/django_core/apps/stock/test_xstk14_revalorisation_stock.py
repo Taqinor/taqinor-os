@@ -111,6 +111,20 @@ class CreerRevalorisationTests(Xstk14Base):
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()['statut'], 'brouillon')
 
+    def test_endpoint_corps_illisible_400_jamais_500(self):
+        """ENF11 — nouveau_cout vide / corps liste / produit non entier : 400/404."""
+        url = '/api/django/stock/revalorisations-stock/'
+        resp = self.api.post(
+            url, {'produit': self.produit.pk, 'nouveau_cout': '',
+                  'motif': '0'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(url, [None, None], format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = self.api.post(
+            url, {'produit': 'abc', 'nouveau_cout': '1', 'motif': 'x'},
+            format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
 
 class ValiderRevalorisationTests(Xstk14Base):
     def test_validation_verrouille_le_document(self):

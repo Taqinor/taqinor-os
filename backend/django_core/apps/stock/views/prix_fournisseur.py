@@ -1,3 +1,6 @@
+import io
+import zipfile
+
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
@@ -188,14 +191,25 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'fournisseur et file sont requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        try:
+            fournisseur_id = int(fournisseur_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'fournisseur doit être un identifiant entier.'},
+                status=status.HTTP_400_BAD_REQUEST)
         fournisseur = Fournisseur.objects.filter(
             pk=fournisseur_id, company=request.user.company).first()
         if fournisseur is None:
             return Response(
                 {'detail': 'Fournisseur introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
+        contenu = upload.read()
+        if not zipfile.is_zipfile(io.BytesIO(contenu)):
+            return Response(
+                {'detail': 'Fichier xlsx illisible ou vide.'},
+                status=status.HTTP_400_BAD_REQUEST)
         result = import_prix_fournisseur_xlsx(
-            request.user.company, fournisseur, upload.read(),
+            request.user.company, fournisseur, contenu,
             apercu=_flag(request.data.get('apercu')),
             ecraser=_flag(request.data.get('ecraser')),
             user=request.user, filename=getattr(upload, 'name', '') or '')

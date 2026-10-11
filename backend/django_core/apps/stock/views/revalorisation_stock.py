@@ -36,9 +36,13 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..models import Produit
         from ..services import creer_revalorisation
-        produit = Produit.objects.filter(
-            company=request.user.company,
-            id=request.data.get('produit')).first()
+        donnees = request.data if isinstance(request.data, dict) else {}
+        try:
+            produit = Produit.objects.filter(
+                company=request.user.company,
+                id=int(donnees.get('produit'))).first()
+        except (TypeError, ValueError):
+            produit = None
         if produit is None:
             return Response(
                 {'detail': 'Produit introuvable.'},
@@ -46,9 +50,9 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
         try:
             revalorisation = creer_revalorisation(
                 company=request.user.company, produit=produit,
-                nouveau_cout=request.data.get('nouveau_cout'),
-                motif=request.data.get('motif'), user=request.user)
-        except (ValueError, TypeError) as exc:
+                nouveau_cout=donnees.get('nouveau_cout'),
+                motif=donnees.get('motif'), user=request.user)
+        except (ValueError, TypeError, ArithmeticError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(

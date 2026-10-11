@@ -23,9 +23,9 @@ from ..models import ProfilSaisonnier
 class ProfilSaisonnierSerializer(CompanyScopedRelationsMixin,
                                  serializers.ModelSerializer):
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True)
     categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True, default=None)
+        source='categorie.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = ProfilSaisonnier

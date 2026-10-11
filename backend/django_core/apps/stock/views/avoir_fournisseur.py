@@ -74,7 +74,7 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
         if avoir.statut != AvoirFournisseur.Statut.BROUILLON:
             return Response(
                 {'detail': 'Avoir validé : non modifiable.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):

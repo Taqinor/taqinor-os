@@ -56,11 +56,11 @@ class InventaireFigeTests(TestCase):
 
         r = self.api.patch(f'{URL}{session.pk}/', {'lignes': []},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('non modifiable', r.json()['detail'])
         r = self.api.put(f'{URL}{session.pk}/',
                          {'motif': 'autre', 'lignes': []}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
         session.refresh_from_db()
         self.assertEqual(session.statut, InventaireSession.Statut.VALIDE)
@@ -80,7 +80,7 @@ class InventaireFigeTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         r = self.api.patch(f'{URL}{session.pk}/', {'lignes': []},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(session.lignes.count(), 1)
 
     def test_session_en_cours_reste_modifiable(self):

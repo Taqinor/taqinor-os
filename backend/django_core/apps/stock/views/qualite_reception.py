@@ -17,6 +17,7 @@ from authentication.permissions import (
 from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
+from ..serializers_wms import TexteLie
 from ..models import ControleReception, PlanEchantillonnage
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -25,7 +26,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 class PlanEchantillonnageSerializer(CompanyScopedRelationsMixin,
                                     serializers.ModelSerializer):
-    categorie_nom = serializers.CharField(
+    categorie_nom = TexteLie(
         source='categorie.nom', read_only=True, default='')
 
     class Meta:

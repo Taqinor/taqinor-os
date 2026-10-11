@@ -1,5 +1,5 @@
 """ASTK25 — une réception fournisseur CONFIRMÉE/ANNULÉE et un retour
-fournisseur VALIDÉ/ANNULÉ sont figés : tout PUT/PATCH répond 400
+fournisseur VALIDÉ/ANNULÉ sont figés : tout PUT/PATCH répond 409
 « … : non modifiable » (verrou unique `DocumentFigeMixin`).
 
 Rejoue BCF-12 de l'audit stock du 2026-10-06 : avant correction, PATCH
@@ -79,7 +79,7 @@ class ReceptionFigeeTests(TestCase):
         url = f'{BASE}receptions-fournisseur/{rec.pk}/'
         r = self.api.patch(url, {'date_reception': '2020-01-01'},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('non modifiable', r.json()['detail'])
         rec.refresh_from_db()
         self.assertEqual(rec.date_reception, datetime.date(2026, 10, 6))
@@ -89,14 +89,14 @@ class ReceptionFigeeTests(TestCase):
         url = f'{BASE}receptions-fournisseur/{rec.pk}/'
         r = self.api.patch(url, {'bon_commande': self.bc178.pk},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         ligne = self.bc178.lignes.get()
         r = self.api.put(url, {
             'bon_commande': self.bc178.pk, 'date_reception': '2020-01-01',
             'recu_par': self.user.pk,
             'lignes': [{'ligne_commande': ligne.pk, 'quantite': 9}],
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         rec.refresh_from_db()
         self.assertEqual(rec.bon_commande_id, self.bc177.pk)
         self.assertEqual(rec.date_reception, datetime.date(2026, 10, 6))
@@ -108,7 +108,7 @@ class ReceptionFigeeTests(TestCase):
             statut=ReceptionFournisseur.Statut.ANNULE)
         r = self.api.patch(f'{BASE}receptions-fournisseur/{rec.pk}/',
                            {'note': 'x'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_reception_brouillon_reste_modifiable(self):
         rec = self._reception(confirmer=False)
@@ -130,7 +130,7 @@ class ReceptionFigeeTests(TestCase):
         self.assertEqual(retour.statut, RetourFournisseur.Statut.VALIDE)
         r = self.api.patch(f'{BASE}retours-fournisseur/{retour.pk}/',
                            {'fournisseur': self.f2.pk}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('non modifiable', r.json()['detail'])
         retour.refresh_from_db()
         self.assertEqual(retour.fournisseur_id, self.f.pk)

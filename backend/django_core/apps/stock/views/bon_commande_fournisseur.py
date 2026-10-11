@@ -626,8 +626,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         fournisseur/période. LECTURE SEULE."""
         from ..services import rapport_achats_hors_contrat
         fournisseur_id = request.query_params.get('fournisseur')
-        date_debut = request.query_params.get('date_debut')
-        date_fin = request.query_params.get('date_fin')
+        from ..utils.params import date_ou_400
+        date_debut = date_ou_400(
+            request.query_params.get('date_debut'), 'date_debut')
+        date_fin = date_ou_400(request.query_params.get('date_fin'), 'date_fin')
         rapport = rapport_achats_hors_contrat(
             request.user.company, fournisseur_id=fournisseur_id,
             date_debut=date_debut, date_fin=date_fin)
@@ -650,7 +652,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(suggestions)
 
     @extend_schema(responses=BonCommandeFournisseurSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='en-retard')
+    @action(detail=False, methods=['get'], url_path='en-retard',
+            pagination_class=None)
     def en_retard(self, request):
         """XPUR7 — liste des BCF ENVOYE en retard (prévue/confirmée dépassée
         sans réception complète). LECTURE SEULE."""
@@ -840,7 +843,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=corps('BcfFusionnerCorps',
-                                 bons_commande=serializers.ListField(child=serializers.IntegerField())),
+                                 bons_commande=serializers.ListField(child=serializers.IntegerField(),
+                                                                     min_length=2)),
                    responses={201: BonCommandeFournisseurSerializer})
     @action(detail=False, methods=['post'], url_path='fusionner')
     def fusionner(self, request):
@@ -849,8 +853,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         produit ; les BCF sources passent en `annule` avec une note de
         fusion. Corps : ``{"bons_commande": [id, id, ...]}`` (≥ 2 requis)."""
         from ..services import fusionner_bcf
-        ids = request.data.get('bons_commande') or []
-        if not isinstance(ids, list):
+        ids = (request.data.get('bons_commande') or []
+               if isinstance(request.data, dict) else [])
+        if not isinstance(ids, list) or any(
+                isinstance(i, bool) or not isinstance(i, int) for i in ids):
             return Response(
                 {'detail': 'bons_commande doit être une liste d\'ids.'},
                 status=status.HTTP_400_BAD_REQUEST)
