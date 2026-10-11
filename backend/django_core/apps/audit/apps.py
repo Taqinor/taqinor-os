@@ -25,3 +25,9 @@ class AuditConfig(AppConfig):
         # sans que ventes importe apps.audit (suppression de l'arête montante
         # ventes → audit). Voir la « carte des trois couches » dans core/events.
         from . import receivers  # noqa: F401
+        # ENF20 — branche le recorder comme enregistreur générique de `core`
+        # (`core.audit_registry`, même pattern que `core.notify_registry`) :
+        # stock/automation/dataimport journalisent SANS importer apps.audit.
+        from core.audit_registry import enregistrer
+        from .recorder import current_user, record
+        enregistrer(record, current_user=current_user)
