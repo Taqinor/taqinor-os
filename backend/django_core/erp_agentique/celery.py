@@ -520,6 +520,12 @@ app.conf.beat_schedule = {
         'task': 'ged.poll_mail_intake',
         'schedule': crontab(minute='*/10'),
     },
+    # NTAPI8 — reprises webhook programmées (1 min, 5 min, 30 min, 2 h, 6 h) :
+    # chaque minute, idempotent (ENF15).
+    'publicapi-retry-webhook-deliveries': {
+        'task': 'publicapi.retry_webhook_deliveries',
+        'schedule': crontab(minute='*'),
+    },
     # QX30be — moteur de relance déclenchée par le comportement (non-ouverture
     # 24 h / ouvert-non-signé 48 h / rouvert 3×). Toutes les 3 h.
     'ventes-engagement-followup-engine': {
