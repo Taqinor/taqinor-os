@@ -77,6 +77,7 @@ export default function CoffresPage() {
       id: 'documents', header: 'Documents', width: 110, align: 'right',
       accessor: (r) => r.document_count ?? 0,
     },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [clients])
 
   // ADOC4 — un coffre non vide est refusé (409) : le motif serveur est
@@ -222,7 +223,6 @@ function CoffreDocumentsDialog({ coffre, onClose }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     gedApi.getCoffreDocuments(coffre.id)
       .then((res) => setDocuments(unpage(res.data)))
       .catch((err) => setError(errMessage(err, 'Impossible de charger les documents.')))

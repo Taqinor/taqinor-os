@@ -328,7 +328,6 @@ function JournalDialog({ regle, onClose }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     gedApi.getExecutionsRegleDossier(regle.id)
       .then((res) => setExecutions(unpage(res.data)))
       .catch((err) => setError(errMessage(err, 'Impossible de charger le journal.')))

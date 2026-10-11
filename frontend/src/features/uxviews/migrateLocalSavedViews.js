@@ -78,7 +78,7 @@ export async function migrateLocalSavedViewsForEcran(ecran, { create } = {}) {
   for (const view of localViews) {
     if (!view || !view.name) continue
     try {
-      // eslint-disable-next-line no-await-in-loop -- migration séquentielle
+      // Migration séquentielle
       // ponctuelle (quelques vues au plus, une seule fois par écran) : la
       // parallélisation n'apporterait rien et compliquerait le rapport
       // migré/total en cas d'échec partiel.
