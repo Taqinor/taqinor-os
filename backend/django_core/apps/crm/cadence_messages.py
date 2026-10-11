@@ -600,12 +600,17 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     # français, neutre de segment) ; sans forme pour sa clé — ou dans une
     # autre langue que le français —, le texte de la clé tient lieu de corps
     # (comme `relance_email_j10`), sans objet.
+    # APAR56 — un texte que la société a PERSONNALISÉ prime sur la forme
+    # e-mail codée (seul l'objet par défaut de la forme est gardé) : le client
+    # reçoit le texte écrit par la société, quel que soit le canal.
     est_email = (etape.canal == RelanceEtape.Canal.EMAIL and not cle)
     forme = None
     if est_email and langue_texte == 'fr':
-        from apps.parametres.models_messages import forme_email
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS, forme_email)
         forme = forme_email(template_cle)
-    if forme:
+    if forme and (corps or '').strip() == (
+            MESSAGE_TEMPLATE_DEFAULTS.get(cle_rendue, '') or '').strip():
         corps = forme['corps']
     else:
         corps = _corps_pour_segment(corps, cle_rendue, lead, langue_texte)
