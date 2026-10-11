@@ -27,6 +27,7 @@ import { uniformSetbacks } from '../../lib/roofPro2';
 import { emptyCurve } from '../../lib/applianceConsumption';
 import { type Ctx } from './context';
 import { ctxDeBase, racineDepot } from './harnaisAtelier';
+import { enregistrerAtelier, ouvrirAtelier } from './harnaisDocument';
 import { type AreaRecord } from './types';
 
 
@@ -261,6 +262,30 @@ describe('ACAL28 — chaque pan garde sa géométrie enregistrée', () => {
     const sortie = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, null));
     expect(sortie.zones[1].geometry).toBeUndefined();
     expect(sortie.result?.panels).toBe(0);
+  });
+
+  // ACAL355 (C-ACAL-VER-007, rejeu B1) — A sud 6,6 kWc 11 220 kWh + B est 3,3 kWc 4 620 kWh.
+  it('un pan non revisité garde SA production enregistrée', () => {
+    const pan = (id: string, n: number, kwh: number) => ({
+      id, label: id, vertices: [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]],
+      obstacles: [], roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180, facingManual: false,
+      neededPanels: n, neededAuto: false, geometry: { ...geometrie(n), kwc: (n * 550) / 1000 }, result: { annualKwh: kwh },
+    });
+    const doc = JSON.parse(JSON.stringify({
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'zA',
+      zones: [pan('zA', 12, 11220), pan('zB', 6, 4620)],
+      result: { panels: 18, kwc: 9.9, annualKwh: 15840, savings: null },
+    })) as SerializedLayout;
+    // Enregistrer sans geste ⇒ chaque `zones[i].result` repart octet-identique.
+    const intact = enregistrerAtelier(ouvrirAtelier({ id: 4, geometrie: { roof_layout: doc }, cibleVendue: false }).c);
+    expect(intact.zones.map((z) => z.result)).toStrictEqual([{ annualKwh: 11220 }, { annualKwh: 4620 }]);
+    // Retouche de A (pose déplacée, production recalculée à 11 220), B jamais visité.
+    const { c } = ouvrirAtelier({ id: 4, geometrie: { roof_layout: doc }, cibleVendue: false });
+    c.areas[0].geometrieEnregistree!.panels[0].cy = 0.5;
+    c.areas[0].result = { panels: 12, kwc: 6.6, annualKwh: 11220, savingsLow: 0, savingsHigh: 0 };
+    const sortie = enregistrerAtelier(c);
+    expect(sortie.zones[1].result).toStrictEqual({ annualKwh: 4620 });
+    expect(sortie.result?.annualKwh).toBe(15840);
   });
 });
 
