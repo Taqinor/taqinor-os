@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { UserPlus, Users, Pencil, Trash2, ShieldCheck, UserCheck, UserX, AlertTriangle } from 'lucide-react'
@@ -155,7 +155,7 @@ export default function UsersManagement() {
     }
   }
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const [usersRes, rolesRes] = await Promise.all([
@@ -166,17 +166,17 @@ export default function UsersManagement() {
       const roleList = rolesRes.data.results ?? rolesRes.data
       setRoles(roleList)
       // Default form role to first role in list
-      if (roleList.length > 0 && !form.role) {
-        setForm(f => ({ ...f, role: roleList.find(r => r.nom === 'Utilisateur')?.id || roleList[0].id }))
+      if (roleList.length > 0) {
+        setForm(f => (f.role ? f : { ...f, role: roleList.find(r => r.nom === 'Utilisateur')?.id || roleList[0].id }))
       }
     } catch {
       setError('Impossible de charger les données.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { load() }, []) // eslint-disable-line
+  useEffect(() => { load() }, [load])
 
   // NTADM8 — statut des sièges pour la bannière (best-effort, silencieux si
   // l'endpoint échoue — jamais bloquant pour l'écran Utilisateurs).

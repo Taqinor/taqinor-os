@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
@@ -33,8 +33,7 @@ import { INVENTAIRE_ACCENT_KEY } from './inventaireAccent'
    À LA MÊME PLACE dans l'ordre d'affichage qu'avant.
    ========================================================================== */
 
-// eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
-const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
+const navIcon = (Comp) => createElement(Comp, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 const StockList = lazy(() => import('../../pages/stock/StockList'))

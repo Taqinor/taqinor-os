@@ -7,10 +7,11 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
    texte → erreur sous le champ ; enregistrer → rouvrir → enregistrer sans
    toucher = même PATCH. */
 
+import { SeuilsEtReglagesCiFields } from './AvanceSection'
 import {
-  SeuilsEtReglagesCiFields, formReglagesCi, payloadReglagesCi,
+  formReglagesCi, payloadReglagesCi,
   erreurGarantieLocale, MESSAGE_GARANTIE_SANS_VALIDATION,
-} from './AvanceSection'
+} from './reglagesCi'
 
 afterEach(() => cleanup())
 

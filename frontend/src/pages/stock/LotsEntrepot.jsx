@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { PackageMinus, Search, Layers,
@@ -182,17 +182,17 @@ export default function LotsEntrepot() {
   const [avecStock, setAvecStock] = useState(true)
   const [sortant, setSortant] = useState(null)
 
-  const reload = () => {
+  const reload = useCallback(() => {
     setLoading(true)
     stockApi.getLotsEntrepot(avecStock ? { avec_stock: 'true' } : {})
       .then((r) => setItems(r.data?.results ?? r.data ?? []))
       .catch(() => setError('Chargement des lots impossible.'))
       .finally(() => setLoading(false))
-  }
+  }, [avecStock])
 
   // Différé d'un microtask : `reload` pose `loading` de façon synchrone
   // (react-hooks/set-state-in-effect). Comportement inchangé.
-  useEffect(() => { Promise.resolve().then(reload) }, [avecStock]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { Promise.resolve().then(reload) }, [reload])
 
   useEffect(() => {
     stockApi.getProduits({ ordering: 'nom' })

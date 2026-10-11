@@ -93,8 +93,7 @@ export function syntheseParStatut(devis, effStatutOf) {
 // (l'en-tête de page lit `expiringSoon` aussi pendant le chargement/l'erreur).
 export function useDevisListSynthese(devis, effStatutOf) {
   // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- dépendances identiques au code d'origine (effStatutOf est pure)
-  const summary = useMemo(() => syntheseParStatut(devis, effStatutOf), [devis])
+  const summary = useMemo(() => syntheseParStatut(devis, effStatutOf), [devis, effStatutOf])
 
   // T15 — Devis envoyés expirant dans ≤ 7 jours (et pas encore expirés).
   // ADEV9 — une version remplacée n'expire plus « bientôt » : elle n'est plus en jeu.
