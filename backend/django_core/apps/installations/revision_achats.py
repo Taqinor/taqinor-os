@@ -92,6 +92,7 @@ def _avertir(chantier, references, user):
     except Exception:  # pragma: no cover - défensif
         pass
 
+
 def figer_bom_revisee(chantier, devis, figer, quantites):
     """Fige la nomenclature de la V2 sur `chantier` puis marque les DA émises
     « à revoir (V2) » ; rend les quantités de la nouvelle nomenclature.
