@@ -102,10 +102,11 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, True,
-                                                                          'Fournisseur (id)'), P('quantite', INT,
-                                                                                                 False,
-                                                                                                 'Quantité (défaut 1)')], responses=corps('PrixFournisseurEffectifReponse', prix_effectif=serializers.CharField(allow_null=True)))
+    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'),
+                               P('fournisseur', INT, True, 'Fournisseur (id)'),
+                               P('quantite', INT, False, 'Quantité (défaut 1)')],
+                   responses=corps('PrixFournisseurEffectifReponse',
+                                   prix_effectif=serializers.CharField(allow_null=True)))
     @action(detail=False, methods=['get'], url_path='effectif')
     def effectif(self, request):
         """XPUR14 (AUDV04/DRAFT165-117) — prix d'achat EFFECTIF pour un

@@ -169,7 +169,8 @@ class ScmFournisseurActionsMixin:
         return Response(otif_fournisseur(
             request.user.company, self.get_object(), fenetre_mois=fenetre))
 
-    @extend_schema(parameters=[P('produit', INT), P('fenetre_mois', INT, mini=1, maxi=36), P('seuil_ecart_pct', NUM)], responses={
+    @extend_schema(parameters=[P('produit', INT), P('fenetre_mois', INT, mini=1, maxi=36),
+                               P('seuil_ecart_pct', NUM)], responses={
         200: inline_serializer('StockFournisseurDelaiMesure', {
             'fournisseur_id': serializers.IntegerField(),
             'produit_id': serializers.IntegerField(allow_null=True),

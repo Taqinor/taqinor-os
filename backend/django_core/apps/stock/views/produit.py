@@ -265,9 +265,11 @@ def _texte_references(comptes):
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('categorie', STR, False,
-                                                     'Id(s) de catégorie, séparés par virgule'), P('show_archived',
-                                                                                                   STR, False,
-                                                                                                   'true pour inclure les produits archivés', ['true', 'false']), P('entite', INT, False, 'Filtre optionnel par entité juridique (NTADM2)')]))
+                                                     'Id(s) de catégorie, séparés par virgule'),
+                                                   P('show_archived', STR, False,
+                                                     'true pour inclure les produits archivés', ['true', 'false']),
+                                                   P('entite', INT, False,
+                                                     'Filtre optionnel par entité juridique (NTADM2)')]))
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
@@ -759,8 +761,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'jusqu_a': jusqu_a,
         })
 
-    @extend_schema(parameters=[P('quantite', INT, False, 'Quantité à prélever (défaut 1)'), P('strategie', STR, False,
-                                                                                              'Stratégie de prélèvement', ['aucune', 'fifo', 'fefo', 'zone'])], responses=corps('ProduitPlanPicking', strategie=serializers.CharField(), lignes=serializers.ListField(child=serializers.DictField())))
+    @extend_schema(parameters=[P('quantite', INT, False, 'Quantité à prélever (défaut 1)'),
+                               P('strategie', STR, False, 'Stratégie de prélèvement',
+                                 ['aucune', 'fifo', 'fefo', 'zone'])],
+                   responses=corps('ProduitPlanPicking', strategie=serializers.CharField(),
+                                   lignes=serializers.ListField(child=serializers.DictField())))
     @action(detail=True, methods=['get'], url_path='plan-picking',
             permission_classes=[IsAnyRole])
     def plan_picking(self, request, *args, **kwargs):
@@ -916,8 +921,12 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'inline; filename="etiquettes-produits.pdf"')
         return response
 
-    @extend_schema(parameters=[P('categorie', INT, True, 'Catégorie (ou ids / zone)'), P('ids', STR, False,
-                                                                                         'Ids produits séparés par virgule'), P('zone', STR, False, 'Zone de casiers'), P('largeur', INT, False, 'Largeur du gabarit (mm, 30-105)'), P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
+    @extend_schema(parameters=[P('categorie', INT, True, 'Catégorie (ou ids / zone)'),
+                               P('ids', STR, False, 'Ids produits séparés par virgule'),
+                               P('zone', STR, False, 'Zone de casiers'),
+                               P('largeur', INT, False, 'Largeur du gabarit (mm, 30-105)'),
+                               P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])],
+                   responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes-prix',
             permission_classes=[IsAnyRole])
     def etiquettes_prix(self, request):
@@ -1210,9 +1219,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'limite': UTILISE_DANS_LIMITE,
         })
 
-    @extend_schema(parameters=[P('serie', STR, True, 'Numéro de série (ou lot via le paramètre lot)'), P('lot', STR,
-                                                                                                         False,
-                                                                                                         'Numéro de lot')], responses=OBJET)
+    @extend_schema(parameters=[P('serie', STR, True, 'Numéro de série (ou lot via le paramètre lot)'),
+                               P('lot', STR, False, 'Numéro de lot')], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='tracer',
             permission_classes=[IsAnyRole])
     def tracer(self, request):

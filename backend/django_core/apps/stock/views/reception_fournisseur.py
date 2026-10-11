@@ -122,7 +122,9 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
 
-    @extend_schema(parameters=[P('code', STR, True, 'Code GS1-128 / DataMatrix (AI 01 + GTIN 14 chiffres en tête)', pattern=r'^01[0-9]{14}')],
+    @extend_schema(parameters=[P('code', STR, True,
+                                 'Code GS1-128 / DataMatrix (AI 01 + GTIN 14 chiffres en tête)',
+                                 pattern=r'^01[0-9]{14}')],
                    responses=corps('ReceptionScanGs1Reponse', produit_id=serializers.IntegerField(),
                                    produit_nom=serializers.CharField(),
                                    numeros_serie=serializers.ListField(child=serializers.CharField(), allow_null=True),
@@ -169,8 +171,9 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 if parsed.get('date_peremption') else None),
         })
 
-    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False,
-                                                                                              'html pour la version HTML', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
+    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
+                               P('sortie', STR, False, 'html pour la version HTML', ['html', 'pdf'])],
+                   responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes')
     def etiquettes(self, request, pk=None):
         """ZSTK6 — planche d'étiquettes lot/série depuis les lignes de CETTE

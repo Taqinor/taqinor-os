@@ -140,7 +140,8 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     @extend_schema(methods=['GET'], responses=corps('CatalogueAchatFavorisReponse',
                                                     epingles=serializers.ListField(child=serializers.IntegerField()),
                                                     recents=serializers.ListField(child=serializers.IntegerField()),
-                                                    produit_ids=serializers.ListField(child=serializers.IntegerField())))
+                                                    produit_ids=serializers.ListField(
+                                                        child=serializers.IntegerField())))
     @extend_schema(methods=['PUT'], request=corps('CatalogueAchatFavorisCorps',
                                                   produit_ids=serializers.ListField(child=serializers.IntegerField())),
                    responses=corps('CatalogueAchatFavorisReponsePut',

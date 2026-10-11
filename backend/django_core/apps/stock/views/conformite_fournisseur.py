@@ -84,7 +84,8 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         serializer.save()
         return Response(serializer.data)
 
-    @extend_schema(parameters=[P('periode', DATE, False, 'Date de référence (AAAA-MM-JJ)'), P('seuil_jours', INT)], responses=OBJET)
+    @extend_schema(parameters=[P('periode', DATE, False, 'Date de référence (AAAA-MM-JJ)'),
+                               P('seuil_jours', INT)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='checklist-cloture')
     def checklist_cloture(self, request):
         """NTP2P30 — wizard de clôture de fin de mois achats : agrège en

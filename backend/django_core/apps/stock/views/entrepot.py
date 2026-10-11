@@ -27,10 +27,9 @@ def _int_param(value, defaut=None, nom='parametre'):
     return entier_ou_400(value, nom, defaut)
 
 
-@extend_schema(parameters=[P('emplacement', INT), P('horizon_peremption', INT, False,
-                                                    'Horizon de péremption (jours, défaut 30)'), P('retard_heures',
-                                                                                                   INT, False,
-                                                                                                   'Seuil de retard (heures, défaut 24)')], responses={
+@extend_schema(parameters=[P('emplacement', INT),
+                           P('horizon_peremption', INT, False, 'Horizon de péremption (jours, défaut 30)'),
+                           P('retard_heures', INT, False, 'Seuil de retard (heures, défaut 24)')], responses={
     200: inline_serializer('StockEntrepotCockpit', {
         'date': serializers.CharField(),
         'zones': serializers.ListField(child=serializers.DictField()),

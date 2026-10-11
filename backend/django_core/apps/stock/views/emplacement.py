@@ -200,11 +200,10 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             TransfertStockSerializer(transfert).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule'), P('symbology', STR, False,
-                                                                                          'Symbologie', ['qr',
-                                                                                                         'code128']),
-                               P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200,
-                                                                                                                  'text/html'): STR})
+    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule'),
+                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
+                               P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])],
+                   responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes-kanban')
     def etiquettes_kanban(self, request, *args, **kwargs):
         """XSTK20 — Cartes kanban deux-bacs pour CET emplacement : une carte
