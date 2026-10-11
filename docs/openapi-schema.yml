@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7570, components: 3354}
+counts: {paths: 4818, operations: 7570, components: 3349}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -7817,8 +7817,8 @@ query_params:
   get /api/django/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/django/documents/chantiers/{id}/attestation/: regenerer type
   get /api/django/entites/entites/: ordering page page_size search tree
-  get /api/django/entites/entites/mes-entites/: ordering page page_size search
-  get /api/django/entites/entites/{id}/historique/: ordering page page_size search
+  get /api/django/entites/entites/mes-entites/: ordering search
+  get /api/django/entites/entites/{id}/historique/: ordering search
   get /api/django/facturation/avoirs/: facture ordering page page_size search
   get /api/django/facturation/factures-lignes/: ordering page page_size search
   get /api/django/facturation/factures/: client entite ordering page page_size search
@@ -8594,8 +8594,8 @@ query_params:
   get /api/v1/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/v1/documents/chantiers/{id}/attestation/: regenerer type
   get /api/v1/entites/entites/: ordering page page_size search tree
-  get /api/v1/entites/entites/mes-entites/: ordering page page_size search
-  get /api/v1/entites/entites/{id}/historique/: ordering page page_size search
+  get /api/v1/entites/entites/mes-entites/: ordering search
+  get /api/v1/entites/entites/{id}/historique/: ordering search
   get /api/v1/facturation/avoirs/: facture ordering page page_size search
   get /api/v1/facturation/factures-lignes/: ordering page page_size search
   get /api/v1/facturation/factures/: client entite ordering page page_size search
@@ -9818,7 +9818,6 @@ components:
 - CustomFieldGenererReponse
 - CustomFieldGenererRequeteRequest
 - CustomFieldReorderReponse
-- CustomFieldReorderRequeteRequest
 - CustomObjectDef
 - CustomObjectDefRequest
 - CustomRecord
@@ -10452,7 +10451,6 @@ components:
 - LanguageEnum
 - LangueEnum
 - LangueInterfaceReponse
-- LangueInterfaceRequeteLangueInterfaceEnum
 - LanguePortailEnum
 - Lead
 - LeadActivity
@@ -10868,8 +10866,6 @@ components:
 - PaginatedEngagementBudgetList
 - PaginatedEngineActionList
 - PaginatedEngineAlertList
-- PaginatedEntiteAccessibleList
-- PaginatedEntiteHistoriqueLigneList
 - PaginatedEntiteList
 - PaginatedEnvoiRapportList
 - PaginatedEquipeCommercialeList
@@ -11196,7 +11192,6 @@ components:
 - PatchedCabinetRequest
 - PatchedCadenceRelanceEtapeRequest
 - PatchedCalageRequest
-- PatchedCalendrierHegirienRequeteRequest
 - PatchedCalepinageGabaritDossierCorpsRequest
 - PatchedCalepinageRequest
 - PatchedCanalRequest
@@ -11321,7 +11316,6 @@ components:
 - PatchedKitRequest
 - PatchedKpiAlerteRequest
 - PatchedLandedCostLigneRequest
-- PatchedLangueInterfaceRequeteRequest
 - PatchedLeadRequest
 - PatchedLeadTagRequest
 - PatchedLigneDevisRequest
@@ -11860,6 +11854,7 @@ components:
 - RenseignerFicheRequeteRequest
 - RentabiliteContrat
 - RentabiliteContratsReponse
+- ReordonnerDefinitionsRequest
 - ReplanifierEnMasseRequeteRequest
 - ReponseType
 - ReponseTypeRequest
