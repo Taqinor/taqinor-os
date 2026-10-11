@@ -205,7 +205,9 @@ _ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi"
              "e2e-shard", "web-build-test", "fastapi-security",
              # WOW8-ONCE (09/10/2026) — constructeur unique du dump de base de test ;
              # « skipped » par défaut = hit exact du cache (le cas courant).
-             "backend-testdb")
+             "backend-testdb",
+             # ENF11 — sous-ensemble PR du fuzz API (suivi par `backend-tests`).
+             "api-fuzz-pr")
 
 
 def _expr(cond, results, outputs):
@@ -303,6 +305,33 @@ class AgregateursChangesTests(unittest.TestCase):
         self.assertEqual(_verdict(self.jobs, "backend-tests", results, out),
                          "success")
 
+    def test_backend_tests_suit_api_fuzz_pr(self):
+        """ENF11 — le sous-ensemble PR du fuzz API est dans les `needs` du check
+        REQUIS `backend-tests` (et de `ci-gate`) : son échec le fait rougir, son
+        saut le laisse vert. Test-du-test : retirer `api-fuzz-pr` des `needs` de
+        `backend-tests` fait échouer ce test."""
+        self.assertIn("api-fuzz-pr", self.jobs["backend-tests"]["needs"])
+        self.assertIn("api-fuzz-pr", self.jobs["ci-gate"]["needs"])
+        results, out = self._scenario("success", {"backend": "true", "code": "true"})
+        results["backend-tests-shard"] = "success"
+        for resultat, attendu in (("failure", "failure"), ("cancelled", "failure"),
+                                  ("success", "success"), ("skipped", "success")):
+            with self.subTest(api_fuzz_pr=resultat):
+                results["api-fuzz-pr"] = resultat
+                self.assertEqual(_verdict(self.jobs, "backend-tests", results, out),
+                                 attendu)
+
+    def test_lane_api_fuzz_pr_declaree(self):
+        job = self.jobs["api-fuzz-pr"]
+        self.assertIn("backend == 'true'", job["if"])
+        script = " ".join(s.get("run", "") for s in job["steps"])
+        for fragment in ("api_fuzz_scope.py proprietaires", "api_fuzz_scope.py schema",
+                         "api_fuzz_scope.py verdict", "--checks all",
+                         "--phases coverage", "--max-time 300"):
+            self.assertIn(fragment, script)
+        self.assertNotIn("continue-on-error", job)
+        self.assertFalse(any("continue-on-error" in s for s in job["steps"]))
+
     def test_lane_fastapi_security_declaree(self):
         job = self.jobs["fastapi-security"]
         self.assertIn("fastapi == 'true'", job["if"])
@@ -364,6 +393,12 @@ class CouplagesInterSurfacesTest(unittest.TestCase):
                 r = _resolve(self.rules, ["docs/" + doc])
                 self.assertTrue(r["backend"] and r["code"], r)
                 self.assertFalse(r["frontend"], r)
+
+    def test_config_fuzz_declenche_backend(self):
+        # ENF11 — schemathesis.toml (racine) est lu par le job `api-fuzz-pr`.
+        r = _resolve(self.rules, ["schemathesis.toml"])
+        self.assertTrue(r["backend"] and r["code"], r)
+        self.assertFalse(r["frontend"], r)
 
     def test_docs_ordinaire_reste_leger(self):
         r = _resolve(self.rules, ["docs/README.md", "docs/plans/PLAN_AUDIT_DEPLOY.md"])

@@ -12,7 +12,7 @@ fichier). Trois responsabilités, toutes du HARNAIS (aucun code produit) :
    repartait avec le Bearer et passait. Ici un fournisseur
    ``@schemathesis.auth`` se connecte avec le compte dédié ``fuzz_admin`` et
    pose le jeton dans le cookie DÉCLARÉ ; il se reconnecte toutes les 10 min
-   et sur tout 401 (``retry_on`` par défaut de Schemathesis).
+   (ENF11 : plus de rejeu sur 401 — voir ``_REJOUER_SUR``).
 
 2. **Désérialiseurs** ``text/csv``, ``text/html`` et binaires : sans eux,
    Schemathesis sautait la validation de ces réponses (avertissement
@@ -85,7 +85,19 @@ _FK_IDS_SET = {nom: set(ids) for nom, ids in FK_IDS.items()}
 
 
 # ── 1. Authentification ────────────────────────────────────────────────
-@schemathesis.auth(refresh_interval=600)
+# ENF11 — `retry_on=[]` : AUCUN rejeu « re-login puis renvoi » sur 401. Le run
+# 38129616897 (11/10) l'a mesuré : `reauth_count: 0` (aucun rejeu n'a jamais
+# rendu un 2xx) et `reauth_broke: true` (« Authentication stopped working
+# mid-run »). Ces 401 sont SÉMANTIQUES, pas une expiration : jeton SCIM
+# (`identity/scim/`), signature de webhook, lien public à jeton, refresh sans
+# cookie de rafraîchissement. L'expiration, elle, est couverte par le
+# rafraîchissement PROACTIF (600 s < 30 min de durée de vie du JWT) ; la
+# révocation par le fuzzeur lui-même est exclue (schemathesis.toml, 1a).
+_RAFRAICHISSEMENT_S = 600
+_REJOUER_SUR = []
+
+
+@schemathesis.auth(refresh_interval=_RAFRAICHISSEMENT_S, retry_on=_REJOUER_SUR)
 class FuzzAdminCookieAuth:
     """Connexion ``fuzz_admin`` → cookie ``access_token`` (cookieJWT)."""
 
