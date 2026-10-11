@@ -6,7 +6,7 @@ société vient TOUJOURS de l'utilisateur connecté, jamais du corps de requête
 """
 from django.db.models import Q
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_serializer, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
@@ -204,6 +204,7 @@ class OcrToCrmView(APIView):
         return Response(payload, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_serializer(component_name='PublicApiUsagePlanAvecUsage')
 class _PlanAvecUsageSerializer(ApiUsagePlanSerializer):
     """GET du plan : le plan + l'usage consommé (NTAPI22), ajoutés par la vue."""
     usage_jour = drf_serializers.JSONField()

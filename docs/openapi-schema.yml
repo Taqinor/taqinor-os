@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7570, components: 3016}
+counts: {paths: 4818, operations: 7570, components: 3354}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -191,7 +191,7 @@ operations:
 - get /api/django/adsengine/backlog-creatif/{id}/ -> django_adsengine_backlog_creatif_retrieve
 - patch /api/django/adsengine/backlog-creatif/{id}/ -> django_adsengine_backlog_creatif_partial_update
 - put /api/django/adsengine/backlog-creatif/{id}/ -> django_adsengine_backlog_creatif_update
-- get /api/django/adsengine/backlog/ -> django_adsengine_backlog_retrieve
+- get /api/django/adsengine/backlog/ -> django_adsengine_backlog_list
 - post /api/django/adsengine/backlog/lots/{lot_id}/approuver/ -> django_adsengine_backlog_lots_approuver_create
 - post /api/django/adsengine/backlog/{campagne_id}/assets/ -> django_adsengine_backlog_assets_create
 - get /api/django/adsengine/bras/ -> django_adsengine_bras_list
@@ -200,7 +200,7 @@ operations:
 - get /api/django/adsengine/bras/{id}/ -> django_adsengine_bras_retrieve
 - patch /api/django/adsengine/bras/{id}/ -> django_adsengine_bras_partial_update
 - put /api/django/adsengine/bras/{id}/ -> django_adsengine_bras_update
-- get /api/django/adsengine/breakdowns/ -> django_adsengine_breakdowns_retrieve
+- get /api/django/adsengine/breakdowns/ -> django_adsengine_breakdowns_list
 - get /api/django/adsengine/brief/ -> django_adsengine_brief_retrieve
 - get /api/django/adsengine/campaigns/ -> django_adsengine_campaigns_list
 - post /api/django/adsengine/campaigns/ -> django_adsengine_campaigns_create
@@ -209,9 +209,9 @@ operations:
 - post /api/django/adsengine/campaigns/sync-now/ -> django_adsengine_campaigns_sync_now_create
 - get /api/django/adsengine/campaigns/{id}/ -> django_adsengine_campaigns_retrieve
 - get /api/django/adsengine/campaigns/{id}/hierarchie/ -> django_adsengine_campaigns_hierarchie_retrieve
-- get /api/django/adsengine/chatter/ -> django_adsengine_chatter_retrieve
+- get /api/django/adsengine/chatter/ -> django_adsengine_chatter_list
 - post /api/django/adsengine/chatter/ -> django_adsengine_chatter_create
-- get /api/django/adsengine/commentaires/ -> django_adsengine_commentaires_retrieve
+- get /api/django/adsengine/commentaires/ -> django_adsengine_commentaires_list
 - get /api/django/adsengine/commentaires/compteurs/ -> django_adsengine_commentaires_compteurs_retrieve
 - post /api/django/adsengine/commentaires/{comment_id}/masquer/ -> django_adsengine_commentaires_masquer_create
 - post /api/django/adsengine/commentaires/{comment_id}/repondre/ -> django_adsengine_commentaires_repondre_create
@@ -285,11 +285,11 @@ operations:
 - post /api/django/adsengine/generation/variantes-ancrees/ -> django_adsengine_generation_variantes_ancrees_create
 - get /api/django/adsengine/guardrail/ -> django_adsengine_guardrail_retrieve
 - patch /api/django/adsengine/guardrail/ -> django_adsengine_guardrail_partial_update
-- get /api/django/adsengine/instagram/commentaires/ -> django_adsengine_instagram_commentaires_retrieve
+- get /api/django/adsengine/instagram/commentaires/ -> django_adsengine_instagram_commentaires_list
 - post /api/django/adsengine/instagram/commentaires/{comment_id}/masquer/ -> django_adsengine_instagram_commentaires_masquer_create
 - post /api/django/adsengine/instagram/commentaires/{comment_id}/repondre/ -> django_adsengine_instagram_commentaires_repondre_create
 - post /api/django/adsengine/instagram/commentaires/{comment_id}/supprimer/ -> django_adsengine_instagram_commentaires_supprimer_create
-- get /api/django/adsengine/instagram/medias/ -> django_adsengine_instagram_medias_retrieve
+- get /api/django/adsengine/instagram/medias/ -> django_adsengine_instagram_medias_list
 - post /api/django/adsengine/instagram/medias/{media_meta_id}/commentaires-actif/ -> django_adsengine_instagram_medias_commentaires_actif_create
 - post /api/django/adsengine/instagram/publier/ -> django_adsengine_instagram_publier_create
 - get /api/django/adsengine/instagram/quota/ -> django_adsengine_instagram_quota_retrieve
@@ -308,18 +308,18 @@ operations:
 - post /api/django/adsengine/lots-creatifs/{id}/approve/ -> django_adsengine_lots_creatifs_approve_create
 - post /api/django/adsengine/lots-creatifs/{id}/reject/ -> django_adsengine_lots_creatifs_reject_create
 - get /api/django/adsengine/media/{ref}/ -> django_adsengine_media_retrieve
-- get /api/django/adsengine/metrics/ads-cockpit/ -> django_adsengine_metrics_ads_cockpit_retrieve
+- get /api/django/adsengine/metrics/ads-cockpit/ -> django_adsengine_metrics_ads_cockpit_list
 - get /api/django/adsengine/metrics/cost-per-signature-odoo/ -> django_adsengine_metrics_cost_per_signature_odoo_retrieve
 - get /api/django/adsengine/metrics/cout-par-signature/ -> django_adsengine_metrics_cout_par_signature_retrieve
 - get /api/django/adsengine/metrics/dashboard-v2/ -> django_adsengine_metrics_dashboard_v2_retrieve
 - get /api/django/adsengine/metrics/dashboard/ -> django_adsengine_metrics_dashboard_retrieve
-- get /api/django/adsengine/metrics/leads/ -> django_adsengine_metrics_leads_retrieve
+- get /api/django/adsengine/metrics/leads/ -> django_adsengine_metrics_leads_list
 - get /api/django/adsengine/metrics/pacing/ -> django_adsengine_metrics_pacing_retrieve
 - get /api/django/adsengine/metrics/real-leads/ -> django_adsengine_metrics_real_leads_retrieve
 - get /api/django/adsengine/noeuds-hypothese/ -> django_adsengine_noeuds_hypothese_list
 - post /api/django/adsengine/noeuds-hypothese/ -> django_adsengine_noeuds_hypothese_create
 - get /api/django/adsengine/noeuds-hypothese/file-voi/ -> django_adsengine_noeuds_hypothese_file_voi_retrieve
-- get /api/django/adsengine/noeuds-hypothese/tests/{test_id}/leads/ -> django_adsengine_noeuds_hypothese_tests_leads_retrieve
+- get /api/django/adsengine/noeuds-hypothese/tests/{test_id}/leads/ -> django_adsengine_noeuds_hypothese_tests_leads_list
 - delete /api/django/adsengine/noeuds-hypothese/{id}/ -> django_adsengine_noeuds_hypothese_destroy
 - get /api/django/adsengine/noeuds-hypothese/{id}/ -> django_adsengine_noeuds_hypothese_retrieve
 - patch /api/django/adsengine/noeuds-hypothese/{id}/ -> django_adsengine_noeuds_hypothese_partial_update
@@ -358,7 +358,7 @@ operations:
 - get /api/django/adsengine/policy-creative/{id}/ -> django_adsengine_policy_creative_retrieve
 - patch /api/django/adsengine/policy-creative/{id}/ -> django_adsengine_policy_creative_partial_update
 - put /api/django/adsengine/policy-creative/{id}/ -> django_adsengine_policy_creative_update
-- get /api/django/adsengine/reconciliation/ -> django_adsengine_reconciliation_retrieve
+- get /api/django/adsengine/reconciliation/ -> django_adsengine_reconciliation_list
 - post /api/django/adsengine/reconciliation/backfill/ -> django_adsengine_reconciliation_backfill_create
 - get /api/django/adsengine/reconciliations/ -> django_adsengine_reconciliations_list
 - get /api/django/adsengine/reconciliations/{id}/ -> django_adsengine_reconciliations_retrieve
@@ -383,7 +383,7 @@ operations:
 - get /api/django/adsengine/reporting/attribution-bilan/ -> django_adsengine_reporting_attribution_bilan_retrieve
 - get /api/django/adsengine/reporting/audience/ -> django_adsengine_reporting_audience_retrieve
 - get /api/django/adsengine/reporting/audit/ -> django_adsengine_reporting_audit_retrieve
-- get /api/django/adsengine/reporting/cohortes/ -> django_adsengine_reporting_cohortes_retrieve
+- get /api/django/adsengine/reporting/cohortes/ -> django_adsengine_reporting_cohortes_list
 - get /api/django/adsengine/reporting/couverture/ -> django_adsengine_reporting_couverture_retrieve
 - get /api/django/adsengine/reporting/creatifs/classement/ -> django_adsengine_reporting_creatifs_classement_retrieve
 - get /api/django/adsengine/reporting/creatifs/declencheur-meteo/ -> django_adsengine_reporting_creatifs_declencheur_meteo_retrieve
@@ -401,7 +401,7 @@ operations:
 - get /api/django/adsengine/reporting/regret/ -> django_adsengine_reporting_regret_retrieve
 - get /api/django/adsengine/reporting/variantes/ -> django_adsengine_reporting_variantes_retrieve
 - get /api/django/adsengine/signaux/ -> django_adsengine_signaux_retrieve
-- get /api/django/adsengine/signaux/cohorte/ -> django_adsengine_signaux_cohorte_retrieve
+- get /api/django/adsengine/signaux/cohorte/ -> django_adsengine_signaux_cohorte_list
 - get /api/django/adsengine/simulations/ -> django_adsengine_simulations_list
 - get /api/django/adsengine/simulations/{key}/ -> django_adsengine_simulations_retrieve
 - get /api/django/adsengine/stats-bras/ -> django_adsengine_stats_bras_list
@@ -1221,7 +1221,7 @@ operations:
 - get /api/django/facturation/avoirs/{id}/ -> django_facturation_avoirs_retrieve
 - post /api/django/facturation/avoirs/{id}/annuler/ -> django_facturation_avoirs_annuler_create
 - get /api/django/facturation/avoirs/{id}/telecharger-pdf/ -> django_facturation_avoirs_telecharger_pdf_retrieve
-- get /api/django/facturation/balance-agee/ -> django_facturation_balance_agee_retrieve
+- get /api/django/facturation/balance-agee/ -> django_facturation_balance_agee_list
 - get /api/django/facturation/clients/{client_id}/releve-pdf/ -> django_facturation_clients_releve_pdf_retrieve
 - get /api/django/facturation/clients/{client_id}/releve/ -> django_facturation_clients_releve_retrieve
 - get /api/django/facturation/factures-lignes/ -> django_facturation_factures_lignes_list
@@ -1249,21 +1249,21 @@ operations:
 - get /api/django/facturation/factures/{id}/dgi-conformite/ -> django_facturation_factures_dgi_conformite_retrieve
 - get /api/django/facturation/factures/{id}/dgi-export/ -> django_facturation_factures_dgi_export_retrieve
 - post /api/django/facturation/factures/{id}/dgi-transmettre/ -> django_facturation_factures_dgi_transmettre_create
-- get /api/django/facturation/factures/{id}/emails/ -> django_facturation_factures_emails_retrieve
+- get /api/django/facturation/factures/{id}/emails/ -> django_facturation_factures_emails_list
 - post /api/django/facturation/factures/{id}/emettre/ -> django_facturation_factures_emettre_create
 - post /api/django/facturation/factures/{id}/enregistrer-paiement/ -> django_facturation_factures_enregistrer_paiement_create
 - post /api/django/facturation/factures/{id}/envoyer-email/ -> django_facturation_factures_envoyer_email_create
 - post /api/django/facturation/factures/{id}/exclure-relance/ -> django_facturation_factures_exclure_relance_create
 - post /api/django/facturation/factures/{id}/facturer-penalites/ -> django_facturation_factures_facturer_penalites_create
 - post /api/django/facturation/factures/{id}/generer-pdf/ -> django_facturation_factures_generer_pdf_create
-- get /api/django/facturation/factures/{id}/historique/ -> django_facturation_factures_historique_retrieve
+- get /api/django/facturation/factures/{id}/historique/ -> django_facturation_factures_historique_list
 - post /api/django/facturation/factures/{id}/liberer-retenue/ -> django_facturation_factures_liberer_retenue_create
 - post /api/django/facturation/factures/{id}/lien-paiement/ -> django_facturation_factures_lien_paiement_create
 - post /api/django/facturation/factures/{id}/marquer-payee/ -> django_facturation_factures_marquer_payee_create
-- get /api/django/facturation/factures/{id}/paiements/ -> django_facturation_factures_paiements_retrieve
+- get /api/django/facturation/factures/{id}/paiements/ -> django_facturation_factures_paiements_list
 - get /api/django/facturation/factures/{id}/relance-apercu/ -> django_facturation_factures_relance_apercu_retrieve
 - post /api/django/facturation/factures/{id}/relancer/ -> django_facturation_factures_relancer_create
-- get /api/django/facturation/factures/{id}/relances/ -> django_facturation_factures_relances_retrieve
+- get /api/django/facturation/factures/{id}/relances/ -> django_facturation_factures_relances_list
 - post /api/django/facturation/factures/{id}/remettre-brouillon/ -> django_facturation_factures_remettre_brouillon_create
 - post /api/django/facturation/factures/{id}/reprendre-abandon/ -> django_facturation_factures_reprendre_abandon_create
 - post /api/django/facturation/factures/{id}/retour-client/ -> django_facturation_factures_retour_client_create
@@ -1295,7 +1295,7 @@ operations:
 - get /api/django/facturation/paiements/{id}/recu-pdf/ -> django_facturation_paiements_recu_pdf_retrieve
 - post /api/django/facturation/paiements/{id}/rejeter/ -> django_facturation_paiements_rejeter_create
 - post /api/django/facturation/paiements/{id}/ventiler/ -> django_facturation_paiements_ventiler_create
-- get /api/django/facturation/relances/ -> django_facturation_relances_retrieve
+- get /api/django/facturation/relances/ -> django_facturation_relances_list
 - get /api/django/ged/acls/ -> django_ged_acls_list
 - post /api/django/ged/acls/ -> django_ged_acls_create
 - delete /api/django/ged/acls/{id}/ -> django_ged_acls_destroy
@@ -2940,7 +2940,7 @@ operations:
 - put /api/django/stock/accords-rfa-fournisseur/{id}/ -> django_stock_accords_rfa_fournisseur_update
 - get /api/django/stock/accords-rfa-fournisseur/{id}/calcul/ -> django_stock_accords_rfa_fournisseur_calcul_retrieve
 - post /api/django/stock/accords-rfa-fournisseur/{id}/generer-avoir/ -> django_stock_accords_rfa_fournisseur_generer_avoir_create
-- get /api/django/stock/achats-parametres/ -> django_stock_achats_parametres_list
+- get /api/django/stock/achats-parametres/ -> django_stock_achats_parametres_retrieve
 - get /api/django/stock/achats-parametres/checklist-cloture/ -> django_stock_achats_parametres_checklist_cloture_retrieve
 - patch /api/django/stock/achats-parametres/{id}/ -> django_stock_achats_parametres_partial_update
 - get /api/django/stock/acomptes-fournisseur/ -> django_stock_acomptes_fournisseur_list
@@ -3485,7 +3485,7 @@ operations:
 - get /api/django/ventes/avoirs/{id}/ -> django_ventes_avoirs_retrieve
 - post /api/django/ventes/avoirs/{id}/annuler/ -> django_ventes_avoirs_annuler_create
 - get /api/django/ventes/avoirs/{id}/telecharger-pdf/ -> django_ventes_avoirs_telecharger_pdf_retrieve
-- get /api/django/ventes/balance-agee/ -> django_ventes_balance_agee_retrieve
+- get /api/django/ventes/balance-agee/ -> django_ventes_balance_agee_list
 - get /api/django/ventes/bons-commande/ -> django_ventes_bons_commande_list
 - post /api/django/ventes/bons-commande/ -> django_ventes_bons_commande_create
 - delete /api/django/ventes/bons-commande/{id}/ -> django_ventes_bons_commande_destroy
@@ -3555,7 +3555,7 @@ operations:
 - post /api/django/ventes/devis/{id}/generer-facture/ -> django_ventes_devis_generer_facture_create
 - post /api/django/ventes/devis/{id}/generer-pdf/ -> django_ventes_devis_generer_pdf_create
 - get /api/django/ventes/devis/{id}/historique-configuration/ -> django_ventes_devis_historique_configuration_retrieve
-- get /api/django/ventes/devis/{id}/historique/ -> django_ventes_devis_historique_retrieve
+- get /api/django/ventes/devis/{id}/historique/ -> django_ventes_devis_historique_list
 - get /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_retrieve
 - post /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_create
 - get /api/django/ventes/devis/{id}/lecture-client/ -> django_ventes_devis_lecture_client_retrieve
@@ -3588,7 +3588,7 @@ operations:
 - get /api/django/ventes/devis/{id}/superior-contact-status/ -> django_ventes_devis_superior_contact_status_retrieve
 - post /api/django/ventes/devis/{id}/sync-layout/ -> django_ventes_devis_sync_layout_create
 - get /api/django/ventes/devis/{id}/telecharger-pdf/ -> django_ventes_devis_telecharger_pdf_retrieve
-- get /api/django/ventes/devis/{id}/variantes/ -> django_ventes_devis_variantes_retrieve
+- get /api/django/ventes/devis/{id}/variantes/ -> django_ventes_devis_variantes_list
 - post /api/django/ventes/devis/{id}/whatsapp-preview/ -> django_ventes_devis_whatsapp_preview_create
 - post /api/django/ventes/devis/{id}/whatsapp/ -> django_ventes_devis_whatsapp_create
 - get /api/django/ventes/dossiers-checklist/ -> django_ventes_dossiers_checklist_list
@@ -3612,7 +3612,7 @@ operations:
 - post /api/django/ventes/economie-ci/preview/ -> django_ventes_economie_ci_preview_create
 - post /api/django/ventes/economie-pompage/preview/ -> django_ventes_economie_pompage_preview_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
-- get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_retrieve
+- get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_list
 - post /api/django/ventes/etude-ci/preview/ -> django_ventes_etude_ci_preview_create
 - post /api/django/ventes/etude-horaire/preview/ -> django_ventes_etude_horaire_preview_create
 - post /api/django/ventes/etude-pompage/preview/ -> django_ventes_etude_pompage_preview_create
@@ -3644,21 +3644,21 @@ operations:
 - get /api/django/ventes/factures/{id}/dgi-conformite/ -> django_ventes_factures_dgi_conformite_retrieve
 - get /api/django/ventes/factures/{id}/dgi-export/ -> django_ventes_factures_dgi_export_retrieve
 - post /api/django/ventes/factures/{id}/dgi-transmettre/ -> django_ventes_factures_dgi_transmettre_create
-- get /api/django/ventes/factures/{id}/emails/ -> django_ventes_factures_emails_retrieve
+- get /api/django/ventes/factures/{id}/emails/ -> django_ventes_factures_emails_list
 - post /api/django/ventes/factures/{id}/emettre/ -> django_ventes_factures_emettre_create
 - post /api/django/ventes/factures/{id}/enregistrer-paiement/ -> django_ventes_factures_enregistrer_paiement_create
 - post /api/django/ventes/factures/{id}/envoyer-email/ -> django_ventes_factures_envoyer_email_create
 - post /api/django/ventes/factures/{id}/exclure-relance/ -> django_ventes_factures_exclure_relance_create
 - post /api/django/ventes/factures/{id}/facturer-penalites/ -> django_ventes_factures_facturer_penalites_create
 - post /api/django/ventes/factures/{id}/generer-pdf/ -> django_ventes_factures_generer_pdf_create
-- get /api/django/ventes/factures/{id}/historique/ -> django_ventes_factures_historique_retrieve
+- get /api/django/ventes/factures/{id}/historique/ -> django_ventes_factures_historique_list
 - post /api/django/ventes/factures/{id}/liberer-retenue/ -> django_ventes_factures_liberer_retenue_create
 - post /api/django/ventes/factures/{id}/lien-paiement/ -> django_ventes_factures_lien_paiement_create
 - post /api/django/ventes/factures/{id}/marquer-payee/ -> django_ventes_factures_marquer_payee_create
-- get /api/django/ventes/factures/{id}/paiements/ -> django_ventes_factures_paiements_retrieve
+- get /api/django/ventes/factures/{id}/paiements/ -> django_ventes_factures_paiements_list
 - get /api/django/ventes/factures/{id}/relance-apercu/ -> django_ventes_factures_relance_apercu_retrieve
 - post /api/django/ventes/factures/{id}/relancer/ -> django_ventes_factures_relancer_create
-- get /api/django/ventes/factures/{id}/relances/ -> django_ventes_factures_relances_retrieve
+- get /api/django/ventes/factures/{id}/relances/ -> django_ventes_factures_relances_list
 - post /api/django/ventes/factures/{id}/remettre-brouillon/ -> django_ventes_factures_remettre_brouillon_create
 - post /api/django/ventes/factures/{id}/reprendre-abandon/ -> django_ventes_factures_reprendre_abandon_create
 - post /api/django/ventes/factures/{id}/retour-client/ -> django_ventes_factures_retour_client_create
@@ -3754,7 +3754,7 @@ operations:
 - get /api/django/ventes/regularisations-8221/{id}/ -> django_ventes_regularisations_8221_retrieve
 - patch /api/django/ventes/regularisations-8221/{id}/ -> django_ventes_regularisations_8221_partial_update
 - put /api/django/ventes/regularisations-8221/{id}/ -> django_ventes_regularisations_8221_update
-- get /api/django/ventes/relances/ -> django_ventes_relances_retrieve
+- get /api/django/ventes/relances/ -> django_ventes_relances_list
 - get /api/django/ventes/remises-encaissement/ -> django_ventes_remises_encaissement_list
 - post /api/django/ventes/remises-encaissement/ -> django_ventes_remises_encaissement_create
 - delete /api/django/ventes/remises-encaissement/{id}/ -> django_ventes_remises_encaissement_destroy
@@ -4015,7 +4015,7 @@ operations:
 - get /api/v1/adsengine/backlog-creatif/{id}/ -> v1_adsengine_backlog_creatif_retrieve
 - patch /api/v1/adsengine/backlog-creatif/{id}/ -> v1_adsengine_backlog_creatif_partial_update
 - put /api/v1/adsengine/backlog-creatif/{id}/ -> v1_adsengine_backlog_creatif_update
-- get /api/v1/adsengine/backlog/ -> v1_adsengine_backlog_retrieve
+- get /api/v1/adsengine/backlog/ -> v1_adsengine_backlog_list
 - post /api/v1/adsengine/backlog/lots/{lot_id}/approuver/ -> v1_adsengine_backlog_lots_approuver_create
 - post /api/v1/adsengine/backlog/{campagne_id}/assets/ -> v1_adsengine_backlog_assets_create
 - get /api/v1/adsengine/bras/ -> v1_adsengine_bras_list
@@ -4024,7 +4024,7 @@ operations:
 - get /api/v1/adsengine/bras/{id}/ -> v1_adsengine_bras_retrieve
 - patch /api/v1/adsengine/bras/{id}/ -> v1_adsengine_bras_partial_update
 - put /api/v1/adsengine/bras/{id}/ -> v1_adsengine_bras_update
-- get /api/v1/adsengine/breakdowns/ -> v1_adsengine_breakdowns_retrieve
+- get /api/v1/adsengine/breakdowns/ -> v1_adsengine_breakdowns_list
 - get /api/v1/adsengine/brief/ -> v1_adsengine_brief_retrieve
 - get /api/v1/adsengine/campaigns/ -> v1_adsengine_campaigns_list
 - post /api/v1/adsengine/campaigns/ -> v1_adsengine_campaigns_create
@@ -4033,9 +4033,9 @@ operations:
 - post /api/v1/adsengine/campaigns/sync-now/ -> v1_adsengine_campaigns_sync_now_create
 - get /api/v1/adsengine/campaigns/{id}/ -> v1_adsengine_campaigns_retrieve
 - get /api/v1/adsengine/campaigns/{id}/hierarchie/ -> v1_adsengine_campaigns_hierarchie_retrieve
-- get /api/v1/adsengine/chatter/ -> v1_adsengine_chatter_retrieve
+- get /api/v1/adsengine/chatter/ -> v1_adsengine_chatter_list
 - post /api/v1/adsengine/chatter/ -> v1_adsengine_chatter_create
-- get /api/v1/adsengine/commentaires/ -> v1_adsengine_commentaires_retrieve
+- get /api/v1/adsengine/commentaires/ -> v1_adsengine_commentaires_list
 - get /api/v1/adsengine/commentaires/compteurs/ -> v1_adsengine_commentaires_compteurs_retrieve
 - post /api/v1/adsengine/commentaires/{comment_id}/masquer/ -> v1_adsengine_commentaires_masquer_create
 - post /api/v1/adsengine/commentaires/{comment_id}/repondre/ -> v1_adsengine_commentaires_repondre_create
@@ -4109,11 +4109,11 @@ operations:
 - post /api/v1/adsengine/generation/variantes-ancrees/ -> v1_adsengine_generation_variantes_ancrees_create
 - get /api/v1/adsengine/guardrail/ -> v1_adsengine_guardrail_retrieve
 - patch /api/v1/adsengine/guardrail/ -> v1_adsengine_guardrail_partial_update
-- get /api/v1/adsengine/instagram/commentaires/ -> v1_adsengine_instagram_commentaires_retrieve
+- get /api/v1/adsengine/instagram/commentaires/ -> v1_adsengine_instagram_commentaires_list
 - post /api/v1/adsengine/instagram/commentaires/{comment_id}/masquer/ -> v1_adsengine_instagram_commentaires_masquer_create
 - post /api/v1/adsengine/instagram/commentaires/{comment_id}/repondre/ -> v1_adsengine_instagram_commentaires_repondre_create
 - post /api/v1/adsengine/instagram/commentaires/{comment_id}/supprimer/ -> v1_adsengine_instagram_commentaires_supprimer_create
-- get /api/v1/adsengine/instagram/medias/ -> v1_adsengine_instagram_medias_retrieve
+- get /api/v1/adsengine/instagram/medias/ -> v1_adsengine_instagram_medias_list
 - post /api/v1/adsengine/instagram/medias/{media_meta_id}/commentaires-actif/ -> v1_adsengine_instagram_medias_commentaires_actif_create
 - post /api/v1/adsengine/instagram/publier/ -> v1_adsengine_instagram_publier_create
 - get /api/v1/adsengine/instagram/quota/ -> v1_adsengine_instagram_quota_retrieve
@@ -4132,18 +4132,18 @@ operations:
 - post /api/v1/adsengine/lots-creatifs/{id}/approve/ -> v1_adsengine_lots_creatifs_approve_create
 - post /api/v1/adsengine/lots-creatifs/{id}/reject/ -> v1_adsengine_lots_creatifs_reject_create
 - get /api/v1/adsengine/media/{ref}/ -> v1_adsengine_media_retrieve
-- get /api/v1/adsengine/metrics/ads-cockpit/ -> v1_adsengine_metrics_ads_cockpit_retrieve
+- get /api/v1/adsengine/metrics/ads-cockpit/ -> v1_adsengine_metrics_ads_cockpit_list
 - get /api/v1/adsengine/metrics/cost-per-signature-odoo/ -> v1_adsengine_metrics_cost_per_signature_odoo_retrieve
 - get /api/v1/adsengine/metrics/cout-par-signature/ -> v1_adsengine_metrics_cout_par_signature_retrieve
 - get /api/v1/adsengine/metrics/dashboard-v2/ -> v1_adsengine_metrics_dashboard_v2_retrieve
 - get /api/v1/adsengine/metrics/dashboard/ -> v1_adsengine_metrics_dashboard_retrieve
-- get /api/v1/adsengine/metrics/leads/ -> v1_adsengine_metrics_leads_retrieve
+- get /api/v1/adsengine/metrics/leads/ -> v1_adsengine_metrics_leads_list
 - get /api/v1/adsengine/metrics/pacing/ -> v1_adsengine_metrics_pacing_retrieve
 - get /api/v1/adsengine/metrics/real-leads/ -> v1_adsengine_metrics_real_leads_retrieve
 - get /api/v1/adsengine/noeuds-hypothese/ -> v1_adsengine_noeuds_hypothese_list
 - post /api/v1/adsengine/noeuds-hypothese/ -> v1_adsengine_noeuds_hypothese_create
 - get /api/v1/adsengine/noeuds-hypothese/file-voi/ -> v1_adsengine_noeuds_hypothese_file_voi_retrieve
-- get /api/v1/adsengine/noeuds-hypothese/tests/{test_id}/leads/ -> v1_adsengine_noeuds_hypothese_tests_leads_retrieve
+- get /api/v1/adsengine/noeuds-hypothese/tests/{test_id}/leads/ -> v1_adsengine_noeuds_hypothese_tests_leads_list
 - delete /api/v1/adsengine/noeuds-hypothese/{id}/ -> v1_adsengine_noeuds_hypothese_destroy
 - get /api/v1/adsengine/noeuds-hypothese/{id}/ -> v1_adsengine_noeuds_hypothese_retrieve
 - patch /api/v1/adsengine/noeuds-hypothese/{id}/ -> v1_adsengine_noeuds_hypothese_partial_update
@@ -4182,7 +4182,7 @@ operations:
 - get /api/v1/adsengine/policy-creative/{id}/ -> v1_adsengine_policy_creative_retrieve
 - patch /api/v1/adsengine/policy-creative/{id}/ -> v1_adsengine_policy_creative_partial_update
 - put /api/v1/adsengine/policy-creative/{id}/ -> v1_adsengine_policy_creative_update
-- get /api/v1/adsengine/reconciliation/ -> v1_adsengine_reconciliation_retrieve
+- get /api/v1/adsengine/reconciliation/ -> v1_adsengine_reconciliation_list
 - post /api/v1/adsengine/reconciliation/backfill/ -> v1_adsengine_reconciliation_backfill_create
 - get /api/v1/adsengine/reconciliations/ -> v1_adsengine_reconciliations_list
 - get /api/v1/adsengine/reconciliations/{id}/ -> v1_adsengine_reconciliations_retrieve
@@ -4207,7 +4207,7 @@ operations:
 - get /api/v1/adsengine/reporting/attribution-bilan/ -> v1_adsengine_reporting_attribution_bilan_retrieve
 - get /api/v1/adsengine/reporting/audience/ -> v1_adsengine_reporting_audience_retrieve
 - get /api/v1/adsengine/reporting/audit/ -> v1_adsengine_reporting_audit_retrieve
-- get /api/v1/adsengine/reporting/cohortes/ -> v1_adsengine_reporting_cohortes_retrieve
+- get /api/v1/adsengine/reporting/cohortes/ -> v1_adsengine_reporting_cohortes_list
 - get /api/v1/adsengine/reporting/couverture/ -> v1_adsengine_reporting_couverture_retrieve
 - get /api/v1/adsengine/reporting/creatifs/classement/ -> v1_adsengine_reporting_creatifs_classement_retrieve
 - get /api/v1/adsengine/reporting/creatifs/declencheur-meteo/ -> v1_adsengine_reporting_creatifs_declencheur_meteo_retrieve
@@ -4225,7 +4225,7 @@ operations:
 - get /api/v1/adsengine/reporting/regret/ -> v1_adsengine_reporting_regret_retrieve
 - get /api/v1/adsengine/reporting/variantes/ -> v1_adsengine_reporting_variantes_retrieve
 - get /api/v1/adsengine/signaux/ -> v1_adsengine_signaux_retrieve
-- get /api/v1/adsengine/signaux/cohorte/ -> v1_adsengine_signaux_cohorte_retrieve
+- get /api/v1/adsengine/signaux/cohorte/ -> v1_adsengine_signaux_cohorte_list
 - get /api/v1/adsengine/simulations/ -> v1_adsengine_simulations_list
 - get /api/v1/adsengine/simulations/{key}/ -> v1_adsengine_simulations_retrieve
 - get /api/v1/adsengine/stats-bras/ -> v1_adsengine_stats_bras_list
@@ -5045,7 +5045,7 @@ operations:
 - get /api/v1/facturation/avoirs/{id}/ -> v1_facturation_avoirs_retrieve
 - post /api/v1/facturation/avoirs/{id}/annuler/ -> v1_facturation_avoirs_annuler_create
 - get /api/v1/facturation/avoirs/{id}/telecharger-pdf/ -> v1_facturation_avoirs_telecharger_pdf_retrieve
-- get /api/v1/facturation/balance-agee/ -> v1_facturation_balance_agee_retrieve
+- get /api/v1/facturation/balance-agee/ -> v1_facturation_balance_agee_list
 - get /api/v1/facturation/clients/{client_id}/releve-pdf/ -> v1_facturation_clients_releve_pdf_retrieve
 - get /api/v1/facturation/clients/{client_id}/releve/ -> v1_facturation_clients_releve_retrieve
 - get /api/v1/facturation/factures-lignes/ -> v1_facturation_factures_lignes_list
@@ -5073,21 +5073,21 @@ operations:
 - get /api/v1/facturation/factures/{id}/dgi-conformite/ -> v1_facturation_factures_dgi_conformite_retrieve
 - get /api/v1/facturation/factures/{id}/dgi-export/ -> v1_facturation_factures_dgi_export_retrieve
 - post /api/v1/facturation/factures/{id}/dgi-transmettre/ -> v1_facturation_factures_dgi_transmettre_create
-- get /api/v1/facturation/factures/{id}/emails/ -> v1_facturation_factures_emails_retrieve
+- get /api/v1/facturation/factures/{id}/emails/ -> v1_facturation_factures_emails_list
 - post /api/v1/facturation/factures/{id}/emettre/ -> v1_facturation_factures_emettre_create
 - post /api/v1/facturation/factures/{id}/enregistrer-paiement/ -> v1_facturation_factures_enregistrer_paiement_create
 - post /api/v1/facturation/factures/{id}/envoyer-email/ -> v1_facturation_factures_envoyer_email_create
 - post /api/v1/facturation/factures/{id}/exclure-relance/ -> v1_facturation_factures_exclure_relance_create
 - post /api/v1/facturation/factures/{id}/facturer-penalites/ -> v1_facturation_factures_facturer_penalites_create
 - post /api/v1/facturation/factures/{id}/generer-pdf/ -> v1_facturation_factures_generer_pdf_create
-- get /api/v1/facturation/factures/{id}/historique/ -> v1_facturation_factures_historique_retrieve
+- get /api/v1/facturation/factures/{id}/historique/ -> v1_facturation_factures_historique_list
 - post /api/v1/facturation/factures/{id}/liberer-retenue/ -> v1_facturation_factures_liberer_retenue_create
 - post /api/v1/facturation/factures/{id}/lien-paiement/ -> v1_facturation_factures_lien_paiement_create
 - post /api/v1/facturation/factures/{id}/marquer-payee/ -> v1_facturation_factures_marquer_payee_create
-- get /api/v1/facturation/factures/{id}/paiements/ -> v1_facturation_factures_paiements_retrieve
+- get /api/v1/facturation/factures/{id}/paiements/ -> v1_facturation_factures_paiements_list
 - get /api/v1/facturation/factures/{id}/relance-apercu/ -> v1_facturation_factures_relance_apercu_retrieve
 - post /api/v1/facturation/factures/{id}/relancer/ -> v1_facturation_factures_relancer_create
-- get /api/v1/facturation/factures/{id}/relances/ -> v1_facturation_factures_relances_retrieve
+- get /api/v1/facturation/factures/{id}/relances/ -> v1_facturation_factures_relances_list
 - post /api/v1/facturation/factures/{id}/remettre-brouillon/ -> v1_facturation_factures_remettre_brouillon_create
 - post /api/v1/facturation/factures/{id}/reprendre-abandon/ -> v1_facturation_factures_reprendre_abandon_create
 - post /api/v1/facturation/factures/{id}/retour-client/ -> v1_facturation_factures_retour_client_create
@@ -5119,7 +5119,7 @@ operations:
 - get /api/v1/facturation/paiements/{id}/recu-pdf/ -> v1_facturation_paiements_recu_pdf_retrieve
 - post /api/v1/facturation/paiements/{id}/rejeter/ -> v1_facturation_paiements_rejeter_create
 - post /api/v1/facturation/paiements/{id}/ventiler/ -> v1_facturation_paiements_ventiler_create
-- get /api/v1/facturation/relances/ -> v1_facturation_relances_retrieve
+- get /api/v1/facturation/relances/ -> v1_facturation_relances_list
 - get /api/v1/ged/acls/ -> v1_ged_acls_list
 - post /api/v1/ged/acls/ -> v1_ged_acls_create
 - delete /api/v1/ged/acls/{id}/ -> v1_ged_acls_destroy
@@ -6731,7 +6731,7 @@ operations:
 - put /api/v1/stock/accords-rfa-fournisseur/{id}/ -> v1_stock_accords_rfa_fournisseur_update
 - get /api/v1/stock/accords-rfa-fournisseur/{id}/calcul/ -> v1_stock_accords_rfa_fournisseur_calcul_retrieve
 - post /api/v1/stock/accords-rfa-fournisseur/{id}/generer-avoir/ -> v1_stock_accords_rfa_fournisseur_generer_avoir_create
-- get /api/v1/stock/achats-parametres/ -> v1_stock_achats_parametres_list
+- get /api/v1/stock/achats-parametres/ -> v1_stock_achats_parametres_retrieve
 - get /api/v1/stock/achats-parametres/checklist-cloture/ -> v1_stock_achats_parametres_checklist_cloture_retrieve
 - patch /api/v1/stock/achats-parametres/{id}/ -> v1_stock_achats_parametres_partial_update
 - get /api/v1/stock/acomptes-fournisseur/ -> v1_stock_acomptes_fournisseur_list
@@ -7273,7 +7273,7 @@ operations:
 - get /api/v1/ventes/avoirs/{id}/ -> v1_ventes_avoirs_retrieve
 - post /api/v1/ventes/avoirs/{id}/annuler/ -> v1_ventes_avoirs_annuler_create
 - get /api/v1/ventes/avoirs/{id}/telecharger-pdf/ -> v1_ventes_avoirs_telecharger_pdf_retrieve
-- get /api/v1/ventes/balance-agee/ -> v1_ventes_balance_agee_retrieve
+- get /api/v1/ventes/balance-agee/ -> v1_ventes_balance_agee_list
 - get /api/v1/ventes/bons-commande/ -> v1_ventes_bons_commande_list
 - post /api/v1/ventes/bons-commande/ -> v1_ventes_bons_commande_create
 - delete /api/v1/ventes/bons-commande/{id}/ -> v1_ventes_bons_commande_destroy
@@ -7343,7 +7343,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/generer-facture/ -> v1_ventes_devis_generer_facture_create
 - post /api/v1/ventes/devis/{id}/generer-pdf/ -> v1_ventes_devis_generer_pdf_create
 - get /api/v1/ventes/devis/{id}/historique-configuration/ -> v1_ventes_devis_historique_configuration_retrieve
-- get /api/v1/ventes/devis/{id}/historique/ -> v1_ventes_devis_historique_retrieve
+- get /api/v1/ventes/devis/{id}/historique/ -> v1_ventes_devis_historique_list
 - get /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_retrieve
 - post /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_create
 - get /api/v1/ventes/devis/{id}/lecture-client/ -> v1_ventes_devis_lecture_client_retrieve
@@ -7376,7 +7376,7 @@ operations:
 - get /api/v1/ventes/devis/{id}/superior-contact-status/ -> v1_ventes_devis_superior_contact_status_retrieve
 - post /api/v1/ventes/devis/{id}/sync-layout/ -> v1_ventes_devis_sync_layout_create
 - get /api/v1/ventes/devis/{id}/telecharger-pdf/ -> v1_ventes_devis_telecharger_pdf_retrieve
-- get /api/v1/ventes/devis/{id}/variantes/ -> v1_ventes_devis_variantes_retrieve
+- get /api/v1/ventes/devis/{id}/variantes/ -> v1_ventes_devis_variantes_list
 - post /api/v1/ventes/devis/{id}/whatsapp-preview/ -> v1_ventes_devis_whatsapp_preview_create
 - post /api/v1/ventes/devis/{id}/whatsapp/ -> v1_ventes_devis_whatsapp_create
 - get /api/v1/ventes/dossiers-checklist/ -> v1_ventes_dossiers_checklist_list
@@ -7400,7 +7400,7 @@ operations:
 - post /api/v1/ventes/economie-ci/preview/ -> v1_ventes_economie_ci_preview_create
 - post /api/v1/ventes/economie-pompage/preview/ -> v1_ventes_economie_pompage_preview_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
-- get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_retrieve
+- get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_list
 - post /api/v1/ventes/etude-ci/preview/ -> v1_ventes_etude_ci_preview_create
 - post /api/v1/ventes/etude-horaire/preview/ -> v1_ventes_etude_horaire_preview_create
 - post /api/v1/ventes/etude-pompage/preview/ -> v1_ventes_etude_pompage_preview_create
@@ -7432,21 +7432,21 @@ operations:
 - get /api/v1/ventes/factures/{id}/dgi-conformite/ -> v1_ventes_factures_dgi_conformite_retrieve
 - get /api/v1/ventes/factures/{id}/dgi-export/ -> v1_ventes_factures_dgi_export_retrieve
 - post /api/v1/ventes/factures/{id}/dgi-transmettre/ -> v1_ventes_factures_dgi_transmettre_create
-- get /api/v1/ventes/factures/{id}/emails/ -> v1_ventes_factures_emails_retrieve
+- get /api/v1/ventes/factures/{id}/emails/ -> v1_ventes_factures_emails_list
 - post /api/v1/ventes/factures/{id}/emettre/ -> v1_ventes_factures_emettre_create
 - post /api/v1/ventes/factures/{id}/enregistrer-paiement/ -> v1_ventes_factures_enregistrer_paiement_create
 - post /api/v1/ventes/factures/{id}/envoyer-email/ -> v1_ventes_factures_envoyer_email_create
 - post /api/v1/ventes/factures/{id}/exclure-relance/ -> v1_ventes_factures_exclure_relance_create
 - post /api/v1/ventes/factures/{id}/facturer-penalites/ -> v1_ventes_factures_facturer_penalites_create
 - post /api/v1/ventes/factures/{id}/generer-pdf/ -> v1_ventes_factures_generer_pdf_create
-- get /api/v1/ventes/factures/{id}/historique/ -> v1_ventes_factures_historique_retrieve
+- get /api/v1/ventes/factures/{id}/historique/ -> v1_ventes_factures_historique_list
 - post /api/v1/ventes/factures/{id}/liberer-retenue/ -> v1_ventes_factures_liberer_retenue_create
 - post /api/v1/ventes/factures/{id}/lien-paiement/ -> v1_ventes_factures_lien_paiement_create
 - post /api/v1/ventes/factures/{id}/marquer-payee/ -> v1_ventes_factures_marquer_payee_create
-- get /api/v1/ventes/factures/{id}/paiements/ -> v1_ventes_factures_paiements_retrieve
+- get /api/v1/ventes/factures/{id}/paiements/ -> v1_ventes_factures_paiements_list
 - get /api/v1/ventes/factures/{id}/relance-apercu/ -> v1_ventes_factures_relance_apercu_retrieve
 - post /api/v1/ventes/factures/{id}/relancer/ -> v1_ventes_factures_relancer_create
-- get /api/v1/ventes/factures/{id}/relances/ -> v1_ventes_factures_relances_retrieve
+- get /api/v1/ventes/factures/{id}/relances/ -> v1_ventes_factures_relances_list
 - post /api/v1/ventes/factures/{id}/remettre-brouillon/ -> v1_ventes_factures_remettre_brouillon_create
 - post /api/v1/ventes/factures/{id}/reprendre-abandon/ -> v1_ventes_factures_reprendre_abandon_create
 - post /api/v1/ventes/factures/{id}/retour-client/ -> v1_ventes_factures_retour_client_create
@@ -7542,7 +7542,7 @@ operations:
 - get /api/v1/ventes/regularisations-8221/{id}/ -> v1_ventes_regularisations_8221_retrieve
 - patch /api/v1/ventes/regularisations-8221/{id}/ -> v1_ventes_regularisations_8221_partial_update
 - put /api/v1/ventes/regularisations-8221/{id}/ -> v1_ventes_regularisations_8221_update
-- get /api/v1/ventes/relances/ -> v1_ventes_relances_retrieve
+- get /api/v1/ventes/relances/ -> v1_ventes_relances_list
 - get /api/v1/ventes/remises-encaissement/ -> v1_ventes_remises_encaissement_list
 - post /api/v1/ventes/remises-encaissement/ -> v1_ventes_remises_encaissement_create
 - delete /api/v1/ventes/remises-encaissement/{id}/ -> v1_ventes_remises_encaissement_destroy
@@ -7593,14 +7593,14 @@ query_params:
   get /api/django/achats/bons-commande-fournisseur/: fournisseur ordering page page_size search
   get /api/django/achats/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
   get /api/django/achats/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
-  get /api/django/achats/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/django/achats/bons-commande-fournisseur/en-retard/: ordering search
   get /api/django/achats/bons-commande-fournisseur/historique-prix/: fournisseur produit
   get /api/django/achats/factures-fournisseur/: fournisseur ordering page page_size search statut
-  get /api/django/achats/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/django/achats/factures-fournisseur/en-exception/: ordering search
   get /api/django/achats/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/django/achats/factures-fournisseur/suggestions-bcf/: fournisseur montant
   post /api/django/achats/factures-fournisseur/{id}/echeancier/: ordering page page_size search
-  get /api/django/achats/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/django/achats/factures-fournisseur/{id}/paiements/: ordering search
   get /api/django/achats/paiements-fournisseur/: facture ordering page page_size
   get /api/django/achats/paiements-fournisseur/ras-tva/export/: date_debut date_fin
   get /api/django/achats/prix-fournisseurs/: ordering page page_size produit
@@ -7628,6 +7628,7 @@ query_params:
   get /api/django/adsengine/breakdowns/: dimension object_id object_type since
   get /api/django/adsengine/campaigns/: ordering page page_size search
   get /api/django/adsengine/chatter/: entity_id entity_type
+  get /api/django/adsengine/commentaires/: ad_id hidden post_id unanswered
   get /api/django/adsengine/concurrents/: ordering page page_size search
   get /api/django/adsengine/connexions/: ordering page page_size search
   get /api/django/adsengine/consentements/: ordering page page_size search
@@ -7638,6 +7639,7 @@ query_params:
   get /api/django/adsengine/faits/: ordering page page_size search
   get /api/django/adsengine/gabarits-proposition/: ordering page page_size search
   get /api/django/adsengine/garde-fous/: ordering page page_size search
+  get /api/django/adsengine/instagram/commentaires/: media_id
   get /api/django/adsengine/kit-marque/: ordering page page_size search
   get /api/django/adsengine/lots-creatifs/: ordering page page_size search
   get /api/django/adsengine/media/{ref}/: kind
@@ -7645,6 +7647,7 @@ query_params:
   get /api/django/adsengine/metrics/dashboard/: compare debut fin
   get /api/django/adsengine/metrics/leads/: metric
   get /api/django/adsengine/noeuds-hypothese/: ordering page page_size search
+  get /api/django/adsengine/noeuds-hypothese/tests/{test_id}/leads/: ordering page page_size search
   get /api/django/adsengine/observations-concurrents/: ordering page page_size search
   get /api/django/adsengine/phases-vol/: ordering page page_size search
   get /api/django/adsengine/plans-vol/: ordering page page_size search
@@ -7654,10 +7657,19 @@ query_params:
   post /api/django/adsengine/regles-mot-cle/proposer/: ordering page page_size search
   get /api/django/adsengine/regles/: ordering page page_size search
   get /api/django/adsengine/regles/{id}/backtest/: jours
+  get /api/django/adsengine/reporting/attribution-bilan/: debut
+  get /api/django/adsengine/reporting/audience/: ad
+  get /api/django/adsengine/reporting/cohortes/: debut fin
+  get /api/django/adsengine/reporting/couverture/: debut fin
   get /api/django/adsengine/reporting/creatifs/classement/: debut dimension fin
   get /api/django/adsengine/reporting/creatifs/nuage/: debut fin
+  get /api/django/adsengine/reporting/creatifs/roi-lane/: debut fin
+  get /api/django/adsengine/reporting/entonnoir/: debut fin
+  get /api/django/adsengine/reporting/exploration/: debut fin
   get /api/django/adsengine/reporting/export/: date table
+  get /api/django/adsengine/reporting/incrementalite/: baseline_debut baseline_fin test_debut test_fin villes
   get /api/django/adsengine/reporting/leads-timeseries/: ad debut fin granularite
+  get /api/django/adsengine/reporting/regret/: debut fin
   get /api/django/adsengine/signaux/cohorte/: signal
   get /api/django/adsengine/stats-bras/: ordering page page_size search
   get /api/django/adsengine/table-faits/: ordering page page_size search
@@ -7810,12 +7822,17 @@ query_params:
   get /api/django/facturation/avoirs/: facture ordering page page_size search
   get /api/django/facturation/factures-lignes/: ordering page page_size search
   get /api/django/facturation/factures/: client entite ordering page page_size search
+  post /api/django/facturation/factures/encaissement-groupe/: ordering search
   get /api/django/facturation/factures/{id}/arrondi-caisse/: mode
+  get /api/django/facturation/factures/{id}/emails/: ordering search
+  get /api/django/facturation/factures/{id}/historique/: ordering search
+  get /api/django/facturation/factures/{id}/paiements/: ordering search
+  get /api/django/facturation/factures/{id}/relances/: ordering search
   get /api/django/facturation/niveaux-relance/: ordering page page_size search
   get /api/django/facturation/notes-debit/: facture ordering page page_size search
   get /api/django/facturation/paiements/: ordering page page_size remisable
-  get /api/django/facturation/paiements/attestations-ras-en-attente/: ordering page page_size
-  get /api/django/facturation/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/django/facturation/paiements/attestations-ras-en-attente/: ordering
+  get /api/django/facturation/paiements/avances-non-affectees/: client ordering
   get /api/django/facturation/relances/: mes_relances
   get /api/django/ged/acls/: document folder niveau ordering page page_size
   get /api/django/ged/analytique/: date_debut date_fin
@@ -8159,7 +8176,7 @@ query_params:
   get /api/django/stock/bons-commande-fournisseur/: fournisseur ordering page page_size search
   get /api/django/stock/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
   get /api/django/stock/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
-  get /api/django/stock/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/django/stock/bons-commande-fournisseur/en-retard/: ordering search
   get /api/django/stock/bons-commande-fournisseur/historique-prix/: fournisseur produit
   get /api/django/stock/budgets-departement/: actif annee mois ordering page page_size search
   get /api/django/stock/budgets-departement/disponible/: montant
@@ -8186,18 +8203,18 @@ query_params:
   get /api/django/stock/expeditions/: ordering page page_size search statut
   get /api/django/stock/expeditions/tarifs/: destination unite_logistique
   get /api/django/stock/factures-fournisseur/: fournisseur ordering page page_size search statut
-  get /api/django/stock/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/django/stock/factures-fournisseur/en-exception/: ordering search
   get /api/django/stock/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/django/stock/factures-fournisseur/suggestions-bcf/: fournisseur montant
   post /api/django/stock/factures-fournisseur/{id}/echeancier/: ordering page page_size search
-  get /api/django/stock/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/django/stock/factures-fournisseur/{id}/paiements/: ordering search
   get /api/django/stock/fiches-techniques/: ordering page page_size produit
   get /api/django/stock/fournisseurs/: categorie ordering page page_size search show_archived
   get /api/django/stock/fournisseurs/documents-expirants/: within
   get /api/django/stock/fournisseurs/export-conformite/: debut export fin
   get /api/django/stock/fournisseurs/{id}/delai-mesure/: fenetre_mois produit seuil_ecart_pct
   get /api/django/stock/fournisseurs/{id}/otif/: fenetre_mois
-  get /api/django/stock/fournisseurs/{id}/portail-tokens/: ordering page page_size search
+  get /api/django/stock/fournisseurs/{id}/portail-tokens/: ordering search
   get /api/django/stock/incidents-qualite-fournisseur/: fournisseur gravite ordering page page_size produit resolu search
   get /api/django/stock/inventaire-sessions/: ordering page page_size search
   get /api/django/stock/inventaires-annuels/: ordering page page_size search
@@ -8205,7 +8222,7 @@ query_params:
   get /api/django/stock/kits/{id}/: avec_disponibilite
   get /api/django/stock/kits/{id}/composition-au/: date
   get /api/django/stock/kits/{id}/exploser/: quantite
-  get /api/django/stock/kits/{id}/revisions/: ordering page page_size search
+  get /api/django/stock/kits/{id}/revisions/: ordering search
   get /api/django/stock/lots-entrepot/: avec_stock ordering page page_size produit search
   get /api/django/stock/lots-entrepot/fefo/: produit quantite
   get /api/django/stock/marques/: ordering page page_size search
@@ -8240,7 +8257,7 @@ query_params:
   get /api/django/stock/produits/{id}/comparer-tco/: cout_rupture_jour fenetre_mois
   get /api/django/stock/produits/{id}/historique-prix/: fournisseur
   get /api/django/stock/produits/{id}/plan-picking/: quantite strategie
-  get /api/django/stock/produits/{id}/prix-fournisseurs/: ordering page page_size search
+  get /api/django/stock/produits/{id}/prix-fournisseurs/: ordering search
   get /api/django/stock/profils-saisonniers/: actif categorie ordering page page_size produit search
   get /api/django/stock/quais/: actif ordering page page_size search type_quai
   get /api/django/stock/quais/planning/: date quai vue
@@ -8289,13 +8306,13 @@ query_params:
   get /api/django/ventes/devis/: concevable entite lead ordering page page_size search statut
   get /api/django/ventes/devis/prefill-site/: client
   get /api/django/ventes/devis/{id}/declaration-raccordement/: format regime
-  post /api/django/ventes/devis/{id}/dupliquer-variante/: ordering page page_size search
+  post /api/django/ventes/devis/{id}/dupliquer-variante/: ordering search
   get /api/django/ventes/devis/{id}/historique-configuration/: a b
+  get /api/django/ventes/devis/{id}/historique/: ordering search
   delete /api/django/ventes/devis/{id}/overrides/: chemin
-  get /api/django/ventes/devis/{id}/overrides/: chemin
-  patch /api/django/ventes/devis/{id}/overrides/: chemin
   get /api/django/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
   get /api/django/ventes/devis/{id}/schema-unifilaire/: format
+  get /api/django/ventes/devis/{id}/variantes/: ordering search
   get /api/django/ventes/dossiers-checklist/: dossier ordering page page_size search
   get /api/django/ventes/dossiers-echanges/: dossier ordering page page_size search type_echange
   get /api/django/ventes/dossiers-reglementaires/: devis ordering page page_size search statut
@@ -8303,8 +8320,13 @@ query_params:
   get /api/django/ventes/export-comptable/: end fmt layout month quarter start
   get /api/django/ventes/factures-lignes/: ordering page page_size search
   get /api/django/ventes/factures/: client entite ordering page page_size search
+  post /api/django/ventes/factures/encaissement-groupe/: ordering search
   get /api/django/ventes/factures/{facture_id}/lettre-relance-premium/: niveau
   get /api/django/ventes/factures/{id}/arrondi-caisse/: mode
+  get /api/django/ventes/factures/{id}/emails/: ordering search
+  get /api/django/ventes/factures/{id}/historique/: ordering search
+  get /api/django/ventes/factures/{id}/paiements/: ordering search
+  get /api/django/ventes/factures/{id}/relances/: ordering search
   get /api/django/ventes/insights/cash-flow/: mode
   get /api/django/ventes/journal-ventes/: end month quarter start
   get /api/django/ventes/listes-prix/: ordering page page_size search
@@ -8312,8 +8334,8 @@ query_params:
   get /api/django/ventes/notes-debit/: facture ordering page page_size search
   get /api/django/ventes/packs-asbuilt/: chantier ordering page page_size search
   get /api/django/ventes/paiements/: ordering page page_size remisable
-  get /api/django/ventes/paiements/attestations-ras-en-attente/: ordering page page_size
-  get /api/django/ventes/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/django/ventes/paiements/attestations-ras-en-attente/: ordering
+  get /api/django/ventes/paiements/avances-non-affectees/: client ordering
   get /api/django/ventes/parametrages-relance-client/: ordering page page_size search
   get /api/django/ventes/plans-commission/: actif ordering owner page page_size search
   get /api/django/ventes/plans-commission/resoudre/: owner
@@ -8334,6 +8356,7 @@ query_params:
   get /api/public/v1/achats/demandes-achat/: ordering page page_size
   get /api/public/v1/achats/rfq/: ordering page page_size
   get /api/public/v1/calepinages/: ordering page page_size
+  get /api/public/v1/changelog/: version
   get /api/public/v1/chantiers/: ordering page page_size
   get /api/public/v1/devis/: ordering page page_size
   get /api/public/v1/factures/: ordering page page_size
@@ -8347,14 +8370,14 @@ query_params:
   get /api/v1/achats/bons-commande-fournisseur/: fournisseur ordering page page_size search
   get /api/v1/achats/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
   get /api/v1/achats/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
-  get /api/v1/achats/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/v1/achats/bons-commande-fournisseur/en-retard/: ordering search
   get /api/v1/achats/bons-commande-fournisseur/historique-prix/: fournisseur produit
   get /api/v1/achats/factures-fournisseur/: fournisseur ordering page page_size search statut
-  get /api/v1/achats/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/v1/achats/factures-fournisseur/en-exception/: ordering search
   get /api/v1/achats/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/v1/achats/factures-fournisseur/suggestions-bcf/: fournisseur montant
   post /api/v1/achats/factures-fournisseur/{id}/echeancier/: ordering page page_size search
-  get /api/v1/achats/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/v1/achats/factures-fournisseur/{id}/paiements/: ordering search
   get /api/v1/achats/paiements-fournisseur/: facture ordering page page_size
   get /api/v1/achats/paiements-fournisseur/ras-tva/export/: date_debut date_fin
   get /api/v1/achats/prix-fournisseurs/: ordering page page_size produit
@@ -8382,6 +8405,7 @@ query_params:
   get /api/v1/adsengine/breakdowns/: dimension object_id object_type since
   get /api/v1/adsengine/campaigns/: ordering page page_size search
   get /api/v1/adsengine/chatter/: entity_id entity_type
+  get /api/v1/adsengine/commentaires/: ad_id hidden post_id unanswered
   get /api/v1/adsengine/concurrents/: ordering page page_size search
   get /api/v1/adsengine/connexions/: ordering page page_size search
   get /api/v1/adsengine/consentements/: ordering page page_size search
@@ -8392,6 +8416,7 @@ query_params:
   get /api/v1/adsengine/faits/: ordering page page_size search
   get /api/v1/adsengine/gabarits-proposition/: ordering page page_size search
   get /api/v1/adsengine/garde-fous/: ordering page page_size search
+  get /api/v1/adsengine/instagram/commentaires/: media_id
   get /api/v1/adsengine/kit-marque/: ordering page page_size search
   get /api/v1/adsengine/lots-creatifs/: ordering page page_size search
   get /api/v1/adsengine/media/{ref}/: kind
@@ -8399,6 +8424,7 @@ query_params:
   get /api/v1/adsengine/metrics/dashboard/: compare debut fin
   get /api/v1/adsengine/metrics/leads/: metric
   get /api/v1/adsengine/noeuds-hypothese/: ordering page page_size search
+  get /api/v1/adsengine/noeuds-hypothese/tests/{test_id}/leads/: ordering page page_size search
   get /api/v1/adsengine/observations-concurrents/: ordering page page_size search
   get /api/v1/adsengine/phases-vol/: ordering page page_size search
   get /api/v1/adsengine/plans-vol/: ordering page page_size search
@@ -8408,10 +8434,19 @@ query_params:
   post /api/v1/adsengine/regles-mot-cle/proposer/: ordering page page_size search
   get /api/v1/adsengine/regles/: ordering page page_size search
   get /api/v1/adsengine/regles/{id}/backtest/: jours
+  get /api/v1/adsengine/reporting/attribution-bilan/: debut
+  get /api/v1/adsengine/reporting/audience/: ad
+  get /api/v1/adsengine/reporting/cohortes/: debut fin
+  get /api/v1/adsengine/reporting/couverture/: debut fin
   get /api/v1/adsengine/reporting/creatifs/classement/: debut dimension fin
   get /api/v1/adsengine/reporting/creatifs/nuage/: debut fin
+  get /api/v1/adsengine/reporting/creatifs/roi-lane/: debut fin
+  get /api/v1/adsengine/reporting/entonnoir/: debut fin
+  get /api/v1/adsengine/reporting/exploration/: debut fin
   get /api/v1/adsengine/reporting/export/: date table
+  get /api/v1/adsengine/reporting/incrementalite/: baseline_debut baseline_fin test_debut test_fin villes
   get /api/v1/adsengine/reporting/leads-timeseries/: ad debut fin granularite
+  get /api/v1/adsengine/reporting/regret/: debut fin
   get /api/v1/adsengine/signaux/cohorte/: signal
   get /api/v1/adsengine/stats-bras/: ordering page page_size search
   get /api/v1/adsengine/table-faits/: ordering page page_size search
@@ -8564,12 +8599,17 @@ query_params:
   get /api/v1/facturation/avoirs/: facture ordering page page_size search
   get /api/v1/facturation/factures-lignes/: ordering page page_size search
   get /api/v1/facturation/factures/: client entite ordering page page_size search
+  post /api/v1/facturation/factures/encaissement-groupe/: ordering search
   get /api/v1/facturation/factures/{id}/arrondi-caisse/: mode
+  get /api/v1/facturation/factures/{id}/emails/: ordering search
+  get /api/v1/facturation/factures/{id}/historique/: ordering search
+  get /api/v1/facturation/factures/{id}/paiements/: ordering search
+  get /api/v1/facturation/factures/{id}/relances/: ordering search
   get /api/v1/facturation/niveaux-relance/: ordering page page_size search
   get /api/v1/facturation/notes-debit/: facture ordering page page_size search
   get /api/v1/facturation/paiements/: ordering page page_size remisable
-  get /api/v1/facturation/paiements/attestations-ras-en-attente/: ordering page page_size
-  get /api/v1/facturation/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/v1/facturation/paiements/attestations-ras-en-attente/: ordering
+  get /api/v1/facturation/paiements/avances-non-affectees/: client ordering
   get /api/v1/facturation/relances/: mes_relances
   get /api/v1/ged/acls/: document folder niveau ordering page page_size
   get /api/v1/ged/analytique/: date_debut date_fin
@@ -8911,7 +8951,7 @@ query_params:
   get /api/v1/stock/bons-commande-fournisseur/: fournisseur ordering page page_size search
   get /api/v1/stock/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
   get /api/v1/stock/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
-  get /api/v1/stock/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/v1/stock/bons-commande-fournisseur/en-retard/: ordering search
   get /api/v1/stock/bons-commande-fournisseur/historique-prix/: fournisseur produit
   get /api/v1/stock/budgets-departement/: actif annee mois ordering page page_size search
   get /api/v1/stock/budgets-departement/disponible/: montant
@@ -8938,18 +8978,18 @@ query_params:
   get /api/v1/stock/expeditions/: ordering page page_size search statut
   get /api/v1/stock/expeditions/tarifs/: destination unite_logistique
   get /api/v1/stock/factures-fournisseur/: fournisseur ordering page page_size search statut
-  get /api/v1/stock/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/v1/stock/factures-fournisseur/en-exception/: ordering search
   get /api/v1/stock/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/v1/stock/factures-fournisseur/suggestions-bcf/: fournisseur montant
   post /api/v1/stock/factures-fournisseur/{id}/echeancier/: ordering page page_size search
-  get /api/v1/stock/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/v1/stock/factures-fournisseur/{id}/paiements/: ordering search
   get /api/v1/stock/fiches-techniques/: ordering page page_size produit
   get /api/v1/stock/fournisseurs/: categorie ordering page page_size search show_archived
   get /api/v1/stock/fournisseurs/documents-expirants/: within
   get /api/v1/stock/fournisseurs/export-conformite/: debut export fin
   get /api/v1/stock/fournisseurs/{id}/delai-mesure/: fenetre_mois produit seuil_ecart_pct
   get /api/v1/stock/fournisseurs/{id}/otif/: fenetre_mois
-  get /api/v1/stock/fournisseurs/{id}/portail-tokens/: ordering page page_size search
+  get /api/v1/stock/fournisseurs/{id}/portail-tokens/: ordering search
   get /api/v1/stock/incidents-qualite-fournisseur/: fournisseur gravite ordering page page_size produit resolu search
   get /api/v1/stock/inventaire-sessions/: ordering page page_size search
   get /api/v1/stock/inventaires-annuels/: ordering page page_size search
@@ -8957,7 +8997,7 @@ query_params:
   get /api/v1/stock/kits/{id}/: avec_disponibilite
   get /api/v1/stock/kits/{id}/composition-au/: date
   get /api/v1/stock/kits/{id}/exploser/: quantite
-  get /api/v1/stock/kits/{id}/revisions/: ordering page page_size search
+  get /api/v1/stock/kits/{id}/revisions/: ordering search
   get /api/v1/stock/lots-entrepot/: avec_stock ordering page page_size produit search
   get /api/v1/stock/lots-entrepot/fefo/: produit quantite
   get /api/v1/stock/marques/: ordering page page_size search
@@ -8992,7 +9032,7 @@ query_params:
   get /api/v1/stock/produits/{id}/comparer-tco/: cout_rupture_jour fenetre_mois
   get /api/v1/stock/produits/{id}/historique-prix/: fournisseur
   get /api/v1/stock/produits/{id}/plan-picking/: quantite strategie
-  get /api/v1/stock/produits/{id}/prix-fournisseurs/: ordering page page_size search
+  get /api/v1/stock/produits/{id}/prix-fournisseurs/: ordering search
   get /api/v1/stock/profils-saisonniers/: actif categorie ordering page page_size produit search
   get /api/v1/stock/quais/: actif ordering page page_size search type_quai
   get /api/v1/stock/quais/planning/: date quai vue
@@ -9041,13 +9081,13 @@ query_params:
   get /api/v1/ventes/devis/: concevable entite lead ordering page page_size search statut
   get /api/v1/ventes/devis/prefill-site/: client
   get /api/v1/ventes/devis/{id}/declaration-raccordement/: format regime
-  post /api/v1/ventes/devis/{id}/dupliquer-variante/: ordering page page_size search
+  post /api/v1/ventes/devis/{id}/dupliquer-variante/: ordering search
   get /api/v1/ventes/devis/{id}/historique-configuration/: a b
+  get /api/v1/ventes/devis/{id}/historique/: ordering search
   delete /api/v1/ventes/devis/{id}/overrides/: chemin
-  get /api/v1/ventes/devis/{id}/overrides/: chemin
-  patch /api/v1/ventes/devis/{id}/overrides/: chemin
   get /api/v1/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
   get /api/v1/ventes/devis/{id}/schema-unifilaire/: format
+  get /api/v1/ventes/devis/{id}/variantes/: ordering search
   get /api/v1/ventes/dossiers-checklist/: dossier ordering page page_size search
   get /api/v1/ventes/dossiers-echanges/: dossier ordering page page_size search type_echange
   get /api/v1/ventes/dossiers-reglementaires/: devis ordering page page_size search statut
@@ -9055,8 +9095,13 @@ query_params:
   get /api/v1/ventes/export-comptable/: end fmt layout month quarter start
   get /api/v1/ventes/factures-lignes/: ordering page page_size search
   get /api/v1/ventes/factures/: client entite ordering page page_size search
+  post /api/v1/ventes/factures/encaissement-groupe/: ordering search
   get /api/v1/ventes/factures/{facture_id}/lettre-relance-premium/: niveau
   get /api/v1/ventes/factures/{id}/arrondi-caisse/: mode
+  get /api/v1/ventes/factures/{id}/emails/: ordering search
+  get /api/v1/ventes/factures/{id}/historique/: ordering search
+  get /api/v1/ventes/factures/{id}/paiements/: ordering search
+  get /api/v1/ventes/factures/{id}/relances/: ordering search
   get /api/v1/ventes/insights/cash-flow/: mode
   get /api/v1/ventes/journal-ventes/: end month quarter start
   get /api/v1/ventes/listes-prix/: ordering page page_size search
@@ -9064,8 +9109,8 @@ query_params:
   get /api/v1/ventes/notes-debit/: facture ordering page page_size search
   get /api/v1/ventes/packs-asbuilt/: chantier ordering page page_size search
   get /api/v1/ventes/paiements/: ordering page page_size remisable
-  get /api/v1/ventes/paiements/attestations-ras-en-attente/: ordering page page_size
-  get /api/v1/ventes/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/v1/ventes/paiements/attestations-ras-en-attente/: ordering
+  get /api/v1/ventes/paiements/avances-non-affectees/: client ordering
   get /api/v1/ventes/parametrages-relance-client/: ordering page page_size search
   get /api/v1/ventes/plans-commission/: actif ordering owner page page_size search
   get /api/v1/ventes/plans-commission/resoudre/: owner
@@ -9110,6 +9155,146 @@ components:
 - AdCampaignMirror
 - AdminOpsSettings
 - AdoptionUsage
+- AdsAccountAudit
+- AdsAdFullStory
+- AdsAdObjectionRow
+- AdsAdObjections
+- AdsAdPreview
+- AdsAlertSnoozeRequestRequest
+- AdsAssetProvenance
+- AdsAttributionBilan
+- AdsAttributionTier
+- AdsAudience
+- AdsAudienceAge
+- AdsAudienceGender
+- AdsAuditScoreTile
+- AdsBacklogCampaign
+- AdsBacklogDropRequestRequest
+- AdsBacklogLot
+- AdsBacklogLotAsset
+- AdsBreakdownCoverage
+- AdsBriefItem
+- AdsBriefLatest
+- AdsCampaignFunnel
+- AdsCampaignFunnelRow
+- AdsChatterItem
+- AdsChatterNote
+- AdsChatterNoteRequestRequest
+- AdsChecklistWarning
+- AdsCockpitLearning
+- AdsCockpitRow
+- AdsCohort
+- AdsCohortLag
+- AdsCommentCountObject
+- AdsCommentCounts
+- AdsCommentFaq
+- AdsCommentHideRequestRequest
+- AdsCommentMessageRequestRequest
+- AdsCommentTheme
+- AdsConnectionHealth
+- AdsConnectionHealthRow
+- AdsConnectionRegister
+- AdsConnectionRegisterRequestRequest
+- AdsConnectionStatus
+- AdsCostPerSignature
+- AdsCostPerSignatureCampagne
+- AdsCostPerSignatureOdoo
+- AdsCoverageFormats
+- AdsCoverageReport
+- AdsCoverageSegments
+- AdsCreativeLeaderboard
+- AdsCreativeScatter
+- AdsDashboardV2
+- AdsDashboardV2Conv
+- AdsDashboardV2Mer
+- AdsDeliveryEstimate
+- AdsDeliveryEstimateRequestRequest
+- AdsEngagementCatalog
+- AdsEngagementCreate
+- AdsEngagementCreateRequestRequest
+- AdsEngagementPreset
+- AdsExplorationLedger
+- AdsExplorationMonth
+- AdsFactoryLane
+- AdsFactoryLaneRoi
+- AdsFormatNever
+- AdsFormatUnused
+- AdsFormatUsed
+- AdsFullStoryAction
+- AdsFullStoryAd
+- AdsFullStoryComment
+- AdsFullStoryCreative
+- AdsFullStoryExperiment
+- AdsFullStoryRule
+- AdsFunnelAggStep
+- AdsFunnelStep
+- AdsGeoHoldoutReport
+- AdsGeoPeriodeBaseline
+- AdsGeoPeriodeTest
+- AdsGroundedGeneration
+- AdsGroundedGenerationRequestRequest
+- AdsGuardianHealth
+- AdsGuardrailSingleton
+- AdsImportChantierPhoto
+- AdsImportChantierPhotoRequestRequest
+- AdsInstagramPublishRequestRequest
+- AdsInstagramQuota
+- AdsInstagramToggleCommentsRequestRequest
+- AdsLeaderboardRow
+- AdsLeadsPoint
+- AdsLeadsTimeseries
+- AdsMdeCalculator
+- AdsMdeHorizon
+- AdsMediaResolve
+- AdsMetricsDashboard
+- AdsMetricsLead
+- AdsMetricsPacing
+- AdsMetricsPrevious
+- AdsObjectionTheme
+- AdsObjectionThemeUnres
+- AdsObjectionsUnresolved
+- AdsOdooAttribution
+- AdsPacingLine
+- AdsPageAssetAccess
+- AdsPendingLoop
+- AdsPeriode
+- AdsProposeCuratedRequestRequest
+- AdsRateLimit
+- AdsRealLeads
+- AdsReconciliationBackfill
+- AdsReconciliationBackfillRequestRequest
+- AdsReconciliationRow
+- AdsRegretInterval
+- AdsRegretParType
+- AdsRegretRegistry
+- AdsScatterPoint
+- AdsSignalCohortRow
+- AdsSignalCreatif
+- AdsSignalGuardrail
+- AdsSignalOperations
+- AdsSignals
+- AdsSimulationDetail
+- AdsSimulationScenarioDetail
+- AdsSparkPoint
+- AdsStatus
+- AdsSyncStatus
+- AdsSyncType
+- AdsSyncWorst
+- AdsTestLead
+- AdsTodayItem
+- AdsTodayQueue
+- AdsUnattributedSource
+- AdsVariantFront
+- AdsVariantFunnel
+- AdsVariantFunnelRow
+- AdsVariantFunnelUnresolved
+- AdsVariantReport
+- AdsVariantRow
+- AdsVisualFatigue
+- AdsVisualFatigueSignal
+- AdsWeatherTrigger
+- AdsWiringConnection
+- AdsWiringHealth
 - AdsengineAutonomyActivation
 - AdsengineAutonomyCockpit
 - AdsengineAutonomyDeactivation
@@ -9141,6 +9326,7 @@ components:
 - AlimentationEnum
 - AmorcerEtapesResultat
 - AmortissementModeEnum
+- AnalyseFacturationLigne
 - AnalyseGoulotsResponse
 - Annonce
 - AnnonceAccuseLecture
@@ -9243,7 +9429,6 @@ components:
 - AvoirFournisseurRequest
 - AvoirFournisseurStatutEnum
 - AvoirImputerCorpsRequest
-- AvoirRequest
 - AvoirStatutEnum
 - AvoirTypeEnum
 - BackgroundJob
@@ -9254,6 +9439,7 @@ components:
 - BackupRunRequest
 - BackupRunResume
 - BackupRunStatutEnum
+- BalanceAgeeLigne
 - BaseEnum
 - BatChimieEnum
 - BatterieSouhaiteeEnum
@@ -9279,6 +9465,9 @@ components:
 - BonCommandeFournisseur
 - BonCommandeFournisseurRequest
 - BonCommandeFournisseurStatutEnum
+- BonCommandeLigneLivraisonRequest
+- BonCommandeLivrerPartielRequestRequest
+- BonCommandeMarquerLivreJsonRequest
 - BonCommandeRequest
 - BonCommandeStatutEnum
 - BrandKit
@@ -9320,8 +9509,11 @@ components:
 - CalendarRescheduleRequest
 - CalendarRescheduleTypeEnum
 - CalendrierAbonnement
+- CalendrierEcheance
 - CalendrierHegirienReponse
 - CalendrierOuvre
+- CalendrierReglementaire
+- CalendrierResume
 - Calepinage
 - CalepinageApprobationRequeteRequest
 - CalepinageComparerProjetsRequeteRequest
@@ -9382,6 +9574,16 @@ components:
 - CanalRequest
 - CanalResolutionEnum
 - CapaciteEtatEnum
+- CashFlowBucketAuDela
+- CashFlowBucketCeMois
+- CashFlowBucketCetteSemaine
+- CashFlowBucketEnRetard
+- CashFlowBucketMoisSuivant
+- CashFlowBucketSansEcheance
+- CashFlowBucketSemaineSuivante
+- CashFlowBuckets
+- CashFlowForecast
+- CashFlowRow
 - CatalogueAchat
 - CatalogueAchatFavorisCorpsRequest
 - CatalogueAchatFavorisReponse
@@ -9433,7 +9635,10 @@ components:
 - CleaningEvent
 - CleaningEventRequest
 - Client
+- ClientCreditWarning
+- ClientCreditWarningRecouvrement
 - ClientRequest
+- ClientScoreComportement
 - CocherChecklistRequeteRequest
 - CocherEtapeRequeteRequest
 - CocherLigneLotRequeteRequest
@@ -9459,6 +9664,8 @@ components:
 - Comment
 - CommentKeywordRule
 - CommentKeywordRuleRequest
+- CommentMirror
+- CommentMirrorSourceEnum
 - CommentRequest
 - CommercialCommercialDashboardReponse
 - CommercialWinLossBySourceReponse
@@ -9621,11 +9828,16 @@ components:
 - DashboardConfig
 - DashboardConfigEffective
 - DashboardConfigRequest
+- DashboardConversion
+- DashboardDevis
+- DashboardFactures
+- DashboardParCommercial
 - DashboardPartageInterne
 - DashboardPartageInterneNiveauEnum
 - DashboardPartageInterneRequest
 - DashboardPublic
 - DashboardPublicExpire
+- DashboardQuoteToCash
 - DashboardRequest
 - DashboardTv
 - DashboardsTv
@@ -9651,6 +9863,10 @@ components:
 - DeclarationConsommationRequest
 - DeclarationConsommationStatutEnum
 - DeclarationFacturee
+- DeclarationRaccordement
+- DeclarationRaccordementClient
+- DeclarationRaccordementSite
+- DeclarationRaccordementSysteme
 - DeclarerConsommationCorpsRequest
 - DeclarerRebutRequeteRequest
 - DeclencheurEnum
@@ -9691,29 +9907,77 @@ components:
 - DestinataireMultiRequest
 - DestinataireMultiRoleEnum
 - Devis
+- DevisAccepterRequestRequest
 - DevisActionBuckets
 - DevisActionLigne
 - DevisActionPanier
 - DevisActionRequise
+- DevisActivity
+- DevisAtomicRequest
+- DevisAutoRequestRequest
+- DevisAutoResponse
+- DevisCompositionResponse
 - DevisConceptionElectriqueRequestRequest
 - DevisConceptionElectriqueResponse
 - DevisConcurrentsEnum
+- DevisConfigSnapshot
 - DevisContacterSuperieurRequestRequest
 - DevisContacterSuperieurResponse
+- DevisDeriveResponse
+- DevisDesignContext
 - DevisDupliquerVarianteGammeRequestRequest
 - DevisDupliquerVarianteGammeResponse
 - DevisDupliquerVarianteRequestRequest
+- DevisEconomie
+- DevisEconomieCi
+- DevisEconomiePompage
 - DevisEnvoyerEmailEchec
 - DevisEnvoyerEmailRequestRequest
 - DevisEnvoyerEmailResponse
+- DevisErreurComposition
+- DevisErreurDetail
+- DevisErreurEconomie
+- DevisErreurFige
+- DevisErreurFromLayout
+- DevisErreurGarde
+- DevisErreurSyncLayout
+- DevisEtatPdf
+- DevisEtatPdfStatutEnum
+- DevisEtudeParamsResponse
+- DevisFacturerCompletPaiement
+- DevisFacturerCompletRequestRequest
+- DevisFacturerCompletResponse
+- DevisFromLayoutRequestRequest
+- DevisFromLayoutResponse
+- DevisGenererFactureRequestRequest
+- DevisHistoriqueConfiguration
+- DevisLayoutResponse
+- DevisLectureClient
+- DevisLotCreationRequestRequest
+- DevisLotsResponse
+- DevisNoterRequestRequest
+- DevisOffreTailleCleRequestCleEnum
+- DevisOffreTailleCleRequestRequest
+- DevisOffresTailles
+- DevisOverridesResponse
 - DevisPdfOptionsRequestRequest
 - DevisPdfPartageResponse
 - DevisPrefillSiteResponse
 - DevisPreset
+- DevisRefuserRequestRequest
+- DevisReplaceLinesRequestRequest
 - DevisRequest
 - DevisRevoquerLienPublicResponse
+- DevisRoofImageResponse
+- DevisSavePresetRequestRequest
+- DevisShareLinkRequestNiveauEnum
 - DevisShareLinkRequestRequest
 - DevisShareLinkResponse
+- DevisShareLinkSectionsRequest
+- DevisSimulerRequestRequest
+- DevisSimulerResponse
+- DevisSuperiorContactStatus
+- DevisSyncLayoutResponse
 - DevisVarianteConfigRequestRequest
 - DevisVarianteConfigResponse
 - DevisWhatsappPreviewResponse
@@ -9723,8 +9987,11 @@ components:
 - DevisWriteRequest
 - DeviseEnum
 - DgiStatutEnum
+- DimensionEnum
+- DirectionEnum
 - DistributeurEnum
 - Document
+- DocumentChantierRefusEtat
 - DocumentClientPortail
 - DocumentClientPortailRequest
 - DocumentClientPortailTypeDocumentEnum
@@ -9782,6 +10049,8 @@ components:
 - EconomiePompageResponse
 - ElectriciteSurPlaceEnum
 - ElementSupprime
+- EmailLog
+- EmailLogStatutEnum
 - EmailTemplate
 - EmailTemplateCleEnum
 - EmailTemplateEffectif
@@ -9807,6 +10076,7 @@ components:
 - EntiteNoterReponse
 - EntiteNoterRequeteRequest
 - EntiteRequest
+- EntityTypeEnum
 - EnvironnementEnum
 - EnvoiRapport
 - EnvoiRapportStatutEnum
@@ -9871,27 +10141,55 @@ components:
 - FactTable
 - FactTableStatutEnum
 - Facture
+- FactureAbandonRepris
+- FactureAbandonnee
+- FactureAbandonnerSoldeRequestMotifEnum
+- FactureAbandonnerSoldeRequestRequest
+- FactureActivity
 - FactureAnnulerAcompteActionEnum
 - FactureAnnulerAcompteRequest
 - FactureAnnulerRequestRequest
+- FactureArrondiCaisse
+- FactureBulkRequestActionEnum
+- FactureBulkRequestRequest
 - FactureComptesAPayer
+- FactureConsoliderRequestRequest
+- FactureCreeeDepuisBc
+- FactureCreerAvoirRequestModeEnum
+- FactureCreerAvoirRequestRequest
+- FactureCreerAvoirRequestTypeEnum
 - FactureCreerNoteDebitRequestRequest
 - FactureDepuisOcrJsonRequest
 - FactureDepuisOcrMultipartRequest
 - FactureDepuisUblMultipartRequest
+- FactureDgiConformite
+- FactureDgiTransmission
 - FactureEcheancierCorpsRequest
+- FactureEmise
+- FactureEncaissementGroupeRequestModeEnum
+- FactureEncaissementGroupeRequestRequest
+- FactureEnvoyerEmailRequestRequest
+- FactureEnvoyerEmailResponse
+- FactureErreurChamp
+- FactureErreurEnvoiEmail
 - FactureExclureRelanceRequestRequest
 - FactureFournisseur
 - FactureFournisseurRequest
 - FactureFournisseurStatutEnum
+- FactureLibererRetenueRequestRequest
 - FactureLicence
 - FactureLicenceCreerRequest
 - FactureLicenceMarquerPayeeRequest
 - FactureLicenceStatutEnum
 - FactureLienPaiementRequestRequest
 - FactureLienPaiementResponse
-- FactureRequest
+- FactureLigneAvoirCorrectiveRequest
+- FactureLigneRetourRequest
+- FactureRelanceApercu
+- FactureRelancee
+- FactureReprendreAbandonRequestRequest
 - FactureResoudreExceptionCorpsRequest
+- FactureRetourClientRequestRequest
 - FactureRevoquerLienPaiementResponse
 - FactureWhatsappRequestRequest
 - FactureWhatsappResponse
@@ -9954,6 +10252,7 @@ components:
 - FormuleValiderReponse
 - FormuleValiderRequeteRequest
 - Fournisseur
+- FournisseurArchiveReponse
 - FournisseurDeciderCandidatureCorpsRequest
 - FournisseurDeciderCandidatureReponse
 - FournisseurRequest
@@ -10088,6 +10387,7 @@ components:
 - IncomingWebhookTrigger
 - IncomingWebhookTriggerRequest
 - IncotermEnum
+- InsightBreakdown
 - InsightsAnalyticsReponse
 - InsightsAuditLogReponse
 - InsightsCfGroupByReponse
@@ -10097,6 +10397,8 @@ components:
 - InsightsProfitabilityReponse
 - InsightsRecurringRevenueReponse
 - InsightsSalesLeaderboardReponse
+- InstagramCommentMirror
+- InstagramMediaMirror
 - Installation
 - InstallationActivity
 - InstallationRegime8221Enum
@@ -10136,6 +10438,8 @@ components:
 - KitOutillageItemRequest
 - KitOutillageRequest
 - KitProduit
+- KitProduitComposant
+- KitProduitComposantRequest
 - KitProduitRequest
 - KitRemplacerComposantCorpsRequest
 - KitRequest
@@ -10167,7 +10471,6 @@ components:
 - LicenceStatut
 - LicenceStatutPublic
 - LigneAvoir
-- LigneAvoirRequest
 - LigneBonCommandeFournisseur
 - LigneBonCommandeFournisseurRequest
 - LigneDevis
@@ -10179,7 +10482,6 @@ components:
 - LigneInventaire
 - LigneInventaireRequest
 - LigneNoteDebit
-- LigneNoteDebitRequest
 - LignePicking
 - LignePickingRequest
 - LignePrixListe
@@ -10295,6 +10597,7 @@ components:
 - MiseEnServiceRequeteRequest
 - MobileHomeRouteReponse
 - MobileHomeRouteRequeteRequest
+- Mode983Enum
 - ModeAcheminementEnum
 - ModeB24Enum
 - ModeDetectionEnum
@@ -10340,11 +10643,11 @@ components:
 - MonitoringSettings
 - MonitoringSettingsRequest
 - MonitoringSyncNow
-- MotifEnum
 - MotifPerte
 - MotifPerteRequest
 - MotifRebutEnum
 - MouvementRebut
+- MouvementRebutMotifEnum
 - MouvementRebutRequest
 - MouvementStock
 - MouvementStockRequest
@@ -10361,7 +10664,7 @@ components:
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
 - NoteDebit
-- NoteDebitRequest
+- NoteDebitAnnulationResponse
 - NoteDecisionRequest
 - NoterRequeteRequest
 - NotesVisiteRequest
@@ -10373,6 +10676,9 @@ components:
 - NotificationsNonLues
 - NotificationsToutLu
 - NullEnum
+- NumerotationAudit
+- NumerotationGroupe
+- NumerotationPreview
 - ObjectifAttainment
 - ObjectifCommercial
 - ObjectifCommercialRequest
@@ -10428,6 +10734,7 @@ components:
 - PaginatedActivityList
 - PaginatedActivityTypeList
 - PaginatedAdCampaignMirrorList
+- PaginatedAdsTestLeadList
 - PaginatedAlarmeOnduleurList
 - PaginatedAlerteRappelList
 - PaginatedAnnonceList
@@ -10686,7 +10993,6 @@ components:
 - PaginatedPlaybookTacheList
 - PaginatedPointContactList
 - PaginatedPolitiqueRetentionList
-- PaginatedPortailFournisseurTokenList
 - PaginatedPortailTiersTokenList
 - PaginatedPositionTechnicienList
 - PaginatedPretEquipementList
@@ -10739,7 +11045,6 @@ components:
 - PaginatedRendezVousTransporteurList
 - PaginatedReponseTypeList
 - PaginatedReserveList
-- PaginatedRetenueSubieList
 - PaginatedRetourClientList
 - PaginatedRetourFournisseurList
 - PaginatedRetourLivraisonLigneList
@@ -10773,7 +11078,6 @@ components:
 - PaginatedSodRuleList
 - PaginatedStageModeleList
 - PaginatedStatutConfigList
-- PaginatedStockRevisionKitList
 - PaginatedSubventionDossierList
 - PaginatedTacheReapproInterneList
 - PaginatedTagList
@@ -10813,12 +11117,21 @@ components:
 - PaginatedWhatsAppTemplateList
 - PaginatedWorksheetMaintenanceModeleList
 - Paiement
+- PaiementAnnulerSaisieRequestRequest
+- PaiementAttestationRecueRequestRequest
+- PaiementAvecRetenueEntreeRequest
+- PaiementAvecRetenueResponse
 - PaiementEnregistrerAvanceRequestRequest
+- PaiementEnvoyerRecuRequestRequest
+- PaiementEnvoyerRecuResponse
 - PaiementFacturePortail
 - PaiementFacturePortailStatutEnum
 - PaiementFournisseur
 - PaiementFournisseurRequest
-- PaiementModeEnum
+- PaiementReaffecterFacture
+- PaiementReaffecterRequestRequest
+- PaiementReaffecterResponse
+- PaiementRejeterRequestRequest
 - PaiementRequest
 - PaiementStatutEnum
 - PaiementVentilerRequestRequest
@@ -10848,6 +11161,7 @@ components:
 - PatchedActivityRequest
 - PatchedActivityTypeRequest
 - PatchedAdminOpsSettingsRequest
+- PatchedAdsGuardrailSingletonRequestRequest
 - PatchedAlarmeOnduleurRequest
 - PatchedAlerteRappelRequest
 - PatchedAnnonceRequest
@@ -10944,7 +11258,6 @@ components:
 - PatchedDemandeTransfertRequest
 - PatchedDepotConsignationRequest
 - PatchedDepotPublicRequest
-- PatchedDevisRequest
 - PatchedDevisWriteRequest
 - PatchedDocumentClientPortailRequest
 - PatchedDocumentConformiteFournisseurRequest
@@ -11075,6 +11388,8 @@ components:
 - PatchedProjetTacheRequest
 - PatchedProjetTicketRequest
 - PatchedProposalTemplateRequest
+- PatchedPublicApiUsagePlanRequest
+- PatchedPublicLeadUpdateRequeteRequest
 - PatchedPutAwayRequest
 - PatchedQuaiRequest
 - PatchedQuotaStockageRequest
@@ -11285,6 +11600,7 @@ components:
 - ProductionWarranty
 - ProductionWarrantyRequest
 - Produit
+- ProduitArchiveReponse
 - ProduitBulkCorpsActionEnum
 - ProduitBulkCorpsRequest
 - ProduitClasseAbc
@@ -11331,43 +11647,74 @@ components:
 - ProposalTemplateRequest
 - ProtTypeEnum
 - ProtocolEnum
+- ProviderEnum
 - PublicAbonnerReponse
 - PublicAbonnerRequeteRequest
+- PublicAcceptEntreprise
+- PublicAcceptRefus
+- PublicAcceptRequestRequest
+- PublicAcceptResponse
+- PublicAcomptePaiement
+- PublicActivateOptionRequestRequest
+- PublicActivateOptionResponse
+- PublicActivityCreateReponse
+- PublicActivityCreateRequeteRequest
+- PublicApiCatalogue
 - PublicApiMonitoring
 - PublicApiMonitoringAppels
 - PublicApiMonitoringEndpoint
 - PublicApiMonitoringJob
 - PublicApiMonitoringJobs
 - PublicApiMonitoringWebhooks
+- PublicApiReference
+- PublicApiUsagePlan
+- PublicApiUsagePlanAvecUsage
 - PublicApporteurDeal
 - PublicApporteurMesDeals
 - PublicBookingReserveReponse
 - PublicBookingReserveRequestRequest
 - PublicCalepinage
 - PublicCalepinageResultat
+- PublicChangelog
+- PublicChangelogEntree
 - PublicChantier
 - PublicChatSessionOuverte
 - PublicConfirmerAbonnementReponse
+- PublicContactRequestRequest
+- PublicContactResponse
 - PublicDemandeAchat
 - PublicDesabonnerReponse
 - PublicDevis
 - PublicDevisCreateReponse
 - PublicDevisCreateRequeteRequest
+- PublicEngagementRequestRequest
 - PublicErrorCatalog
 - PublicErrorCatalogEntry
 - PublicEventFeed
 - PublicEventFeedEntry
+- PublicExportCreateRequeteEntiteEnum
+- PublicExportCreateRequeteRequest
 - PublicFacture
 - PublicFavori
+- PublicImportCreateRequeteEntiteEnum
+- PublicImportCreateRequeteRequest
 - PublicLead
+- PublicLeadCreateRequeteRequest
 - PublicLigneDevis
 - PublicLigneFacture
 - PublicOAuthToken
 - PublicOAuthTokenRequestRequest
+- PublicOpenApiDocument
+- PublicOtpAucunCanal
+- PublicOtpEnvoye
 - PublicOtpLectureDetail
 - PublicOtpLectureVerifyRequestRequest
+- PublicOtpRequis
+- PublicPayPage
+- PublicPayWebhook
 - PublicPostePerte
 - PublicProduit
+- PublicProposalData
 - PublicQuestionnaireReponse
 - PublicQuestionnaireReponseRequestRequest
 - PublicRFQ
@@ -11377,9 +11724,11 @@ components:
 - PublicSalleVenteItem
 - PublicSavedView
 - PublicStatusReponse
+- PublicSuiviPost
 - PublicTailleDetail
 - PublicTicketCreateReponse
 - PublicTicketCreateRequeteRequest
+- PublicVirementDeclare
 - PublicVisiteReponse
 - PublicVisiteRequestRequest
 - PuissanceSouscriteSourceEnum
@@ -11482,10 +11831,21 @@ components:
 - ReinitialiserMotDePasseRequeteRequest
 - RelanceEtape
 - RelanceEtapeStatutEnum
+- RelanceImpayeLigne
+- RelanceLog
+- RelanceNiveauCourant
+- RelanceNiveauSuivant
+- RelancePromesse
+- RelancerFactureRequest
 - RelationModuleEnum
+- ReleveClient
+- ReleveClientAvoir
+- ReleveClientIdentite
+- ReleveClientLigne
+- ReleveClientPaiement
+- ReleveClientTotaux
 - ReleveCompteurEquipement
 - ReleveCompteurEquipementTypeEnum
-- ReleveImportCommitRequestRequest
 - ReleveImportCommitResponse
 - ReleveImportDryRunRequestRequest
 - ReleveImportDryRunResponse
@@ -11561,6 +11921,10 @@ components:
 - RoleSignataire
 - RoleSignataireRequest
 - RoleUtilisateur
+- RoofLoadCoefficient
+- RoofLoadDetailMasse
+- RoofLoadRequestRequest
+- RoofLoadVerdict
 - RotationCleRequest
 - RoutageDocumentaire
 - RoutageDocumentaireRequest
@@ -11580,6 +11944,7 @@ components:
 - SandboxEnvironmentStatutEnum
 - SandboxEssaiReponse
 - SandboxEssaiRequest
+- SandboxResetReponse
 - SanteLive
 - SanteNonPrete
 - SantePret
@@ -11677,6 +12042,8 @@ components:
 - ScheduledJob
 - ScheduledJobRunReponse
 - ScheduledJobRunRequestRequest
+- SchemaUnifilaireJson
+- SchemaUnifilaireRequestRequest
 - ScopesEnum
 - SearchGlobalSearchReponse
 - SearchNotificationsReponse
@@ -11786,6 +12153,16 @@ components:
 - StockPlanChargementErreur
 - StockPortailCreneauReserve
 - StockPortailCreneauxDisponibles
+- StockPortailFournisseurBcf
+- StockPortailFournisseurConfirmation
+- StockPortailFournisseurConfirmationCorpsRequest
+- StockPortailFournisseurConfirmerRefus
+- StockPortailFournisseurConflit
+- StockPortailFournisseurDocuments
+- StockPortailFournisseurErreur
+- StockPortailFournisseurErreurConfirmer
+- StockPortailFournisseurFacture
+- StockPortailFournisseurReception
 - StockPortailTiersErreur
 - StockPortailTiersSolde
 - StockProduitAtp
@@ -12008,6 +12385,12 @@ components:
 - VeilleAnnonceur
 - VeilleDecouverte
 - VeilleDecouverteStatutEnum
+- VentesDetail
+- VentesEmailConfig
+- VentesExportAsync
+- VentesExportStatus
+- VentesExportStatusStatusEnum
+- VentesRoofConfig
 - VerdictEnum
 - VerifierCertificatReponse
 - ViewsAutomationTemplatesReponse

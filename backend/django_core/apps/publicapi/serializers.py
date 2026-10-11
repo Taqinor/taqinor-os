@@ -4,7 +4,7 @@ Authentifiés par session/JWT normaux, palier admin. La clé en clair et le
 secret webhook ne sont JAMAIS renvoyés en lecture — uniquement une fois, à la
 création, par les vues dédiées.
 """
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte
@@ -141,6 +141,9 @@ class WebhookDeliverySerializer(SameCompanyFKSerializerMixin,
         read_only_fields = fields
 
 
+# ENF11 — `core.serializers` porte aussi un `ApiUsagePlanSerializer` : un nom de
+# composant distinct evite la collision « identical names » du generateur.
+@extend_schema_serializer(component_name='PublicApiUsagePlan')
 class ApiUsagePlanSerializer(serializers.ModelSerializer):
     """NTAPI7 — plan d'API nommé de la société (gratuit/pro/entreprise).
 
