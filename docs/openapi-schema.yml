@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7570, components: 3350}
+counts: {paths: 4818, operations: 7570, components: 3351}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10184,6 +10184,7 @@ components:
 - FactureLienPaiementResponse
 - FactureLigneAvoirCorrectiveRequest
 - FactureLigneRetourRequest
+- FactureMarquerPayeeRequestRequest
 - FactureRelanceApercu
 - FactureRelancee
 - FactureReprendreAbandonRequestRequest
