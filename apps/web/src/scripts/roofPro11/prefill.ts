@@ -362,6 +362,8 @@ export interface SerializedZone {
   /** CAL57 — type d'arête par segment de contour (déduit, corrigible à la main). Optionnel
    *  et additif : absent = aucune arête typée, comportement historique. */
   edges?: SerializedEdge[];
+  /** ACAL355 — production du pan (kWh/an) écrite par l'atelier ; jamais `count`/`kwc` ici. */
+  result?: { annualKwh: number };
 }
 
 // ═══════════ PV13 — SÉRIALISATION v2 (additive, jamais destructive) ═══════════
@@ -1133,13 +1135,14 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   }
   let annualKwhTotal = 0;
   // ACAL28 — un pan non recalculé dans la session garde sa production ENREGISTRÉE
-  // (`annualKwhEnregistre`, posée à la relecture), jamais 0.
-  for (const a of ctx.areas) {
-    if (a.result) annualKwhTotal += a.result.annualKwh;
-    else if (typeof a.annualKwhEnregistre === 'number' && Number.isFinite(a.annualKwhEnregistre)) {
-      annualKwhTotal += a.annualKwhEnregistre;
-    }
-  }
+  // (`annualKwhEnregistre`, posée à la relecture), jamais 0. ACAL355 — chaque pan écrit
+  // SA production (`zones[i].result`) et le total en est la somme.
+  ctx.areas.forEach((a, i) => {
+    const kwh = a.result ? a.result.annualKwh : a.annualKwhEnregistre;
+    if (typeof kwh !== 'number' || !Number.isFinite(kwh)) return;
+    annualKwhTotal += kwh;
+    zones[i].result = { annualKwh: kwh };
+  });
   const savings = typeof meta?.savingsMad === 'number' && Number.isFinite(meta.savingsMad) ? meta.savingsMad : null;
   const relu = ctx.documentRelu ?? null; // ACAL31
 
@@ -1323,7 +1326,7 @@ const CLES_RACINE_ATELIER = new Set([
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
   'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual',
-  'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges',
+  'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges', 'result',
 ]);
 
 const memeJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -1382,6 +1385,11 @@ function reconcilierAvecDocumentRelu<T extends SerializedLayout>(layout: T, ctx:
     if ('outline' in relu) sortie.outline = copieJson(relu.outline);
   }
   if (geometriesIntactes && relu.result && typeof relu.result === 'object') sortie.result = copieJson(relu.result);
+  for (const zone of geometriesIntactes ? layout.zones : []) { // ACAL355 — production de pan : celle LUE (ou aucune)
+    const rz = parId.get(zone.id);
+    if (rz && 'result' in rz) zone.result = copieJson(rz.result) as SerializedZone['result'];
+    else delete zone.result;
+  }
   const modulePose = layout.zones.some((z) => typeof z.geometry?.moduleId === 'string');
   if (!('modules' in sortie) && !modulePose && Array.isArray(relu.modules)) sortie.modules = copieJson(relu.modules);
   return layout;
@@ -1488,11 +1496,13 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
   // « aucun fond », et la mémoire est remise à zéro.
   semerFondDepuisDocument(json); // CALX107 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
-  // ACAL28 — production enregistrée attribuée à chaque pan au prorata de son kWc (le
-  // document ne porte que le total) : un pan jamais recalculé ne compte jamais pour 0.
+  // ACAL355 — la production enregistrée de CHAQUE pan (`zones[i].result.annualKwh`) d'abord ;
+  // REPLI (document antérieur à ACAL355, total seul) : ACAL28, prorata du kWc. Jamais 0.
   const totalKwh = json?.result?.annualKwh;
   const totalKwc = json?.result?.kwc;
   const partEnregistree = (z: SerializedZone): number | undefined => {
+    const propre = z.result?.annualKwh;
+    if (typeof propre === 'number' && Number.isFinite(propre)) return propre;
     const kwc = z.geometry?.kwc;
     if (typeof totalKwh !== 'number' || !Number.isFinite(totalKwh) || typeof totalKwc !== 'number' || !(totalKwc > 0)) {
       return undefined;

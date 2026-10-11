@@ -381,7 +381,7 @@
           "type": "boolean"
         },
         "result": {
-          "description": "Écrit par la zone SYNTHÉTIQUE d'auto-devis seulement ; l'aire d'un pan dessiné se calcule de ses sommets. Prime sur `geometry` chez `extract_roof_config`.",
+          "description": "Écrit par l'atelier : production du pan (`annualKwh` SEUL, ACAL355 — relue telle quelle à la réouverture, `result.annualKwh` racine = somme des pans) ; la zone SYNTHÉTIQUE d'auto-devis y met aussi `count`/`kwc`/`areaM2` (l'aire d'un pan dessiné se calcule de ses sommets). `count`/`kwc` priment sur `geometry` chez `extract_roof_config`.",
           "type": "object",
           "additionalProperties": true,
           "properties": {
