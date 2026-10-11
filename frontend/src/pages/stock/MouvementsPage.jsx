@@ -24,6 +24,7 @@ import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
 import { AlerteErreurStock } from './BandeauxListeStock'
+import OptionsTypeMouvement from './OptionsTypeMouvement'
 
 // ZSTK7 — options du regroupement pivot (« Vue groupée »).
 const AGREGATION_GROUP_BY = [
@@ -578,11 +579,7 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
           <FormField label="Type de mouvement" htmlFor="mv-type">
             <Select value={fields.type_mouvement} onValueChange={(v) => setField('type_mouvement', v)}>
               <SelectTrigger id="mv-type"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="entree">Entrée (ajoute au stock)</SelectItem>
-                <SelectItem value="sortie">Sortie (retire du stock)</SelectItem>
-                <SelectItem value="ajustement">Ajustement (fixe le stock)</SelectItem>
-              </SelectContent>
+              <OptionsTypeMouvement />
             </Select>
           </FormField>
 

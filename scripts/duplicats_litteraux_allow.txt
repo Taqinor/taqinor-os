@@ -766,7 +766,6 @@ c768e8c38e16|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src
 c78d68e6dc6d|apps/web/src/scripts/roofPro11/edges.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 c811d395d418|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/nos-solutions.astro
 c858d2869d87|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
-c8d6059c964e|frontend/src/pages/stock/MouvementsPage.jsx,frontend/src/pages/stock/OcrStockImport.jsx
 c8f67f0bd069|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 c8fea06ca250|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 c9b07d76de19|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro

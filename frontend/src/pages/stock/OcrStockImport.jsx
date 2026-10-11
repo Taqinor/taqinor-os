@@ -39,6 +39,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import OptionsTypeMouvement from './OptionsTypeMouvement'
 
 const DOC_LABELS = {
   bon_livraison: 'Bon de livraison',
@@ -806,11 +807,7 @@ function Step2Validate({
             <label className="text-xs font-semibold text-foreground" htmlFor="ocr-mvt">Type de mouvement</label>
             <Select value={mouvementType} onValueChange={setMouvementType}>
               <SelectTrigger id="ocr-mvt"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="entree">Entrée (ajoute au stock)</SelectItem>
-                <SelectItem value="sortie">Sortie (retire du stock)</SelectItem>
-                <SelectItem value="ajustement">Ajustement (fixe le stock)</SelectItem>
-              </SelectContent>
+              <OptionsTypeMouvement />
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
