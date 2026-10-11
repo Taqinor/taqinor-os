@@ -117,7 +117,7 @@ describe('UsersManagement — DataTable (J145)', () => {
 
   it('charge utilisateurs + rôles et rend le DataTable unifié (lignes <tr> + grille)', async () => {
     const { container } = renderPage()
-    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/users/'))
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/users/', expect.anything()))
     expect(rolesApiMock.getRoles).toHaveBeenCalled()
 
     // Marqueurs DATATABLE (migration J145) : conteneur + grille ARIA + recherche.

@@ -4,6 +4,7 @@ import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPer
 import { PackageMinus, Search, Layers,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, DataTable, Spinner, Badge, Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -184,8 +185,10 @@ export default function LotsEntrepot() {
 
   const reload = useCallback(() => {
     setLoading(true)
-    stockApi.getLotsEntrepot(avecStock ? { avec_stock: 'true' } : {})
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    // ADOC38 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => stockApi.getLotsEntrepot({ ...(avecStock ? { avec_stock: 'true' } : {}), page })
+      .then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setError('Chargement des lots impossible.'))
       .finally(() => setLoading(false))
   }, [avecStock])

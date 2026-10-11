@@ -23,8 +23,8 @@ class ExternalRef(models.Model):
     external_system = models.CharField(max_length=50)
     external_id = models.CharField(max_length=150)
 
-    # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE)  # on_delete: référence générique — disparaît avec son ContentType
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
 

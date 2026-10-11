@@ -73,7 +73,6 @@ frontend/src/pages/Rapports.jsx::MesRapports
 frontend/src/pages/admin/RolesManagement.jsx::load
 frontend/src/pages/admin/SecuriteIdentitePage.jsx::load
 frontend/src/pages/admin/TenantsConsole.jsx::TenantsConsole
-frontend/src/pages/admin/UsersManagement.jsx::load
 frontend/src/pages/approbations/ApprobationsPage.jsx::load
 frontend/src/pages/crm/ClientForm.jsx::ClientForm
 frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour
@@ -197,7 +196,6 @@ frontend/src/pages/stock/FournisseursStock.jsx::reload
 frontend/src/pages/stock/FournisseursStock.jsx::reloadArchived
 frontend/src/pages/stock/FournisseursStock.jsx::reloadCategories
 frontend/src/pages/stock/InventairesAnnuels.jsx::reload
-frontend/src/pages/stock/LotsEntrepot.jsx::reload
 frontend/src/pages/stock/ModelesBcf.jsx::reload
 frontend/src/pages/stock/MouvementsPage.jsx::load
 frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx::PaiementsFournisseurLedgerPage
