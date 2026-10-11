@@ -929,7 +929,13 @@ def fetch_meta_lead_node(leadgen_id, access_token):  # pragma: no cover - résea
         'access_token': access_token,
     })
     url = f'{GRAPH_BASE_URL}/{leadgen_id}?{qs}'
-    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+    # B310 — l'URL ne peut viser que le Graph API officiel en https (base
+    # constante) : jamais file:/ ni un schéma arbitraire.
+    if not (GRAPH_BASE_URL.startswith('https://')
+            and url.startswith(f'{GRAPH_BASE_URL}/')):
+        raise ValueError('URL Graph API inattendue')
+    # nosec B310 : schéma https et hôte Graph vérifiés juste au-dessus.
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310  # nosec B310
         return json.loads(resp.read().decode('utf-8'))
 
 
