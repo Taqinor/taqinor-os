@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import stockApi from '../../api/stockApi'
 import api from '../../api/axios'
+import { useHasRole } from '../../hooks/useHasPermission'
 
 // Version du guide : incrémenter pour re-déclencher le guide chez tout le monde
 // après une refonte des étapes.
@@ -150,6 +151,9 @@ export function dismissOnboarding(companyId) {
 // Défensif : une lecture en échec laisse l'étape « à faire », jamais d'erreur.
 export function useOnboardingSteps() {
   const profile = useSelector((s) => s.parametres?.profile)
+  // /users/ est réservé aux paliers responsable/admin (ASEC10) : un compte
+  // « normal » (Commercial…) ne l'appelle pas — sinon 403 sur chaque page.
+  const peutLireUsers = useHasRole(['responsable', 'admin'])
   const [produitCount, setProduitCount] = useState(null)
   const [userCount, setUserCount] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -158,7 +162,9 @@ export function useOnboardingSteps() {
     let alive = true
     Promise.allSettled([
       stockApi.getProduits({ page_size: 1 }),
-      api.get('/users/'),
+      peutLireUsers
+        ? api.get('/users/')
+        : Promise.reject(new Error('users non lisibles')),
     ]).then(([prod, users]) => {
       if (!alive) return
       setProduitCount(prod.status === 'fulfilled'
@@ -167,7 +173,7 @@ export function useOnboardingSteps() {
         ? countFromListResponse(users.value.data) : null)
     }).finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [])
+  }, [peutLireUsers])
 
   const steps = buildOnboardingSteps({ profile, produitCount, userCount })
   const doneCount = steps.filter((s) => s.done).length
