@@ -110,7 +110,7 @@ class PorteeEnfantsLecturesTests(TestCase):
                     f'{BASE}forecast-entries/{self.fe.pk}/',
                     f'{BASE}site-profiles/{self.sp.pk}/',
                     f'{BASE}parrainages/{self.pa.pk}/',
-                    f'{BASE}points-contact/attribution/?lead={self.l1.pk}',
+                    f'{BASE}leads/{self.l1.pk}/points-contact/',
                     f'{BASE}leads/{self.l1.pk}/playbook/'):
             self.assertEqual(api.get(url).status_code, 404, url)
 
@@ -119,7 +119,7 @@ class PorteeEnfantsLecturesTests(TestCase):
             self.assertEqual(len(_lignes(resp)), 1, nom)
         api = self._api(self.admin)
         self.assertEqual(api.get(
-            f'{BASE}points-contact/attribution/?lead={self.l1.pk}'
+            f'{BASE}leads/{self.l1.pk}/points-contact/'
         ).status_code, 200)
         self.assertEqual(
             api.get(f'{BASE}leads/{self.l1.pk}/playbook/').status_code, 200)

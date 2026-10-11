@@ -249,7 +249,7 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         # ACRM57 — table de transitions + full_clean + chatter : le service.
         from django.core.exceptions import ValidationError as DjangoValidationError
 
-        from .services import approuver_deal
+        from .clients_pilotage import approuver_deal
         deal = self.get_object()
         try:
             approuver_deal(deal, user=request.user)
@@ -264,7 +264,7 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         # ACRM57 — un deal « à payer » (ou déjà tranché) ne se rejette plus.
         from django.core.exceptions import ValidationError as DjangoValidationError
 
-        from .services import rejeter_deal
+        from .clients_pilotage import rejeter_deal
         deal = self.get_object()
         try:
             rejeter_deal(deal, user=request.user)
@@ -604,6 +604,9 @@ class ClientViewSet(CompanyScopedModelViewSet):
     ]
     ordering_fields = ['nom', 'date_creation']
     ordering = ['-date_creation']
+    # ACRM67 — clé numérique seule : une route retirée (``clients/segments/``)
+    # n'est pas relue comme ``retrieve`` d'un client (403 au lieu de 404).
+    lookup_value_regex = r'[0-9]+'
 
     def get_queryset(self):
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
