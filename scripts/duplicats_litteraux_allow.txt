@@ -473,7 +473,6 @@
 639af207a83e|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 63a852ee2fa5|frontend/src/features/calepinage/VariantesCompare.jsx,frontend/src/features/core/ExplorateurDonneesPage.jsx,frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/ventes/BonCommandeList.jsx
 63fc9d206e0d|apps/web/src/pages/ar/politique-de-confidentialite.astro,apps/web/src/pages/en/politique-de-confidentialite.astro,apps/web/src/pages/politique-de-confidentialite.astro
-64120f8f75ee|apps/web/src/scripts/roofPro11/electrique3d.ts,frontend/src/features/calepinage/electrique/EquipementsElectriques.helpers.js
 64126f3208df|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 6475549a308a|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/ensoleillement-maroc.astro,frontend/src/pages/admin/ImpersonationConsentement.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/ventes/FactureList.jsx,frontend/src/pages/ventes/PaiementsPage.jsx,frontend/src/pages/ventes/devisList/DevisRow.jsx
 655a1f07223f|apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/en/methodologie-estimation.astro

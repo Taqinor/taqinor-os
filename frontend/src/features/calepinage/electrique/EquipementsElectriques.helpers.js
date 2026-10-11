@@ -1,16 +1,11 @@
 // ENF22 — helpers extraits de EquipementsElectriques.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
 
 /** Les huit types posables — ÉNUMÉRATION FERMÉE (électrique_equipements.json). */
-export const LIBELLES_TYPE = {
-  onduleur: 'Onduleur',
-  coffret_dc: 'Coffret DC',
-  coffret_ac: 'Coffret AC',
-  compteur_production: 'Compteur de production',
-  compteur_reseau: 'Compteur réseau',
-  tgbt: 'TGBT',
-  batterie: 'Batterie',
-  parafoudre: 'Parafoudre',
-}
+export const LIBELLES_TYPE = Object.fromEntries([
+  ['onduleur', 'Onduleur'], ['coffret_dc', 'Coffret DC'], ['coffret_ac', 'Coffret AC'],
+  ['compteur_production', 'Compteur de production'], ['compteur_reseau', 'Compteur réseau'],
+  ['tgbt', 'TGBT'], ['batterie', 'Batterie'], ['parafoudre', 'Parafoudre'],
+])
 
 export const TYPES_EQUIPEMENT = Object.keys(LIBELLES_TYPE)
 
