@@ -114,6 +114,31 @@ class RatchetTests(unittest.TestCase):
         self.assertFalse(cos.parse_log(log) - self.baseline)
 
 
+class CliquetExactTests(unittest.TestCase):
+    """ENF11 — `check_openapi_schema` : base qui ne fait que RETRECIR, et
+    `--strict` (cible) rouge sur TOUT avertissement."""
+
+    def test_nouvel_avertissement_rouge(self):
+        nouveaux, soldes = cos.verdict_avertissements({"a", "b"}, {"a"})
+        self.assertEqual((nouveaux, soldes), (["b"], []))
+
+    def test_entree_de_base_corrigee_rouge(self):
+        nouveaux, soldes = cos.verdict_avertissements({"a"}, {"a", "b"})
+        self.assertEqual((nouveaux, soldes), ([], ["b"]))
+
+    def test_base_exacte_verte(self):
+        self.assertEqual(cos.verdict_avertissements({"a"}, {"a"}), ([], []))
+
+    def test_write_baseline_ne_solde_rien(self):
+        self.assertEqual(cos.verdict_avertissements(
+            {"a"}, {"a", "b"}, base_reecrite=True), ([], []))
+
+    def test_strict_rouge_sur_tout_avertissement_meme_en_base(self):
+        self.assertEqual(cos.verdict_avertissements({"a", "b"}, {"a", "b"}, strict=True),
+                         (["a", "b"], []))
+        self.assertEqual(cos.verdict_avertissements(set(), {"a"}, strict=True), ([], []))
+
+
 class InventoryTests(unittest.TestCase):
     # WOW-CI3 — le document intermediaire est desormais du JSON
     # (`--format openapi-json`) : meme document, 21x plus vite a ecrire et 56x
@@ -326,8 +351,12 @@ class DeriveInstantaneTests(unittest.TestCase):
                 snapshot.parent.mkdir(parents=True)
                 snapshot.write_text(instantane_versionne, encoding="utf-8", newline="\n")
             anciens = (cos.ROOT, cos.SNAPSHOT_PATH, cos.generate,
-                       cos.build_inventory, sys.argv)
+                       cos.build_inventory, sys.argv, cos.load_baseline)
             cos.ROOT, cos.SNAPSHOT_PATH = base, snapshot
+            # Seule la derive de l'instantane est testee ici : base vide, et le
+            # generateur bouchonne ne produit aucun avertissement (ENF11 : une
+            # base non vide serait sinon « soldee » donc ROUGE).
+            cos.load_baseline = lambda path=None: set()
             cos.generate = lambda target, **kwargs: ""
             cos.build_inventory = lambda target: inventaire_genere
             sys.argv = ["check_openapi_schema.py"] + argv
@@ -337,7 +366,7 @@ class DeriveInstantaneTests(unittest.TestCase):
                     code = cos.main()
             finally:
                 (cos.ROOT, cos.SNAPSHOT_PATH, cos.generate,
-                 cos.build_inventory, sys.argv) = anciens
+                 cos.build_inventory, sys.argv, cos.load_baseline) = anciens
             texte = flux.getvalue()
             gele = snapshot.read_text(encoding="utf-8") if snapshot.is_file() else None
             return code, texte, gele

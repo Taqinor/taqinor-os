@@ -234,14 +234,24 @@ class PorteePRTests(unittest.TestCase):
             'rest_framework_simplejwt.views'))
         self.assertIsNone(self.m.proprietaire_du_module(None))
 
-    def test_module_de_vue_essaie_les_valeurs_jusqu_a_resolution(self):
+    def test_modules_de_vue_essaie_les_valeurs_jusqu_a_resolution(self):
         def resoudre(chemin):
             if '00000000' not in chemin:
                 raise LookupError(chemin)
             return 'apps.ged.views'
-        self.assertEqual(self.m.module_de_vue('/api/django/ged/x/{uuid}/', resoudre),
-                         'apps.ged.views')
-        self.assertIsNone(self.m.module_de_vue('/api/django/ged/x/{uuid}/', _refuse))
+        self.assertEqual(self.m.modules_de_vue('/api/django/ged/x/{uuid}/', resoudre),
+                         ('apps.ged.views',))
+        self.assertEqual(self.m.modules_de_vue('/api/django/ged/x/{uuid}/', _refuse), ())
+
+    def test_urlconf_traverse_compte_comme_proprietaire(self):
+        # facturation monte des vues définies dans ventes (re-export).
+        def resoudre(chemin):
+            return ('apps.ventes.views', 'erp_agentique.urls', 'apps.facturation.urls')
+        doc = {'paths': {'/api/django/facturation/factures/': {'get': {'operationId': 'f'}}}}
+        sortie, _ = self.m.preparer_schema(doc, ['apps.facturation'], resoudre)
+        self.assertEqual(list(sortie['paths']), ['/api/django/facturation/factures/'])
+        sortie, _ = self.m.preparer_schema(doc, ['apps.stock'], resoudre)
+        self.assertEqual(sortie['paths'], {})
 
     def test_schema_filtre_par_proprietaire_sans_miroir_v1(self):
         modules = {'stock': 'apps.stock.views', 'ventes': 'apps.ventes.views'}

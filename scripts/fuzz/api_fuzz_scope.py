@@ -15,10 +15,11 @@ de ``scripts/fuzz/``) :
       * sans le miroir ``/api/v1/`` (mêmes vues que ``/api/django/``, YAPIC7 —
         déjà retiré par ``schemathesis.toml``, retiré ici aussi pour ne pas
         payer son chargement) ;
-      * avec ``--proprietaires`` : réduit aux opérations dont la VUE vit dans un
-        des paquets donnés (résolution Django réelle du chemin -> module de la
-        vue ; jamais un préfixe d'URL deviné : `authentication` monte ses
-        routes à la racine de ``/api/django/``) ;
+      * avec ``--proprietaires`` : réduit aux opérations dont la VUE, ou un
+        urlconf traversé, vit dans un des paquets donnés (résolution Django
+        réelle du chemin ; jamais un préfixe d'URL deviné : `authentication`
+        monte ses routes à la racine de ``/api/django/``, `facturation` monte
+        des vues de `ventes`) ;
       * avec des LIENS OpenAPI déclarés (phase stateful) : chaque
         ``POST /x/`` qui répond 201 avec un ``id`` est relié à toutes les
         opérations de ``/x/{pk}/`` et de ses actions ``/x/{pk}/…`` —
@@ -127,32 +128,61 @@ def gabarit_vers_chemins(gabarit: str) -> list[str]:
     return [_PARAM.sub(v, gabarit) for v in _VALEURS_ESSAI]
 
 
-def module_de_vue(gabarit: str, resoudre) -> str | None:
-    """Module de la vue servant ``gabarit`` ; ``resoudre(chemin)`` rend ce
-    module ou lève (``Resolver404``…) — l'essai suivant est alors tenté."""
+def modules_de_vue(gabarit: str, resoudre) -> tuple:
+    """Modules qui servent ``gabarit`` : celui de la VUE et ceux des urlconf
+    traversés. ``resoudre(chemin)`` rend un module ou une suite de modules, ou
+    lève (``Resolver404``…) — la valeur d'essai suivante est alors tentée.
+
+    Les deux comptent : ``apps.facturation.urls`` monte des vues définies dans
+    ``apps.ventes`` (re-export) — une PR qui touche facturation doit fuzzer ces
+    routes même si le module de la vue est ventes."""
     for chemin in gabarit_vers_chemins(gabarit):
         try:
-            module = resoudre(chemin)
+            modules = resoudre(chemin)
         except Exception:  # Resolver404 & co : valeur d'essai refusée
             continue
-        if module:
-            return module
-    return None
+        if isinstance(modules, str):
+            modules = (modules,)
+        if modules:
+            return tuple(modules)
+    return ()
+
+
+def _urlconfs_traverses(resolveur, chemin: str) -> list:
+    """Noms des urlconf (``include('apps.x.urls')``) de la chaîne qui résout
+    ``chemin`` sous ``resolveur``."""
+    from django.urls import URLResolver
+
+    for motif in resolveur.url_patterns:
+        if not isinstance(motif, URLResolver):
+            continue
+        correspondance = motif.pattern.match(chemin)
+        if not correspondance:
+            continue
+        try:
+            motif.resolve(chemin)
+        except Exception:  # cette branche ne mène pas à la vue
+            continue
+        nom = motif.urlconf_name if isinstance(motif.urlconf_name, str) else None
+        return ([nom] if nom else []) + _urlconfs_traverses(motif, correspondance[0])
+    return []
 
 
 def resolveur_django():
-    """Résolveur réel : chemin -> module de la classe de vue (ou de la fonction)."""
+    """Résolveur réel : chemin -> (module de la vue, urlconf traversés)."""
     sys.path.insert(0, os.getcwd())
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "erp_agentique.settings.dev")
     import django
 
     django.setup()
-    from django.urls import resolve
+    from django.urls import get_resolver, resolve
+
+    racine = get_resolver()
 
     def resoudre(chemin):
         vue = resolve(chemin).func
         classe = getattr(vue, "cls", None) or getattr(vue, "view_class", None)
-        return (classe or vue).__module__
+        return ((classe or vue).__module__, *_urlconfs_traverses(racine, chemin.lstrip("/")))
 
     return resoudre
 
@@ -238,8 +268,8 @@ def preparer_schema(doc: dict, proprietaires=None, resoudre=None) -> tuple[dict,
         if not voulus:
             return True
         if gabarit not in caches:
-            caches[gabarit] = proprietaire_du_module(module_de_vue(gabarit, resoudre))
-        return caches[gabarit] in voulus
+            caches[gabarit] = {proprietaire_du_module(m) for m in modules_de_vue(gabarit, resoudre)}
+        return bool(caches[gabarit] & voulus)
 
     sortie = copy.deepcopy(filtrer_schema(doc, garder))
     liens = declarer_liens(sortie)
