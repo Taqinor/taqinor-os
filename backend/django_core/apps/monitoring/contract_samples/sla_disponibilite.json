@@ -1,0 +1,52 @@
+{
+  "endpoint": "GET /api/django/monitoring/sla-disponibilite/{id}/ecart/",
+  "pourquoi": "ASAV101 (D-ASAV-4 option (b), ASAV93) — écart entre l'indice de suivi MESURÉ (jours avec relevé) et le taux de disponibilité GARANTI d'un système, servi par SlaDisponibiliteViewSet.ecart via apps.monitoring.selectors.disponibilite_vs_garantie. Rôle responsable/admin ; société forcée côté serveur (une autre société → 404). Aucun chiffre inventé : le taux garanti est SAISI (jamais un 98 % par défaut, CIQ644), la pénalité vient du tarif saisi `compensation_mad_par_jour_indispo` et reste `null` tant que la société n'a pas validé l'engagement de production (CompanyProfile.garantie_production_autorisee). Les nombres sont servis en JSON (pas en texte). ?window_days= (1..1825, défaut 365).",
+  "exemple": {
+    "has_sla": true,
+    "installation": 87,
+    "window_days": 365,
+    "libelle_indicateur": "indice de suivi (jours avec relevé)",
+    "disponibilite_garantie_pct": 98.0,
+    "disponibilite_mesuree_pct": 95.5,
+    "ecart_pct": 2.5,
+    "sous_garantie": true,
+    "jours_indisponibilite_excedentaire": 9.13,
+    "penalite_mad": 456.5
+  },
+  "exemple_sans_donnees": {
+    "has_sla": true,
+    "installation": 87,
+    "window_days": 365,
+    "libelle_indicateur": "indice de suivi (jours avec relevé)",
+    "disponibilite_garantie_pct": 98.0,
+    "disponibilite_mesuree_pct": null,
+    "ecart_pct": null,
+    "sous_garantie": false,
+    "jours_indisponibilite_excedentaire": null,
+    "penalite_mad": null
+  },
+  "exemple_liste": {
+    "endpoint": "GET /api/django/monitoring/sla-disponibilite/",
+    "reponse": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": 3,
+          "installation": 87,
+          "disponibilite_garantie_pct": "98.00",
+          "compensation_mad_par_jour_indispo": "50.00",
+          "note": "",
+          "created_at": "2026-10-01T09:30:00Z",
+          "updated_at": "2026-10-01T09:30:00Z"
+        }
+      ]
+    }
+  },
+  "notes": {
+    "taux_obligatoire": "POST/PATCH sans `disponibilite_garantie_pct` (ou hors ]0, 100]) → 400 sur ce champ (« Saisir le taux garanti »).",
+    "un_sla_par_systeme": "Un seul SLA par système (OneToOne) : un second POST pour le même système → 400.",
+    "autre_societe": "Détail, modification ou écart d'un SLA d'une autre société → 404 ; un système d'une autre société → 400 (« Système inconnu. »)."
+  }
+}

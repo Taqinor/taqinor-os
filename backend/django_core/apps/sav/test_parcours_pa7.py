@@ -116,12 +116,13 @@ class ParcoursPA7Tests(unittest.TestCase):
 
     def test_les_etapes_manquantes_le_sont_vraiment(self):
         manquantes = [e for e in TABLE['etapes'] if e.get('manquante')]
-        # Les trois coutures sans émetteur/abonné/appelant du constat
-        # C-AMET-025 + la création d'abonnement : déclarées, pas devinées.
+        # Les coutures sans émetteur/abonné/appelant du constat C-AMET-025 :
+        # déclarées, pas devinées. ASAV100 a câblé la création d'abonnement et
+        # la résiliation (émetteur vivant), ASAV101 le SLA de disponibilité :
+        # elles sont désormais PRÉSENTES.
         self.assertEqual(
             {e['id'] for e in manquantes},
-            {'abonnement_creation', 'sla_disponibilite',
-             'monitoring_suit_remplacement', 'resiliation'})
+            {'monitoring_suit_remplacement'})
         for etape in manquantes:
             self.assertTrue(etape['raison'].strip(), etape['id'])
             self.assertTrue(etape['attendu'].strip(), etape['id'])

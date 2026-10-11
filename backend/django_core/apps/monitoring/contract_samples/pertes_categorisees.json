@@ -1,0 +1,20 @@
+{
+  "endpoint": "GET /api/django/monitoring/configs/{id}/pertes/",
+  "pourquoi": "ASAV103 (D-ASAV-4 option (b), ASAV93) — pertes de production PAR CATÉGORIE d'un système supervisé (NTNRG32), servies par MonitoringConfigViewSet.pertes via apps.monitoring.analytics.pertes_categorisees. Rôle responsable/admin ; config d'une autre société → 404. Chaque catégorie SANS donnée exploitable vaut `null` (jamais un 0 trompeur) : `ombrage_pct` est toujours `null` aujourd'hui (aucun relevé infra-journalier). Les pourcentages sont des nombres JSON. ?window_days= (1..1825, défaut 365).",
+  "exemple": {
+    "installation": 87,
+    "window_days": 365,
+    "soiling_pct": 4.2,
+    "ombrage_pct": null,
+    "panne_pct": 2.74,
+    "curtailment_pct": 0.55
+  },
+  "exemple_sans_donnees": {
+    "installation": 87,
+    "window_days": 365,
+    "soiling_pct": null,
+    "ombrage_pct": null,
+    "panne_pct": 0.0,
+    "curtailment_pct": 0.0
+  }
+}

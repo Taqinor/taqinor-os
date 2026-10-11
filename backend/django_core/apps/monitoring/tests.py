@@ -1238,3 +1238,105 @@ class TestBalayageQuotidien(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(r.data['sent'])
         self.assertEqual(len(mail.outbox), 1)
+
+
+# ── ASAV100 — abonnements de supervision rendus utilisables ─────────────────
+
+def _contrat(nom):
+    """Exemple de réponse committé (PACT10) : le test AFFIRME cette forme et
+    l'écran l'IMPORTE — jamais un mock écrit à la main."""
+    import json
+    from pathlib import Path
+    chemin = Path(__file__).resolve().parent / 'contract_samples' / nom
+    return json.loads(chemin.read_text(encoding='utf-8'))
+
+
+class TestAsav100Abonnements(TestCase):
+    URL = '/api/django/monitoring/abonnements/'
+
+    def setUp(self):
+        self.company = make_company('asav100', 'ASAV100')
+        self.autre = make_company('asav100-b', 'ASAV100 B')
+        self.resp = User.objects.create_user(
+            username='asav100_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.normal = User.objects.create_user(
+            username='asav100_normal', password='x', role_legacy='normal',
+            company=self.company)
+        self.admin_b = User.objects.create_user(
+            username='asav100_b', password='x', role_legacy='admin',
+            company=self.autre)
+        self.api = auth(self.resp)
+        self.inst, self.client = make_installation(self.company, ref='CHT-A100')
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst, enabled=True)
+
+    def _creer(self, **corps):
+        data = {'installation_id': self.inst.id, 'periodicite': 'mensuel',
+                'montant': '150.00', 'date_debut': '2026-10-01'}
+        data.update(corps)
+        return self.api.post(self.URL, data, format='json')
+
+    def test_liste_affirme_le_contrat_partage(self):
+        r = self._creer()
+        self.assertEqual(r.status_code, 201, r.data)
+        lst = self.api.get(self.URL)
+        self.assertEqual(lst.status_code, 200)
+        exemple = _contrat('abonnements_monitoring.json')['exemple']
+        self.assertEqual(set(lst.data), set(exemple))
+        self.assertEqual(set(lst.data['results'][0]),
+                         set(exemple['results'][0]))
+        ligne = lst.data['results'][0]
+        self.assertEqual(ligne['client_id'], self.client.id)
+        self.assertEqual(ligne['statut'], 'actif')
+        self.assertEqual(ligne['prochaine_echeance'], '2026-11-01')
+
+    def test_creation_force_societe_et_client(self):
+        autre_inst, autre_client = make_installation(self.autre, ref='CHT-B')
+        r = self._creer(client_id=autre_client.id, company=self.autre.id)
+        self.assertEqual(r.status_code, 201, r.data)
+        from apps.monitoring.models import AbonnementMonitoring
+        ab = AbonnementMonitoring.objects.get(id=r.data['id'])
+        self.assertEqual(ab.company_id, self.company.id)
+        self.assertEqual(ab.client_id, self.client.id)
+        # Un système d'une autre société est refusé (champ nommé).
+        r = self._creer(installation_id=autre_inst.id)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('installation_id', r.data)
+
+    def test_montant_saisi_obligatoire(self):
+        r = self.api.post(self.URL, {'installation_id': self.inst.id},
+                          format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('montant', r.data)
+        r = self._creer(montant='0')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('montant', r.data)
+
+    def test_resiliation_coupe_la_supervision(self):
+        ab_id = self._creer().data['id']
+        r = self.api.post(f'{self.URL}{ab_id}/resilier/', {}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('motif', r.data)
+        r = self.api.post(f'{self.URL}{ab_id}/resilier/',
+                          {'motif': 'Client a vendu la maison.'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        reponse = _contrat('abonnements_monitoring.json')[
+            'exemple_resiliation']['reponse']
+        self.assertEqual(set(r.data), set(reponse))
+        self.assertEqual(r.data['statut'], 'resilie')
+        self.config.refresh_from_db()
+        self.assertFalse(self.config.enabled)
+        r = self.api.post(f'{self.URL}{ab_id}/resilier/',
+                          {'motif': 'encore'}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_autre_societe_404_et_normal_403(self):
+        ab_id = self._creer().data['id']
+        api_b = auth(self.admin_b)
+        self.assertEqual(api_b.get(f'{self.URL}{ab_id}/').status_code, 404)
+        r = api_b.post(f'{self.URL}{ab_id}/resilier/', {'motif': 'x'},
+                       format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(api_b.get(self.URL).data['count'], 0)
+        self.assertEqual(auth(self.normal).get(self.URL).status_code, 403)

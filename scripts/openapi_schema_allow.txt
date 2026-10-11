@@ -161,6 +161,7 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "kind". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "mode". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "niveau". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "origine". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "priorite". The same name has been used fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "raccordement". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "regime_#". The same name has been used fo

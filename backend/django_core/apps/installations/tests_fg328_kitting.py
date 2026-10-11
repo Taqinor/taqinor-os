@@ -105,6 +105,33 @@ class TestOrdreAssemblage(TestCase):
         self.assertTrue(ordre.reference.startswith('ASM-'))
         self.assertEqual(ordre.statut, OrdreAssemblage.Statut.PLANIFIE)
 
+    def test_changement_de_quantite_garde_les_lignes_manuelles(self):
+        """ACHT100 — la quantité change : la ligne du kit est recalculée,
+        la ligne ajoutée à la main est conservée telle quelle."""
+        from apps.installations.models import OrdreAssemblageLigne
+        resp = self.api.post(f'{BASE}/ordres-assemblage/', {
+            'kit': self.kit.id, 'quantite': 1}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        ordre = OrdreAssemblage.objects.get(id=resp.data['id'])
+        manuel = make_produit(self.company, nom='Visserie perso')
+        OrdreAssemblageLigne.objects.create(
+            ordre=ordre, produit=manuel, quantite=7,
+            origine=OrdreAssemblageLigne.Origine.AJOUT)
+        for _ in range(2):  # le second PATCH identique ne change rien
+            r = self.api.patch(
+                f'{BASE}/ordres-assemblage/{ordre.id}/',
+                {'quantite': 2}, format='json')
+            self.assertEqual(r.status_code, 200, r.content)
+            lignes = list(ordre.lignes.order_by('id'))
+            self.assertEqual(len(lignes), 2)
+            kit_l = [x for x in lignes
+                     if x.origine == OrdreAssemblageLigne.Origine.KIT]
+            aj_l = [x for x in lignes
+                    if x.origine == OrdreAssemblageLigne.Origine.AJOUT]
+            self.assertEqual(kit_l[0].quantite, 4)
+            self.assertEqual(
+                (aj_l[0].produit_id, aj_l[0].quantite), (manuel.id, 7))
+
     def test_zero_quantite_rejected(self):
         resp = self.api.post(f'{BASE}/ordres-assemblage/', {
             'kit': self.kit.id, 'quantite': 0,

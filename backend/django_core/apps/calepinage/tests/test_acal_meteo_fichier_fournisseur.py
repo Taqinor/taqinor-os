@@ -17,6 +17,8 @@ Run :
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -34,6 +36,9 @@ from .test_calx5_simulation import LAYOUT, MATERIEL, _ClientRejoue
 from .test_calx62_meteo_fichier import _csv, _instants
 
 BASE = '/api/django/calepinage/calepinages/'
+CONTRAT = json.loads(
+    (Path(__file__).resolve().parent.parent / 'contract_samples'
+     / 'calepinage_meteo_fichier.json').read_text(encoding='utf-8'))
 
 
 class MeteoFichierFournisseurTest(BaseApiCalepinage):
@@ -90,6 +95,18 @@ class MeteoFichierFournisseurTest(BaseApiCalepinage):
         blocs = self._simuler()
         self.assertEqual(blocs['simulation']['meteo_fichier']['sha256'],
                          servi.data['sha256'])
+
+    def test_get_a_la_forme_du_contrat(self):
+        # ACAL363 — la réponse de ``GET meteo-fichier/`` est décrite par le
+        # contrat committé (``exemple_get`` / ``exemple_get_vide``).
+        self.assertIsNone(CONTRAT['exemple_get_vide'])
+        self.assertIsNone(self.api.get(self.url).data)
+
+        self._deposer()
+        servi = self.api.get(self.url)
+
+        self.assertEqual(servi.status_code, 200, servi.content[:300])
+        self.assertEqual(sorted(servi.data), sorted(CONTRAT['exemple_get']))
 
     def test_nouveau_depot_perime_la_simulation(self):
         self._deposer()

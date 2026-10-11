@@ -2,8 +2,9 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
-    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
-    ProductionWarranty,
+    AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
+    MonitoringSettings, ProductionReading, ProductionWarranty,
+    SlaDisponibilite,
 )
 from .providers import available_providers
 
@@ -139,3 +140,82 @@ class MonitoringSettingsSerializer(serializers.ModelSerializer):
             'date_modification',
         ]
         read_only_fields = ['date_modification']
+
+
+class AbonnementMonitoringSerializer(serializers.ModelSerializer):
+    """ASAV100 — abonnement de supervision. ``client_id`` est résolu côté
+    serveur depuis le système (lecture seule) ; statut, motif et échéance ne
+    bougent que par les services (création, résiliation)."""
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    installation_id = serializers.IntegerField(min_value=1)
+    # Aucun chiffre inventé : le montant est obligatoire à la saisie.
+    montant = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=True)
+
+    class Meta:
+        model = AbonnementMonitoring
+        fields = [
+            'id', 'client_id', 'installation_id', 'periodicite',
+            'periodicite_display', 'montant', 'statut', 'statut_display',
+            'date_debut', 'prochaine_echeance', 'motif_resiliation',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'client_id', 'statut', 'prochaine_echeance', 'motif_resiliation',
+            'date_creation',
+        ]
+
+
+class SlaDisponibiliteSerializer(serializers.ModelSerializer):
+    """ASAV101 — SLA de disponibilité d'un système. Le taux garanti est SAISI
+    (aucun défaut, CIQ644) ; la compensation par jour vient de la saisie
+    (0 = aucune compensation chiffrée). ``company`` posée côté serveur."""
+
+    class Meta:
+        model = SlaDisponibilite
+        fields = [
+            'id', 'installation', 'disponibilite_garantie_pct',
+            'compensation_mad_par_jour_indispo', 'note', 'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {'disponibilite_garantie_pct': {
+            'required': True, 'allow_null': False}}
+
+    def validate_installation(self, value):
+        request = self.context.get('request')
+        if request is not None and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Système inconnu.')
+        return value
+
+    def validate_disponibilite_garantie_pct(self, value):
+        if value is None or value <= 0 or value > 100:
+            raise serializers.ValidationError('Saisir le taux garanti.')
+        return value
+
+    def validate_compensation_mad_par_jour_indispo(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError('Compensation invalide.')
+        return value
+
+
+class CertificatCarboneSerializer(serializers.ModelSerializer):
+    """ASAV102 — certificat du registre carbone. Entrée : la cible
+    (``installation_id`` OU ``client_id``) et la période ; ``tco2_evitees`` et
+    ``reference`` sont posées par le serveur (calcul mesuré, numérotation
+    race-safe). ``fichier_key`` (clé de stockage interne) n'est jamais servi."""
+    installation_id = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True)
+    client_id = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True)
+
+    class Meta:
+        model = CertificatCarbone
+        fields = [
+            'id', 'installation_id', 'client_id', 'periode_debut',
+            'periode_fin', 'tco2_evitees', 'reference', 'created_at',
+        ]
+        read_only_fields = ['tco2_evitees', 'reference', 'created_at']

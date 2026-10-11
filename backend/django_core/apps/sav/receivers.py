@@ -17,8 +17,8 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from core.events import (
-    chantier_receptionne, devis_acceptation_annulee, devis_accepted,
-    intervention_completed,
+    abonne_best_effort, chantier_receptionne, devis_acceptation_annulee,
+    devis_accepted, intervention_completed,
 )
 from .models import Ticket
 
@@ -47,6 +47,7 @@ def _log_creation_on_ticket_created(sender, instance, created, **kwargs):
 
 
 @receiver(intervention_completed, dispatch_uid="sav_advance_ticket_on_intervention_completed")
+@abonne_best_effort
 def _avancer_ticket_on_intervention_completed(sender, intervention, company,
                                               user, **kwargs):
     """YSERV2 — quand une Intervention (``apps.installations``) passe à
@@ -56,73 +57,61 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
     pas). Idempotent : re-émettre le signal (double clic, retry) ne produit
     aucun second effet — la note chatter n'est posée qu'au changement réel.
 
-    Best-effort : une erreur ici ne doit jamais remonter (l'intervention,
-    côté installations, est déjà actée)."""
+    Best-effort (APAR48) : ``@abonne_best_effort`` isole l'abonné dans son
+    point de sauvegarde et journalise son erreur — la synchro terrain et la
+    clôture de l'intervention, côté installations, passent toujours."""
+    ticket = getattr(intervention, 'ticket', None)
+    if ticket is None:
+        return
+    from . import activity
+    from .models import Ticket
+
+    if ticket.statut not in Ticket.OPEN_STATUTS or ticket.annule:
+        return  # déjà résolu/clôturé/annulé — ne recule jamais.
+
+    # ASAV14 — date_resolution posée par le service (plus ici).
+    ancien_statut = ticket.statut
+    # ASAV12 — LE service unique de transition (même chaîne d'effets que
+    # l'action ``resoudre`` : SLA, immobilisations, notification client,
+    # suiveurs, ARC34, ``ticket_resolu``, chatter). Transition SYSTÈME
+    # (AUD514 : NOUVEAU/PLANIFIE → RESOLU n'est pas humaine) ; YSERV12 —
+    # une intervention terminée = résolution SUR SITE par défaut (jamais
+    # écrasé si déjà posé). Un refus laisse le ticket intact, journalisé.
+    from . import services as sav_services
     try:
-        ticket = getattr(intervention, 'ticket', None)
-        if ticket is None:
-            return
-        from . import activity
-        from .models import Ticket
-
-        if ticket.statut not in Ticket.OPEN_STATUTS or ticket.annule:
-            return  # déjà résolu/clôturé/annulé — ne recule jamais.
-
-        # ASAV14 — date_resolution posée par le service (plus ici).
-        ancien_statut = ticket.statut
-        # ASAV12 — LE service unique de transition (même chaîne d'effets que
-        # l'action ``resoudre`` : SLA, immobilisations, notification client,
-        # suiveurs, ARC34, ``ticket_resolu``, chatter). Transition SYSTÈME
-        # (AUD514 : NOUVEAU/PLANIFIE → RESOLU n'est pas humaine) ; YSERV12 —
-        # une intervention terminée = résolution SUR SITE par défaut (jamais
-        # écrasé si déjà posé). Un refus laisse le ticket intact, journalisé.
-        from . import services as sav_services
-        try:
-            sav_services.appliquer_transition_ticket(
-                ticket, Ticket.Statut.RESOLU, user, systeme=True,
-                canal_resolution_defaut=Ticket.CanalResolution.SUR_SITE)
-        except sav_services.TransitionTicketRefusee as exc:
-            logger.warning(
-                'sav: intervention terminée #%s — transition de ticket '
-                "refusée par la machine d'états : %s",
-                getattr(intervention, 'pk', None), exc)
-            return
-        saut_systeme = ancien_statut != Ticket.Statut.EN_COURS
-        activity.log_note(
-            ticket, user,
-            f"Intervention {intervention.get_type_intervention_display()} "
-            'terminée — ticket avancé automatiquement vers Résolu '
-            f'(depuis {ancien_statut}).'
-            + (" Transition système : le ticket n'était pas encore en cours, "
-               "l'intervention terminée fait foi." if saut_systeme else ''))
-    except Exception:  # pragma: no cover - défensif (best-effort)
+        sav_services.appliquer_transition_ticket(
+            ticket, Ticket.Statut.RESOLU, user, systeme=True,
+            canal_resolution_defaut=Ticket.CanalResolution.SUR_SITE)
+    except sav_services.TransitionTicketRefusee as exc:
         logger.warning(
-            'sav: échec avancement ticket sur intervention terminée '
-            '#%s', getattr(intervention, 'pk', None), exc_info=True)
+            'sav: intervention terminée #%s — transition de ticket '
+            "refusée par la machine d'états : %s",
+            getattr(intervention, 'pk', None), exc)
+        return
+    saut_systeme = ancien_statut != Ticket.Statut.EN_COURS
+    activity.log_note(
+        ticket, user,
+        f"Intervention {intervention.get_type_intervention_display()} "
+        'terminée — ticket avancé automatiquement vers Résolu '
+        f'(depuis {ancien_statut}).'
+        + (" Transition système : le ticket n'était pas encore en cours, "
+           "l'intervention terminée fait foi." if saut_systeme else ''))
 
 
 @receiver(devis_accepted, dispatch_uid="sav_creer_contrat_on_devis_accepted")
+@abonne_best_effort
 def _creer_contrat_maintenance_on_devis_accepted(sender, devis, user,
                                                  ancien_statut, **kwargs):
     """XCTR1 — quand un devis contenant une ligne récurrente
     (``stock.Produit.est_recurrent``) passe à accepté, crée idempotent le
     ``ContratMaintenance`` correspondant (jamais deux fois pour le même
     devis, y compris si le signal est ré-émis). Un devis sans ligne
-    récurrente ne déclenche rien. Best-effort : une erreur ici ne doit
-    jamais remonter (l'acceptation, côté ventes, est déjà actée)."""
-    try:
-        from django.db import transaction
+    récurrente ne déclenche rien. Best-effort (ADEV54, APAR48) :
+    ``@abonne_best_effort`` l'isole dans son point de sauvegarde — une erreur
+    base est annulée seule et journalisée, la signature passe."""
+    from .services import creer_contrat_depuis_devis_accepte
 
-        from .services import creer_contrat_depuis_devis_accepte
-
-        # ADEV54 — point de sauvegarde PROPRE à l'abonné : une erreur base
-        # ici est annulée seule, la signature (transaction englobante) passe.
-        with transaction.atomic():
-            creer_contrat_depuis_devis_accepte(devis=devis, user=user)
-    except Exception:  # pragma: no cover - défensif (best-effort)
-        logger.warning(
-            'sav: échec création contrat de maintenance sur devis accepté '
-            '#%s', getattr(devis, 'pk', None), exc_info=True)
+    creer_contrat_depuis_devis_accepte(devis=devis, user=user)
 
 
 @receiver(devis_acceptation_annulee,

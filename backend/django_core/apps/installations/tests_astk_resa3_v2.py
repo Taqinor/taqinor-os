@@ -157,3 +157,46 @@ class RevisionTests(TestCase):
         self.assertEqual(self.inst.devis_id, v2.pk)  # rattaché quand même
         self.assertEqual(self._bom_ids(), bom_avant)
         self.assertEqual(self._actives(), actives_avant)
+
+    def test_v2_marque_les_da_emises_a_revoir_sans_les_modifier(self):
+        """AMET14 — DA émise pour 10 panneaux, V2 à 14 : la DA porte le
+        drapeau + le diff, quantité intacte ; une DA brouillon est ignorée ;
+        rejouer la même V2 ne change rien."""
+        from apps.installations.models import DemandeAchat, DemandeAchatLigne
+        from apps.installations.services import (
+            _realigner_nomenclature_revision,
+        )
+        emise = DemandeAchat.objects.create(
+            company=self.company, reference='DA-AMET14-1', objet='Panneaux',
+            chantier=self.inst, statut=DemandeAchat.Statut.SOUMISE)
+        DemandeAchatLigne.objects.create(
+            demande=emise, produit=self.panneau, quantite=Decimal('10'))
+        brouillon = DemandeAchat.objects.create(
+            company=self.company, reference='DA-AMET14-2', objet='Brouillon',
+            chantier=self.inst, statut=DemandeAchat.Statut.BROUILLON)
+        DemandeAchatLigne.objects.create(
+            demande=brouillon, produit=self.panneau, quantite=Decimal('10'))
+
+        v2 = self._v2()
+        self._accepter(v2)
+
+        emise.refresh_from_db()
+        self.assertTrue(emise.a_revoir_v2)
+        self.assertEqual(
+            emise.diff_v2,
+            {str(self.panneau.id): {'ancien': 10, 'nouveau': 14, 'da': 10.0}})
+        self.assertEqual(emise.statut, DemandeAchat.Statut.SOUMISE)
+        self.assertEqual(emise.lignes.get().quantite, Decimal('10'))
+        brouillon.refresh_from_db()
+        self.assertFalse(brouillon.a_revoir_v2)
+        notes = InstallationActivity.objects.filter(
+            installation=self.inst, body__contains='DA-AMET14-1').count()
+        self.assertEqual(notes, 1)
+
+        # Même V2 rejouée : aucun écart de nomenclature, rien ne bouge.
+        diff_avant = dict(emise.diff_v2)
+        _realigner_nomenclature_revision(self.inst, v2)
+        emise.refresh_from_db()
+        self.assertEqual(emise.diff_v2, diff_avant)
+        self.assertEqual(InstallationActivity.objects.filter(
+            installation=self.inst, body__contains='DA-AMET14-1').count(), 1)

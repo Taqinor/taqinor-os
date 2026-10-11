@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/installations/demandes-achat/",
+  "pourquoi": "AMET14 (C17) — quand une V2 de devis change la nomenclature figée d'un chantier, les demandes d'achat DÉJÀ ÉMISES (soumise / approuvée / commandée) ne sont jamais modifiées : `DemandeAchatSerializer` sert deux clés en lecture seule posées par le serveur (`apps.installations.revision_achats.marquer_achats_a_revoir`). `a_revoir_v2` (bool) = la DA est « à revoir (V2) » ; `diff_v2` (objet) = par produit_id (clé texte) `{ancien, nouveau, da}` : quantité de nomenclature du chantier avant / après la V2 et quantité portée par la DA. Un chantier sans révision garde `a_revoir_v2: false` et `diff_v2: {}`. Réponse paginée DRF (`count`/`next`/`previous`/`results`), non vérifiée statiquement (pas de `forme_serveur`). L'écran (onglet Matériel du chantier) lit ces deux clés dans une tâche sœur : il importe cet exemple au lieu d'inventer son propre PAYLOAD.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 1,
+        "reference": "DA-202610-0001",
+        "objet": "Panneaux chantier",
+        "chantier": 12,
+        "statut": "soumise",
+        "statut_display": "Soumise",
+        "a_revoir_v2": true,
+        "diff_v2": {
+          "34": {"ancien": 10, "nouveau": 12, "da": 10.0}
+        },
+        "lignes": [
+          {"id": 5, "produit": 34, "designation": "Panneau 550 Wc", "quantite": "10.00"}
+        ]
+      }
+    ]
+  }
+}
