@@ -734,7 +734,6 @@
     champs: actif, company, date_creation, id, membres, nb_membres, nom, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: deleteMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
-    langue ∈ {darija, fr}
 - frontend/src/api/crmApi.js :: deleteParrainage -> /api/django/crm/parrainages/<>  [ParrainageSerializer]
     champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
     statut ∈ {converti, en_attente, recompense_versee}
@@ -752,10 +751,8 @@
     champs: actif, company, date_creation, id, membres, nb_membres, nom, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
-    langue ∈ {darija, fr}
 - frontend/src/api/crmApi.js :: getMessageTemplates -> /api/django/crm/message-templates  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
-    langue ∈ {darija, fr}
 - frontend/src/api/crmApi.js :: getParrainages -> /api/django/crm/parrainages  [ParrainageSerializer]
     champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
     statut ∈ {converti, en_attente, recompense_versee}
@@ -960,7 +957,7 @@
 - frontend/src/api/installationsApi.js :: createControleQualiteModele -> /api/django/installations/controle-qualite-modeles  [ControleQualiteModeleSerializer]
     champs: active, date_creation, date_modification, id, items, kit
 - frontend/src/api/installationsApi.js :: createDemandeAchat -> /api/django/installations/demandes-achat  [DemandeAchatSerializer]
-    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: createDemandeAchatLigne -> /api/django/installations/demandes-achat-lignes  [DemandeAchatLigneSerializer]
     champs: demande, designation, id, prix_estime, produit, produit_nom, quantite, total_estime
@@ -1021,7 +1018,7 @@
 - frontend/src/api/installationsApi.js :: deleteColisLigne -> /api/django/installations/colis-lignes/<>  [ColisLigneSerializer]
     champs: colis, controle_ok, designation, id, produit, produit_nom, quantite
 - frontend/src/api/installationsApi.js :: deleteDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
-    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: deleteDemandeAchatLigne -> /api/django/installations/demandes-achat-lignes/<>  [DemandeAchatLigneSerializer]
     champs: demande, designation, id, prix_estime, produit, produit_nom, quantite, total_estime
@@ -1093,13 +1090,13 @@
 - frontend/src/api/installationsApi.js :: getControleQualiteModeles -> /api/django/installations/controle-qualite-modeles  [ControleQualiteModeleSerializer]
     champs: active, date_creation, date_modification, id, items, kit
 - frontend/src/api/installationsApi.js :: getDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
-    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: getDemandeTransfert -> /api/django/installations/demandes-transfert/<>  [DemandeTransfertSerializer]
     champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
     statut ∈ {approuve, demande, execute, refuse}
 - frontend/src/api/installationsApi.js :: getDemandesAchat -> /api/django/installations/demandes-achat  [DemandeAchatSerializer]
-    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: getDemandesTransfert -> /api/django/installations/demandes-transfert  [DemandeTransfertSerializer]
     champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
@@ -1217,7 +1214,7 @@
 - frontend/src/api/installationsApi.js :: updateControleQualiteModele -> /api/django/installations/controle-qualite-modeles/<>  [ControleQualiteModeleSerializer]
     champs: active, date_creation, date_modification, id, items, kit
 - frontend/src/api/installationsApi.js :: updateDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
-    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: updateDemandeTransfert -> /api/django/installations/demandes-transfert/<>  [DemandeTransfertSerializer]
     champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
@@ -1236,7 +1233,8 @@
     champs: designation, id, ordre, origine, produit, produit_nom, quantite
     origine ∈ {ajout, kit}
 - frontend/src/api/installationsApi.js :: updateLigneDemontage -> /api/django/installations/ordre-demontage-lignes/<>  [OrdreDemontageLigneSerializer]
-    champs: designation, id, ordre, produit, produit_nom, quantite_attendue, quantite_recuperee
+    champs: designation, id, ordre, origine, produit, produit_nom, quantite_attendue, quantite_recuperee
+    origine ∈ {ajout, kit}
 - frontend/src/api/installationsApi.js :: updateLivraison -> /api/django/installations/livraisons/<>  [LivraisonSerializer]
     champs: adresse_site, cout_transport, created_by, date_creation, date_modification, date_prevue, depot, depot_nom, id, installation, installation_reference, lignes, mode_acheminement, mode_acheminement_display, note, numero_suivi, reference, statut, statut_display, stock_mouvemente, transporteur, transporteur_nom, transporteur_obj_nom
     mode_acheminement ∈ {depot, direct_site}

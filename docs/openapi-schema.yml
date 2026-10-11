@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7600, components: 3031}
+counts: {paths: 4826, operations: 7590, components: 3031}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -916,7 +916,6 @@ operations:
 - post /api/django/crm/clients/export-xlsx/ -> django_crm_clients_export_xlsx_create
 - get /api/django/crm/clients/mon-portefeuille/ -> django_crm_clients_mon_portefeuille_retrieve
 - get /api/django/crm/clients/search/ -> django_crm_clients_search_retrieve
-- get /api/django/crm/clients/segments/ -> django_crm_clients_segments_retrieve
 - delete /api/django/crm/clients/{id}/ -> django_crm_clients_destroy
 - get /api/django/crm/clients/{id}/ -> django_crm_clients_retrieve
 - patch /api/django/crm/clients/{id}/ -> django_crm_clients_partial_update
@@ -950,7 +949,6 @@ operations:
 - patch /api/django/crm/defis/{id}/ -> django_crm_defis_partial_update
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
 - get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_retrieve
-- get /api/django/crm/defis/{id}/export-xlsx/ -> django_crm_defis_export_xlsx_retrieve
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
 - post /api/django/crm/equipes/ -> django_crm_equipes_create
 - get /api/django/crm/equipes/statistiques/ -> django_crm_equipes_statistiques_retrieve
@@ -1091,7 +1089,6 @@ operations:
 - put /api/django/crm/playbooks/{id}/ -> django_crm_playbooks_update
 - get /api/django/crm/points-contact/ -> django_crm_points_contact_list
 - post /api/django/crm/points-contact/ -> django_crm_points_contact_create
-- get /api/django/crm/points-contact/attribution/ -> django_crm_points_contact_attribution_retrieve
 - delete /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_destroy
 - get /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_retrieve
 - patch /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_partial_update
@@ -1112,8 +1109,6 @@ operations:
 - get /api/django/crm/relance-etapes/chaine-commerciale/ -> django_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/django/crm/relance-etapes/controle/ -> django_crm_relance_etapes_controle_retrieve
 - get /api/django/crm/relance-etapes/journal/ -> django_crm_relance_etapes_journal_retrieve
-- get /api/django/crm/relance-etapes/kpi-adherence/ -> django_crm_relance_etapes_kpi_adherence_retrieve
-- get /api/django/crm/relance-etapes/mes-stats/ -> django_crm_relance_etapes_mes_stats_retrieve
 - get /api/django/crm/relance-etapes/suivi/ -> django_crm_relance_etapes_suivi_retrieve
 - post /api/django/crm/relance-etapes/{id}/annuler/ -> django_crm_relance_etapes_annuler_create
 - post /api/django/crm/relance-etapes/{id}/appel-compose/ -> django_crm_relance_etapes_appel_compose_create
@@ -4755,7 +4750,6 @@ operations:
 - post /api/v1/crm/clients/export-xlsx/ -> v1_crm_clients_export_xlsx_create
 - get /api/v1/crm/clients/mon-portefeuille/ -> v1_crm_clients_mon_portefeuille_retrieve
 - get /api/v1/crm/clients/search/ -> v1_crm_clients_search_retrieve
-- get /api/v1/crm/clients/segments/ -> v1_crm_clients_segments_retrieve
 - delete /api/v1/crm/clients/{id}/ -> v1_crm_clients_destroy
 - get /api/v1/crm/clients/{id}/ -> v1_crm_clients_retrieve
 - patch /api/v1/crm/clients/{id}/ -> v1_crm_clients_partial_update
@@ -4789,7 +4783,6 @@ operations:
 - patch /api/v1/crm/defis/{id}/ -> v1_crm_defis_partial_update
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
 - get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_retrieve
-- get /api/v1/crm/defis/{id}/export-xlsx/ -> v1_crm_defis_export_xlsx_retrieve
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
 - post /api/v1/crm/equipes/ -> v1_crm_equipes_create
 - get /api/v1/crm/equipes/statistiques/ -> v1_crm_equipes_statistiques_retrieve
@@ -4930,7 +4923,6 @@ operations:
 - put /api/v1/crm/playbooks/{id}/ -> v1_crm_playbooks_update
 - get /api/v1/crm/points-contact/ -> v1_crm_points_contact_list
 - post /api/v1/crm/points-contact/ -> v1_crm_points_contact_create
-- get /api/v1/crm/points-contact/attribution/ -> v1_crm_points_contact_attribution_retrieve
 - delete /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_destroy
 - get /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_retrieve
 - patch /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_partial_update
@@ -4951,8 +4943,6 @@ operations:
 - get /api/v1/crm/relance-etapes/chaine-commerciale/ -> v1_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/v1/crm/relance-etapes/controle/ -> v1_crm_relance_etapes_controle_retrieve
 - get /api/v1/crm/relance-etapes/journal/ -> v1_crm_relance_etapes_journal_retrieve
-- get /api/v1/crm/relance-etapes/kpi-adherence/ -> v1_crm_relance_etapes_kpi_adherence_retrieve
-- get /api/v1/crm/relance-etapes/mes-stats/ -> v1_crm_relance_etapes_mes_stats_retrieve
 - get /api/v1/crm/relance-etapes/suivi/ -> v1_crm_relance_etapes_suivi_retrieve
 - post /api/v1/crm/relance-etapes/{id}/annuler/ -> v1_crm_relance_etapes_annuler_create
 - post /api/v1/crm/relance-etapes/{id}/appel-compose/ -> v1_crm_relance_etapes_appel_compose_create
@@ -7776,7 +7766,6 @@ query_params:
   get /api/django/crm/clients/dormants/: seuil
   get /api/django/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/django/crm/clients/search/: q
-  get /api/django/crm/clients/segments/: segment
   get /api/django/crm/concurrents-perte/: lead ordering page page_size search
   get /api/django/crm/deals-enregistres/: ordering page page_size search
   get /api/django/crm/deals-enregistres/a-payer/: ordering page page_size search
@@ -7811,13 +7800,11 @@ query_params:
   get /api/django/crm/playbook-taches/: ordering page page_size search
   get /api/django/crm/playbooks/: ordering page page_size search
   get /api/django/crm/points-contact/: lead ordering page page_size search
-  get /api/django/crm/points-contact/attribution/: lead
   get /api/django/crm/rapports/attribution/: debut fin
   get /api/django/crm/relance-etapes/: lead owner scope
   get /api/django/crm/relance-etapes/cadences-echues/: jours
   get /api/django/crm/relance-etapes/controle/: jours owner segment
   get /api/django/crm/relance-etapes/journal/: lead
-  get /api/django/crm/relance-etapes/kpi-adherence/: jours
   get /api/django/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/django/crm/relance-etapes/{id}/message/: cle langue
   get /api/django/crm/revues-compte/: ordering page page_size search
@@ -8535,7 +8522,6 @@ query_params:
   get /api/v1/crm/clients/dormants/: seuil
   get /api/v1/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/v1/crm/clients/search/: q
-  get /api/v1/crm/clients/segments/: segment
   get /api/v1/crm/concurrents-perte/: lead ordering page page_size search
   get /api/v1/crm/deals-enregistres/: ordering page page_size search
   get /api/v1/crm/deals-enregistres/a-payer/: ordering page page_size search
@@ -8570,13 +8556,11 @@ query_params:
   get /api/v1/crm/playbook-taches/: ordering page page_size search
   get /api/v1/crm/playbooks/: ordering page page_size search
   get /api/v1/crm/points-contact/: lead ordering page page_size search
-  get /api/v1/crm/points-contact/attribution/: lead
   get /api/v1/crm/rapports/attribution/: debut fin
   get /api/v1/crm/relance-etapes/: lead owner scope
   get /api/v1/crm/relance-etapes/cadences-echues/: jours
   get /api/v1/crm/relance-etapes/controle/: jours owner segment
   get /api/v1/crm/relance-etapes/journal/: lead
-  get /api/v1/crm/relance-etapes/kpi-adherence/: jours
   get /api/v1/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/v1/crm/relance-etapes/{id}/message/: cle langue
   get /api/v1/crm/revues-compte/: ordering page page_size search
@@ -9612,7 +9596,6 @@ components:
 - CrmConvertirClientRequestRequest
 - CrmInitialiserRelanceRequestRequest
 - CrmJournalRelance
-- CrmKpiAdherence
 - CrmKpiCadences
 - CrmKpiPremierContact
 - CrmLeadLocataire
@@ -9625,7 +9608,6 @@ components:
 - CrmLogInteractionRequestKindEnum
 - CrmLogInteractionRequestOutcomeEnum
 - CrmLogInteractionRequestRequest
-- CrmMesStatsRelance
 - CrmMessageRenderRequestRequest
 - CrmMessageVisiteOuvert
 - CrmMessageVisiteOuvertRequestRequest
@@ -10457,9 +10439,9 @@ components:
 - OrdreDemontageLigneRequest
 - OrdreDemontageRequest
 - OrdreDemontageStatutEnum
+- OrdreLigneOrigineEnum
 - OrdresDepuisDevisRequeteRequest
 - OrientationEnum
-- Origine7a0Enum
 - OuiNonEnum
 - OutboxEvent
 - OutboxEventStatutEnum
@@ -11291,7 +11273,9 @@ components:
 - PortailClientProchainJalon
 - PortailClientTableauDeBord
 - PortailCreerTicketReponse
+- PortailFournisseurTableauDeBord
 - PortailFournisseurToken
+- PortailPartenaireTableauDeBord
 - PortailRapprocherRequestRequest
 - PortailTicketIdOptionnelRequestRequest
 - PortailTicketIdRequestRequest
