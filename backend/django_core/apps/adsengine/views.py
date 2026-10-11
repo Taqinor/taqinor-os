@@ -2806,6 +2806,7 @@ class GuardrailSingletonView(APIView):
         # Aucun champ de stockage pour la bande d'approbation (aucune
         # migration ajoutée) : exposée None. GAP documenté.
         data['require_approval_above_mad'] = None
+        data['ceiling_currency'] = cfg.ceiling_currency or ''
         return data
 
     def get(self, request):
