@@ -8,6 +8,8 @@ sans argument garde la même chaîne MRO. Les imports function-locaux des corps
 restent dans les corps (les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi).
 """
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
@@ -200,6 +202,7 @@ MSG_ECRITURE_REFUSEE = ('Enregistrement refusé : une quantité, un prix ou une 
 class DevisEditionActionsMixin:
     """SPL135 — actions d'édition de ``DevisViewSet`` (mixin, aucune base)."""
 
+    @extend_schema(request=D.DevisAtomic, responses={201: DevisSerializer})
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
     def atomic(self, request):
@@ -350,6 +353,7 @@ class DevisEditionActionsMixin:
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.ReplaceLinesRequest, responses=DevisSerializer)
     @action(detail=True, methods=['post'], url_path='replace-lines',
             permission_classes=[IsResponsableOrAdmin])
     def replace_lines(self, request, pk=None):

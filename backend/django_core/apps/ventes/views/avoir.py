@@ -1,8 +1,10 @@
 from drf_spectacular.utils import extend_schema_view, extend_schema
+from . import openapi_docs as D
 from ..openapi_params import qint
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone  # noqa: F401
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.response import Response
@@ -60,6 +62,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
     """Avoirs (notes de crédit) : lecture pour tout rôle ; PDF pour
     Responsable/Admin ; annulation Admin. Création via la facture
     (creer-avoir), jamais directement."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     queryset = Avoir.objects.select_related(
         'client', 'facture', 'created_by').prefetch_related('lignes').all()
     serializer_class = AvoirSerializer
@@ -150,6 +153,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
                 created_by=user)
         return None
 
+    @extend_schema(request=None, responses=AvoirSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """AUD127 — annule un avoir ET contre-passe son effet.
@@ -231,6 +235,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
                     user=request.user, source='annulation_avoir')
         return Response(AvoirSerializer(avoir).data)
 
+    @extend_schema(responses=D.PdfBinaire)
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
     def telecharger_pdf(self, request, pk=None):
         avoir = self.get_object()
@@ -262,6 +267,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
     """ZFAC4 — notes de débit : lecture pour tout rôle ; PDF pour
     Responsable/Admin. Création via la facture (creer-note-debit), jamais
     directement — même patron qu'``AvoirViewSet``."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     queryset = NoteDebit.objects.select_related(
         'client', 'facture', 'created_by').prefetch_related('lignes').all()
     serializer_class = NoteDebitSerializer
@@ -285,6 +291,9 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
             return [IsAdminRole()]
         return [IsResponsableOrAdmin()]
 
+    @extend_schema(request=None,
+                   responses={200: D.NoteDebitAnnuleeResponse,
+                              201: D.NoteDebitAnnuleeResponse})
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """AFAC32 (D-AFAC-C4) — annule une note de débit ÉMISE par un AVOIR de
@@ -312,6 +321,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
              'avoir': AvoirSerializer(avoir).data, 'cree': cree},
             status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
+    @extend_schema(responses=D.PdfBinaire)
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
     def telecharger_pdf(self, request, pk=None):
         note_debit = self.get_object()

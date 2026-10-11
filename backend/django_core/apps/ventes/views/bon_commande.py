@@ -2,7 +2,10 @@ from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework import viewsets, status, filters  # noqa: F401
+from . import openapi_docs as D
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.response import Response
 from apps.stock.services import (
@@ -121,7 +124,38 @@ def _notifier_chantier_materiel_confirme(bc):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+def _erreur_lignes_livraison(lignes, date_livraison):
+    """ENF11 — message FR de la première anomalie d'un corps de livraison
+    partielle (``lignes`` + ``date_livraison``), ``None`` si le corps est sain."""
+    from datetime import date
+    from decimal import Decimal, InvalidOperation
+    if not isinstance(lignes, list):
+        return 'lignes doit être une liste de {ligne_devis, quantite}.'
+    for entree in lignes:
+        if not isinstance(entree, dict):
+            return 'Chaque ligne doit être un objet {ligne_devis, quantite}.'
+        if entree.get('ligne_devis') is None or entree.get('quantite') is None:
+            return 'Chaque ligne requiert ligne_devis et quantite.'
+        try:
+            int(entree['ligne_devis'])
+        except (TypeError, ValueError):
+            return 'ligne_devis doit être un entier.'
+        try:
+            quantite = Decimal(str(entree['quantite']))
+        except (InvalidOperation, ValueError):
+            return 'quantite doit être un nombre.'
+        if not quantite.is_finite():
+            return 'quantite doit être un nombre fini.'
+    if date_livraison not in (None, ''):
+        try:
+            date.fromisoformat(str(date_livraison))
+        except ValueError:
+            return 'date_livraison invalide (attendu AAAA-MM-JJ).'
+    return None
+
+
 class BonCommandeViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/get_permissions
     # SURCHARGENT la base : le scoping société et la matrice 401/403/404 restent
@@ -217,14 +251,16 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         except BonCommandeExistant as exc:
             raise ValidationError({'detail': exc.message})
 
+    @extend_schema(request=None, responses=BonCommandeSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer',
             permission_classes=[IsResponsableOrAdmin])
     def confirmer(self, request, pk=None):
         bc = self.get_object()
         if bc.statut != BonCommande.Statut.EN_ATTENTE:
+            # ENF11 — conflit d'ÉTAT (et non entrée invalide) : 409.
             return Response(
                 {'detail': 'Seul un BC en attente peut être confirmé.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         bc.statut = BonCommande.Statut.CONFIRME
         bc.save()
@@ -239,7 +275,10 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         _notifier_chantier_materiel_confirme(bc)
         return Response(BonCommandeSerializer(bc).data)
 
-    @action(detail=True, methods=['post'], url_path='marquer-livre',
+    @extend_schema(request=D.MarquerLivreRequest,
+                   responses=BonCommandeSerializer)
+    @action(parser_classes=[JSONParser, MultiPartParser, FormParser],
+            detail=True, methods=['post'], url_path='marquer-livre',
             permission_classes=[IsResponsableOrAdmin])
     def marquer_livre(self, request, pk=None):
         bc = self.get_object()
@@ -322,6 +361,8 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             consommer_reservation_bc(bc, request.user)
         return Response(BonCommandeSerializer(bc).data)
 
+    @extend_schema(request=D.LivrerPartielRequest,
+                   responses=BonCommandeSerializer)
     @action(detail=True, methods=['post'], url_path='livrer-partiel',
             permission_classes=[IsResponsableOrAdmin])
     def livrer_partiel(self, request, pk=None):
@@ -345,6 +386,15 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 {'detail': 'lignes est requis (liste de {ligne_devis, quantite}).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # ENF11 — entrées validées AVANT toute lecture/écriture : une ligne
+        # qui n'est pas un objet, un ``ligne_devis`` non entier, une quantité
+        # non numérique/infinie ou une date illisible finissaient en 500
+        # (AttributeError, ValueError, InvalidOperation, ValidationError).
+        erreur_lignes = _erreur_lignes_livraison(
+            lignes_payload, request.data.get('date_livraison'))
+        if erreur_lignes:
+            return Response({'detail': erreur_lignes},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         # Validation intégrale AVANT toute écriture — un payload invalide ne
         # doit laisser aucune trace (pas de LivraisonBC orpheline). Le stock
@@ -493,6 +543,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
 
         return Response(BonCommandeSerializer(bc).data)
 
+    @extend_schema(request=None, responses=BonCommandeSerializer)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[IsResponsableOrAdmin])
     def annuler(self, request, pk=None):
@@ -542,6 +593,8 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             liberer_reservation_bc(bc)
         return Response(BonCommandeSerializer(bc).data)
 
+    @extend_schema(request=None,
+                   responses={201: D.FactureCreeeDepuisBc})
     @action(detail=True, methods=['post'], url_path='creer-facture',
             permission_classes=[IsResponsableOrAdmin])
     def creer_facture(self, request, pk=None):
@@ -643,6 +696,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(responses=D.PdfBinaire)
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
         """ZSAL8 — PDF imprimable du bon de commande client (layout legacy

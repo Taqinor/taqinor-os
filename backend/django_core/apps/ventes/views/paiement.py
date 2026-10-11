@@ -1,3 +1,5 @@
+from datetime import date as _date
+
 from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import qstr
 from django.db import transaction  # noqa: F401
@@ -7,6 +9,7 @@ from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.exceptions import ValidationError
@@ -34,6 +37,7 @@ from ..serializers_facturation import (  # noqa: F401
     PaiementSerializer,
     AffectationPaiementSerializer,
     RetenueSubieSerializer,
+    PaiementAvecRetenueEntreeSerializer,
     AvoirSerializer,
     RelanceLogSerializer,
 )
@@ -89,6 +93,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
 
     Visible par tout rôle authentifié ; tenant-scopé par société.
     """
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     queryset = Paiement.objects.select_related(
         'facture', 'facture__client', 'client', 'created_by'
     ).all()
@@ -116,6 +121,12 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     def _facture_visible(self, facture_id):
         """AFAC55 — facture de la société ET de la portée du rôle, ou None."""
         from authentication.scoping import scope_queryset
+        # ENF11 — un id non entier (« abc » dans l'URL ou le corps) = facture
+        # introuvable, jamais ValueError → 500.
+        try:
+            facture_id = int(facture_id)
+        except (TypeError, ValueError):
+            return None
         return scope_queryset(
             company_qs(Facture.objects.all(), self.request.user),
             self.request.user, ['created_by']).filter(pk=facture_id).first()
@@ -141,6 +152,8 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
+    @extend_schema(request=D.RejeterPaiementRequest,
+                   responses=PaiementSerializer)
     @action(detail=True, methods=['post'], url_path='rejeter')
     def rejeter(self, request, pk=None):
         """YLEDG5 — marque ce paiement REJETÉ (chèque impayé / virement
@@ -168,6 +181,8 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'detail': exc.message}, status=code)
         return Response(PaiementSerializer(paiement).data)
 
+    @extend_schema(request=D.AnnulerSaisieRequest,
+                   responses=PaiementSerializer)
     @action(detail=True, methods=['post'], url_path='annuler-saisie')
     def annuler_saisie(self, request, pk=None):
         """AFAC17 — annule une saisie de paiement ERRONÉE (motif obligatoire,
@@ -188,6 +203,8 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         paiement.refresh_from_db()
         return Response(PaiementSerializer(paiement).data)
 
+    @extend_schema(request=D.ReaffecterRequest,
+                   responses=D.ReaffecterResponse)
     @action(detail=True, methods=['post'], url_path='reaffecter')
     def reaffecter(self, request, pk=None):
         """AFAC17 — réaffecte le paiement à une autre facture du MÊME client
@@ -227,8 +244,9 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             'facture_cible': _facture(cible),
         })
 
-    @extend_schema(parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=False)], responses=PaiementSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='avances-non-affectees')
+    @extend_schema(parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=False)],
+                   responses=PaiementSerializer(many=True))
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='avances-non-affectees')
     def avances_non_affectees(self, request):
         """XFAC1 — avances (paiements sans facture) encore disponibles,
         optionnellement filtrées par client (``?client=<id>``)."""
@@ -238,7 +256,12 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             statut_affectation=Paiement.StatutAffectation.AFFECTE)
         client_id = request.query_params.get('client')
         if client_id:
-            qs = qs.filter(client_id=client_id)
+            # ENF11 — ``client`` non entier : 400 (ValueError → 500 avant).
+            try:
+                qs = qs.filter(client_id=int(client_id))
+            except (TypeError, ValueError):
+                return Response({'client': 'Entier attendu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
         rows = [p for p in qs if p.montant_disponible > 0]
         return Response(PaiementSerializer(rows, many=True).data)
 
@@ -258,20 +281,62 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
 
         company = request.user.company
         client_id = request.data.get('client')
+        # ENF11 — un ``client`` non entier (« None », texte…) répond 400 comme
+        # un id inconnu : ``filter(pk='None')`` levait ValueError (500).
+        try:
+            client_id = int(client_id)
+        except (TypeError, ValueError):
+            client_id = None
         # Scoping EXPLICITE par la société (superuser sans société : `company_qs`
         # garde son comportement historique de portée globale).
-        client = company_qs(
+        client = (company_qs(
             client_base_qs(company), request.user).filter(pk=client_id).first()
+            if client_id is not None else None)
         if client is None:
             return Response({'detail': 'Client introuvable.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 — entrées validées AVANT l'écriture : date, mode, montant
+        # fini et borné, référence ≤ 120 (une date/un mode/un montant
+        # démesuré/une référence trop longue finissaient en 500 à l'INSERT).
+        from datetime import date as _date
+        from decimal import Decimal, InvalidOperation
+        brut_date = request.data.get('date_paiement')
+        try:
+            date_paiement = (
+                timezone.localdate() if brut_date in (None, '')
+                else _date.fromisoformat(str(brut_date)))
+        except ValueError:
+            return Response(
+                {'date_paiement': 'Date invalide (attendu AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        mode = request.data.get('mode') or Paiement.Mode.VIREMENT
+        if mode not in Paiement.Mode.values:
+            return Response(
+                {'mode': 'Mode de paiement inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        brut_montant = request.data.get('montant')
+        if brut_montant not in (None, ''):
+            try:
+                nombre = Decimal(str(brut_montant))
+            except (InvalidOperation, ValueError):
+                nombre = None
+            if (nombre is None or not nombre.is_finite()
+                    or abs(nombre) >= Decimal('1e10')):
+                return Response(
+                    {'montant': 'Montant invalide.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        reference = request.data.get('reference', '')
+        if reference is not None and len(str(reference)) > 120:
+            return Response(
+                {'reference': 'Au plus 120 caractères.'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             paiement = _enregistrer_avance(
                 company=company, client=client,
                 montant=request.data.get('montant'),
-                date_paiement=request.data.get('date_paiement'),
-                mode=request.data.get('mode', Paiement.Mode.VIREMENT),
-                reference=request.data.get('reference', ''),
+                date_paiement=date_paiement,
+                mode=mode,
+                reference=reference,
                 note=request.data.get('note', ''),
                 created_by=request.user,
             )
@@ -304,6 +369,11 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             AffectationPaiementSerializer(affectation).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        parameters=[OpenApiParameter('facture_id', OpenApiTypes.INT,
+                                     OpenApiParameter.PATH)],
+        request=PaiementAvecRetenueEntreeSerializer,
+        responses={201: D.PaiementAvecRetenueResponse})
     @action(detail=False, methods=['post'],
             url_path=r'factures/(?P<facture_id>[^/.]+)/paiement-avec-retenue',
             permission_classes=[IsResponsableOrAdmin])
@@ -351,7 +421,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=RetenueSubieSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='attestations-ras-en-attente')
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='attestations-ras-en-attente')
     def attestations_ras_en_attente(self, request):
         """XFAC4 — état des attestations RAS à recevoir (non reçues)."""
         qs = RetenueSubie.objects.select_related('facture').filter(
@@ -359,27 +429,51 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         qs = company_qs(qs, request.user)
         return Response(RetenueSubieSerializer(qs, many=True).data)
 
+    @extend_schema(
+        parameters=[OpenApiParameter('retenue_id', OpenApiTypes.INT,
+                                     OpenApiParameter.PATH)],
+        request=D.AttestationRecueRequest, responses=RetenueSubieSerializer)
     @action(detail=False, methods=['post'],
             url_path=r'retenues/(?P<retenue_id>[^/.]+)/attestation-recue',
             permission_classes=[IsResponsableOrAdmin])
     def attestation_recue(self, request, retenue_id=None):
         """XFAC4 — coche la réception de l'attestation RAS (+ justificatif)."""
+        try:
+            retenue_id = int(retenue_id)
+        except (TypeError, ValueError):
+            retenue_id = None
         retenue = company_qs(
             RetenueSubie.objects.all(), request.user).filter(
-            pk=retenue_id).first()
+            pk=retenue_id).first() if retenue_id is not None else None
         if retenue is None:
             return Response({'detail': 'Retenue introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        # ENF11 — date lue AVANT toute écriture (une chaîne illisible
+        # finissait en ValidationError Django → 500).
+        brute = request.data.get('attestation_date')
+        try:
+            date_attestation = (
+                _date.fromisoformat(str(brute)) if brute
+                else timezone.now().date())
+        except ValueError:
+            return Response(
+                {'attestation_date': 'Date invalide (attendu AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fichier = request.data.get('attestation_fichier')
+        if fichier and len(str(fichier)) > 500:
+            return Response(
+                {'attestation_fichier': 'Au plus 500 caractères.'},
+                status=status.HTTP_400_BAD_REQUEST)
         retenue.attestation_recue = True
-        retenue.attestation_date = (
-            request.data.get('attestation_date') or timezone.now().date())
-        if request.data.get('attestation_fichier'):
-            retenue.attestation_fichier = request.data.get(
-                'attestation_fichier')
+        retenue.attestation_date = date_attestation
+        if fichier:
+            retenue.attestation_fichier = str(fichier)
         retenue.save(update_fields=[
             'attestation_recue', 'attestation_date', 'attestation_fichier'])
         return Response(RetenueSubieSerializer(retenue).data)
 
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                              409: D.ErreurDetail})
     @action(detail=True, methods=['get'], url_path='recu-pdf',
             permission_classes=[IsAnyRole])
     def recu_pdf(self, request, pk=None):
@@ -406,6 +500,9 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             f'inline; filename="Quittance_{paiement.id}.pdf"')
         return resp
 
+    @extend_schema(request=D.EnvoyerRecuRequest,
+                   responses={201: D.EnvoyerRecuResponse,
+                              409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='envoyer-recu',
             permission_classes=[IsResponsableOrAdmin])
     def envoyer_recu(self, request, pk=None):

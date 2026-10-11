@@ -472,6 +472,16 @@ class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
     same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
                            'entite', 'condition_paiement_ref')
 
+    # ENF11 — lecture seule, posés par les actions dédiées : DRF retire
+    # ``allow_blank`` d'un champ de modèle en lecture seule, le schéma
+    # n'annonçait donc pas le ``""`` que le serveur sert tant que la facture
+    # n'est ni en revue ni abandonnée. Déclarés explicitement.
+    revue_statut = serializers.ChoiceField(
+        choices=Facture.RevueStatut.choices, allow_blank=True, read_only=True)
+    abandon_motif = serializers.ChoiceField(
+        choices=Facture.MotifAbandon.choices, allow_blank=True,
+        read_only=True)
+
     class Meta:
         model = Facture
         fields = [

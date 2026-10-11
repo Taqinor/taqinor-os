@@ -1,4 +1,6 @@
 from django.db import transaction  # noqa: F401
+from drf_spectacular.utils import extend_schema
+from .. import openapi_shapes as SH
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
@@ -46,6 +48,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema(responses=SH.EmailConfigResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def email_config(request):

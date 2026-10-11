@@ -3,13 +3,17 @@
 Réservé à l'admin : signale les numéros manquants (trous laissés par une
 suppression) et d'éventuels doublons, par type de pièce. Ne renumérote rien.
 """
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
+from . import openapi_shapes as SH
 from .utils.numbering_audit import audit_company
 
 
+@extend_schema(responses={200: SH.NumerotationAuditResponse,
+                          400: SH.DetailResponse, 403: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def numerotation_audit(request):
@@ -31,6 +35,8 @@ _PREVIEW_TYPES = {
 }
 
 
+@extend_schema(responses={200: SH.NumerotationPreviewResponse,
+                          400: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def numerotation_preview(request):

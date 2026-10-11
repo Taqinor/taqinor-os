@@ -20,6 +20,7 @@ donc elle ne passe évidemment PAS par le moteur de devis premium ni par
 ``/proposal`` (règle #4) et ne touche aucun statut.
 """
 from drf_spectacular.utils import extend_schema
+from . import openapi_shapes as SH
 from .openapi_params import qstr
 import re
 
@@ -122,7 +123,9 @@ def _pdf_response(svg, nom_fichier):
     return reponse
 
 
-@extend_schema(parameters=[qstr('format')])
+@extend_schema(parameters=[qstr('format', enum=['json', 'pdf'])],
+               request=SH.SchemaUnifilaireRequest,
+               responses=SH.SCHEMA_UNIFILAIRE_RESPONSES)
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)
@@ -143,7 +146,8 @@ def schema_unifilaire(request):
     return _svg_response(svg)
 
 
-@extend_schema(parameters=[qstr('format')])
+@extend_schema(parameters=[qstr('format', enum=['json', 'pdf'])],
+               responses=SH.SCHEMA_UNIFILAIRE_RESPONSES)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)

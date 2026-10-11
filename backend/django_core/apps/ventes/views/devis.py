@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
+from rest_framework.parsers import JSONParser
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -66,6 +67,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                    DevisCadenceActionsMixin,
                    IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
     # en-tête `Idempotency-Key`, comportement inchangé (le mixin ne fait que
     # déléguer à super().create()). AVEC l'en-tête, un rejeu à corps
@@ -273,6 +275,9 @@ class DevisViewSet(DevisEditionActionsMixin,
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
 
+    @extend_schema(request=D.CompositionRequest,
+                   responses={200: D.CompositionResponse,
+                              422: D.ErreurComposition})
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
     def composition(self, request):
@@ -425,6 +430,9 @@ class DevisViewSet(DevisEditionActionsMixin,
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         return Response(resultat, status=status.HTTP_200_OK)
 
+    @extend_schema(request=D.AutoDevisRequest,
+                   responses={201: D.AutoDevisResponse,
+                              422: D.ErreurComposition})
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
     def auto(self, request):
@@ -531,7 +539,9 @@ class DevisViewSet(DevisEditionActionsMixin,
             },
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=D.VarianteConfigRequest, responses=D.VarianteConfigResponse)
+    @extend_schema(methods=['GET'], responses=D.VarianteConfigResponse)
+    @extend_schema(methods=['PUT'], request=D.VarianteConfigRequest,
+                   responses=D.VarianteConfigResponse)
     @action(detail=False, methods=['get', 'put'], url_path='variante-config')
     def variante_config(self, request):
         """QG9 — Lit (GET) ou règle (PUT) le pourcentage des variantes de devis.
@@ -571,6 +581,10 @@ class DevisViewSet(DevisEditionActionsMixin,
         try:
             pct = Decimal(str(raw))
         except (InvalidOperation, TypeError, ValueError):
+            pct = None
+        # ENF11 — NaN passait ``Decimal(...)`` puis levait InvalidOperation à
+        # la comparaison ci-dessous (500) : non fini = invalide.
+        if pct is None or not pct.is_finite():
             return Response(
                 {'detail': 'variante_pct invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)

@@ -62,6 +62,34 @@ class TestLivraisonPartielle(TestCase):
             f'/api/django/ventes/bons-commande/{self.bc.id}/livrer-partiel/',
             {'lignes': lignes, **extra}, format='json')
 
+    def test_entrees_invalides_repondent_400_sans_ecriture(self):
+        # ENF11 — ligne non objet, ligne_devis non entier, quantité illisible
+        # ou infinie, date illisible : 400 (AttributeError/ValueError/
+        # InvalidOperation/ValidationError → 500 auparavant), aucun stock bougé.
+        ligne = {'ligne_devis': self.ligne_panneau.id, 'quantite': '1'}
+        for corps in (
+                {'lignes': ['x']},
+                {'lignes': [{'ligne_devis': 'abc', 'quantite': '1'}]},
+                {'lignes': [{'ligne_devis': self.ligne_panneau.id,
+                             'quantite': 'abc'}]},
+                {'lignes': [{'ligne_devis': self.ligne_panneau.id,
+                             'quantite': 'Infinity'}]},
+                {'lignes': 'abc'},
+                {'lignes': [ligne], 'date_livraison': 'pas-une-date'}):
+            resp = self.api.post(
+                f'/api/django/ventes/bons-commande/{self.bc.id}/'
+                'livrer-partiel/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 100)
+        self.assertFalse(LivraisonBC.objects.exists())
+
+    def test_confirmer_hors_attente_conflit_409(self):
+        # ENF11 — conflit d'état : 409 (et non 400).
+        resp = self.api.post(
+            f'/api/django/ventes/bons-commande/{self.bc.id}/confirmer/')
+        self.assertEqual(resp.status_code, 409, resp.data)
+
     def test_livraison_partielle_decrements_only_delivered_qty(self):
         resp = self._livrer([{'ligne_devis': self.ligne_panneau.id, 'quantite': '8'}])
         self.assertEqual(resp.status_code, 200)

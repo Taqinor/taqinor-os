@@ -8,6 +8,7 @@ rafraichir_etudes_du_devis``, ``from ..serializers import OverridesSerializer``
 n'interceptent qu'ainsi.
 """
 from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
 from ..openapi_params import qstr
 import logging
 from django.db import transaction
@@ -136,7 +137,17 @@ class DevisEtudesActionsMixin:
             'lignes': lignes,
         }
 
-    @extend_schema(parameters=[qstr('chemin', desc='DELETE : chemin à régénérer.')])
+    @extend_schema(methods=['GET'], responses=D.OverridesResponse)
+    @extend_schema(methods=['PATCH'], request=D.OverridesPatchRequest,
+                   responses=D.OverridesResponse)
+    @extend_schema(methods=['DELETE'],
+                   parameters=[qstr('chemin', required=True,
+                                    enum=['taille.nb_panneaux',
+                                          'taille.panel_watt', 'taille.kwc',
+                                          'scenario', 'recommended_option',
+                                          'etude.jour_reference'],
+                                    desc='Chemin à régénérer.')],
+                   responses=D.OverridesResponse)
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path='overrides',
             permission_classes=[IsResponsableOrAdmin])
@@ -256,6 +267,9 @@ class DevisEtudesActionsMixin:
             logger.warning(
                 "devis_etudes.DevisEtudesActionsMixin._rafraichir_etudes_apres_surcharge : erreur ignorée (mode dégradé)", exc_info=True)
 
+    @extend_schema(methods=['GET'], responses=D.EtudeParamsGetResponse)
+    @extend_schema(methods=['PATCH'], request=D.EtudeParamsPatchRequest,
+                   responses=D.EtudeParamsGetResponse)
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
             permission_classes=[IsResponsableOrAdmin])
     def etude_params(self, request, pk=None):
@@ -359,12 +373,15 @@ class DevisEtudesActionsMixin:
         # bloc : clé ADDITIVE, la forme ``{etude_params}`` est inchangée.
         return Response({'etude_params': bloc, 'updated_at': _jeton(devis)})
 
+    @extend_schema(responses=D.OffresTaillesResponse)
     @action(detail=True, methods=['get'], url_path='offres-tailles',
             permission_classes=[IsResponsableOrAdmin])
     def offres_tailles(self, request, pk=None):
         """LECTURE des trois tailles Éco / Recommandé / Max de ce devis."""
         return Response(self._offres_tailles_reponse(self.get_object()))
 
+    @extend_schema(request=D.OffreTailleConfigRequest,
+                   responses=D.OffresTaillesResponse)
     @action(detail=True, methods=['patch'], url_path='offres-tailles/config',
             permission_classes=[IsResponsableOrAdmin])
     def offres_tailles_config(self, request, pk=None):
@@ -390,6 +407,8 @@ class DevisEtudesActionsMixin:
                            utilisateur=request.user)
         return Response(self._offres_tailles_reponse(devis))
 
+    @extend_schema(request=D.OffreTailleCleRequest,
+                   responses=D.OffresTaillesResponse)
     @action(detail=True, methods=['post'],
             url_path='offres-tailles/regenerer',
             permission_classes=[IsResponsableOrAdmin])
@@ -420,6 +439,9 @@ class DevisEtudesActionsMixin:
         reponse['updated_at'] = _jeton(devis)
         return Response(reponse)
 
+    @extend_schema(request=D.OffreTailleCleRequest,
+                   responses={200: D.OffresTaillesResponse,
+                              400: D.ErreurSyncLayout})
     @action(detail=True, methods=['post'],
             url_path='offres-tailles/appliquer',
             permission_classes=[IsResponsableOrAdmin])

@@ -71,6 +71,7 @@ class DevisPdfActionsMixin:
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @extend_schema(responses=D.EtatPdfResponse)
     @action(
         detail=True,
         methods=['get'],

@@ -1,3 +1,4 @@
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
 from ..models import LigneDevis
 from ..serializers import LigneDevisSerializer
@@ -72,6 +73,7 @@ def _instantane(devis, user):
 
 
 class LigneDevisViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. LigneDevis N'A PAS de
     # champ `company` (elle est scopée via son parent `devis__company`), donc la
     # base TenantMixin ne convient PAS telle quelle : son get_queryset

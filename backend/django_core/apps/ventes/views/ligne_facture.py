@@ -1,6 +1,7 @@
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -45,6 +46,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 class LigneFactureViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. LigneFacture N'A PAS de
     # champ `company` (elle est scopée via son parent `facture__company`), donc la
     # base TenantMixin ne convient PAS telle quelle : son get_queryset

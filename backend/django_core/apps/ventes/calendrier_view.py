@@ -20,8 +20,8 @@ Chaque échéance porte un statut d'alerte calculé par rapport à aujourd'hui :
 ``expire`` (passée), ``imminent`` (≤ seuil de jours), ``a_venir`` (au-delà). Ne
 change aucun statut de devis ; jamais de prix.
 """
-from drf_spectacular.utils import extend_schema
-from .openapi_params import qint, qstr
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from . import openapi_shapes as SH
 from datetime import timedelta
 
 from django.utils import timezone
@@ -84,7 +84,17 @@ def _alerte(date_echeance, today, seuil_jours):
     return 'a_venir', delta
 
 
-@extend_schema(parameters=[qint('seuil'), qint('validite'), qstr('statut')])
+@extend_schema(
+    parameters=[
+        OpenApiParameter('seuil', {'type': 'integer', 'minimum': 0, 'maximum': 100000},
+                         required=False),
+        OpenApiParameter('validite', {'type': 'integer', 'minimum': 0, 'maximum': 100000},
+                         required=False),
+        OpenApiParameter('statut', str, required=False,
+                         enum=['expire', 'imminent', 'a_venir',
+                               'sans_echeance'])],
+    responses={200: SH.CalendrierReglementaireResponse,
+               400: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def calendrier_reglementaire(request):
@@ -101,21 +111,36 @@ def calendrier_reglementaire(request):
     user = request.user
     today = timezone.now().date()
 
-    try:
-        seuil = int(request.query_params.get(
-            'seuil', DEFAULT_SEUIL_IMMINENT_JOURS))
-    except (TypeError, ValueError):
-        seuil = DEFAULT_SEUIL_IMMINENT_JOURS
-    if seuil < 0:
+    # ENF11 — ``seuil`` / ``validite`` / ``statut`` mal formés répondent 400
+    # (ils étaient ignorés en silence au profit du défaut).
+    def _entier_positif(cle):
+        brut = request.query_params.get(cle)
+        if brut is None:
+            return None, None
+        try:
+            valeur = int(brut)
+        except (TypeError, ValueError):
+            valeur = -1
+        if valeur < 0 or valeur > 100000:
+            return None, {cle: 'Entier positif attendu (jours).'}
+        return valeur, None
+
+    seuil, erreur = _entier_positif('seuil')
+    if erreur:
+        return Response(erreur, status=400)
+    if seuil is None:
         seuil = DEFAULT_SEUIL_IMMINENT_JOURS
     # CIQ619 — aucune validité par défaut : sans surcharge, les délais du
     # décret s'appliquent.
-    try:
-        validite = int(request.query_params.get('validite'))
-    except (TypeError, ValueError):
-        validite = None
-    if validite is not None and validite < 0:
-        validite = None
+    validite, erreur = _entier_positif('validite')
+    if erreur:
+        return Response(erreur, status=400)
+    statut_filtre = request.query_params.get('statut')
+    if statut_filtre not in (None, '', 'expire', 'imminent', 'a_venir',
+                             'sans_echeance'):
+        return Response(
+            {'statut': 'Statut inconnu (expire, imminent, a_venir).'},
+            status=400)
 
     def _scope(qs):
         if getattr(user, 'company_id', None):

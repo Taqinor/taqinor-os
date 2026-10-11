@@ -10,8 +10,9 @@ renvoie 404). Aucun de ces documents n'expose de prix d'achat / marge. La
 génération réutilise les helpers visuels du moteur premium (jamais modifié)
 via ``apps.ventes.quote_engine.extra_docs``.
 """
-from drf_spectacular.utils import extend_schema
-from .openapi_params import qint
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from . import openapi_shapes as SH
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -33,7 +34,11 @@ def _scope(qs, user):
     return qs.none()
 
 
-@extend_schema(parameters=[qint('niveau')])
+@extend_schema(
+    parameters=[OpenApiParameter('niveau', OpenApiTypes.INT, required=False,
+                                 enum=[1, 2, 3])],
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+               409: SH.DetailResponse, 500: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def lettre_relance_premium(request, facture_id):
@@ -51,10 +56,11 @@ def lettre_relance_premium(request, facture_id):
     if facture is None:
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
+    # ENF11 — un ``niveau`` non entier répond 400 (il retombait sur 1).
     try:
         niveau = int(request.query_params.get('niveau', 1))
     except (TypeError, ValueError):
-        niveau = 1
+        niveau = None
     if niveau not in (1, 2, 3):
         return Response({'detail': 'Niveau de relance invalide (1, 2 ou 3).'},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -82,6 +88,8 @@ def lettre_relance_premium(request, facture_id):
     return resp
 
 
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          500: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def fiche_remise_premium(request, chantier_id):

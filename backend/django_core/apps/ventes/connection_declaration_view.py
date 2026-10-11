@@ -8,7 +8,9 @@ aucun statut de devis (RULE #4) ; le PDF est un document RÉGLEMENTAIRE autonome
 distinct du PDF de devis client (``/proposal`` reste l'unique chemin de celui-ci
 et le moteur premium n'est pas touché). Jamais de prix d'achat / marge en sortie.
 """
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
+from . import openapi_shapes as SH
 from .openapi_params import qstr
 from django.http import HttpResponse, Http404
 from rest_framework import status
@@ -24,7 +26,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@extend_schema(parameters=[qstr('regime'), qstr('format', enum=['pdf'])])
+@extend_schema(
+    parameters=[qstr('regime'), qstr('format', enum=['pdf'])],
+    responses={
+        (200, 'application/json'): SH.DeclarationRaccordementResponse,
+        (200, 'application/pdf'): OpenApiTypes.BINARY,
+        503: SH.DetailResponse,
+    })
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def declaration_raccordement(request, pk):

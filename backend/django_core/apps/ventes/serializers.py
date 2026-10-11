@@ -1034,6 +1034,14 @@ class DevisWriteSerializer(SameCompanyFKSerializerMixin,
     """
     same_company_fields = ('client', 'lead', 'entite')
 
+    # ENF11 — lecture seule (posée par ``/accepter/``) : DRF retire
+    # ``allow_blank`` d'un champ de modèle en lecture seule, donc le schéma
+    # n'annonçait que les deux options alors que le serveur sert ``""`` tant
+    # qu'aucune n'est retenue. Déclaré explicitement pour dire la vérité.
+    option_acceptee = serializers.ChoiceField(
+        choices=Devis.OptionAcceptee.choices, allow_blank=True,
+        read_only=True)
+
     class Meta:
         model = Devis
         fields = [
@@ -1244,6 +1252,17 @@ class RegleListePrixSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id']
 
 
+class _BooleenStrict(serializers.BooleanField):
+    """ENF11 — un VRAI booléen JSON seulement. ``BooleanField`` de DRF accepte
+    aussi « 0 », « on », « yes »… : le schéma dit ``boolean``, la vue prenait
+    en silence une chaîne que le contrat ne prévoit pas."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            return data
+        self.fail('invalid', input=data)
+
+
 class ListePrixSerializer(serializers.ModelSerializer):
     """XSAL1/XSAL2 — liste de prix clients + ses règles de paliers.
     `company` toujours forcée côté serveur (jamais acceptée du body — voir
@@ -1251,6 +1270,7 @@ class ListePrixSerializer(serializers.ModelSerializer):
     lignes = LignePrixListeSerializer(many=True, read_only=True)
     regles = RegleListePrixSerializer(many=True, read_only=True)
     est_active = serializers.BooleanField(read_only=True)
+    archived = _BooleenStrict(required=False)
 
     class Meta:
         model = ListePrix

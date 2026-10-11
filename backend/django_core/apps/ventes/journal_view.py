@@ -7,8 +7,12 @@ leur construction. Sous le seuil, le chemin synchrone reste STRICTEMENT
 inchangé (mêmes octets, UI inchangée). Le CSV reste toujours synchrone.
 """
 from drf_spectacular.utils import extend_schema
+from . import openapi_shapes as SH
 from .openapi_params import PERIODE, qstr
 import uuid
+
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -63,7 +67,13 @@ def _maybe_async_export(request, layout, debut, fin):
     )
 
 
-@extend_schema(parameters=list(PERIODE))
+@extend_schema(
+    parameters=list(PERIODE),
+    responses={
+        (200, SH.XLSX): OpenApiTypes.BINARY,
+        202: SH.ExportAsyncResponse,
+        403: SH.DetailResponse,
+    })
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def journal_ventes(request):
@@ -82,7 +92,17 @@ def journal_ventes(request):
     return export_journal_ventes(user.company, debut, fin)
 
 
-@extend_schema(parameters=[qstr('fmt'), qstr('layout')] + PERIODE)
+@extend_schema(
+    parameters=[qstr('fmt', desc='xlsx (défaut) ou csv.'),
+                qstr('layout', desc='ligne (défaut), grand-livre ou '
+                                    'quickbooks.')] + PERIODE,
+    responses={
+        (200, SH.XLSX): OpenApiTypes.BINARY,
+        (200, 'text/csv'): OpenApiTypes.STR,
+        (200, 'application/octet-stream'): OpenApiTypes.BINARY,
+        202: SH.ExportAsyncResponse,
+        403: SH.DetailResponse,
+    })
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_comptable(request):
@@ -129,6 +149,11 @@ def export_comptable(request):
     return export_comptable_xlsx(user.company, debut, fin)
 
 
+@extend_schema(
+    parameters=[OpenApiParameter('token', OpenApiTypes.STR,
+                                 OpenApiParameter.PATH)],
+    responses={200: SH.ExportStatusResponse, 202: SH.ExportStatusResponse,
+               500: SH.ExportStatusResponse, 403: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_status(request, token):

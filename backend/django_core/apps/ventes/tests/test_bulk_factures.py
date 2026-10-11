@@ -84,6 +84,19 @@ class TestFactureBulk(TestCase):
         r = self.api.post(self._url(), {'action': 'emettre'}, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_ids_non_entiers_ne_font_pas_planter(self):
+        # ENF11 — un id texte / structuré levait ValueError (filter) ou
+        # TypeError (clé de dict non hachable) → 500 : « ID invalide. ».
+        f = self._facture()
+        r = self.api.post(
+            self._url(),
+            {'action': 'emettre', 'ids': ['abc', [1], {'a': 1}, f.id]},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data[f.id]['ok'])
+        self.assertFalse(r.data['abc']['ok'])
+        self.assertEqual(r.data['abc']['detail'], 'ID invalide.')
+
     # ── Emettre ───────────────────────────────────────────────────────────────
 
     def test_bulk_emettre_brouillon(self):

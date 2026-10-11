@@ -87,6 +87,22 @@ class TestEncaissementGroupe(TestCase):
             self.assertEqual(f.statut, Facture.Statut.PAYEE)
             self.assertEqual(f.montant_du, Decimal('0'))
 
+    def test_entrees_invalides_repondent_400(self):
+        # ENF11 — montant démesuré, mode inconnu, date illisible, ids non
+        # entiers, référence trop longue : 400 (DataError/ValueError → 500).
+        api = self._api(self.resp)
+        base = {'client': self.client_obj.id, 'montant': '100',
+                'mode': 'virement', 'date': str(timezone.now().date()),
+                'factures': [self.f1.id]}
+        for patch in ({'montant': '1e20'}, {'montant': 'NaN'},
+                      {'mode': 'troc'}, {'date': 'pas-une-date'},
+                      {'factures': ['abc']}, {'reference': 'x' * 121}):
+            resp = api.post(
+                '/api/django/ventes/factures/encaissement-groupe/',
+                dict(base, **patch), format='json')
+            self.assertEqual(resp.status_code, 400, (patch, resp.data))
+        self.assertFalse(Paiement.objects.exists())
+
     def test_partial_split_settles_only_what_amount_covers(self):
         api = self._api(self.resp)
         # 6000 réglés sur f1(5000)+f2(3000)+f3(2000) → f1 soldée, f2 partielle

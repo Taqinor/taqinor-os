@@ -387,6 +387,7 @@ class DevisEnvoiActionsMixin:
             'proposal_path': proposal_url,
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(responses=D.LectureClientResponse)
     @action(detail=True, methods=['get'], url_path='lecture-client',
             permission_classes=[IsResponsableOrAdmin])
     def lecture_client(self, request, pk=None):
@@ -614,6 +615,7 @@ class DevisEnvoiActionsMixin:
             'recipients': [u.username for u in recipients],
         })
 
+    @extend_schema(responses=D.SuperiorContactStatusResponse)
     @action(detail=True, methods=['get'],
             url_path='superior-contact-status',
             permission_classes=[IsAnyRole])
