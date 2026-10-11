@@ -86,8 +86,8 @@ backend/django_core/apps/automation/serializers.py::AutomationRunSerializer.rule
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.plan
 backend/django_core/apps/crm/serializers.py::LeadPlaybookProgressSerializer.lead
 backend/django_core/apps/crm/serializers.py::PlaybookEtapeSerializer.playbook
-backend/django_core/apps/crm/serializers.py::SalleVenteItemSerializer.salle
-backend/django_core/apps/crm/serializers.py::VisiteExterneSerializer.lead
+backend/django_core/apps/crm/serializers_clients.py::SalleVenteItemSerializer.salle
+backend/django_core/apps/crm/serializers_clients.py::VisiteExterneSerializer.lead
 backend/django_core/apps/crm/serializers.py::WebsiteLeadPayloadSerializer.lead
 backend/django_core/apps/customfields/serializers.py::FieldRolePermissionSerializer.field_def
 backend/django_core/apps/ged/serializers.py::CertificatDestructionSerializer.demande

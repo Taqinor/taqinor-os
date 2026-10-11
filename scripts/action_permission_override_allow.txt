@@ -11,8 +11,8 @@
 # est refusée à un rôle que sa déclaration dit autoriser (403 servi), jamais
 # ouverte plus largement ; la correction appartient à l'app propriétaire.
 
-backend/django_core/apps/crm/views.py::SalleVenteViewSet.analytics  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) — à corriger : C-ACRM-020 / ACRM2 (famille sans écran appelant)
-backend/django_core/apps/crm/views.py::DefiViewSet.export_xlsx  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) — à corriger : C-ACRM-020 / ACRM2 (famille sans écran appelant)
+backend/django_core/apps/crm/clients_views.py::SalleVenteViewSet.analytics  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) — à corriger : C-ACRM-020 / ACRM2 (famille sans écran appelant)
+backend/django_core/apps/crm/clients_views.py::DefiViewSet.export_xlsx  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) — à corriger : C-ACRM-020 / ACRM2 (famille sans écran appelant)
 backend/django_core/apps/installations/views/kitting.py::OrdreAssemblageViewSet.bon_pdf  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) : action refusée au rôle déclaré, jamais ouverte plus large ; à aligner par l'app propriétaire (installations)
 backend/django_core/apps/installations/views/kitting.py::OrdreAssemblageViewSet.historique  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) : action refusée au rôle déclaré, jamais ouverte plus large ; à aligner par l'app propriétaire (installations)
 backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet.bon_livraison  # déclare IsAnyRole mais atteint le repli IsResponsableOrAdmin (plus strict) : action refusée au rôle déclaré, jamais ouverte plus large ; à aligner par l'app propriétaire (installations)

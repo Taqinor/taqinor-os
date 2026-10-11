@@ -29,11 +29,12 @@ from .models import (
     ObjectifCommercial, PlanCompte, RevueCompte, SalleVente,
 )
 from .serializers import (
-    ClientSerializer, DealEnregistreSerializer, EquipeCommercialeSerializer,
+    ClientSerializer, EquipeCommercialeSerializer,
     ForecastEntrySerializer, LeadSerializer, ObjectifCommercialSerializer,
-    PlanCompteSerializer, RevueCompteSerializer, SalleVenteSerializer,
+    PlanCompteSerializer, RevueCompteSerializer,
     _CompanyScopedUniqueValidator,
 )
+from .serializers_clients import DealEnregistreSerializer, SalleVenteSerializer
 
 User = get_user_model()
 

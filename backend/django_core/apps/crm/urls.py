@@ -1,14 +1,14 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    AppareilEquipeViewSet, AppointmentViewSet, ClientViewSet,
+    AppointmentViewSet, ClientViewSet,
     ConcurrentPerteViewSet, LeadViewSet,
     assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    ObjectifCommercialViewSet, PartenaireViewSet,
+    ObjectifCommercialViewSet,
     PlanActiviteViewSet,
     PointContactViewSet, SavedViewViewSet,
-    SiteProfileViewSet, VisiteExterneViewSet,
+    SiteProfileViewSet,
     EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
 )
 # SPL74 — cadence de relance (cockpit des relances + modèles de message).
@@ -32,7 +32,12 @@ from .views import (
     ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
     PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
     forecast_historique_view, forecast_rollup_view, lead_playbook_view,
-    SalleVenteViewSet, ApporteurViewSet, DealEnregistreViewSet, DefiViewSet,
+)
+# SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
+# deals, défis, T-TRACE.
+from .clients_views import (
+    AppareilEquipeViewSet, ApporteurViewSet, DealEnregistreViewSet,
+    DefiViewSet, PartenaireViewSet, SalleVenteViewSet, VisiteExterneViewSet,
 )
 
 router = DefaultRouter()
