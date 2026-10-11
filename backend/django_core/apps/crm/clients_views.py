@@ -604,6 +604,9 @@ class ClientViewSet(CompanyScopedModelViewSet):
     ]
     ordering_fields = ['nom', 'date_creation']
     ordering = ['-date_creation']
+    # ACRM67 — clé numérique seule : une route retirée (``clients/segments/``)
+    # n'est pas relue comme ``retrieve`` d'un client (403 au lieu de 404).
+    lookup_value_regex = r'[0-9]+'
 
     def get_queryset(self):
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les

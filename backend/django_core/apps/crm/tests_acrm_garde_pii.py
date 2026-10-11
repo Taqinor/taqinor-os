@@ -52,7 +52,6 @@ CHARGES = {
     ('LeadViewSet', 'placement_cadences'): {'apply': False},
     ('ClientViewSet', 'export_xlsx'): {'ids': ['{C}']},
     ('ClientViewSet', 'search'): {'q': 'Temoin', 'telephone': TEMOIN},
-    ('ClientViewSet', 'segments'): {'segment': 'top'},
 }
 
 #: Actions NON rejouées — une ligne par raison (écriture coûteuse/externe).
