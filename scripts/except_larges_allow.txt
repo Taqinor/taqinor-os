@@ -541,3 +541,15 @@ backend/django_core/apps/ventes/public_views.py::proposal_pdf
 backend/django_core/apps/ventes/public_views.py::proposal_taille_detail
 backend/django_core/apps/ventes/public_views.py::public_bcf_document
 backend/django_core/apps/ventes/public_views.py::public_document
+backend/django_core/apps/ventes/domain/creation.py::devise_par_defaut
+backend/django_core/apps/ventes/domain/historique_config.py::_totaux_contenu
+backend/django_core/apps/ventes/horaire/ve_nocturne.py::_couche_ve_nocturne
+backend/django_core/apps/ventes/public/lecture_views.py::_lecture_equipe
+backend/django_core/apps/ventes/public/lecture_views.py::_noter_si_version_remplacee
+backend/django_core/apps/ventes/public/lecture_views.py::_notify_first_open
+backend/django_core/apps/ventes/public/lecture_views.py::_notify_open
+backend/django_core/apps/ventes/public/lecture_views.py::_remonter_signal_lecture_au_lead
+backend/django_core/apps/ventes/public/lecture_views.py::_stamp_view
+backend/django_core/apps/ventes/public/lecture_views.py::_tracer_engagement_public
+backend/django_core/apps/ventes/public/lecture_views.py::_tracer_ouverture_publique
+backend/django_core/apps/ventes/public/lecture_views.py::proposal_engagement

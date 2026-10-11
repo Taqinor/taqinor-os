@@ -199,7 +199,6 @@ def devise_par_defaut(company):
     try:
         profil = CompanyProfile.get(company=company)
     except Exception:  # noqa: BLE001 — jamais bloquant : repli MAD
-        logger.warning("creation.devise_par_defaut : erreur ignorée (mode dégradé)", exc_info=True)
         return 'MAD'
     return getattr(profil, 'devise_defaut', '') or 'MAD'
 
