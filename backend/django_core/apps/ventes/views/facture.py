@@ -1088,7 +1088,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         )
 
     @extend_schema(request=D.ReprendreAbandonRequest,
-                   responses=D.FactureAbandonRepris)
+                   responses={200: D.FactureAbandonRepris,
+                              400: D.ErreurRetenue})
     @action(detail=True, methods=['post'], url_path='reprendre-abandon',
             permission_classes=[PeutEncaisser])
     def reprendre_abandon(self, request, pk=None):
@@ -1100,11 +1101,33 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..domain.recouvrement import (
             RepriseAbandonRefusee, reprendre_abandon_creance,
         )
+        # ENF11 — corps illisible (liste, texte, motif non texte, identifiant
+        # d'abandon non entier) : 400 qui nomme le champ, jamais 500.
+        corps = request.data
+        if not isinstance(corps, dict):
+            return Response(
+                {'detail': 'Corps JSON objet attendu : {motif, abandon?}.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        erreur = None
+        motif = corps.get('motif')
+        if motif is not None and not isinstance(motif, str):
+            erreur = {'detail': 'motif : texte attendu.', 'champ': 'motif'}
+        abandon_id = corps.get('abandon')
+        if abandon_id in ('', None):
+            abandon_id = None
+        elif isinstance(abandon_id, bool) or not (
+                isinstance(abandon_id, int)
+                or (isinstance(abandon_id, str) and abandon_id.strip().isdigit())):
+            erreur = erreur or {
+                'detail': 'abandon : entier attendu.', 'champ': 'abandon'}
+        else:
+            abandon_id = int(abandon_id)
+        if erreur:
+            return Response(erreur, status=status.HTTP_400_BAD_REQUEST)
         try:
             abandon = reprendre_abandon_creance(
-                facture, user=request.user,
-                motif=(request.data or {}).get('motif'),
-                abandon_id=(request.data or {}).get('abandon'))
+                facture, user=request.user, motif=motif,
+                abandon_id=abandon_id)
         except RepriseAbandonRefusee as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)

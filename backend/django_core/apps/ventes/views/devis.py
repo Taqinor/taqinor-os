@@ -541,7 +541,8 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(methods=['GET'], responses=D.VarianteConfigResponse)
     @extend_schema(methods=['PUT'], request=D.VarianteConfigRequest,
-                   responses=D.VarianteConfigResponse)
+                   responses={200: D.VarianteConfigResponse,
+                              400: D.ErreurDetail, 403: D.ErreurDetail})
     @action(detail=False, methods=['get', 'put'], url_path='variante-config')
     def variante_config(self, request):
         """QG9 — Lit (GET) ou règle (PUT) le pourcentage des variantes de devis.
@@ -577,6 +578,11 @@ class DevisViewSet(DevisEditionActionsMixin,
                             'peuvent modifier ce pourcentage.')},
                 status=status.HTTP_403_FORBIDDEN)
         from decimal import Decimal, InvalidOperation
+        # ENF11 — corps non objet (null, liste, texte) : 400 qui nomme le champ.
+        if not isinstance(request.data, dict):
+            return Response(
+                {'detail': 'variante_pct : corps JSON objet attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
         raw = request.data.get('variante_pct')
         try:
             pct = Decimal(str(raw))
@@ -591,6 +597,10 @@ class DevisViewSet(DevisEditionActionsMixin,
         if not (Decimal('0') < pct < Decimal('100')):
             return Response(
                 {'detail': 'Le pourcentage doit être strictement entre 0 et 100.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if pct != pct.quantize(Decimal('0.01')):
+            return Response(
+                {'detail': 'variante_pct : deux décimales au plus.'},
                 status=status.HTTP_400_BAD_REQUEST)
         ancien = profile.variante_pct
         profile.variante_pct = pct

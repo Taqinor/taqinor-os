@@ -123,6 +123,24 @@ class AbandonCreanceTests(TestCase):
                           format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
+    def test_reprise_corps_illisible_400_qui_nomme_le_champ(self):
+        # ENF11 (api-fuzz) — corps liste / motif non texte / abandon non entier
+        # levaient AttributeError / ValueError (500) ; abandon inconnu : 400 métier.
+        f, _cheque = self._cheque_puis_abandon()
+        url = f'{BASE}{f.id}/reprendre-abandon/'
+        r = self.api.post(url, [1], format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'motif': 12}, format='json')
+        self.assertEqual((r.status_code, r.data.get('champ')), (400, 'motif'))
+        r = self.api.post(url, {'motif': 'x', 'abandon': 'abc'}, format='json')
+        self.assertEqual((r.status_code, r.data.get('champ')),
+                         (400, 'abandon'))
+        r = self.api.post(url, {'motif': 'x', 'abandon': [1]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'motif': 'x', 'abandon': 10 ** 12},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_plafond_avoir_compte_abandons(self):
         from apps.ventes.models import Avoir
         f = self._facture()
