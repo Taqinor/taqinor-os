@@ -725,9 +725,10 @@ class Facture(TotauxDocumentMixin, models.Model):
         if not self.escompte_pct or not self.escompte_jours:
             return None
         from decimal import Decimal
-        montant = (
-            self.total_ttc * Decimal(self.escompte_pct) / Decimal('100')
-        ).quantize(Decimal('0.01'))
+
+        from core.money import quantize_mad
+        montant = quantize_mad(
+            self.total_ttc * Decimal(self.escompte_pct) / Decimal('100'))
         return {
             'pct': self.escompte_pct, 'jours': self.escompte_jours,
             'montant': montant,
@@ -750,11 +751,12 @@ class Facture(TotauxDocumentMixin, models.Model):
         ``montant`` fait le ``date_paiement``, dans la fenêtre. Hors fenêtre
         (ou non configuré) → 0 (comportement actuel inchangé)."""
         from decimal import Decimal
+
+        from core.money import quantize_mad
         if not self.escompte_applicable(date_paiement):
             return Decimal('0.00')
-        return (
-            Decimal(montant) * Decimal(self.escompte_pct) / Decimal('100')
-        ).quantize(Decimal('0.01'))
+        return quantize_mad(
+            Decimal(montant) * Decimal(self.escompte_pct) / Decimal('100'))
 
 
 class LigneFacture(models.Model):
