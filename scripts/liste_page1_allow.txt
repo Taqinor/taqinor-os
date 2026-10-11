@@ -222,8 +222,4 @@ frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage
 frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage
 frontend/src/pages/visites/VisiteHistoriquePanel.jsx::VisiteHistoriquePanel
 frontend/src/pages/visites/VisitesListPage.jsx::VisitesListPage
-# ADOC182 (2026-10-11) : lecture `.results` par helper local sans appel HTTP (`unpage`, `rows`) ;
-# sites constates au releve du jour, memes regles (fichier::fonction, decroissant).
-frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog
-frontend/src/features/ged/advanced/ReglesDossierPage.jsx::JournalDialog
-frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor
+# ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.
