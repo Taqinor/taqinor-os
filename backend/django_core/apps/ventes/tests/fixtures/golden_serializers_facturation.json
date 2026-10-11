@@ -17,7 +17,7 @@
      false
     ],
     "facture": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -45,7 +45,7 @@
      false
     ],
     "paiement": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -70,7 +70,7 @@
      false
     ],
     "client": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -105,7 +105,7 @@
      false
     ],
     "facture": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -544,7 +544,7 @@
      false
     ],
     "abandon_par": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -579,7 +579,7 @@
      false
     ],
     "bon_commande": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -593,7 +593,7 @@
      false
     ],
     "client": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -621,7 +621,7 @@
      false
     ],
     "condition_paiement_ref": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -663,7 +663,7 @@
      false
     ],
     "devis": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -712,7 +712,7 @@
      false
     ],
     "entite": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -789,7 +789,7 @@
      false
     ],
     "lead": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1522,7 +1522,7 @@
      false
     ],
     "produit": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -1568,7 +1568,7 @@
      false
     ],
     "facture": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -1656,7 +1656,7 @@
      false
     ],
     "produit": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1730,7 +1730,7 @@
      false
     ],
     "paiement": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -1836,7 +1836,7 @@
      false
     ],
     "client": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -1871,7 +1871,7 @@
      false
     ],
     "facture": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -2377,7 +2377,7 @@
      false
     ],
     "facture": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
