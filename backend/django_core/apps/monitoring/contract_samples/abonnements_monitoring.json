@@ -1,0 +1,54 @@
+{
+  "endpoint": "GET /api/django/monitoring/abonnements/",
+  "pourquoi": "ASAV100 (D-ASAV-4 option (b), ASAV93) — abonnements de supervision de la société, servis par AbonnementMonitoringViewSet.list (enveloppe paginée DRF count/next/previous/results). Rôle responsable/admin ; société forcée côté serveur ; le client est résolu côté serveur depuis le système supervisé (jamais lu du corps). Le montant vient de la saisie (jamais un défaut). La résiliation (POST .../{id}/resilier/ {motif}) passe par apps.monitoring.services.resilier_abonnement_monitoring, qui émet abonnement_monitoring_resilie : l'abonné coupe la supervision automatique du système lié.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 12,
+        "client_id": 41,
+        "installation_id": 87,
+        "periodicite": "mensuel",
+        "periodicite_display": "Mensuel",
+        "montant": "150.00",
+        "statut": "actif",
+        "statut_display": "Actif",
+        "date_debut": "2026-10-01",
+        "prochaine_echeance": "2026-11-01",
+        "motif_resiliation": "",
+        "date_creation": "2026-10-01T09:30:00Z"
+      }
+    ]
+  },
+  "exemple_creation": {
+    "endpoint": "POST /api/django/monitoring/abonnements/",
+    "corps": {"installation_id": 87, "periodicite": "mensuel", "montant": "150.00", "date_debut": "2026-10-01"},
+    "reponse_statut": 201
+  },
+  "exemple_resiliation": {
+    "endpoint": "POST /api/django/monitoring/abonnements/{id}/resilier/",
+    "corps": {"motif": "Client a vendu la maison."},
+    "reponse": {
+      "id": 12,
+      "client_id": 41,
+      "installation_id": 87,
+      "periodicite": "mensuel",
+      "periodicite_display": "Mensuel",
+      "montant": "150.00",
+      "statut": "resilie",
+      "statut_display": "Résilié",
+      "date_debut": "2026-10-01",
+      "prochaine_echeance": "2026-11-01",
+      "motif_resiliation": "Client a vendu la maison.",
+      "date_creation": "2026-10-01T09:30:00Z"
+    }
+  },
+  "notes": {
+    "montant_saisi": "Un montant absent ou <= 0 est refusé (400, champ `montant`) : aucun chiffre inventé.",
+    "systeme_sans_client": "Un système inconnu, d'une autre société ou sans client est refusé (400, champ `installation_id`).",
+    "resiliation_unique": "Résilier un abonnement déjà résilié renvoie 400 ; le motif est obligatoire (400, champ `motif`).",
+    "autre_societe": "Le détail ou la résiliation d'un abonnement d'une autre société renvoie 404."
+  }
+}

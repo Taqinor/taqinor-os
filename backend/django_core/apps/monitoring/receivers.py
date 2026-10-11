@@ -1,8 +1,9 @@
 """ARC36 — récepteurs du satellite monitoring sur le bus ``core.events``.
 
 ``abonnement_monitoring_resilie`` (YSUBS4) est émis par
-``compta.services.resilier_abonnement_monitoring`` quand un abonnement de
-supervision est résilié. Effet aval DÉCOUPLÉ ici : couper la supervision
+``apps.monitoring.services.resilier_abonnement_monitoring`` (ASAV100 — l'ancien
+émetteur ``compta.services`` est parqué) quand un abonnement de supervision est
+résilié depuis l'écran SAV/monitoring. Effet aval DÉCOUPLÉ ici : couper la supervision
 automatique du système lié (``MonitoringConfig.enabled=False`` pour
 ``abonnement.installation_id``) — le client ne paie plus, on arrête la
 synchro fournisseur. ``monitoring`` n'importe JAMAIS ``compta`` :

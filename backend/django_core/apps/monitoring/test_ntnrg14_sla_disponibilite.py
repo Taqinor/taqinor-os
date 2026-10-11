@@ -98,3 +98,102 @@ class TestDisponibiliteVsGarantie(TestCase):
         self.assertEqual(result['disponibilite_mesuree_pct'], Decimal('0'))
         self.assertEqual(result['ecart_pct'], Decimal('98.00'))
         self.assertTrue(result['sous_garantie'])
+
+
+class TestAsav101SlaApi(TestCase):
+    """ASAV101 — SLA de disponibilité rendu utilisable : route company-scopée
+    (responsable/admin), taux garanti saisi, écart conforme au contrat
+    partagé ``contract_samples/sla_disponibilite.json``."""
+    URL = '/api/django/monitoring/sla-disponibilite/'
+
+    def setUp(self):
+        import json
+        from pathlib import Path
+
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        User = get_user_model()
+        self.contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'sla_disponibilite.json').read_text(encoding='utf-8'))
+        self.company, _ = Company.objects.get_or_create(
+            slug='asav101-co', defaults={'nom': 'ASAV101 Co'})
+        self.autre, _ = Company.objects.get_or_create(
+            slug='asav101-b', defaults={'nom': 'ASAV101 B'})
+        profil = CompanyProfile.get(company=self.company)
+        profil.garantie_production_autorisee = True
+        profil.garantie_production_validation = 'Juriste, 01/10/2026'
+        profil.save()
+        self.inst = make_inst(self.company, 'ASAV101-1')
+        self.inst_b = make_inst(self.autre, 'ASAV101-B')
+
+        def client_de(username, role, company):
+            api = APIClient()
+            api.force_authenticate(User.objects.create_user(
+                username=username, password='x', role_legacy=role,
+                company=company))
+            return api
+        self.api = client_de('asav101_resp', 'responsable', self.company)
+        self.api_b = client_de('asav101_b', 'admin', self.autre)
+        self.api_normal = client_de('asav101_n', 'normal', self.company)
+
+    def _creer(self, **corps):
+        data = {'installation': self.inst.id,
+                'disponibilite_garantie_pct': '98',
+                'compensation_mad_par_jour_indispo': '50'}
+        data.update(corps)
+        return self.api.post(self.URL, data, format='json')
+
+    def test_creation_et_liste_au_contrat(self):
+        r = self._creer(company=self.autre.id)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(
+            SlaDisponibilite.objects.get(id=r.data['id']).company_id,
+            self.company.id)
+        lst = self.api.get(self.URL)
+        attendu = self.contrat['exemple_liste']['reponse']
+        self.assertEqual(set(lst.data), set(attendu))
+        self.assertEqual(set(lst.data['results'][0]),
+                         set(attendu['results'][0]))
+        # Un seul SLA par système.
+        self.assertEqual(self._creer().status_code, 400)
+
+    def test_taux_garanti_obligatoire(self):
+        r = self.api.post(self.URL, {'installation': self.inst.id},
+                          format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('disponibilite_garantie_pct', r.data)
+        r = self._creer(disponibilite_garantie_pct='0')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('disponibilite_garantie_pct', r.data)
+        r = self._creer(installation=self.inst_b.id)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('installation', r.data)
+
+    def test_ecart_affirme_le_contrat_partage(self):
+        from django.utils import timezone
+        aujourdhui = timezone.localdate()
+        for i in range(5):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=aujourdhui - timedelta(days=i), energy_kwh=Decimal('10'))
+        sla_id = self._creer().data['id']
+        r = self.api.get(f'{self.URL}{sla_id}/ecart/?window_days=10')
+        self.assertEqual(r.status_code, 200, r.data)
+        corps = r.json()
+        self.assertEqual(set(corps), set(self.contrat['exemple']))
+        self.assertTrue(corps['has_sla'])
+        self.assertTrue(corps['sous_garantie'])
+        # Nombres servis en JSON (jamais du texte) ; pénalité = tarif saisi.
+        self.assertIsInstance(corps['ecart_pct'], (int, float))
+        self.assertGreater(corps['penalite_mad'], 0)
+
+    def test_autre_societe_404_et_normal_403(self):
+        sla_id = self._creer().data['id']
+        self.assertEqual(
+            self.api_b.get(f'{self.URL}{sla_id}/').status_code, 404)
+        self.assertEqual(
+            self.api_b.get(f'{self.URL}{sla_id}/ecart/').status_code, 404)
+        self.assertEqual(self.api_b.get(self.URL).data['count'], 0)
+        self.assertEqual(self.api_normal.get(self.URL).status_code, 403)

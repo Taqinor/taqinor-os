@@ -268,6 +268,10 @@
     fleet_pr_pct:inconnu, open_alerts:inconnu, systems:inconnu, systems_active:inconnu, total_kwc:inconnu, total_production_kwh:inconnu, window_days:inconnu
 - frontend/src/api/monitoringApi.js :: getOmMetrics -> /api/django/monitoring/configs/<>/om-metrics
     availability_pct:inconnu, degradation_pct_per_year:inconnu, expected_kwh:inconnu, installation:inconnu, monthly_pr:inconnu, pr_pct:inconnu, production_kwh:inconnu, soiling_suspected:inconnu, window_days:inconnu
+- frontend/src/api/monitoringApi.js :: getPertesCategorisees -> /api/django/monitoring/configs/<>/pertes
+    curtailment_pct:inconnu, installation:inconnu, ombrage_pct:inconnu, panne_pct:inconnu, soiling_pct:inconnu, window_days:inconnu
+- frontend/src/api/monitoringApi.js :: getSlaEcart -> /api/django/monitoring/sla-disponibilite/<>/ecart
+    disponibilite_garantie_pct:inconnu, disponibilite_mesuree_pct:inconnu, ecart_pct:inconnu, has_sla:booleen, installation:inconnu, jours_indisponibilite_excedentaire:inconnu, libelle_indicateur:inconnu, penalite_mad:inconnu, sous_garantie:inconnu, window_days:inconnu
 - frontend/src/api/monitoringApi.js :: getSoiling -> /api/django/monitoring/configs/<>/soiling
     baseline_pr_pct:inconnu, current_pr_pct:inconnu, days_since_cleaning:inconnu, estimated_soiling_loss_pct:inconnu, installation:inconnu, last_cleaning_date:inconnu, reasons:inconnu, recommend_cleaning:inconnu
 - frontend/src/api/monitoringApi.js :: getWarrantyCurve -> /api/django/monitoring/warranties/<>/curve
@@ -1267,6 +1271,10 @@
 - frontend/src/api/monitoringApi.js :: addReading -> /api/django/monitoring/readings  [ProductionReadingSerializer]
     champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
     source ∈ {auto, import, manual}
+- frontend/src/api/monitoringApi.js :: creerAbonnement -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
+    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
+    periodicite ∈ {annuel, mensuel}
+    statut ∈ {actif, resilie, suspendu}
 - frontend/src/api/monitoringApi.js :: deleteCleaning -> /api/django/monitoring/cleanings/<>  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: deleteReading -> /api/django/monitoring/readings/<>  [ProductionReadingSerializer]
@@ -1274,6 +1282,14 @@
     source ∈ {auto, import, manual}
 - frontend/src/api/monitoringApi.js :: deleteWarranty -> /api/django/monitoring/warranties/<>  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
+- frontend/src/api/monitoringApi.js :: emettreCertificatCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
+    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
+- frontend/src/api/monitoringApi.js :: getAbonnements -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
+    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
+    periodicite ∈ {annuel, mensuel}
+    statut ∈ {actif, resilie, suspendu}
+- frontend/src/api/monitoringApi.js :: getCertificatsCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
+    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
 - frontend/src/api/monitoringApi.js :: getCleanings -> /api/django/monitoring/cleanings  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: getConfigForInstallation -> /api/django/monitoring/configs  [MonitoringConfigSerializer]
@@ -1283,6 +1299,8 @@
 - frontend/src/api/monitoringApi.js :: getReadings -> /api/django/monitoring/readings  [ProductionReadingSerializer]
     champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
     source ∈ {auto, import, manual}
+- frontend/src/api/monitoringApi.js :: getSlasDisponibilite -> /api/django/monitoring/sla-disponibilite  [SlaDisponibiliteSerializer]
+    champs: compensation_mad_par_jour_indispo, created_at, disponibilite_garantie_pct, id, installation, note, updated_at
 - frontend/src/api/monitoringApi.js :: getWarranties -> /api/django/monitoring/warranties  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
 - frontend/src/api/notificationsApi.js :: createAnnonce -> /api/django/notifications/annonces  [AnnonceSerializer]

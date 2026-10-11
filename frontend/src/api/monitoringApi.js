@@ -78,6 +78,32 @@ const monitoringApi = {
   // Envoi du rapport O&M par e-mail (PDF joint). body { period, recipient? }.
   emailOmReport: (configId, data) =>
     api.post(`/monitoring/configs/${configId}/email-om-report/`, data),
+
+  // ── ASAV100 — abonnements de supervision (écran SAV/monitoring) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/abonnements_monitoring.json
+  getAbonnements: (params) => api.get('/monitoring/abonnements/', { params }),
+  creerAbonnement: (data) => api.post('/monitoring/abonnements/', data),
+  resilierAbonnement: (id, motif) =>
+    api.post(`/monitoring/abonnements/${id}/resilier/`, { motif }),
+
+  // ── ASAV101 — SLA de disponibilité (écran SAV/monitoring) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/sla_disponibilite.json
+  getSlasDisponibilite: (params) => api.get('/monitoring/sla-disponibilite/', { params }),
+  saveSlaDisponibilite: (id, data) => id
+    ? api.patch(`/monitoring/sla-disponibilite/${id}/`, data)
+    : api.post('/monitoring/sla-disponibilite/', data),
+  getSlaEcart: (id, params) =>
+    api.get(`/monitoring/sla-disponibilite/${id}/ecart/`, { params }),
+
+  // ── ASAV102 — registre des certificats carbone (écran SAV/monitoring) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/certificats_carbone.json
+  getCertificatsCarbone: (params) => api.get('/monitoring/certificats-carbone/', { params }),
+  emettreCertificatCarbone: (data) => api.post('/monitoring/certificats-carbone/', data),
+
+  // ── ASAV103 — pertes catégorisées d'un système (écran SAV/monitoring) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/pertes_categorisees.json
+  getPertesCategorisees: (configId, params) =>
+    api.get(`/monitoring/configs/${configId}/pertes/`, { params }),
 }
 
 export default monitoringApi
