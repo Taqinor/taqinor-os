@@ -13,7 +13,7 @@ construit rien : dossier (`docs/audits/GABARIT_DOSSIER.md`) + sondes + tâches v
 | Reda tape | Action |
 |---|---|
 | `audit first` | unité de rang 1 |
-| `audit next` | d'abord tout `vérifie <G>` dû (`scripts/audit_registre.py --du`), puis plus petit rang « à auditer » non réclamé |
+| `audit next` | d'abord tout `vérifie <G>` dû (`scripts/audit_registre.py --du`), **par nombre de tâches cochées décroissant** (fondateur 11/10 ; re-fetch + recompte à chaque itération car des sessions parallèles mergent), puis plus petit rang « à auditer » non réclamé |
 | `continue audit` | claim vivant de plus petit rang, repris au point de contrôle (tableau vérifié + sondes poussés) ; aucun → `audit next` |
 | `loop audit` | `/loop` sans intervalle : chaque itération = `vérifie` dû sinon `audit next` ; une PR par itération, sans attendre le merge ; PR rouge réparée d'abord |
 | `audit status` | `python scripts/audit_registre.py status` (lecture seule ; tant qu'il manque : tableau à la main, statut = dossier / % cochées / acceptation / vérifie) |
