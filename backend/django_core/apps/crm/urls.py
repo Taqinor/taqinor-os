@@ -1,7 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    AppointmentViewSet,
     ConcurrentPerteViewSet, LeadViewSet,
     assignable_users, equipes_statistiques,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
@@ -35,6 +34,8 @@ from .views import (
 )
 # SPL77 — intake des leads (rapport d'attribution, points de contact).
 from .leads_views import PointContactViewSet, rapport_attribution
+# SPL79 — rendez-vous (visites).
+from .visites_views import AppointmentViewSet
 # SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
 # deals, défis, T-TRACE.
 from .clients_views import (
