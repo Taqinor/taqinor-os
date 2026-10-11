@@ -97,6 +97,8 @@ from .devis_chatter import (  # noqa: F401 — façade
 
 from .clients_pilotage import (  # noqa: F401 — façade
     ajouter_specialite_partenaire,
+    approuver_deal,
+    rejeter_deal,
     handle_parrainage_signup,
     poser_compteur_deploiements,
     soumettre_lead_partenaire,

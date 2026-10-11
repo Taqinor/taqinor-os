@@ -30,8 +30,8 @@ apps.compta.views:NoteFraisViewSet.analyse
 apps.compta.views:PilotageViewSet.cockpit
 apps.compta.views:TimbreFiscalViewSet.synthese_mensuelle
 apps.contrats.views:ContratViewSet.tableau_de_bord
-apps.crm.views:ParrainageViewSet.stats
-apps.crm.views:equipes_statistiques
+apps.crm.clients_views:ParrainageViewSet.stats
+apps.crm.clients_views:equipes_statistiques
 apps.esg.views:PeriodeReportingESGViewSet.indicateurs
 apps.fiscal.views:ObligationFiscaleViewSet.tableau_conformite_action
 apps.fiscal.views:tableau_conformite_view

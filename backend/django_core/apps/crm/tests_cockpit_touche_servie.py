@@ -28,7 +28,7 @@ from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.serializers import RelanceEtapeSerializer
+from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from apps.crm.cadence_reperes import FILET_JOINT_LIBELLE, QUESTION_PRIX_LIBELLE
 from apps.parametres.models import CompanyProfile
 

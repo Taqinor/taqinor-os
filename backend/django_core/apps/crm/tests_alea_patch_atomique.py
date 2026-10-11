@@ -65,7 +65,7 @@ class PatchAtomiqueTests(TestCase):
         chatter_avant = self._nb_chatter()
         with mock.patch('apps.crm.leads_score.recompute_lead_score',
                         side_effect=RuntimeError('score en panne')):
-            with self.assertLogs('apps.crm.views', level='WARNING') as logs:
+            with self.assertLogs('apps.crm', level='WARNING') as logs:
                 resp = self.api.patch(self.url, {'ville': 'Fès'},
                                       format='json')
         self.assertEqual(resp.status_code, 200, getattr(resp, 'data', None))

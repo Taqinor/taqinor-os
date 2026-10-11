@@ -5,7 +5,8 @@ Sonde V_VA LVIEW1-5 : ``consolidation`` (déclarée ``IsAnyRole``) et
 ``data-export`` (déclarée ``IsResponsableOrAdmin``) répondaient 403 au
 Commercial, au Commercial responsable et au Responsable — le bloc « CA
 groupe » de la fiche client restait vide. ``documents`` est inchangé ;
-``segments`` porte désormais une déclaration explicite (admin).
+``segments`` est RETIRÉE (ACRM67, D-ACRM-6 (iv)) — son 404 vit dans
+``tests_acrm_routes_retirees``.
 
 Rôles réels de ``permissions_registre`` ; aucun mock.
 """
@@ -75,10 +76,3 @@ class ClientActionsDeclareesTests(TestCase):
             self.assertEqual(resp.status_code, 200, (nom, resp.content))
             self.assertEqual(set(resp.data), {'devis', 'factures',
                                               'chantiers'})
-
-    def test_segments_reste_admin(self):
-        api = APIClient()
-        api.credentials(HTTP_AUTHORIZATION=(
-            f'Bearer {AccessToken.for_user(self.users["Commercial"])}'))
-        self.assertEqual(
-            api.get(f'{CLIENTS}segments/').status_code, 403)

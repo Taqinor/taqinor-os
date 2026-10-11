@@ -60,6 +60,10 @@ def _modules_scission_crm() -> list:
 
 
 FICHIERS += _modules_scission_crm()
+#: SPL74-SPL81 : modules de vues issus de la scission de crm/views.py — une
+#: lecture déplacée reste dans le périmètre de la garde.
+FICHIERS += [f"backend/django_core/apps/crm/{p.name}"
+             for p in sorted((APPS / "crm").glob("*_views.py"))]
 
 #: Statuts de devis dont la lecture exige la version en vigueur.
 STATUTS = {"accepte", "envoye"}
@@ -87,9 +91,6 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/fiche_funnel.py::lead_signe_sans_devis_actif":
         "drapeau dérivé « signé fantôme » décidé par ACRM10 : filtre statut "
         "puis archivage ; la version remplacée n'y est pas une erreur",
-    "backend/django_core/apps/crm/views.py::ClientViewSet.segments":
-        "segment a_recontacter : une V1 acceptée il y a < 12 mois est un "
-        "événement de signature, pas un CA ; la version courante est sans objet",
     "backend/django_core/apps/ventes/scheduled.py::_email_parti":
         "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
         "statut de devis sans is_active dans ventes/scheduled.py — à passer "

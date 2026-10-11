@@ -1,16 +1,15 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    AppareilEquipeViewSet, AppointmentViewSet, ClientViewSet,
-    ConcurrentPerteViewSet, LeadViewSet,
-    assignable_users, equipes_statistiques, rapport_attribution,
-    LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    MessageTemplateViewSet, ObjectifCommercialViewSet, PartenaireViewSet,
-    PlanActiviteViewSet,
-    PointContactViewSet, RelanceEtapeViewSet, SavedViewViewSet,
-    SiteProfileViewSet, VisiteExterneViewSet,
-    EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
+    LeadViewSet,
+    assignable_users,
+    LeadTagViewSet, MotifPerteViewSet, CanalViewSet,
+    SavedViewViewSet,
+    SiteProfileViewSet,
+    WebsiteLeadPayloadViewSet,
 )
+# SPL74 — cadence de relance (cockpit des relances + modèles de message).
+from .cadence_views import MessageTemplateViewSet, RelanceEtapeViewSet
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .webhooks import demande_rdv_webhook
 from .roof_views import lead_roof_footprint
@@ -25,12 +24,23 @@ from .public_lead_ref_views import lead_ref_lookup
 from .public_affiner_views import lead_affiner_pro
 # VT12 — la SEULE surface visite restée côté CRM : la texture de toit du lead.
 from .views_visite import lead_photo_toit
-# NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks.
-from .views import (
+# NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks (SPL80 : clients_views).
+from .clients_views import (
+    ConcurrentPerteViewSet, EquipeCommercialeViewSet, ObjectifCommercialViewSet,
+    ParrainageViewSet, PlanActiviteViewSet, equipes_statistiques,
     ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
     PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
     forecast_historique_view, forecast_rollup_view, lead_playbook_view,
-    SalleVenteViewSet, ApporteurViewSet, DealEnregistreViewSet, DefiViewSet,
+)
+# SPL77 — intake des leads (rapport d'attribution, points de contact).
+from .leads_views import PointContactViewSet, rapport_attribution
+# SPL79 — rendez-vous (visites).
+from .visites_views import AppointmentViewSet
+# SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
+# deals, défis, T-TRACE.
+from .clients_views import (
+    AppareilEquipeViewSet, ApporteurViewSet, ClientViewSet, DealEnregistreViewSet,
+    DefiViewSet, PartenaireViewSet, SalleVenteViewSet, VisiteExterneViewSet,
 )
 
 router = DefaultRouter()

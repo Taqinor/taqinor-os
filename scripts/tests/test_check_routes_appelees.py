@@ -84,11 +84,12 @@ class DepotReelTests(unittest.TestCase):
 
     def test_liste_blanche_videe_nomme_les_routes_gardees_sans_ecran(self):
         # Test-du-test : sans la liste blanche, la garde NOMME les routes
-        # servies sans ecran (kpi-adherence, mes-stats, salles-vente...).
+        # servies sans ecran (salles-vente, apporteurs...). ACRM64 a retire
+        # kpi-adherence et mes-stats : elles ne sont plus servies du tout.
         violations, _ = cra.verifier(self.routes, self.appels, a_corriger={})
         noms = {cra._cle(r) for r in violations}
-        self.assertIn("crm/relance-etapes/kpi-adherence", noms)
-        self.assertIn("crm/relance-etapes/mes-stats", noms)
+        self.assertNotIn("crm/relance-etapes/kpi-adherence", noms)
+        self.assertNotIn("crm/relance-etapes/mes-stats", noms)
         self.assertIn("crm/salles-vente", noms)
         self.assertEqual(noms, set(cra.A_CORRIGER))
 

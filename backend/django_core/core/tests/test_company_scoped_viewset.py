@@ -96,7 +96,7 @@ class DefaultScopedPermissionARC55Tests(SimpleTestCase):
     def test_pilots_keep_own_get_permissions(self):
         """Chaque pilote surcharge get_permissions : DRF ne consulte donc jamais
         le permission_classes de la base → 401/403 byte-identiques."""
-        from apps.crm.views import ClientViewSet
+        from apps.crm.clients_views import ClientViewSet
         from apps.installations.views.transporteur import TransporteurViewSet
         from apps.sav.views import CauseDefaillanceViewSet
         for vs in (ClientViewSet, TransporteurViewSet, CauseDefaillanceViewSet):

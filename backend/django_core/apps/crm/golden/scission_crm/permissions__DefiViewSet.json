@@ -50,16 +50,6 @@
   ]
  },
  {
-  "action": "export_xlsx",
-  "methode": "GET",
-  "permissions": [
-   {
-    "attrs": {},
-    "classe": "IsResponsableOrAdmin"
-   }
-  ]
- },
- {
   "action": "list",
   "methode": "GET",
   "permissions": [

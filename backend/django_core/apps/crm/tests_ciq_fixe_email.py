@@ -21,7 +21,7 @@ from testkit.time import frozen
 from apps.crm import cadence_temps, horaires, cadence_plan
 from apps.crm import cadence_messages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.serializers import RelanceEtapeSerializer
+from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 

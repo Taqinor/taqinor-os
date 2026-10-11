@@ -224,22 +224,6 @@
  },
  {
   "actions_map": {
-   "get": "segments"
-  },
-  "motif": "^clients/segments/$",
-  "nom": "client-segments",
-  "vue": "ClientViewSet"
- },
- {
-  "actions_map": {
-   "get": "segments"
-  },
-  "motif": "^clients/segments\\.(?P<format>[a-z0-9]+)/?$",
-  "nom": "client-segments",
-  "vue": "ClientViewSet"
- },
- {
-  "actions_map": {
    "get": "list",
    "post": "create"
   },

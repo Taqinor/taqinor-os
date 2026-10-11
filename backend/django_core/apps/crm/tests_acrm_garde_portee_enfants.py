@@ -43,10 +43,12 @@ from apps.crm.tests_alea_garde_portee_actions import (
     _cle_explicite, _contenu,
 )
 from apps.crm.urls import router
-from apps.crm.views import ClientViewSet, LeadViewSet
+from apps.crm.clients_views import ClientViewSet
+from apps.crm.views import LeadViewSet
 from apps.roles.models import Role
 from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
 from authentication.models import Company
+from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
 
@@ -162,6 +164,9 @@ class GardePorteeEnfantsTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor ACRM52', slug='taqinor-acrm52')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         role_com = Role.objects.create(
             company=self.company, nom='Commercial',
             permissions=list(COMMERCIAL_PERMISSIONS))

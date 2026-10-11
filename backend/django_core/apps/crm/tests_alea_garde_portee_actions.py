@@ -32,7 +32,8 @@ from rest_framework.test import APIClient
 from apps.crm import stages
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.crm.fiche_bulk import BULK_ACTIONS
-from apps.crm.views import ClientViewSet, LeadViewSet
+from apps.crm.clients_views import ClientViewSet
+from apps.crm.views import LeadViewSet
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
     COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
@@ -86,8 +87,6 @@ NON_APPLICABLES_LEAD = {
 SONDES_CLIENT = {
     'export_xlsx': [('post', 'clients/export-xlsx/', {'ids': ['{C1}']})],
     'search': [('get', 'clients/search/', _RECHERCHE)],
-    'segments': [('get', 'clients/segments/', {'segment': s})
-                 for s in ('top', 'sans_devis', 'a_recontacter', 'dormants')],
     'dormants': [('get', 'clients/dormants/', {})],
     'engagement_bulk': [('get', 'clients/engagement-bulk/', {})],
     'mon_portefeuille': [('get', 'clients/mon-portefeuille/', {})],
