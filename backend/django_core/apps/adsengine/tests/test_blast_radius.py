@@ -141,7 +141,10 @@ class EligibilityTests(TestCase):
         ArmDailyStat.objects.create(
             company=self.company, arm=self.arm,
             date=datetime.date(2026, 1, 1), spend=Decimal('5'))
-        lookup = lambda ad_id: ('ACTIVE', '')  # noqa: E731
+
+        def lookup(ad_id):
+            return ('ACTIVE', '')
+
         self.assertEqual(
             br.eligible_arms_for_bandit(self.company, status_lookup=lookup), [])
         # Budget purgé + actif → éligible.
