@@ -705,9 +705,13 @@ def _realigner_nomenclature_revision(chantier, devis):
     a_des_reservations = StockReservation.objects.filter(
         installation=chantier).exists()
 
+    anciens = _bom_quantities(chantier)
     chantier.bom = _freeze_bom(devis)
     chantier.save(update_fields=['bom'])
     nouveaux = _bom_quantities(chantier)
+    # AMET14 — DA déjà émises : marquées « à revoir (V2) », jamais modifiées.
+    from .revision_achats import marquer_achats_a_revoir
+    marquer_achats_a_revoir(chantier, anciens, nouveaux)
 
     if (not a_des_reservations
             and methode_reservation_stock(chantier.company)
@@ -1296,7 +1300,8 @@ def consume_reservations(installation, user):
     from django.utils import timezone
     from apps.stock.selectors import lock_produit
     from apps.stock.services import (
-        mouvement_type_sortie, record_stock_movement,
+        mouvement_type_sortie, quantite_disponible_hors_quarantaine,
+        record_stock_movement,
     )
 
     consumed = 0
@@ -1320,7 +1325,11 @@ def consume_reservations(installation, user):
             # ERR80 — garde plancher : ne pilote jamais le stock en négatif. On
             # sort au plus le stock en main (borné à zéro), comme la
             # réconciliation terrain et les pièces SAV.
-            qte_sortie = min(resa.quantite, qte_avant) if qte_avant > 0 else 0
+            # ASTK249 — la part en quarantaine (rappel, réception non
+            # conforme) ne sort jamais au nom du chantier.
+            dispo = min(qte_avant, quantite_disponible_hors_quarantaine(
+                installation.company, produit))
+            qte_sortie = min(resa.quantite, dispo) if dispo > 0 else 0
             qte_apres = qte_avant - qte_sortie
             record_stock_movement(
                 company=installation.company, produit=produit,
@@ -1332,7 +1341,8 @@ def consume_reservations(installation, user):
                 created_by=user)
             manquant = resa.quantite - qte_sortie
             if manquant > 0:
-                manques.append((produit.sku or produit.nom, manquant))
+                en_q = min(manquant, max(qte_avant - dispo, 0))
+                manques.append((produit.sku or produit.nom, manquant, en_q))
             resa.consomme = True
             resa.date_consommation = timezone.now()
             resa.save(update_fields=['consomme', 'date_consommation'])
@@ -1340,7 +1350,9 @@ def consume_reservations(installation, user):
     if manques:
         from . import activity
         detail = ', '.join(
-            f'{ref} (manque {manquant})' for ref, manquant in manques)
+            f'{ref} (manque {manquant}'
+            + (f', dont {en_q} en quarantaine)' if en_q else ')')
+            for ref, manquant, en_q in manques)
         activity.log_note(
             installation, user,
             f"Consommation stock incomplète — {detail}.")
@@ -3882,7 +3894,10 @@ def seed_lignes_assemblage(ordre):
     création), quantités gonflées du taux de perte attendu (XMFG11). Idempotent :
     n'écrase jamais des lignes déjà présentes (même partiellement personnalisées)."""
     from .models import OrdreAssemblageLigne
-    if ordre.lignes.exists():
+    # ACHT100 — seules les lignes issues du kit verrouillent l'idempotence :
+    # une ligne ajoutée à la main ne doit pas empêcher la re-génération.
+    if ordre.lignes.filter(
+            origine=OrdreAssemblageLigne.Origine.KIT).exists():
         return list(ordre.lignes.all())
     lignes = [
         OrdreAssemblageLigne(
@@ -4021,8 +4036,10 @@ def recreer_nomenclature_ordre_assemblage(ordre, user=None):
     réservations composant sont re-semées (les non consommées des composants
     disparus sont libérées). La clôture consomme donc toujours la
     nomenclature du kit produit × la quantité produite."""
-    from .models import ReservationAssemblage
-    ordre.lignes.all().delete()
+    from .models import OrdreAssemblageLigne, ReservationAssemblage
+    # ACHT100 — seules les lignes issues du kit sont régénérées : les lignes
+    # ajoutées à la main (origine « ajout ») sont conservées telles quelles.
+    ordre.lignes.filter(origine=OrdreAssemblageLigne.Origine.KIT).delete()
     (ReservationAssemblage.objects
      .filter(ordre=ordre, active=True, consomme=False)
      .update(active=False))
@@ -4037,7 +4054,10 @@ def recreer_nomenclature_ordre_assemblage(ordre, user=None):
 def recreer_lignes_ordre_demontage(ordre_demontage):
     """ACHT17 — jumeau démontage : lignes recopiées depuis la BOM du kit
     courant × la quantité courante (ordre planifié)."""
-    ordre_demontage.lignes.all().delete()
+    from .models import OrdreDemontageLigne
+    # ACHT100 (jumeau) — les lignes ajoutées à la main sont conservées.
+    ordre_demontage.lignes.filter(
+        origine=OrdreDemontageLigne.Origine.KIT).delete()
     seed_lignes_demontage(ordre_demontage)
 
 
@@ -4046,7 +4066,8 @@ def seed_lignes_demontage(ordre_demontage):
     ATTENDUE = BOM × ordre.quantite ; RÉCUPÉRÉE par défaut = attendue, éditable
     ligne à ligne avant la clôture). Idempotent."""
     from .models import OrdreDemontageLigne
-    if ordre_demontage.lignes.exists():
+    if ordre_demontage.lignes.filter(
+            origine=OrdreDemontageLigne.Origine.KIT).exists():
         return list(ordre_demontage.lignes.all())
     lignes = [
         OrdreDemontageLigne(

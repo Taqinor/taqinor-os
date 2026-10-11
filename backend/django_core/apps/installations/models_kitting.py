@@ -471,6 +471,15 @@ class OrdreDemontageLigne(models.Model):
     quantite_attendue = models.PositiveIntegerField(default=0)
     quantite_recuperee = models.PositiveIntegerField(default=0)
 
+    # ACHT100 (jumeau) — même distinction que ``OrdreAssemblageLigne`` : seules
+    # les lignes issues du kit sont régénérées au changement de kit/quantité.
+    class Origine(models.TextChoices):
+        KIT = 'kit', 'Copié du kit'
+        AJOUT = 'ajout', 'Ajouté sur cet ordre'
+
+    origine = models.CharField(
+        max_length=10, choices=Origine.choices, default=Origine.KIT)
+
     class Meta:
         verbose_name = 'Ligne de démontage'
         verbose_name_plural = 'Lignes de démontage'

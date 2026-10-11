@@ -159,6 +159,13 @@ class DemandeAchat(DocumentMetier):
         help_text="Un brouillon épinglé n'est jamais archivé automatiquement.")
     date_archivage = models.DateTimeField(
         null=True, blank=True, verbose_name="Date d'archivage")
+    # AMET14 — une V2 de devis a changé la nomenclature du chantier après
+    # l'émission de cette DA : marquée « à revoir (V2) » avec le diff, jamais
+    # modifiée (posé par `revision_achats.marquer_achats_a_revoir`).
+    a_revoir_v2 = models.BooleanField(
+        default=False, verbose_name='À revoir (V2)')
+    diff_v2 = models.JSONField(
+        default=dict, blank=True, verbose_name='Diff V2')
 
     class Meta:
         verbose_name = "Demande d'achat"
