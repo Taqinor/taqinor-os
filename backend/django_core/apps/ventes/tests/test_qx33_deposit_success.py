@@ -1,11 +1,15 @@
 """QX33be — acompte au moment de la signature (mode dégradé sans PSP).
 
   * le payload de succès post-signature porte l'acompte (tranche 1 sur le TTC
-    remisé QX1) + RIB si configuré + slot lien carte seulement si PSP ;
+    remisé QX1) + RIB si configuré ; ADEV53 : jamais de ``card_payment_url``
+    (aucune route ``pay-card``), clés = contrat ``proposal_accept.json`` ;
   * l'endpoint « j'ai effectué le virement » notifie le vendeur + stampe le
-    chatter, sans changer le statut ni créer de Paiement.
+    chatter, sans changer le statut ni créer de Paiement ; ADEV53 : il est
+    gardé par l'OTP de lecture exactement comme la lecture (403).
 """
+import json
 from decimal import Decimal
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -68,12 +72,23 @@ class Qx33DepositSuccessTests(TestCase):
         # 10000 HT − 10 % = 9000 ; TTC 10800 ; acompte 30 % = 3240.
         self.assertEqual(pay['acompte_ttc'], '3240.00')
         self.assertIn('TAQINOR BANK', pay['rib'])
-        # Pas de PSP configuré → pas de lien carte.
-        self.assertIsNone(pay['card_payment_url'])
+        self.assertNotIn('card_payment_url', pay)
         self.assertIn('virement', pay['declare_url'])
+        # ADEV53 — la réponse RÉELLE porte exactement les clés `paiement` du
+        # contrat partagé avec la page (PACT10).
+        contrat = json.loads((Path(__file__).resolve().parents[1]
+                              / 'contract_samples' / 'proposal_accept.json')
+                             .read_text(encoding='utf-8'))
+        self.assertEqual(set(pay), set(contrat['reponse_200']['paiement']))
+        # Même TYPE que l'exemple : montants et pourcentage en chaînes.
+        self.assertIsInstance(pay['pourcentage'], str)
+        self.assertIsInstance(contrat['reponse_200']['paiement']['pourcentage'], str)
 
     @override_settings(PAYMENT_PROVIDER='hosted')
-    def test_card_slot_activates_with_psp(self):
+    def test_pas_de_card_payment_url(self):
+        """ADEV53 (C-ADEV-023) — même avec un PSP déclaré, aucune clé
+        ``card_payment_url`` : la route ``pay-card`` n'existe pas."""
+        from django.urls import Resolver404, resolve
         from apps.ventes.public.signature_views import empreinte_contenu
         resp = self.api.post(
             f'/api/django/public/proposal/{self.link.token}/accept/',
@@ -81,7 +96,38 @@ class Qx33DepositSuccessTests(TestCase):
              'empreinte_contenu': empreinte_contenu(self.devis)},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertIsNotNone(resp.data['paiement']['card_payment_url'])
+        self.assertNotIn('card_payment_url', resp.data['paiement'])
+        # Le fait vérifié : la route qu'on servait n'existe pas.
+        with self.assertRaises(Resolver404):
+            resolve(f'/api/django/public/proposal/{self.link.token}/pay-card/')
+
+    def test_virement_garde_otp_lecture(self):
+        """ADEV53 — un lien à OTP de lecture non déverrouillé : 403
+        ``otp_required`` comme la lecture, rien déclaré ; déverrouillé par le
+        vrai code : 200."""
+        from django.core.cache import cache
+        from apps.notifications.models import Notification
+        from apps.ventes.domain.cycle_vie import (
+            _otp_lecture_cache_key, validate_otp_lecture,
+        )
+        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.save(update_fields=['statut'])
+        self.link.otp_lecture = True
+        self.link.save(update_fields=['otp_lecture'])
+        base = f'/api/django/public/proposal/{self.link.token}'
+        lecture = self.api.get(f'{base}/data/')
+        refus = self.api.post(f'{base}/virement/', {}, format='json')
+        self.assertEqual(lecture.status_code, 403)
+        self.assertEqual(refus.status_code, 403)
+        self.assertEqual(refus.data, {'detail': 'otp_required'})
+        virement = Notification.objects.filter(
+            recipient=self.seller, title__startswith='Virement déclaré')
+        self.assertFalse(virement.exists())
+        cache.set(_otp_lecture_cache_key(self.link.token), '123456', 600)
+        self.assertIsNone(validate_otp_lecture(self.link, '123456'))
+        ok = self.api.post(f'{base}/virement/', {}, format='json')
+        self.assertEqual(ok.status_code, 200, ok.data)
+        self.assertTrue(virement.exists())
 
     def test_virement_declaration_notifies_seller(self):
         self.devis.statut = Devis.Statut.ACCEPTE
