@@ -48,7 +48,7 @@ from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from ..utils.company_settings import create_numbered, create_provisoire
 #: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
 #: (Administrateur, Directeur, Commercial et Commercial responsable par
 #: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
@@ -327,8 +327,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE):
             save_kwargs['revue_statut'] = Facture.RevueStatut.A_VALIDER
 
-        from ..utils.company_settings import create_provisoire  # ATOT27
-        create_provisoire(  # brouillon hors série « BROUILLON-<id> »
+        # ATOT27 (D-ATOT-5) — brouillon hors série : « BROUILLON-<id> ».
+        create_provisoire(
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
 
@@ -1834,7 +1834,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reste indicative tant que non facturée — cette action la matérialise
         volontairement en un nouveau document, séparé)."""
         from decimal import Decimal
-        from ..utils.company_settings import create_provisoire
 
         facture = self.get_object()
         # AFAC24 (C-AFAC-040, base) — UNE formule : la pénalité facturée est
