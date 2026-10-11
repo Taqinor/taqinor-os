@@ -63,8 +63,6 @@ _SANS_ECRAN = ("A CORRIGER (proprietaire crm) : route servie sans aucun appelant
 
 #: ``crm/<route>`` (``<>`` = parametre, ``<pk>`` = detail de routeur) -> raison.
 A_CORRIGER: dict[str, str] = {
-    "crm/relance-etapes/kpi-adherence": _ACRM2_I,
-    "crm/relance-etapes/mes-stats": _ACRM2_I,
     "crm/salles-vente": _ACRM2_II,
     "crm/salles-vente/<pk>": _ACRM2_II,
     "crm/salles-vente/<>/analytics": _ACRM2_II,

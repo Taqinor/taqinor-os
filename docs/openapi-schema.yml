@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7570, components: 3016}
+counts: {paths: 4814, operations: 7566, components: 3014}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1112,8 +1112,6 @@ operations:
 - get /api/django/crm/relance-etapes/chaine-commerciale/ -> django_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/django/crm/relance-etapes/controle/ -> django_crm_relance_etapes_controle_retrieve
 - get /api/django/crm/relance-etapes/journal/ -> django_crm_relance_etapes_journal_retrieve
-- get /api/django/crm/relance-etapes/kpi-adherence/ -> django_crm_relance_etapes_kpi_adherence_retrieve
-- get /api/django/crm/relance-etapes/mes-stats/ -> django_crm_relance_etapes_mes_stats_retrieve
 - get /api/django/crm/relance-etapes/suivi/ -> django_crm_relance_etapes_suivi_retrieve
 - post /api/django/crm/relance-etapes/{id}/annuler/ -> django_crm_relance_etapes_annuler_create
 - post /api/django/crm/relance-etapes/{id}/appel-compose/ -> django_crm_relance_etapes_appel_compose_create
@@ -4936,8 +4934,6 @@ operations:
 - get /api/v1/crm/relance-etapes/chaine-commerciale/ -> v1_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/v1/crm/relance-etapes/controle/ -> v1_crm_relance_etapes_controle_retrieve
 - get /api/v1/crm/relance-etapes/journal/ -> v1_crm_relance_etapes_journal_retrieve
-- get /api/v1/crm/relance-etapes/kpi-adherence/ -> v1_crm_relance_etapes_kpi_adherence_retrieve
-- get /api/v1/crm/relance-etapes/mes-stats/ -> v1_crm_relance_etapes_mes_stats_retrieve
 - get /api/v1/crm/relance-etapes/suivi/ -> v1_crm_relance_etapes_suivi_retrieve
 - post /api/v1/crm/relance-etapes/{id}/annuler/ -> v1_crm_relance_etapes_annuler_create
 - post /api/v1/crm/relance-etapes/{id}/appel-compose/ -> v1_crm_relance_etapes_appel_compose_create
@@ -7787,7 +7783,6 @@ query_params:
   get /api/django/crm/relance-etapes/cadences-echues/: jours
   get /api/django/crm/relance-etapes/controle/: jours owner segment
   get /api/django/crm/relance-etapes/journal/: lead
-  get /api/django/crm/relance-etapes/kpi-adherence/: jours
   get /api/django/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/django/crm/relance-etapes/{id}/message/: cle langue
   get /api/django/crm/revues-compte/: ordering page page_size search
@@ -8541,7 +8536,6 @@ query_params:
   get /api/v1/crm/relance-etapes/cadences-echues/: jours
   get /api/v1/crm/relance-etapes/controle/: jours owner segment
   get /api/v1/crm/relance-etapes/journal/: lead
-  get /api/v1/crm/relance-etapes/kpi-adherence/: jours
   get /api/v1/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/v1/crm/relance-etapes/{id}/message/: cle langue
   get /api/v1/crm/revues-compte/: ordering page page_size search
@@ -9566,7 +9560,6 @@ components:
 - CrmConvertirClientRequestRequest
 - CrmInitialiserRelanceRequestRequest
 - CrmJournalRelance
-- CrmKpiAdherence
 - CrmKpiCadences
 - CrmKpiPremierContact
 - CrmLeadLocataire
@@ -9579,7 +9572,6 @@ components:
 - CrmLogInteractionRequestKindEnum
 - CrmLogInteractionRequestOutcomeEnum
 - CrmLogInteractionRequestRequest
-- CrmMesStatsRelance
 - CrmMessageRenderRequestRequest
 - CrmMessageVisiteOuvert
 - CrmMessageVisiteOuvertRequestRequest

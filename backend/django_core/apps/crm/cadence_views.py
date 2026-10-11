@@ -223,13 +223,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # MRY30 — `suivi` est une LECTURE pure (la file PAR PÉRIODE, tous
         # statuts) : même garde que `list`, et listée ICI parce que
         # get_permissions() PRIME sur le `permission_classes` de l'@action.
-        # CKP3 — `kpi_adherence` et `mes_stats` sont des LECTURES pures,
-        # ouvertes à TOUS les rôles : décision fondateur de TRANSPARENCE
-        # TOTALE (2026-09-10, « on voit la même chose moi et elle »). Elles
-        # sont listées ICI, nommément, parce que get_permissions() PRIME sur
-        # le `permission_classes` de l'@action (garde AUD421 / bug CI #25) :
-        # sans ces noms, la déclaration inline serait décorative et l'action
-        # retomberait sur `IsResponsableOrAdmin`.
+        # ACRM64 (D-ACRM-6 (i)=(a), 09/10/2026) — `kpi_adherence` et
+        # `mes_stats` sont RETIRÉES (écrans retirés le 30/09) : plus de route.
         # RLC2 — `journal` est une LECTURE PURE (le sélecteur n'écrit rien) :
         # même garde que `list`, et listée ICI nommément parce que
         # get_permissions() PRIME sur le `permission_classes` de l'@action.
@@ -237,13 +232,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # ne clôt rien, n'écrit rien) : même garde que `list`, listée ICI
         # nommément pour la même raison que `journal`.
         # Chaîne commerciale (25/09/2026) — `chaine_commerciale` est une
-        # LECTURE PURE du cockpit : même garde que `mes_stats`, listée ICI
+        # LECTURE PURE du cockpit : même garde que `journal`, listée ICI
         # nommément pour la même raison.
         # COCKPIT-CONTRÔLE (30/09/2026) — `controle` est une LECTURE PURE du
-        # cockpit, ouverte à tous les rôles comme `kpi_adherence` (décision
-        # de transparence CKP3) : listée ICI nommément, même raison.
-        if self.action in ('list', 'message', 'suivi',
-                           'kpi_adherence', 'mes_stats', 'journal',
+        # cockpit, ouverte à tous les rôles (décision de transparence CKP3) :
+        # listée ICI nommément, même raison.
+        if self.action in ('list', 'message', 'suivi', 'journal',
                            'cadences_echues', 'chaine_commerciale',
                            'controle'):
             return [IsAnyRole()]
@@ -453,74 +447,6 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             request.user.company, request.user, jours=jours)
         return Response({'count': len(lignes), 'jours': jours,
                          'results': lignes})
-
-    @extend_schema(parameters=[sd.P_JOURS], responses=inline_serializer('CrmKpiAdherence', {
-        'periode_jours': serializers.IntegerField(),
-        'a_lheure_pct': serializers.FloatField(allow_null=True),
-        'touches_faites': serializers.IntegerField(),
-        'touches_en_retard_ouvertes': serializers.IntegerField(),
-        'sautees_humaines': serializers.IntegerField(),
-        'annulees_moteur': serializers.IntegerField(),
-        'vitesse_premier_contact': serializers.DictField(),
-        'tendance_a_lheure': serializers.ListField(
-            child=serializers.DictField()),
-        'par_etape': serializers.ListField(child=serializers.DictField()),
-        'leads_sans_touche': serializers.ListField(
-            child=serializers.DictField()),
-        # CAD35 — les périodes d'absence déclarées de la fenêtre.
-        'absences_declarees': serializers.ListField(
-            child=serializers.DictField()),
-        'conversion_par_stage': serializers.ListField(
-            child=serializers.DictField()),
-    }))
-    @action(detail=False, methods=['get'], url_path='kpi-adherence',
-            permission_classes=[IsAnyRole])
-    def kpi_adherence(self, request):
-        """CKP3 — la vue ADHÉRENCE du cockpit CRM (forme `kpi_adherence`).
-
-        ``?jours=`` (30 par défaut, 1-365). Les étapes du protocole sont-elles
-        suivies, à l'heure, et OÙ décrochent-elles ?
-
-        LECTURE OUVERTE À TOUS LES RÔLES — décision fondateur du 10/09/2026 :
-        transparence totale, Meryem voit exactement ce que Reda voit ; seule
-        la mise en page diffère à l'écran (elle = sa file, lui = la vue
-        stratégique). La portée de visibilité du demandeur s'applique quand
-        même (``scope_queryset`` via le lead) : la transparence ne perce pas
-        le cloisonnement, elle supprime le tableau caché."""
-        from .selectors import kpi_adherence
-
-        # « Normaliser plutôt que refuser » (règle fondateur 08/09) : un
-        # ``jours`` illisible retombe sur 30, un excès est borné à 1-365 —
-        # un tableau de bord ne renvoie jamais une erreur pour un paramètre
-        # d'affichage.
-        brut = (request.query_params.get('jours') or '').strip()
-        jours = int(brut) if brut.isdigit() else 30
-        jours = min(max(jours, 1), 365)
-        return Response(
-            kpi_adherence(request.user.company, request.user, jours))
-
-    @extend_schema(responses=inline_serializer('CrmMesStatsRelance', {
-        'a_faire_maintenant': serializers.IntegerField(),
-        'en_retard': serializers.IntegerField(),
-        'a_lheure_7j_pct': serializers.FloatField(allow_null=True),
-        'cadences_completees_14j': serializers.IntegerField(),
-        'serie_jours_sans_retard': serializers.IntegerField(),
-    }))
-    @action(detail=False, methods=['get'], url_path='mes-stats',
-            permission_classes=[IsAnyRole])
-    def mes_stats(self, request):
-        """CKP3 — les tuiles PERSONNELLES du commercial (forme
-        `mes_stats_relance`).
-
-        Sa file du moment, ses retards, son à-l'heure 7 jours, ses cadences
-        menées à terme, sa série de jours sans retard. Actionnables, JAMAIS
-        comparatives : aucune donnée d'un autre commercial n'y entre, et rien
-        n'est servi sous forme de classement. Périmètre : les leads dont le
-        demandeur est le RESPONSABLE."""
-        from .selectors import mes_stats_relance
-
-        return Response(
-            mes_stats_relance(request.user.company, request.user))
 
     @extend_schema(responses=inline_serializer('CrmChaineCommerciale', {
         'joints_sans_devis': serializers.DictField(),
