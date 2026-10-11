@@ -440,7 +440,6 @@ API accepted schema-violating request|PATCH /api/django/stock/plans-echantillonn
 API accepted schema-violating request|PATCH /api/django/stock/portails-tiers/{id}/
 API accepted schema-violating request|PATCH /api/django/uxviews/parametres/
 API accepted schema-violating request|PATCH /api/django/ventes/listes-prix/{id}/
-API accepted schema-violating request|POST /api/django/accessreview/sod-rules/
 API accepted schema-violating request|POST /api/django/adminops/config-packages/exporter/
 API accepted schema-violating request|POST /api/django/calepinage/calepinages/{id}/dupliquer/
 API accepted schema-violating request|POST /api/django/core/branded-templates/
@@ -737,7 +736,6 @@ API rejected schema-compliant request|PATCH /api/django/ventes/subventions/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/tests-pr-reception/{id}/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/calage/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
-API rejected schema-compliant request|POST /api/django/accessreview/campaigns/{id}/attester/
 API rejected schema-compliant request|POST /api/django/achats/bons-commande-fournisseur/
 API rejected schema-compliant request|POST /api/django/achats/bons-commande-fournisseur/fusionner/
 API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/depuis-ocr/
@@ -1496,7 +1494,6 @@ Server error|GET /api/django/ventes/clients/{client_id}/credit-warning/
 Server error|GET /api/django/ventes/devis/{id}/proposal/
 Server error|PATCH /api/django/auth/me/calendrier-hegirien/
 Server error|PATCH /api/django/auth/me/langue/
-Server error|POST /api/django/accessreview/campaigns/{id}/attester/
 Server error|POST /api/django/adminops/config-packages/appliquer/
 Server error|POST /api/django/adminops/config-packages/previsualiser/
 Server error|POST /api/django/auth/mobile-home-route/

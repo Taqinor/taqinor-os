@@ -5,6 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.roles.permissions_registre import ALL_PERMISSIONS
+from core.champs_stricts import ChaineStricte
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import AccessReviewCampaign, AccessReviewItem, SodRule
@@ -13,7 +14,7 @@ from .models import AccessReviewCampaign, AccessReviewItem, SodRule
 @extend_schema_field({
     'type': 'string',
     'pattern': '^(?:%s)$' % '|'.join(re.escape(c) for c in ALL_PERMISSIONS)})
-class PermissionCodeField(serializers.CharField):
+class PermissionCodeField(ChaineStricte):
     """Code de permission du catalogue ``roles.ALL_PERMISSIONS`` (ENF10 :
     le schéma déclare l'énum que ``_valider_code`` impose côté serveur)."""
 
@@ -48,6 +49,7 @@ class AccessReviewCampaignSerializer(serializers.ModelSerializer):
 class SodRuleSerializer(serializers.ModelSerializer):
     permission_a = PermissionCodeField(max_length=100)
     permission_b = PermissionCodeField(max_length=100)
+    libelle = ChaineStricte(max_length=200, required=False, allow_blank=True)
 
     class Meta:
         model = SodRule

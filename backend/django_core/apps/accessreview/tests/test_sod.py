@@ -163,3 +163,15 @@ class SodRuleWriteValidationTests(TenantAPITestCase):
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(
             SodRule.objects.filter(company=self.company).count(), 1)
+
+    def test_enf11_libelle_non_chaine_rejete(self):
+        """ENF11 — `libelle: 0` n'est plus converti en "0" (400)."""
+        client = self.client_as(role=CustomUser.ROLE_ADMIN)
+        r = client.post(self.URL, {
+            'permission_a': 'compta_saisir',
+            'permission_b': 'compta_valider',
+            'severite': 'info',
+            'libelle': 0,
+        }, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('libelle', r.json())
