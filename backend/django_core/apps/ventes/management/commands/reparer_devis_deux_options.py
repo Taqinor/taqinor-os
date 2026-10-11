@@ -226,6 +226,7 @@ class Command(BaseCommand):
         from django.db import transaction
 
         from apps.ventes.models import Devis
+        from apps.ventes.domain.etude_schema import ecrire
         from apps.ventes.domain.lignes import creer_ligne
         from apps.ventes.services import (SCENARIO_AVEC_BATTERIE,
                                           SCENARIO_LES_DEUX)
@@ -252,10 +253,8 @@ class Command(BaseCommand):
                 # sans remise — exactement ce que la composition aurait posé.
                 prix_unitaire=Decimal(produit.prix_vente),
                 remise=Decimal('0'), ordre=ordre + 1)
-            etude = dict(verrou.etude_params or {})
-            etude['scenario'] = SCENARIO_LES_DEUX
-            verrou.etude_params = etude
-            # ``update_fields`` EXCLUT ``statut`` : aucun statut ne peut partir
-            # d'ici, même par accident (règle #4).
-            verrou.save(update_fields=['etude_params'])
+            # L'ÉCRIVAIN UNIQUE (QJR105) : fusion de la seule clé
+            # ``scenario`` ; ``update_fields`` EXCLUT ``statut`` : aucun statut
+            # ne peut partir d'ici, même par accident (règle #4).
+            ecrire(verrou, scenario=SCENARIO_LES_DEUX)
         return True

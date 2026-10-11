@@ -1213,9 +1213,10 @@ def _persist_attribution(*, devis):
     if not attribution:
         return  # Lead sans données d'attribution — rien à copier.
 
-    params['attribution'] = attribution
-    devis.etude_params = params
-    devis.save(update_fields=['etude_params'])
+    # L'ÉCRIVAIN UNIQUE (QJR105) : fusion de la seule clé ``attribution``,
+    # ``update_fields=['etude_params']`` — aucun statut ne bouge (règle #4).
+    from apps.ventes.domain.etude_schema import ecrire
+    ecrire(devis, attribution=attribution)
     logger.info('QJ9: attribution copiée pour devis %s → %s',
                 getattr(devis, 'reference', '?'), list(attribution.keys()))
 

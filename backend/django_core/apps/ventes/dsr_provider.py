@@ -145,6 +145,7 @@ def _effacer_copie_toit(devis):
     ``etude_params.toiture`` sans coordonnées, ``roof_image`` détachée (objet
     stocké supprimé quand aucun autre devis ne le référence). Rend le nombre de
     devis modifiés. Aucun statut, montant ni référence n'est touché."""
+    from .domain.etude_schema import ecrire
     from .models import Devis
     from .services import supprimer_fichier_toiture
 
@@ -160,7 +161,9 @@ def _effacer_copie_toit(devis):
         if isinstance(etude, dict) and isinstance(etude.get('toiture'), dict):
             toiture = _sans_position(etude['toiture'])
             if toiture != etude['toiture']:
-                d.etude_params = {**etude, 'toiture': toiture}
+                # L'ÉCRIVAIN UNIQUE (QJR105) : seule ``toiture`` bouge, à sa
+                # place ; le ``save`` commun ci-dessous la réécrit à l'identique.
+                ecrire(d, toiture=toiture)
                 champs.append('etude_params')
         cle = d.roof_image
         if cle:
