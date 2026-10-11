@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 # Toute la logique de dates de ces jobs raisonne en heure du Maroc.
 CASABLANCA_TZ = 'Africa/Casablanca'
 
-# Échéance par défaut quand aucune date d'échéance n'est posée sur la facture.
-DEFAULT_ECHEANCE_DAYS = 30
+# Échéance par défaut quand aucune date d'échéance n'est posée : AFAC48 —
+# ``apps.facturation.models.DEFAULT_ECHEANCE_DAYS`` (LA seule définition).
 
 
 def casablanca_today():
@@ -57,6 +57,7 @@ def _echeance_effective(facture, today):
         client=getattr(facture, 'client', None), date_emission=base)
     if derivee is not None:
         return derivee
+    from apps.facturation.models import DEFAULT_ECHEANCE_DAYS
     return base + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
 

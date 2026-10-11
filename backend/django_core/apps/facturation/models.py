@@ -24,6 +24,11 @@ from .totaux import TotauxDocumentMixin  # noqa: F401
 # ('ventes.Devis', 'ventes.BonCommande') ; les FKs vers Client/Lead restent
 # telles quelles ('crm.Client', 'crm.Lead').
 
+#: AFAC48 — repli d'échéance d'une facture sans ``date_echeance`` : émission
+#: + N jours. LA seule définition, lue par ``Facture.echeance_appliquee``,
+#: ``emettre_facture`` et le beat ``ventes.scheduled._echeance_effective``.
+DEFAULT_ECHEANCE_DAYS = 30
+
 
 class Facture(TotauxDocumentMixin, models.Model):
     class Statut(models.TextChoices):
@@ -612,14 +617,27 @@ class Facture(TotauxDocumentMixin, models.Model):
         return reste if reste > 0 else Decimal('0')
 
     @property
+    def echeance_appliquee(self):
+        """AFAC48 — l'échéance réellement appliquée : ``date_echeance`` si
+        posée, sinon (facture émise historique sans date) émission +
+        ``DEFAULT_ECHEANCE_DAYS`` ; ``None`` pour un brouillon sans date."""
+        if self.date_echeance:
+            return self.date_echeance
+        if self.statut == self.Statut.BROUILLON or not self.date_emission:
+            return None
+        from datetime import timedelta
+        return self.date_emission + timedelta(days=DEFAULT_ECHEANCE_DAYS)
+
+    @property
     def jours_retard(self):
-        """Jours de retard si l'EXIGIBLE reste dû (AFAC25 : jamais la retenue)."""
-        from django.utils import timezone
-        if not self.date_echeance or self.statut in ('payee', 'annulee'):
+        """Jours de retard si l'EXIGIBLE reste dû (AFAC25 : jamais la retenue),
+        comptés depuis l'échéance APPLIQUÉE (AFAC48 : repli émission + 30 j)."""
+        echeance = self.echeance_appliquee
+        if not echeance or self.statut in ('payee', 'annulee'):
             return 0
         if self.montant_exigible <= 0:
             return 0
-        delta = (timezone.now().date() - self.date_echeance).days
+        delta = (timezone.now().date() - echeance).days
         return delta if delta > 0 else 0
 
     @staticmethod

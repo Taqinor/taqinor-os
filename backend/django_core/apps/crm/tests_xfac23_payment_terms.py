@@ -183,12 +183,14 @@ class TestEmettreActionDerivesEcheance(TestCase):
         facture.refresh_from_db()
         self.assertEqual(facture.date_echeance, manuelle)
 
-    def test_emettre_sans_reglage_client_laisse_echeance_vide(self):
-        """Sans réglage client, l'émission ne fabrique pas d'échéance : le
-        comportement historique (repli +30 j du job planifié) reste inchangé."""
+    def test_emettre_sans_reglage_client_pose_repli_30_jours(self):
+        """AFAC48 — sans réglage client, l'émission pose LE repli émission +
+        30 j (avant : échéance vide, le PDF et la relance imprimaient « N/A »)."""
         client = Client.objects.create(company=self.company, nom='CDefaut')
         facture = self._facture_brouillon(client)
         resp = self.api.post(f'/api/django/ventes/factures/{facture.id}/emettre/')
         self.assertEqual(resp.status_code, 200, resp.content)
         facture.refresh_from_db()
-        self.assertIsNone(facture.date_echeance)
+        self.assertEqual(
+            facture.date_echeance,
+            facture.date_emission + datetime.timedelta(days=30))

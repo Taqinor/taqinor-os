@@ -151,10 +151,13 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
                 facture.date_echeance < facture.date_emission):
             facture.date_echeance = None
     if not facture.date_echeance:
-        derivee = calculer_date_echeance(
-            client=facture.client, date_emission=facture.date_emission)
-        if derivee is not None:
-            facture.date_echeance = derivee
+        # AFAC48 — délai client (XFAC23), sinon LE repli émission + 30 j :
+        # une facture émise porte toujours son échéance appliquée.
+        from datetime import timedelta
+        from apps.facturation.models import DEFAULT_ECHEANCE_DAYS
+        facture.date_echeance = calculer_date_echeance(
+            client=facture.client, date_emission=facture.date_emission,
+        ) or facture.date_emission + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
     from ..utils.company_settings import numeroter_a_l_emission
     with transaction.atomic():
