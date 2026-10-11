@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { ORDRE_CALQUES, CALQUE_ELECTRIQUE_ID, lireEtatCalques, ecrireEtatCalques } from './calques'
 
 /* ============================================================================
@@ -103,10 +103,10 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   // l'hôte reçoit l'état RESTAURÉ des calques désormais proposés : sinon la
   // carte afficherait l'état par défaut pendant que le panneau montre l'état
   // mémorisé.
-  useEffect(() => {
+  const restituer = useEffectEvent(() => {
     for (const c of listes) onChange?.(c.id, etat[c.id] ?? ETAT_PAR_DEFAUT)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listes])
+  })
+  useEffect(() => { restituer() }, [listes])
 
   const appliquer = useCallback(
     (id, patch) => {
