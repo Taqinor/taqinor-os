@@ -254,7 +254,12 @@ class NumeroEmissionTests(TestCase):
             f = Facture.objects.get(pk=r.data['id'])
             self.assertEqual(f.statut, Facture.Statut.BROUILLON)
             self.assertEqual(f.reference, f'BROUILLON-{f.pk}')
-            self.assertEqual(r.data['reference'], f.reference)
+            # La réponse du POST /factures/ vient de FactureWriteSerializer
+            # (liste `fields` explicite, ASEC27) qui n'a jamais servi
+            # `reference` : la référence servie se lit sur la fiche.
+            fiche = self.api.get(f'/api/django/ventes/factures/{f.pk}/')
+            self.assertEqual(fiche.status_code, 200, fiche.data)
+            self.assertEqual(fiche.data['reference'], f.reference)
         su = User.objects.create_superuser(
             username=f'atot27_su_{_nxt()}', password='x', email='')
         su.company = self.company
