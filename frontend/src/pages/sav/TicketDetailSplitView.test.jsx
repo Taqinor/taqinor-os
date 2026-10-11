@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 
 /* VX31 — boîte de réception SAV : sur grand viewport (≥1280px), `TicketDetail`
    rend un panneau latéral PERSISTANT (aside) à côté de la liste au lieu du
@@ -9,29 +8,14 @@ import { configureStore } from '@reduxjs/toolkit'
    tablette inchangé. On simule `matchMedia` aux deux points de rupture, comme
    `ResponsiveDialog.test.jsx` (M158) le fait déjà pour le même mécanisme. */
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
+vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock())
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/axios', async () => (await import('./ticketDetailTestKit')).axiosVideMock())
 
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
+import { makeTicketStore } from './ticketDetailTestKit'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -51,15 +35,6 @@ function mockMatchMedia(desktop) {
   })
 }
 
-function makeStore() {
-  return configureStore({
-    reducer: {
-      tickets: (state = { items: [] }) => state,
-      auth: (state = { role: 'admin', permissions: [] }) => state,
-    },
-  })
-}
-
 const baseTicket = {
   id: 1, reference: 'SAV-1', statut: 'en_cours', type: 'correctif',
   priorite: 'normale', sous_garantie: 'non', sous_garantie_effectif: 'non',
@@ -67,7 +42,7 @@ const baseTicket = {
 }
 
 function renderDetail() {
-  const store = makeStore()
+  const store = makeTicketStore()
   return render(
     <Provider store={store}>
       <TicketDetail ticket={baseTicket} onClose={() => {}} onSaved={() => {}} />

@@ -1,39 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 /* WIR29 — bouton « Planifier une intervention en un clic » sur le détail du
    ticket SAV : POST tickets/{id}/planifier-intervention/ (installations
    services côté serveur), formulaire manuel conservé en option. savApi + api
    (axios direct) + installationsApi mockés — aucun réseau réel. */
 
-vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    updateTicket: () => {
-      const action = { type: 'sav/updateTicket/noop' }
-      action.unwrap = () => Promise.resolve({})
-      return action
-    },
-  }
-})
+vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) =>
+  (await import('./ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicket: vi.fn(() => Promise.resolve({ data: {} })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
+vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock({
+  getTicket: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
 vi.mock('../../api/axios', () => ({
@@ -43,34 +20,15 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
+import { renderTicketDetail } from './ticketDetailTestKit'
 import api from '../../api/axios'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function makeStore() {
-  return configureStore({
-    reducer: {
-      tickets: (state = { items: [] }) => state,
-      auth: (state = { role: 'admin', permissions: [] }) => state,
-    },
-  })
-}
-
-function renderDetail(ticket, opts = {}) {
-  const store = makeStore()
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <TicketDetail ticket={ticket} onClose={() => {}} onSaved={() => {}} {...opts} />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderDetail = (ticket, opts) => renderTicketDetail(TicketDetail, ticket, opts)
 
 const baseTicket = {
   id: 1, reference: 'SAV-1', statut: 'nouveau', type: 'correctif',

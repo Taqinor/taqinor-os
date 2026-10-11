@@ -16,30 +16,15 @@ vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getPiecesCompatibles: vi.fn(() => Promise.resolve({
-      data: { results: [{ piece_id: 7, nom: 'Fusible 16A', sku: 'F16', note: '' }] },
-    })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketWorksheet: vi.fn(() => Promise.resolve({ data: null })),
-    getWorksheetModeles: vi.fn(() => Promise.resolve({ data: [] })),
-  },
+vi.mock('../../api/savApi', async () => (await import('./ticketDetailTestKit')).savApiDetailMock({
+  getPiecesCompatibles: vi.fn(() => Promise.resolve({
+    data: { results: [{ piece_id: 7, nom: 'Fusible 16A', sku: 'F16', note: '' }] },
+  })),
+  getTicketWorksheet: vi.fn(() => Promise.resolve({ data: null })),
+  getWorksheetModeles: vi.fn(() => Promise.resolve({ data: [] })),
 }))
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/axios', async () => (await import('./ticketDetailTestKit')).axiosVideMock())
+vi.mock('../../api/installationsApi', async () => (await import('./ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
 import savApi from '../../api/savApi'
