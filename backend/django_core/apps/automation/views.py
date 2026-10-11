@@ -444,14 +444,23 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
                    responses={201: ApprovalRequestSerializer})
     def create(self, request, *args, **kwargs):
         company = request.user.company
-        type_id = request.data.get('request_type')
+        # ENF11 — id illisible : 400 ; id bien formé mais inconnu : 404.
         try:
-            req_type = ApprovalRequestType.objects.get(
-                pk=type_id, company=company, enabled=True)
-        except (ApprovalRequestType.DoesNotExist, ValueError, TypeError):
+            type_id = int(request.data.get('request_type'))
+        except (TypeError, ValueError):
+            return Response(
+                {'request_type': ['Entier attendu.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        req_type = ApprovalRequestType.objects.filter(
+            pk=type_id, company=company).first()
+        if req_type is None:
             return Response(
                 {'detail': 'Type de demande introuvable.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
+        if not req_type.enabled:  # refus d'ÉTAT : type désactivé
+            return Response(
+                {'detail': 'Ce type de demande est désactivé.'},
+                status=status.HTTP_409_CONFLICT)
 
         payload = request.data.get('payload') or {}
         if hasattr(payload, 'dict'):  # QueryDict (multipart) -> dict
@@ -596,11 +605,12 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
             pk=rule_id, company=company).first()
         if rule is None:
             return Response(
-                {'detail': 'Règle introuvable.'}, status=400)
-        # APAR9 — un webhook ne s'attache qu'à une règle WEBHOOK_INBOUND.
+                {'detail': 'Règle introuvable.'}, status=404)
+        # APAR9 — un webhook ne s'attache qu'à une règle WEBHOOK_INBOUND
+        # (refus d'ÉTAT de la règle : 409, le corps était conforme).
         if rule.trigger_type != TriggerType.WEBHOOK_INBOUND:
             return Response(
-                {'rule': [WEBHOOK_REGLE_INCOMPATIBLE]}, status=400)
+                {'rule': [WEBHOOK_REGLE_INCOMPATIBLE]}, status=409)
         hmac_secret = entree.validated_data.get('hmac_secret', '') or ''
         existant = IncomingWebhookTrigger.objects.filter(rule=rule).first()
         if existant is not None:
@@ -608,7 +618,7 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
                 # APAR9 — plus d'abandon silencieux du secret fourni.
                 return Response({'hmac_secret': [
                     'Cette règle a déjà un webhook : modifiez-le pour '
-                    'changer son secret.']}, status=400)
+                    'changer son secret.']}, status=409)
             return Response(
                 self.get_serializer(existant).data, status=201)
         trigger = IncomingWebhookTrigger.objects.create(

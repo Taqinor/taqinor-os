@@ -958,7 +958,20 @@ class ApprovalRequestTests(TestCase):
             'request_type': req_type.pk,
             'payload': {'montant': '100'},
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+
+    def test_type_inconnu_404_et_type_illisible_400(self):
+        # ENF11 — id bien formé mais inconnu : 404 ; id illisible : 400.
+        api = auth(self.employe)
+        url = '/api/django/automation/approval-requests/'
+        resp = api.post(url, {'request_type': 999999, 'payload': {}},
+                        format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        for mauvais in ('abc', None, [1], {}):
+            resp = api.post(url, {'request_type': mauvais, 'payload': {}},
+                            format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
