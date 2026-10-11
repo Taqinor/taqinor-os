@@ -347,7 +347,9 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         ).select_related('owner', 'role').order_by('ecran', 'nom')
         return Response(SavedViewSerializer(views, many=True).data)
 
-    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
+    @extend_schema(responses={
+        (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY,
+    })
     @action(detail=False, methods=['get'], url_path='export-xlsx')
     def export_xlsx(self, request):
         """NTUX23 — export .xlsx du même rapport de gouvernance (colonnes :
@@ -452,10 +454,13 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         return Response({'created': created, 'erreurs': erreurs})
 
 
-_VIEWS_FAVORI_UTILISATEUR_VIEW_SET_IMPORTER_REPONSE = inline_serializer('ViewsFavoriUtilisateurViewSetImporterReponse', {
-    'importes': drf_serializers.JSONField(allow_null=True),
-    'non_resolues': drf_serializers.JSONField(allow_null=True),
-})
+_VIEWS_FAVORI_UTILISATEUR_VIEW_SET_IMPORTER_REPONSE = inline_serializer(
+    'ViewsFavoriUtilisateurViewSetImporterReponse',
+    {
+        'importes': drf_serializers.JSONField(allow_null=True),
+        'non_resolues': drf_serializers.JSONField(allow_null=True),
+    },
+)
 
 
 class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
