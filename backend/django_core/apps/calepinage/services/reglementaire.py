@@ -642,7 +642,7 @@ def _rendre_pieces_produites(rendus):
         rendu = rendus.get(code)
         try:
             octets = rendu() if rendu is not None else None
-        except Exception as erreur:            # noqa: BLE001 - motif reporté
+        except Exception as erreur:  # motif reporté
             if obligatoire:
                 raise DossierRefuse(
                     "Dossier réglementaire : la pièce « %s » ne se rend pas "

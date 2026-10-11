@@ -19,7 +19,7 @@ Ce qui est prouvé ici :
 
 Run (pur, sans base) :
     cd backend/django_core
-    python -m pytest apps/calepinage/tests/test_calx315_presentation_compacte.py  # noqa: E501
+    python -m pytest apps/calepinage/tests/test_calx315_presentation_compacte.py
 """
 import copy
 import json
@@ -229,7 +229,7 @@ class RenduReelTest(unittest.TestCase):
         try:
             import fitz  # noqa: F401
             import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — bibliothèques natives absentes
+        except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 
     def test_un_calepinage_simule_rend_exactement_deux_pages(self):

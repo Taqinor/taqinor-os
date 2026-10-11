@@ -574,7 +574,7 @@ def _schema_du_calepinage(calepinage):
 
     try:
         return schema_du_calepinage(calepinage)
-    except Exception as erreur:  # noqa: BLE001 - motif nommé au rapport
+    except Exception as erreur:  # motif nommé au rapport
         return {'svg': None, 'bloquants': [str(erreur)], 'manquantes': []}
 
 

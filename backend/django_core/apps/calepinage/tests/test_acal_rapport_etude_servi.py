@@ -71,7 +71,7 @@ class RapportEtudeServiTest(unittest.TestCase):
         try:
             import fitz  # noqa: F401
             import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 - bibliotheques natives absentes
+        except Exception:  # bibliotheques natives absentes
             raise unittest.SkipTest('WeasyPrint ou PyMuPDF indisponible')
         cls.pivot = calepinage_simule_reel()
 

@@ -179,7 +179,7 @@ class RenduReelTest(unittest.TestCase):
         try:
             import fitz  # noqa: F401
             import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — bibliothèques natives absentes
+        except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 
     def test_l_empreinte_paraît_une_fois_par_page_du_rapport(self):

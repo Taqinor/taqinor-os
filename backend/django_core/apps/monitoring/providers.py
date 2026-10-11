@@ -76,7 +76,7 @@ class FusionSolarProvider(MonitoringProvider):
             return []
         try:
             return self._fetch(system, config, creds)
-        except Exception:  # noqa: BLE001 — un connecteur ne doit JAMAIS casser l'OS.
+        except Exception:  # un connecteur ne doit JAMAIS casser l'OS.
             logger.warning(
                 'FusionSolar fetch a échoué pour le système %s (no-op).',
                 getattr(system, 'id', None), exc_info=True)
@@ -113,7 +113,7 @@ class _CredentialGatedProvider(MonitoringProvider):
             return []
         try:
             return self._fetch(system, config, creds)
-        except Exception:  # noqa: BLE001 — un connecteur ne casse JAMAIS l'OS.
+        except Exception:  # un connecteur ne casse JAMAIS l'OS.
             logger.warning(
                 '%s fetch a échoué pour le système %s (no-op).',
                 self.key, getattr(system, 'id', None), exc_info=True)

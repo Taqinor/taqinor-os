@@ -49,7 +49,7 @@ def _ecrire(calepinage, kind, **champs):
 
         return log_activity(calepinage, getattr(Activity.Kind, kind),
                             **champs)
-    except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+    except Exception:  # un journal ne casse jamais un geste
         logger.exception('CAL26 : entrée de chatter perdue (calepinage %s)',
                          getattr(calepinage, 'pk', None))
         return None
@@ -179,7 +179,7 @@ def _ecarts_de_restauration(calepinage, version):
         remplacee = recentes[1]
         ecarts = comparer_versions(remplacee, version)['ecarts']
         return "Écarts avec l'état remplacé — %s" % texte_des_ecarts(ecarts)
-    except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+    except Exception:  # un journal ne casse jamais un geste
         logger.exception('CALX345 : écarts de restauration non calculés '
                          '(calepinage %s)', getattr(calepinage, 'pk', None))
         return ''

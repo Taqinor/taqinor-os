@@ -389,7 +389,7 @@ def html_carte_de_chaleur(calepinage):
             return '<p class="note">%s</p>' % escape(
                 MOTIF_CARTE_PERIMEE.format(date=date))
         data_uri = derniere_image_encodee(calepinage, genre='ombrage')
-    except Exception:  # noqa: BLE001 — image omise, jamais rapport cassé
+    except Exception:  # image omise, jamais rapport cassé
         import logging
 
         logging.getLogger(__name__).warning(

@@ -909,7 +909,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         try:
             from apps.documents.builders import figer_documents_signes
             figer_documents_signes(inst)
-        except Exception as exc:  # noqa: BLE001 — la signature prime
+        except Exception as exc:  # la signature prime
             logging.getLogger(__name__).warning(
                 "ADOC71 — gel GED du PV/BL du chantier %s impossible : %s",
                 inst.pk, exc)

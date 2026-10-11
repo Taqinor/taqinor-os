@@ -203,7 +203,7 @@ class RenduReelTest(unittest.TestCase):
     def setUp(self):
         try:
             import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — bibliothèque native absente
+        except Exception:  # bibliothèque native absente
             self.skipTest('WeasyPrint indisponible sur ce poste')
 
     def test_un_document_simule_rend_un_pdf_non_vide(self):

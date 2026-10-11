@@ -102,7 +102,7 @@ def _calepinage_et_roof_layout(resultat):
         return (Calepinage.objects
                 .filter(pk=pk).only('id', 'roof_layout', 'company_id')
                 .first())
-    except Exception:  # noqa: BLE001 — matrice omise, jamais rapport cassé
+    except Exception:  # matrice omise, jamais rapport cassé
         logger = _logger()
         logger.warning('CALX302 : relecture de roof_layout impossible '
                        '(calepinage %s)', pk)

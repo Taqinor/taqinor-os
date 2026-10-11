@@ -216,7 +216,7 @@ class AucunPrixTest(unittest.TestCase):
             from apps.calepinage.tests.test_aucun_prix_achat import (
                 cles_interdites,
             )
-        except Exception as erreur:  # noqa: BLE001 — registre Django absent
+        except Exception as erreur:  # registre Django absent
             self.skipTest(f'registre Django non chargé ici : {erreur}')
         for sortie in self._toutes():
             self.assertEqual(cles_interdites(sortie), [])

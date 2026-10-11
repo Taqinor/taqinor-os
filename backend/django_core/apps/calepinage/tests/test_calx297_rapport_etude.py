@@ -226,7 +226,7 @@ class RenduReelTest(unittest.TestCase):
         try:
             import fitz  # noqa: F401
             import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — bibliothèques natives absentes
+        except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 
     def test_un_calepinage_simule_rend_un_pdf_non_vide_sans_montant(self):

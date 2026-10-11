@@ -158,7 +158,7 @@ class LaNoteGagneUnePageTest(unittest.TestCase):
         try:
             import fitz  # noqa: F401
             import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — bibliothèques natives absentes
+        except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 
     def test_le_pdf_de_la_note_gagne_exactement_une_page(self):

@@ -277,7 +277,7 @@ def _supprimer_objet(cle):
             from apps.ventes import services as ventes_services
 
             ventes_services.supprimer_fichier_toiture(cle)
-    except Exception:  # noqa: BLE001 — journalisé, jamais propagé
+    except Exception:  # journalisé, jamais propagé
         import logging
 
         logging.getLogger(__name__).exception(

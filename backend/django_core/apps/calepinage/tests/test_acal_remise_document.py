@@ -252,7 +252,7 @@ class NumerotationConcurrenteTest(TransactionTestCase):
                     user=user, empreinte=empreinte, extension='svg',
                     mime='image/svg+xml')
                 numeros.append(version['numero'])
-            except Exception as erreur:  # noqa: BLE001 - remonté au test
+            except Exception as erreur:  # remonté au test
                 erreurs.append(erreur)
             finally:
                 connections.close_all()

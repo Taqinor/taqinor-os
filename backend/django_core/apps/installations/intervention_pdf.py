@@ -112,7 +112,7 @@ def _photo_data_uri(attachment):
             sortie = io.BytesIO()
             img.save(sortie, format='JPEG', quality=PDF_PHOTO_QUALITE,
                      optimize=True)
-    except Exception:  # noqa: BLE001 — une photo illisible ne casse pas le PDF
+    except Exception:  # une photo illisible ne casse pas le PDF
         return None
     return 'data:image/jpeg;base64,' + base64.b64encode(
         sortie.getvalue()).decode()

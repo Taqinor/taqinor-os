@@ -498,7 +498,7 @@ def _evaluation(conception):
 
     try:
         return evaluer_onduleurs(conception)
-    except Exception:  # noqa: BLE001 — une conception incomplète ne fait pas
+    except Exception:  # une conception incomplète ne fait pas
         # tomber la page de raccordement : elle rend le contrôle OMIS.
         return None
 

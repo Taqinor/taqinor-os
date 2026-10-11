@@ -80,7 +80,7 @@ def _site(calepinage, request):
     """
     try:
         contexte = contexte_conception(calepinage, request)
-    except Exception:   # noqa: BLE001 — le pompage survit à une carte muette
+    except Exception:  # le pompage survit à une carte muette
         return None, None, None
     pin = ((contexte or {}).get('geometrie') or {}).get('pin') or {}
     ville = ((contexte or {}).get('calepinage') or {}).get('client_ville') or None

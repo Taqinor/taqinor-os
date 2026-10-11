@@ -68,7 +68,7 @@ class ContratsF06(unittest.TestCase):
                 self.assertIsInstance(donnees.get(etat), dict,
                                       '%s : « %s » absent' % (nom, etat))
 
-    def test_les_cles_de_l_entree_sont_celles_de_CHAMPS_ENTREE_plus_regime_transformateur_batterie_hors_reseau(self):  # noqa: E501
+    def test_les_cles_de_l_entree_sont_celles_de_CHAMPS_ENTREE_plus_regime_transformateur_batterie_hors_reseau(self):
         attendu = (set(CHAMPS_ENTREE) - {CLE_DEROGATIONS}) | {
             'regime', 'transformateur', 'batterie', 'hors_reseau'}
         self.assertEqual(set(CLES_ENTREE_SERVIE), attendu)
