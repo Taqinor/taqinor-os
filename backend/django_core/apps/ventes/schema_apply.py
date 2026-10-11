@@ -41,7 +41,7 @@ def _declarations(lecture, signature, paiement, SH):
     ]
 
 
-def appliquer():
+def appliquer_schemas():
     """Pose les déclarations sur les vues (appelé par ``ready()``)."""
     from . import openapi_shapes as SH
     from .public import lecture_views, paiement_views, signature_views

@@ -89,7 +89,7 @@ class VentesConfig(AppConfig):
         # ENF11 — déclarations OpenAPI des vues publiques dont l'AST est figé
         # par les goldens de déplacement (SPL246/252/253) : posées ici.
         from . import schema_apply
-        schema_apply.appliquer()
+        schema_apply.appliquer_schemas()
         # ADOC131 (D-ADOC-4) — à la réception du chantier, le lien public de
         # suivi reçoit son échéance réception + 90 jours (bus M6, idempotent).
         from core.events import chantier_receptionne
