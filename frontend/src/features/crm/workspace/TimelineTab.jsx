@@ -8,6 +8,7 @@ import {
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
 import CallLogPopover from '../CallLogPopover'
+import { TIMELINE_FILTERS, matchesTimelineFilter } from './timelineFiltres'
 import ChatterTimeline from '../../../components/ChatterTimeline'
 import { formatDate } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
@@ -26,30 +27,6 @@ const readFilter = () => {
 }
 const writeFilter = (v) => {
   try { localStorage.setItem(FILTER_KEY, v) } catch { /* best-effort */ }
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que ChatterTimeline.OUTCOME_LABELS
-export const TIMELINE_FILTERS = [
-  { key: 'tous', label: 'Tous' },
-  { key: 'notes', label: 'Notes' },
-  { key: 'appels', label: 'Appels' },
-  { key: 'emails', label: 'E-mails' },
-  { key: 'devis', label: 'Devis' },
-  { key: 'systeme', label: 'Système' },
-]
-
-// Logique pure co-localisée (même motif que `ChatterTimeline.parseMarketingTouch`) :
-// testable sans DOM, sans réseau.
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
-export function matchesTimelineFilter(kind, filterKey) {
-  switch (filterKey) {
-    case 'notes': return kind === 'note'
-    case 'appels': return kind === 'appel'
-    case 'emails': return kind === 'email'
-    case 'devis': return typeof kind === 'string' && kind.startsWith('devis_')
-    case 'systeme': return kind === 'creation' || kind === 'modification'
-    default: return true
-  }
 }
 
 const NOTE_ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'

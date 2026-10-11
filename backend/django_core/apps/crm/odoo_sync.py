@@ -30,6 +30,7 @@ Nouvelle clé API ; durée max 3 mois, valeur affichée UNE seule fois) :
 Sans config complète, les commandes n'écrivent RIEN et affichent l'usage —
 même contrat « sans fichier → ne rien faire » que ``import_odoo_leads``.
 """
+import datetime as _datetime
 import html
 import json
 import os
@@ -100,8 +101,6 @@ MARQUEURS_LEAD_TEST = ('test lead', 'dummy data')
 # est l'instant de la synchronisation et vaudrait « neuf » pour les 930
 # fiches du miroir. Une fiche sans date d'origine connue n'est PAS neuve : on
 # ne devine pas, on laisse le rattrapage manuel décider.
-import datetime as _datetime  # noqa: E402  (près de son seul usage)
-
 BASCULE_MIROIR = _datetime.date(2026, 9, 1)
 
 

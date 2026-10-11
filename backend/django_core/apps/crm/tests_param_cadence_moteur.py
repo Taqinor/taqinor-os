@@ -228,8 +228,12 @@ class PalierDesactiveTests(_Base):
         self.assertEqual(etape.cle, 'devis')
 
     def test_l_escalier_se_lit_en_cles(self):
-        tous = lambda cle: True  # noqa: E731
-        aucun = lambda cle: False  # noqa: E731
+        def tous(cle):
+            return True
+
+        def aucun(cle):
+            return False
+
         self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             'appel_apres_reponse', 'non_joint', tous), 'message_creneau')
         self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
