@@ -590,6 +590,17 @@ def annuler_touche_relance(etape, user):
                 'cette touche ne peut plus être défaite.')
 
     with transaction.atomic():
+        # ENF15 — verrou + relecture du statut : deux annulations simultanées
+        # passaient toutes deux le contrôle ci-dessus et défaisaient deux fois.
+        statut_verrouille = (
+            RelanceEtape.objects.select_for_update().filter(pk=etape.pk)
+            .values_list('statut', flat=True).first())
+        if statut_verrouille not in (RelanceEtape.Statut.FAIT,
+                                     RelanceEtape.Statut.SAUTEE):
+            raise AnnulationToucheRefusee(
+                'statut',
+                "Cette touche n'a pas été traitée par quelqu'un : il n'y a "
+                'rien à annuler.')
         # L'ÉTAPE DU LEAD D'ABORD, les touches ensuite — l'ordre compte : un
         # retour vers COLD réveille le récepteur d'arrêt de cadence (MRY9 (b)),
         # qui n'annule que les touches encore À FAIRE. Défaire l'avance AVANT
