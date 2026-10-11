@@ -688,6 +688,7 @@ def engagement_followup_engine():
     touche jamais au statut. Renvoie le nombre de notifications posées."""
     from django.utils import timezone
     from apps.ventes.models import Devis, ShareLink
+    from authentication.selectors import active_companies
 
     now = timezone.now()
     posted = 0
@@ -697,7 +698,8 @@ def engagement_followup_engine():
     # ADEV45 — le lien d'une V1 remplacée par sa révision ne déclenche
     # jamais de relance : seule la version EN JEU est candidate.
     links = (ShareLink.objects
-             .filter(devis__isnull=False,
+             .filter(company__in=active_companies(),  # ENF15 — pas les suspendus
+                     devis__isnull=False,
                      devis__statut=Devis.Statut.ENVOYE,
                      devis__in=devis_en_jeu(Devis.objects.all()),
                      # ACRM11 — explicite : jamais un signal sur une V1

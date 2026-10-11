@@ -87,12 +87,12 @@ def _notifier_expiration(env, delai_txt):
 @shared_task(name='adminops.recalculer_health_score_tenants')
 def recalculer_health_score_tenants():
     """NTADM36 — recalcule et persiste le score NTADM5 pour chaque tenant actif."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .health_score import calculer_health_score
     from .models import HealthScoreSnapshot
 
-    for company in Company.objects.filter(actif=True):
+    for company in active_companies():
         resultat = calculer_health_score(company)
         HealthScoreSnapshot.objects.create(
             company=company, score=resultat['score'],
@@ -136,11 +136,11 @@ def perimer_demandes_impersonation():
 def purger_evenements_usage():
     """NTADM16 — purge des `EvenementUsage` au-delà de la rétention configurée
     (défaut 180j, RGPD/CNDP-safe). Rétention par tenant via `AdminOpsSettings`."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .models import AdminOpsSettings, EvenementUsage
 
-    for company in Company.objects.filter(actif=True):
+    for company in active_companies():
         reglage = AdminOpsSettings.get_or_default(company)
         seuil = timezone.now() - timezone.timedelta(
             days=reglage.retention_evenements_usage_jours)
