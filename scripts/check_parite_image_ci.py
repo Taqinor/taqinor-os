@@ -66,6 +66,11 @@ def verifier_apt(racine: Path) -> list[str]:
             erreurs.append(f'{p} : present dans {PROD}, absent de {rel}')
         for p in sorted(INTERDITS_CI & presents):
             erreurs.append(f'{p} : ne doit plus figurer dans {rel} (la prod rend avec Noto/Liberation)')
+    ci = _lire(racine, COPIES_CI[0])
+    if ci is not None:  # ADEP100 : second sens, polices/bibliotheques de la CI absentes de la prod
+        for p in sorted(paquets_execution(ci) - paquets_apt(prod) - INTERDITS_CI):
+            if p.startswith(('fonts-', 'lib')):
+                erreurs.append(f'{p} : present dans {COPIES_CI[0]}, absent de {PROD}')
     return erreurs
 
 
