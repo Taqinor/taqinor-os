@@ -308,7 +308,6 @@ class CleTestdbMainTests(unittest.TestCase):
     """
 
     def test_cle_de_head_a_la_forme_attendue_et_est_stable(self):
-        import re
         from scripts import ci_testdb_main_key as m
         cle = m.cle_testdb('HEAD')
         self.assertRegex(cle, r'^testdb-v1-[0-9a-f]{64}$')
