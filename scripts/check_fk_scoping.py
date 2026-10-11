@@ -363,7 +363,14 @@ def collect_sites():
                     else:
                         declared_fields = _str_list(value)
                 if "read_only_fields" in noms:
-                    read_only_meta.update(_str_list(value) or [])
+                    # ENF28 — ``read_only_fields = fields`` (Meta toute en
+                    # lecture seule) : DRF rend chaque champ déclaré non
+                    # écrivable, aucune FK n'y est donc écrite.
+                    if isinstance(value, ast.Name) and value.id == "fields" \
+                            and isinstance(declared_fields, list):
+                        read_only_meta.update(declared_fields)
+                    else:
+                        read_only_meta.update(_str_list(value) or [])
                 if "exclude" in noms:
                     exclus_meta = set(_str_list(value) or [])
             # ASEC46 — ``Meta.exclude`` expose TOUS les champs du modèle moins
