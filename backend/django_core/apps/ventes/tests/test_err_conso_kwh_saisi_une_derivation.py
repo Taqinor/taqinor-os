@@ -167,13 +167,34 @@ class FacturesHiverEteEcranTests(_CJ2bBase):
         self.assertEqual(bloc['source_consommation'], SORTIE_DEUX['source'])
         self.assertMarches([m['consommation_kwh'] for m in
                             sorted(bloc['mois'], key=lambda m: m['mois'])])
-        # La page publique sert les mêmes marches, aucun second calcul.
-        self.assertEqual(self._payload(lien)['monthly_consumption'],
+        # La page publique sert les mêmes marches, aucun second calcul, et
+        # l'économie mensuelle porte le libellé client du contrat.
+        payload = self._payload(lien)
+        self.assertEqual(payload['monthly_consumption'],
                          SORTIE_DEUX['serie_kwh_mensuelle'])
+        note = payload['economies_mensuelles']['note']
+        self.assertTrue(note.startswith(SORTIE_DEUX['libelle_client']), note)
+        self.assertNotIn('réelles', note)
         # Rouvrir puis ré-enregistrer sans toucher : rien ne bouge.
         avant = Devis.objects.get(pk=devis.pk).etude_params
         self._patch(devis, DEUX_FACTURES)
         self.assertEqual(Devis.objects.get(pk=devis.pk).etude_params, avant)
+
+    def test_la_note_publique_nomme_les_deux_factures(self):
+        from apps.ventes.public import payload_economie as PE
+        libelle = SORTIE_DEUX['libelle_client']
+        for note in (PE._note_economies_mensuelles('horaire', 'facture_hiver_ete',
+                                                   True),
+                     PE._note_economies_mensuelles_standard('facture_hiver_ete')):
+            with self.subTest(note=note):
+                self.assertTrue(note.startswith(libelle), note)
+                self.assertNotIn('réelles', note)
+                self.assertFalse(any(c.isdigit() for c in note))
+        # Les autres sources gardent leur note.
+        self.assertNotIn(libelle, PE._note_economies_mensuelles(
+            'horaire', 'facture_hiver', True))
+        self.assertEqual(PE._note_economies_mensuelles_standard('facture_hiver'),
+                         PE._note_economies_mensuelles_standard())
 
     def test_douze_mois_tapes_restent_la_source(self):
         devis, _lien = self._devis('agnr6-douze', scenario='Sans batterie',

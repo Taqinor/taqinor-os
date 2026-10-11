@@ -467,6 +467,38 @@ class ResidentielLibellesHtmlTests(SimpleTestCase):
                         sorted(re.findall(r"\{\w+\}", trad[langue])),
                         sorted(re.findall(r"\{\w+\}", trad["fr"])))
 
+    def test_graphe_mensuel_nomme_les_deux_factures(self):
+        """AGNR6 (D-AGNR-1 option (a)) — là où le gabarit rend
+        ``factures_mensuelles_estimation`` (note du graphe mensuel), la source
+        ``facture_hiver_ete`` imprime le libellé client du catalogue ; la
+        facture d'hiver seule garde « variation mensuelle estimée »."""
+        from apps.ventes.quote_engine import i18n_labels as L
+        from apps.ventes.quote_engine.residential import (
+            charts, renderer, sample_data)
+        fr = "Estimation — deux factures (hiver/été)"
+        self.assertEqual(L.libelle("res_estimation_deux_factures", "fr"), fr)
+        deux = {"factures_mensuelles_estimation": True,
+                "source_consommation": "facture_hiver_ete"}
+        self.assertEqual(charts.note_variation_mensuelle(deux), fr)
+        en = dict(deux, langue_sortie="en", libelles_document=L.libelles("en"))
+        self.assertEqual(charts.note_variation_mensuelle(en),
+                         L.libelle("res_estimation_deux_factures", "en"))
+        # Image matplotlib : l'arabe garde le français du graphe.
+        self.assertEqual(charts.note_variation_mensuelle(
+            dict(deux, langue_sortie="ar")), fr)
+        self.assertEqual(charts.note_variation_mensuelle(
+            dict(deux, source_consommation="facture_hiver")),
+            "variation mensuelle estimée")
+        self.assertIsNone(charts.note_variation_mensuelle(
+            dict(deux, factures_mensuelles_estimation=False)))
+        # Câblage : la note atteint le graphe que la couverture imprime.
+        d = renderer._augment(dict(copy.deepcopy(sample_data.build("deux")),
+                                   **deux))
+        with mock.patch.object(charts, "bill_before_after",
+                               return_value="") as graphe:
+            charts.build_all(d)
+        self.assertEqual(graphe.call_args.kwargs["variation_estimee"], fr)
+
 
 @tag("pdf")
 class ResidentielLibellesTests(TestCase):

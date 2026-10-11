@@ -322,6 +322,17 @@ def _bankable_headline(devis, data):
 #: points réels sur l'année — la variation mois par mois y est donc estimée.
 _SOURCES_CONSO_MESUREES = ('kwh_mensuels_saisis', 'factures_mensuelles_reelles')
 
+#: AGNR6 (D-AGNR-1 option (a)) — la source « deux factures » NOMME son origine
+#: par le libellé client du contrat ``factures_client.json``, lu dans le
+#: catalogue du moteur (une seule chaîne pour la page et le PDF).
+_SOURCE_DEUX_FACTURES = 'facture_hiver_ete'
+
+
+def _libelle_deux_factures():
+    """« Estimation — deux factures (hiver/été) » (``i18n_labels``, FR)."""
+    from ..quote_engine import i18n_labels
+    return i18n_labels.libelle('res_estimation_deux_factures', 'fr')
+
 
 def _note_economies_mensuelles(modele, source_consommation, estimation):
     """CJ2b — phrase FR qui dit d'où viennent les 12 valeurs, jamais un chiffre
@@ -331,6 +342,11 @@ def _note_economies_mensuelles(modele, source_consommation, estimation):
         return ('Calculé heure par heure : production PVGIS contre votre '
                 'courbe de consommation issue de vos factures mensuelles '
                 'réelles.')
+    if modele == 'horaire' and source_consommation == _SOURCE_DEUX_FACTURES:
+        return (f'{_libelle_deux_factures()} : calcul heure par heure, '
+                "production PVGIS contre votre consommation d'hiver et "
+                "d'été, répétée sur les douze mois faute de facture mois "
+                'par mois.')
     if modele == 'horaire':
         return ('Estimation heure par heure : production PVGIS contre une '
                 "consommation dérivée de votre facture d'hiver (et d'été), "
@@ -346,12 +362,19 @@ def _note_economies_mensuelles(modele, source_consommation, estimation):
             'plus précis.')
 
 
-def _note_economies_mensuelles_standard():
+def _note_economies_mensuelles_standard(source_consommation=None):
     """L-NIV (24/08/2026) — méthodologie NEUTRE (niveau standard) : ni
     « PVGIS », ni « heure par heure », ni « tranches » — la mécanique interne
     du moteur n'est pas montrable à un prospect pas encore qualifié. Les 12
     valeurs MAD/mois, elles, restent EXACTEMENT les mêmes (règle fondateur :
-    les chiffres ne changent jamais, seul le texte de méthode se neutralise)."""
+    les chiffres ne changent jamais, seul le texte de méthode se neutralise).
+
+    AGNR6 — la source « deux factures » garde son libellé client (une
+    provenance, pas une mécanique du moteur) ; les autres, la phrase neutre."""
+    if source_consommation == _SOURCE_DEUX_FACTURES:
+        return (f"{_libelle_deux_factures()} : votre consommation d'hiver et "
+                "d'été, répétée sur les douze mois, face à la production "
+                'estimée de votre installation.')
     return ('Estimation basée sur votre profil de consommation et la '
             'production estimée de votre installation, répartie sur les '
             'douze mois selon un profil saisonnier type.')
@@ -448,7 +471,7 @@ def _economies_mensuelles_calcul(devis, data, niveau=ShareLink.NIVEAU_CONFIANCE)
         'modele': modele,
         'estimation': estimation,
         'note': (
-            _note_economies_mensuelles_standard()
+            _note_economies_mensuelles_standard(source_consommation)
             if niveau == ShareLink.NIVEAU_STANDARD
             else _note_economies_mensuelles(
                 modele, source_consommation, estimation)

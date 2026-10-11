@@ -1089,6 +1089,13 @@ LIBELLES = {
         'fr': "Votre facture d'électricité réduite d'environ {pct}&nbsp;%",
         'en': 'Your electricity bill reduced by about {pct}&nbsp;%',
         'ar': 'فاتورة الكهرباء لديكم تنخفض بنحو {pct}&nbsp;%'},
+    # AGNR6 (D-AGNR-1 option (a)) — libellé client de la source
+    # ``facture_hiver_ete`` (contrat ``factures_client.json``) : la variation
+    # mensuelle vient de DEUX factures répétées en marches, jamais « réelles ».
+    'res_estimation_deux_factures': {
+        'fr': 'Estimation — deux factures (hiver/été)',
+        'en': 'Estimate — two bills (winter/summer)',
+        'ar': 'تقدير — فاتورتان (الشتاء/الصيف)'},
     'res_perf_garantie': {'fr': 'performance garantie {ans}&nbsp;ans',
                           'en': 'performance guaranteed {ans}&nbsp;years',
                           'ar': 'أداء مضمون لمدة {ans}&nbsp;سنة'},
