@@ -74,18 +74,21 @@ export default function MessageAccueilModal() {
   // /notifications/messages-accueil/ (403 + toast d'erreur global à chaque
   // chargement) : message d'accueil interne, jamais pour un compte externe.
   const portail = useSelector((s) => isPortalUser(s.auth?.user))
+  // ADOC183 — à la connexion le profil est un stub `{ username }` sans `portee` :
+  // on attend le retour de /auth/me/ (loading) avant de décider interne/portail.
+  const porteeEnAttente = useSelector((s) => !!s.auth?.loading && s.auth?.user?.portee === undefined)
   const [messages, setMessages] = useState([])
   const fetchedRef = useRef(false)
 
   useEffect(() => {
-    if (!isAuthenticated || portail || fetchedRef.current) return
+    if (!isAuthenticated || portail || porteeEnAttente || fetchedRef.current) return
     fetchedRef.current = true
     notificationsApi.messagesAccueilALire()
       .then((res) => {
         setMessages(res.data?.messages || [])
       })
       .catch(() => { /* silencieux — jamais bloquer l'ouverture de l'ERP */ })
-  }, [isAuthenticated, portail])
+  }, [isAuthenticated, portail, porteeEnAttente])
 
   if (portail || messages.length === 0) return null
   const courant = messages[0]
