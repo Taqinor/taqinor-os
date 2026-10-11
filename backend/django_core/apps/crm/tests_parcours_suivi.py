@@ -352,6 +352,30 @@ class ParcoursCompletsTests(ParcoursBase):
         self.assertFalse(ecrire_si_libre(lead, 'whatsapp', '0662000000', journal=False))
         self.assertTrue(ecrire_si_libre(lead, 'ville', 'Fès', journal=False))
 
+    def test_placement_respecte_une_relance_saisie(self):
+        """AMET20 — le placement des anciens leads (moteur ``_recaler_file``) ne remplace
+        jamais une ``relance_date`` saisie à la main ; un lead sans saisie est placé comme
+        avant ; un second placement ne change rien."""
+        from django.utils import timezone
+
+        from apps.crm.cadence_placement import placer_anciens_leads
+        from apps.crm.models import Lead
+        saisie = self.aujourdhui() - datetime.timedelta(days=10)
+        leads = {}
+        for nom, saisies in (('Relance saisie', ['relance_date']), ('Sans saisie', [])):
+            leads[nom] = Lead.objects.create(
+                company=self.company, nom=nom, stage=stages.CONTACTED, owner=self.acteur,
+                relance_date=saisie, saisies_humaines=saisies)
+        Lead.objects.filter(pk__in=[le.pk for le in leads.values()]).update(
+            date_creation=timezone.now() - datetime.timedelta(days=60))
+        for passe in (1, 2):
+            placer_anciens_leads(self.company, self.acteur, apply=True)
+            for lead in leads.values():
+                lead.refresh_from_db()
+                self.assertTrue(RelanceEtape.objects.filter(lead=lead).exists(), lead.nom)
+            self.assertEqual(leads['Relance saisie'].relance_date, saisie, f'passe {passe}')
+            self.assertNotEqual(leads['Sans saisie'].relance_date, saisie, f'passe {passe}')
+
     def _moment(self, jour, heure):
         return datetime.datetime.combine(jour, heure, tzinfo=horaires.CASABLANCA)
 
