@@ -27,7 +27,6 @@ from ..serializers import (  # noqa: F401
     DevisWriteSerializer,
     LigneDevisSerializer,
     DevisActivitySerializer,
-    EmailLogSerializer,
 )
 from ..serializers_facturation import (  # noqa: F401
     BonCommandeSerializer,
@@ -39,10 +38,8 @@ from ..serializers_facturation import (  # noqa: F401
     NoteDebitSerializer,
     RelanceLogSerializer,
 )
-from ..serializers_facturation import (
-    FactureActivitySerializer,
-    RelancerFactureSerializer,
-)
+from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
+from ..serializers import EmailLogSerializer
 from ..utils.corps import valider_corps
 from rest_framework.permissions import BasePermission
 from authentication.permissions import (
