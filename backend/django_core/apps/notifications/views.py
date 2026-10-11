@@ -453,6 +453,12 @@ _CONFORMITE = inline_serializer('AnnonceConformite', {
        enum=['1', 'true', 'True']),
     _q('epinglee', OpenApiTypes.STR, 'Annonces épinglées ou non.',
        enum=_BOOL_01)]))
+# Actions ouvertes à tout rôle (module-level : la garde check_action_permission_override
+# lit les constantes de module pour voir que accuser_lecture n'atteint pas le repli admin).
+_ANNONCE_READ_ACTIONS = ['list', 'retrieve']
+_ANNONCE_ANY_ROLE_ACTIONS = _ANNONCE_READ_ACTIONS + ['accuser_lecture']
+
+
 class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     """XKB5 — Annonces internes ciblées et programmées.
 
@@ -467,10 +473,9 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     # accuser_lecture : « J'ai lu et compris » est ouvert à tout rôle
     # destinataire — seules création/édition/publication/conformité restent
     # réservées à l'admin (voir docstrings des actions ci-dessous).
-    ANY_ROLE_ACTIONS = READ_ACTIONS + ['accuser_lecture']
 
     def get_permissions(self):
-        if self.action in self.ANY_ROLE_ACTIONS:
+        if self.action in _ANNONCE_ANY_ROLE_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
 
