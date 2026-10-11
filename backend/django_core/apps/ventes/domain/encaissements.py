@@ -108,7 +108,8 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
             sender=Facture, facture=locked, montant=montant_evenement,
             company=locked.company)
         facture_payee.send(
-            sender=Facture, instance=locked, company=locked.company)
+            sender=Facture, instance=locked, company=locked.company,
+            user=user)
         # AFAC23 (C-AFAC-018) — le SOLDE (paiement manuel, avoir, abandon,
         # ventilation…) ferme les liens « Payer en ligne » encore ouverts :
         # la page client ne réclame plus rien sur une facture soldée. Le lien
