@@ -62,6 +62,10 @@ PARAMETRES_PAR_ROUTE = {
     'produits/tracabilite/': lambda t: {'lot': t.lot.numero_lot},
     'quais/planning/': lambda t: {'date': '2026-09-01'},
     'expeditions/tarifs/': lambda t: {'unite_logistique': t.unite.id},
+    # GET emplacements/ CRÉE « Dépôt principal » + « Camionnette »
+    # (ensure_emplacements) : leurs cartes kanban exigent `ids`.
+    'etiquettes-kanban/': lambda t: {'ids': t.produit.id, 'sortie': 'html'},
+    'unites-logistiques/{pk}/etiquette-pdf/': lambda t: {'sortie': 'html'},
 }
 
 
