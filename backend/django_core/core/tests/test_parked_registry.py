@@ -9,10 +9,8 @@ disque que ``__init__.py``, ``apps.py``, ``migrations/`` et un ``models.py``
 GELÉE qui référence ``apps.<label>.models.<symbole>`` devient inimportable si le
 fichier est vidé (contrat détaillé dans ``core.parked``).
 
-Ce second niveau est SKIPPÉ tant que SOLMVP30-36 n'ont pas coquillé les
-dossiers : aujourd'hui les 47 apps sont encore complètes, le test doit être vert
-sans mentir. Dès le dernier coquillage, le skip s'éteint de lui-même et le test
-devient le garde-fou permanent contre un fichier remis dans une app parquée.
+SOLMVP30-36 ont coquillé les 47 dossiers : ce second niveau est le garde-fou
+permanent contre un fichier remis dans une app parquée (ENF28 : plus de saut).
 """
 from pathlib import Path
 
@@ -53,12 +51,9 @@ class ParkedRegistryTests(SimpleTestCase):
             extra = sorted(p.name for p in dossier.iterdir() if p.name not in CONTENU_COQUILLE)
             if extra:
                 residus[label] = extra
-        if residus:
-            self.skipTest(
-                'SOLMVP30-36 pas encore passés : %d app(s) parquée(s) encore complètes '
-                '(ex. %s). Ce test devient le garde-fou dès le dernier coquillage.'
-                % (len(residus), ', '.join(sorted(residus)[:3]))
-            )
+        # ENF28 (ENF23) — SOLMVP30-36 sont passés : le saut d'attente est devenu
+        # le garde-fou permanent (un fichier remis dans une app parquée échoue).
+        self.assertEqual(residus, {}, 'fichiers hors coquille dans des apps parquées')
         for label in APPS_PARQUEES:
             for attendu in ('__init__.py', 'apps.py', 'models.py'):
                 self.assertTrue(
