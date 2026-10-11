@@ -1647,10 +1647,13 @@ decisions:
   - id: D-AFAC-82
     question: "Decision facturation AFAC82 ?"
     options:
+      - cle: a
+        texte: "Mandat de prelevement : PARQUER (ecran/menu/route/viewset/service retires, modeles conserves)"
       - cle: b
         texte: "Mandat de prelevement : GARDER visible et inerte (PAS parque)"
-    reponse: b
-    date: "2026-10-08"
+    reponse: a
+    date: "2026-10-11"
+    note: "Revu le 11/10 pendant verifie AFAC : le code merge (AFAC19, 30ca6a67e) avait parque la pile en citant cette decision alors qu'elle etait (b). Fondateur confirme (a) : le code merge fait foi (aucun client preleve aujourd'hui, un mandat visible induit le commercial en erreur). Etait (b) le 08/10."
     source: "docs/claude-memory/decisions-audit-0810.md (AFAC82)"
     taches: [AFAC82]
 
