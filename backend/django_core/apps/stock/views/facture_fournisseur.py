@@ -254,7 +254,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                             '(override confirmé).'))
                 except Exception:  # noqa: BLE001 — best-effort
                     logger.warning(
-                        "facture_fournisseur.FactureFournisseurViewSet.create : erreur ignorée (mode dégradé)", exc_info=True)
+                        "facture_fournisseur.FactureFournisseurViewSet.create "
+                        ": erreur ignorée (mode dégradé)", exc_info=True)
         return response
 
     @extend_schema(

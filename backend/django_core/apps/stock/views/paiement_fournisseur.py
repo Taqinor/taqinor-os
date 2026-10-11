@@ -216,7 +216,8 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
                     self._escompte_flag = str(fournisseur.escompte_pct)
             except Exception:  # noqa: BLE001 — informatif, jamais bloquant
                 logger.warning(
-                    "paiement_fournisseur.PaiementFournisseurViewSet.perform_create : erreur ignorée (mode dégradé)", exc_info=True)
+                    "paiement_fournisseur.PaiementFournisseurViewSet.perform_create "
+                    ": erreur ignorée (mode dégradé)", exc_info=True)
 
     def perform_destroy(self, instance):
         from ..services import recompute_facture_fournisseur_statut

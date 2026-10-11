@@ -170,7 +170,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(responses={204: None, 200: corps('FournisseurArchiveReponse', archived=serializers.BooleanField(), detail=serializers.CharField(), bloquants=serializers.ListField(child=serializers.CharField()))})
+    @extend_schema(responses={204: None, 200: corps(
+        'FournisseurArchiveReponse', archived=serializers.BooleanField(),
+        detail=serializers.CharField(),
+        bloquants=serializers.ListField(child=serializers.CharField()))})
     def destroy(self, request, *args, **kwargs):
         """Supprime le fournisseur — ou l'ARCHIVE quand la suppression est
         refusée par une FK PROTECT.

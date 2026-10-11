@@ -472,7 +472,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             getattr(self.request.user, 'company', None),
             getattr(self.request, 'user', None))
 
-    @extend_schema(responses={204: None, 200: corps('ProduitArchiveReponse', archived=serializers.BooleanField(), detail=serializers.CharField(), nb_mouvements=serializers.IntegerField())})
+    @extend_schema(responses={204: None, 200: corps(
+        'ProduitArchiveReponse', archived=serializers.BooleanField(),
+        detail=serializers.CharField(), nb_mouvements=serializers.IntegerField())})
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()
         # ASTK81 — un produit référencé par une relation vivante (réservation

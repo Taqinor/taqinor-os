@@ -205,7 +205,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                    detail=f'Lien WhatsApp BCF {bc.reference} préparé')
         except Exception:  # noqa: BLE001 — l'audit ne casse jamais l'action
             logger.warning(
-                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.whatsapp : erreur ignorée (mode dégradé)", exc_info=True)
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.whatsapp "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'url': url,
@@ -253,7 +254,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             attachment_name = f'{bc.reference}.pdf'
         except Exception:  # noqa: BLE001
             logger.warning(
-                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
 
         fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else ''
         sujet = ((request.data.get('sujet') or '').strip()
@@ -277,7 +279,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                    detail=f'Email BCF {bc.reference} envoyé à {to_email}')
         except Exception:  # noqa: BLE001
             logger.warning(
-                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
             'detail': (f'Email envoyé à {to_email}.' if ok
                        else "Échec de l'envoi de l'email."),
@@ -309,7 +312,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             default_other_information_bcf(bc)
         except Exception:  # noqa: BLE001
             logger.warning(
-                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.perform_create : erreur ignorée (mode dégradé)", exc_info=True)
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.perform_create "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
 
     def perform_destroy(self, instance):
         """AUD207 — `AcompteFournisseur.bon_commande` est désormais PROTECT
@@ -378,7 +382,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     response.data['conformite_warning'] = warning
             except Exception:  # noqa: BLE001 — le warning ne casse jamais
                 logger.warning(
-                    "bon_commande_fournisseur.BonCommandeFournisseurViewSet.create : erreur ignorée (mode dégradé)", exc_info=True)
+                    "bon_commande_fournisseur.BonCommandeFournisseurViewSet.create "
+                    ": erreur ignorée (mode dégradé)", exc_info=True)
             self._attach_prix_warnings(response, request)
         return response
 
@@ -462,7 +467,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 response.data['prix_warnings'] = prix_warnings
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
             logger.warning(
-                "bon_commande_fournisseur.BonCommandeFournisseurViewSet._attach_prix_warnings : erreur ignorée (mode dégradé)", exc_info=True)
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet._attach_prix_warnings "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
 
     @extend_schema(request=None, responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='envoyer')
