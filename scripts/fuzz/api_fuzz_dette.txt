@@ -1472,8 +1472,6 @@ Response violates schema|PUT /api/django/stock/modeles-bcf/{id}/
 Response violates schema|PUT /api/django/tiers/tiers/{id}/
 Response violates schema|PUT /api/django/ventes/devis/{id}/
 Response violates schema|PUT /api/django/ventes/factures/{id}/
-Server error|GET /api/django/audit/portail/
-Server error|GET /api/django/audit/security/
 Server error|GET /api/django/core/sla/
 Server error|GET /api/django/crm/clients/segments/
 Server error|GET /api/django/crm/defis/{id}/export-xlsx/
