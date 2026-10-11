@@ -30,6 +30,29 @@ def libelle_fixe(d, cle, fr, **valeurs):
     return valeur.format(**valeurs) if valeurs else valeur
 
 
+def libelle_cat(d, cle, **valeurs):
+    """ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — libellé fixe lu au catalogue
+    ``i18n_labels`` dans TOUTES les langues : sa valeur française EST le
+    littéral d'origine du gabarit (octet pour octet), sans double saisie."""
+    from .. import i18n_labels
+    fr = i18n_labels.libelle(cle, "fr")
+    return libelle_fixe(d, cle, fr.format(**valeurs) if valeurs else fr,
+                        **valeurs)
+
+
+def nom_option(d, option, minuscule=False):
+    """Nom de l'option ``"sans"`` / ``"avec"`` dans la langue du document :
+    « Sans batterie » ou le libellé du builder (``libelle_avec``, BAT-DIFF)
+    passent par ``i18n_labels.CLES_OPTION`` ; un nom saisi reste tel quel."""
+    from . import theme
+    from .. import i18n_labels
+    nom = ("Sans batterie" if option == "sans"
+           else str(d.get("libelle_avec") or "Avec batterie"))
+    if nom in i18n_labels.CLES_OPTION and theme.langue_doc(d) != "fr":
+        nom = theme.libelle_doc(d, i18n_labels.CLES_OPTION[nom], nom)
+    return nom[:1].lower() + nom[1:] if minuscule else nom
+
+
 def build(ctx):
     from . import theme
     from .. import constants
@@ -83,7 +106,9 @@ def build(ctx):
     client_addr = d.get("client_addr", "")
     client_city = d.get("client_ville_libelle") or d.get("client_city", "")  # QJR591
     client_phone = d.get("client_phone", "")
-    inst_type = d.get("inst_type", "")
+    inst_type = (libelle_cat(d, "res_tag_residentielle")
+                 if d.get("inst_type") == "Résidentielle"
+                 else d.get("inst_type", ""))
     # One clean meta line — no dangling comma when address or city is empty.
     client_meta = theme.join_meta(client_addr, client_city, client_phone)
     kwc = d["puissance_kwc"]
@@ -145,8 +170,7 @@ def build(ctx):
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2"
         stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
-      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
-        évitées chaque année.</div>
+      <div class="c1-impact-t">{libelle_cat(d, 'res_impact_planete', co2=co2_txt)}</div>
     </div>""" if co2_t > 0 else "")
     # M7 (audit du 19/08/2026) — la validité vient du DEVIS (date_validite,
     # sinon création + réglage société), servie par le builder ; plus de
@@ -171,7 +195,8 @@ def build(ctx):
     avec_ok = bool(d.get("avec_ok", True))
     # QX7a — couverture solaire : étiquetée « estimation » quand la conso réelle
     # est inconnue (dérivée d'une facture, pas d'une conso kWh réelle).
-    cov_est_txt = " (estimation)" if d.get("coverage_estimated") else ""
+    cov_est_txt = (libelle_cat(d, "op_estimation")
+                   if d.get("coverage_estimated") else "")
     # QRES4 — cohérence donut / gros pourcentage : quand la couverture (part de
     # la conso produite) dépasse nettement la baisse de facture (part
     # autoconsommée valorisée), une ligne explique l'écart au lieu de laisser
@@ -191,20 +216,20 @@ def build(ctx):
     if deux_options:
         # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF : « hybride,
         # batterie plus tard »), jamais « avec batterie » codé en dur.
-        _lib_avec = str(d.get("libelle_avec") or "Avec batterie")
-        _opt_txt = ((_lib_avec[:1].lower() + _lib_avec[1:])
-                    if d.get("eco_option", "avec") == "avec"
-                    else "sans batterie")
+        _opt_txt = nom_option(
+            d, "avec" if d.get("eco_option", "avec") == "avec" else "sans",
+            minuscule=True)
         # Guillemets DOUBLES à l'extérieur : aucun antislash dans la f-string
         # (RENDERING_NOTES.md §3 — la prod rend les PDF sur Python 3.11, où un
         # antislash dans une f-string est une SyntaxError).
         # AMOT33 — « recommandée » seulement quand le serveur recommande
         # CETTE option ; sinon les chiffres décrivent l'option titrée.
         from ..figures import option_recommandee as _reco_de
-        _qual = ("recommandée" if _reco_de(d) == d.get("eco_option", "avec")
-                 else "présentée")
-        opt_caption = ('<div class="c1-bigcut-cap">Chiffres calculés pour '
-                       + f"l'option {_qual} — {_opt_txt}.</div>")
+        _qual = ("res_chiffres_reco"
+                 if _reco_de(d) == d.get("eco_option", "avec")
+                 else "res_chiffres_presentee")
+        opt_caption = ('<div class="c1-bigcut-cap">'
+                       + libelle_cat(d, _qual, option=_opt_txt) + '</div>')
 
     cov_gap_note = ""
     if not masquer_eco and coverage_pct - pct_cut >= 10:
@@ -251,11 +276,11 @@ def build(ctx):
     # littéralement « × None W ». On écrit « N panneaux » tout court, et rien
     # du tout quand le compte lui-même manque — jamais un défaut catalogue.
     if nb_pan and wp:
-        kpi_kwc_l = f"Puissance · {nb_pan} panneaux × {wp} W"
+        kpi_kwc_l = libelle_cat(d, "res_kpi_puissance_nw", n=nb_pan, w=wp)
     elif nb_pan:
-        kpi_kwc_l = f"Puissance · {nb_pan} panneaux"
+        kpi_kwc_l = libelle_cat(d, "res_kpi_puissance_n", n=nb_pan)
     else:
-        kpi_kwc_l = "Puissance"
+        kpi_kwc_l = libelle_cat(d, "res_kpi_puissance")
     # La vignette ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
     # du nombre (17 → 13 pt, style en ligne), et la ligne de légende reste sur
     # UNE ligne — la page 1 est une page pleine, un retour à la ligne de plus y
@@ -269,8 +294,8 @@ def build(ctx):
         kpi_kwc_ancres = (ancre("puissance_kwc", _num_kwc(kwc_sans), "sans")
                           + ancre("puissance_kwc", _num_kwc(kwc_avec), "avec"))
         kpi_kwc_style = ' style="font-size:13pt;"'
-        kpi_kwc_l = (f"Puissance sans · avec · {_nb_s:g} · {_nb_a:g} "
-                     f"panneaux")
+        kpi_kwc_l = libelle_cat(d, "res_kpi_puissance_sans_avec",
+                                s=f"{_nb_s:g}", a=f"{_nb_a:g}")
 
     # ── PDFPROD (27/08/2026) — LA VIGNETTE « PRODUCTION » SUIT LES DEUX
     # OPTIONS, EXACTEMENT COMME LA VIGNETTE « PUISSANCE » ─────────────────────
@@ -290,7 +315,7 @@ def build(ctx):
     # Devis non divergent (tout l'existant) ⇒ HTML byte-identique.
     _prod_s, _prod_a = d.get("prod_kwh_sans"), d.get("prod_kwh_avec")
     kpi_prod_v = fmt(prod_kwh)
-    kpi_prod_l = "Production estimée"
+    kpi_prod_l = libelle_cat(d, "res_kpi_production")
     kpi_prod_style = ""
     kpi_prod_ancres = ancre("production_annuelle_kwh", kpi_prod_v)
     if (_divergent and deux_options and _prod_s and _prod_a
@@ -300,7 +325,7 @@ def build(ctx):
             ancre("production_annuelle_kwh", fmt(_prod_s), "sans")
             + ancre("production_annuelle_kwh", fmt(_prod_a), "avec"))
         kpi_prod_style = ' style="font-size:12pt;"'
-        kpi_prod_l = "Production estimée sans · avec"
+        kpi_prod_l = libelle_cat(d, "res_kpi_production_sans_avec")
 
     # ── QRP1 — LIEN TOKENISÉ + QR SUR LA PAGE 1 ─────────────────────────────
     # Le lien vers la proposition INTERACTIVE (page client tokenisée) ne vivait
@@ -647,11 +672,12 @@ def build(ctx):
         # QJR28) ⇒ l'étiquette est OMISE : jamais un modèle deviné.
         _modele_opt = d.get(f"savings_model_{opt}") if opt else None
         eco_mot = ("" if not _modele_opt
-                   else " calculée" if _modele_opt == "horaire"
-                   else " estimée")
+                   else "_calculee" if _modele_opt == "horaire"
+                   else "_estimee")
         eco_html = (
-            f'<div class="c1-opt-eco">Économie{eco_mot} ≈ <b>{fmt(eco)} '
-            'MAD/an</b></div>' + ancre("economie_annuelle", fmt(eco), opt)
+            '<div class="c1-opt-eco">'
+            + libelle_cat(d, "res_opt_eco" + eco_mot, v=fmt(eco)) + '</div>'
+            + ancre("economie_annuelle", fmt(eco), opt)
             if (eco and not masquer_eco) else "")
         # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — un cumul 25 ans qui ne
         # croise jamais zéro n'est pas « Rentabilisé en 25 ans » : la carte le
@@ -660,13 +686,13 @@ def build(ctx):
         if masquer_eco:
             roi_html = ""
         elif _jamais:
-            roi_html = (f'<div class="c1-roi">{_roi_svg(green)}Non rentabilisé '
-                        'sur 25 ans</div>')
+            roi_html = (f'<div class="c1-roi">{_roi_svg(green)}'
+                        + libelle_cat(d, "res_non_rentabilise_25") + '</div>')
         else:
             roi_html = (
-                f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
-                f'{_yrs(roi_v)} ans</div>'
-                + ancre("payback_ans", _yrs(roi_v), opt))
+                f'<div class="c1-roi">{_roi_svg(green)}'
+                + libelle_cat(d, "res_rentabilise_en", n=_yrs(roi_v))
+                + '</div>' + ancre("payback_ans", _yrs(roi_v), opt))
         return (
             f'<div class="{cls}">'
             f'<div class="c1-opt-head"><div>'
@@ -674,7 +700,7 @@ def build(ctx):
             f'<div class="c1-opt-name">{name}</div></div>{pill}</div>'
             f'<div class="c1-opt-price">{fmt_mad(price)}<span class="c1-u">&nbsp;MAD</span></div>'
             f'{ancre("total_ttc", fmt_mad(price), opt)}'
-            f'<div class="c1-opt-kwc">soit {pkwc} MAD/kWc · TTC</div>'
+            f'<div class="c1-opt-kwc">{libelle_cat(d, "res_prix_kwc", prix=pkwc)}</div>'
             f'{ancre("prix_kwc", pkwc, opt) if pkwc != "—" else ""}'
             f'{roi_html}'
             f'{eco_html}'
@@ -689,17 +715,18 @@ def build(ctx):
     # BAT-DIFF — le libellé de l'option « avec » vient du builder : « Avec
     # batterie », ou « Hybride, batterie plus tard » quand l'option est servie
     # sans batterie chiffrée. Absent (vieux dict) ⇒ libellé historique.
-    libelle_avec = d.get("libelle_avec") or "Avec batterie"
     if deux_options:
         # AMOT33 — la pastille « Recommandé » suit l'option RECOMMANDÉE par
         # le serveur ; aucune recommandation ⇒ aucune pastille.
         from ..figures import option_recommandee
         _reco = option_recommandee(d)
         opts_html = (
-            _opt_card("Option 1", "Sans batterie", total_sans, pkwc_sans,
+            _opt_card(libelle_cat(d, "res_option_n", n=1),
+                      nom_option(d, "sans"), total_sans, pkwc_sans,
                       roi_s, sans_bullets, eco=eco_s_ann,
                       reco=(_reco == "sans"), opt="sans")
-            + _opt_card("Option 2", libelle_avec, total_avec, pkwc_avec,
+            + _opt_card(libelle_cat(d, "res_option_n", n=2),
+                        nom_option(d, "avec"), total_avec, pkwc_avec,
                         roi_a, avec_bullets, eco=eco_a_ann,
                         reco=(_reco == "avec"), opt="avec"))
     elif avec_ok:
@@ -707,14 +734,14 @@ def build(ctx):
         # fabriquée (dépourvue d'onduleur).
         opts_html = _opt_card(libelle_fixe(d, "res_votre_installation",
                                            "Votre installation"),
-                              libelle_avec, total_avec,
+                              nom_option(d, "avec"), total_avec,
                               pkwc_avec, roi_a, avec_bullets, eco=eco_a_ann,
                               full=True, opt="avec")
     else:
         # Option unique SANS batterie (réseau seul) : une carte pleine largeur.
         opts_html = _opt_card(libelle_fixe(d, "res_votre_installation",
                                            "Votre installation"),
-                              "Sans batterie", total_sans,
+                              nom_option(d, "sans"), total_sans,
                               pkwc_sans, roi_s, sans_bullets, eco=eco_s_ann,
                               full=True, opt="sans")
 
@@ -775,16 +802,16 @@ def build(ctx):
     <!-- MONEY HOOK ─────────────────────────────────────────────────────── -->
     <div class="c1-hook">
       <div class="c1-hook-left">
-        <div class="c1-hook-eyebrow">Ce que le solaire change pour vous</div>
+        <div class="c1-hook-eyebrow">{libelle_cat(d, 'res_hook_titre')}</div>
         <div class="c1-bigcut">
           <div class="c1-bigcut-n">&minus;{pct_cut}<span>%</span></div>{ancre("reduction_facture_pct", pct_cut, _eco_opt)}
           <div class="c1-bigcut-x">
-            <div class="c1-bigcut-t">sur votre facture<br>d'électricité</div>
-            <div class="c1-bigcut-old">≈&nbsp;<s>{fmt(month_before)} MAD/mois</s>
-              aujourd'hui</div>{ancre("facture_mensuelle_avant", fmt(month_before))}
-            <div class="c1-bigcut-new">{fmt(month_after)}<span>&nbsp;MAD/mois</span></div>{ancre("facture_mensuelle_apres", fmt(month_after), _eco_opt)}
-            <div class="c1-bigcut-m">soit <s>{fmt(annual_before)} MAD/an</s>
-              &nbsp;&rarr;&nbsp;<b>≈&nbsp;{fmt(annual_after)} MAD/an</b></div>{ancre("facture_annuelle_avant", fmt(annual_before))}{ancre("facture_annuelle_apres", fmt(annual_after), _eco_opt)}
+            <div class="c1-bigcut-t">{libelle_cat(d, 'res_sur_facture')}</div>
+            <div class="c1-bigcut-old">≈&nbsp;<s>{fmt(month_before)} {libelle_cat(d, 'ci_mad_mois')}</s>
+              {libelle_cat(d, 'res_aujourdhui')}</div>{ancre("facture_mensuelle_avant", fmt(month_before))}
+            <div class="c1-bigcut-new">{fmt(month_after)}<span>&nbsp;{libelle_cat(d, 'ci_mad_mois')}</span></div>{ancre("facture_mensuelle_apres", fmt(month_after), _eco_opt)}
+            <div class="c1-bigcut-m">{libelle_cat(d, 'ci_soit')} <s>{fmt(annual_before)} {libelle_cat(d, 'ci_mad_an')}</s>
+              &nbsp;&rarr;&nbsp;<b>≈&nbsp;{fmt(annual_after)} {libelle_cat(d, 'ci_mad_an')}</b></div>{ancre("facture_annuelle_avant", fmt(annual_before))}{ancre("facture_annuelle_apres", fmt(annual_after), _eco_opt)}
             {opt_caption}
           </div>
         </div>
@@ -793,9 +820,9 @@ def build(ctx):
       <div class="c1-hook-gap"></div>
       <div class="c1-hook-right">
         <div class="c1-donut-tab"><div class="c1-donut-cell">
-          <div class="c1-donut-k">Énergie solaire</div>
+          <div class="c1-donut-k">{libelle_cat(d, 'res_donut_titre')}</div>
           <img class="c1-donut" src="{charts['coverage']}" alt="Couverture solaire">{ancre("couverture_pct", coverage_pct, _eco_opt)}
-          <div class="c1-donut-cap">de votre consommation<span>annuelle assurée par le solaire{cov_est_txt}</span></div>
+          <div class="c1-donut-cap">{libelle_cat(d, 'res_donut_cap', est=cov_est_txt)}</div>
         </div></div>
       </div>
     </div>"""
@@ -815,10 +842,10 @@ def build(ctx):
     <!-- BILL CHART ─────────────────────────────────────────────────────── -->
     <div class="c1-bill">
       <div class="c1-bill-head">
-        <div class="c1-bill-t">Votre facture mois par mois — avant / après</div>
+        <div class="c1-bill-t">{libelle_cat(d, 'res_facture_mois')}</div>
         <div class="c1-bill-leg">
-          <span class="c1-sw" style="background:#C2CCDA;"></span>aujourd'hui
-          <span class="c1-sw" style="background:{gold};"></span>avec {brand}
+          <span class="c1-sw" style="background:#C2CCDA;"></span>{libelle_cat(d, 'res_aujourdhui')}
+          <span class="c1-sw" style="background:{gold};"></span>{libelle_cat(d, 'res_avec_marque', marque=brand)}
         </div>
       </div>
       {bill_body}
@@ -830,16 +857,16 @@ def build(ctx):
         # Un calcul présenté comme une estimation est aussi malhonnête qu'une
         # estimation présentée comme un calcul : le mot suit désormais le
         # modèle réellement employé (``savings_model``, posé par ``pricing``).
-        eco_kpi_label = ("Économie calculée"
+        eco_kpi_label = (libelle_cat(d, "res_kpi_eco_calculee")
                          if d.get("savings_model") == "horaire"
-                         else "Économie estimée")
+                         else libelle_cat(d, "res_kpi_eco_estimee"))
         # ERR-QAH-FIG-KPI-ECO-RESEAU-SEUL — la vignette lit l'économie de
         # l'option que décrit la synthèse (``eco_option``, même règle que
         # ``_avec`` de ``synthese_economies``) : sur un devis réseau seul, c'est
         # ``eco_s_ann`` — jamais l'économie d'une batterie non proposée.
         _eco_kpi = d.get("eco_s_ann") if _eco_opt == "sans" else eco_a_ann
         kpi_eco_html = f"""      <div class="c1-kpi">
-        <div class="c1-kpi-v">{fmt(_eco_kpi)}<span class="c1-u">&nbsp;MAD/an</span></div>{ancre("economie_annuelle", fmt(_eco_kpi), _eco_opt)}
+        <div class="c1-kpi-v">{fmt(_eco_kpi)}<span class="c1-u">&nbsp;{libelle_cat(d, 'ci_mad_an')}</span></div>{ancre("economie_annuelle", fmt(_eco_kpi), _eco_opt)}
         <div class="c1-kpi-l">{eco_kpi_label}</div>
       </div>
 """
@@ -903,11 +930,11 @@ def build(ctx):
     <!-- KPI CHIPS ──────────────────────────────────────────────────────── -->
     <div class="c1-kpis">
       <div class="c1-kpi">
-        <div class="c1-kpi-v"{kpi_kwc_style}>{kpi_kwc_v}<span class="c1-u">&nbsp;kWc</span></div>{kpi_kwc_ancres}
+        <div class="c1-kpi-v"{kpi_kwc_style}>{kpi_kwc_v}<span class="c1-u">{libelle_cat(d, 'res_unite_kwc')}</span></div>{kpi_kwc_ancres}
         <div class="c1-kpi-l">{kpi_kwc_l}</div>
       </div>
       <div class="c1-kpi">
-        <div class="c1-kpi-v"{kpi_prod_style}>{kpi_prod_v}<span class="c1-u">&nbsp;kWh/an</span></div>{kpi_prod_ancres}
+        <div class="c1-kpi-v"{kpi_prod_style}>{kpi_prod_v}<span class="c1-u">{libelle_cat(d, 'ci_unite_kwh_an')}</span></div>{kpi_prod_ancres}
         <div class="c1-kpi-l">{kpi_prod_l}</div>
       </div>
 {kpi_eco_html}    </div>

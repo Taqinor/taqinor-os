@@ -16,7 +16,7 @@ RÉUTILISE LA PRIMITIVE PLATEFORME — ne la réimplémente jamais :
 Sans ``IntegrationConfig`` actif, tout dégrade proprement sur le NoOp : aucun
 appel réseau, aucune erreur, comportement identique à aujourd'hui.
 """
-from .base import (  # noqa: F401
+from .base import (
     TYPE_TRANSPORT,
     NoOpProvider,
     TransportProvider,

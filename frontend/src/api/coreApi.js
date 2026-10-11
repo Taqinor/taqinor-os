@@ -130,7 +130,7 @@ const coreApi = {
   // la liste réelle, jamais un catalogue gonflé.
   savedQueries: {
     datasets: () => api.get('/core/saved-queries/datasets/'),
-    list: () => api.get('/core/saved-queries/'),
+    list: (params) => api.get('/core/saved-queries/', { params }),
     create: (payload) => api.post('/core/saved-queries/', payload),
     remove: (id) => api.delete(`/core/saved-queries/${id}/`),
     // Exécution d'une spec NON sauvegardée (aperçu avant enregistrement).

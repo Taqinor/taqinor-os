@@ -2484,9 +2484,12 @@ class KitProduitSerializer(CompanyScopedRelationsMixin,
 
 
 @extend_schema_serializer(component_name='StockRevisionKit')
-class RevisionKitSerializer(serializers.ModelSerializer):
+class RevisionKitSerializer(CompanyScopedRelationsMixin,
+                            serializers.ModelSerializer):
     """XMFG18 — révision (snapshot) de la nomenclature d'un kit. Lecture
     seule : les révisions sont créées automatiquement côté serveur."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société (mixin) si l'une redevient inscriptible.
     user_nom = serializers.SerializerMethodField()
 
     class Meta:
@@ -2676,10 +2679,13 @@ class AvoirFournisseurSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class LotEntrepotSerializer(serializers.ModelSerializer):
+class LotEntrepotSerializer(CompanyScopedRelationsMixin,
+                            serializers.ModelSerializer):
     """XSTK6 — registre de lots en entrepôt (LECTURE — alimenté/décrémenté
     uniquement par les services de réception/sortie, jamais en écriture
     libre)."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société (mixin) si l'une redevient inscriptible.
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True)
     emplacement_nom = serializers.CharField(

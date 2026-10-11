@@ -1,15 +1,21 @@
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     AdminOpsSettings, AnnonceProduit, ConfigPackage, DemandeInscription,
     FactureLicence, SandboxEnvironment, SessionImpersonation,
 )
 
 
-class DemandeInscriptionSerializer(serializers.ModelSerializer):
+class DemandeInscriptionSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """N101(b) — lecture SEULE : le dépôt public et les décisions du fondateur
     passent par leurs endpoints dédiés."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('traite_par',)
 
     statut_libelle = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -45,11 +51,15 @@ class FactureLicenceSerializer(serializers.ModelSerializer):
 
 
 @extend_schema_serializer(component_name='AnnonceProduitPlateforme')
-class AnnonceProduitSerializer(serializers.ModelSerializer):
+class AnnonceProduitSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """NTADM18 — annonce produit + état de lecture du DEMANDEUR.
 
     `lu` est calculé depuis `context['lues']` (l'ensemble des annonces déjà
     lues par l'utilisateur courant) : jamais une requête par ligne."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('auteur', 'cible_roles')
 
     lu = serializers.SerializerMethodField()
     auteur_nom = serializers.CharField(
@@ -67,9 +77,14 @@ class AnnonceProduitSerializer(serializers.ModelSerializer):
         return obj.pk in (self.context.get('lues') or set())
 
 
-class SessionImpersonationSerializer(serializers.ModelSerializer):
+class SessionImpersonationSerializer(SameCompanyFKSerializerMixin,
+                                     serializers.ModelSerializer):
     """NTADM22 — lecture SEULE : une session ne se crée/modifie QUE par les
     endpoints dédiés (consentement obligatoire), jamais par un PATCH générique."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('utilisateur_cible', 'initiee_par',
+                           'consentement_par')
 
     statut = serializers.CharField(read_only=True)
     cible_nom = serializers.CharField(
@@ -91,7 +106,12 @@ class SessionImpersonationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SandboxEnvironmentSerializer(serializers.ModelSerializer):
+class SandboxEnvironmentSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('cree_par',)
+
     class Meta:
         model = SandboxEnvironment
         fields = [

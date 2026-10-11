@@ -36,6 +36,7 @@ import { ouvrirPdfBlob } from '../../utils/pdfBlob'
 import { frenchError } from '../../lib/frenchError'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
 import { useConfirmDialog } from '../../ui/confirm'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -409,9 +410,7 @@ const BC_DELAI_LIVRAISON_DEFAUT = 14
 
 // Date par défaut : aujourd'hui + délai (AAAA-MM-JJ).
 function defaultLivraison(days = BC_DELAI_LIVRAISON_DEFAUT) {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return todayLocalIso(new Date(Date.now() + days * 86400000))
 }
 
 function BCForm({ bc = null, onClose, onSaved }) {
@@ -616,7 +615,7 @@ function LivraisonPartielleDialog({ bc, onClose, onSaved }) {
   const reliquats = (bc.reliquat_par_ligne ?? []).filter(r => r.reliquat > 0)
   const [quantites, setQuantites] = useState(() =>
     Object.fromEntries(reliquats.map(r => [r.ligne_devis_id, ''])))
-  const [dateLivraison, setDateLivraison] = useState(() => new Date().toISOString().slice(0, 10))
+  const [dateLivraison, setDateLivraison] = useState(() => todayLocalIso())
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')

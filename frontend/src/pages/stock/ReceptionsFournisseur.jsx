@@ -19,6 +19,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 // G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 // La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
@@ -62,7 +63,7 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   // EZ10 — la date valait '' : il fallait la saisir alors que la reception
   // se fait, dans la quasi-totalite des cas, LE JOUR MEME. Defaut = aujourd'hui
   // (valider bat retaper — Fiori/Zuko) ; le champ reste librement modifiable.
-  const [dateReception, setDateReception] = useState(() => new Date().toISOString().slice(0, 10))
+  const [dateReception, setDateReception] = useState(() => todayLocalIso())
   const [note, setNote] = useState('')
   const [saisies, setSaisies] = useState({})   // { ligneCmdId: quantité }
   const [busy, setBusy] = useState(false)

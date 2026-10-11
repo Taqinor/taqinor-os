@@ -77,7 +77,9 @@ ignore_imports =
 # masqués par une exception morte. On les remplace par l'arête réelle, une
 # seule, au même endroit sémantique. Un import DIRECT
 # `X.models -> Y.models` reste détecté.
-    apps.facturation.totaux -> apps.ventes.selectors
+# ENF20 — exception RETIRÉE : la façade lit désormais le noyau dans la feuille
+# pure `apps.ventes.domain.noyau_totaux` (aucun import d'app), plus
+# `apps.ventes.selectors` ; l'arête qu'elle élaguait n'existe plus.
     apps.sav.models -> apps.sav.selectors
 # ODX17 — `apps.ventes.models` ends with a transitional RE-EXPORT shim
 # (`from apps.facturation.models import Facture, ...`, kept until ODX22 so all
@@ -90,7 +92,9 @@ ignore_imports =
 # just reached one hop further through the shim. Prune only this shim edge; a
 # DIRECT `apps.ventes.models -> apps.{stock,crm,sav,installations}.models`
 # import would still be caught.
-    apps.ventes.models -> apps.facturation.models
+# ENF20 — exception RETIRÉE : `facturation.models -> facturation.totaux` ne
+# rejoint plus `ventes.selectors` (feuille `apps.ventes.domain.noyau_totaux`),
+# donc le shim n'ouvre plus aucun chemin inter-domaines ; l'arête est jugée.
 # SOLMVP-sweep (2026-09-21) — l'exception NTCPQ25/29/49 (`apps.cpq.selectors ->
 # apps.stock.selectors` / `-> apps.ventes.selectors`) est retirée : `apps.cpq`
 # est sorti du MVP solaire (Groupe SOLMVP), `cpq/selectors.py` n'existe plus,
@@ -111,7 +115,10 @@ ignore_imports =
 # `apps.ventes.models -> apps.{crm,stock,sav,installations}.models` — ou une
 # façade qui se mettrait à importer un modèle d'un autre domaine — serait
 # toujours détecté. Même motif exact que les exceptions `cpq.selectors`.
-    apps.ventes.domain.argent -> apps.ventes.selectors
+# ENF20 — l'arête `domain.argent -> ventes.selectors` est RETIRÉE : la façade lit
+# le noyau dans la feuille pure `apps.ventes.domain.noyau_totaux` (aucun import
+# d'app) et `nombre_proprietes` dans `apps.ventes.multivilla` (feuille). Reste
+# `-> utils.options` (le filtre d'option tire `domain.overrides`, non feuille).
     apps.ventes.domain.argent -> apps.ventes.utils.options
 # AUD105-107 (2026-09-06) — le mixin partagé `apps.facturation.totaux`
 # (TotauxDocumentMixin, remise globale honnête sur les 3 documents) délègue
@@ -124,7 +131,8 @@ ignore_imports =
 # serait toujours détecté. Remplace l'ancienne entrée
 # `apps.facturation.models -> apps.ventes.selectors` (l'import a déménagé de
 # models.py vers totaux.py avec le mixin).
-    apps.facturation.totaux -> apps.ventes.selectors
+# ENF20 — doublon de l'exception ci-dessus, retiré avec elle (feuille
+# `apps.ventes.domain.noyau_totaux`).
 
 [importlinter:contract:installations-split-models-decoupled]
 name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
@@ -245,8 +253,9 @@ forbidden_modules =
 # donc la façade qui porte l'arête fonction-locale vers le selector, et c'est
 # ELLE qu'on ignore ici (même correction qu'au contrat M1 ci-dessus). Un import
 # DIRECT `apps.facturation.models -> apps.ventes.models` reste détecté.
-ignore_imports =
-    apps.facturation.totaux -> apps.ventes.selectors
+# ENF20 — exception RETIRÉE : `facturation.totaux` lit la feuille pure
+# `apps.ventes.domain.noyau_totaux` (aucun import d'app), plus
+# `apps.ventes.selectors` ; le contrat tient sans aucune exception.
 
 [importlinter:contract:achats-models-decoupled]
 name = Achats models never import a business-core domain's models (string FKs only — ODX19)

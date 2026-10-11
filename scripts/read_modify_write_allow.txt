@@ -10,16 +10,6 @@ backend/django_core/apps/ged/services.py::relancer_demande_document
 backend/django_core/apps/ged/services.py::relancer_signataires_dus
 backend/django_core/apps/ged/services.py::valider_code_otp_signataire
 backend/django_core/apps/notifications/services.py::sweep_annonce_reminders
-backend/django_core/apps/stock/services.py::alimenter_lot_entrepot
-backend/django_core/apps/stock/services.py::annuler_reception_confirmee
-backend/django_core/apps/stock/services.py::confirm_reception_fournisseur
-backend/django_core/apps/stock/services.py::credit_emplacement_destination
-backend/django_core/apps/stock/services.py::generer_bcf_reappro
-backend/django_core/apps/stock/services.py::imputer_avoir_fournisseur
-backend/django_core/apps/stock/services.py::remplacer_composant_masse
-backend/django_core/apps/stock/services.py::resoudre_exception_facture
-backend/django_core/apps/stock/services.py::reviser_bcf
-backend/django_core/apps/stock/services.py::sortir_lot_entrepot
 
 # ASTK53 - controles de statut hors verrou, PRE-EXISTANTS (releve 2026-10-07), hors stock : CONSTATES, pas approuves ; a corriger par leur proprietaire (select_for_update + relecture du statut dans atomic()).
 backend/django_core/apps/crm/cadence_touche.py::annuler_touche_relance

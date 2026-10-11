@@ -62,7 +62,8 @@ class IncidentQualiteFournisseurSerializer(MasqueMontantsAchatMixin,
                             'resolu_par', 'date_resolution']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('produit', INT), P('gravite', STR), P('resolu', BOOL)]))
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('produit', INT), P('gravite', STR),
+                                                   P('resolu', BOOL)]))
 class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
     """NTSCM9 — incidents qualité fournisseur.
 

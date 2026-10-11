@@ -50,7 +50,8 @@ class FactureConsignationTests(TestCase):
         facture = Facture.objects.get(pk=facture.pk)
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
         self.assertEqual(facture.client_id, self.client_obj.id)
-        self.assertTrue(facture.reference.startswith('FAC-'))
+        # ATOT27 (D-ATOT-5) — brouillon hors série : numéro légal à l'émission.
+        self.assertEqual(facture.reference, f'BROUILLON-{facture.pk}')
         lignes = list(facture.lignes.all())
         self.assertEqual(len(lignes), 1)
         ligne = lignes[0]

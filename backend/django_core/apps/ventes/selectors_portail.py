@@ -163,9 +163,16 @@ def factures_du_client_portail(company, client_id, *, limit=200):
         'montant_ttc': str(f.total_ttc),
         'montant_du': ('0.00' if f.statut == Facture.Statut.ANNULEE
                        else str(f.montant_du)),
+        # AFAC100 — l'EXIGIBLE (reste dû hors retenue de garantie non
+        # libérée, `Facture.montant_exigible`, une seule définition) ; une
+        # facture ANNULÉE n'a rien d'exigible. `montant_du` reste servi
+        # pour l'affichage.
+        'montant_exigible': ('0.00' if f.statut == Facture.Statut.ANNULEE
+                             else f'{f.montant_exigible:.2f}'),
         'payee': f.statut == Facture.Statut.PAYEE,
-        'payable': f.statut not in (
-            Facture.Statut.ANNULEE, Facture.Statut.PAYEE),
+        'payable': (f.statut not in (
+            Facture.Statut.ANNULEE, Facture.Statut.PAYEE)
+            and f.montant_exigible > 0),
     } for f in qs]
 
 

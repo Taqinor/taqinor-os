@@ -13,7 +13,7 @@ from rest_framework.response import Response
 
 from rest_framework import serializers
 from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, corps
-from ..serializers import RevisionKitSerializer  # noqa: E402
+from ..serializers import RevisionKitSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
@@ -28,7 +28,10 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer',
                  'remplacer_composant']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('avec_disponibilite', BOOL, False, 'Inclure la disponibilité potentielle')]), retrieve=extend_schema(parameters=[P('avec_disponibilite', BOOL, False, 'Inclure la disponibilité potentielle')]))
+@extend_schema_view(list=extend_schema(parameters=[P('avec_disponibilite', BOOL, False,
+                                                     'Inclure la disponibilité potentielle')]),
+                    retrieve=extend_schema(parameters=[P('avec_disponibilite', BOOL, False,
+                                                         'Inclure la disponibilité potentielle')]))
 class KitProduitViewSet(CompanyScopedModelViewSet):
     queryset = KitProduit.objects.all().prefetch_related('composants__produit')
     serializer_class = KitProduitSerializer
@@ -67,7 +70,10 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         return [IsAdminRole()]
 
-    @extend_schema(parameters=[P('quantite', NUM, False, 'Quantité de kits (défaut 1)')], responses=corps('KitExploserReponse', kit_id=serializers.IntegerField(), kit_nom=serializers.CharField(), quantite_kit=serializers.FloatField(), lignes=serializers.ListField(child=serializers.DictField())))
+    @extend_schema(parameters=[P('quantite', NUM, False, 'Quantité de kits (défaut 1)')],
+                   responses=corps('KitExploserReponse', kit_id=serializers.IntegerField(),
+                                   kit_nom=serializers.CharField(), quantite_kit=serializers.FloatField(),
+                                   lignes=serializers.ListField(child=serializers.DictField())))
     @action(detail=True, methods=['get'], url_path='exploser')
     def exploser(self, request, *args, **kwargs):
         """Explose le kit en lignes composant (param ``quantite`` ≥ 1, défaut 1).
@@ -185,7 +191,11 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(data)
 
-    @extend_schema(request=corps('KitDupliquerCorps', facteur_echelle=serializers.DecimalField(max_digits=10, decimal_places=4, required=False, allow_null=True)), responses={201: KitProduitSerializer})
+    @extend_schema(request=corps('KitDupliquerCorps', facteur_echelle=serializers.DecimalField(max_digits=10,
+                                                                                               decimal_places=4,
+                                                                                               required=False,
+                                                                                               allow_null=True)),
+                   responses={201: KitProduitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, *args, **kwargs):
         """XMFG18 — duplique ce kit (en-tête + composants), avec facteur
@@ -203,7 +213,11 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         return Response(
             self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('KitRemplacerComposantCorps', produit_ancien=serializers.IntegerField(), produit_nouveau=serializers.IntegerField(), ratio_quantite=serializers.DecimalField(max_digits=12, decimal_places=4, required=False, allow_null=True), dry_run=serializers.BooleanField(required=False)), responses=OBJET)
+    @extend_schema(request=corps('KitRemplacerComposantCorps', produit_ancien=serializers.IntegerField(),
+                                 produit_nouveau=serializers.IntegerField(),
+                                 ratio_quantite=serializers.DecimalField(max_digits=12, decimal_places=4,
+                                                                         required=False, allow_null=True),
+                                 dry_run=serializers.BooleanField(required=False)), responses=OBJET)
     @action(detail=False, methods=['post'], url_path='remplacer-composant')
     def remplacer_composant(self, request):
         """XMFG19 — remplacement de MASSE d'un composant dans toutes les

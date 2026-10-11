@@ -92,6 +92,16 @@ class InstallerRelanceJ3Tests(TestCase):
         self.assertEqual(
             AutomationRule.objects.filter(company=self.co).count(), 1)
 
+    def test_doublon_de_nom_ne_leve_pas_et_reprend_la_plus_ancienne(self):
+        from apps.automation.templates import installer_modele
+        rule1, _ = installer_modele(self.co, 'relance_j3_devis_sans_reponse')
+        AutomationRule.objects.create(
+            company=self.co, nom=rule1.nom, trigger_type=rule1.trigger_type,
+            action_type=rule1.action_type)
+        rule, cree = installer_modele(self.co, 'relance_j3_devis_sans_reponse')
+        self.assertFalse(cree)
+        self.assertEqual(rule.pk, rule1.pk)
+
     def test_modele_inconnu_404(self):
         res = self.api.post(f'{INSTALLER}inconnu/', {}, format='json')
         self.assertEqual(res.status_code, 404)

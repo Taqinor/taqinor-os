@@ -1,11 +1,11 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
+from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
@@ -34,7 +34,6 @@ from ..serializers import (  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsAdminRole,
-    IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
 
@@ -46,7 +45,10 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('type_proprietaire', STR, False, 'Propriétaire', ['interne', 'chez_tiers', 'de_tiers']), P('tiers_nom', STR, False, 'Nom du tiers (contient)')]))
+@extend_schema_view(list=extend_schema(parameters=[P('type_proprietaire', STR, False, 'Propriétaire', ['interne',
+                                                                                                       'chez_tiers',
+                                                                                                       'de_tiers']),
+                                                   P('tiers_nom', STR, False, 'Nom du tiers (contient)')]))
 class EmplacementStockViewSet(CompanyScopedModelViewSet):
     """N15 — emplacements de stock (dépôt principal + camionnette amorcés au
     premier accès). Lecture tout rôle, écriture admin. Le principal ne peut être
@@ -144,16 +146,18 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=LISTE)
     @action(detail=False, methods=['get'], url_path='van-stock/a-reapprovisionner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def van_stock_a_reapprovisionner(self, request):
         """NTFSM19 — écarts van-stock (camionnette) sous seuil, avec la
         quantité suggérée à transférer depuis le dépôt principal."""
         from ..selectors import van_stock_a_reapprovisionner
         return Response(van_stock_a_reapprovisionner(request.user.company))
 
-    @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=serializers.IntegerField(), emplacement_id=serializers.IntegerField()), responses={200: TransfertStockSerializer, 201: TransfertStockSerializer})
+    @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=serializers.IntegerField(),
+                                 emplacement_id=serializers.IntegerField()), responses={200: TransfertStockSerializer,
+                                                                                        201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='van-stock/creer-transfert',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def van_stock_creer_transfert(self, request):
         """NTFSM19 — crée (ou renvoie, sans dupliquer) la demande de transfert
         dépôt principal → camionnette qui comble l'écart sous seuil pour
@@ -210,7 +214,11 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             TransfertStockSerializer(transfert).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule'), P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
+    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule'), P('symbology', STR, False,
+                                                                                          'Symbologie', ['qr',
+                                                                                                         'code128']),
+                               P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])], responses={PDF: BINARY, (200,
+                                                                                                                  'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes-kanban')
     def etiquettes_kanban(self, request, *args, **kwargs):
         """XSTK20 — Cartes kanban deux-bacs pour CET emplacement : une carte

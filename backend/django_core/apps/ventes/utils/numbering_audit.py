@@ -24,9 +24,12 @@ def find_gaps_and_dupes(references):
 
         [{'radical': 'DEV-202606', 'manquants': [2, 5], 'doublons': [3]}, …]
     """
+    from core.numbering import est_reference_provisoire
     groupes = {}
     for ref in references:
-        if not ref:
+        # ATOT27 (D-ATOT-5) — un brouillon « BROUILLON-<id> » est HORS série :
+        # ses ids ne sont pas une série légale (aucun trou à y signaler).
+        if not ref or est_reference_provisoire(ref):
             continue
         m = _REF_RE.search(str(ref).strip())
         if not m:

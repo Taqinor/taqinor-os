@@ -452,6 +452,32 @@ def warranties_for(d):
     return out
 
 
+#: ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — libellés de ``warranties_for`` →
+#: clés du catalogue (les mêmes que la bande de garanties C&I).
+_CLES_GARANTIE = {"Installation": "ci_garantie_installation",
+                  "Onduleur": "ci_garantie_onduleur",
+                  "Panneaux": "ci_garantie_panneaux",
+                  "Performance": "ci_garantie_performance",
+                  "Batterie": "ci_garantie_batterie"}
+
+
+def garantie_doc(data, garantie):
+    """Une garantie ``(n, unité, libellé, sous-libellé)`` dans la langue du
+    document ; français : le tuple tel quel. Le nombre et le pourcentage ne
+    sont jamais reformatés (« 87,4 % » reste celui de la fiche produit)."""
+    n, u, label, sub = garantie
+    if langue_doc(data) == "fr":
+        return garantie
+    if sub.endswith(" garanti"):
+        sub = libelle_doc(data, "res_gar_pct_garanti", sub).format(
+            pct=sub[:-len(" garanti")])
+    elif sub == "performance linéaire":
+        sub = libelle_doc(data, "res_gar_lineaire", sub)
+    return (n, libelle_doc(data, "ci_ans", u) if u == "ans" else u,
+            libelle_doc(data, _CLES_GARANTIE[label], label)
+            if label in _CLES_GARANTIE else label, sub)
+
+
 def performance_warranty_years(d):
     """Durée de garantie de PERFORMANCE du devis rendu, ou None si aucune.
 
@@ -950,10 +976,11 @@ def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3,
     # QJR666 — le gabarit résidentiel (``traduire=True``) suit la langue du
     # document ; le harnais industriel/commercial reste tel quel.
     _ref_lbl = libelle_doc(data, 'reference', 'Réf.') if traduire else 'Réf.'
+    _page_lbl = libelle_doc(data, 'res_page', 'Page') if traduire else 'Page'
     return f"""
 <div class="foot">
   <div>{" &nbsp;·&nbsp; ".join(x for x in (f"<b>{ident['brand_name']}</b>", ident.get('email') or "", ident.get('phone') or "") if x)}</div>
-  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; {_ref_lbl} {data['ref']}{f" &nbsp;·&nbsp; <a>{site}</a>" if site else ""}{suffixe}</div>
+  <div>{_page_lbl} {{page}} / {total_pages} &nbsp;·&nbsp; {_ref_lbl} {data['ref']}{f" &nbsp;·&nbsp; <a>{site}</a>" if site else ""}{suffixe}</div>
 </div>
 """
 

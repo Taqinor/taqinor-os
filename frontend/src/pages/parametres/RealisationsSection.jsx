@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
 import { toast } from '../../ui/confirm'
@@ -57,8 +58,10 @@ export default function RealisationsSection() {
   const [rows, setRows] = useState(null)
   const [draft, setDraft] = useState(BROUILLON_VIDE)
 
-  const load = () => parametresApi.getRealisations()
-    .then(r => setRows(asList(r.data))).catch(() => setRows([]))
+  // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
+  const load = () => fetchAllPages((page, o) => parametresApi.getRealisations({ page, ...o })
+    .then(r => r?.data))
+    .then(data => setRows(asList(data))).catch(() => setRows([]))
   useEffect(() => { load() }, [])
 
   const set = (champ) => (e) =>

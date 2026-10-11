@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -141,9 +141,10 @@ function AnalyseTab({ canSave }) {
   }
 
   // Libère le Blob URL au démontage du composant.
+  const previewUrlRef = useRef(previewUrl)
+  useEffect(() => { previewUrlRef.current = previewUrl }, [previewUrl])
   useEffect(() => () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
   }, [])
 
   // VX39 — réinitialise les valeurs éditées depuis le nouveau résultat OCR

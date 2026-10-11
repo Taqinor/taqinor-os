@@ -135,3 +135,16 @@ class XFAC12EscompteTests(TestCase):
         self.assertEqual(mention['pct'], Decimal('2.00'))
         self.assertEqual(mention['jours'], 10)
         self.assertEqual(mention['montant'], Decimal('200.00'))
+
+
+class ENF15EscompteArrondiTests(TestCase):
+    def test_calcul_escompte_arrondi_moitie_vers_le_haut(self):
+        # 12,50 x 1 % = 0,125 : l'arrondi bancaire donnait 0,12 ; la
+        # politique MAD (core.money.quantize_mad) donne 0,13.
+        aujourdhui = timezone.now().date()
+        facture = Facture(
+            escompte_pct=Decimal('1'), escompte_jours=10,
+            date_emission=aujourdhui)
+        self.assertEqual(
+            facture.calcul_escompte(Decimal('12.50'), aujourdhui),
+            Decimal('0.13'))

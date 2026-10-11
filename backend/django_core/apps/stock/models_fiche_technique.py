@@ -138,7 +138,9 @@ class FicheTechnique(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='fiches_techniques')
     produit = models.OneToOneField(
-        'stock.Produit', on_delete=models.PROTECT, related_name='fiche_technique')  # on_delete: PROTECT — fiche technique constructeur (paramètres saisis + PDF) = catalogue RÉEL non reconstructible
+        # on_delete: PROTECT — fiche technique constructeur (paramètres saisis + PDF) = catalogue RÉEL non
+        # reconstructible
+        'stock.Produit', on_delete=models.PROTECT, related_name='fiche_technique')
 
     # ── Paramètres électriques normalisés (Wc / V / A) — tous optionnels ──
     pmax_wc = models.DecimalField(

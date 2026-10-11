@@ -4,12 +4,12 @@ from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from ..openapi_helpers import INT, P, corps
 from core.viewsets import CompanyScopedModelViewSet
 from .document_fige import DocumentFigeMixin
-from apps.ventes.utils.references import create_with_reference  # noqa: F401
+from apps.ventes.utils.references import create_with_reference
 from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
@@ -117,7 +117,8 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(retour).data)
 
-    @extend_schema(request=corps('RetourValiderScanneCorps', bins_source=serializers.DictField(required=False)), responses={
+    @extend_schema(request=corps('RetourValiderScanneCorps', bins_source=serializers.DictField(required=False)),
+                   responses={
         200: inline_serializer('StockRetourValideScanne', {
             'id': serializers.IntegerField(),
             'reference': serializers.CharField(),

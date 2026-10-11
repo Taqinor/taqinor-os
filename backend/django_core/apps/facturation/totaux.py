@@ -138,7 +138,7 @@ class TotauxDocumentMixin:
         ``tva_buckets`` calculant la TVA sur cette même base brute — deux
         chaînes d'arrondi divergentes pour le même document selon qu'il
         portait une remise globale ou non."""
-        from apps.ventes.selectors import (
+        from apps.ventes.domain.noyau_totaux import (
             _canonical_totaux, totaux_multi_proprietes,
         )
         # ARRONDI-100 — le palier HÉRITÉ du devis (facture de BC, avoir total
@@ -199,7 +199,7 @@ class TotauxDocumentMixin:
             # créée sans lignes) : la TVA se ventile alors sur les lignes
             # (``frozen=None``) comme avant — jamais via le noyau canonique,
             # qui ignorerait ``montant_ht`` et rendrait un document à 0.
-            from apps.ventes.selectors import tva_buckets
+            from apps.ventes.domain.noyau_totaux import tva_buckets
             frozen = None
             if self.montant_tva is not None:
                 frozen = (self.taux_tva, self.total_ht, self.montant_tva)

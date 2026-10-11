@@ -77,6 +77,14 @@ def deliver_webhook(self, webhook_id, event, payload):
     return outcome
 
 
+@shared_task(name='publicapi.retry_webhook_deliveries')
+def retry_webhook_deliveries():
+    """NTAPI8 — beat chaque minute : rejoue les reprises programmées échues
+    (même travail que la commande de gestion du même nom ; idempotent)."""
+    from .retry import run_due_retries
+    return len(run_due_retries())
+
+
 # NTAPI14/15 — jobs bulk export/import : traitement HORS requête. Chaque
 # tâche est un mince wrapper autour d'un appelable synchrone testable
 # (`bulk.run_export_job`/`run_import_job`), qui porte toute la logique et sa

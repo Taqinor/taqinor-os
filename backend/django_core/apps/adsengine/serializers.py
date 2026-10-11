@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional  # PLAN_VEILLE (ajout)
 from django.utils import timezone
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
     ArmDailyStat,
@@ -782,12 +784,16 @@ def _spend_results_for(model, obj):
     return cached
 
 
-class AdSetMirrorSerializer(serializers.ModelSerializer):
+class AdSetMirrorSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
     """ADSDEEP32/ADSDEEP60 — Miroir d'ad set (lecture seule) exposant la phase
     d'apprentissage pour le badge UI + (ADSDEEP60) statut FR, budget converti
     et dépense/résultats agrégés pour l'écran hiérarchique Campagnes→Ad
     sets→Ads. Le miroir reflète l'état Meta (jamais d'activation) ;
     company-scopé par le viewset."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('campaign',)
 
     learning_badge = serializers.SerializerMethodField()
     statut_display = serializers.SerializerMethodField()
@@ -834,11 +840,15 @@ class AdSetMirrorSerializer(serializers.ModelSerializer):
         return int(_spend_results_for(AdSetMirror, obj)['results'] or 0)
 
 
-class AdMirrorSerializer(serializers.ModelSerializer):
+class AdMirrorSerializer(SameCompanyFKSerializerMixin,
+                         serializers.ModelSerializer):
     """ADSDEEP60 — Miroir d'ad (lecture seule) pour le 3ᵉ niveau de la
     hiérarchie Campagnes→Ad sets→Ads : statut FR + dépense/résultats agrégés
     depuis les mêmes ``InsightSnapshot`` (ad-level, ADSDEEP2). Aucune
     activation ; company-scopé par le viewset appelant."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('adset',)
 
     statut_display = serializers.SerializerMethodField()
     depense_mad = serializers.SerializerMethodField()

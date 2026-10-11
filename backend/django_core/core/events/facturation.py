@@ -79,7 +79,9 @@ les émetteurs et abonnés continuent d'importer ``core.events``.
     AUCUN. Arguments communs :
 
     * ``instance`` — l'objet ``Facture`` ou ``BonCommande`` concerné ;
-    * ``company`` — la société (posée côté serveur).
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — (``facture_payee`` seul, optionnel, APAR52) l'utilisateur
+      qui ENCAISSE ; ``None`` pour un paiement public par lien / un système.
 
     Abonnés dans ce repo (ARC36) : ``facture_payee`` → ``compta``
     (``apps/compta/receivers.py``, lettrage du solde — idempotent avec le

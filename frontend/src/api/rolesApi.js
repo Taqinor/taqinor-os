@@ -1,7 +1,7 @@
 import api from './axios'
 
 const rolesApi = {
-  getRoles: () => api.get('/roles/'),
+  getRoles: (params) => api.get('/roles/', params ? { params } : undefined),
   getRole: (id) => api.get(`/roles/${id}/`),
   createRole: (data) => api.post('/roles/', data),
   updateRole: (id, data) => api.put(`/roles/${id}/`, data),

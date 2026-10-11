@@ -141,6 +141,27 @@ describe('WIR70 GedDocumentInsights', () => {
     expect(screen.queryByText(/Une erreur est survenue/)).not.toBeInTheDocument()
   })
 
+  it('lit TOUTES les pages des droits directs (51 objets ⇒ 51 lignes)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({
+      id: 100 + i, utilisateur_nom: `u${i + 1}`, role_nom: null, niveau: 'lecture',
+    }))
+    H.getAcls.mockImplementation(({ page = 1 } = {}) => Promise.resolve({
+      data: {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      },
+    }))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    const liste = await screen.findByTestId('ged-acl-entries')
+    await waitFor(() => expect(within(liste).getAllByRole('listitem')).toHaveLength(51))
+    H.getAcls.mockImplementation(() => Promise.resolve({
+      data: [{ id: 7, utilisateur_nom: 'sami', role_nom: null, niveau: 'lecture' }],
+    }))
+  })
+
   it('tolère un objet non-tableau (repli défensif) sans planter', async () => {
     H.getPermissionsEffectives.mockResolvedValueOnce({ data: { inattendu: true } })
     renderPanel()

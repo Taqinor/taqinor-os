@@ -590,6 +590,8 @@ const NON_LU: Readonly<Record<string, string>> = {
   'date_expiration': 'Dernier jour signable calculé par le serveur (ADEV52) : lu par `resolveValidity` pour le libellé d’échéance, pas par le lecteur typé.',
   // ADEV49 (08/10/2026) — le PDF est-il servi par ce lien ?
   'pdf_disponible': 'Drapeau serveur de la case « PDF » (ADEV49) : lu par `pdfDisponible` dans le frontmatter pour ne rendre aucun lien « Télécharger » vers un 404, pas par le lecteur typé.',
+  // APDF19 (11/10/2026) — le titre des conditions générales du PDF de CE devis.
+  'conditions_titre': 'Titre des conditions générales que le PDF de CE devis imprime (APDF19), servi avec `conditions` pour la parité du texte : son affichage sur la page /proposition est optionnel (propriétaire web), pas encore lu.',
 };
 
 /** La prose du contrat : jamais servie à un navigateur, mais elle se décide aussi. */

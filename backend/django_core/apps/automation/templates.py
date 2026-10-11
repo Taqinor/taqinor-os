@@ -250,15 +250,23 @@ def installer_modele(company, code, *, params=None):
         'action_config': modele.get('action_config') or {},
     }
 
-    rule, cree = AutomationRule.objects.get_or_create(
-        company=company, nom=modele['nom'],
-        defaults={
-            'trigger_type': modele['trigger_type'],
-            'trigger_config': dict(modele.get('trigger_config') or {}),
-            'action_type': premiere['action_type'],
-            'action_config': dict(premiere.get('action_config') or {}),
-            'requires_approval': modele.get('requires_approval', False),
-        })
+    try:
+        rule, cree = AutomationRule.objects.get_or_create(
+            company=company, nom=modele['nom'],
+            defaults={
+                'trigger_type': modele['trigger_type'],
+                'trigger_config': dict(modele.get('trigger_config') or {}),
+                'action_type': premiere['action_type'],
+                'action_config': dict(premiere.get('action_config') or {}),
+                'requires_approval': modele.get('requires_approval', False),
+            })
+    except AutomationRule.MultipleObjectsReturned:
+        # (company, nom) n'est pas unique en base (nom libre, saisi aussi à la
+        # main) : deux règles de même nom ne doivent pas faire un 500 — on
+        # reprend la plus ancienne, sans rien créer.
+        rule = AutomationRule.objects.filter(
+            company=company, nom=modele['nom']).order_by('id').first()
+        cree = False
     if cree:
         for idx, step in enumerate(steps[1:], start=2):
             AutomationStep.objects.create(

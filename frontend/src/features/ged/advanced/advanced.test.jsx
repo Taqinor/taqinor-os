@@ -207,12 +207,38 @@ describe('WIR164 ChecklistPage', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Apposer' })[0])
 
     await waitFor(() => {
-      expect(gedApi.getVersions).toHaveBeenCalledWith({ document: '4' })
+      expect(gedApi.getVersions).toHaveBeenCalledWith(
+        expect.objectContaining({ document: '4' }))
       expect(gedApi.createAnnotation).toHaveBeenCalledWith({
         version: 55, type_annotation: 'tampon', page: 0, x: 10, y: 10, contenu: 'Payé',
       })
       expect(toast.success).toHaveBeenCalledWith('Tampon apposé.')
     })
+  })
+
+  it('ERR-LISTES-PAGE1-17-SITES — tampon sur la DERNIÈRE version même sur la page 2', async () => {
+    const versions = Array.from({ length: 51 }, (_, i) => ({ id: 500 + i, version: i + 1 }))
+    gedApi.getVersions.mockImplementation(({ page = 1 } = {}) => Promise.resolve({
+      data: {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? versions.slice(0, 50) : versions.slice(50),
+      },
+    }))
+    gedApi.getDocumentsList.mockResolvedValueOnce({ data: [{ id: 4, nom: 'Bail.pdf' }] })
+    renderPage(<ChecklistPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Apposer un tampon/i })[0])
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un document/i }))
+    await userEvent.click((await screen.findAllByText('Bail.pdf'))[0])
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un tampon/i }))
+    await userEvent.click((await screen.findAllByText('Payé'))[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Apposer' })[0])
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2 })))
+    await waitFor(() => expect(gedApi.createAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ version: 550 })))
+    gedApi.getVersions.mockImplementation(() => Promise.resolve({ data: [{ id: 55, version: 1 }] }))
   })
 
   // XGED16/WIR249 — le bouton d'export du PDF annoté n'apparaît qu'APRÈS une

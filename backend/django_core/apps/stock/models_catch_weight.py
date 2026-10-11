@@ -36,7 +36,9 @@ class PeseeLigneReception(TenantModel):
         UNITE = 'u', 'Unité'
 
     ligne_reception = models.OneToOneField(
-        'achats.LigneReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE — le relevé n'existe QUE pour sa ligne de réception ; sans elle il ne mesure plus rien (composition stricte)
+        # on_delete: CASCADE — le relevé n'existe QUE pour sa ligne de réception ; sans elle il ne mesure plus rien
+        # (composition stricte)
+        'achats.LigneReceptionFournisseur', on_delete=models.CASCADE,
         related_name='pesee_stock')
     unite_variable = models.BooleanField(
         default=False,

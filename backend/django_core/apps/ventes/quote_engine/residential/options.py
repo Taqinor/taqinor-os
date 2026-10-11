@@ -13,7 +13,7 @@ from __future__ import annotations
 
 # APDF8 — libellés FIXES du détail (fr : littéral d'origine, octet pour
 # octet ; en/ar : ``i18n_labels``), la même fonction que la couverture.
-from .cover import libelle_fixe
+from .cover import libelle_cat, libelle_fixe, nom_option
 
 
 def _qty_par_designation(items):
@@ -290,7 +290,7 @@ def _entry_item(entry):
     return payload[0] if kind == "paire" else payload
 
 
-def _delta_lines(items, fmt, produits_base="taqinor.ma/produits"):
+def _delta_lines(items, fmt, produits_base="taqinor.ma/produits", ht="HT"):
     """Compact list of the extra products one option adds."""
     out = []
     for it in items:
@@ -300,7 +300,7 @@ def _delta_lines(items, fmt, produits_base="taqinor.ma/produits"):
                               _total_ht_affiche(it))
         out.append(
             f'<li><span class="p2-dl-n">{q}{_name_html(it, produits_base)}</span>'
-            f'<span class="p2-dl-p">{total_ht} HT</span></li>'
+            f'<span class="p2-dl-p">{total_ht} {ht}</span></li>'
         )
     return "".join(out)
 
@@ -357,7 +357,8 @@ def _totals_chain(label, accent, tot, fmt, C, recommended=False,
             + (ancre("tva", fmt(t["montant"]), option)
                if len(tva_rows) == 1 else "")
         )
-    badge = '<span class="p2-badge">Recommandé</span>' if recommended else ""
+    badge = ('<span class="p2-badge">' + L("res_recommande", "Recommandé")
+             + '</span>' if recommended else "")
     return (
         f'<div class="p2-tot-card" style="border-top:3px solid {accent}">'
         f'<div class="p2-tot-head"><span class="p2-tot-opt" '
@@ -500,11 +501,12 @@ def build_pages(ctx) -> list:
         # tableau comparatif, jamais un watt qui vaudrait pour une seule option.
         _wtxt = f' · {_w_s:g} W' if (_w_s and _w_s == _w_a) else ''
         spec_pan = (f'{_nb_s:g} · {_nb_a:g}',
-                    f'panneaux (sans · avec){_wtxt}')
+                    libelle_cat(d, "res_spec_panneaux_sans_avec", w=_wtxt))
     elif d.get("nb_panneaux"):
         _wp = d.get("watt_par_panneau")
         _wp_txt = f' · {_wp:g} W' if _wp else ''
-        spec_pan = (f'{d["nb_panneaux"]:g}', f'panneaux{_wp_txt}')
+        spec_pan = (f'{d["nb_panneaux"]:g}',
+                    libelle_cat(d, "res_spec_panneaux", w=_wp_txt))
     else:
         spec_pan = None
     # PDFPROD (27/08/2026) — la production DÉRIVE du kWc : quand les champs PV
@@ -541,8 +543,10 @@ def build_pages(ctx) -> list:
     produits_link = links.get("produits", d.get("site_url", "taqinor.ma"))
 
     rows_html = "".join(_row(it, fmt_mad, produits_link) for it in shared)
-    delta_sans_html = _delta_lines(delta_sans, fmt_mad, produits_link)
-    delta_avec_html = _delta_lines(delta_avec, fmt_mad, produits_link)
+    delta_sans_html = _delta_lines(delta_sans, fmt_mad, produits_link,
+                                   L("ci_ht", "HT"))
+    delta_avec_html = _delta_lines(delta_avec, fmt_mad, produits_link,
+                                   L("ci_ht", "HT"))
 
     # QX5 — le bloc « ce que chaque option ajoute » n'existe QUE pour un vrai
     # devis à deux options ; mono-option → aucun découpage delta.
@@ -554,7 +558,7 @@ def build_pages(ctx) -> list:
     # batterie » ou « Hybride, batterie plus tard ») et justification de la
     # recommandation adaptée : sans batterie, « vos soirées passent sur
     # batterie » serait faux. Vieux dict ⇒ textes historiques.
-    libelle_avec = d.get("libelle_avec") or "Avec batterie"
+    libelle_avec = nom_option(d, "avec")
     pourquoi_avec = libelle_fixe(
         d, "res_pourquoi_hybride" if d.get("pourquoi_avec")
         else "res_pourquoi_avec",
@@ -580,13 +584,13 @@ def build_pages(ctx) -> list:
             '<div class="p2-deltas">'
             '<div class="p2-dcard">'
             f'<div class="p2-dhead" style="background:{C["navy"]}">'
-            'Spécifique à l&rsquo;option 1 — Sans batterie</div>'
+            f'{libelle_cat(d, "res_specifique_option", n=1, option=nom_option(d, "sans"))}</div>'
             f'<div class="p2-dbody"><ul>{delta_sans_html}</ul>'
             f'{_why_sans}</div></div>'
             '<div class="p2-dcard">'
             f'<div class="p2-dhead" style="background:{C["gold"]};'
             f'color:{C["navy"]}">'
-            f'Spécifique à l&rsquo;option 2 — {libelle_avec}</div>'
+            f'{libelle_cat(d, "res_specifique_option", n=2, option=libelle_avec)}</div>'
             f'<div class="p2-dbody"><ul>{delta_avec_html}</ul>'
             f'{_why_avec}</div></div>'
             '</div>')
@@ -608,23 +612,23 @@ def build_pages(ctx) -> list:
                 '<tr>'
                 f'<td class="p2-d">{_oq_txt}{_o.get("designation", "")}</td>'
                 f'<td class="p2-r p2-tot">{fmt_mad(_o.get("total_ttc", 0))}'
-                ' MAD TTC</td></tr>')
+                f' MAD {libelle_cat(d, "ci_ttc")}</td></tr>')
         options_html = (
             '<div class="p2-opts" style="margin-top:2mm;">'
-            '<div class="p2-lbl">Options propos&eacute;es (non incluses dans '
-            'le total)</div>'
+            f'<div class="p2-lbl">{libelle_cat(d, "res_options_proposees")}</div>'
             f'<table class="p2-tbl"><tbody>{_opt_rows}</tbody></table>'
-            '<div class="p2-tva-note" style="margin-top:.5mm;">Activez une '
-            'option avant signature pour l&rsquo;inclure &agrave; votre '
-            'devis.</div></div>')
+            '<div class="p2-tva-note" style="margin-top:.5mm;">'
+            f'{libelle_cat(d, "res_activez_option")}</div></div>')
 
     if deux_options:
         totals_html = (
-            _totals_chain("Option 1 — Sans batterie", C["navy"],
+            _totals_chain(libelle_cat(d, "res_option_n_nom", n=1,
+                                      option=nom_option(d, "sans")), C["navy"],
                           d["totaux_sans"], fmt_mad, C,
                           recommended=(_reco == "sans"), option="sans",
                           L=L)
-            + _totals_chain(f"Option 2 — {libelle_avec}", C["gold"],
+            + _totals_chain(libelle_cat(d, "res_option_n_nom", n=2,
+                                        option=libelle_avec), C["gold"],
                             d["totaux_avec"], fmt_mad, C,
                             recommended=(_reco == "avec"),
                             option="avec", L=L))
@@ -640,8 +644,8 @@ def build_pages(ctx) -> list:
     else:
         # QX5 — une seule carte de totaux pour l'unique option réelle.
         _tot = d["totaux_avec"] if avec_ok else d["totaux_sans"]
-        _lbl = (f"Total — {libelle_avec}" if avec_ok
-                else "Total — Sans batterie")
+        _lbl = libelle_cat(d, "res_total_option", option=(
+            libelle_avec if avec_ok else nom_option(d, "sans")))
         _acc = C["gold"] if avec_ok else C["navy"]
         totals_html = _totals_chain(_lbl, _acc, _tot, fmt_mad, C,
                                     option="avec" if avec_ok else "sans",
@@ -660,9 +664,7 @@ def build_pages(ctx) -> list:
     if _remise_pct > 0:
         from ..montants import pct_fr  # AMOT24 — le formateur UNIQUE
         _pct_txt = pct_fr(_remise_pct)
-        note_remise = (
-            f' &middot; Remise de {_pct_txt} % appliquée sur chaque ligne '
-            '— prix catalogue barrés, totaux après remise.')
+        note_remise = libelle_cat(d, "res_note_remise", pct=_pct_txt)
 
     # ── QJ30 — multi-propriétés (rendu ; dégrade à la mise en page à plat) ────
     # (A) ×N villas identiques : ligne « × N propriétés identiques » + total mis
@@ -672,11 +674,12 @@ def build_pages(ctx) -> list:
     _nprop = d.get("nombre_proprietes")
     if _nprop and _nprop > 1:
         _dtm = d.get("display_total_multi")
-        _tot_txt = (f' — total pour {_nprop} propriétés : {fmt_mad(_dtm)} MAD'
-                    if _dtm else "")
+        _tot_txt = (libelle_cat(d, "res_multi_total", n=_nprop,
+                                montant=fmt_mad(_dtm)) if _dtm else "")
         multi_html += (
-            f'<div class="p2-multi-n">&times;&nbsp;{_nprop} propriétés '
-            f'identiques{_tot_txt}</div>')
+            '<div class="p2-multi-n">' + libelle_cat(
+                d, "res_multi_identiques", n=_nprop, total=_tot_txt)
+            + '</div>')
     _mv = d.get("multi_villa") or {}
     if _mv.get("groupes"):
         _vrows = ""
@@ -697,13 +700,13 @@ def build_pages(ctx) -> list:
                 f'<td class="p2-r">− {fmt_mad(_gt["arrondi"])}</td>'
                 f'<td class="p2-r">− {fmt_mad(_arr_ttc)} MAD</td></tr>')
         _vrows += (
-            f'<tr class="p2-multi-gt"><td>Total général</td>'
+            f'<tr class="p2-multi-gt"><td>{libelle_cat(d, "res_total_general")}</td>'
             f'<td class="p2-r">{fmt_mad(_gt.get("ht_net", 0))}</td>'
             f'<td class="p2-r">{fmt_mad(_gt.get("ttc", 0))} MAD</td></tr>')
         multi_html += (
-            '<div class="p2-multi-lbl">Détail par propriété</div>'
+            f'<div class="p2-multi-lbl">{libelle_cat(d, "res_detail_propriete")}</div>'
             '<table class="p2-multi"><thead><tr>'
-            f'<th>Propriété</th><th class="p2-r">{L("total_ht", "Total HT")}</th>'
+            f'<th>{libelle_cat(d, "res_propriete")}</th><th class="p2-r">{L("total_ht", "Total HT")}</th>'
             f'<th class="p2-r">{L("total_ttc", "Total TTC")}</th></tr></thead>'
             f'<tbody>{_vrows}</tbody></table>')
     if multi_html:
@@ -717,10 +720,11 @@ def build_pages(ctx) -> list:
     # ne croise jamais zéro n'imprime aucun nombre d'années.
     _jamais_s = bool(d.get("roi_s_jamais"))
     _jamais_a = bool(d.get("roi_a_jamais"))
-    _NON_RENTABLE = "Non rentabilisé sur 25 ans"
+    _NON_RENTABLE = libelle_cat(d, "res_non_rentabilise_25")
 
     def _roi_txt(v, jamais):
-        return "non rentabilisé" if jamais else f"{_yrs(v)} ans"
+        return (libelle_cat(d, "res_non_rentabilise") if jamais
+                else libelle_cat(d, "res_n_ans", n=_yrs(v)))
     # QX5 — deux options → fourchette de ROI ; mono-option → le ROI de l'option
     # réelle seul (jamais une fourchette entre une option et un fantôme).
     _roi_jamais_affiche = False
@@ -733,7 +737,7 @@ def build_pages(ctx) -> list:
                          f"{_roi_txt(roi_a, _jamais_a)}")
     elif deux_options and roi_s and roi_a:
         lo, hi = sorted((roi_s, roi_a))
-        roi_range = f"{_yrs(lo)} – {_yrs(hi)} ans"
+        roi_range = libelle_cat(d, "res_n_m_ans", a=_yrs(lo), b=_yrs(hi))
     else:
         _roi_one = (roi_a if avec_ok else roi_s)
         _jamais_one = _jamais_a if avec_ok else _jamais_s
@@ -741,9 +745,11 @@ def build_pages(ctx) -> list:
             roi_range = _NON_RENTABLE
             _roi_jamais_affiche = True
         else:
-            roi_range = f"{_yrs(_roi_one)} ans" if _roi_one else "—"
-    _roi_sous_titre = ("au tarif actuel" if _roi_jamais_affiche
-                       else "l'installation se rembourse")
+            roi_range = (libelle_cat(d, "res_n_ans", n=_yrs(_roi_one))
+                         if _roi_one else "—")
+    _roi_sous_titre = libelle_cat(d, "res_au_tarif_actuel"
+                                  if _roi_jamais_affiche
+                                  else "res_se_rembourse")
     # QX5 — gain net 25 ans + libellé calés sur l'option réellement présente
     # (jamais « option avec batterie » sur un devis sans batterie).
     # AMOT33 — deux options : le gain net décrit l'option RECOMMANDÉE par le
@@ -752,13 +758,14 @@ def build_pages(ctx) -> list:
     if _ref_avec:
         _eco_ref, _tot_ref = d.get("eco_a_ann", 0), d.get("total_avec", 0)
         # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF).
-        _lib_avec = str(d.get("libelle_avec") or "Avec batterie")
-        _lib_avec = _lib_avec[:1].lower() + _lib_avec[1:]
-        gain25_label = f"option {_lib_avec}" if deux_options else _lib_avec
+        _lib_avec = nom_option(d, "avec", minuscule=True)
+        gain25_label = (libelle_cat(d, "res_option_nom", option=_lib_avec)
+                        if deux_options else _lib_avec)
     else:
         _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
-        gain25_label = ("option sans batterie" if deux_options
-                        else "sans batterie")
+        gain25_label = (libelle_cat(d, "res_option_nom", option=nom_option(
+            d, "sans", minuscule=True)) if deux_options
+            else nom_option(d, "sans", minuscule=True))
     # QRES58 — le gain net 25 ans sort du VRAI cashflow (dégradation 0,5 %/an
     # intégrée — ce que les hypothèses promettent) : plus jamais un eco×25 plat
     # qui surévaluait ~7 % ; repli Σ(0,995^t) ≈ 23,56 si le cumul manque.
@@ -773,7 +780,7 @@ def build_pages(ctx) -> list:
     # rembourse jamais : son « gain net » n'est pas « ≈ 0 MAD » (plancher),
     # c'est une perte — la carte le dit au lieu d'imprimer un zéro.
     _gain_jamais = bool(_jamais_a if _ref_avec else _jamais_s)
-    _gain_v_html = ("Non rentabilisé" if _gain_jamais
+    _gain_v_html = (libelle_cat(d, "res_non_rentabilise_maj") if _gain_jamais
                     else f"≈ {fmt(gain25)} <small>MAD</small>")
     # QRES28 — le multiple (« ≈ 5,6× votre investissement ») rend le gain net
     # tangible ; calculé, jamais inventé (gain net / investissement).
@@ -781,9 +788,8 @@ def build_pages(ctx) -> list:
                  else None)
     gain_mult_txt = (f"{gain_mult:g}".replace(".", ",")
                      if gain_mult and gain_mult >= 1 else None)
-    gain_mult_sub = (
-        f" — soit ≈ <b>{gain_mult_txt}×</b> votre investissement"
-        if gain_mult_txt else "")
+    gain_mult_sub = (libelle_cat(d, "res_gain_mult", x=gain_mult_txt)
+                     if gain_mult_txt else "")
 
     # ── L-2OPT — TABLEAU COMPARATIF DE SYNTHÈSE (deux optimiseurs) ───────────
     # Rendu UNIQUEMENT sur un document à deux options dont les compositions
@@ -803,17 +809,21 @@ def build_pages(ctx) -> list:
             return f'{nb:g} × {watt:g} W' if watt else f'{nb:g}'
 
         if _nb_s and _nb_a:
-            cmp_rows.append(("Panneaux", _cell_pan(_nb_s, _w_s),
+            cmp_rows.append((libelle_cat(d, "ci_garantie_panneaux"),
+                             _cell_pan(_nb_s, _w_s),
                              _cell_pan(_nb_a, _w_a)))
         if _kwc_s and _kwc_a:
-            cmp_rows.append(("Puissance", f'{_num(_kwc_s)} kWc',
-                             f'{_num(_kwc_a)} kWc'))
+            cmp_rows.append((libelle_cat(d, "res_kpi_puissance"),
+                             libelle_cat(d, "res_n_kwc", n=_num(_kwc_s)),
+                             libelle_cat(d, "res_n_kwc", n=_num(_kwc_a))))
         _bat_kwh = d.get("batterie_kwh_total")
         if _bat_kwh:
-            cmp_rows.append(("Batteries", "—", f'{_num(_bat_kwh)} kWh'))
+            cmp_rows.append((libelle_cat(d, "res_cmp_batteries"), "—",
+                             f'{_num(_bat_kwh)} kWh'))
         _ts, _ta = d.get("totaux_sans") or {}, d.get("totaux_avec") or {}
         if _ts.get("ttc") and _ta.get("ttc"):
-            cmp_rows.append(("Prix TTC", f'{fmt_mad(_ts["ttc"])} MAD',
+            cmp_rows.append((libelle_cat(d, "res_cmp_prix_ttc"),
+                             f'{fmt_mad(_ts["ttc"])} MAD',
                              f'{fmt_mad(_ta["ttc"])} MAD'))
         _eco_s, _eco_a = d.get("eco_s_ann"), d.get("eco_a_ann")
         if not masquer_eco and _eco_s and _eco_a:
@@ -828,16 +838,16 @@ def build_pages(ctx) -> list:
             _m_s = d.get("savings_model_sans")
             _m_a = d.get("savings_model_avec")
             if _m_s and _m_a and _m_s == _m_a:
-                _mot = " calculées" if _m_s == "horaire" else " estimées"
+                _mot = "_calculees" if _m_s == "horaire" else "_estimees"
             else:
                 _mot = ""
-            cmp_rows.append((f"Économies{_mot} / an",
+            cmp_rows.append((libelle_cat(d, "res_cmp_eco" + _mot),
                              f'{fmt(_eco_s)} MAD', f'{fmt(_eco_a)} MAD'))
         if not masquer_eco and roi_s and roi_a:
             cmp_rows.append((
-                "Retour sur investissement",
-                _NON_RENTABLE if _jamais_s else f'{_yrs(roi_s)} ans',
-                _NON_RENTABLE if _jamais_a else f'{_yrs(roi_a)} ans'))
+                libelle_cat(d, "res_retour_invest"),
+                _NON_RENTABLE if _jamais_s else _roi_txt(roi_s, False),
+                _NON_RENTABLE if _jamais_a else _roi_txt(roi_a, False)))
 
     def _cmp_table(rows):
         _crows = "".join(
@@ -846,7 +856,7 @@ def build_pages(ctx) -> list:
             f'<td class="p2-cmp-v p2-cmp-a">{b}</td></tr>'
             for k, a, b in rows)
         return ('<table class="p2-cmp"><thead><tr><th></th>'
-                f'<th>Sans batterie</th><th>{libelle_avec}</th></tr></thead>'
+                f'<th>{nom_option(d, "sans")}</th><th>{libelle_avec}</th></tr></thead>'
                 f'<tbody>{_crows}</tbody></table>')
 
     # L-2OPTPDF — À PARTIR DE 4 LIGNES, LE COMPARATIF SE LIT SUR DEUX COLONNES.
@@ -871,9 +881,8 @@ def build_pages(ctx) -> list:
 
     # QRES3 — sous-titre du graphe fidèle au devis : « deux scénarios »
     # seulement quand le document porte réellement deux options.
-    fin_sub = ("gain cumulé, deux scénarios — le point marque le retour "
-               "sur investissement" if deux_options
-               else "gain cumulé — le point marque le retour sur investissement")
+    fin_sub = libelle_cat(d, "res_fin_sub_deux" if deux_options
+                          else "res_fin_sub_un")
     # ── Q1 (décision fondateur du 20/08/2026) — LE CREUX DE LA COURBE EST DIT ─
     # La courbe plonge en année 12 : c'est la provision de remplacement de
     # l'onduleur. Elle vaut le PRIX RÉEL de l'onduleur de ce devis (plus un
@@ -884,8 +893,8 @@ def build_pages(ctx) -> list:
     _prov = _cf_assum.get("inverter_replace_cost")
     if _prov:
         _an = _cf_assum.get("inverter_replace_year") or 12
-        fin_sub += (f" · remplacement onduleur provisionné en année {_an} "
-                    f"({f'{int(_prov):,}'.replace(',', ' ')} MAD)")
+        fin_sub += libelle_cat(d, "res_fin_remplacement", an=_an,
+                               montant=f"{int(_prov):,}".replace(",", " "))
 
     # QRES57 — les garanties vivent en bande fine sur la page signature
     # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en
@@ -980,7 +989,7 @@ def build_pages(ctx) -> list:
                     f'<img class="p2-roof-plan" src="{_plan_a_part}" '
                     'alt="Calepinage — implantation des panneaux sur votre '
                     'toiture">'
-                    '<div class="p2-roof-cap">Votre calepinage</div></div>')
+                    f'<div class="p2-roof-cap">{libelle_cat(d, "res_votre_calepinage")}</div></div>')
             if _prod_chart:
                 _cells += (
                     f'<div class="p2-vis-prod"><img src="{_prod_chart}" '
@@ -1290,11 +1299,11 @@ def build_pages(ctx) -> list:
         + libelle_fixe(d, "res_detail_projet", "Le détail de votre projet")
         + '</div>')
     cont_head_html = (
-        '<div class="p2-kick">Votre installation</div>'
-        '<div class="p2-title">Équipement — suite</div>')
+        f'<div class="p2-kick">{libelle_cat(d, "res_votre_installation")}</div>'
+        f'<div class="p2-title">{libelle_cat(d, "res_equipement_suite")}</div>')
     fin_head_html = (
-        '<div class="p2-kick">Votre rentabilité</div>'
-        '<div class="p2-title">Rentabilité de votre investissement</div>')
+        f'<div class="p2-kick">{libelle_cat(d, "res_votre_rentabilite")}</div>'
+        f'<div class="p2-title">{libelle_cat(d, "res_rentabilite_invest")}</div>')
 
     # QRES39 — la VRAIE toiture du client (photo/plan joint au devis) remplace
     # le schéma illustratif quand elle existe ; repli schéma sinon.
@@ -1323,11 +1332,11 @@ def build_pages(ctx) -> list:
 
     if roof_photo:
         band_visual = "<div>" + _vignette(
-            roof_photo, "Votre toiture",
+            roof_photo, libelle_cat(d, "res_votre_toiture"),
             "Votre toiture — implantation des panneaux") + "</div>"
     elif plan_dans_la_bande:
         band_visual = "<div>" + _vignette(
-            roof_render, "Votre calepinage",
+            roof_render, libelle_cat(d, "res_votre_calepinage"),
             "Calepinage — implantation des panneaux sur votre toiture",
             cls="p2-roof-plan") + "</div>"
     else:
@@ -1343,9 +1352,8 @@ def build_pages(ctx) -> list:
         # L-2OPTPDF — la légende n'apparaît QUE sur une page qui porte
         # réellement une ligne à deux valeurs, et TIENT SUR LA LIGNE du
         # libellé : elle ne coûte pas un millimètre de hauteur.
-        leg = ('<span class="p2-lbl-leg">deux valeurs&nbsp;: '
-               '<b>sans</b> &middot; <b>avec</b> batterie</span>'
-               if any(k == "paire" for k, _ in items) else "")
+        leg = ('<span class="p2-lbl-leg">' + libelle_cat(d, "res_deux_valeurs")
+               + '</span>' if any(k == "paire" for k, _ in items) else "")
         return (
             f'<div class="p2-lbl">{label}{leg}</div>'
             '<table class="p2-tbl"><thead><tr>'
@@ -1360,7 +1368,7 @@ def build_pages(ctx) -> list:
     # (une seule ligne de légende sous les totaux, ~5 mm rendus à la courbe).
     # AMOT18 — société identifiée sans site : aucun lien de fiches.
     fiche_inline = (
-        ' &middot; fiches techniques&nbsp;: <a class="p2-fiche-btn" '
+        libelle_cat(d, "res_fiches_techniques") + '<a class="p2-fiche-btn" '
         f'href="{_produits_href(produits_link)}">{produits_link}'
         '<span class="p2-fiche-i"> &rsaquo;</span></a>'
         if produits_link else "")
@@ -1392,22 +1400,22 @@ def build_pages(ctx) -> list:
     def _perf_stat_html():
         if not _perf_warranty:
             return ""
-        n, u, _label, sub = _perf_warranty
+        n, u, _label, sub = theme.garantie_doc(d, _perf_warranty)
         return f"""
         <div class="p2-side-stat">
-          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-k">{libelle_cat(d, 'res_perf_garantie_titre')}</span>
           <span class="p2-stat-v">{n} {u}</span>
-          <span class="p2-stat-s">panneaux — {sub}</span>
+          <span class="p2-stat-s">{libelle_cat(d, 'res_perf_panneaux', sub=sub)}</span>
         </div>"""
 
     _stats_html = f"""
         <div class="p2-side-stat">
-          <span class="p2-stat-k">Retour sur investissement</span>
+          <span class="p2-stat-k">{libelle_cat(d, 'res_retour_invest')}</span>
           <span class="p2-stat-v">{roi_range}</span>
           <span class="p2-stat-s">{_roi_sous_titre}</span>
         </div>
         <div class="p2-side-stat p2-side-gain">
-          <span class="p2-stat-k">Gain net sur 25 ans</span>
+          <span class="p2-stat-k">{libelle_cat(d, 'res_gain_net_25')}</span>
           <span class="p2-stat-v">{_gain_v_html}</span>
           <span class="p2-stat-s">{gain25_label}{gain_mult_sub}</span>
         </div>{_perf_stat_html()}"""
@@ -1427,20 +1435,17 @@ def build_pages(ctx) -> list:
     from ..pricing import INVERTER_REPLACE_YEAR as _REPL_AN
     _cf_leg = d.get("cashflow_assumptions") or {}
     _repl_an = _cf_leg.get("inverter_replace_year") or _REPL_AN
-    _palier = (f' Le palier en année&nbsp;{_repl_an} : provision de '
-               'remplacement de l\'onduleur, déjà déduite.'
+    _palier = (libelle_cat(d, "res_palier", an=_repl_an)
                if _cf_leg.get("inverter_replace_cost") else '')
     _fin_cap = (
-        '<div class="p2-fin-cap">Projection <b>à tarif électricité '
-        'constant</b> — toute hausse future du prix de l\'électricité '
-        'accélère votre rentabilité, votre coût solaire restant fixe.'
-        f'{_palier}</div>')
+        '<div class="p2-fin-cap">' + libelle_cat(d, "res_fin_cap")
+        + f'{_palier}</div>')
 
     # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
     # gain net : la carte-stat « Gain net » disparaît (plus de doublon).
     _stats_xl_html = f"""
         <div class="p2-side-stat">
-          <span class="p2-stat-k">Retour sur investissement</span>
+          <span class="p2-stat-k">{libelle_cat(d, 'res_retour_invest')}</span>
           <span class="p2-stat-v">{roi_range}</span>
           <span class="p2-stat-s">{_roi_sous_titre}</span>
         </div>{_perf_stat_html()}"""
@@ -1466,7 +1471,7 @@ def build_pages(ctx) -> list:
         return f"""
   <div class="p2-fin">
     <div class="p2-fin-head">
-      <span class="p2-fin-title">Rentabilité sur 25 ans</span>
+      <span class="p2-fin-title">{libelle_cat(d, 'res_rentabilite_25')}</span>
       <span class="p2-fin-sub">{fin_sub}</span>
     </div>
 
@@ -1513,12 +1518,13 @@ def build_pages(ctx) -> list:
     for i, chunk in enumerate(chunks):
         is_first = i == 0
         is_last = i == len(chunks) - 1
-        label = equipement_lbl if is_first else f"{equipement_lbl} (suite)"
+        label = (equipement_lbl if is_first
+                 else libelle_cat(d, "res_suite_lbl", lbl=equipement_lbl))
         inner = (head_html + band_html if is_first else cont_head_html)
         inner += _table_html(chunk, label)
         if not is_last:
-            inner += ('<div class="p2-cont-note">Suite de l\'équipement '
-                      'page suivante &rsaquo;</div>')
+            inner += ('<div class="p2-cont-note">'
+                      + libelle_cat(d, "res_suite_page") + '</div>')
         else:
             # QRES62 — joint élastique avant la clôture (totaux) : absorbe le
             # vide résiduel mesuré de la dernière page équipement.
@@ -1529,10 +1535,8 @@ def build_pages(ctx) -> list:
     # navy de gain net (le chiffre-héros du document, en pleine largeur).
     _callout = ""
     if gain_mult_txt and not masquer_eco:
-        _callout = (
-            f'<div class="p2-callout">≈ {fmt(gain25)} MAD de gain net sur '
-            f'25 ans — <b>{gain_mult_txt}× le prix de votre installation'
-            '</b></div>')
+        _callout = ('<div class="p2-callout">' + libelle_cat(
+            d, "res_callout", gain=fmt(gain25), x=gain_mult_txt) + '</div>')
 
     # QRES66 (fondateur, 18/08/2026) — la bande « Financement possible —
     # et si vous financiez ? » (économies − crédit = dans votre poche) est
@@ -1563,12 +1567,12 @@ def build_pages(ctx) -> list:
             return (f"{v:.1f}".replace(".", ",") if v < 10
                     else fmt(round(v)))
         impact_html = (
-            '<div class="p2-lbl" style="margin-top:7mm">Et pour la planète'
-            '</div>'
+            '<div class="p2-lbl" style="margin-top:7mm">'
+            f'{libelle_cat(d, "res_et_planete")}</div>'
             '<div class="p2-impact">'
             f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_t)} '
-            't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées '
-            'chaque année</span></div>'
+            't</span><span class="p2-imp-l">'
+            f'{libelle_cat(d, "res_co2_evitees")}</span></div>'
             '</div>')
 
     # QRES62 — joints élastiques de la page rentabilité : le vide mesuré se

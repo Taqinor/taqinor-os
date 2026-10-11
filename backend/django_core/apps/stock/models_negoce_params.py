@@ -17,7 +17,8 @@ class ParametresNegoce(TenantModel):
     """Réglages négoce d'une société (un seul par société)."""
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant — le paramétrage d'une société supprimée n'a plus d'objet
+        # on_delete: purge tenant — le paramétrage d'une société supprimée n'a plus d'objet
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='parametres_negoce_stock', verbose_name='Société')
 
     consignation_activee = models.BooleanField(

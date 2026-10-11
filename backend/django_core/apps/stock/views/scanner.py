@@ -64,7 +64,12 @@ def scanner_resoudre_view(request):
     return Response(resultat)
 
 
-@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(), type_mouvement=serializers.CharField(), quantite=serializers.IntegerField(), bin_source=serializers.IntegerField(required=False, allow_null=True), bin_destination=serializers.IntegerField(required=False, allow_null=True), reference=serializers.CharField(required=False), note=serializers.CharField(required=False, allow_blank=True)), responses={
+@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(),
+                             type_mouvement=serializers.CharField(), quantite=serializers.IntegerField(),
+                             bin_source=serializers.IntegerField(required=False, allow_null=True),
+                             bin_destination=serializers.IntegerField(required=False, allow_null=True),
+                             reference=serializers.CharField(required=False),
+                             note=serializers.CharField(required=False, allow_blank=True)), responses={
     201: inline_serializer('StockScannerMouvementResultat', {
         'id': serializers.IntegerField(),
         'produit': serializers.IntegerField(),

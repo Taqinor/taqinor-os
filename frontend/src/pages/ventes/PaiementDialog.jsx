@@ -25,9 +25,10 @@ import { toastMilestone } from '../../lib/toast'
 import { MODES_PAIEMENT } from '../../features/ventes/modesPaiement'
 // AFAC61 — l'erreur du serveur s'affiche SOUS le champ concerné, jamais un texte fixe.
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => todayLocalIso()
 
 // VX92 — « Créer un autre » : persisté par poste (localStorage), défaut OFF
 // (comportement historique inchangé). Un relevé bancaire = 5 paiements à saisir

@@ -66,7 +66,7 @@ describe('MRY28 CadenceRelanceEditor', () => {
   it('charge la cadence « contact » par défaut et affiche ses étapes', async () => {
     await renderEditor()
     await waitFor(() =>
-      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('contact'))
+      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('contact', expect.anything()))
     expect(await screen.findByDisplayValue("Message d'identité")).toBeInTheDocument()
     expect(screen.getByDisplayValue("Appel d'ouverture")).toBeInTheDocument()
     expect(screen.getByText('#1')).toBeInTheDocument()
@@ -80,7 +80,7 @@ describe('MRY28 CadenceRelanceEditor', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('tab', { name: 'Après devis' }))
     await waitFor(() =>
-      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('apres_devis'))
+      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('apres_devis', expect.anything()))
     expect(await screen.findByText('Aucune étape pour cette cadence.')).toBeInTheDocument()
   })
 
@@ -136,7 +136,7 @@ describe('PARAM-CADENCE — onglet « Après l\'appel (avant devis) »', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('tab', { name: "Après l'appel (avant devis)" }))
     await waitFor(() =>
-      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('apres_contact'))
+      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('apres_contact', expect.anything()))
   }
 
   it('affiche la liste de `exemple_apres_contact` avec la clé de chaque barreau', async () => {
@@ -185,7 +185,7 @@ describe('PARAM-CADENCE — onglet « Visite technique » (D3)', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('tab', { name: 'Visite technique' }))
     await waitFor(() =>
-      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('visite'))
+      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('visite', expect.anything()))
     await screen.findByText('Aucune étape pour cette cadence.')
     expect(screen.queryByRole('button', { name: /Ajouter un barreau/i }))
       .not.toBeInTheDocument()

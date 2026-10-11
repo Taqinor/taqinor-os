@@ -5,11 +5,12 @@ import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Download, FileWarning, MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal, CreditCard, ShieldCheck, Zap, Eye } from 'lucide-react'
 import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, FormActions } from '../../../ui'
-import { formatMAD, toNumber, normalizePhoneE164, formatDateTime } from '../../../lib/format'
+import { formatMAD, toNumber, normalizePhoneE164 } from '../../../lib/format'
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK, factureTrack } from '../../../features/ventes/documentChain'
 import { useRotatingLabel } from '../../../hooks/useRotatingLabel'
 import { isOverdue, isPartiallyPaid } from './factureHelpers.js'
+import HistoriqueActivitesListe from '../HistoriqueActivitesListe'
 
 // VX132 — chargement long conscient (voir DevisList.jsx PDF_GENERATION_LABELS) :
 // libellés honnêtes côté client uniquement — le PDF facture reste le moteur
@@ -483,29 +484,7 @@ export default function FactureRow({ f, ctx }) {
                 Aucune modification consignée.
               </p>
             ) : (
-              <ul className="space-y-1 text-sm">
-                {histoCache[f.id].map(a => (
-                  <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {a.created_at ? formatDateTime(a.created_at) : '—'}
-                      {a.user_nom ? ` · ${a.user_nom}` : ''}
-                    </span>
-                    <span>
-                      {a.body
-                        ? a.body
-                        : (
-                          <>
-                            <strong>{a.field_label || a.field}</strong>
-                            {' : '}
-                            <span className="text-muted-foreground">{a.old_value || '—'}</span>
-                            {' → '}
-                            <span>{a.new_value || '—'}</span>
-                          </>
-                        )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <HistoriqueActivitesListe activites={histoCache[f.id]} />
             )}
           </div>
         </td>

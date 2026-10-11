@@ -108,7 +108,8 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
             sender=Facture, facture=locked, montant=montant_evenement,
             company=locked.company)
         facture_payee.send(
-            sender=Facture, instance=locked, company=locked.company)
+            sender=Facture, instance=locked, company=locked.company,
+            user=user)
         # AFAC23 (C-AFAC-018) — le SOLDE (paiement manuel, avoir, abandon,
         # ventilation…) ferme les liens « Payer en ligne » encore ouverts :
         # la page client ne réclame plus rien sur une facture soldée. Le lien
@@ -1270,7 +1271,7 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
     from ..selectors_facturation import (
         DevisDejaFacture, exiger_devis_facturable,
     )
-    from ..utils.company_settings import create_numbered
+    from ..utils.company_settings import create_provisoire
 
     if not devis_ids or len(devis_ids) < 2:
         raise ValidationError(
@@ -1312,7 +1313,7 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
                 statut=Facture.Statut.BROUILLON, created_by=created_by,
             )
 
-        facture = create_numbered(Facture, company, 'facture', _create)
+        facture = create_provisoire(_create)  # ATOT27 : numéro à l'émission
 
         # ATOT3 (C-ATOT-002) — chaque devis apporte EXACTEMENT le panier de
         # `copier_devis_sur_facture` (`lignes_facture_du_devis` : option

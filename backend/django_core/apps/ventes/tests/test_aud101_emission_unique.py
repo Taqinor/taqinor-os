@@ -350,3 +350,73 @@ class TestBlocageCreditALEmission(_BaseEmission):
         self.assertEqual(resp.status_code, 403, resp.data)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+
+
+class DateEmissionTests(_BaseEmission):
+    """AFAC14 (C-AFAC-005) — la date d'émission est le jour du passage à
+    ÉMISE (date locale), jamais la création du brouillon ; l'échéance dérivée
+    part de cette date. Création ancienne posée par ``.update()`` (freezegun
+    absent du conteneur) — rejoue les sondes FBC-5 et FDOC-3."""
+
+    def setUp(self):
+        super().setUp()
+        self.client_obj.delai_paiement_jours = 30
+        self.client_obj.save(update_fields=['delai_paiement_jours'])
+        self.aujourdhui = timezone.localdate()
+
+    def _brouillon_ancien(self, **champs):
+        facture = self._facture()
+        Facture.objects.filter(pk=facture.pk).update(
+            date_emission=self.aujourdhui - timedelta(days=37), **champs)
+        return facture
+
+    def _emettre(self, facture):
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{facture.pk}/emettre/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return Facture.objects.get(pk=facture.pk)
+
+    def test_emission_pose_la_date_du_jour(self):
+        relue = self._emettre(self._brouillon_ancien())
+        self.assertEqual(relue.date_emission, self.aujourdhui)
+
+    def test_echeance_derivee_de_l_emission(self):
+        from apps.ventes.scheduled import check_overdue_factures
+        relue = self._emettre(self._brouillon_ancien())
+        self.assertEqual(
+            relue.date_echeance, self.aujourdhui + timedelta(days=30))
+        check_overdue_factures()
+        self.assertEqual(
+            Facture.objects.get(pk=relue.pk).statut, Facture.Statut.EMISE)
+
+    def test_reemission_redate(self):
+        facture = self._emettre(self._brouillon_ancien())
+        # « Un autre jour » : l'émission précédente remonte à 40 jours.
+        Facture.objects.filter(pk=facture.pk).update(
+            date_emission=self.aujourdhui - timedelta(days=40),
+            date_echeance=self.aujourdhui - timedelta(days=10))
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{facture.pk}/remettre-brouillon/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        relue = self._emettre(facture)
+        self.assertEqual(relue.date_emission, self.aujourdhui)
+        self.assertEqual(
+            relue.date_echeance, self.aujourdhui + timedelta(days=30))
+
+    def test_echeance_saisie_posterieure_conservee(self):
+        saisie = self.aujourdhui + timedelta(days=60)
+        relue = self._emettre(self._brouillon_ancien(date_echeance=saisie))
+        self.assertEqual(relue.date_echeance, saisie)
+
+    def test_journal_du_mois_d_emission(self):
+        facture = self._brouillon_ancien()
+        debut = self.aujourdhui.replace(day=1)
+        fin = self.aujourdhui + timedelta(days=1)
+        relue = self._emettre(facture)
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={debut:%Y-%m-%d}'
+            f'&end={fin:%Y-%m-%d}&fmt=csv')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(relue.reference, resp.content.decode('utf-8'))

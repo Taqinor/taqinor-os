@@ -151,6 +151,21 @@ class Ntapi8RetryScheduleTests(TestCase):
         processed = run_due_retries(now=timezone.now())
         self.assertEqual(processed, [])
 
+    def test_tache_beat_retry_webhook_deliveries_est_planifiee_et_routee(self):
+        from django.conf import settings
+        from erp_agentique.celery import app
+        from .tasks import retry_webhook_deliveries
+        self.assertEqual(retry_webhook_deliveries.name,
+                         'publicapi.retry_webhook_deliveries')
+        planifiees = {e['task'] for e in app.conf.beat_schedule.values()}
+        self.assertIn('publicapi.retry_webhook_deliveries', planifiees)
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES['publicapi.retry_webhook_deliveries'],
+            {'queue': 'scheduled'})
+        wh_delivery = self._failed_delivery()
+        schedule_first_retry(wh_delivery)
+        self.assertEqual(retry_webhook_deliveries(), 0)  # rien d'échu
+
     def test_disabled_webhook_mid_cascade_ends_echec_without_crash(self):
         wh_delivery = self._failed_delivery()
         schedule_first_retry(wh_delivery, now=timezone.now() - timedelta(days=1))

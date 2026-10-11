@@ -9,6 +9,7 @@
 // à la fois (une seule colonne par facture, comme un seul onglet).
 import { toNumber } from '../../lib/format.js'
 import { isPartiallyPaid, isOverdue } from './factureList/factureHelpers.js'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 export const KANBAN_COLUMNS = [
   { key: 'brouillon', label: 'Brouillon' },
@@ -44,7 +45,7 @@ export function columnForFacture(f, today) {
 // Regroupe une liste de factures par colonne kanban. Renvoie un objet
 // { [columnKey]: Facture[] } avec TOUTES les clés de KANBAN_COLUMNS
 // présentes (même vides) pour un rendu stable colonne par colonne.
-export function groupByColumn(factures, today = new Date().toISOString().slice(0, 10)) {
+export function groupByColumn(factures, today = todayLocalIso()) {
   const groups = Object.fromEntries(KANBAN_COLUMNS.map((c) => [c.key, []]))
   for (const f of (factures || [])) {
     const col = columnForFacture(f, today)

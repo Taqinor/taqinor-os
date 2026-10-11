@@ -73,6 +73,16 @@ class Qx30EngagementEngineTests(TestCase):
         link = ShareLink.objects.get(devis=devis)
         self.assertIn('reopened_3x', link.engagement_triggers_fired or [])
 
+    def test_societe_suspendue_non_balayee(self):
+        # ENF15 — un tenant actif=False ne reçoit aucune relance comportementale.
+        devis = self._devis(f'DEV-{MONTH}-QX3010', days_ago=2)
+        ShareLink.objects.create(
+            company=self.company, devis=devis, view_count=0)
+        Company.objects.filter(pk=self.company.pk).update(actif=False)
+        self.assertEqual(self._run(), 0)
+        self.assertFalse(ShareLink.objects.get(devis=devis)
+                         .engagement_triggers_fired)
+
     def test_idempotent_no_double_notification(self):
         from apps.notifications.models import Notification
         devis = self._devis(f'DEV-{MONTH}-QX3004', days_ago=2)

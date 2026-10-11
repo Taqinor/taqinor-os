@@ -62,6 +62,33 @@ def _clean(ax, keep_bottom=True):
     ax.set_axisbelow(True)
 
 
+#: Suffixe historique de la note du graphe mensuel (facture d'hiver seule).
+VARIATION_ESTIMEE = "variation mensuelle estimée"
+
+
+def note_variation_mensuelle(data: dict):
+    """AGNR6 (D-AGNR-1 option (a)) — suffixe de la note du graphe mensuel, ou
+    ``None`` quand la variation mensuelle est mesurée
+    (``factures_mensuelles_estimation`` faux).
+
+    Source ``facture_hiver_ete`` (deux factures répétées en marches) : le
+    libellé client ``res_estimation_deux_factures`` du catalogue, via
+    ``theme.libelle_doc`` — jamais « réelles ». Autre source estimée (facture
+    d'hiver seule) : :data:`VARIATION_ESTIMEE`, inchangé. L'image matplotlib
+    ne met pas l'arabe en forme : un document RTL garde le libellé français,
+    comme le reste de ce graphe (mois, unité)."""
+    if not data.get("factures_mensuelles_estimation"):
+        return None
+    if data.get("source_consommation") != "facture_hiver_ete":
+        return VARIATION_ESTIMEE
+    from . import theme
+    from .. import i18n_labels
+    fr = i18n_labels.libelle("res_estimation_deux_factures", "fr")
+    if i18n_labels.est_rtl(theme.langue_doc(data)):
+        return fr
+    return theme.libelle_doc(data, "res_estimation_deux_factures", fr)
+
+
 def bill_before_after(bills_before, bills_after, economies=None,
                       variation_estimee=False, w=6.6, h=2.0) -> str:
     """QRES19 — barres APPARIÉES (gris|or côte à côte) : la superposition
@@ -119,7 +146,10 @@ def bill_before_after(bills_before, bills_after, economies=None,
             # Motif Z2 — le NIVEAU vient d'une facture réellement payée, mais
             # la variation d'un mois à l'autre est une hypothèse tant que le
             # client n'a pas donné douze points. On le dit, on ne le tait pas.
-            note += "  ·  variation mensuelle estimée"
+            # AGNR6 — un texte (``note_variation_mensuelle``) nomme la source.
+            note += "  ·  " + (variation_estimee
+                               if isinstance(variation_estimee, str)
+                               else VARIATION_ESTIMEE)
         ax.text(1.0, 1.03, note, transform=ax.transAxes, fontsize=7,
                 color=ECO_INK, ha="right", va="bottom", fontweight="bold")
     else:
@@ -381,8 +411,7 @@ def build_all(data: dict) -> dict:
         "bill": bill_before_after(
             data["bills_before"], data["bills_after"],
             data.get("eco_mensuelles"),
-            variation_estimee=bool(
-                data.get("factures_mensuelles_estimation"))),
+            variation_estimee=note_variation_mensuelle(data)),
         "coverage": coverage_donut(data["coverage_pct"]),
         "payback": payback_curve(*_pb_args, **_pb_kw),
         # QRES51 — variante PLEINE PAGE pour la page rentabilité dédiée :

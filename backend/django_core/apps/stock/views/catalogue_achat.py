@@ -26,16 +26,20 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core.mixins import TenantMixin
+from core.serializers import CompanyScopedRelationsMixin
 
 from ..openapi_helpers import BOOL, INT, P, STR, corps
 from ..models import FavorisCatalogueAchat, Produit
 
 
-class CatalogueAchatSerializer(serializers.ModelSerializer):
+class CatalogueAchatSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
     """NTP2P3 — projection MINIMALE du produit pour un demandeur.
 
     Liste de champs volontairement FERMÉE (jamais ``prix_vente``, jamais
     ``tva``, jamais de champ dérivable en marge)."""
+    # ENF17 — ``categorie`` en lecture seule ; bornée société (mixin) si elle
+    # redevient inscriptible.
     categorie_nom = serializers.CharField(
         source='categorie.nom', read_only=True, default=None,
         allow_null=True)
@@ -81,7 +85,10 @@ class CatalogueAchatSerializer(serializers.ModelSerializer):
         return obj.prix_achat
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('q', STR, False, 'Recherche nom/SKU/catégorie'), P('categorie', INT), P('fournisseur', INT), P('recent', BOOL, False, 'Derniers produits demandés')]))
+@extend_schema_view(list=extend_schema(parameters=[P('q', STR, False, 'Recherche nom/SKU/catégorie'), P('categorie',
+                                                                                                        INT),
+                                                   P('fournisseur', INT), P('recent', BOOL, False,
+                                                                            'Derniers produits demandés')]))
 class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTP2P3 — catalogue d'achat en LECTURE SEULE, scopé société.
 
@@ -130,8 +137,16 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     # Garde EXPLICITE sur l'action (ratchet `test_action_permissions`) :
     # même palier que le viewset, mais déclaré ici pour qu'une action ne
     # puisse jamais hériter d'un palier par accident.
-    @extend_schema(methods=['GET'], responses=corps('CatalogueAchatFavorisReponse', epingles=serializers.ListField(child=serializers.IntegerField()), recents=serializers.ListField(child=serializers.IntegerField()), produit_ids=serializers.ListField(child=serializers.IntegerField())))
-    @extend_schema(methods=['PUT'], request=corps('CatalogueAchatFavorisCorps', produit_ids=serializers.ListField(child=serializers.IntegerField())), responses=corps('CatalogueAchatFavorisReponsePut', epingles=serializers.ListField(child=serializers.IntegerField()), recents=serializers.ListField(child=serializers.IntegerField()), produit_ids=serializers.ListField(child=serializers.IntegerField())))
+    @extend_schema(methods=['GET'], responses=corps('CatalogueAchatFavorisReponse',
+                                                    epingles=serializers.ListField(child=serializers.IntegerField()),
+                                                    recents=serializers.ListField(child=serializers.IntegerField()),
+                                                    produit_ids=serializers.ListField(child=serializers.IntegerField())))
+    @extend_schema(methods=['PUT'], request=corps('CatalogueAchatFavorisCorps',
+                                                  produit_ids=serializers.ListField(child=serializers.IntegerField())),
+                   responses=corps('CatalogueAchatFavorisReponsePut',
+                                   epingles=serializers.ListField(child=serializers.IntegerField()),
+                                   recents=serializers.ListField(child=serializers.IntegerField()),
+                                   produit_ids=serializers.ListField(child=serializers.IntegerField())))
     @action(detail=False, methods=['get', 'put'],
             permission_classes=[IsAnyRole])
     def favoris(self, request):

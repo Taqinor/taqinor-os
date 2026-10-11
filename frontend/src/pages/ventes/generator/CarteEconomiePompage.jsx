@@ -19,6 +19,7 @@ import {
 } from '../../../features/ventes/economiePompagePreviewPur'
 import { saisiesEconomiePompage } from '../../../features/ventes/quote/etudeMarcheBloc'
 import CarteEconomiePompageInterne from './CarteEconomiePompageInterne'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 const mad = (v) => `${formatNumber(v)} MAD`
 
@@ -136,7 +137,7 @@ export function CarteEconomiePompageVue({ reponse }) {
 /** La carte montée dans PanneauAgricole : corps → aperçu serveur → vue. */
 export default function CarteEconomiePompage({ eco, moisCalendrier, sortieEtude, lignes, majEco }) {
   const saisies = saisiesEconomiePompage(eco, {
-    moisCalendrier, aujourdhui: new Date().toISOString().slice(0, 10) })
+    moisCalendrier, aujourdhui: todayLocalIso() })
   const corps = construireCorpsEconomiePompage({ saisies, sortieEtude, lignes })
   const { donnees, erreur } = useEconomiePompageCarte(corps)
   return (

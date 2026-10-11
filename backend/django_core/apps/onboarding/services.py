@@ -38,7 +38,7 @@ DEFAULT_ITEMS = [
      ['Administrateur', 'Directeur'], '/stock', ''),
     ('import_clients', 'Importer vos clients', 20,
      [], '/crm/clients', ''),
-    ('premier_devis', 'Créer votre 1er devis', 30,
+    ('premier_devis', 'Envoyer votre 1er devis', 30,
      ['Commercial', 'Commercial responsable', 'Administrateur', 'Directeur'],
      '/ventes/devis/nouveau', 'devis'),
     ('premier_paiement', 'Encaisser votre 1er paiement', 40,

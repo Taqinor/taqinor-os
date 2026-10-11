@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: c68b50671f8f831c2665ec98b1b18590371881e0ff8b12b4567d01772a89a6d5
-Plan fingerprint: 473c5742416d536bb28ee7dc69757e35d5f3830db1ed1b0abf098baa661ff2c6
+Structure fingerprint: ba02b822124536c55c02dff0f50c4c9074de3b14648e543cc706f76f9b5d26c8
+Plan fingerprint: bac550c471360accf6a33fb2b0007a1e640c2d2d5c44be5f02b34539463304f4
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1173)**
+**Done (1175)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1183,6 +1183,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF24` — Seuil de couverture
 - `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
 - `ENF26` — ENF17 + ENF18, tranche des apps tenues (claims 10/10)
+- `ENF27` — ENF15 + ENF17 + ENF18, tranche des apps tenues par le poste laptop (claims 11/10 …
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1578,6 +1579,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
+- `QJR113` — [D-QJR113 = (a), Reda 11/10/2026 : ancre remplie — chantier D10 ouvert et livré dans…
 - `QJR500` — Contrat d'abord : un devis dit s'il est modifiable et révisable ; la ligne devis du…
 - `QJR501` — Contrat d'abord : la proposition publique dit qu'elle est remplacée et porte le texte…
 - `QJR502` — Contrat d'abord : aperçu WhatsApp multi-devis du lead, sans aucun effet
@@ -1751,7 +1753,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (126)**
+**Open — to build (125)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1843,7 +1845,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF19` — Duplicats (1 181) à zéro
 - `ENF20` — import-linter : `ignore_imports` (52) à zéro
 - `ENF21` — flake8 E501 bloquant
-- `ENF22` — `# noqa` (2 435) et `eslint-disable` (432) à zéro
+- `ENF22` — [D-ENF22-BLE001 = (a), Reda 11/10/2026 : exception signée pour les except larges qui…
 - `ENF23` — Tests sautés (178) à zéro
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
@@ -1871,7 +1873,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `PUB114` — [GATED: numéro dédié + coût télécom] Suivi d'appels par annonce + rappel SMS d'appel…
 - `PUB132` — [GATED: budget fondateur fal.ai ~50-150 MAD/mois] Adaptateur images fal.ai dans la…
 - `PUB133` — [GATED: budget fondateur json2video/Bannerbear ~200-500 MAD/mois] Pont template-vidéo
-- `QJR113` — [GATED: chantier séparé post-programme — décision fondateur D10 du 29/08] Moteur…
 - `QXG1` — [GATED: founder account]
 - `QXG2` — [GATED: founder account]
 - `QXG3` — [GATED: founder data]

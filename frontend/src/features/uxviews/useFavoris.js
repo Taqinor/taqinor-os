@@ -7,6 +7,7 @@
 // lui-même.
 import { useCallback, useEffect, useState } from 'react'
 import uxviewsApi from '../../api/uxviewsApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 
 function extractList(data) {
   return Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
@@ -20,8 +21,9 @@ export function useFavoris() {
   const refresh = useCallback(() => {
     setLoading(true)
     setError(null)
-    return uxviewsApi.listFavoris()
-      .then((res) => setFavoris(extractList(res.data)))
+    // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
+    return fetchAllPages((page, o) => uxviewsApi.listFavoris({ page, ...o }).then((r) => r?.data))
+      .then((data) => setFavoris(extractList(data)))
       .catch(() => setError('Impossible de charger les favoris.'))
       .finally(() => setLoading(false))
   }, [])

@@ -62,6 +62,7 @@ import IdentiteEntrepriseFields from '../../features/ventes/quote/IdentiteEntrep
 import {
   estDevisCi, corpsAcceptation, raisonSocialeConnue, ENTREPRISE_VIDE,
 } from '../../features/ventes/quote/acceptationEntreprise'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -403,7 +404,7 @@ export default function DevisList() {
   const openAcceptModal = (d) => {
     setAcceptTarget(d)
     setAcceptNom('')
-    setAcceptDate(new Date().toISOString().slice(0, 10))
+    setAcceptDate(todayLocalIso())
     setAcceptOption('sans_batterie')
     setAcceptEntreprise({ ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(d) })
     setAcceptBusy(false)

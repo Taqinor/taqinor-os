@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, Clock3, X } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 /* ============================================================================
    PUB48 — Centre de notifications persistant de la console (« cloche »).
@@ -42,9 +43,7 @@ function writeLastSeen(iso) {
 }
 
 function defaultSnoozeDate() {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
+  return todayLocalIso(new Date(Date.now() + 86400000))
 }
 
 export default function AlertCenter() {

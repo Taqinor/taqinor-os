@@ -279,7 +279,8 @@ def rattacher_aval_financier_revision(devis, *, user=None):
     from apps.ventes.models import (
         Avoir, BonCommande, Devis, Facture, FactureSource)
     from apps.ventes.selectors import devis_predecesseurs_revision_ids
-    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.company_settings import (
+        create_numbered, create_provisoire)
     from apps.ventes.utils.echeancier import (
         blended_tva_pct, factures_actives, next_tranche)
     from apps.ventes.utils.options import option_totaux
@@ -406,7 +407,8 @@ def rattacher_aval_financier_revision(devis, *, user=None):
                 montant_ht=montant_ht, montant_tva=montant_tva,
                 montant_ttc=montant_ttc, taux_tva=taux,
                 ventilation_tva=ventilation, created_by=user)
-        document = create_numbered(Facture, company, 'facture', _facture)
+        # ATOT27 — brouillon hors série ; numéro légal à l'émission.
+        document = create_provisoire(_facture)
         activity.log_devis_note(
             devis, user,
             f'Facture complémentaire {document.reference} (brouillon) : '

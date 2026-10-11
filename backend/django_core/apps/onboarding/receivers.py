@@ -60,10 +60,10 @@ def _complete_on_devis_accepted(sender, devis, user, ancien_statut, **kwargs):
 
 
 @receiver(facture_payee, dispatch_uid='onboarding_complete_paiement_on_payee')
-def _complete_on_facture_payee(sender, instance, company, **kwargs):
-    # ``facture_payee`` ne porte pas d'utilisateur : on attribue au créateur de
-    # la facture (best-effort).
-    user = getattr(instance, 'created_by', None)
+def _complete_on_facture_payee(sender, instance, company, user=None, **kwargs):
+    # APAR52 — l'item est crédité à l'utilisateur qui ENCAISSE ; repli sur le
+    # créateur de la facture (paiement public par lien, sans utilisateur).
+    user = user or getattr(instance, 'created_by', None)
     _safe_complete('paiement', company, user)
 
 

@@ -2,16 +2,16 @@ from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import ENTITE, qint, qstr
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
-from django.db import transaction  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
-from django.utils import timezone  # noqa: F401
+from django.db import transaction
+from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from . import openapi_docs as D
 from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.exceptions import ValidationError  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, mouvement_type_entree, record_stock_movement,
 )
@@ -36,8 +36,8 @@ from ..serializers_facturation import (  # noqa: F401
     NoteDebitSerializer,
     RelanceLogSerializer,
 )
-from rest_framework.permissions import BasePermission  # noqa: F401
-from authentication.permissions import (  # noqa: F401
+from rest_framework.permissions import BasePermission
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
@@ -48,7 +48,7 @@ from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from ..utils.company_settings import create_numbered, create_provisoire
 #: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
 #: (Administrateur, Directeur, Commercial et Commercial responsable par
 #: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
@@ -327,8 +327,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE):
             save_kwargs['revue_statut'] = Facture.RevueStatut.A_VALIDER
 
-        create_numbered(
-            Facture, company, 'facture',
+        # ATOT27 (D-ATOT-5) — brouillon hors série : « BROUILLON-<id> ».
+        create_provisoire(
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
 
@@ -1834,7 +1834,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reste indicative tant que non facturée — cette action la matérialise
         volontairement en un nouveau document, séparé)."""
         from decimal import Decimal
-        from ..utils.company_settings import create_numbered
 
         facture = self.get_object()
         # AFAC24 (C-AFAC-040, base) — UNE formule : la pénalité facturée est
@@ -1901,8 +1900,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         liaison.facture_penalite.statut != \
                         Facture.Statut.ANNULEE:
                     return _deja_facturee(liaison)
-                facture_penalite = create_numbered(
-                    Facture, facture.company, 'facture', _create)
+                facture_penalite = create_provisoire(  # ATOT27
+                    _create)
                 emettre_facture(
                     facture_penalite, user=request.user,
                     source='penalites_retard')

@@ -908,7 +908,7 @@ function ChampsSignatureEditor({ demande }) {
 
   useEffect(() => {
     if (!demande?.id) return
-    gedApi.getChampsSignature({ demande: demande.id })
+    toutesLesPages(gedApi.getChampsSignature, { demande: demande.id })
       .then((res) => setChamps(unpage(res.data)))
       .catch(() => {})
   }, [demande?.id])

@@ -137,7 +137,12 @@ class ControleReceptionActionsMixin:
                          if controle else None),
         })
 
-    @extend_schema(request=inline_serializer('ControleQualiteCorps', {'resultat': serializers.ChoiceField(choices=['conforme', 'non_conforme']), 'unites_controlees': serializers.IntegerField(required=False), 'observation': serializers.CharField(required=False, allow_blank=True)}), responses={
+    @extend_schema(request=inline_serializer('ControleQualiteCorps',
+                                             {'resultat': serializers.ChoiceField(choices=['conforme',
+                                                                                           'non_conforme']),
+                                              'unites_controlees': serializers.IntegerField(required=False),
+                                              'observation': serializers.CharField(required=False, allow_blank=True)}),
+                   responses={
         200: ControleReceptionSerializer,
     })
     @action(detail=True, methods=['post'], url_path='controle-qualite',

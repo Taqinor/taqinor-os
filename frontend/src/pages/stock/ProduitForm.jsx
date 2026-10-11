@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Plus, X, Star, Trash2, Pencil, ImagePlus } from 'lucide-react'
 import {
@@ -206,9 +206,9 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
   // NTSCM26 — coût total d'acquisition par fournisseur (colonne additionnelle).
   const [tco, setTco] = useState([])
 
-  const load = () => stockApi.getProduitPrixFournisseurs(produitId)
-    .then((r) => setRows(r.data ?? [])).catch(() => {})
-  useEffect(() => { load() }, [produitId])  // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => stockApi.getProduitPrixFournisseurs(produitId)
+    .then((r) => setRows(r.data ?? [])).catch(() => {}), [produitId])
+  useEffect(() => { load() }, [load])
 
   const comparer = () => {
     setComparBusy(true); setError(null)

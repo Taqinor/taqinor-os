@@ -1,4 +1,6 @@
 """Tests apps.adminops (NTADM5/10-17/33/34/36/38)."""
+from types import SimpleNamespace
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -228,3 +230,36 @@ class EnfSchemaValidationTests(TestCase):
         resp = self.client_api.get(
             '/api/django/adminops/adoption/?periode=abc')
         self.assertEqual(resp.status_code, 400)
+
+
+class Enf17FkLectureSeuleTests(TestCase):
+    """ENF17 — FK des sérialiseurs console en lecture seule : un id d'une
+    autre société posté n'est jamais écrit (bornées si redevenues écrivables)."""
+
+    def test_fk_etrangere_jamais_ecrite(self):
+        from apps.roles.models import Role
+
+        from ..serializers import (
+            AnnonceProduitSerializer, DemandeInscriptionSerializer,
+            SandboxEnvironmentSerializer, SessionImpersonationSerializer,
+        )
+        admin = _admin(_company('Enf17A'), 'enf17_admin_a')
+        autre_co = _company('Enf17B')
+        etranger = _admin(autre_co, 'enf17_admin_b')
+        role_b = Role.objects.create(company=autre_co, nom='Enf17 B')
+        ctx = {'request': SimpleNamespace(user=admin)}
+        cas = (
+            (DemandeInscriptionSerializer, 'traite_par', etranger.pk),
+            (AnnonceProduitSerializer, 'auteur', etranger.pk),
+            (AnnonceProduitSerializer, 'cible_roles', [role_b.pk]),
+            (SessionImpersonationSerializer, 'utilisateur_cible', etranger.pk),
+            (SessionImpersonationSerializer, 'initiee_par', etranger.pk),
+            (SessionImpersonationSerializer, 'consentement_par', etranger.pk),
+            (SandboxEnvironmentSerializer, 'cree_par', etranger.pk),
+        )
+        for cls, champ, valeur in cas:
+            with self.subTest(serializer=cls.__name__, champ=champ):
+                ser = cls(data={champ: valeur}, partial=True, context=ctx)
+                self.assertTrue(ser.is_valid(), ser.errors)
+                self.assertNotIn(champ, ser.validated_data)
+                self.assertIn(champ, cls.same_company_fields)

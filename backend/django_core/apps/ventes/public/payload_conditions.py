@@ -139,6 +139,24 @@ def _conditions_publiques(data, devis=None):
         return None
 
 
+def _conditions_titre_publique(data):
+    """APDF19 (C-APDF-005) — le titre que le PDF de CE devis imprime au-dessus
+    des puces de :func:`_conditions_publiques` : ``cgv_imprimees(data)["titre"]``
+    (titre de la variante C&I gelée ou vive, sinon surcharge société, sinon
+    celui du moteur dans la langue du document), dé-échappé pour le JSON.
+
+    Clé ADDITIVE ``conditions_titre``, posée avec ``conditions`` seulement :
+    toujours un texte, jamais ``null`` (le moteur rend toujours un titre, au
+    pire le sien ; une lecture impossible rend ``''``). Lecture seule
+    (règle #4)."""
+    import html as _html
+    try:
+        from ..quote_engine.clauses_cgv import cgv_imprimees
+        return _html.unescape(str(cgv_imprimees(data or {})["titre"])).strip()
+    except Exception:  # noqa: BLE001 — best-effort
+        return ''
+
+
 def _date_validite_publique(devis):
     """PREVIEW-V3 — échéance RÉELLE du devis en ISO, ou ``None``.
 

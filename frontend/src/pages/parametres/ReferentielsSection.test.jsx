@@ -80,4 +80,25 @@ describe('WIR66 ReferentielsSection', () => {
       expect(parametresApi.createUniteMesure).toHaveBeenCalledWith(
         { code: 'kg', libelle: 'Kilogramme' }))
   })
+
+  it('lit TOUTES les pages des trois référentiels (51 objets ⇒ le 51e est affiché)', async () => {
+    const pagine = (fabrique) => async ({ page = 1 } = {}) => {
+      const tout = Array.from({ length: 51 }, (_, i) => fabrique(i + 1))
+      return { data: {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      } }
+    }
+    parametresApi.getTauxTva.mockImplementation(pagine((n) => ({
+      id: n, code: `t${n}`, libelle: `Taux ${n}`, taux: '1', defaut: false, actif: true })))
+    parametresApi.getConditionsPaiement.mockImplementation(pagine((n) => ({
+      id: n, libelle: `Cond ${n}`, delai_jours: 0, fin_de_mois: false, escompte_pct: '0', actif: true })))
+    parametresApi.getUnitesMesure.mockImplementation(pagine((n) => ({
+      id: n, code: `u${n}`, libelle: `Unité ${n}`, actif: true })))
+    await renderSection()
+    expect(await screen.findByText('Taux 51')).toBeInTheDocument()
+    expect(await screen.findByText('Cond 51')).toBeInTheDocument()
+    expect(await screen.findByText('Unité 51')).toBeInTheDocument()
+  })
 })

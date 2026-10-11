@@ -172,6 +172,20 @@ class TestEmplacementApi(EmplacementBase):
         total = sum(b['quantite'] for b in r.json())
         self.assertEqual(total, 10)
 
+    def test_lectures_declarees_admin_refusees_a_un_commercial(self):
+        # ENF15 — `emplacements` (produit) et `van-stock/a-reapprovisionner`
+        # DÉCLARENT IsAdminRole, la règle réelle : un Commercial reçoit le 403
+        # de cette permission déclarée (garde ASTK243 du balayage stock).
+        commercial = User.objects.create_user(
+            username='emp_commercial', password='x', role_legacy='commercial',
+            company=self.company)
+        api = auth(commercial)
+        r = api.get(
+            f'/api/django/stock/produits/{self.produit.id}/emplacements/')
+        self.assertEqual(r.status_code, 403)
+        r = api.get('/api/django/stock/emplacements/van-stock/a-reapprovisionner/')
+        self.assertEqual(r.status_code, 403)
+
     def test_transfert_endpoint(self):
         ensure_emplacements(self.company)
         principal = EmplacementStock.objects.get(

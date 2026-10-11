@@ -103,6 +103,7 @@ export default function ExplorateurDonneesPage() {
 
   const chargerRequetes = useCallback(async () => {
     try {
+      // Liste NON paginée côté serveur (SavedQueryViewSet.pagination_class = None).
       const res = await coreApi.savedQueries.list()
       setRequetes(listeDe(res?.data))
     } catch {

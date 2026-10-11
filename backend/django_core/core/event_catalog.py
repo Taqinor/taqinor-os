@@ -155,8 +155,8 @@ CATALOG = {
         'Une facture est émise.',
         ['instance', 'company']),
     'facture_payee': _e(
-        'Une facture est réglée.',
-        ['instance', 'company']),
+        'Une facture est réglée (``user`` optionnel : qui encaisse, APAR52).',
+        ['instance', 'company', 'user']),
     'facture_annulee': _e(
         'Une facture est annulée.',
         ['instance', 'company']),

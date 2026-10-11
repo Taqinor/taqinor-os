@@ -29,7 +29,6 @@
 # apps.)
 crm.detecter_comptes_dormants    # non planifié
 parametres.purge_audit_retention    # non planifié
-publicapi.retry_webhook_deliveries    # non planifié
 # AUD730 — `rh.accruer_conges` est retirée de cette dette : la commande est
 # désormais RÉELLEMENT planifiée (tâche `rh.accruer_conges`, beat
 # `rh-accruer-conges-mensuel`, le 1er de chaque mois).

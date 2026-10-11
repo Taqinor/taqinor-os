@@ -2,15 +2,21 @@ from typing import Optional
 
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import ElementSupprime
 
 
-class ElementSupprimeSerializer(serializers.ModelSerializer):
+class ElementSupprimeSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """Journal de corbeille — LECTURE SEULE de bout en bout.
 
     Une entrée n'est jamais créée ni éditée depuis l'API : elle naît de
     l'événement `record_soft_deleted` et se ferme par l'action `restaurer/`.
     """
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('supprime_par',)
 
     supprime_par_nom = serializers.SerializerMethodField()
     # Clé du modèle cible (ex. `crm.lead`) : permet à l'écran de router vers le

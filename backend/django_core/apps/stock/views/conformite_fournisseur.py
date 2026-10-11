@@ -1,9 +1,9 @@
 from django.db import transaction  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
-from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from ..openapi_helpers import INT, OBJET, P, PID, STR
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
@@ -62,7 +62,8 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
 
 @extend_schema_view(
     list=extend_schema(responses=AchatsParametresSerializer),
-    partial_update=extend_schema(parameters=[PID], request=AchatsParametresSerializer, responses=AchatsParametresSerializer))
+    partial_update=extend_schema(parameters=[PID], request=AchatsParametresSerializer,
+                                 responses=AchatsParametresSerializer))
 class AchatsParametresViewSet(viewsets.ViewSet):
     """XPUR1 — paramètres achats de la société connectée (singleton par
     company). GET renvoie (en le créant si besoin) le réglage courant ; PATCH

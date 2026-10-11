@@ -28,7 +28,10 @@ def _int_param(value, defaut=None):
         return defaut
 
 
-@extend_schema(parameters=[P('emplacement', INT), P('horizon_peremption', INT, False, 'Horizon de péremption (jours, défaut 30)'), P('retard_heures', INT, False, 'Seuil de retard (heures, défaut 24)')], responses={
+@extend_schema(parameters=[P('emplacement', INT), P('horizon_peremption', INT, False,
+                                                    'Horizon de péremption (jours, défaut 30)'), P('retard_heures',
+                                                                                                   INT, False,
+                                                                                                   'Seuil de retard (heures, défaut 24)')], responses={
     200: inline_serializer('StockEntrepotCockpit', {
         'date': serializers.CharField(),
         'zones': serializers.ListField(child=serializers.DictField()),
@@ -69,7 +72,9 @@ def entrepot_cockpit_view(request):
     ))
 
 
-@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers'), P('quantite', INT, False, 'Quantité supplémentaire'), P('produit', INT), P('emplacement', INT)], responses={
+@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers'), P('quantite', INT, False,
+                                                                      'Quantité supplémentaire'), P('produit', INT),
+                           P('emplacement', INT)], responses={
     200: inline_serializer('StockSimulationCapacite', {
         'zone': serializers.CharField(),
         'produit': serializers.IntegerField(allow_null=True),

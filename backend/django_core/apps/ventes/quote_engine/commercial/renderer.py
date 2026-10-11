@@ -129,8 +129,9 @@ def _augment(data: dict) -> dict:
     d["com_economies"] = chiffres["economie_annuelle_mad"]
     d["com_economie_base"] = chiffres["base_economie"]
     d["com_payback"] = chiffres["payback_ans"]
-
-    d["site_url"] = d.get("site_url") or "taqinor.ma"
+    # ERR-APDF-CI-PIED-TAQINOR-MA — aucun repli « taqinor.ma » posé ici : le
+    # pied lit le site par ``theme.company_identity`` (site de la société,
+    # sinon rien ; TAQINOR seulement sans aucun profil — APDF5).
     return d
 
 

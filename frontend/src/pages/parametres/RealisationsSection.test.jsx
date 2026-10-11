@@ -184,4 +184,20 @@ describe('RealisationsSection', () => {
     expect(envoye).not.toHaveProperty('puissance_kwc')
     expect(envoye).not.toHaveProperty('mise_en_service')
   })
+
+  it('lit TOUTES les pages du catalogue (51 objets ⇒ la 51e est affichée)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({
+      id: 500 + i, titre: `Réal ${i + 1}`, ville: 'Rabat', puissance_kwc: null,
+      mise_en_service: null, url_page: `https://exemple.ma/r/${i + 1}/`, lien_suivi: '', actif: true,
+    }))
+    parametresApi.getRealisations.mockImplementation(async ({ page = 1 } = {}) => ({
+      data: {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      },
+    }))
+    await renderSection()
+    expect(await screen.findByText('Réal 51')).toBeInTheDocument()
+  })
 })
