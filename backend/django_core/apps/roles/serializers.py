@@ -1,4 +1,7 @@
 from rest_framework import serializers
+
+from core.champs_stricts import ChaineStricte
+
 from .models import Role
 from .permissions_registre import (
     ALL_PERMISSIONS,
@@ -10,6 +13,9 @@ from drf_spectacular.utils import extend_schema_field, inline_serializer
 
 
 class RoleSerializer(serializers.ModelSerializer):
+    # ENF11 — liste de codes TEXTE déclarée au schéma : `null`, un objet ou un
+    # code non texte répondent 400 (le JSONField du modèle acceptait tout).
+    permissions = serializers.ListField(child=ChaineStricte(), required=False)
     users_count = serializers.SerializerMethodField()
     # Liste légère des utilisateurs portant ce rôle (id + nom d'affichage), pour
     # l'expansion « Utilisateurs » dans l'éditeur de rôles (Feature RBAC).

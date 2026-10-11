@@ -150,6 +150,21 @@ class RolesRbacTest(TestCase):
             sorted(new_value['ajoutees']), ['stock_creer', 'stock_voir'])
         self.assertEqual(new_value['retirees'], [])
 
+    def test_permissions_liste_de_textes_sinon_400(self):
+        # ENF11 — `permissions` null / objet / texte / code non texte : 400
+        # qui nomme le champ ; le rôle n'est pas modifié.
+        role = Role.objects.create(
+            company=self.company, nom='Strict', permissions=['stock_voir'])
+        url = f'/api/django/roles/{role.id}/'
+        for mauvais in (None, {}, 'stock_voir', [1], [None]):
+            for methode in (self.api.patch, self.api.put):
+                resp = methode(url, {'nom': 'Strict', 'permissions': mauvais},
+                               format='json')
+                self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+                self.assertIn('permissions', resp.data)
+        role.refresh_from_db()
+        self.assertEqual(role.permissions, ['stock_voir'])
+
     def test_company_is_forced_server_side_on_create(self):
         other = Company.objects.create(nom='Autre', slug='autre-co')
         resp = self.api.post(
