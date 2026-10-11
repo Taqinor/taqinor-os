@@ -18,7 +18,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services
+from apps.crm import horaires, cadence_visite
 from apps.crm.cadence_config import (
     CLE_APPEL_APRES_REPONSE, CLE_DEVIS, CLE_PLANIFIER, cle_de)
 from apps.crm.devis_auto import releve_eau_manquant
@@ -120,8 +120,8 @@ class SuiteApresAppel(_Base):
     def test_d_avertissement_celui_d_agr408(self):
         lead = self._lead(type_installation='agricole')
         self._joint_au_premier_appel(lead)
-        texte = services.avertissement_visite(lead)['avertissement_sans_devis']
-        self.assertEqual(texte, services.AVERTISSEMENT_VISITE_POINT_EAU)
+        texte = cadence_visite.avertissement_visite(lead)['avertissement_sans_devis']
+        self.assertEqual(texte, cadence_visite.AVERTISSEMENT_VISITE_POINT_EAU)
         self.assertNotIn('APRÈS le devis', texte)
 
     def test_visite_refusee_la_reprise_pose_le_devis(self):

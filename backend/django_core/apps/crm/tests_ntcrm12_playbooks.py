@@ -8,7 +8,7 @@ from apps.crm import stages
 from apps.crm.models import (
     Lead, LeadPlaybookProgress, Playbook, PlaybookEtape, PlaybookTache,
 )
-from apps.crm.services import generer_playbook_progress
+from apps.crm.fiche_funnel import generer_playbook_progress
 from apps.roles.models import Role
 
 User = get_user_model()
@@ -76,7 +76,7 @@ class PlaybookEndToEndApiTests(TestCase):
 
     def test_changement_stage_via_api_genere_puis_cocher_tache(self):
         resp = self.client_api.patch(
-            f'/api/django/crm/leads/{self.lead.pk}/', {'stage': stages.QUOTE_SENT})
+            f'/api/django/crm/leads/{self.lead.pk}/', {'stage': stages.QUOTE_SENT}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
         resp = self.client_api.get(
@@ -88,7 +88,7 @@ class PlaybookEndToEndApiTests(TestCase):
 
         resp = self.client_api.post(
             f'/api/django/crm/leads/{self.lead.pk}/playbook/',
-            {'tache': self.tache.pk, 'fait': True})
+            {'tache': self.tache.pk, 'fait': True}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         progress = LeadPlaybookProgress.objects.get(pk=progress_id)
         self.assertTrue(progress.fait)
@@ -101,7 +101,7 @@ class PlaybookEndToEndApiTests(TestCase):
         # RETIRÉ (personne ne le lisait, il ne bloquait donc rien) ; c'est
         # désormais la seule règle, sans exception configurable.
         resp = self.client_api.patch(
-            f'/api/django/crm/leads/{self.lead.pk}/', {'stage': stages.QUOTE_SENT})
+            f'/api/django/crm/leads/{self.lead.pk}/', {'stage': stages.QUOTE_SENT}, format='json')
         self.assertEqual(resp.status_code, 200)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
@@ -169,7 +169,7 @@ class PlaybookEnfantsScopeTests(TestCase):
 
     def test_patch_etape_fonctionne(self):
         resp = self.api.patch(
-            f'/api/django/crm/playbook-etapes/{self.etape.pk}/', {'ordre': 5})
+            f'/api/django/crm/playbook-etapes/{self.etape.pk}/', {'ordre': 5}, format='json')
         self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
         self.etape.refresh_from_db()
         self.assertEqual(self.etape.ordre, 5)
@@ -177,7 +177,7 @@ class PlaybookEnfantsScopeTests(TestCase):
     def test_patch_tache_fonctionne(self):
         resp = self.api.patch(
             f'/api/django/crm/playbook-taches/{self.tache.pk}/',
-            {'libelle': 'Rappeler'})
+            {'libelle': 'Rappeler'}, format='json')
         self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
         self.tache.refresh_from_db()
         self.assertEqual(self.tache.libelle, 'Rappeler')
@@ -194,7 +194,7 @@ class PlaybookEnfantsScopeTests(TestCase):
     def test_etape_autre_societe_invisible_et_non_modifiable(self):
         url = f'/api/django/crm/playbook-etapes/{self.etape_autre.pk}/'
         self.assertEqual(self.api.get(url).status_code, 404)
-        self.assertEqual(self.api.patch(url, {'ordre': 9}).status_code, 404)
+        self.assertEqual(self.api.patch(url, {'ordre': 9}, format='json').status_code, 404)
         self.assertEqual(self.api.delete(url).status_code, 404)
         self.etape_autre.refresh_from_db()
         self.assertEqual(self.etape_autre.ordre, 1)
@@ -203,7 +203,7 @@ class PlaybookEnfantsScopeTests(TestCase):
         url = f'/api/django/crm/playbook-taches/{self.tache_autre.pk}/'
         self.assertEqual(self.api.get(url).status_code, 404)
         self.assertEqual(
-            self.api.patch(url, {'libelle': 'Piratée'}).status_code, 404)
+            self.api.patch(url, {'libelle': 'Piratée'}, format='json').status_code, 404)
         self.assertEqual(self.api.delete(url).status_code, 404)
         self.tache_autre.refresh_from_db()
         self.assertEqual(self.tache_autre.libelle, 'Voisine')
@@ -214,7 +214,7 @@ class PlaybookEnfantsScopeTests(TestCase):
         resp = self.api.post('/api/django/crm/playbook-etapes/', {
             'playbook': self.playbook_autre.pk,
             'stage': stages.FOLLOW_UP, 'ordre': 2,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
         # Le refus vient bien de la garde de parent (et non d'une unicité
         # fortuite) : le couple (playbook voisin, FOLLOW_UP) n'existe pas.
@@ -226,7 +226,7 @@ class PlaybookEnfantsScopeTests(TestCase):
     def test_creation_tache_sur_etape_etrangere_refusee(self):
         resp = self.api.post('/api/django/crm/playbook-taches/', {
             'etape': self.etape_autre.pk, 'libelle': 'Injectée', 'ordre': 2,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
         self.assertIn('etape', resp.data)
         self.assertFalse(
@@ -238,7 +238,7 @@ class PlaybookEnfantsScopeTests(TestCase):
         # parent qui refuse.
         resp = self.api.patch(
             f'/api/django/crm/playbook-etapes/{self.etape.pk}/',
-            {'playbook': self.playbook_autre.pk, 'stage': stages.SIGNED})
+            {'playbook': self.playbook_autre.pk, 'stage': stages.SIGNED}, format='json')
         self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
         self.assertIn('playbook', resp.data)
         self.etape.refresh_from_db()
@@ -249,10 +249,10 @@ class PlaybookEnfantsScopeTests(TestCase):
         resp = self.api.post('/api/django/crm/playbook-etapes/', {
             'playbook': self.playbook.pk,
             'stage': stages.FOLLOW_UP, 'ordre': 2,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, getattr(resp, 'data', resp))
         etape_id = resp.data['id']
         resp = self.api.post('/api/django/crm/playbook-taches/', {
             'etape': etape_id, 'libelle': 'Relancer', 'ordre': 1,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, getattr(resp, 'data', resp))

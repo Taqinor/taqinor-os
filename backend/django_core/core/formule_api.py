@@ -33,6 +33,7 @@ sur les CHAMPS BRUTS de chaque ligne ; avec eux, sur les alias d'agrégats
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -60,21 +61,27 @@ def _limite(brut):
 class FormuleTestView(APIView):
     """Banc d'essai d'une expression sur des données réelles (lecture seule)."""
 
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAnyRole]
 
     @extend_schema(
         request=inline_serializer('FormuleTestRequete', {
             'expression': drf_serializers.CharField(),
             'dataset': drf_serializers.CharField(),
-            'filtres': drf_serializers.JSONField(required=False),
+            'filtres': drf_serializers.DictField(required=False),
             'limite': drf_serializers.IntegerField(required=False),
-            'group_by': drf_serializers.JSONField(required=False),
-            'agregats': drf_serializers.JSONField(required=False),
+            'group_by': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
+            'agregats': drf_serializers.ListField(
+                child=drf_serializers.DictField(), required=False),
         }),
         responses=inline_serializer('FormuleTestReponse', {
             'dataset': drf_serializers.CharField(),
             'expression': drf_serializers.CharField(),
+            'colonnes': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
             'lignes': drf_serializers.JSONField(),
+            'detail': drf_serializers.CharField(required=False),
         }))
     def post(self, request):
         from core import data_explorer
@@ -197,16 +204,20 @@ class FormuleValiderView(APIView):
     mesure formule de pivot — un seul moteur de validation, jamais dupliqué.
     """
 
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAnyRole]
 
     @extend_schema(
         request=inline_serializer('FormuleValiderRequete', {
-            'expression': drf_serializers.CharField(),
-            'variables': drf_serializers.JSONField(required=False),
+            # Absente : le serveur répond 200 {ok: false} (dry-run).
+            'expression': drf_serializers.CharField(required=False),
+            'variables': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
         }),
         responses=inline_serializer('FormuleValiderReponse', {
             'ok': drf_serializers.BooleanField(),
-            'erreur': drf_serializers.CharField(),
+            'erreur': drf_serializers.CharField(
+                allow_null=True, allow_blank=True),
         }))
     def post(self, request):
         from core.formula import valider_formule

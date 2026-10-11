@@ -1,9 +1,14 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from rest_framework import serializers
+from ..openapi_helpers import PTOKEN, BINARY, DATE, INT, LISTE, OBJET, P, STR, XLSX, corps
+from ..serializers import PortailFournisseurTokenSerializer  # noqa: E402
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -66,6 +71,7 @@ def parse_bool_strict(valeur):
 from .fournisseur_scm import ScmFournisseurActionsMixin  # noqa: E402
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('categorie', INT, False, 'Catégorie fournisseur (id)'), P('show_archived', STR, False, 'true pour inclure les archivés', ['true', 'false'])]))
 class FournisseurViewSet(ScmFournisseurActionsMixin,
                          CompanyScopedModelViewSet):
     queryset = Fournisseur.objects.all()
@@ -75,6 +81,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     ordering = ['nom']
     # YAPIC2 — whitelist explicite (jamais '__all__').
     ordering_fields = ['nom', 'type', 'statut', 'email']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -189,6 +197,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                 status=status.HTTP_200_OK,
             )
 
+    @extend_schema(request=None, responses=FournisseurSerializer)
     @action(detail=True, methods=['patch'], url_path='unarchive')
     def unarchive(self, request, *args, **kwargs):
         """Remet un fournisseur archivé en service (l'archivage est
@@ -203,6 +212,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         fournisseur.save(update_fields=['is_archived'])
         return Response(self.get_serializer(fournisseur).data)
 
+    @extend_schema(request=None, responses=OBJET)
     @action(detail=True, methods=['delete'], url_path='force-delete')
     def force_delete(self, request, *args, **kwargs):
         """Suppression DÉFINITIVE d'un fournisseur déjà archivé (rôle Admin).
@@ -306,6 +316,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
             pass
 
+    @extend_schema(request=corps('FournisseurDeciderCandidatureCorps', valider=serializers.BooleanField()), responses=corps('FournisseurDeciderCandidatureReponse', id=serializers.IntegerField(), statut_validation=serializers.CharField()))
     @action(detail=True, methods=['post'], url_path='decider-candidature',
             permission_classes=[IsAdminRole])
     def decider_candidature(self, request, *args, **kwargs):
@@ -331,6 +342,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'statut_validation': fournisseur.statut_validation,
         })
 
+    @extend_schema(request=None, responses={200: OBJET, 201: OBJET})
     @action(detail=True, methods=['post'], url_path='provisionner-acces',
             permission_classes=[IsAdminRole])
     def provisionner_acces_portail(self, request, *args, **kwargs):
@@ -364,6 +376,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             },
             status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
 
+    @extend_schema(request=None, responses=OBJET)
     @action(detail=True, methods=['post'], url_path='revoquer-acces',
             permission_classes=[IsAdminRole])
     def revoquer_acces_portail(self, request, *args, **kwargs):
@@ -387,6 +400,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'detail': "L'accès portail de ce fournisseur est fermé.",
         })
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='performance',
             permission_classes=[HasPermissionOrLegacy('stock_voir')])
     def performance(self, request, *args, **kwargs):
@@ -401,6 +415,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             donnees.pop('total_achats_ht', None)
         return Response(donnees)
 
+    @extend_schema(methods=['GET'], responses=PortailFournisseurTokenSerializer(many=True))
+    @extend_schema(methods=['POST'], request=None, responses={201: PortailFournisseurTokenSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='portail-tokens',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def portail_tokens(self, request, *args, **kwargs):
@@ -421,6 +437,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             PortailFournisseurTokenSerializer(token_obj).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(parameters=[PTOKEN], request=None, responses=PortailFournisseurTokenSerializer)
     @action(detail=True, methods=['post'],
             url_path='portail-tokens/(?P<token_id>[^/.]+)/revoquer',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
@@ -441,6 +458,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         revoquer_token_portail_fournisseur(token_obj)
         return Response(PortailFournisseurTokenSerializer(token_obj).data)
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'])
     def onboarding(self, request, *args, **kwargs):
         """NTP2P7 — dossier d'entrée en relation de CE fournisseur.
@@ -470,6 +488,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'progression': stock_selectors.progression_onboarding(dossier),
         })
 
+    @extend_schema(parameters=[P('debut', DATE), P('fin', DATE), P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='export-conformite')
     def export_conformite(self, request):
         """NTP2P19 — audit achats : conformité par fournisseur actif.
@@ -528,6 +547,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'conformite-fournisseurs.xlsx', entetes, corps,
             sheet_title='Conformité fournisseurs')
 
+    @extend_schema(parameters=[P('within', INT, False, 'Horizon en jours (défaut 30)')], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='documents-expirants')
     def documents_expirants(self, request):
         """NTP2P20 — pièces d'onboarding (NTP2P7) expirant dans
@@ -540,6 +560,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         return Response(stock_selectors.documents_fournisseur_expirant(
             request.user.company, within_days=within))
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='score-risque')
     def score_risque(self, request, *args, **kwargs):
         """NTP2P8 — score de risque 0-100 (100 = risque nul) + facteurs.
@@ -558,6 +579,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                             status=status.HTTP_404_NOT_FOUND)
         return Response(resultat)
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='vue-360')
     def vue_360(self, request, *args, **kwargs):
         """XPUR25/WIR27 — agrégat fiche fournisseur 360 : BCF ouverts/en
@@ -666,6 +688,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         return Response(donnees)
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT)]))
 class ContactFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR5 — contacts secondaires d'un fournisseur (N par fournisseur)."""
     queryset = ContactFournisseur.objects.select_related('fournisseur').all()
@@ -674,6 +697,8 @@ class ContactFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['fournisseur_id', 'nom']
     # YAPIC2 — whitelist explicite (jamais '__all__').
     ordering_fields = ['fournisseur_id', 'nom', 'fonction']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

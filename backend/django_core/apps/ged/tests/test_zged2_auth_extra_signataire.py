@@ -177,21 +177,21 @@ class OtpViewTests(ZGed2Base):
         with mock.patch('core.sms.send_sms', side_effect=_fake_send):
             resp = self.client.post(
                 f'/api/django/ged/signataire/{signataire.token}/',
-                {'action': 'envoyer-code'}, format='json')
+                {'action': 'envoyer-code'}, content_type='application/json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(resp.data['envoye'])
         code = captured['message'].split(':')[-1].strip()
 
         resp2 = self.client.post(
             f'/api/django/ged/signataire/{signataire.token}/',
-            {'action': 'valider-code', 'code': code}, format='json')
+            {'action': 'valider-code', 'code': code}, content_type='application/json')
         self.assertEqual(resp2.status_code, 200, resp2.data)
         self.assertFalse(resp2.data['otp_requis'])
 
         resp3 = self.client.post(
             f'/api/django/ged/signataire/{signataire.token}/',
             {'action': 'signer', 'consentement': True,
-             'signature_texte': 'Client A'}, format='json')
+             'signature_texte': 'Client A'}, content_type='application/json')
         self.assertEqual(resp3.status_code, 200, resp3.data)
         self.assertEqual(resp3.data['statut'], 'signe')
 
@@ -201,9 +201,9 @@ class OtpViewTests(ZGed2Base):
                 'core.sms.send_sms', return_value=_FakeSmsResult(True)):
             self.client.post(
                 f'/api/django/ged/signataire/{signataire.token}/',
-                {'action': 'envoyer-code'}, format='json')
+                {'action': 'envoyer-code'}, content_type='application/json')
         resp = self.client.post(
             f'/api/django/ged/signataire/{signataire.token}/',
             {'action': 'signer', 'consentement': True,
-             'signature_texte': 'Client A'}, format='json')
+             'signature_texte': 'Client A'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)

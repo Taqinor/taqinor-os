@@ -24,7 +24,7 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import initialiser_plan_relance
+from apps.crm.cadence_plan import initialiser_plan_relance
 from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.roles.models import Role
 from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
@@ -93,7 +93,7 @@ class CadenceFinAmbigueTests(TestCase):
             ordre=suivant.ordre).exists())
 
     def test_exception_ne_parque_pas(self):
-        with patch('apps.crm.services._materialiser_touche_suivante',
+        with patch('apps.crm.cadence_plan._materialiser_touche_suivante',
                    side_effect=RuntimeError('panne déclarée')):
             self._fait()
         self._assert_pas_parque()

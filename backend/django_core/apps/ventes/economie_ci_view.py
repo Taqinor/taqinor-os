@@ -27,7 +27,8 @@ from authentication.permissions import IsAnyRole
 #: Forme documentée (PACT7 — jamais un « object » vide) : les clés de
 #: ``exemple`` du contrat ``contract_samples/economie_ci.json``.
 EconomieCiResponse = inline_serializer('EconomieCiResponse', {
-    cle: serializers.JSONField(allow_null=True) for cle in (
+    cle: serializers.JSONField(allow_null=True, required=False)
+    for cle in (
         'statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
         'economie_annee1', 'facture_avant', 'facture_apres', 'revente',
         'flux_ht', 'flux_ttc', 'jalons', 'jalons_ttc', 'indicateurs',

@@ -1,3 +1,4 @@
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
 
 from core.viewsets import CompanyScopedModelViewSet
@@ -21,6 +22,8 @@ class NomenclatureCodeBarresViewSet(CompanyScopedModelViewSet):
     sensible : une règle mal formée peut mal router un scan)."""
     queryset = NomenclatureCodeBarres.objects.prefetch_related('regles').all()
     serializer_class = NomenclatureCodeBarresSerializer
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

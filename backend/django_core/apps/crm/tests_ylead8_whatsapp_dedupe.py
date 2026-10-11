@@ -15,7 +15,7 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import resolve_or_create_lead_from_whatsapp
+from apps.crm.leads_intake import resolve_or_create_lead_from_whatsapp
 
 
 class ResolveOrCreateFromWhatsappTests(TestCase):

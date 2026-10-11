@@ -27,7 +27,7 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import reactivate_lead_on_new_touch
+from apps.crm.leads_intake import reactivate_lead_on_new_touch
 
 SECRET = 'test-secret-ylead11'
 

@@ -10,6 +10,8 @@ renvoie 404). Aucun de ces documents n'expose de prix d'achat / marge. La
 génération réutilise les helpers visuels du moteur premium (jamais modifié)
 via ``apps.ventes.quote_engine.extra_docs``.
 """
+from drf_spectacular.utils import extend_schema
+from .openapi_params import qint
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -28,6 +30,7 @@ def _scope(qs, user):
     return qs.none()
 
 
+@extend_schema(parameters=[qint('niveau')])
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def lettre_relance_premium(request, facture_id):

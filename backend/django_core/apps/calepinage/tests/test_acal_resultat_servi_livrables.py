@@ -18,7 +18,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.note_calcul import (
-    NoteRefusee, construire_note_calcul, motif_note_indisponible,
+    NoteRefusee, _construire_note_calcul, motif_note_indisponible,
     rendre_note_calcul, _resultat_servi_et_stocke,
 )
 from apps.calepinage.services.documents.presentation_compacte import (
@@ -26,7 +26,7 @@ from apps.calepinage.services.documents.presentation_compacte import (
 )
 from apps.calepinage.services import export_tableur
 from apps.calepinage.services.planche import (
-    MENTION_NON_CHAINE, rendre_plan_pose_svg,
+    MENTION_NON_CHAINE, _rendre_plan_pose_svg,
 )
 from apps.calepinage.views.sorties import inventaire_des_sorties
 
@@ -60,7 +60,7 @@ class NoteDeCalculSurCalepinageReelTest(SimpleTestCase):
     def test_la_note_lit_pose_et_production_du_servi(self):
         with patch_materiel():
             servi, stocke = _resultat_servi_et_stocke(self.pivot)
-            note = construire_note_calcul(servi, stocke=stocke, site=SITE)
+            note = _construire_note_calcul(servi, stocke=stocke, site=SITE)
         self.assertEqual(note['pose']['total_modules'],
                          servi['pose']['total_modules'])
         self.assertTrue(note['pose']['total_modules'])
@@ -166,7 +166,7 @@ class PlanDePoseEtClasseurSurResultatServiTest(SimpleTestCase):
             from apps.calepinage import selectors
 
             servi = selectors.resultat_servi(self.pivot)
-            svg = rendre_plan_pose_svg(self.pivot)
+            svg = _rendre_plan_pose_svg(self.pivot)
         self.assertNotIn('electrique', self.pivot.resultat)
         self.assertIn('Chaînes : %s' % servi['electrique']['chainage']
                       ['chaines'], svg)
@@ -178,7 +178,7 @@ class PlanDePoseEtClasseurSurResultatServiTest(SimpleTestCase):
         # Avec du matériel, la conception SE chaîne même sans simulation
         # (l'électrique du servi vient de la conception, pas du calcul).
         jamais = PivotSansBase(copy.deepcopy(LAYOUT_PLANCHE_SIMULABLE))
-        svg = rendre_plan_pose_svg(jamais)
+        svg = _rendre_plan_pose_svg(jamais)
         self.assertIn(MENTION_NON_CHAINE, svg)
         self.assertNotIn('Chaînes : ', svg)
 

@@ -37,19 +37,41 @@ attrapées (ex. ``apps.ventes`` Devis/Facture, qui n'avaient aucun override).
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from django.db.models import ProtectedError
+from django.http import Http404
 from rest_framework import exceptions as drf_exceptions
 from rest_framework import status
+from rest_framework.fields import get_error_detail
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
+from rest_framework.views import set_rollback
+
+from core.parametres_requete import MESSAGE_CHAMP as MESSAGE_PARAMETRE_INCONNU
+from core.parametres_requete import ParametresRequeteInconnus
+from core.unicite import ConflitUnicite, decrire_contrainte, message_conflit
 
 logger = logging.getLogger(__name__)
 
 # Slug stable par classe d'exception DRF — jamais dérivé du message humain
 # (qui peut être traduit/reformulé sans casser un client qui teste `code`).
 _CODE_BY_EXCEPTION = (
+    # ENF2 (C3) — DRF convertit ``django.http.Http404`` en ``NotFound`` et
+    # ``django.core.exceptions.PermissionDenied`` en ``PermissionDenied`` AVANT
+    # de construire la réponse, mais c'est l'exception D'ORIGINE qui arrive
+    # ici : sans ces deux lignes, chaque ``get_object_or_404`` (4 018 cas au
+    # fuzz du 07/10) répondait 404 avec ``code: "server_error"`` et « Une
+    # erreur inattendue s'est produite ».
+    (Http404, 'not_found'),
+    (DjangoPermissionDenied, 'permission_denied'),
+    (ConflitUnicite, 'unique_conflict'),
+    # ENFP (D1) — paramètre de requête non déclaré au schéma OpenAPI.
+    (ParametresRequeteInconnus, 'unknown_query_parameter'),
     (drf_exceptions.ValidationError, 'validation_error'),
     (drf_exceptions.AuthenticationFailed, 'not_authenticated'),
     (drf_exceptions.NotAuthenticated, 'not_authenticated'),
@@ -77,6 +99,12 @@ def _message_for(exc, code: str) -> str:
     brut DRF, qui peut fuiter des informations internes sur un 500)."""
     if code == 'server_error':
         return "Une erreur inattendue s'est produite."
+    if isinstance(exc, Http404):
+        # Le message Django (« No Devis matches the given query. ») est en
+        # anglais et nomme le modèle interne : jamais repris dans l'enveloppe.
+        return MESSAGE_NOT_FOUND
+    if isinstance(exc, DjangoPermissionDenied):
+        return str(exc) or MESSAGE_PERMISSION_DENIED
     detail = getattr(exc, 'detail', None)
     if isinstance(detail, str):
         return detail
@@ -91,8 +119,15 @@ def _message_for(exc, code: str) -> str:
 
 
 def _fields_for(exc, code: str):
-    """`fields` UNIQUEMENT pour les 400 de validation avec un detail
-    field-keyed (dict) — jamais pour les autres codes."""
+    """`fields` pour les 400 de validation avec un detail field-keyed (dict),
+    pour les 409 ``unique_conflict`` (champs de la contrainte) et pour les 400
+    ``unknown_query_parameter`` (paramètres refusés) — jamais pour les autres
+    codes."""
+    if code == 'unique_conflict':
+        return _champs_conflit(getattr(exc, 'champs', None))
+    if code == 'unknown_query_parameter':
+        return {nom: [MESSAGE_PARAMETRE_INCONNU]
+                for nom in getattr(exc, 'parametres', [])} or None
     if code != 'validation_error':
         return None
     detail = getattr(exc, 'detail', None)
@@ -104,6 +139,70 @@ def _fields_for(exc, code: str):
             continue
         fields[key] = value if isinstance(value, list) else [value]
     return fields or None
+
+
+MESSAGE_NOT_FOUND = 'Ressource introuvable.'
+MESSAGE_PERMISSION_DENIED = (
+    "Vous n'avez pas la permission d'effectuer cette action.")
+MESSAGE_CHAMP_EN_DOUBLE = 'Cette valeur existe déjà.'
+# SQLSTATE Postgres d'une violation d'unicité (psycopg2 `pgcode`).
+_SQLSTATE_UNIQUE = '23505'
+
+
+_METHODES_ECRITURE = frozenset({'POST', 'PUT', 'PATCH'})
+
+
+def _methode(context) -> str:
+    request = context.get('request') if context else None
+    return str(getattr(request, 'method', '') or '').upper()
+
+
+def _champs_conflit(champs):
+    if not champs:
+        return None
+    return {champ: [MESSAGE_CHAMP_EN_DOUBLE] for champ in champs}
+
+
+def _violation_unicite(exc):
+    """(modèle, champs) si ``exc`` est une violation d'unicité Postgres,
+    sinon None. Lecture du SQLSTATE sur la cause pilote (psycopg2 ``pgcode``,
+    psycopg 3 ``sqlstate``) — jamais du message."""
+    if not isinstance(exc, IntegrityError):
+        return None
+    cause = exc.__cause__
+    sqlstate = (getattr(cause, 'pgcode', None)
+                or getattr(cause, 'sqlstate', None))
+    if sqlstate != _SQLSTATE_UNIQUE:
+        return None
+    diag = getattr(cause, 'diag', None)
+    return decrire_contrainte(
+        getattr(diag, 'constraint_name', None),
+        table=getattr(diag, 'table_name', None),
+        detail=getattr(diag, 'message_detail', None))
+
+
+def _unique_violation_response(model, champs, request_id) -> Response:
+    """ENF2 (C6) — filet de sécurité : la contrainte d'unicité en base a
+    refusé l'écriture (course entre deux requêtes, ou vue hors
+    ``TenantMixin`` donc sans pré-validation ``core.unicite``). C'est un
+    conflit de données, pas un crash : 409 ``unique_conflict`` nommé, MÊME
+    forme que la pré-validation. La transaction de requête éventuelle
+    (ATOMIC_REQUESTS) est marquée pour annulation, comme DRF le fait pour
+    ses propres exceptions."""
+    set_rollback()
+    champs = list(champs or [])
+    message = (message_conflit(model, champs) if model is not None
+               else ConflitUnicite.default_detail)
+    body = {
+        'detail': message,
+        'error': {
+            'code': 'unique_conflict',
+            'message': message,
+            'fields': _champs_conflit(champs),
+            'request_id': request_id,
+        },
+    }
+    return Response(body, status=status.HTTP_409_CONFLICT)
 
 
 def _request_id(context) -> str | None:
@@ -227,10 +326,72 @@ def _rate_limit_headers_for(exc, context):
     return {}
 
 
+# ENF1b — message EXACT de ``IntegerField.get_prep_value`` (Django) quand
+# une recherche ORM reçoit un identifiant non numérique fourni par le client
+# (« null,null », « {} », « AAA »…). Seul CE message est reconnu : un
+# ``ValueError`` quelconque reste un 500 (bug serveur, jamais masqué).
+_ID_NON_NUMERIQUE = re.compile(
+    r"^Field '(?P<champ>[^']+)' expected a number but got (?P<valeur>.*)\.$",
+    re.S)
+
+
+def _kwargs_url(context) -> dict:
+    vue = context.get('view') if context else None
+    return dict(getattr(vue, 'kwargs', None) or {})
+
+
+def _exception_client(exc, context):
+    """ENF1b (api-fuzz du 09/10 : 18 des 29 « Server error ») — deux erreurs
+    Django qui signalent une ENTRÉE CLIENT invalide, pas un bug serveur, et
+    que DRF ne sait pas traduire (son handler renvoie ``None`` → 500) :
+
+    * ``django.core.exceptions.ValidationError`` (``full_clean()``, ou
+      ``Field.to_python`` sur une valeur brute passée au modèle) → 400
+      ``validation_error``, détail par champ conservé ;
+    * le ``ValueError`` « Field 'id' expected a number but got … » d'une
+      recherche ORM sur un identifiant non numérique → 404 ``not_found``
+      quand la valeur est un paramètre de CHEMIN (comme
+      ``get_object_or_404`` de DRF, qui attrape déjà ce cas), sinon 400.
+
+    Renvoie l'exception DRF équivalente, ou ``None`` (exception inchangée).
+    """
+    if isinstance(exc, DjangoValidationError):
+        return drf_exceptions.ValidationError(detail=get_error_detail(exc))
+    if type(exc) is ValueError:
+        trouve = _ID_NON_NUMERIQUE.match(str(exc))
+        if trouve is None:
+            return None
+        valeur = trouve.group('valeur')
+        if any(repr(v) == valeur or repr(str(v)) == valeur
+               for v in _kwargs_url(context).values()):
+            return drf_exceptions.NotFound()
+        return drf_exceptions.ValidationError({
+            trouve.group('champ'): [
+                f'Identifiant invalide : {valeur} (nombre entier attendu).'],
+        })
+    return None
+
+
+def _corps_liste_en_objet(response) -> None:
+    """ENF1b — ``raise ValidationError('…')`` produit un corps LISTE
+    (``["…"]``) : ni le schéma ``ErreurApi`` (un objet) ni le frontend
+    (``lib/apiError.js`` lit ``detail``/``non_field_errors``) ne le
+    comprennent. On le replie en objet ``{detail, non_field_errors}``."""
+    if isinstance(response.data, list):
+        messages = [str(m) for m in response.data]
+        response.data = {
+            'detail': messages[0] if messages else '',
+            'non_field_errors': messages,
+        }
+
+
 def taqinor_exception_handler(exc, context):
     """`REST_FRAMEWORK['EXCEPTION_HANDLER']` — enveloppe UNIQUE pour toute
     réponse d'erreur DRF, y compris les exceptions non reconnues par DRF
     (repliées en 500 `server_error`)."""
+    traduite = _exception_client(exc, context)
+    if traduite is not None:
+        exc = traduite
     response = drf_exception_handler(exc, context)
     request_id = _request_id(context)
 
@@ -241,6 +402,13 @@ def taqinor_exception_handler(exc, context):
         # jamais un 500) — voir le docstring du module en tête de fichier.
         if isinstance(exc, ProtectedError):
             return _protected_error_response(exc, request_id)
+        # Une violation d'unicité n'est un CONFLIT client que sur une
+        # écriture demandée par le client (POST/PUT/PATCH). Sur une lecture
+        # ou une suppression, c'est un bug serveur (ex. amorçage paresseux qui
+        # recrée une ligne) : il reste un 500 journalisé, jamais masqué.
+        violation = _violation_unicite(exc)
+        if violation is not None and _methode(context) in _METHODES_ECRITURE:
+            return _unique_violation_response(*violation, request_id)
         # Exception non gérée par DRF (ex. bug applicatif) — la forme
         # unifiée reste due même ici ; le statut HTTP/sémantique tenant ne
         # change JAMAIS (toujours 500, jamais masqué en 200).
@@ -262,6 +430,8 @@ def taqinor_exception_handler(exc, context):
         return response
 
     code = _code_for(exc)
+    if code == 'validation_error':
+        _corps_liste_en_objet(response)
     envelope = {
         'code': code,
         'message': _message_for(exc, code),

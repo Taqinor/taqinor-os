@@ -75,7 +75,7 @@ def wide_fixture_teardown_timeout(aliases):
                 cur.execute('SHOW statement_timeout')
                 previous[alias] = cur.fetchone()[0]
                 cur.execute(
-                    f'SET statement_timeout = {FIXTURE_TEARDOWN_TIMEOUT_MS}')
+                    'SET statement_timeout = %s', [FIXTURE_TEARDOWN_TIMEOUT_MS])
         except Exception:  # pragma: no cover - jamais casser un teardown
             previous.pop(alias, None)
     try:

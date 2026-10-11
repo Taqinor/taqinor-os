@@ -9,7 +9,11 @@ est journalisé (SettingsAuditLog).
 import copy
 
 from django.db.models import F
-from rest_framework.decorators import api_view, permission_classes
+from drf_spectacular.utils import extend_schema
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -47,6 +51,7 @@ def _templates(request):
     )
 
 
+@extend_schema(responses=DocumentTemplatesSerializer)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def get_document_templates(request):
@@ -54,7 +59,10 @@ def get_document_templates(request):
     return Response(DocumentTemplatesSerializer(obj).data)
 
 
+@extend_schema(request=DocumentTemplatesSerializer,
+               responses=DocumentTemplatesSerializer)
 @api_view(['PUT', 'PATCH'])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
 # n'y touchent plus).

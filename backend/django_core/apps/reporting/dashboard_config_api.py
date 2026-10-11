@@ -26,6 +26,9 @@ from .models import (
     GLOBAL_DEFAULT_CARDS,
     ALL_DASHBOARD_CARDS,
 )
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 
 
 class DashboardConfigSerializer(SameCompanyFKSerializerMixin,
@@ -78,6 +81,7 @@ class DashboardConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         Retourne la configuration effective pour l'utilisateur courant.
     """
     serializer_class = DashboardConfigSerializer
+    parser_classes = [JSONParser]
     permission_classes = [IsResponsableOrAdmin]
     queryset = DashboardConfig.objects.all()
 
@@ -85,6 +89,12 @@ class DashboardConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         # company forcée côté serveur, jamais lue du corps de la requête.
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(responses=inline_serializer('DashboardConfigEffective', {
+        'source': drf_serializers.CharField(),
+        'config_id': drf_serializers.IntegerField(required=False),
+        'menu_tier': drf_serializers.CharField(required=False),
+        'cards': drf_serializers.JSONField(),
+    }))
     @action(detail=False, methods=['get'], url_path='effective',
             permission_classes=[IsAuthenticated])
     def effective(self, request):

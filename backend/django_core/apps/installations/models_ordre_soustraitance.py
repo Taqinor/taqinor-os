@@ -113,7 +113,7 @@ class OrdreSousTraitance(DocumentMetier):
     # Redéclarée à l'identique (SCA34) : conserve le related_name + la
     # nullabilité historiques — colonne DB inchangée (state-only pour ce champ).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_ordres_sous_traitance')
     reference = models.CharField(max_length=50)

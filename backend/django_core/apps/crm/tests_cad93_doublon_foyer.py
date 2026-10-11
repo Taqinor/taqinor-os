@@ -26,9 +26,14 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead
 from apps.crm.selectors import doublons_foyer_probables
-from apps.crm.services import (
-    cles_foyer, cluster_match_keys, find_duplicate_clusters,
-    find_duplicates_by_contact, normalize_adresse, normalize_gps)
+from apps.crm.leads_doublons import (
+    cles_foyer,
+    cluster_match_keys,
+    find_duplicate_clusters,
+    find_duplicates_by_contact,
+    normalize_adresse,
+    normalize_gps,
+)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

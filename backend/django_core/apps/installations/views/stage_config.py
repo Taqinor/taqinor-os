@@ -21,6 +21,7 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from ..models import StageModele
 from ..serializers_stage import StageModeleSerializer
 from ..services import seed_stages
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -49,7 +50,7 @@ class IsDirecteur(BasePermission):
         return getattr(user, 'is_admin_role', False)
 
 
-class StageModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
+class StageModeleViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """CH5 — étapes/gates configurables (Paramètres → Chantiers). Lecture tout
     rôle ; écriture Directeur uniquement.
 
@@ -69,6 +70,7 @@ class StageModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsDirecteur()]
 
+    @oa.extend_schema(request=None, responses={201: oa.body('AmorcerEtapesResultat', crees=oa.i(), etapes=oa.lst())})
     @action(detail=False, methods=['post'], url_path='amorcer')
     def amorcer(self, request):
         """AUD313 — amorce le cycle de vie PV international de la société.

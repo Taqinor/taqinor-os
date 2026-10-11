@@ -16,11 +16,13 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from ..models import PreuveLivraison
 from ..serializers import PreuveLivraisonSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class PreuveLivraisonViewSet(UsageGuardedDestroyMixin,
+@oa.listing(p0=oa.qi('livraison'))
+class PreuveLivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
                              CompanyScopedModelViewSet):
     """FG330 — preuves de livraison. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `livraison`.

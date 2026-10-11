@@ -50,7 +50,7 @@ __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
     'SOURCE_TMY_NOCT',  # ACAL164
     'TemperaturesSite', 'TemperaturesInvalides',
-    'enregistrer_fournisseur_temperatures', 'fournisseur_temperatures',
+    'enregistrer_fournisseur_temperatures',
     'temperatures_site', 'temperatures_pour_calepinage',
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
     'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE',
@@ -61,11 +61,10 @@ __all__ = [
     'PROVENANCE_EXPLICITE', 'PROVENANCE_DEVIS', 'ROLES_MATERIEL',  # ACAL56
     'conception_du_calepinage', 'resultat_calepinage',
     'resultat_electrique_complet',  # ACAL55
-    'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
     'ecretage_depuis_serie', 'SOURCE_BORNE_MARCHE', 'SOURCE_BORNE_SOCIETE',
     'SOURCE_BORNE_NOYAU',
-    'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR', 'regle_de_chaine',
-    'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
+    'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR',
+    'PublicationBloquee', 'bloquants_nommes',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
     'consigner_derogation_publication', 'CODE_DEROGATION_PUBLICATION',
     'CHAMP_DEROGATION_PUBLICATION',  # ACAL170
@@ -73,8 +72,7 @@ __all__ = [
     'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
     'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
-    'longueur_chaine_retenue', 'plafond_modules',
-    'journaliser_ecart_longueur', 'parametres_societe',
+    'parametres_societe',
     'CLE_DEROGATIONS', 'CLE_FIL_ECARTS',
     'CLE_FIL_DEROGATIONS',  # CALX215
     'CLE_BORDEREAU', 'CLE_CORRESPONDANCES',
@@ -176,7 +174,7 @@ def enregistrer_fournisseur_temperatures(fournisseur):
     return precedent
 
 
-def fournisseur_temperatures():
+def _fournisseur_temperatures():
     """Le fournisseur TMY courant, ou ``None`` s'il n'y en a pas."""
     return _FOURNISSEUR
 
@@ -1746,7 +1744,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         reglages = societe
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
-    verdicts = verdicts_electriques(
+    verdicts = _verdicts_electriques(
         conception, optimiseur, nom_optimiseur,
         reglages=electrique_societe)
     regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
@@ -1807,7 +1805,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     blocs, perimee, motif, calcule_le = _simulation_servie(
         porteur_simulation if porteur_simulation is not None else calepinage,
         empreinte, defauts=_defauts_simulation(pose))
-    ratio, messages_ratio = bloc_ratio_dc_ac(
+    ratio, messages_ratio = _bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
         parametres_societe=_parametres_electriques(calepinage,
@@ -1870,8 +1868,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         getattr(calepinage, 'company', None))
 
     # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
-    reconciliation = longueur_chaine_retenue(conception)
-    reconciliation = dict(reconciliation, plafond_modules=plafond_modules(
+    reconciliation = _longueur_chaine_retenue(conception)
+    reconciliation = dict(reconciliation, plafond_modules=_plafond_modules(
         donnees.get('plafond_kwc_par_onduleur'),
         pose.get('puissance_module_wc')))
 
@@ -2218,7 +2216,7 @@ def bloquants_nommes(conception):
     return tuple(messages)
 
 
-def alertes_nommees(conception):
+def _alertes_nommees(conception):
     """Les ALERTES (production dégradée) — jamais confondues avec un bloquant.
 
     Écrêtage sur l'Imp d'entrée, MPPT hors plage en été, pans qui partagent
@@ -2313,7 +2311,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     regle = _regle_chaine_publiee(
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))
-    alertes = list(alertes_nommees(conception))
+    alertes = list(_alertes_nommees(conception))
     alertes.extend(obsoletes)
     alertes.extend(poly['alertes'])
     # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
@@ -2858,8 +2856,8 @@ def rejouer_apres_layout(calepinage, *, user=None):
     try:
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage)
-        journaliser_ecart_longueur(calepinage,
-                                   longueur_chaine_retenue(conception))
+        _journaliser_ecart_longueur(calepinage,
+                                    _longueur_chaine_retenue(conception))
     except Exception:  # noqa: BLE001 — cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
@@ -2872,8 +2870,8 @@ def _regle_chaine_publiee(conception, optimiseur_specs, designation):
     module = getattr(conception.entree, 'module', None)
     specs = ({'voc_v': module.voc_v, 'isc_a': module.isc_a,
               'pmax_wc': module.pmax_wc} if module is not None else {})
-    return regle_de_chaine(specs, None, optimiseur_specs,
-                           designation=designation)
+    return _regle_de_chaine(specs, None, optimiseur_specs,
+                            designation=designation)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2942,7 +2940,7 @@ def _dans_la_tolerance(reference, ecart):
     return False
 
 
-def longueur_chaine_retenue(conception):
+def _longueur_chaine_retenue(conception):
     """CAL170 — la longueur de chaîne retenue, SON origine, et l'écart.
 
     Rend ``{longueur, origine, detail, longueur_dossier, ecart,
@@ -2986,7 +2984,7 @@ def longueur_chaine_retenue(conception):
     }
 
 
-def plafond_modules(plafond_kwc, puissance_module_wc):
+def _plafond_modules(plafond_kwc, puissance_module_wc):
     """Le plafond kWc par onduleur, retraduit en NOMBRE DE MODULES.
 
     C'est le rebouclage du dossier FRDISI : le calepinage ne sait pas
@@ -3019,7 +3017,7 @@ def _ajouter_au_fil(resultat, cle, entrees):
     return resultat[cle]
 
 
-def journaliser_ecart_longueur(calepinage, reconciliation):
+def _journaliser_ecart_longueur(calepinage, reconciliation):
     """Journalise un écart moteur↔fiche HORS TOLÉRANCE, historique conservé.
 
     Discipline PVG2 : on ne remplace jamais une valeur en silence. L'écart
@@ -3036,7 +3034,7 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
         reconciliation.get('longueur'), reconciliation.get('longueur_dossier'),
         reconciliation.get('ecart'), getattr(calepinage, 'pk', None))
 
-    from .resultat import modifier_resultat
+    from .resultat import appliquer_en_memoire, modifier_resultat
 
     entrees = [{
         'longueur': reconciliation.get('longueur'),
@@ -3044,22 +3042,21 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
         'ecart': reconciliation.get('ecart'),
         'par_pan': reconciliation.get('par_pan') or {},
     }]
+
+    def prolonger(resultat):
+        return _ajouter_au_fil(resultat, CLE_FIL_ECARTS, entrees)
+
     try:
         # ACAL57 — l'écrivain unique : le fil est prolongé sur le resultat
         # RELU sous verrou, jamais sur l'instantané du début du geste.
-        return modifier_resultat(
-            calepinage,
-            lambda resultat: _ajouter_au_fil(resultat, CLE_FIL_ECARTS,
-                                             entrees))
+        return modifier_resultat(calepinage, prolonger)
     except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
         logging.getLogger(__name__).exception(
             'CAL170 : journal d écart non enregistré (calepinage %s)',
             getattr(calepinage, 'pk', None))
-        resultat = getattr(calepinage, 'resultat', None)
-        resultat = dict(resultat) if isinstance(resultat, dict) else {}
-        fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, entrees)
-        calepinage.resultat = resultat
-        return fil
+        # Repli EN MÉMOIRE, par l'écrivain unique (ACAL321) : même fil, même
+        # valeur rendue qu'avant, sans affecter ``resultat`` ici.
+        return appliquer_en_memoire(calepinage, prolonger)
 
 
 def parametres_societe(calepinage):
@@ -3613,8 +3610,8 @@ REFERENCE_SOLAREDGE_DESIGNER = (
     ' (https://marketing.solaredge.com/solaredge-designer-0-20)')
 
 
-def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
-                    designation=''):
+def _regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
+                     designation=''):
     """Quelle règle de chaîne s'applique ICI, et QUELLE fiche l'autorise.
 
     Rend un dict ``{regle, libelle, source, verdicts_entree,
@@ -3740,8 +3737,8 @@ VERDICTS_DE_CHAINE = (
 )
 
 
-def verdicts_electriques(conception, optimiseur_specs=None,
-                         optimiseur_designation='', *, reglages=None):
+def _verdicts_electriques(conception, optimiseur_specs=None,
+                          optimiseur_designation='', *, reglages=None):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
 
     Les cinq codes sont ceux du contrat (``voc_cold_under_vmax``,
@@ -3789,7 +3786,7 @@ def verdicts_electriques(conception, optimiseur_specs=None,
     # chaîne : le verdict correspondant est SUBSTITUÉ (jamais supprimé — le
     # lecteur doit voir que la règle a changé et QUELLE fiche l'autorise).
     module = conception.entree.module
-    regle = regle_de_chaine(
+    regle = _regle_de_chaine(
         {'voc_v': module.voc_v, 'isc_a': module.isc_a,
          'pmax_wc': module.pmax_wc},
         None, optimiseur_specs, designation=optimiseur_designation)
@@ -3918,7 +3915,7 @@ MOTIF_ECRETAGE_SANS_SERIE = (
     "aucun forfait n'est appliqué à sa place")
 
 
-def bornes_ratio(*, exigence_marche=None, parametres_societe=None):
+def _bornes_ratio(*, exigence_marche=None, parametres_societe=None):
     """``(borne_dc_ac, seuil_alerte, source, detail)`` — jamais une borne écrite ici.
 
     ``exigence_marche`` et ``parametres_societe`` sont des dicts portant
@@ -3967,8 +3964,8 @@ def ecretage_depuis_serie(serie_dc_kw, puissance_ac_kw):
     return round(perdu / total * 100.0, 3)
 
 
-def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
-                     parametres_societe=None, ecretage_pct=None):
+def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
+                      parametres_societe=None, ecretage_pct=None):
     """CAL127 — le ratio, SA borne, la SOURCE de sa borne, et l'écrêtage.
 
     Rend ``(bloc, avertissements)``. Hors bornes, l'avertissement CITE la
@@ -3983,7 +3980,7 @@ def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
 
     from .chaines import evaluer_onduleurs
 
-    borne, alerte, source, detail = bornes_ratio(
+    borne, alerte, source, detail = _bornes_ratio(
         exigence_marche=exigence_marche,
         parametres_societe=parametres_societe)
     evaluation = evaluer_onduleurs(conception)

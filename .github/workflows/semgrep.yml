@@ -1,22 +1,32 @@
-name: semgrep (advisory)
+name: semgrep
 
-# NTPLT53 — SAST par PATTERNS de code : le pack Django public + 4 règles MAISON
+# NTPLT53 — SAST par PATTERNS de code : le pack Django public + règles MAISON
 # (.semgrep/taqinor.yml) encodant les invariants du repo (pas de SQL formaté /
 # objects.raw, pas de `company` lu du body, pas de count()+1 pour une
 # référence, pas de nouveau chemin PDF devis hors /proposal — RÈGLE #4).
-# ADVISORY : non-required, ne bloque aucune merge (protection de branche
-# intacte). Complémentaire des gardes AST YDATA (structure des modèles).
-
-# WOW-CI ronde 3 (fondateur 19/08, « CI below 5 min ») : ce scan ADVISORY ne
-# tourne plus au moment PR — le cap GitHub de 20 jobs simultanés étranglait les
-# shards requis (4 jobs en file 35 s-1 min 47 mesurés). La couverture est
-# CONSERVÉE : chaque merge vers main relance le scan (push) + lancement manuel.
+#
+# ENF12 (règle fondateur 09/10/2026, docs/claude-memory/enforce-all-checks.md) :
+# job BLOQUANT — plus de `continue-on-error`, plus de `|| true`.
+# Seuil : ZÉRO découverte (`--error`). Mesure du 09/10/2026 : 38 découvertes
+# masquées (6 injections CSV, XSS HTML→PDF, 3 challenges webhook réfléchis,
+# 3 NaN, 10 SQL formatés, 9 count()+1, mot de passe par défaut '', csrf_token
+# hors portée de la règle, 2 `company` lus du body) — toutes CORRIGÉES dans le
+# code ; la seule précision de règle (console superutilisateur éditeur) est
+# commentée dans .semgrep/taqinor.yml. Aucune baseline, aucune exception.
+#
+# Déclencheurs : PR backend (un seul passage ≈ 3 min), push sur main, manuel.
 on:
   workflow_dispatch: {}
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.semgrep/**'
+      - '.github/workflows/semgrep.yml'
   push:
     branches: [main]
     paths:
       - 'backend/**'
+      - '.semgrep/**'
 
 permissions:
   contents: read
@@ -24,17 +34,20 @@ permissions:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
-    continue-on-error: true
-    container:
-      image: mirror.gcr.io/semgrep/semgrep
+    timeout-minutes: 20
+    # Pas de conteneur Docker Hub : la limite anonyme (toomanyrequests)
+    # faisait tomber le job ; semgrep s'installe depuis PyPI.
     steps:
       - uses: actions/checkout@v4
-      - name: Semgrep (pack Django + règles maison)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Installer semgrep
+        run: pip install 'semgrep>=1.90,<2'
+      - name: Semgrep (pack Django + règles maison, zéro découverte)
         run: |
-          semgrep --config p/django --config .semgrep/ \
-            --error --sarif --output semgrep.sarif backend/django_core || true
-          # Affichage lisible non bloquant.
-          semgrep --config p/django --config .semgrep/ backend/django_core || true
+          semgrep --config p/django --config .semgrep/ --metrics=off \
+            --error --sarif-output=semgrep.sarif backend/django_core
       - name: Upload SARIF
         if: always()
         uses: actions/upload-artifact@v4

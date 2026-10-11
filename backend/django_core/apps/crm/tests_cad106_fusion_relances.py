@@ -25,9 +25,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import stages, leads_fusion
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import merge_leads
+from apps.crm.leads_fusion import merge_leads
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 
@@ -97,7 +97,7 @@ class LesRelancesSuiventLeDossierTests(_Base):
         touche.refresh_from_db()
         self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
         self.assertIsNone(touche.traite_par)
-        self.assertEqual(touche.note, services.FUSION_TOUCHE_NOTE)
+        self.assertEqual(touche.note, leads_fusion.FUSION_TOUCHE_NOTE)
 
     def test_la_fiche_archivee_ne_garde_aucune_echeance_fantome(self):
         self.absorbe.relance_date = self._touche(self.absorbe).due_date
@@ -127,7 +127,7 @@ class CeQueLaFusionNeCassePasTests(_Base):
         merge_leads(self.survivant, [self.absorbe], self.acteur)
         faite.refresh_from_db()
         self.assertEqual(faite.statut, RelanceEtape.Statut.FAIT)
-        self.assertNotEqual(faite.note, services.FUSION_TOUCHE_NOTE)
+        self.assertNotEqual(faite.note, leads_fusion.FUSION_TOUCHE_NOTE)
 
     def test_une_survivante_DEJA_suivie_ne_recoit_pas_de_seconde_cadence(self):
         """CADX — jamais deux cadences en parallèle. Le filet est un no-op
@@ -186,4 +186,4 @@ class LApercuAnnonceLeNombreTests(_Base):
         self._touche(self.absorbe, ordre=1)
         self._touche(self.absorbe, statut=RelanceEtape.Statut.FAIT, ordre=2)
         self.assertEqual(
-            services.relances_ouvertes_de(self.absorbe).count(), 1)
+            leads_fusion.relances_ouvertes_de(self.absorbe).count(), 1)

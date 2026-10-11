@@ -17,7 +17,7 @@ import pathlib
 import unittest
 
 from apps.calepinage.services.pertes import (
-    CATALOGUE, CATALOGUE_PAR_POSTE, PertesInvalides, moyenne_mensuelle,
+    CATALOGUE, CATALOGUE_PAR_POSTE, PertesInvalides, _moyenne_mensuelle,
     postes_du_calepinage, valider_postes,
 )
 
@@ -105,7 +105,7 @@ class ValidationTest(unittest.TestCase):
 
     def test_onze_mois_sont_refuses(self):
         with self.assertRaises(PertesInvalides) as refus:
-            moyenne_mensuelle([1.0] * 11, champ='salissure')
+            _moyenne_mensuelle([1.0] * 11, champ='salissure')
         self.assertEqual(refus.exception.champ, 'salissure.mensuel')
 
     def test_un_mois_illisible_nomme_le_mois(self):

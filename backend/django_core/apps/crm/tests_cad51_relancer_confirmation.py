@@ -22,7 +22,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm import services
+from apps.crm import cadence_plan
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from authentication.models import Company
 
@@ -160,8 +160,8 @@ class MoteurInchangeTests(TestCase):
         self.contact = _touche(self.lead, 'contact', 3, 1)
 
     def test_service_exige_confirmation_leve_avant_ecriture(self):
-        with self.assertRaises(services.CadenceRemplacementAConfirmer) as ctx:
-            services.initialiser_plan_relance(
+        with self.assertRaises(cadence_plan.CadenceRemplacementAConfirmer) as ctx:
+            cadence_plan.initialiser_plan_relance(
                 self.lead, self.acteur, cadence='apres_devis',
                 exiger_confirmation=True)
         self.assertEqual(ctx.exception.apercu['cadences_arretees'],
@@ -171,7 +171,7 @@ class MoteurInchangeTests(TestCase):
         self.assertEqual(self.contact.statut, RelanceEtape.Statut.A_FAIRE)
 
     def test_moteur_remplace_toujours_en_silence(self):
-        etapes = services.initialiser_plan_relance(
+        etapes = cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='apres_devis',
             depart=timezone.now())
         self.assertTrue(etapes)

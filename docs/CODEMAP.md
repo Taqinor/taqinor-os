@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 5ba9649e8413fcf21aee4cb3ade0723622d346f3e20de6c939dc4e8f75518af0
-Plan fingerprint: 68f484446f744265167fb76ea2f5e6f233b283bc7d2c6731256f58021e1d6e06
+Structure fingerprint: f485809b1f91fdd0ef15b9c34cc015bed08ddeebfdd3fb869bb4c0132dec91e3
+Plan fingerprint: b37754b86f410d033fb86c95e34385641b5e71e1ff2bd2046972f99651c81665
 
 
 
@@ -401,8 +401,6 @@ gated on founder validation in production.
 Core routes are declared in `router/index.jsx`; every module's routes come from its
 `features/<x>/module.config.jsx`, glob-imported by `router/moduleRoutes.jsx` (no edit to
 `router/index.jsx` per module). Parked modules took their routes with them.
-Loaders share `ensureSession` (ADEP19): a `fetchMe` failure without 401/403 renders
-`router/HorsLigneDemarrage.jsx` (offline start screen) instead of redirecting to `/login`.
 
 **Core (`router/index.jsx`)** — public: `/`, `/landing`, `/login`, `/register`, `/ui`,
 `/403`, `*`; public tokenized: `/rdv/:token`, `/salle-vente/:token`,
@@ -463,8 +461,8 @@ Loaders share `ensureSession` (ADEP19): a `fetchMe` failure without 401/403 rend
 
 ### Pages (`frontend/src/pages`) — 22 folders
 
-`crm/` (ClientList, LeadsPage, ParrainagePage + `leads/` — `LeadDevisPanel.jsx` = the lead's quote panel, EDC : phase `chargement`, protected exits via `gesteHorsPanneau.js`), `ventes/` (DevisList,
-DevisGenerator — EDC (09/10/2026) : `generator/BarreActionsDevis.jsx` sticky top action bar, `generator/NavigationSections.jsx` section chips, `generator/clavierDevis.js` pure keyboard decisions (Enter never submits), `generator/cartesRepliees.js` per-user collapsed cards, `generator/LigneTable.jsx` wrapped in `ui/BarreDefilementCollante.jsx` (sticky horizontal proxy bar) —, FactureList, FactureForm, AvoirsPage, RelancesPage,
+`crm/` (ClientList, LeadsPage, ParrainagePage + `leads/`), `ventes/` (DevisList,
+DevisGenerator, FactureList, FactureForm, AvoirsPage, RelancesPage,
 BonCommandeList), `stock/`, `installations/`, `interventions/`, `outillage/`, `sav/`,
 `monitoring/`, `ged/`, `reporting/`, `approbations/`, `activities/`, `admin/`,
 `parametres/`, `preferences/`, `onboarding/`, `aide/`, `tiers/`, `visites/`, `ia/`,
@@ -538,7 +536,7 @@ All verified against source, not prose.
 - **Migration-shell contract (SOLMVP, 20-21/09/2026)** — a parked app (`core.parked.APPS_PARQUEES`, the single copy of the 47 labels) keeps ONLY `__init__.py`, `apps.py` (`parked = True` + `'parked': True` in its manifest), `migrations/` verbatim plus ONE final `SeparateDatabaseAndState(state_operations=[DeleteModel…], database_operations=[])`, and a `models.py` declaring **no Django model** (a verbatim *talon* of module-level functions, enums and namespace classes is allowed, and is required whenever a frozen migration imports a symbol from that file — an empty `models.py` would make the migration unimportable and break the whole graph, visible only in a FRESH process). It **stays in `INSTALLED_APPS`** (that is what keeps the kept apps' graph valid — never a squash) and exposes no url, Celery task/beat entry, test, screen, `contract_samples/` or e2e spec. **No table and no `django_migrations` row is ever touched**; the 5 kept->parked FK links left as `RemoveField` (revertable: only the link column goes). The only authorised tool is `manage.py parquer_app <label>` (`--dry-run`, `--check`), which verifies in a fresh subprocess that the migration graph still loads before deleting anything; the host wrapper `python scripts/parquer_app.py --verifier-tout` asserts all 47 still satisfy the contract (it does, at this commit). The **permanent** CI guard is **`scripts/check_parked_apps.py`** in the `stage-names` job — it fails if any import, FK, url include or beat entry targets a parked label outside `*/migrations/*`; it is delivered by **SOLMVP53** in this same batch and is the guard a future session must keep green. Restoring a module: the proven recipe in `docs/parked-modules.md` §5, plus `docs/module-playbook.md`.
 - **Reference numbering** — never `count()+1` (it collided in production when quotes were deleted). `core.numbering.next_reference` / `apps/ventes/utils/references.py` compute highest-used+1 per company+month under a savepoint with retry; `scripts/check_platform.py` (ARC6) blocks any new `count() + 1`.
 - **Platform guards** — `scripts/check_platform.py` runs 10 DB-free source scans against frozen baselines that can only SHRINK (`apps/records/platform_baselines/`): no new bespoke `*Activity` chatter (ARC8), no wild `FileField`/`ImageField` (ARC26), no direct `weasyprint` import outside the allowlist (ARC11), no `count()+1` numbering (ARC6), no hand-rolled `company` FK model and no `ModelViewSet` outside `CompanyScopedModelViewSet` (SCA4), no flat storage key and no bare `store_attachment()` (SCA42/AUD311), no hardcoded `taqinor` brand string in a user-facing surface (SCA29), no hand-rolled « document métier » outside `core.documents.DocumentMetier` (SCA37 — Devis/Facture/BonCommande/Avoir are a permanent code-named exclusion under rule #4). `core/platform_coverage.py` (ARC41) additionally cross-checks the ARC28 manifests and fails on a NEW inter-surface drift, with `BASELINE_DRIFT` holding the 11 assumed ones — an entry that is no longer a real drift must be removed, which `core/tests/test_platform_coverage.py` enforces.
-- **CI** — `.github/workflows/ci.yml` defines **16 jobs**, triggered on every `pull_request` and on pushes to `main`/`dev` only (a `pull_request`-scoped `concurrency` group cancels a superseded PR run). A pure-git `changes` detector (fails OPEN to the full suite when the diff range is unresolvable) exposes `backend`/`frontend`/`web`/`code` outputs, and the heavy jobs are path-filtered **per job** via `if:` (a skipped *job* reports Success to branch protection, so it never deadlocks — a top-level `on: paths` filter is deliberately NOT used). **Four of the 15 job names are AGGREGATES of sharded/split lanes, not the work itself** — that indirection exists so one stable name can be pinned in branch protection while the lanes underneath are re-sharded freely, and each aggregate explicitly fails when a lane failed OR was cancelled (a `skipped` lane is acceptable): `backend-lint` = `backend-lint-fast` (one parallel runner step, `scripts/ci_guards.py backend-lint-fast`: compileall-3.11 + flake8 + `lint-imports` + the gated `check_*.py`, **44** commands in `ci_guards.GARDES`) + `backend-openapi` (schema check + `makemigrations --check`); `backend-tests` = `backend-tests-shard` (**8** duration-balanced lanes from `scripts/ci_shard.py`, Postgres 16 in the job container + Redis + MinIO; lane 0 also runs the opt-in RLS seal suite, formerly the `rls-tests` job); `frontend-lint` = `frontend-static` (eslint + node:test in parallel, hex/bundle-budget guards) + `frontend-vitest-shard` (4 lanes, no coverage); `e2e` = `e2e-shard` (Playwright, smoke specs on 3 workers). The rest are real jobs: `changes`, `ci-image-check`, **`backend-testdb`** (WOW8-ONCE, 09/10/2026: `changes` asks the cache in `lookup-only` mode whether an EXACT pre-migrated test-DB dump exists; if not, this single job builds it once — delta or cold replay — and saves it under the exact key, PR runs included, so the 8 backend lanes + 2 e2e lanes that `needs:` it all restore an exact hit; skipped on a hit, and `backend-tests`/`e2e`/`ci-gate` go red if it fails), `stage-names`, `web-build-test`, and the always-running `ci-gate` aggregate (`if: always()`, `needs:` the LANES, not the aggregates — one runner hop less on the critical path) which fails only when a job that actually RAN failed or was cancelled. `stage-names` is **ungated** — it is the fast broad drift guard and runs on every push/PR: one parallel runner step (`scripts/ci_guards.py stage-names`, **44** commands: `check_stages`, `check_modules`, `check_parked_apps`, `check_api_contract`, `check_api_shapes`, `check_ecrans_atteignables`, `check_services_appeles`, `check_invariants`, `check_build_order`, `codemap_fingerprint.py --check`, the shard-split completeness tests, …). **The guard LIST lives in `scripts/ci_guards.py` only** (SOLMVP54, 21/09/2026): `scripts/ci_fast_gate_steps.py` expands the runner step so `preflight.ps1` still sees one entry per guard, and `scripts/tests/test_ci_guards.py` refuses a guard left as a serial ci.yml step. CLAUDE.md designates `backend-lint`, `backend-tests`, `frontend-lint` and `stage-names` as the required merge gate (0 approvals, merge-commit self-merge); see §9 for the branch-protection caveat.
+- **CI** — `.github/workflows/ci.yml` defines **15 jobs**, triggered on every `pull_request` and on pushes to `main`/`dev` only (a `pull_request`-scoped `concurrency` group cancels a superseded PR run). A pure-git `changes` detector (fails OPEN to the full suite when the diff range is unresolvable) exposes `backend`/`frontend`/`web`/`code` outputs, and the heavy jobs are path-filtered **per job** via `if:` (a skipped *job* reports Success to branch protection, so it never deadlocks — a top-level `on: paths` filter is deliberately NOT used). **Four of the 15 job names are AGGREGATES of sharded/split lanes, not the work itself** — that indirection exists so one stable name can be pinned in branch protection while the lanes underneath are re-sharded freely, and each aggregate explicitly fails when a lane failed OR was cancelled (a `skipped` lane is acceptable): `backend-lint` = `backend-lint-fast` (one parallel runner step, `scripts/ci_guards.py backend-lint-fast`: compileall-3.11 + flake8 + `lint-imports` + the gated `check_*.py`, **44** commands in `ci_guards.GARDES`) + `backend-openapi` (schema check + `makemigrations --check`); `backend-tests` = `backend-tests-shard` (**8** duration-balanced lanes from `scripts/ci_shard.py`, Postgres 16 in the job container + Redis + MinIO; lane 0 also runs the opt-in RLS seal suite, formerly the `rls-tests` job); `frontend-lint` = `frontend-static` (eslint + node:test in parallel, hex/bundle-budget guards) + `frontend-vitest-shard` (4 lanes, no coverage); `e2e` = `e2e-shard` (Playwright, smoke specs on 3 workers). The rest are real jobs: `changes`, `ci-image-check`, `stage-names`, `web-build-test`, and the always-running `ci-gate` aggregate (`if: always()`, `needs:` the LANES, not the aggregates — one runner hop less on the critical path) which fails only when a job that actually RAN failed or was cancelled. `stage-names` is **ungated** — it is the fast broad drift guard and runs on every push/PR: one parallel runner step (`scripts/ci_guards.py stage-names`, **44** commands: `check_stages`, `check_modules`, `check_parked_apps`, `check_api_contract`, `check_api_shapes`, `check_ecrans_atteignables`, `check_services_appeles`, `check_invariants`, `check_build_order`, `codemap_fingerprint.py --check`, the shard-split completeness tests, …). **The guard LIST lives in `scripts/ci_guards.py` only** (SOLMVP54, 21/09/2026): `scripts/ci_fast_gate_steps.py` expands the runner step so `preflight.ps1` still sees one entry per guard, and `scripts/tests/test_ci_guards.py` refuses a guard left as a serial ci.yml step. CLAUDE.md designates `backend-lint`, `backend-tests`, `frontend-lint` and `stage-names` as the required merge gate (0 approvals, merge-commit self-merge); see §9 for the branch-protection caveat.
 - **Key-gated features** — OCR (`ZHIPU_API_KEY`), chatbot/SQL agent (`GROQ_API_KEY` or alternative), outbound email (`SENDGRID_API_KEY`; console backend locally). Absent key = the feature no-ops, never a 500.
 
 ---
@@ -577,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1156)**
+**Done (1170)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1169,8 +1167,22 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ666` — Contrat d'électricité déclaré sur le lead pro (BT/MT, contrat/option tarifaire) lu par…
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
 - `ENF1` — Harnais api-fuzz
+- `ENF2` — Plateforme API (causes C2-C6)
+- `ENF3` — Schéma OpenAPI exact — installations
+- `ENF4` — Schéma OpenAPI exact — stock + achats
+- `ENF5` — Schéma OpenAPI exact — ventes + facturation
+- `ENF6` — Schéma OpenAPI exact — crm + portail
+- `ENF7` — Schéma OpenAPI exact — ged + records
+- `ENF8` — Schéma OpenAPI exact — core + parametres + notifications
+- `ENF9` — Schéma OpenAPI exact — sav + calepinage + outillage
+- `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
+- `ENF12` — Plus aucun masque dans les workflows
 - `ENF13` — Gardes toujours vertes rendues bloquantes
 - `ENF14` — Exceptions permanentes signées
+- `ENF16` — Dette on_delete (573) à zéro
+- `ENF24` — Seuil de couverture
+- `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
+- `ENF26` — ENF17 + ENF18, tranche des apps tenues (claims 10/10)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1736,7 +1748,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (141)**
+**Open — to build (129)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1821,19 +1833,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM23` — Valider les textes B2B marqués ✎ de la cadence
 - `CIQM24` — Script d'appel `objection_loi_8221` : valider une réponse qui réserve la revente du…
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
-- `ENF2` — Plateforme API (causes C2-C6)
-- `ENF3` — Schéma OpenAPI exact — installations
-- `ENF4` — Schéma OpenAPI exact — stock + achats
-- `ENF5` — Schéma OpenAPI exact — ventes + facturation
-- `ENF6` — Schéma OpenAPI exact — crm + portail
-- `ENF7` — Schéma OpenAPI exact — ged + records
-- `ENF8` — Schéma OpenAPI exact — core + parametres + notifications
-- `ENF9` — Schéma OpenAPI exact — sav + calepinage + outillage
-- `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
 - `ENF11` — api-fuzz bloquant
-- `ENF12` — Plus aucun masque dans les workflows
 - `ENF15` — Dettes moyennes à zéro
-- `ENF16` — Dette on_delete (573) à zéro
 - `ENF17` — Dette fk_scoping (332) à zéro
 - `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
 - `ENF19` — Duplicats (1 181) à zéro
@@ -1841,7 +1842,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF21` — flake8 E501 bloquant
 - `ENF22` — `# noqa` (2 435) et `eslint-disable` (432) à zéro
 - `ENF23` — Tests sautés (178) à zéro
-- `ENF24` — Seuil de couverture
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage

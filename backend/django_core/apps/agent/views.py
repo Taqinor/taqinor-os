@@ -11,7 +11,6 @@ from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.exceptions import ParseError, PermissionDenied
 from rest_framework.response import Response
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.views import APIView
 
@@ -23,6 +22,7 @@ from .services import (
     ActionNotUndoableError, annuler_action, log_confirmed_action,
     preuve_confirmation_valide,
 )
+from rest_framework.parsers import JSONParser
 
 # AUDV27 — mappe une ``action_key`` PILOTE vers le modèle (app_label, nom) de
 # l'objet qu'elle crée, pour dériver ``content_type``/``object_id`` du journal
@@ -36,6 +36,36 @@ _RESULTED_OBJECT_MODELS = {
 }
 
 
+class ConfirmationActionSerializer(drf_serializers.Serializer):
+    action_key = drf_serializers.CharField()
+    risk_level = drf_serializers.ChoiceField(
+        choices=list(AgentActionLog.RiskLevel.values))
+    inputs = drf_serializers.DictField(required=False)
+    object_id = drf_serializers.IntegerField(required=False, allow_null=True)
+    preuve = drf_serializers.CharField(required=False)
+
+
+class BrouillonAutomationSerializer(drf_serializers.Serializer):
+    nom = drf_serializers.CharField()
+    trigger_type = drf_serializers.CharField()
+    trigger_config = drf_serializers.DictField(required=False)
+    action_type = drf_serializers.CharField()
+    action_config = drf_serializers.DictField(required=False)
+
+
+_JournalAgent = inline_serializer('AgentActionJournal', {
+    'id': drf_serializers.IntegerField(),
+    'action_key': drf_serializers.CharField(),
+    'risk_level': drf_serializers.CharField(),
+    'user': drf_serializers.CharField(allow_null=True),
+    'confirmed_at': drf_serializers.DateTimeField(allow_null=True),
+    'executed_at': drf_serializers.DateTimeField(allow_null=True),
+    'object_repr': drf_serializers.CharField(),
+    'undone_at': drf_serializers.DateTimeField(allow_null=True),
+    'is_undoable': drf_serializers.BooleanField(),
+})
+
+
 class AgentActionsView(APIView):
     """Catalogue des actions exécutables par l'utilisateur courant."""
 
@@ -43,6 +73,9 @@ class AgentActionsView(APIView):
     # reçoit 403 (IsAnyRole = authentifié ET interne).
     permission_classes = [IsAnyRole]
 
+    @extend_schema(responses=inline_serializer('AgentCatalogue', {
+        'count': drf_serializers.IntegerField(),
+        'actions': drf_serializers.ListField(child=drf_serializers.DictField())}))
     def get(self, request):
         actions = [a.as_dict() for a in for_user(request.user)]
         return Response({'count': len(actions), 'actions': actions})
@@ -69,6 +102,9 @@ class AgentActionLogView(APIView):
 
     permission_classes = [IsAnyRole, IsAdminRole]
 
+    @extend_schema(responses=inline_serializer('AgentJournalListe', {
+        'count': drf_serializers.IntegerField(),
+        'results': drf_serializers.ListField(child=_JournalAgent)}))
     def get(self, request):
         user = request.user
         qs = AgentActionLog.objects.select_related('user')
@@ -88,6 +124,7 @@ class AgentActionUndoView(APIView):
 
     permission_classes = [IsAnyRole, IsAdminRole]
 
+    @extend_schema(request=None, responses=_JournalAgent)
     def post(self, request, pk):
         user = request.user
         qs = AgentActionLog.objects.all()
@@ -123,8 +160,9 @@ class AgentActionConfirmerView(APIView):
 
     # ASEC43 — self-service INTERNE seulement (compte portail -> 403).
     permission_classes = [IsAnyRole]
+    parser_classes = [JSONParser]
 
-    @extend_schema(request=OpenApiTypes.OBJECT, responses=inline_serializer(
+    @extend_schema(request=ConfirmationActionSerializer, responses={201: inline_serializer(
         'AgentActionConfirmee', {
             'id': drf_serializers.IntegerField(),
             'action_key': drf_serializers.CharField(),
@@ -135,7 +173,7 @@ class AgentActionConfirmerView(APIView):
             'object_repr': drf_serializers.CharField(),
             'undone_at': drf_serializers.DateTimeField(allow_null=True),
             'is_undoable': drf_serializers.BooleanField(),
-        }))
+        })})
     def post(self, request):
         data = request.data or {}
         action_key = (data.get('action_key') or '').strip()
@@ -210,7 +248,15 @@ class AutomationDraftView(APIView):
     reçoivent 403 sans brouillon créé."""
 
     permission_classes = [IsAnyRole, IsAdminRole]
+    parser_classes = [JSONParser]
 
+    @extend_schema(request=BrouillonAutomationSerializer, responses={201: inline_serializer(
+        'AutomationBrouillonCree', {
+            'id': drf_serializers.IntegerField(),
+            'nom': drf_serializers.CharField(),
+            'enabled': drf_serializers.BooleanField(),
+            'trigger_type': drf_serializers.CharField(),
+            'action_type': drf_serializers.CharField()})})
     def post(self, request):
         from apps.automation.services import DraftRuleError, \
             create_draft_rule_from_agent

@@ -31,8 +31,8 @@ Module PUR côté calcul ; les lectures en base passent par le modèle du module
 from __future__ import annotations
 
 __all__ = ['ProfilInvalide', 'SOURCE_REPLI', 'SOURCE_SOCIETE',
-           'courbe_journaliere', 'enregistrer_profils', 'profil_de_repli',
-           'profil_depuis_import', 'profils_de_repli', 'profils_de_societe']
+           'courbe_journaliere', 'enregistrer_profils',
+           'profil_depuis_import', 'profils_de_societe']
 
 
 class ProfilInvalide(ValueError):
@@ -75,7 +75,7 @@ def _normaliser(valeurs):
     return [nombre / total for nombre in nombres]
 
 
-def profils_de_repli():
+def _profils_de_repli():
     """Les profils codés du dépôt, ÉTIQUETÉS « hypothèse interne »."""
     from apps.ventes import solar_design
 
@@ -97,9 +97,9 @@ def profils_de_repli():
     return profils
 
 
-def profil_de_repli(cle):
+def _profil_de_repli(cle):
     """Le profil de repli de cette clé, ou ``None`` s'il n'y en a pas."""
-    for profil in profils_de_repli():
+    for profil in _profils_de_repli():
         if profil['cle'] == cle:
             return profil
     return None
@@ -167,7 +167,7 @@ def profils_de_societe(company, *, inclure_replis=True):
         return profils
 
     saisies = {profil['cle'] for profil in profils}
-    profils.extend(profil for profil in profils_de_repli()
+    profils.extend(profil for profil in _profils_de_repli()
                    if profil['cle'] not in saisies)
     return profils
 

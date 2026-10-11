@@ -5,7 +5,10 @@ Montées sous /api/django/publicapi/. Authentifiées par la session/JWT normaux
 société vient TOUJOURS de l'utilisateur connecté, jamais du corps de requête.
 """
 from django.db.models import Q
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -22,6 +25,7 @@ from .serializers import (
     WebhookDeliverySerializer, ApiUsagePlanSerializer, scope_catalogue,
 )
 from . import delivery as delivery_service
+from rest_framework.parsers import JSONParser
 
 
 def _no_store(response):
@@ -65,6 +69,63 @@ class DocsView(APIView):
         return Response(public_api_reference())
 
 
+class ApiKeyCreeSerializer(ApiKeySerializer):
+    """Clé créée : le secret en clair n'est servi QUE dans cette réponse."""
+    key = drf_serializers.CharField()
+
+    class Meta(ApiKeySerializer.Meta):
+        fields = list(ApiKeySerializer.Meta.fields) + ['key']
+        read_only_fields = fields
+
+
+class ApiKeyRotationSerializer(ApiKeyCreeSerializer):
+    ancienne_cle = ApiKeySerializer()
+
+    class Meta(ApiKeyCreeSerializer.Meta):
+        fields = list(ApiKeyCreeSerializer.Meta.fields) + ['ancienne_cle']
+        read_only_fields = fields
+
+
+class WebhookSecretSerializer(WebhookSerializer):
+    """Webhook créé / secret régénéré : le secret n'est servi qu'ici."""
+    secret = drf_serializers.CharField()
+
+    class Meta(WebhookSerializer.Meta):
+        fields = list(WebhookSerializer.Meta.fields) + ['secret']
+        read_only_fields = fields
+
+
+class ServiceAccountCreeSerializer(drf_serializers.ModelSerializer):
+    token = drf_serializers.CharField()
+
+    class Meta:
+        from .models import ServiceAccount as _SA
+        model = _SA
+        fields = ['id', 'nom', 'scopes', 'prefix', 'actif', 'expire_le',
+                  'last_used_at', 'created_at', 'token']
+        read_only_fields = fields
+
+
+class OcrToCrmSerializer(drf_serializers.Serializer):
+    mode = drf_serializers.ChoiceField(choices=['lead', 'devis'], required=False)
+    fields = drf_serializers.DictField(required=False)
+
+
+class RotationCleSerializer(drf_serializers.Serializer):
+    grace_jours = drf_serializers.IntegerField(required=False, min_value=0)
+
+
+class ServiceAccountCreerSerializer(drf_serializers.Serializer):
+    nom = drf_serializers.CharField(max_length=120)
+    scopes = drf_serializers.ListField(
+        child=drf_serializers.CharField(), required=False)
+    expire_le = drf_serializers.DateTimeField(required=False, allow_null=True)
+
+
+class SandboxEssaiSerializer(drf_serializers.Serializer):
+    resource = drf_serializers.ChoiceField(choices=['leads'], required=False)
+
+
 class OcrToCrmView(APIView):
     """FG106 — passerelle « Créer un lead / brouillon de devis depuis ce document ».
 
@@ -77,6 +138,12 @@ class OcrToCrmView(APIView):
     """
     permission_classes = [IsAdminOrResponsableTier]
 
+    @extend_schema(request=OcrToCrmSerializer, responses={201: inline_serializer(
+        'OcrToCrmReponse', {
+            'mode': drf_serializers.CharField(),
+            'lead_id': drf_serializers.IntegerField(),
+            'devis_id': drf_serializers.IntegerField(required=False),
+            'devis_reference': drf_serializers.CharField(required=False)})})
     def post(self, request):
         # Imports paresseux locaux : pas d'import des models/views des apps cibles.
         from apps.crm.services import create_draft_lead_from_ocr
@@ -150,6 +217,10 @@ class ApiUsagePlanView(APIView):
 @extend_schema(
     summary=(
         "NTAPI39 — tableau de bord de monitoring des intégrations de la société."),
+    parameters=[OpenApiParameter(
+        name='jours', type=OpenApiTypes.INT, location=OpenApiParameter.QUERY,
+        required=False,
+        description="Fenêtre d'analyse en jours (défaut et maximum bornés).")],
     responses=inline_serializer('PublicApiMonitoring', {
         'fenetre_jours': drf_serializers.IntegerField(),
         'depuis': drf_serializers.CharField(),
@@ -234,6 +305,7 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     révoque (désactive) ou on la supprime, et on en émet une nouvelle.
     """
     serializer_class = ApiKeySerializer
+    parser_classes = [JSONParser]
     queryset = ApiKey.objects.select_related('created_by').all()
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
 
@@ -253,6 +325,8 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         return self.queryset.filter(
             Q(company=company) | Q(company_id__in=bacs_a_sable))
 
+    @extend_schema(request=ApiKeyCreateSerializer,
+                   responses={201: ApiKeyCreeSerializer})
     def create(self, request, *args, **kwargs):
         in_ser = ApiKeyCreateSerializer(data=request.data)
         in_ser.is_valid(raise_exception=True)
@@ -278,6 +352,7 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         data['key'] = raw_key
         return _no_store(Response(data, status=status.HTTP_201_CREATED))
 
+    @extend_schema(request=None, responses=ApiKeySerializer)
     @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
         """Désactive une clé (révocation réversible, sans suppression)."""
@@ -286,6 +361,8 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         instance.save(update_fields=['enabled'])
         return Response(ApiKeySerializer(instance).data)
 
+    @extend_schema(request=RotationCleSerializer,
+                   responses={201: ApiKeyRotationSerializer})
     @action(detail=True, methods=['post'],
             permission_classes=[IsAdminOrResponsableTier])
     def rotate(self, request, pk=None):
@@ -311,6 +388,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     """CRUD des webhooks. Le secret est généré côté serveur et renvoyé une
     seule fois (création/rotation)."""
     serializer_class = WebhookSerializer
+    parser_classes = [JSONParser]
     queryset = Webhook.objects.all()
 
     def perform_create(self, serializer):
@@ -320,6 +398,8 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
             secret=Webhook.generate_secret(),
         )
 
+    @extend_schema(request=WebhookSerializer,
+                   responses={201: WebhookSecretSerializer})
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -331,6 +411,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         return _no_store(
             Response(data, status=status.HTTP_201_CREATED, headers=headers))
 
+    @extend_schema(request=None, responses=WebhookSecretSerializer)
     @action(detail=True, methods=['post'])
     def rotate_secret(self, request, pk=None):
         """Régénère le secret du webhook ; renvoie le nouveau une seule fois."""
@@ -341,6 +422,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         data['secret'] = instance.secret
         return _no_store(Response(data))
 
+    @extend_schema(request=None, responses=WebhookSerializer)
     @action(detail=True, methods=['post'])
     def reactiver(self, request, pk=None):
         """NTAPI11 — réactivation MANUELLE d'un webhook auto-désactivé.
@@ -355,6 +437,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         reactiver_webhook(instance, user=request.user)
         return Response(WebhookSerializer(instance).data)
 
+    @extend_schema(responses=WebhookDeliverySerializer(many=True))
     @action(detail=True, methods=['get'])
     def deliveries(self, request, pk=None):
         """Liste des 50 dernières livraisons de ce webhook (historique/diagnostic)."""
@@ -368,6 +451,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         detail=True, methods=['post'],
         url_path=r'deliveries/(?P<delivery_id>[0-9]+)/replay',
     )
+    @extend_schema(request=None, responses={201: WebhookDeliverySerializer})
     def delivery_replay(self, request, pk=None, delivery_id=None):
         """Rejoue une livraison existante en renvoyant le même payload.
 
@@ -401,6 +485,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(request=None, responses={201: WebhookDeliverySerializer})
     @action(detail=True, methods=['post'], url_path='test')
     def test_ping(self, request, pk=None):
         """Envoie un évènement de test synthétique vers ce webhook.
@@ -437,6 +522,7 @@ class ServiceAccountViewSet(viewsets.ModelViewSet):
 
     from authentication.permissions import IsAdminRole as _IsAdminRole
     permission_classes = [_IsAdminRole]
+    parser_classes = [JSONParser]
 
     def get_serializer_class(self):
         from .serializers import ServiceAccountSerializer
@@ -450,15 +536,19 @@ class ServiceAccountViewSet(viewsets.ModelViewSet):
             return qs.filter(company=user.company)
         return qs.none()
 
+    @extend_schema(request=ServiceAccountCreerSerializer,
+                   responses={201: ServiceAccountCreeSerializer})
     def create(self, request, *args, **kwargs):
         from .models import ServiceAccount
-        nom = (request.data.get('nom') or '').strip()
+        entree = ServiceAccountCreerSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        nom = entree.validated_data['nom'].strip()
         if not nom:
             return Response(
                 {'nom': ['Ce champ est requis.']},
                 status=status.HTTP_400_BAD_REQUEST)
-        scopes = request.data.get('scopes') or []
-        expire_le = request.data.get('expire_le') or None
+        scopes = entree.validated_data.get('scopes') or []
+        expire_le = entree.validated_data.get('expire_le') or None
         instance, raw = ServiceAccount.issue(
             company=request.user.company, nom=nom, scopes=scopes,
             created_by=request.user, expire_le=expire_le)
@@ -470,6 +560,8 @@ class ServiceAccountViewSet(viewsets.ModelViewSet):
         # La société n'est jamais lue du corps ; on la force à l'existante.
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ServiceAccountRotation', {'token': drf_serializers.CharField()}))
     @action(detail=True, methods=['post'])
     def rotate(self, request, pk=None):
         """Rotation du jeton : invalide l'ancien, renvoie le nouveau (1 fois)."""
@@ -477,6 +569,8 @@ class ServiceAccountViewSet(viewsets.ModelViewSet):
         raw = instance.rotate()
         return _no_store(Response({'token': raw}))
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ServiceAccountRevocation', {'actif': drf_serializers.BooleanField()}))
     @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
         """Révoque le compte de service (``actif=False``)."""
@@ -494,9 +588,16 @@ class SandboxTryView(APIView):
     besoin). Réservé au palier admin/responsable, comme le reste de l'écran
     Paramètres → API & Webhooks. Ne renvoie JAMAIS de donnée réelle."""
     permission_classes = [IsAdminOrResponsableTier]
+    parser_classes = [JSONParser]
 
     _RESOURCES = ('leads',)
 
+    @extend_schema(request=SandboxEssaiSerializer, responses=inline_serializer(
+        'SandboxEssaiReponse', {
+            'resource': drf_serializers.CharField(),
+            'sandbox': drf_serializers.BooleanField(),
+            'results': drf_serializers.ListField(
+                child=drf_serializers.DictField())}))
     def post(self, request):
         resource = (request.data.get('resource') or 'leads').strip().lower()
         if resource not in self._RESOURCES:

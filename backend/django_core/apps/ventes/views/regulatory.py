@@ -5,6 +5,8 @@ borné à la société de l'utilisateur), jamais lue du corps. Querysets filtré
 ``request.user.company``. Couche additive : ne touche ni le PDF premium ni
 `/proposal`, et ne change aucun statut de devis (RULE #4). Aucun prix exposé.
 """
+from drf_spectacular.utils import extend_schema_view, extend_schema
+from ..openapi_params import qint, qstr
 import re
 import uuid
 
@@ -177,6 +179,8 @@ def _refleter_sur_chantier(dossier):
         company=dossier.company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('devis'), qstr('statut')]))
 class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique (idem pour les 5 viewsets
     # de ce module). get_queryset / perform_create / perform_update /
@@ -239,6 +243,8 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
         _refleter_sur_chantier(dossier)  # CIQ617
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('dossier')]))
 class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG268 — CRUD pièces/étapes de checklist (scopé société)."""
 
@@ -283,6 +289,8 @@ class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note
         serializer.save(company=company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('dossier'), qstr('type_echange')]))
 class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG269 — journal de la navette opérateur (scopé société)."""
 
@@ -331,6 +339,8 @@ class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-d
         serializer.save(company=company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('devis'), qstr('programme'), qstr('statut')]))
 class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG270 — éligibilité & suivi des subventions (scopé société)."""
 
@@ -385,6 +395,8 @@ class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci
         serializer.save(company=company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('devis'), qstr('statut')]))
 class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG271 — workflow de régularisation Article 33 (scopé société)."""
 

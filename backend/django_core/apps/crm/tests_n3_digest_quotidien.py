@@ -22,7 +22,7 @@ from django.test import TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import services as crm_services
+from apps.crm import cadence_reperes
 from apps.crm import stages
 from apps.crm.management.commands.notifier_relances_dues import (
     DIGEST_ZERO_TITRE, notifier_relances_dues)
@@ -118,15 +118,15 @@ class EtapesVisiteEtDevisTests(_Base):
 
     def test_les_etapes_de_visite_et_de_devis_sont_comptees(self):
         self._touche(self._lead('Visite A'),
-                     libelle=crm_services.VISITE_CONFIRMATION_LIBELLE,
-                     cadence=crm_services.VISITE_CADENCE,
-                     ordre=crm_services.VISITE_ORDRE_CONFIRMATION)
+                     libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
+                     cadence=cadence_reperes.VISITE_CADENCE,
+                     ordre=cadence_reperes.VISITE_ORDRE_CONFIRMATION)
         self._touche(self._lead('Visite B'),
-                     libelle=crm_services.VISITE_DEBRIEF_LIBELLE,
-                     cadence=crm_services.VISITE_CADENCE,
-                     ordre=crm_services.VISITE_ORDRE_DEBRIEF)
+                     libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE,
+                     cadence=cadence_reperes.VISITE_CADENCE,
+                     ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF)
         self._touche(self._lead('Devis C'),
-                     libelle=crm_services.FILET_JOINT_LIBELLE,
+                     libelle=cadence_reperes.FILET_JOINT_LIBELLE,
                      cadence='generique', ordre=1)
         self._touche(self._lead('Suivi D'))
         self._lancer()

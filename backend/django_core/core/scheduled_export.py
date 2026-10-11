@@ -36,6 +36,7 @@ import csv
 import io
 import logging
 import os
+import re
 
 from django.conf import settings
 from django.utils import timezone
@@ -232,6 +233,20 @@ def snowflake_table(context) -> str:
     return f'{safe_ds}_{safe_date}'.upper()
 
 
+_IDENTIFIANT_SNOWFLAKE = re.compile(r'^[~@A-Za-z0-9_.$/-]+$')
+
+
+def _identifiant_snowflake(valeur) -> str:
+    """ENF12 — stage / table / nom de fichier sûrs à composer dans un PUT/COPY.
+
+    Refuse (``ValueError``) tout caractère hors identifiant Snowflake (espace,
+    quote, point-virgule…) : aucune injection via la configuration."""
+    texte = str(valeur or '')
+    if not _IDENTIFIANT_SNOWFLAKE.match(texte):
+        raise ValueError(f'Identifiant Snowflake refusé : {texte!r}')
+    return texte
+
+
 def _snowflake_connect(env):  # pragma: no cover - exige un compte réel
     """Connexion Snowflake (import PARESSEUX et OPTIONNEL du connecteur)."""
     import snowflake.connector as sf
@@ -291,11 +306,18 @@ class SnowflakeDestination(ExportDestinationProvider):
             conn = _snowflake_connect(env)
             try:
                 cur = conn.cursor()
-                cur.execute(
-                    f"PUT file://{path} @{stage} OVERWRITE = TRUE")
-                cur.execute(
-                    f"COPY INTO {table} FROM @{stage}/"
-                    f"{_os.path.basename(path)}")
+                # ENF12 (semgrep no-formatted-raw-sql) : stage et table
+                # (configuration) validés comme identifiants Snowflake ; le
+                # chemin local est LIÉ en paramètre (PUT accepte un chemin
+                # entre quotes).
+                stage_sur = _identifiant_snowflake(stage)
+                table_sure = _identifiant_snowflake(table)
+                put = 'PUT %s @' + stage_sur + ' OVERWRITE = TRUE'
+                cur.execute(put, ('file://' + path,))
+                copie = ('COPY INTO ' + table_sure + ' FROM @' + stage_sur
+                         + '/' + _identifiant_snowflake(
+                             _os.path.basename(path)))
+                cur.execute(copie)
             finally:
                 conn.close()
         except Exception as exc:  # noqa: BLE001 - jamais d'exception remontée

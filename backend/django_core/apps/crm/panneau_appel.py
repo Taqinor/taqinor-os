@@ -639,8 +639,8 @@ def _script_servi(etape, *, request=None, user=None):
     """Le script de la touche, forme `relance_etape_message` SANS `wa_url`."""
     if etape is None:
         return None
-    from . import services
-    rendu = services.message_pour_etape(etape, request=request, user=user)
+    from . import cadence_messages
+    rendu = cadence_messages.message_pour_etape(etape, request=request, user=user)
     return {
         'message': rendu.get('message') or '',
         'langue': rendu.get('langue') or 'fr',

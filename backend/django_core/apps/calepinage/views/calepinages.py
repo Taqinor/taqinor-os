@@ -35,7 +35,7 @@ import json
 from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, status
 from rest_framework import serializers as drf_serializers
@@ -193,6 +193,29 @@ class _OrdreStatutDerive(filters.OrderingFilter):
         return super().filter_queryset(request, queryset, view)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+        OpenApiParameter('q', OpenApiTypes.STR, OpenApiParameter.QUERY,
+                         required=False,
+                         description="Recherche libre (titre, référence, client)."),
+        OpenApiParameter('statut', OpenApiTypes.STR, OpenApiParameter.QUERY,
+                         required=False,
+                         description="Statut du calepinage (vocabulaire du serveur)."),
+        OpenApiParameter('depuis', OpenApiTypes.STR, OpenApiParameter.QUERY,
+                         required=False,
+                         description="Date ou date-heure ISO : calepinages modifiés depuis."),
+        OpenApiParameter('lead', OpenApiTypes.INT, OpenApiParameter.QUERY,
+                         required=False,
+                         description="Identifiant du lead."),
+        OpenApiParameter('client', OpenApiTypes.INT, OpenApiParameter.QUERY,
+                         required=False,
+                         description="Identifiant du client."),
+        OpenApiParameter('responsable', OpenApiTypes.INT, OpenApiParameter.QUERY,
+                         required=False,
+                         description="Identifiant du responsable."),
+        OpenApiParameter('etiquette', OpenApiTypes.STR, OpenApiParameter.QUERY,
+                         required=False,
+                         description="Identifiant(s) d'étiquette, séparés par des virgules (ET logique)."),
+]))
 class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
                         ElectriqueActionsMixin, SortiesMixin,

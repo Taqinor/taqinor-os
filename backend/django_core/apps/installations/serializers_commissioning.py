@@ -216,10 +216,12 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         from .services import reception_contrat
         return reception_contrat(obj.installation)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_instrument_nom(self, obj):
         instrument = obj.instrument
         return instrument.nom if instrument else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_instrument_numero_serie(self, obj):
         instrument = obj.instrument
         return instrument.numero_serie if instrument else None

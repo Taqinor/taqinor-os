@@ -16,7 +16,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import create_lead_from_meta_lead_ads
+from apps.crm.leads_meta import create_lead_from_meta_lead_ads
 
 User = get_user_model()
 Q_INSTALL = 'où_souhaitez-vous_installer_votre_système_solaire_?'

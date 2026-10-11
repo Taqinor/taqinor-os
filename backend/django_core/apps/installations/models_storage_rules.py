@@ -24,7 +24,7 @@ class CategorieStockage(models.Model):
     comportement historique (aucune limite)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_categories_stockage')
     nom = models.CharField(max_length=120)
@@ -52,18 +52,18 @@ class RegleRangement(models.Model):
     repli historique (FG319/320)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_regles_rangement')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: RegleRangement est le détail de Produit — n'existe pas sans lui
         null=True, blank=True, related_name='+')
     categorie_produit = models.CharField(
         max_length=120, blank=True, null=True,
         help_text='Catégorie produit (texte libre) — alternative à `produit` '
                   'pour une règle qui vise toute une famille.')
     bin_cible = models.ForeignKey(
-        'installations.BinLocation', on_delete=models.CASCADE,
+        'installations.BinLocation', on_delete=models.CASCADE,  # on_delete: RegleRangement est le détail de BinLocation — n'existe pas sans lui
         related_name='regles_rangement')
     priorite = models.PositiveIntegerField(default=100)
     actif = models.BooleanField(default=True)

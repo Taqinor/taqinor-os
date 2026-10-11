@@ -24,7 +24,7 @@ from apps.calepinage.services.asbuilt import (
     etat_pose_reelle,
 )
 from apps.calepinage.services.documents.document_asbuilt import (
-    construire_document, html_du_document_asbuilt,
+    _construire_document, html_du_document_asbuilt,
 )
 from apps.calepinage.services.planche import planche_svg_ou_vide
 from apps.ventes.models import Devis
@@ -145,7 +145,7 @@ class MemeSourceTest(BaseApiCalepinage):
             company=self.company, client=self.client_a, devis=devis,
             titre='Hangar', roof_layout=courant)
 
-        document = construire_document(calepinage, photos=[])
+        document = _construire_document(calepinage, photos=[])
 
         # Le tableau compte la conception que le chantier a reçue (2) …
         self.assertEqual(document['ecarts']['total_prevu'], 2)

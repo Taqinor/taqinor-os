@@ -42,6 +42,7 @@ scopé, exactement comme le fait ``TenantMixin`` pour les listes.
 ``core`` reste FONDATION : aucun import d'app métier ici.
 """
 from django.core.exceptions import FieldDoesNotExist
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -657,6 +658,12 @@ class TenantThemeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerial
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
     """
+    # ENF8 — le thème par défaut (société sans ligne) n'est pas encore
+    # enregistré : id / horodatages valent null.
+    id = serializers.IntegerField(read_only=True, allow_null=True)
+    created_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
+
     class Meta:
         model = TenantTheme
         fields = [
@@ -682,6 +689,7 @@ class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
         ]
         read_only_fields = ['id', 'variables', 'created_at', 'updated_at']
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_variables(self, obj):
         from .templating import variables_utilisees
         return variables_utilisees(f'{obj.sujet}\n{obj.corps}')

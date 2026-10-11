@@ -33,6 +33,7 @@ from ..services import (  # noqa: F401
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -109,7 +110,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class SafetyChecklistSlotViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
+class SafetyChecklistSlotViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """F18 — consignes de sécurité configurables (Paramètres → Sécurité).
     Lecture tout rôle, écriture admin. Les défauts (EPI portés, consignation
     électrique) sont semés à la première liste ; une consigne protégée garde sa

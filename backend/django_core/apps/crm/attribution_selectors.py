@@ -462,7 +462,7 @@ def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
     Lecture seule, scopée société ; ne compte jamais un lead archivé.
     ``date_start``/``date_end`` (date, inclus) bornent ``date_creation`` ;
     ``None`` = pas de borne. Renvoie une LISTE de dicts (données pures)."""
-    from . import services as crm_services
+    from . import leads_doublons
     from .models import Lead
 
     qs = Lead.objects.filter(company=company, is_archived=False)
@@ -490,8 +490,8 @@ def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
             'is_site': lead.source == site_source,
             'is_ctwa': lead.canal == ctwa_canal,
             'is_meta_ads_canal': lead.canal == meta_canal,
-            'phone_key': crm_services.normalize_phone(lead.telephone),
-            'email_key': crm_services.normalize_email(lead.email),
+            'phone_key': leads_doublons.normalize_phone(lead.telephone),
+            'email_key': leads_doublons.normalize_email(lead.email),
             'date': lead.date_creation.date() if lead.date_creation else None,
         })
     return rows

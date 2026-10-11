@@ -60,7 +60,7 @@ class TestFG27LeadScoring(TestCase):
     def test_score_field_in_serializer(self):
         user = make_user(self.company, 'fg27user')
         api = make_api(user)
-        resp = api.post('/api/django/crm/leads/', {'nom': 'Scoring Test'})
+        resp = api.post('/api/django/crm/leads/', {'nom': 'Scoring Test'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertIn('score', resp.data)
         self.assertIn('score_label', resp.data)
@@ -74,7 +74,7 @@ class TestFG27LeadScoring(TestCase):
             'facture_hiver': '3500',
             'canal': 'reference',
             'type_installation': 'residentiel',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201)
         score = resp.data['score']
         self.assertIsInstance(score, int)
@@ -124,40 +124,40 @@ class TestFG28SLA(TestCase):
         self.api = make_api(self.user)
 
     def test_first_contacted_at_is_null_on_create(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Fresh Lead'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Fresh Lead'}, format='json')
         self.assertEqual(resp.status_code, 201)
         lead = Lead.objects.get(nom='Fresh Lead', company=self.company)
         self.assertIsNone(lead.first_contacted_at)
 
     def test_first_contacted_at_set_on_stage_transition(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'SLA Lead'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'SLA Lead'}, format='json')
         self.assertEqual(resp.status_code, 201)
         lead_id = resp.data['id']
         # Transition from NEW to CONTACTED
         patch = self.api.patch(
             f'/api/django/crm/leads/{lead_id}/',
-            {'stage': 'CONTACTED'},
+            {'stage': 'CONTACTED'}, format='json',
         )
         self.assertEqual(patch.status_code, 200, patch.data)
         lead = Lead.objects.get(pk=lead_id)
         self.assertIsNotNone(lead.first_contacted_at)
 
     def test_first_contacted_at_not_overwritten_on_second_stage_change(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'SLA Lead 2'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'SLA Lead 2'}, format='json')
         lead_id = resp.data['id']
-        self.api.patch(f'/api/django/crm/leads/{lead_id}/', {'stage': 'CONTACTED'})
+        self.api.patch(f'/api/django/crm/leads/{lead_id}/', {'stage': 'CONTACTED'}, format='json')
         lead = Lead.objects.get(pk=lead_id)
         first = lead.first_contacted_at
-        self.api.patch(f'/api/django/crm/leads/{lead_id}/', {'stage': 'QUOTE_SENT'})
+        self.api.patch(f'/api/django/crm/leads/{lead_id}/', {'stage': 'QUOTE_SENT'}, format='json')
         lead.refresh_from_db()
         self.assertEqual(lead.first_contacted_at, first)
 
     def test_first_contacted_at_set_on_note(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Note Lead'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Note Lead'}, format='json')
         lead_id = resp.data['id']
         self.api.post(
             f'/api/django/crm/leads/{lead_id}/noter/',
-            {'body': 'Appel passé — intéressé'},
+            {'body': 'Appel passé — intéressé'}, format='json',
         )
         lead = Lead.objects.get(pk=lead_id)
         self.assertIsNotNone(lead.first_contacted_at)
@@ -179,7 +179,7 @@ class TestFG29StageSince(TestCase):
         self.api = make_api(self.user)
 
     def test_stage_since_days_in_lead_response(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Stage Lead'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Stage Lead'}, format='json')
         self.assertEqual(resp.status_code, 201)
         self.assertIn('stage_since_days', resp.data)
         # Fresh lead: 0 or 1 days
@@ -187,9 +187,9 @@ class TestFG29StageSince(TestCase):
         self.assertGreaterEqual(resp.data['stage_since_days'], 0)
 
     def test_stage_since_days_updates_after_stage_change(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Stage Lead 2'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Stage Lead 2'}, format='json')
         lead_id = resp.data['id']
-        self.api.patch(f'/api/django/crm/leads/{lead_id}/', {'stage': 'CONTACTED'})
+        self.api.patch(f'/api/django/crm/leads/{lead_id}/', {'stage': 'CONTACTED'}, format='json')
         detail = self.api.get(f'/api/django/crm/leads/{lead_id}/')
         self.assertIn('stage_since_days', detail.data)
         self.assertGreaterEqual(detail.data['stage_since_days'], 0)
@@ -357,7 +357,7 @@ class TestFG36MessageTemplate(TestCase):
             'nom': 'Premier contact',
             'langue': 'fr',
             'corps': 'Bonjour {prenom}, nous vous contactons depuis {ville}.',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['nom'], 'Premier contact')
 
@@ -374,7 +374,7 @@ class TestFG36MessageTemplate(TestCase):
     def test_regular_user_cannot_create_template(self):
         resp = self.user_api.post('/api/django/crm/message-templates/', {
             'nom': 'Unauthorized', 'langue': 'fr', 'corps': 'Test',
-        })
+        }, format='json')
         self.assertIn(resp.status_code, [403, 401])
 
     def test_render_endpoint(self):
@@ -384,7 +384,7 @@ class TestFG36MessageTemplate(TestCase):
         )
         resp = self.user_api.post(
             f'/api/django/crm/message-templates/{tpl.pk}/render/',
-            {'prenom': 'Ahmed', 'ville': 'Casablanca', 'lien': 'https://t.ma/d/1'},
+            {'prenom': 'Ahmed', 'ville': 'Casablanca', 'lien': 'https://t.ma/d/1'}, format='json',
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn('texte', resp.data)
@@ -422,7 +422,7 @@ class TestFG38ClientMatch(TestCase):
     def test_client_match_no_match(self):
         resp = self.api.post('/api/django/crm/leads/', {
             'nom': 'New Prospect', 'telephone': '0699000001',
-        })
+        }, format='json')
         lead_id = resp.data['id']
         resp = self.api.get(f'/api/django/crm/leads/{lead_id}/client-match/')
         self.assertEqual(resp.status_code, 200)

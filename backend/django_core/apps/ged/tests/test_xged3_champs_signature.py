@@ -197,7 +197,7 @@ class PublicApiTests(XGed3Base):
         resp = self.client.post(
             f'/api/django/ged/signature/{self.demande.token}/',
             {'action': 'signer', 'consentement': True,
-             'signature_texte': 'Jean'}, format='json')
+             'signature_texte': 'Jean'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)
 
     def test_post_signer_with_valeurs_champs_succeeds(self):

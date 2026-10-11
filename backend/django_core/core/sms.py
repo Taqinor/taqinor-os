@@ -99,11 +99,12 @@ class GenericHttpSmsProvider(SmsProvider):
             'sender': self.config.get('sender', ''),
         }
         try:
+            delai = float(self.config.get('timeout', 10))
             resp = requests.post(
                 self.config['base_url'],
                 json=payload,
                 headers={'Authorization': f'Bearer {self.secret}'},
-                timeout=float(self.config.get('timeout', 10)),
+                timeout=delai,
             )
             ok = 200 <= resp.status_code < 300
             return SmsResult(

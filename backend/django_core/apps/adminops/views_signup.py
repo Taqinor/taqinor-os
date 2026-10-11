@@ -20,6 +20,8 @@ import logging
 from django.conf import settings
 from django.http import Http404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -92,6 +94,11 @@ class DemandeInscriptionListView(APIView):
     permission_classes = [IsSuperuserConsole]
     serializer_class = DemandeInscriptionSerializer
 
+    @extend_schema(parameters=[
+        OpenApiParameter(
+            'statut', OpenApiTypes.STR, required=False,
+            description="Filtre sur le statut de la demande."),
+    ])
     def get(self, request):
         qs = DemandeInscription.objects.all()
         statut = request.query_params.get('statut')

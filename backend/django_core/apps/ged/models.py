@@ -252,7 +252,7 @@ class Cabinet(models.Model):
     dossiers. Company posée côté serveur — jamais lue du corps de requête.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_cabinets')
     nom = models.CharField(max_length=150)
     description = models.TextField(blank=True, default='')
@@ -284,12 +284,12 @@ class Folder(models.Model):
     Company posée côté serveur ; toujours cohérente avec celle du cabinet.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_folders')
     cabinet = models.ForeignKey(
-        Cabinet, on_delete=models.CASCADE, related_name='folders')
+        Cabinet, on_delete=models.CASCADE, related_name='folders')  # on_delete: Folder est le détail de Cabinet — n'existe pas sans lui
     parent = models.ForeignKey(
-        'self', on_delete=models.CASCADE,
+        'self', on_delete=models.CASCADE,  # on_delete: arborescence — un sous-dossier suit son parent (suppression refusée côté API tant qu'un document s'y trouve, ADOC2)
         null=True, blank=True, related_name='children')
     nom = models.CharField(max_length=200)
     # Chemin matérialisé : "/1/4/9/" — les pk des ancêtres puis soi, encadrés
@@ -372,18 +372,18 @@ class Coffre(models.Model):
     propriétaire : un employé OU un client (jamais les deux, jamais aucun).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_coffres')
     nom = models.CharField(max_length=200)
     description = models.TextField(blank=True, default='')
     # Propriétaire employé (User de la société) — exclusif avec `client_id`.
     proprietaire = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: coffre personnel — suit son propriétaire
         null=True, blank=True, related_name='ged_coffres')
     # Propriétaire client — référence string-FK vers crm.Client (cross-app via
     # selectors, jamais un import du modèle). Exclusif avec `proprietaire`.
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: coffre documentaire du client — sans objet sans lui
         null=True, blank=True, related_name='ged_coffres')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -428,10 +428,10 @@ class Document(models.Model):
     serveur — toujours cohérente avec celle du dossier.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_documents')
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE, related_name='documents')
+        Folder, on_delete=models.CASCADE, related_name='documents')  # on_delete: document rangé dans un dossier — suppression d'un dossier non vide refusée côté API (ADOC2), corbeille/gardes légales sur Document.delete()
     # GED8 — un document peut vivre dans un coffre-fort (ACL propriétaire+admin).
     # Quand `coffre` est non nul, seuls le propriétaire du coffre et les admins
     # voient/manipulent ce document (filtrage en `selectors`/viewset).
@@ -725,10 +725,10 @@ class DocumentChunk(models.Model):
     corps de requête. `chunk_index` ordonne les fragments d'un même document.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_document_chunks')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='chunks')
+        Document, on_delete=models.CASCADE, related_name='chunks')  # on_delete: DocumentChunk est le détail de Document — n'existe pas sans lui
     # Position du fragment dans le document (0, 1, 2…) — posée côté serveur.
     chunk_index = models.PositiveIntegerField(default=0)
     # Texte brut du fragment (sert à renvoyer le passage récupéré à l'agent).
@@ -763,10 +763,10 @@ class DocumentVersion(models.Model):
     serveur — toujours cohérente avec celle du document.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_document_versions')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='versions')
+        Document, on_delete=models.CASCADE, related_name='versions')  # on_delete: versions du fichier — n'existent pas sans le document (purge gardée par GED23/24)
     # Numéro de version incrémental par document (1, 2, 3…) — posé côté serveur.
     version = models.PositiveIntegerField(default=1)
     # Clé objet MinIO (bucket erp-uploads) — conventions records.storage.
@@ -853,12 +853,12 @@ class DocumentLien(models.Model):
     corps de requête. Un même document ne se lie qu'UNE fois à un objet donné.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_document_liens')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='liens')
+        Document, on_delete=models.CASCADE, related_name='liens')  # on_delete: DocumentLien est le détail de Document — n'existe pas sans lui
 
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
 
@@ -892,10 +892,10 @@ class DocumentTag(models.Model):
     slug). On applique un tag à un document via `DocumentTagAssignment`.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_tags')
     parent = models.ForeignKey(
-        'self', on_delete=models.CASCADE,
+        'self', on_delete=models.CASCADE,  # on_delete: arborescence de tags — un sous-tag suit son parent
         null=True, blank=True, related_name='enfants')
     nom = models.CharField(max_length=100)
     slug = models.SlugField(max_length=110)
@@ -941,12 +941,12 @@ class DocumentTagAssignment(models.Model):
     Company posée côté serveur (cohérente avec le document et le tag).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_tag_assignments')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='tag_assignments')
+        Document, on_delete=models.CASCADE, related_name='tag_assignments')  # on_delete: DocumentTagAssignment est le détail de Document — n'existe pas sans lui
     tag = models.ForeignKey(
-        DocumentTag, on_delete=models.CASCADE, related_name='assignments')
+        DocumentTag, on_delete=models.CASCADE, related_name='assignments')  # on_delete: DocumentTagAssignment est le détail de DocumentTag — n'existe pas sans lui
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_tag_assignments_crees')
@@ -982,10 +982,10 @@ class DemandeApprobation(models.Model):
     serveur — jamais lus du corps de requête.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_demandes_approbation')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='demandes_approbation')
+        Document, on_delete=models.CASCADE, related_name='demandes_approbation')  # on_delete: DemandeApprobation est le détail de Document — n'existe pas sans lui
     # Utilisateur qui a lancé la demande de revue (posé côté serveur).
     demandeur = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -1061,22 +1061,22 @@ class AclGed(models.Model):
     de requête. Ces niveaux sont LOCAUX à la GED (séparés du funnel STAGES.py).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_acls')
     # Cible — EXACTEMENT l'une des deux est renseignée (garde clean()).
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE,
+        Folder, on_delete=models.CASCADE,  # on_delete: AclGed est le détail de Folder — n'existe pas sans lui
         null=True, blank=True, related_name='ged_acls')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE,
+        Document, on_delete=models.CASCADE,  # on_delete: AclGed est le détail de Document — n'existe pas sans lui
         null=True, blank=True, related_name='ged_acls')
     # Principal — utilisateur ET/OU rôle (au moins l'un des deux, garde clean()).
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (AclGed) — sans objet sans lui
         null=True, blank=True, related_name='ged_acls',
         verbose_name='utilisateur')
     role = models.ForeignKey(
-        'roles.Role', on_delete=models.CASCADE,
+        'roles.Role', on_delete=models.CASCADE,  # on_delete: AclGed est le détail de Role — n'existe pas sans lui
         null=True, blank=True, related_name='ged_acls',
         verbose_name='rôle')
     # NTPRT13 — Principal PORTAIL CLIENT : partage un dossier/document avec un
@@ -1197,10 +1197,10 @@ class PartageGed(models.Model):
     corps de requête. `created_by` posé côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_partages')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='partages')
+        Document, on_delete=models.CASCADE, related_name='partages')  # on_delete: PartageGed est le détail de Document — n'existe pas sans lui
     # Jeton long, imprévisible, URL-safe — l'UNIQUE secret d'accès public.
     # `unique=True` crée déjà l'index nécessaire au lookup `?token=`.
     token = models.CharField(
@@ -1325,7 +1325,7 @@ class PolitiqueRetention(models.Model):
     la GED (séparés du funnel commercial STAGES.py, rule #2).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_politiques_retention')
     nom = models.CharField(max_length=255)
     description = models.TextField(blank=True, default='')
@@ -1333,10 +1333,10 @@ class PolitiqueRetention(models.Model):
     # tous les documents de la société). `cabinet`/`folder` ciblent un sous-arbre ;
     # `type_document` affine par catégorie libre (ex. « contrat », « facture »).
     cabinet = models.ForeignKey(
-        Cabinet, on_delete=models.CASCADE, null=True, blank=True,
+        Cabinet, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: PolitiqueRetention est le détail de Cabinet — n'existe pas sans lui
         related_name='politiques_retention')
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE, null=True, blank=True,
+        Folder, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: PolitiqueRetention est le détail de Folder — n'existe pas sans lui
         related_name='politiques_retention')
     type_document = models.CharField(
         max_length=80, blank=True, default='',
@@ -1450,10 +1450,10 @@ class ArchivageLegal(models.Model):
     société. Couche LOCALE à la GED, séparée du funnel `STAGES.py` (rule #2).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_archivages_legaux')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='archivages_legaux')
+        Document, on_delete=models.CASCADE, related_name='archivages_legaux')  # on_delete: archivage lié à son document — Document.delete() est refusé tant qu'il est archivé (GED23)
     # Version précise figée au moment de l'archivage (la version courante au
     # moment de l'appel). Optionnelle : un document peut être archivé sans
     # version (rare) — le hash reste alors vide.
@@ -1544,10 +1544,10 @@ class LegalHold(models.Model):
     Couche LOCALE à la GED, séparée du funnel commercial `STAGES.py` (rule #2).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_legal_holds')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='legal_holds')
+        Document, on_delete=models.CASCADE, related_name='legal_holds')  # on_delete: gel légal lié à son document — Document.delete() est refusé tant qu'il est actif (GED24)
     motif = models.TextField(blank=True, default='', verbose_name='motif')
     place_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -1609,10 +1609,10 @@ class ControleIntegrite(models.Model):
     Multi-tenant : `company` posée CÔTÉ SERVEUR (cohérente avec l'archivage) —
     jamais lue du corps de requête."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_controles_integrite')
     archivage = models.ForeignKey(
-        ArchivageLegal, on_delete=models.CASCADE, related_name='controles')
+        ArchivageLegal, on_delete=models.CASCADE, related_name='controles')  # on_delete: ControleIntegrite est le détail de ArchivageLegal — n'existe pas sans lui
     resultat = models.CharField(
         max_length=14, choices=CONTROLE_RESULTAT_CHOICES,
         default=CONTROLE_RESULTAT_OK, verbose_name='résultat')
@@ -1702,10 +1702,10 @@ class DemandeSignatureDocument(models.Model):
     corps de requête) ; toutes les requêtes bornées à la société.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_demandes_signature')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='demandes_signature')
+        Document, on_delete=models.CASCADE, related_name='demandes_signature')  # on_delete: DemandeSignatureDocument est le détail de Document — n'existe pas sans lui
     signataire_nom = models.CharField(
         max_length=255, verbose_name='nom du signataire')
     signataire_email = models.EmailField(
@@ -1907,7 +1907,7 @@ class RoleSignataire(models.Model):
     serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_roles_signataire')
     nom = models.CharField(max_length=100)
     couleur = models.CharField(
@@ -1963,10 +1963,10 @@ class SignataireDemande(models.Model):
     jamais lue du corps de requête.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_signataires_demande')
     demande = models.ForeignKey(
-        DemandeSignatureDocument, on_delete=models.CASCADE,
+        DemandeSignatureDocument, on_delete=models.CASCADE,  # on_delete: SignataireDemande est le détail de DemandeSignatureDocument — n'existe pas sans lui
         related_name='signataires')
     nom = models.CharField(max_length=255, verbose_name='nom')
     email = models.EmailField(blank=True, default='', verbose_name='email')
@@ -2183,7 +2183,7 @@ class TypeChampSignature(models.Model):
     ailleurs. Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_types_champ_signature')
     code = models.CharField(max_length=50, verbose_name='code')
     libelle = models.CharField(max_length=100, verbose_name='libellé')
@@ -2254,13 +2254,13 @@ class ChampSignature(models.Model):
     jamais lue du corps de requête.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_champs_signature')
     demande = models.ForeignKey(
-        DemandeSignatureDocument, on_delete=models.CASCADE,
+        DemandeSignatureDocument, on_delete=models.CASCADE,  # on_delete: ChampSignature est le détail de DemandeSignatureDocument — n'existe pas sans lui
         null=True, blank=True, related_name='champs')
     modele = models.ForeignKey(
-        'ModeleDocument', on_delete=models.CASCADE,
+        'ModeleDocument', on_delete=models.CASCADE,  # on_delete: ChampSignature est le détail de ModeleDocument — n'existe pas sans lui
         null=True, blank=True, related_name='champs_signature')
     type_champ = models.CharField(
         max_length=12, choices=CHAMP_TYPE_CHOICES,
@@ -2349,7 +2349,7 @@ class ModeleDocument(models.Model):
     de désactiver un modèle sans le supprimer.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_modeles_document')
     nom = models.CharField(max_length=255)
     description = models.TextField(blank=True, default='')
@@ -2441,10 +2441,10 @@ class JournalAcces(models.Model):
     Multi-tenant : `company` posée côté serveur (cohérente avec celle du
     document) — jamais lue du corps de requête."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_journaux_acces')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='acces')
+        Document, on_delete=models.CASCADE, related_name='acces')  # on_delete: journal d'accès propre au document — effacé avec lui par purge légale (Document.delete() gardé)
     # NULL = accès PUBLIC anonyme (lien tokenisé GED20) — pas d'utilisateur connu.
     utilisateur = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -2493,7 +2493,7 @@ class QuotaStockage(models.Model):
     dépasserait) — jamais une suppression automatique. Sans entrée explicite, le
     défaut `settings.GED_QUOTA_DEFAUT_OCTETS` s'applique (0 = illimité)."""
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_quota_stockage')
     # Capacité allouée en octets. 0 = illimité (aucun plafond appliqué).
     quota_octets = models.BigIntegerField(
@@ -2524,10 +2524,10 @@ class DepotPublic(models.Model):
     de requête. `created_by` posé côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_depots_publics')
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE, related_name='depots_publics')
+        Folder, on_delete=models.CASCADE, related_name='depots_publics')  # on_delete: DepotPublic est le détail de Folder — n'existe pas sans lui
     token = models.CharField(
         max_length=64, unique=True, default=_default_partage_token,
         editable=False)
@@ -2595,13 +2595,13 @@ class ExigenceDossier(models.Model):
     via `cabinet`, `folder` NULL). Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_exigences')
     cabinet = models.ForeignKey(
-        Cabinet, on_delete=models.CASCADE, null=True, blank=True,
+        Cabinet, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: ExigenceDossier est le détail de Cabinet — n'existe pas sans lui
         related_name='exigences')
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE, null=True, blank=True,
+        Folder, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: ExigenceDossier est le détail de Folder — n'existe pas sans lui
         related_name='exigences')
     libelle = models.CharField(max_length=200)
     description = models.TextField(blank=True, default='')
@@ -2651,10 +2651,10 @@ class DemandeDocument(models.Model):
     Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_demandes_document')
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE, related_name='demandes_document')
+        Folder, on_delete=models.CASCADE, related_name='demandes_document')  # on_delete: DemandeDocument est le détail de Folder — n'existe pas sans lui
     exigence = models.ForeignKey(
         ExigenceDossier, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='demandes')
@@ -2711,10 +2711,10 @@ class ValidationOcrDocument(models.Model):
     avant validation). Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_validations_ocr')
     document = models.OneToOneField(
-        Document, on_delete=models.CASCADE, related_name='validation_ocr')
+        Document, on_delete=models.CASCADE, related_name='validation_ocr')  # on_delete: ValidationOcrDocument est le détail de Document — n'existe pas sans lui
     score_confiance = models.FloatField(default=0.0)
     champs_extraits = models.JSONField(null=True, blank=True, default=dict)
     valide = models.BooleanField(default=False)
@@ -2758,10 +2758,10 @@ class AnnotationDocument(models.Model):
     Company + auteur posés côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_annotations')
     version = models.ForeignKey(
-        DocumentVersion, on_delete=models.CASCADE, related_name='annotations')
+        DocumentVersion, on_delete=models.CASCADE, related_name='annotations')  # on_delete: AnnotationDocument est le détail de DocumentVersion — n'existe pas sans lui
     type_annotation = models.CharField(
         max_length=12, choices=ANNOTATION_TYPE_CHOICES,
         default=ANNOTATION_TYPE_NOTE)
@@ -2795,7 +2795,7 @@ class TamponSociete(models.Model):
     une société d'ajouter SES propres libellés. Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_tampons')
     libelle = models.CharField(max_length=60)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2826,10 +2826,10 @@ class RegleDossier(models.Model):
     côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_regles_dossier')
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE, related_name='regles')
+        Folder, on_delete=models.CASCADE, related_name='regles')  # on_delete: RegleDossier est le détail de Folder — n'existe pas sans lui
     nom = models.CharField(max_length=200)
     condition_group = models.JSONField(default=dict, blank=True)
     actions = models.JSONField(default=list, blank=True)
@@ -2860,12 +2860,12 @@ class ExecutionRegleDossier(models.Model):
     Une ligne par exécution (déclenchée à l'upload) ; `resultats` porte le
     détail par action (`ok`/erreur) — jamais tout-ou-rien silencieux."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_executions_regle')
     regle = models.ForeignKey(
-        RegleDossier, on_delete=models.CASCADE, related_name='executions')
+        RegleDossier, on_delete=models.CASCADE, related_name='executions')  # on_delete: ExecutionRegleDossier est le détail de RegleDossier — n'existe pas sans lui
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='executions_regle')
+        Document, on_delete=models.CASCADE, related_name='executions_regle')  # on_delete: ExecutionRegleDossier est le détail de Document — n'existe pas sans lui
     declenchee = models.BooleanField(default=False)
     resultats = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2896,7 +2896,7 @@ class RegleApprobationGed(models.Model):
     inchangé (approbateur unique fixe, ou aucun). Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_regles_approbation')
     libelle = models.CharField(max_length=200)
     condition_group = models.JSONField(default=dict, blank=True)
@@ -2932,10 +2932,10 @@ class ChaineApprobationGed(models.Model):
     statut global (`en_attente`/`approuve`/`rejete`) ; cette table détaille les
     étapes intermédiaires du parcours séquentiel."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_chaines_approbation')
     demande = models.OneToOneField(
-        DemandeApprobation, on_delete=models.CASCADE,
+        DemandeApprobation, on_delete=models.CASCADE,  # on_delete: ChaineApprobationGed est le détail de DemandeApprobation — n'existe pas sans lui
         related_name='chaine_approbation')
     regle = models.ForeignKey(
         RegleApprobationGed, on_delete=models.SET_NULL, null=True, blank=True,
@@ -2960,10 +2960,10 @@ class DocumentActivity(models.Model):
     changement de statut, partage créé, signature) — jamais de lecture simple.
     Auteur et société toujours posés côté serveur."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_document_activities')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='activities')
+        Document, on_delete=models.CASCADE, related_name='activities')  # on_delete: chatter propre au document — suit sa purge (Document.delete() gardé par GED23/24)
     type_evenement = models.CharField(max_length=40)
     message = models.CharField(max_length=500, blank=True, default='')
     utilisateur = models.ForeignKey(
@@ -2993,10 +2993,10 @@ class PlanificationDocument(models.Model):
     via `notifications.notify` (best-effort). Company + créateur posés côté
     serveur."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_planifications')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE, related_name='planifications')
+        Document, on_delete=models.CASCADE, related_name='planifications')  # on_delete: PlanificationDocument est le détail de Document — n'existe pas sans lui
     libelle = models.CharField(max_length=200)
     echeance = models.DateField()
     assigne_a = models.ForeignKey(
@@ -3046,12 +3046,12 @@ class RegleAclMetadonnee(models.Model):
     commercial STAGES.py, rule #2).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_regles_acl_metadonnee')
     nom = models.CharField(max_length=200)
     condition_group = models.JSONField(default=dict, blank=True)
     role = models.ForeignKey(
-        'roles.Role', on_delete=models.CASCADE,
+        'roles.Role', on_delete=models.CASCADE,  # on_delete: RegleAclMetadonnee est le détail de Role — n'existe pas sans lui
         related_name='ged_regles_acl_metadonnee',
         verbose_name='rôle')
     niveau = models.CharField(
@@ -3126,7 +3126,7 @@ class DemandeDisposition(models.Model):
     requête sans validation). Company/demandeur posés côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_demandes_disposition')
     libelle = models.CharField(max_length=200)
     action = models.CharField(
@@ -3189,10 +3189,10 @@ class CertificatDestruction(models.Model):
     suppression (même motif qu'`ArchivageLegal`). Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_certificats_destruction')
     demande = models.ForeignKey(
-        DemandeDisposition, on_delete=models.CASCADE,
+        DemandeDisposition, on_delete=models.CASCADE,  # on_delete: certificat produit par la demande de disposition — suit la demande
         related_name='certificats')
     document_id_origine = models.PositiveBigIntegerField(
         verbose_name="id d'origine du document détruit")
@@ -3254,7 +3254,7 @@ class LotEnvoi(models.Model):
     serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='ged_lots_envoi')
     modele = models.ForeignKey(
         ModeleDocument, on_delete=models.SET_NULL, null=True, blank=True,
@@ -3314,12 +3314,12 @@ class RoutageDocumentaire(models.Model):
 
     Company posée côté serveur."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_routages_documentaires')
     source = models.CharField(
         max_length=50, verbose_name='source (code de module)')
     cabinet_cible = models.ForeignKey(
-        Cabinet, on_delete=models.CASCADE, related_name='routages_documentaires')
+        Cabinet, on_delete=models.CASCADE, related_name='routages_documentaires')  # on_delete: RoutageDocumentaire est le détail de Cabinet — n'existe pas sans lui
     dossier_cible = models.CharField(
         max_length=500, verbose_name='dossier cible (segments {{ jeton }})')
     tags_defaut = models.ManyToManyField(
@@ -3366,16 +3366,16 @@ class FavoriGed(models.Model):
     Company posée côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_favoris')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (FavoriGed) — sans objet sans lui
         related_name='ged_favoris', verbose_name='utilisateur')
     folder = models.ForeignKey(
-        Folder, on_delete=models.CASCADE,
+        Folder, on_delete=models.CASCADE,  # on_delete: FavoriGed est le détail de Folder — n'existe pas sans lui
         null=True, blank=True, related_name='favoris')
     document = models.ForeignKey(
-        Document, on_delete=models.CASCADE,
+        Document, on_delete=models.CASCADE,  # on_delete: FavoriGed est le détail de Document — n'existe pas sans lui
         null=True, blank=True, related_name='favoris')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -3434,10 +3434,10 @@ class VueGedEnregistree(models.Model):
     côté serveur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ged_vues_enregistrees')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (VueGedEnregistree) — sans objet sans lui
         related_name='ged_vues_enregistrees', verbose_name='créateur')
     nom = models.CharField(max_length=150)
     criteres = models.JSONField(default=dict, blank=True)

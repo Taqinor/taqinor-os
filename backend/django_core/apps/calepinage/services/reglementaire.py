@@ -66,11 +66,11 @@ MESSAGE_CHAMP_SANS_SOURCE = (
 
 __all__ = [
     'ETAT_FOURNIE', 'ETAT_A_COMPLETER', 'ETAT_MANQUANTE',
-    'MESSAGE_AUCUN_GABARIT', 'composer_dossiers', 'infos_du_calepinage',
+    'MESSAGE_AUCUN_GABARIT',
     'dossiers_du_calepinage',
     # CAL192 / CAL193 — les packs pays (Maroc, France).
     'DossierRefuse', 'construire_pack_dossier', 'GENRES_FRANCE',
-    'avancement_du_dossier', 'packs_france',
+    'packs_france',
     # CALX41 — enregistrer les champs à compléter d'un dossier.
     'ChampsDossierInvalides', 'enregistrer_champs',
     # ACAL240 — la mention imprimée d'un champ sans valeur.
@@ -195,7 +195,7 @@ def _piece(piece, jointes, gabarit):
     }
 
 
-def composer_dossier(entree, infos):
+def _composer_dossier(entree, infos):
     """UN dossier au format du contrat CAL247, depuis des dictionnaires.
 
     Args:
@@ -276,7 +276,7 @@ def _motif(champs, pieces):
     return phrase[:1].upper() + phrase[1:] + '.'
 
 
-def composer_dossiers(*, calepinage_id, pays, entrees, infos):
+def _composer_dossiers(*, calepinage_id, pays, entrees, infos):
     """L'agrégat COMPLET du contrat ``dossiers_reglementaires.json``.
 
     Une société SANS gabarit reçoit une liste VIDE (pas un dossier fantôme)
@@ -288,13 +288,13 @@ def composer_dossiers(*, calepinage_id, pays, entrees, infos):
         'pays': (pays or '').upper() or None,
         'gabarits_deposes': len(entrees),
         'message_aucun_gabarit': (None if entrees else MESSAGE_AUCUN_GABARIT),
-        'dossiers': [composer_dossier(entree, infos) for entree in entrees],
+        'dossiers': [_composer_dossier(entree, infos) for entree in entrees],
     }
 
 
 # ── la couche qui lit la base ──────────────────────────────────────────────
 
-def infos_du_calepinage(calepinage, *, resultat=None):
+def _infos_du_calepinage(calepinage, *, resultat=None):
     """Les données RÉELLES qu'un gabarit peut demander à préremplir.
 
     Aucune n'est calculée « au mieux » : une donnée absente vaut ``None`` et
@@ -406,7 +406,7 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
         # Sans société ni pays de projet, aucun gabarit ne peut être choisi :
         # on ne DEVINE pas un pays (le fournisseur d'imagerie et le pays sont
         # un réglage société, CAL47).
-        return composer_dossiers(
+        return _composer_dossiers(
             calepinage_id=getattr(calepinage, 'pk', None), pays=pays,
             entrees=[], infos={})
 
@@ -416,7 +416,7 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
                     .order_by('intitule', 'id'))
     dossiers = {d.gabarit_id: d for d in DossierReglementaire.objects
                 .filter(company=company, calepinage=calepinage)}
-    infos = infos_du_calepinage(calepinage)
+    infos = _infos_du_calepinage(calepinage)
     # ACAL240 — l'empreinte COURANTE des entrées, calculée UNE fois et
     # seulement si un dossier a été généré avec la sienne.
     empreinte_courante = None
@@ -427,8 +427,8 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
     entrees = [_entree_depuis_orm(gabarit, dossiers.get(gabarit.pk),
                                   empreinte_courante)
                for gabarit in gabarits]
-    return composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
-                             entrees=entrees, infos=infos)
+    return _composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
+                              entrees=entrees, infos=infos)
 
 
 # ── CALX41 — ENREGISTRER LES CHAMPS À COMPLÉTER D'UN DOSSIER ───────────────
@@ -767,7 +767,7 @@ def _pieces_du_dossier(dossier, *, company, infos=None):
             "dans le dossier. Redéposez-le en PDF." % gabarit.intitule,
             piece='gabarit')
     if infos is None:
-        infos = infos_du_calepinage(dossier.calepinage)
+        infos = _infos_du_calepinage(dossier.calepinage)
     pieces = [('gabarit', 'Gabarit — %s' % gabarit.intitule, octets_gabarit)]
     lignes = _lignes_des_champs(gabarit, dossier.champs_saisis, infos)
     if lignes:
@@ -889,7 +889,7 @@ MESSAGE_GENRE_SANS_GABARIT = (
 )
 
 
-def avancement_du_dossier(dossier):
+def _avancement_du_dossier(dossier):
     """L'état d'avancement PIÈCE PAR PIÈCE d'un dossier composé.
 
     Compte ce qui est réellement fourni ; ``pourcentage`` vaut ``None`` quand
@@ -949,7 +949,7 @@ def packs_france(calepinage, agregat=None):
             'message': ('' if dossiers
                         else MESSAGE_GENRE_SANS_GABARIT % libelle),
             'dossiers': [dict(dossier,
-                              avancement=avancement_du_dossier(dossier))
+                              avancement=_avancement_du_dossier(dossier))
                          for dossier in dossiers],
         })
     return {

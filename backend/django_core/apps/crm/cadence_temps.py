@@ -416,7 +416,7 @@ def _langue_francaise(lead, langue):
     """La langue de relance du lead est-elle le français ? ``langue`` donnée
     (déjà résolue par l'appelant) sinon résolue ici, paresseusement."""
     if langue is None:
-        from .services import langue_relance_du_lead
+        from .cadence_messages import langue_relance_du_lead
         langue = langue_relance_du_lead(lead)
     return (langue or 'fr') == 'fr'
 

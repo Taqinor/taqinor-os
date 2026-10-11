@@ -33,9 +33,9 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
     pdf_url = serializers.SerializerMethodField()
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_marque = serializers.CharField(
-        source='produit.marque', read_only=True)
+        source='produit.marque', read_only=True, allow_null=True)
     produit_garantie = serializers.CharField(
-        source='produit.garantie', read_only=True)
+        source='produit.garantie', read_only=True, allow_null=True)
 
     class Meta:
         model = FicheTechnique

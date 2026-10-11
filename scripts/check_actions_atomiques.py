@@ -22,6 +22,7 @@ DB-free, AST-only. Usage : ``python scripts/check_actions_atomiques.py``.
 from __future__ import annotations
 
 import ast
+import json
 import sys
 from pathlib import Path
 
@@ -29,6 +30,27 @@ ROOT = Path(__file__).resolve().parent.parent
 CRM = ROOT / "backend" / "django_core" / "apps" / "crm"
 VIEWS_REL = "backend/django_core/apps/crm/views.py"
 SERVICES_REL = "backend/django_core/apps/crm/services.py"
+#: SPL3-SPL26 — la scission de crm/services.py déplace ses écritures dans des
+#: modules cibles (table du golden SPL1) : la garde les lit tous, sinon une
+#: fonction déplacée sortirait SILENCIEUSEMENT de son périmètre.
+GOLDEN_SCISSION = CRM / "golden" / "services_split_ast.json"
+
+
+def modules_services() -> list:
+    """Noms courts des modules d'écriture crm : ``services`` + cibles existantes."""
+    noms = ["services"]
+    if GOLDEN_SCISSION.is_file():
+        cibles = {v["cible"] for v in json.loads(
+            GOLDEN_SCISSION.read_text(encoding="utf-8"))["noms"].values()}
+        noms += sorted(c for c in cibles if (CRM / f"{c}.py").is_file())
+    return noms
+
+
+def source_services() -> str:
+    """Source de ``services.py`` et des modules de la scission, concaténés."""
+    return "\n".join((CRM / f"{m}.py").read_text(encoding="utf-8")
+                     for m in modules_services())
+
 
 METHODES_ECRITURE = {"post", "patch", "put", "delete"}
 ATTRS_ECRITURE = {"save", "create", "delete", "bulk_create",
@@ -92,7 +114,7 @@ def _noms_importes(tree, ecriture: set) -> set:
     out = set()
     for n in ast.walk(tree):
         if isinstance(n, ast.ImportFrom) and n.module \
-                and n.module.split(".")[-1] == "services":
+                and n.module.split(".")[-1] in modules_services():
             for a in n.names:
                 if a.name in ecriture:
                     out.add(a.asname or a.name)
@@ -144,7 +166,7 @@ def _ecritures_directes(fn, noms: set):
         if isinstance(f, ast.Name) and f.id in noms:
             out.append((f.id, n.lineno))
         elif (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
-              and f.value.id == "services" and f.attr in noms):
+              and f.value.id in modules_services() and f.attr in noms):
             out.append((f.attr, n.lineno))
         elif (isinstance(f, ast.Attribute) and f.attr == "create"
               and "Attachment" in ast.unparse(f.value)):
@@ -217,7 +239,7 @@ def evaluer(views_source: str, services_source: str, allowlist: dict,
 
 def main(argv=None) -> int:
     vues = (ROOT / VIEWS_REL).read_text(encoding="utf-8")
-    services = (ROOT / SERVICES_REL).read_text(encoding="utf-8")
+    services = source_services()
     violations, mortes = evaluer(vues, services, ALLOWLIST)
     violations += [f"{c} — clé morte de la liste blanche : la retirer"
                    for c in mortes]

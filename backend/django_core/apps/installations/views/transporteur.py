@@ -10,11 +10,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import Transporteur
 from ..serializers import TransporteurSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class TransporteurViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('active'), p1=oa.qs('type_transporteur'))
+class TransporteurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG331 — transporteurs. Lecture tout rôle, écriture responsable/admin.
     Filtrable par `type_transporteur`, `active`.
 

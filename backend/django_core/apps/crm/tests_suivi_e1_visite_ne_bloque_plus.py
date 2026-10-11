@@ -33,7 +33,11 @@ from authentication.models import Company
 from core.events import devis_sent
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
+from apps.crm import cadence_filet
+from apps.crm import cadence_plan
+from apps.crm import cadence_reperes
+from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS_MODIFIE, CLE_PLANIFIER, q_etape)
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
@@ -119,7 +123,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
                              libelle="Appel d'ouverture", cadence_depart=GEL)
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{appel.pk}/fait/',
-            {'outcome': services.OUTCOME_VISITE_ACCEPTEE}, format='json')
+            {'outcome': cadence_reperes.OUTCOME_VISITE_ACCEPTEE}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         planifier = self._ouvertes(q_etape(CLE_PLANIFIER)).get()
 
@@ -134,7 +138,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
         self._aucun_refus_deja_en_cours()
 
     def test_confirmation_et_debrief_ouverts(self):
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
         confirmation = self._ouvertes(q_etape(CLE_CONFIRMATION)).get()
         debrief = self._ouvertes(q_etape(CLE_DEBRIEF)).get()
 
@@ -157,7 +161,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
                              cadence_depart=GEL - datetime.timedelta(days=7))
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{suivi.pk}/fait/',
-            {'reponse': services.REPONSE_DEVIS_MODIFIE}, format='json')
+            {'reponse': cadence_reponses.REPONSE_DEVIS_MODIFIE}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         modifie = self._ouvertes(q_etape(CLE_DEVIS_MODIFIE)).get()
 
@@ -181,11 +185,11 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
         self.lead.stage = stages.QUOTE_SENT
         self.lead.save(update_fields=['stage'])
         modifie = self._touche(cadence='apres_devis',
-                               ordre=services.VISITE_ORDRE_DEBRIEF,
+                               ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
                                canal=RelanceEtape.Canal.APPEL,
                                cle=CLE_DEVIS_MODIFIE,
-                               libelle=services.VISITE_DEVIS_LIBELLE)
-        services._recaler_file(self.lead, self.acteur)
+                               libelle=cadence_reperes.VISITE_DEVIS_LIBELLE)
+        cadence_plan._recaler_file(self.lead, self.acteur)
         self.lead.refresh_from_db(fields=['relance_date'])
         self.assertEqual(self.lead.relance_date, GEL.date())
 
@@ -195,7 +199,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
         modifie.refresh_from_db()
         self.assertEqual(modifie.statut, ANNULEE)
         barreau = self._barreau_1_ouvert(nouveau)
-        proche = services._prochaine_touche_a_faire(self.lead)
+        proche = cadence_plan._prochaine_touche_a_faire(self.lead)
         self.assertEqual(proche.pk, barreau.pk)
         self.lead.refresh_from_db(fields=['relance_date'])
         self.assertEqual(self.lead.relance_date, proche.due_date)
@@ -219,17 +223,17 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
 class InitialisationAvecVisiteOuverteTests(_Base):
 
     def test_le_service_ne_rend_jamais_l_etape_de_visite(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
-        etapes = services.initialiser_plan_relance(
+        etapes = cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='apres_devis', depart=GEL)
         self.assertTrue(etapes)
         self.assertNotIn(planifier.pk, [e.pk for e in etapes])
-        self.assertTrue(all(e.ordre < services.VISITE_ORDRE_CONFIRMATION
+        self.assertTrue(all(e.ordre < cadence_reperes.VISITE_ORDRE_CONFIRMATION
                             for e in etapes))
 
     def test_la_fiche_demarre_le_suivi_du_devis_envoye(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         devis = self._devis()
         resp = self.api.post(

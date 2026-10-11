@@ -28,7 +28,7 @@ from apps.calepinage.services.cables import longueur_dc
 from apps.calepinage.services.chaines import (
     affectation, bloc_electrique, concevoir_par_pan, verdict_affectation,
 )
-from apps.calepinage.services.documents.plan_cablage import modules_du_plan
+from apps.calepinage.services.documents.plan_cablage import _modules_du_plan
 from apps.calepinage.services.electrique import temperatures_site
 from apps.calepinage.services.ombrage_chaines import ombrage_des_chaines
 from apps.calepinage.services.planche import geometrie_de_planche
@@ -131,7 +131,7 @@ class CleDePanStableTest(SimpleTestCase):
         cles = [ligne['module'] for ligne in table]
         self.assertEqual(cles, ['zA#1', 'zA#2', 'zA#4'])
         # Plan de câblage : mêmes repères.
-        plan = modules_du_plan(layout, geometrie_de_planche(layout))
+        plan = _modules_du_plan(layout, geometrie_de_planche(layout))
         self.assertEqual([m['module'] for m in plan], cles)
         # Ombrage : l'accès du module n°4 est le 3e de la liste (0,5).
         lignes = [dict(ligne, chaine=1, mppt=1) for ligne in table]

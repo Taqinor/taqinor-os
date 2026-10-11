@@ -171,6 +171,12 @@ class ParametresCalepinageView(APIView):
                    responses={200: _forme_reglages(
                        'CalepinageParametresEcrite')})
     def put(self, request, *args, **kwargs):
+        if request.META.get('CONTENT_LENGTH') in (None, '', '0'):
+            # Corps absent : le schéma le déclare obligatoire.
+            return Response(
+                {'detail': "Corps de requête manquant : envoyez un objet "
+                           "« section : réglages »."},
+                status=status.HTTP_400_BAD_REQUEST)
         donnees = request.data if isinstance(request.data, dict) else None
         if donnees is None:
             return Response(
@@ -257,7 +263,10 @@ FORME_SUGGESTION_PENTE = inline_serializer('CalepinageSuggestionPenteReponse', d
     detail=serializers.CharField(allow_blank=True),
 ))
 FORME_SUGGESTION_PENTE_DEMANDE = inline_serializer('CalepinageSuggestionPenteDemande', dict(
-    roof_layout=serializers.DictField(required=False),
+    roof_layout=inline_serializer('CalepinageSuggestionPenteDocument', dict(
+        zones=serializers.ListField(
+            child=serializers.DictField(), allow_empty=False),
+    )),
 ))
 
 

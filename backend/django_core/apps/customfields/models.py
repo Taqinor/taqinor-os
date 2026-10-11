@@ -51,7 +51,7 @@ class CustomFieldDef(models.Model):
         ROLLUP = 'rollup', 'Agrégat (rollup)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='custom_fields')
     # XPLT16 — max_length généreux : un objet personnalisé pose ses
     # définitions sous ``custom:<code_objet>`` (préfixe + slug, > 20 chars).
@@ -178,7 +178,7 @@ class CustomObjectDef(models.Model):
     sur les modules natifs)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='custom_objects')
     code = models.SlugField(max_length=50)
     libelle = models.CharField(max_length=120)
@@ -221,10 +221,10 @@ class CustomRecord(models.Model):
     standard sans champ supplémentaire ici."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='custom_records')
     objet = models.ForeignKey(
-        CustomObjectDef, on_delete=models.CASCADE, related_name='records')
+        CustomObjectDef, on_delete=models.CASCADE, related_name='records')  # on_delete: CustomRecord est le détail de CustomObjectDef — n'existe pas sans lui
     data = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

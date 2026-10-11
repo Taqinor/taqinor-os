@@ -19,8 +19,11 @@ côté frontend (le catalogue vit là-bas) ; le serveur n'impose pas de liste
 blanche de clés.
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
-from rest_framework import status, viewsets
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
+from rest_framework import serializers, status, viewsets
+from rest_framework.parsers import JSONParser
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -37,7 +40,25 @@ from .serializers_translations import (
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
 
+_OVERRIDES = inline_serializer('TraductionsEffectives', {
+    # {locale: {clé: valeur}}
+    'overrides': serializers.DictField(
+        child=serializers.DictField(child=serializers.CharField())),
+})
+_BULK_REQUEST = inline_serializer('TraductionsBulkRequest', {
+    'items': inline_serializer('TraductionsBulkLigne', {
+        'locale': serializers.ChoiceField(choices=sorted(VALID_LOCALES)),
+        'key': serializers.CharField(),
+        'value': serializers.CharField(required=False, allow_null=True),
+    }, many=True),
+})
+_XLSX = ('application/vnd.openxmlformats-officedocument.'
+         'spreadsheetml.sheet')
 
+
+@extend_schema_view(list=extend_schema(parameters=[OpenApiParameter(
+    'locale', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    enum=sorted(VALID_LOCALES), description='Ne garder que cette langue.')]))
 class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
     """CRUD des surcharges de traduction (N94), company-scopé.
 
@@ -46,6 +67,7 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     queryset = TranslationOverride.objects.all()
     serializer_class = TranslationOverrideSerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -87,6 +109,7 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
         super().perform_destroy(instance)
         self._audit(locale, key, old, '')
 
+    @extend_schema(responses=_OVERRIDES)
     @action(detail=False, methods=['get'])
     def effective(self, request):
         """Surcharges de la société sous la forme ``{locale: {key: value}}``.
@@ -100,6 +123,7 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
             'overrides': TranslationOverride.overrides_for_company(company),
         })
 
+    @extend_schema(request=_BULK_REQUEST, responses=_OVERRIDES)
     @action(detail=False, methods=['put'])
     def bulk(self, request):
         """Upsert/suppression en une fois de plusieurs surcharges.
@@ -144,7 +168,7 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
             'overrides': TranslationOverride.overrides_for_company(company),
         })
 
-    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, _XLSX): OpenApiTypes.BINARY})
     @action(detail=False, methods=['get'], url_path='glossaire-export')
     def glossaire_export(self, request):
         """NTI18N46 — classeur XLSX du glossaire, pour relecture hors ligne.

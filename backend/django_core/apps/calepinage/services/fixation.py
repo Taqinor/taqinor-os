@@ -2,7 +2,7 @@
 
 LE CONSTAT
 ----------
-``services/lestage.py::masse_du_layout`` savait compter les modules d'un
+``services/lestage.py::_masse_du_layout`` savait compter les modules d'un
 document, mais la masse de structure par module était UN nombre saisi en
 réglage : aucune quantité de rail, de pince ou de crochet n'était jamais
 dérivée, et ``services/export_tableur.py`` servait modules / chaînes /

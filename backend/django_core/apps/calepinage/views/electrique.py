@@ -23,6 +23,9 @@ CE QUE CHAQUE ACTION GARANTIT
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -48,6 +51,9 @@ _REFUS_DE_LECTURE = (TemperaturesInvalides, DecisionInvalide, TerreInvalide)
 class ElectriqueActionsMixin:
     """Les ``@action`` électriques du viewset pivot."""
 
+    @extend_schema(parameters=[OpenApiParameter(
+        'variante', OpenApiTypes.INT, required=False,
+        description='Variante du même calepinage à évaluer.')])
     @action(detail=True, methods=['get'], url_path='resultat',
             permission_classes=[PeutVoirCalepinage])
     def resultat(self, request, pk=None):
@@ -145,6 +151,11 @@ class ElectriqueActionsMixin:
             return Response({refus.champ or 'entree_electrique': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(request=inline_serializer(
+        'CalepinageEvaluerElectriqueRequete', {
+            'layout': drf_serializers.DictField(required=False),
+            'entree_electrique': drf_serializers.DictField(required=False),
+        }))
     @action(detail=True, methods=['post'], url_path='evaluer-electrique',
             permission_classes=[PeutVoirCalepinage])
     def evaluer_electrique(self, request, pk=None):

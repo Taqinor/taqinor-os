@@ -9,7 +9,7 @@ from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
-from apps.crm import services, stages
+from apps.crm import stages, fiche_api_publique
 from apps.crm.models import Lead
 from apps.publicapi.models import ApiKey
 from apps.publicapi.portees import SCOPE_WRITE_LEADS
@@ -50,7 +50,7 @@ class ApiPubliqueStageNullTests(TestCase):
         self.assertEqual(self.lead.stage, stages.CONTACTED)
 
     def test_chaque_champ_null_jamais_500(self):
-        for champ in services.PUBLIC_LEAD_WRITABLE_FIELDS:
+        for champ in fiche_api_publique.PUBLIC_LEAD_WRITABLE_FIELDS:
             with self.subTest(champ=champ):
                 resp = self._patch({champ: None})
                 self.assertLess(resp.status_code, 500, (champ, resp.data))

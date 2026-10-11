@@ -34,7 +34,7 @@ from unittest import mock
 
 from apps.calepinage.services.rapport.systeme import (
     LIBELLE_FAMILLE, MENTION_FICHE_NON_RENSEIGNE, MENTION_PDF_ABSENT,
-    annexes_pdf, fusionner_octets_pdf, html_annexe_equipements,
+    annexes_pdf, fusionner_octets_pdf, _html_annexe_equipements,
     html_de_section, rendre_rapport_avec_annexes,
 )
 
@@ -159,7 +159,7 @@ class HtmlAnnexeEquipementsTest(unittest.TestCase):
             'champs_renseignes': ['pmax_wc', 'voc_v', 'isc_a'],
             'champs_manquants': [],
         }}
-        html = html_annexe_equipements(equipements)
+        html = _html_annexe_equipements(equipements)
         self.assertEqual(html.count('<tr>'), 3)
         self.assertIn('550', html)
         self.assertIn('49,8', html)
@@ -174,7 +174,7 @@ class HtmlAnnexeEquipementsTest(unittest.TestCase):
             'champs_renseignes': ['n_mppt'],
             'champs_manquants': ['dc_max_kwc'],
         }}
-        html = html_annexe_equipements(equipements)
+        html = _html_annexe_equipements(equipements)
         self.assertIn(MENTION_FICHE_NON_RENSEIGNE, html)
         self.assertIn('class="manquant"', html)
 
@@ -195,26 +195,26 @@ class HtmlAnnexeEquipementsTest(unittest.TestCase):
             'champs_renseignes': ['bifacial'],
             'champs_manquants': champs_manquants,
         }}
-        html = html_annexe_equipements(equipements)
+        html = _html_annexe_equipements(equipements)
         self.assertEqual(html.count(MENTION_FICHE_NON_RENSEIGNE),
                          len(champs_manquants))
         self.assertIn('non</td>', html)  # bifacial: False -> 'non'
 
     def test_famille_non_retenue_est_omise(self):
-        html = html_annexe_equipements({'panneau': None, 'onduleur': None,
+        html = _html_annexe_equipements({'panneau': None, 'onduleur': None,
                                         'batterie': None, 'optimiseur': None})
         self.assertEqual(html, '')
 
     def test_equipements_absent_ou_invalide_rend_une_chaine_vide(self):
-        self.assertEqual(html_annexe_equipements(None), '')
-        self.assertEqual(html_annexe_equipements({}), '')
+        self.assertEqual(_html_annexe_equipements(None), '')
+        self.assertEqual(_html_annexe_equipements({}), '')
 
     def test_aucun_mot_de_montant_dans_l_annexe(self):
         equipements = {'panneau': {
             'designation': 'Module PV 550 Wc',
             'specs': {'pmax_wc': 550},
             'champs_renseignes': ['pmax_wc'], 'champs_manquants': []}}
-        html = html_annexe_equipements(equipements).lower()
+        html = _html_annexe_equipements(equipements).lower()
         for mot in ('prix', 'achat', 'cout', 'coût', 'marge', 'mad'):
             self.assertNotIn(mot, html)
 

@@ -101,7 +101,7 @@ class EquivalenceSansReglageTest(SimpleTestCase):
                         'approbation_exigee', return_value=False), \
                 mock.patch('apps.calepinage.services.approbation.'
                            'est_approuve') as est_approuve, \
-                mock.patch.object(feu_vert, 'option_active',
+                mock.patch.object(feu_vert, '_option_active',
                                   return_value=False), \
                 mock.patch('apps.crm.selectors.get_company_lead') as lead:
             self.assertIsNone(feu_vert.verifier_avant_publication(calepinage))
@@ -115,7 +115,7 @@ class RefusApprobationExigeeTest(SimpleTestCase):
     def _verifier(self, calepinage, geste=feu_vert.GESTE_DEVIS):
         with mock.patch('apps.calepinage.services.approbation.'
                         'approbation_exigee', return_value=True), \
-                mock.patch.object(feu_vert, 'option_active',
+                mock.patch.object(feu_vert, '_option_active',
                                   return_value=False):
             return feu_vert.verifier_avant_publication(calepinage,
                                                        geste=geste)

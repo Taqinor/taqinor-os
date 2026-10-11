@@ -26,11 +26,13 @@ from ..serializers import (
     CommandeCadreSerializer, CommandeCadreLigneSerializer,
     AppelCommandeSerializer,
 )
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class CommandeCadreViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('fournisseur'), p1=oa.qs('statut'))
+class CommandeCadreViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG314 — contrats-cadres. Lecture tout rôle, écriture responsable/admin.
     Référence anti-collision + société + `created_by` posés serveur ;
     `fournisseur` validé tenant. Filtrable par `statut`, `fournisseur`. Cycle de
@@ -80,6 +82,7 @@ class CommandeCadreViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def activer(self, request, pk=None):
         """FG314 — active le contrat-cadre (brouillon → actif)."""
@@ -88,6 +91,7 @@ class CommandeCadreViewSet(CompanyScopedModelViewSet):
         cc.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(cc).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
         """FG314 — clôt le contrat-cadre (→ clos)."""
@@ -97,7 +101,8 @@ class CommandeCadreViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(cc).data)
 
 
-class CommandeCadreLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('commande_cadre'))
+class CommandeCadreLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG314 — lignes de contrat-cadre. La ligne n'a pas de `company` propre :
     le scope société passe par le contrat parent. Filtrable par
     `commande_cadre`. Lecture tout rôle, écriture responsable/admin."""
@@ -144,7 +149,8 @@ class CommandeCadreLigneViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class AppelCommandeViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('chantier'), p1=oa.qi('ligne'))
+class AppelCommandeViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG314 — commandes d'appel sur une ligne de contrat-cadre. Garde : la
     quantité appelée ne peut pas dépasser le volume engagé restant. Société +
     `created_by` posés serveur ; ligne/chantier validés tenant. Filtrable par

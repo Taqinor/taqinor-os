@@ -47,6 +47,46 @@ _ProductTourSerializer = inline_serializer('ProductTour', {
 }).__class__
 
 
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetMarquerFaitReponse', {
+    'items': drf_serializers.JSONField(allow_null=True),
+    'faits': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'pourcentage': drf_serializers.JSONField(allow_null=True),
+    'termine': drf_serializers.JSONField(allow_null=True),
+    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_TOUT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerToutReponse', {
+    'items': drf_serializers.JSONField(allow_null=True),
+    'faits': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'pourcentage': drf_serializers.JSONField(allow_null=True),
+    'termine': drf_serializers.JSONField(allow_null=True),
+    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerReponse', {
+    'items': drf_serializers.JSONField(allow_null=True),
+    'faits': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'pourcentage': drf_serializers.JSONField(allow_null=True),
+    'termine': drf_serializers.JSONField(allow_null=True),
+    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_LIST_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetListReponse', {
+    'items': drf_serializers.JSONField(allow_null=True),
+    'faits': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'pourcentage': drf_serializers.JSONField(allow_null=True),
+    'termine': drf_serializers.JSONField(allow_null=True),
+    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+})
+
+
 class OnboardingProgressViewSet(viewsets.ViewSet):
     """Checklist « Premiers pas » de l'utilisateur courant (company-scopée)."""
     permission_classes = [IsAuthenticated]
@@ -54,11 +94,13 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
     def _company(self, request):
         return getattr(request.user, 'company', None)
 
+    @extend_schema(responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_LIST_REPONSE)
     def list(self, request):
         resume = resume_pour_utilisateur(
             self._company(request), request.user)
         return Response(resume)
 
+    @extend_schema(request=None, responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE)
     @action(detail=True, methods=['post'], url_path='ignorer',
             permission_classes=[IsAuthenticated])
     def ignorer(self, request, pk=None):
@@ -67,6 +109,7 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             resume_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_TOUT_REPONSE)
     @action(detail=False, methods=['post'], url_path='ignorer-tout',
             permission_classes=[IsAuthenticated])
     def ignorer_tout(self, request):
@@ -75,6 +118,7 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             resume_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE)
     @action(detail=True, methods=['post'], url_path='marquer-fait',
             permission_classes=[IsAuthenticated])
     def marquer_fait(self, request, pk=None):

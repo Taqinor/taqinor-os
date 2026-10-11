@@ -294,7 +294,7 @@ class TestResolveClientLogsActivity(TestCase):
         self.company = make_company('refine-resolve-co', 'Refine Resolve Co')
 
     def test_creation_logs_client_lie(self):
-        from apps.crm.services import resolve_client_for_lead
+        from apps.crm.clients_identite import resolve_client_for_lead
         lead = Lead.objects.create(
             company=self.company, nom='Tazi', prenom='Sara',
             email='sara@example.com')

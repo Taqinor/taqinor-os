@@ -25,10 +25,10 @@ class ProductionWarranty(models.Model):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='production_warranties')
     installation = models.OneToOneField(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: ProductionWarranty est le détail de Installation — n'existe pas sans lui
         related_name='production_warranty')
     guaranteed_year1_kwh = models.DecimalField(max_digits=12, decimal_places=2)
     degradation_pct_per_year = models.DecimalField(

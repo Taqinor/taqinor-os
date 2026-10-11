@@ -43,7 +43,7 @@ import random
 
 from django.test import SimpleTestCase
 
-from apps.crm import cadence_config, horaires, services, stages
+from apps.crm import cadence_config, horaires, stages, cadence_reperes
 from apps.crm.cadence_config import cle_de
 from apps.crm.models import LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.parcours_suivi_outils import (
@@ -205,7 +205,7 @@ class TableParcoursTests(SimpleTestCase):
             if CLE_DEVIS in reco.get('cles', ()):
                 permis.add(cadence_config.LIBELLE_DEVIS_ANCIEN)
             if not reco.get('cles'):
-                permis.add(services.QUESTION_PRIX_LIBELLE)
+                permis.add(cadence_reperes.QUESTION_PRIX_LIBELLE)
             for libelle in reco.get('libelles', ()):
                 with self.subTest(etape=etape['id'], libelle=libelle):
                     self.assertIn(libelle, permis)

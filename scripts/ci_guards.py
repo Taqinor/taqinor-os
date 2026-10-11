@@ -58,6 +58,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Tests des crochets api-fuzz : le fuzzeur ne se verrouille jamais dehors (ENF1b)',
+         'python -m unittest scripts.tests.test_fuzz_hooks -v',
+         '.'),
         ('Tests nginx : no-store sur l API seulement, en-tetes de securite herites (ADEP5)',
          'python -m unittest scripts.tests.test_nginx_cache_control -v',
          '.'),
@@ -106,6 +109,15 @@ GARDES = {
         # ADEP21 - modules de tests jamais executes jusque-la (PyYAML seul suffit).
         ('Tests celery tasks (ADEP21)',
          'python -m unittest scripts.tests.test_check_celery_tasks -v',
+         '.'),
+        ('Tests garde CVE HIGH/CRITICAL (ENF12)',
+         'python -m unittest scripts.tests.test_check_cve_severite -v',
+         '.'),
+        ('Tests garde score de mutation (ENF12)',
+         'python -m unittest scripts.tests.test_check_mutation_score -v',
+         '.'),
+        ('Tests budgets Lighthouse (ENF12)',
+         'python -m unittest scripts.tests.test_check_lighthouse -v',
          '.'),
         ('Tests exceptions permanentes signees (ENF14)',
          'python -m unittest scripts.tests.test_exceptions_permanentes -v',
@@ -206,6 +218,12 @@ GARDES = {
          '.'),
         ('Test the API-shapes checker itself',
          'python -m unittest scripts.tests.test_check_api_shapes -v',
+         '.'),
+        ('Check paramètres de requête frontend ⊆ schéma OpenAPI (ENF D1 : aucun ?x= non déclaré)',
+         'python scripts/check_frontend_query_params.py',
+         '.'),
+        ('Tests de la garde paramètres de requête frontend (ENF D1)',
+         'python -m unittest scripts.tests.test_check_frontend_query_params -v',
          '.'),
         ("Check parité tunnel <-> webhook CRM (aucune clé perdue à l'arrivée)",
          'python scripts/check_lead_webhook_parite.py',

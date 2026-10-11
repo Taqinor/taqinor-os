@@ -185,7 +185,7 @@ class ModeleMessage(models.Model):
     — le comportement reste donc identique à l'ancien sujet codé en dur.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='automation_modeles_message')
     canal = models.CharField(
         max_length=20, choices=CanalMessage.choices)
@@ -246,7 +246,7 @@ class AutomationRule(models.Model):
     l'action différée.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='automation_rules')
     nom = models.CharField(max_length=255)
     enabled = models.BooleanField(default=True)
@@ -415,7 +415,7 @@ class AutomationRun(models.Model):
         SIMULATION = 'simulation', 'Simulation (sans effet)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='automation_runs')
     rule = models.ForeignKey(
         AutomationRule, on_delete=models.SET_NULL, null=True, blank=True,
@@ -458,7 +458,7 @@ class AutomationApproval(models.Model):
         REJECTED = 'rejected', 'Rejeté'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='automation_approvals')
     rule = models.ForeignKey(
         AutomationRule, on_delete=models.SET_NULL, null=True, blank=True,
@@ -539,7 +539,7 @@ class ApprovalRequestType(models.Model):
         SEQUENTIEL = 'sequentiel', 'Séquentiel (rang par rang)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='approval_request_types')
     nom = models.CharField(max_length=120)
     description = models.CharField(max_length=255, blank=True, default='')
@@ -635,7 +635,7 @@ class ApprovalRequest(models.Model):
         INFO_REQUESTED = 'info_requested', "Complément d'information demandé"
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='approval_requests')
     request_type = models.ForeignKey(
         ApprovalRequestType, on_delete=models.PROTECT,
@@ -689,7 +689,7 @@ class ApprovalDecision(models.Model):
         REJECT = 'reject', 'Défavorable'
 
     request = models.ForeignKey(
-        ApprovalRequest, on_delete=models.CASCADE, related_name='decisions')
+        ApprovalRequest, on_delete=models.CASCADE, related_name='decisions')  # on_delete: ApprovalDecision est le détail de ApprovalRequest — n'existe pas sans lui
     decided_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='approval_decisions')
@@ -723,13 +723,13 @@ class ApprovalDelegation(models.Model):
     (aucun état à réinitialiser : la plage de dates fait foi à chaque lecture).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='approval_delegations')
     delegant = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: délégation d'approbation entre utilisateurs — sans objet si l'un disparaît
         related_name='approval_delegations_donnees')
     suppleant = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: délégation d'approbation entre utilisateurs — sans objet si l'un disparaît
         related_name='approval_delegations_recues')
     date_debut = models.DateTimeField()
     date_fin = models.DateTimeField()
@@ -796,10 +796,10 @@ class IncomingWebhookTrigger(models.Model):
     ouvert au token seul (compromis simplicité/sécurité laissé à l'admin).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='incoming_webhook_triggers')
     rule = models.OneToOneField(
-        AutomationRule, on_delete=models.CASCADE,
+        AutomationRule, on_delete=models.CASCADE,  # on_delete: IncomingWebhookTrigger est le détail de AutomationRule — n'existe pas sans lui
         related_name='incoming_webhook')
 
     token = models.CharField(

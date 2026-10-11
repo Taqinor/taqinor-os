@@ -76,12 +76,12 @@ MESSAGES_FEU_VERT = {
                       "feu vert du bureau d'études."),
 }
 
-__all__ = ['CLE_ACTIF', 'option_active', 'lead_id_de_reference',
+__all__ = ['CLE_ACTIF',
            'verifier_avant_publication', 'PIECES_EXECUTION',
            'GESTE_RETENUE', 'GESTE_DEVIS', 'GESTE_EXECUTION']
 
 
-def option_active(company):
+def _option_active(company):
     """``True`` si la société exige le feu vert avant de retenir une
     variante. Lecture pure ; off par défaut (équivalence garantie CAL45)."""
     from ..selectors import parametres_de_societe
@@ -90,7 +90,7 @@ def option_active(company):
     return bool(presets.get(CLE_ACTIF))
 
 
-def lead_id_de_reference(calepinage):
+def _lead_id_de_reference(calepinage):
     """Le lead qui débloque : celui du calepinage, à défaut celui de son
     devis lié. ``None`` si ni l'un ni l'autre — la règle ne s'applique alors
     pas."""
@@ -131,8 +131,8 @@ def verifier_avant_publication(calepinage, *, geste=GESTE_RETENUE,
     from apps.visites.selectors import visite_feu_vert
 
     company = getattr(calepinage, 'company', None) if calepinage else None
-    if option_active(company):
-        lead_id = lead_id_de_reference(calepinage)
+    if _option_active(company):
+        lead_id = _lead_id_de_reference(calepinage)
         if lead_id:
             if visite_feu_vert(getattr(company, 'id', None),
                                lead_id) is None:

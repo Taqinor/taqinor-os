@@ -10,6 +10,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co(user):
@@ -18,6 +22,26 @@ def _co(user):
     return None
 
 
+_SAV_PIVOT_SAV_TICKETS_PIVOT_REPONSE = inline_serializer('SavPivotSavTicketsPivotReponse', {
+    'row_keys': drf_serializers.JSONField(required=False, allow_null=True),
+    'col_keys': drf_serializers.JSONField(required=False, allow_null=True),
+    'cells': drf_serializers.JSONField(required=False, allow_null=True),
+    'row_totals': drf_serializers.JSONField(required=False, allow_null=True),
+    'col_totals': drf_serializers.JSONField(required=False, allow_null=True),
+    'grand_total': drf_serializers.JSONField(required=False, allow_null=True),
+    'agg': drf_serializers.JSONField(required=False, allow_null=True),
+    'measure': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('rows', OpenApiTypes.STR, required=False),
+        OpenApiParameter('columns', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
+    ],
+    responses={(200, 'application/json'): _SAV_PIVOT_SAV_TICKETS_PIVOT_REPONSE,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_tickets_pivot(request):
@@ -69,6 +93,13 @@ def sav_tickets_pivot(request):
     return Response(pivot)
 
 
+_SAV_PIVOT_SAV_TICKETS_COUT_MOYEN_REPONSE = inline_serializer('SavPivotSavTicketsCoutMoyenReponse', {
+    'rows': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    responses={200: _SAV_PIVOT_SAV_TICKETS_COUT_MOYEN_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_tickets_cout_moyen(request):
@@ -97,6 +128,19 @@ def sav_tickets_cout_moyen(request):
     return Response({'rows': rows})
 
 
+_SAV_PIVOT_SAV_TAUX_ATTACHE_REPONSE = inline_serializer('SavPivotSavTauxAttacheReponse', {
+    'total': drf_serializers.JSONField(allow_null=True),
+    'avec_contrat': drf_serializers.JSONField(allow_null=True),
+    'taux_pct': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('date_debut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('date_fin', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _SAV_PIVOT_SAV_TAUX_ATTACHE_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_taux_attache(request):

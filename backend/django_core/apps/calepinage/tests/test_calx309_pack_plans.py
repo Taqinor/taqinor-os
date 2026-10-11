@@ -34,7 +34,7 @@ from unittest import mock, skipUnless
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import pack_technique
-from apps.calepinage.services.pack_technique import SPEC_PIECES, rendre_pieces
+from apps.calepinage.services.pack_technique import SPEC_PIECES, _rendre_pieces
 
 from .test_cal171_planche import LAYOUT
 from .test_cal173_empreinte import FauxCalepinage
@@ -121,8 +121,8 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
 
     def test_avec_parcelle_le_dossier_compte_quatre_pieces(self):
         calepinage = FauxCalepinage(roof_layout=layout_avec_parcelle())
-        pieces, signalements = rendre_pieces(calepinage,
-                                             company='societe-essai')
+        pieces, signalements = _rendre_pieces(calepinage,
+                                              company='societe-essai')
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
             ['planche', 'note_calcul', 'plan_toiture', 'plan_masse',
@@ -137,8 +137,8 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
 
     def test_sans_parcelle_le_dossier_compte_trois_pieces_et_signale(self):
         calepinage = FauxCalepinage(roof_layout=LAYOUT)  # aucune parcelle
-        pieces, signalements = rendre_pieces(calepinage,
-                                             company='societe-essai')
+        pieces, signalements = _rendre_pieces(calepinage,
+                                              company='societe-essai')
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
             ['planche', 'note_calcul', 'plan_toiture', 'plan_pose',

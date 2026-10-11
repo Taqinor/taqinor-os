@@ -85,6 +85,19 @@ export default defineConfig({
       reporter: ['text-summary', 'json-summary'],
       include: ['src/**/*.{js,jsx}'],
       exclude: ['src/**/*.test.{js,jsx}', 'src/test/**', 'src/**/*.test.mjs'],
+      // ENF24 (règle fondateur 09/10/2026) — seuils BLOQUANTS du job nocturne
+      // `frontend-full` (release-verify.yml, `npm run test:coverage`). Mesurés
+      // le 09/10/2026 sur lane/enf12 (877 fichiers, 7 035 tests verts) :
+      // instructions 65,10 %, branches 59,38 %, fonctions 57,54 %, lignes
+      // 68,41 % — planchers arrondis à l'entier inférieur. Relever par paliers
+      // d'un point quand la mesure nocturne dépasse le seuil d'au moins un
+      // point ; ne jamais les baisser.
+      thresholds: {
+        statements: 65,
+        branches: 59,
+        functions: 57,
+        lines: 68,
+      },
     },
   },
 })

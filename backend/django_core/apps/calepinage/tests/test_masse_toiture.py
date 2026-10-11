@@ -18,7 +18,7 @@ from __future__ import annotations
 import unittest
 
 from apps.calepinage.services.lestage import (
-    masse_du_layout,
+    _masse_du_layout,
     normaliser_section_lestage,
     _surface_module_m2,
 )
@@ -49,9 +49,9 @@ def _pan(resultat, libelle):
 class MasseDepuisLaFicheTest(unittest.TestCase):
 
     def test_masse_par_pan_et_par_m2(self):
-        resultat = masse_du_layout(LAYOUT, poids_module_kg=22.0,
-                                   designation_module='Module d’essai 550 Wc',
-                                   section=SECTION_STRUCTURE)
+        resultat = _masse_du_layout(LAYOUT, poids_module_kg=22.0,
+                                    designation_module='Module d’essai 550 Wc',
+                                    section=SECTION_STRUCTURE)
         sud = _pan(resultat, 'Pan Sud')
         # 10 modules × 22 kg = 220 kg ; structure 10 × 3 = 30 kg ⇒ 250 kg
         self.assertAlmostEqual(sud['masse_modules_kg'], 220.0)
@@ -70,9 +70,9 @@ class MasseDepuisLaFicheTest(unittest.TestCase):
         self.assertAlmostEqual(resultat['masse_totale_kg'], 375.0)
 
     def test_poids_unitaire_et_son_origine_sont_cites(self):
-        resultat = masse_du_layout(LAYOUT, poids_module_kg=22.0,
-                                   designation_module='Module d’essai',
-                                   section=SECTION_STRUCTURE)
+        resultat = _masse_du_layout(LAYOUT, poids_module_kg=22.0,
+                                    designation_module='Module d’essai',
+                                    section=SECTION_STRUCTURE)
         unitaire = resultat['poids_unitaire']
         self.assertAlmostEqual(unitaire['module_kg'], 22.0)
         self.assertEqual(unitaire['module_source'], 'fiche produit')
@@ -84,9 +84,9 @@ class MasseDepuisLaFicheTest(unittest.TestCase):
 class FicheSansPoidsTest(unittest.TestCase):
 
     def test_masse_non_publiee_et_produit_liste_manquant(self):
-        resultat = masse_du_layout(LAYOUT, poids_module_kg=None,
-                                   designation_module='Module sans poids',
-                                   section=SECTION_STRUCTURE)
+        resultat = _masse_du_layout(LAYOUT, poids_module_kg=None,
+                                    designation_module='Module sans poids',
+                                    section=SECTION_STRUCTURE)
         for pan in resultat['pans']:
             self.assertIsNone(pan['masse_kg'], pan['pan'])
             self.assertIsNone(pan['masse_par_m2_kg'], pan['pan'])
@@ -98,7 +98,7 @@ class FicheSansPoidsTest(unittest.TestCase):
         self.assertIn('poids_kg', manquant['message'])
 
     def test_structure_non_saisie_listee_manquante(self):
-        resultat = masse_du_layout(LAYOUT, poids_module_kg=22.0, section={})
+        resultat = _masse_du_layout(LAYOUT, poids_module_kg=22.0, section={})
         self.assertIn('masse_structure',
                       [m['quoi'] for m in resultat['manquants']])
         sud = _pan(resultat, 'Pan Sud')
@@ -113,7 +113,7 @@ class SurfaceDuPanTest(unittest.TestCase):
     def test_pan_sans_surface_ne_publie_pas_de_masse_par_m2(self):
         layout = {'version': 2, 'zones': [
             {'id': 'z1', 'label': 'Pan sans aire', 'result': {'count': 8}}]}
-        resultat = masse_du_layout(layout, poids_module_kg=22.0, section={})
+        resultat = _masse_du_layout(layout, poids_module_kg=22.0, section={})
         pan = _pan(resultat, 'Pan sans aire')
         self.assertIsNone(pan['surface_pan_m2'])
         self.assertIsNone(pan['masse_par_m2_kg'])
@@ -123,11 +123,11 @@ class SurfaceDuPanTest(unittest.TestCase):
         layout = {'version': 2, 'zones': [
             {'id': 'z1', 'label': 'Pan plat',
              'result': {'count': 2, 'areaM2': 0}}]}
-        resultat = masse_du_layout(layout, poids_module_kg=22.0, section={})
+        resultat = _masse_du_layout(layout, poids_module_kg=22.0, section={})
         self.assertIsNone(_pan(resultat, 'Pan plat')['masse_par_m2_kg'])
 
     def test_document_vide_ne_publie_rien(self):
-        resultat = masse_du_layout(None, poids_module_kg=22.0, section={})
+        resultat = _masse_du_layout(None, poids_module_kg=22.0, section={})
         self.assertEqual(resultat['pans'], [])
         self.assertEqual(resultat['total_modules'], 0)
         self.assertIsNone(resultat['masse_totale_kg'])

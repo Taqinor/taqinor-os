@@ -63,7 +63,7 @@ class AuditLog(models.Model):
     # pour les évènements sans société connue (échec de connexion avant auth).
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.SET_NULL,
+        on_delete=models.SET_NULL,  # on_delete: assigné informatif — l'enregistrement survit à la suppression de l'utilisateur
         null=True, blank=True,
         related_name='audit_logs',
     )

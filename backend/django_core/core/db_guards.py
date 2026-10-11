@@ -44,7 +44,8 @@ def statement_timeout(ms=None, *, seconds=None, minutes=None):
     value = _timeout_ms(ms, seconds, minutes)
     with transaction.atomic():
         with connection.cursor() as cur:
-            # SET LOCAL n'accepte pas de placeholder paramétré ; on interpole un
-            # entier validé (jamais une entrée utilisateur brute).
-            cur.execute(f"SET LOCAL statement_timeout = {int(value)}")
+            # ENF12 (semgrep no-formatted-raw-sql) : entier lié en paramètre ;
+            # psycopg2 interpole CÔTÉ CLIENT, donc SET LOCAL l'accepte (même
+            # forme que core/test_utils.py « SET statement_timeout = %s »).
+            cur.execute('SET LOCAL statement_timeout = %s', [int(value)])
         yield

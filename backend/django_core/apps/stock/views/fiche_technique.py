@@ -1,6 +1,9 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import serializers
+from ..openapi_helpers import INT, OBJET, P, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..importers.fiche_pan_ond import FichierIllisible, champs_a_ecrire, parse_pan_ond_bytes
 from ..models import FicheTechnique, Produit
@@ -15,6 +18,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('produit', INT)]))
 class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     """DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
 
@@ -43,6 +47,7 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(produit_id=produit_id)
         return qs
 
+    @extend_schema(request={'multipart/form-data': corps('FicheImporterDatasheetCorps', produit=serializers.IntegerField(), file=serializers.FileField(), confirmer=serializers.BooleanField(required=False))}, responses=OBJET)
     @action(detail=False, methods=['post'], url_path='importer-datasheet')
     def importer_datasheet(self, request):
         """CAL117 — import OPTIONNEL d'une fiche constructeur .PAN/.OND.

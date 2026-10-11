@@ -27,8 +27,8 @@ from apps.calepinage.services.reglementaire import (
     ETAT_MANQUANTE,
     GENRES_FRANCE,
     MESSAGE_GENRE_SANS_GABARIT,
-    avancement_du_dossier,
-    composer_dossiers,
+    _avancement_du_dossier,
+    _composer_dossiers,
 )
 
 #: Les nombres de FORME admis dans le service : ``0``/``1`` sont des bornes,
@@ -49,8 +49,8 @@ def _dossier(pieces):
                                               'fichier_url': None}},
         'genere_le': None,
     }
-    return composer_dossiers(calepinage_id=1, pays='fr', entrees=[entree],
-                             infos={})['dossiers'][0]
+    return _composer_dossiers(calepinage_id=1, pays='fr', entrees=[entree],
+                              infos={})['dossiers'][0]
 
 
 PIECES = [
@@ -72,7 +72,7 @@ class AvancementTest(unittest.TestCase):
         self.assertEqual(etats['plan_masse'], ETAT_A_COMPLETER)
         self.assertEqual(etats['photos'], ETAT_MANQUANTE)
 
-        avancement = avancement_du_dossier(dossier)
+        avancement = _avancement_du_dossier(dossier)
         self.assertEqual(avancement['pieces_total'], 3)
         self.assertEqual(avancement['pieces_fournies'], 1)
         self.assertEqual(avancement['pieces_a_completer'], 1)
@@ -81,7 +81,7 @@ class AvancementTest(unittest.TestCase):
 
     def test_aucune_piece_attendue_aucun_pourcentage(self):
         dossier = _dossier([])
-        self.assertIsNone(avancement_du_dossier(dossier)['pourcentage'])
+        self.assertIsNone(_avancement_du_dossier(dossier)['pourcentage'])
 
 
 class GenresFranceTest(unittest.TestCase):

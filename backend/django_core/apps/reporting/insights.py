@@ -22,6 +22,10 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 from apps.crm.exports import build_xlsx_response
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co(user):
@@ -62,6 +66,23 @@ def _monthly_factor(periodicite):
     return Decimal('1') / Decimal(months)
 
 
+_INSIGHTS_RECURRING_REVENUE_REPONSE = inline_serializer('InsightsRecurringRevenueReponse', {
+    'monthly_total': drf_serializers.JSONField(allow_null=True),
+    'annual_total': drf_serializers.JSONField(allow_null=True),
+    'active_count': drf_serializers.JSONField(allow_null=True),
+    'lapsed_count': drf_serializers.JSONField(allow_null=True),
+    'upcoming_count': drf_serializers.JSONField(allow_null=True),
+    'upcoming': drf_serializers.JSONField(allow_null=True),
+    'contracts': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
+    ],
+    responses={(200, 'application/json'): _INSIGHTS_RECURRING_REVENUE_REPONSE,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def recurring_revenue(request):
@@ -179,6 +200,20 @@ def _username(user):
     return getattr(user, 'username', '') if user else ''
 
 
+_INSIGHTS_AUDIT_LOG_REPONSE = inline_serializer('InsightsAuditLogReponse', {
+    'count': drf_serializers.JSONField(allow_null=True),
+    'items': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('limit', OpenApiTypes.INT, required=False),
+        OpenApiParameter('since', OpenApiTypes.STR, required=False),
+        OpenApiParameter('type', OpenApiTypes.STR, required=False),
+        OpenApiParameter('user', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _INSIGHTS_AUDIT_LOG_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def audit_log(request):
@@ -349,6 +384,18 @@ def _marge_devis(devis):
     return {'ca_ht': ca_ht, 'cout': cout, 'marge': marge}
 
 
+_INSIGHTS_JOB_COSTING_REPONSE = inline_serializer('InsightsJobCostingReponse', {
+    'internal': drf_serializers.JSONField(allow_null=True),
+    'total_invoiced_ht': drf_serializers.JSONField(allow_null=True),
+    'total_cost_estimate': drf_serializers.JSONField(allow_null=True),
+    'total_margin': drf_serializers.JSONField(allow_null=True),
+    'chantiers': drf_serializers.JSONField(allow_null=True),
+    'margin_by_month': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    responses={200: _INSIGHTS_JOB_COSTING_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def job_costing(request):
@@ -460,6 +507,17 @@ def _days_between(d1, d2):
     return (d2 - d1).days
 
 
+_INSIGHTS_ANALYTICS_REPONSE = inline_serializer('InsightsAnalyticsReponse', {
+    'avg_days_lead_to_signature': drf_serializers.JSONField(allow_null=True),
+    'lead_to_signature_count': drf_serializers.JSONField(allow_null=True),
+    'avg_days_signature_to_commissioning': drf_serializers.JSONField(allow_null=True),
+    'signature_to_commissioning_count': drf_serializers.JSONField(allow_null=True),
+    'kwc_by_month': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    responses={200: _INSIGHTS_ANALYTICS_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def analytics(request):
@@ -539,6 +597,22 @@ def analytics(request):
     })
 
 
+_INSIGHTS_COMMISSIONS_REPONSE = inline_serializer('InsightsCommissionsReponse', {
+    'enabled': drf_serializers.JSONField(allow_null=True),
+    'mode': drf_serializers.JSONField(allow_null=True),
+    'valeur': drf_serializers.JSONField(allow_null=True),
+    'base_label': drf_serializers.JSONField(required=False, allow_null=True),
+    'rows': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _INSIGHTS_COMMISSIONS_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def commissions(request):
@@ -691,6 +765,18 @@ def commissions(request):
 
 
 # ── FG93 — Classement commerciaux ───────────────────────────────────────────
+_INSIGHTS_SALES_LEADERBOARD_REPONSE = inline_serializer('InsightsSalesLeaderboardReponse', {
+    'rows': drf_serializers.JSONField(allow_null=True),
+    'total_commerciaux': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _INSIGHTS_SALES_LEADERBOARD_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sales_leaderboard(request):
@@ -748,6 +834,24 @@ def sales_leaderboard(request):
 
 
 # ── FG94 — Reporting des champs personnalisés ─────────────────────────────────
+_INSIGHTS_CF_GROUP_BY_REPONSE = inline_serializer('InsightsCfGroupByReponse', {
+    'module': drf_serializers.JSONField(allow_null=True),
+    'code': drf_serializers.JSONField(allow_null=True),
+    'libelle': drf_serializers.JSONField(allow_null=True),
+    'rows': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('module', OpenApiTypes.STR, required=True),
+        OpenApiParameter('code', OpenApiTypes.STR, required=True),
+        OpenApiParameter(
+            'export', OpenApiTypes.STR, required=False,
+            description="'xlsx' : télécharge la répartition en .xlsx."),
+    ],
+    responses={200: _INSIGHTS_CF_GROUP_BY_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def cf_group_by(request):
@@ -839,6 +943,21 @@ def _cf_module_model(module):
 
 # ── FG98 — Analyse cohortes / saisonnalité ────────────────────────────────────
 
+_INSIGHTS_COHORTS_REPONSE = inline_serializer('InsightsCohortsReponse', {
+    'from': drf_serializers.JSONField(allow_null=True),
+    'to': drf_serializers.JSONField(allow_null=True),
+    'group_by': drf_serializers.JSONField(allow_null=True),
+    'cohorts': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('group_by', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _INSIGHTS_COHORTS_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def cohorts(request):
@@ -956,6 +1075,25 @@ def cohorts(request):
 
 # ── FG99 — Rentabilité par segment ───────────────────────────────────────────
 
+_INSIGHTS_PROFITABILITY_REPONSE = inline_serializer('InsightsProfitabilityReponse', {
+    'internal': drf_serializers.JSONField(allow_null=True),
+    'segment': drf_serializers.JSONField(allow_null=True),
+    'from': drf_serializers.JSONField(allow_null=True),
+    'to': drf_serializers.JSONField(allow_null=True),
+    'total_revenue_ht': drf_serializers.JSONField(allow_null=True),
+    'total_cost_estimate': drf_serializers.JSONField(allow_null=True),
+    'total_margin': drf_serializers.JSONField(allow_null=True),
+    'rows': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('segment', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _INSIGHTS_PROFITABILITY_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def profitability(request):

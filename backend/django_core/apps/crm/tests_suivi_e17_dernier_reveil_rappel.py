@@ -28,7 +28,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_RAPPEL_CONVENU, cle_de
 from apps.crm.models import Lead, RelanceEtape
@@ -137,9 +137,9 @@ class DernierReveilApiTests(TestCase):
 
     def test_est_dernier_reveil_lit_les_barreaux_de_la_societe(self):
         lead = self._lead(stages.COLD)
-        self.assertTrue(services.est_dernier_reveil(
+        self.assertTrue(cadence_reponses.est_dernier_reveil(
             self._touche(lead, DERNIER)))
-        self.assertFalse(services.est_dernier_reveil(
+        self.assertFalse(cadence_reponses.est_dernier_reveil(
             self._touche(lead, PREMIER)))
 
     def test_au_froid_le_dossier_sort_et_le_rappel_est_pose(self):

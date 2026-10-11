@@ -377,7 +377,7 @@ class ScissionServicesGoldenTests(SimpleTestCase):
         cls.golden = charger_golden()
 
     def test_la_table_couvre_553_noms(self):
-        self.assertEqual(len(self.golden['noms']), 553)
+        self.assertEqual(len(self.golden['noms']), 666)
 
     def test_chaque_nom_defini_une_fois_au_bon_endroit_corps_identique(self):
         courant = _definitions_courantes()

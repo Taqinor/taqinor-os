@@ -23,7 +23,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
+from apps.crm import cadence_filet
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_DEBRIEF, CLE_DEVIS, CLE_DEVIS_MODIFIE, CLE_PLANIFIER, q_etape)
@@ -43,13 +45,13 @@ _seq = itertools.count(1)
 class PromesseTests(SimpleTestCase):
 
     def test_le_rappel_sur_une_etape_de_visite_la_deplace(self):
-        for cle, libelle in ((CLE_PLANIFIER, services.VISITE_FILET_LIBELLE),
-                             (CLE_DEBRIEF, services.VISITE_DEBRIEF_LIBELLE),
+        for cle, libelle in ((CLE_PLANIFIER, cadence_reperes.VISITE_FILET_LIBELLE),
+                             (CLE_DEBRIEF, cadence_reperes.VISITE_DEBRIEF_LIBELLE),
                              (CLE_DEVIS_MODIFIE,
-                              services.VISITE_DEVIS_LIBELLE)):
+                              cadence_reperes.VISITE_DEVIS_LIBELLE)):
             with self.subTest(cle=cle):
                 etape = RelanceEtape(
-                    cadence='apres_devis', ordre=services.VISITE_ORDRE_DEBRIEF,
+                    cadence='apres_devis', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
                     canal=RelanceEtape.Canal.APPEL, libelle=libelle,
                     statut=A_FAIRE)
                 etape.lead = Lead(nom='témoin', stage=stages.QUOTE_SENT)
@@ -107,14 +109,14 @@ class _Base(TestCase):
 class RappelSurVisiteTests(_Base):
 
     def test_planifier_la_visite_est_deplacee(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         resp = self._rappeler(planifier)
         self._deplacee(planifier, resp)
         self.assertEqual(resp.data['prochaine_touche']['cle'], CLE_PLANIFIER)
 
     def test_le_debrief_est_deplace(self):
-        services.appliquer_visite_planifiee(
+        cadence_visite.appliquer_visite_planifiee(
             self.lead, self.acteur, GEL.date())
         debrief = self.lead.relance_etapes.get(q_etape(CLE_DEBRIEF),
                                                statut=A_FAIRE)
@@ -128,9 +130,9 @@ class RappelSurVisiteTests(_Base):
     def test_le_devis_modifie_est_deplace(self):
         modifie = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_DEBRIEF,
+            ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
             canal=RelanceEtape.Canal.APPEL, cle=CLE_DEVIS_MODIFIE,
-            libelle=services.VISITE_DEVIS_LIBELLE, due_at=GEL,
+            libelle=cadence_reperes.VISITE_DEVIS_LIBELLE, due_at=GEL,
             due_date=GEL.date())
         self._deplacee(modifie, self._rappeler(modifie))
 

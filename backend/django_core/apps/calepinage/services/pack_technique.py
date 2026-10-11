@@ -53,7 +53,7 @@ from __future__ import annotations
 
 __all__ = [
     'PackRefuse', 'CABINET', 'DOSSIER', 'SPEC_PIECES', 'compter_pages',
-    'rendre_pieces', 'construire_pack',
+    'construire_pack',
     # CALX319 — le dossier de fin de chantier.
     'DOSSIER_FIN_CHANTIER', 'DOSSIER_CHANTIER_GED',
     'MENTION_RECETTE_GARANTIES', 'construire_dossier_fin_chantier',
@@ -169,7 +169,7 @@ def _rendus(calepinage, company):
     }
 
 
-def rendre_pieces(calepinage, *, company=None, rendus=None, spec=SPEC_PIECES):
+def _rendre_pieces(calepinage, *, company=None, rendus=None, spec=SPEC_PIECES):
     """``([(code, libelle, octets, pages)], [signalements])``.
 
     Une pièce OBLIGATOIRE qui ne se rend pas lève ``PackRefuse`` en la nommant.
@@ -383,8 +383,8 @@ def construire_pack(calepinage, *, company=None, created_by=None,
             "Un dossier technique se produit toujours dans une société.",
             piece='company')
 
-    pieces, signalements = rendre_pieces(calepinage, company=company,
-                                         rendus=rendus)
+    pieces, signalements = _rendre_pieces(calepinage, company=company,
+                                          rendus=rendus)
     if not pieces:
         raise PackRefuse(
             "Dossier technique refusé : aucune pièce à fusionner.",
@@ -503,7 +503,7 @@ def construire_dossier_fin_chantier(calepinage, *, company=None,
 
     if rendus is None:
         rendus = _rendus_dossier_fin_chantier(calepinage, company)
-    pieces, signalements = rendre_pieces(
+    pieces, signalements = _rendre_pieces(
         calepinage, company=company, rendus=rendus, spec=DOSSIER_FIN_CHANTIER)
     if not pieces:
         raise PackRefuse(

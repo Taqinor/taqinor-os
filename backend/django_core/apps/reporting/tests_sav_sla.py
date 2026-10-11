@@ -1,4 +1,5 @@
 """XSAV8 — rapport de conformité SLA + KPI SAV avancés (fixtures datées)."""
+import uuid
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
@@ -30,7 +31,7 @@ class SavSlaBase(TestCase):
 
     def _make_ticket(self, **kwargs):
         defaults = dict(
-            company=self.company, reference=f'T-{Ticket.objects.count() + 1}',
+            company=self.company, reference=f'T-{uuid.uuid4().hex[:8]}',
             client=self.client_obj, technicien_responsable=self.tech,
         )
         defaults.update(kwargs)

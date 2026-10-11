@@ -25,7 +25,7 @@ from unittest import mock
 
 from apps.calepinage.services.rapport.electrique import (
     MENTION_NON_VERIFIABLE, MOTIF_SCHEMA_INDISPONIBLE, bloc_schema_unifilaire,
-    html_de_section, html_table_verdicts, rendre_rapport_avec_schema,
+    html_de_section, _html_table_verdicts, rendre_rapport_avec_schema,
 )
 
 # ``services.rapport.*`` est un paquet PUR — voir la note de
@@ -82,11 +82,11 @@ class HtmlDeSectionTest(unittest.TestCase):
         self.assertIn('Ratio DC/AC', html)
 
     def test_cinq_verdicts_servis_cinq_lignes(self):
-        html = html_table_verdicts(VERDICTS_5)
+        html = _html_table_verdicts(VERDICTS_5)
         self.assertEqual(html.count('<tr'), 6)  # en-tête + 5 lignes
 
     def test_verdict_non_calculable_imprime_non_verifiable_jamais_ok(self):
-        html = html_table_verdicts(VERDICTS_5)
+        html = _html_table_verdicts(VERDICTS_5)
         self.assertIn(MENTION_NON_VERIFIABLE, html)
         self.assertNotIn('>OK<', html)
 
@@ -95,7 +95,7 @@ class HtmlDeSectionTest(unittest.TestCase):
             'code': 'x', 'libelle': 'Contrôle X', 'conforme': False,
             'bloquant': True, 'source': 'norme',
             'detail': 'chute cumulée de 1,18 % — au-dessus de la cible.'}]
-        html = html_table_verdicts(verdicts)
+        html = _html_table_verdicts(verdicts)
         self.assertIn('non conforme', html)
         self.assertIn('oui', html)  # bloquant
         self.assertIn('norme', html)
@@ -108,7 +108,7 @@ class HtmlDeSectionTest(unittest.TestCase):
             'detail': '', 'temperature_c': -5.0,
             'temperature_source': 'saisie',
             'temperature_mention': 'températures de référence, non sourcées'}]
-        html = html_table_verdicts(verdicts)
+        html = _html_table_verdicts(verdicts)
         self.assertIn('températures de référence, non sourcées', html)
 
     def test_sans_electrique_section_vide(self):

@@ -132,10 +132,10 @@ class EquivalenceSansZonesTest(unittest.TestCase):
     def _aujourd_hui(self, section):
         societe = 'Société Essai'
         return {
-            'masse': lestage.masse_du_layout(None, poids_module_kg=None,
-                                             designation_module='',
-                                             section=section),
-            'lestage': lestage.feuille_de_lestage(
+            'masse': lestage._masse_du_layout(None, poids_module_kg=None,
+                                              designation_module='',
+                                              section=section),
+            'lestage': lestage._feuille_de_lestage(
                 section, surface_module_m2=None, masse_module_kg=None,
                 societe=societe),
         }

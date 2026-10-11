@@ -110,7 +110,7 @@ class ClientAdminDeleteGuardTests(TestCase):
         self.assertEqual(collector.protected, set())
 
         url = reverse('admin:crm_client_delete', args=[self.client_propre.pk])
-        response = self.http.post(url, {'post': 'yes'})
+        response = self.http.post(url, {'post': 'yes'}, format='json')
 
         self.assertEqual(response.status_code, 302)
         messages = [str(m) for m in get_messages(response.wsgi_request)]
@@ -124,7 +124,7 @@ class ClientAdminDeleteGuardTests(TestCase):
             '_selected_action': [str(self.client_protege.pk),
                                  str(self.client_propre.pk)],
             'post': 'yes',
-        })
+        }, format='json')
 
         self.assertEqual(response.status_code, 200)
         self._catalogue_intact()
@@ -143,7 +143,7 @@ class ClientAdminDeleteGuardTests(TestCase):
         (ici un utilisateur sans dépendance) part normalement."""
         jetable = UserFactory(company=self.company, username='jetable-client-guard')
         url = reverse('admin:authentication_customuser_delete', args=[jetable.pk])
-        response = self.http.post(url, {'post': 'yes'})
+        response = self.http.post(url, {'post': 'yes'}, format='json')
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CustomUser.objects.filter(pk=jetable.pk).exists())

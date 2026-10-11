@@ -16,7 +16,7 @@ from apps.calepinage.services.chaines import (
     normaliser_affectation_imposee,
 )
 from apps.calepinage.services.documents.plan_cablage import (
-    plan_de_cablage, svg_de_plan_cablage,
+    _plan_de_cablage, _svg_de_plan_cablage,
 )
 from apps.calepinage.services.electrique import TemperaturesSite
 
@@ -97,7 +97,7 @@ class AffectationCouleurs(unittest.TestCase):
             ligne['couleur_chaine'] = 'rgb(1, 2, 3)'
             ligne['couleur_mppt'] = 'rgb(4, 5, 6)'
         self.assertEqual(
-            svg_de_plan_cablage(plan_de_cablage(LAYOUT_PLAN, sans)),
-            svg_de_plan_cablage(plan_de_cablage(LAYOUT_PLAN, avec)))
+            _svg_de_plan_cablage(_plan_de_cablage(LAYOUT_PLAN, sans)),
+            _svg_de_plan_cablage(_plan_de_cablage(LAYOUT_PLAN, avec)))
         self.assertIn(PALETTE_CHAINES[0],
-                      svg_de_plan_cablage(plan_de_cablage(LAYOUT_PLAN, sans)))
+                      _svg_de_plan_cablage(_plan_de_cablage(LAYOUT_PLAN, sans)))

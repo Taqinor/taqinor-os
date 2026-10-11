@@ -2,6 +2,7 @@
 
 Chaque famille : un cas CONSTRUIT en fixture (détecté) + un cas SAIN (ignoré).
 Multi-tenant : aucune fuite d'une société à l'autre."""
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -38,7 +39,7 @@ class IntegrityBase(TestCase):
 
     def _installation(self, **kwargs):
         defaults = dict(
-            company=self.company, reference=f'INST-{Installation.objects.count()+1}',
+            company=self.company, reference=f'INST-{uuid.uuid4().hex[:8]}',
             client=self.client_obj, statut=Installation.Statut.CLOTURE)
         defaults.update(kwargs)
         return Installation.objects.create(**defaults)

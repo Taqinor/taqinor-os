@@ -105,12 +105,12 @@ class PurgeTest(BaseHistorique):
         self.assertEqual(self.pivot.versions.count(), avant)
 
     def test_borne_de_purge_absente_vaut_off(self):
-        self.assertIsNone(svc.borne_de_purge(self.company))
+        self.assertIsNone(svc._borne_de_purge(self.company))
 
     def test_borne_saisie_lue_depuis_les_reglages(self):
         enregistrer_parametres(self.company,
                                {'presets': {svc.CLE_BORNE_PURGE: 3}})
-        self.assertEqual(svc.borne_de_purge(self.company), 3)
+        self.assertEqual(svc._borne_de_purge(self.company), 3)
 
     def test_borne_non_entiere_vaut_off(self):
         # ACAL287 : une borne non entière est REFUSÉE en nommant le champ
@@ -120,7 +120,7 @@ class PurgeTest(BaseHistorique):
             enregistrer_parametres(self.company,
                                    {'presets': {svc.CLE_BORNE_PURGE: 'trois'}})
         self.assertEqual(refus.exception.champ, svc.CLE_BORNE_PURGE)
-        self.assertIsNone(svc.borne_de_purge(self.company))
+        self.assertIsNone(svc._borne_de_purge(self.company))
 
     def test_purge_retire_au_dela_de_la_borne(self):
         self._historiser(5)

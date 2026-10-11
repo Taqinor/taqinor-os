@@ -40,7 +40,7 @@ from html import escape
 
 __all__ = [
     'DiagrammeRefuse', 'ID_HACHURE', 'LARGEUR_DEFAUT_MM', 'HAUTEUR_TRACE_PX',
-    'px_de_mm', 'echelle_px_par_point', 'svg_de_cascade', 'svg_embarquable',
+    'svg_de_cascade', 'svg_embarquable',
     'svg_du_calepinage',
 ]
 
@@ -69,7 +69,7 @@ class DiagrammeRefuse(ValueError):
         self.champ = champ
 
 
-def px_de_mm(millimetres):
+def _px_de_mm(millimetres):
     """Millimètres -> pixels CSS (96 px par pouce, 25,4 mm par pouce)."""
     return round(float(millimetres) * 96.0 / 25.4, 2)
 
@@ -90,7 +90,7 @@ def _est_nombre(valeur):
     return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
 
 
-def echelle_px_par_point(etapes, hauteur_trace=HAUTEUR_TRACE_PX):
+def _echelle_px_par_point(etapes, hauteur_trace=HAUTEUR_TRACE_PX):
     """Pixels par point de pourcentage : la plus grande part SERVIE remplit le
     tracé. ``0`` quand aucune part n'est non nulle (rien à dessiner)."""
     parts = [abs(e['perte_pct']) for e in etapes
@@ -138,13 +138,13 @@ def svg_de_cascade(cascade, *, largeur_mm=LARGEUR_DEFAUT_MM, langue='fr'):
             "diagramme se dessine depuis la simulation (onglet Production), "
             "jamais depuis une liste de postes sans ordre d'application.")
     textes = _libelles(langue)
-    largeur = px_de_mm(largeur_mm)
+    largeur = _px_de_mm(largeur_mm)
     hauteur = MARGE_HAUTE_PX + HAUTEUR_TRACE_PX + ZONE_LIBELLES_PX
     base = MARGE_HAUTE_PX + HAUTEUR_TRACE_PX
     colonnes = len(etapes) + 2                      # + les deux bornes
     pas = (largeur - 2 * MARGE_LATERALE_PX) / colonnes
     epaisseur = pas * 0.62
-    echelle = echelle_px_par_point(etapes)
+    echelle = _echelle_px_par_point(etapes)
 
     morceaux = [
         '<?xml version="1.0" encoding="UTF-8"?>',

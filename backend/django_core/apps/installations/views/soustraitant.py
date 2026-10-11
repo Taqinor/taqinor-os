@@ -21,11 +21,33 @@ from apps.stock import selectors as stock_selectors
 from apps.stock import services as stock_services
 
 from ..serializers import SousTraitantSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class SousTraitantViewSet(viewsets.ViewSet):
+_ID = oa.OpenApiParameter('id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)
+_ENVELOPPE = oa.body(
+    'SousTraitantListe', count=oa.i(), next=oa.s(null=True),
+    previous=oa.s(null=True), results=SousTraitantSerializer(many=True))
+
+
+@oa.extend_schema_view(
+    list=oa.extend_schema(
+        parameters=[oa.qs('actif'), oa.qs('metier'), oa.qs('search')],
+        responses=_ENVELOPPE),
+    retrieve=oa.extend_schema(parameters=[_ID], responses=SousTraitantSerializer),
+    create=oa.extend_schema(
+        request=SousTraitantSerializer,
+        responses={201: SousTraitantSerializer}),
+    update=oa.extend_schema(
+        parameters=[_ID], request=SousTraitantSerializer,
+        responses=SousTraitantSerializer),
+    partial_update=oa.extend_schema(
+        parameters=[_ID], request=SousTraitantSerializer,
+        responses=SousTraitantSerializer),
+)
+class SousTraitantViewSet(oa.JsonOnlyMixin, viewsets.ViewSet):
     """DC34 — annuaire des sous-traitants (Fournisseur type=service + profil).
     Lecture tout rôle, écriture responsable/admin. Société posée côté serveur.
     Filtrable par ``metier`` et ``actif`` ; recherche ``?search=`` sur la raison

@@ -22,11 +22,13 @@ from ..models import SessionComptage, ComptageLigne
 from ..serializers import (
     SessionComptageSerializer, ComptageLigneSerializer,
 )
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class SessionComptageViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('classe_abc'), p1=oa.qs('statut'), p2=oa.qi('emplacement'))
+class SessionComptageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG324 — sessions de comptage tournant. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `statut`, `classe_abc`, `emplacement`."""
     queryset = SessionComptage.objects.select_related(
@@ -76,6 +78,7 @@ class SessionComptageViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=oa.body('AjouterLigneComptageRequete', produit=oa.i(True)), responses={201: ComptageLigneSerializer})
     @action(detail=True, methods=['post'], url_path='ajouter-ligne')
     def ajouter_ligne(self, request, pk=None):
         """FG324 — ajoute un SKU à compter ; la quantité théorique est
@@ -104,6 +107,7 @@ class SessionComptageViewSet(CompanyScopedModelViewSet):
             ComptageLigneSerializer(ligne).data,
             status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def demarrer(self, request, pk=None):
         """FG324 — passe la session en cours."""
@@ -112,6 +116,7 @@ class SessionComptageViewSet(CompanyScopedModelViewSet):
         session.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(session).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """FG324/YSTCK1 — clôture la session (→ terminé) ET poste l'écart
@@ -152,12 +157,17 @@ class SessionComptageViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(session).data)
 
 
-class ComptageLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('session'))
+class ComptageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG324 — lignes de comptage. Pas de `company` propre : scope via la
     session parente. Filtrable par `session`. Lecture tout rôle, écriture
     responsable/admin (saisie de `quantite_comptee` / `compte`)."""
     queryset = ComptageLigne.objects.select_related('session', 'produit').all()
     serializer_class = ComptageLigneSerializer
+    # ENF2 — lignes GÉNÉRÉES serveur (action `generer-lignes` de la session),
+    # `session` en lecture seule : un POST ne pouvait QUE violer le NOT NULL
+    # du parent (500 au fuzz du 07/10). Pas de création directe : 405.
+    http_method_names = ['get', 'put', 'patch', 'delete', 'head', 'options']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

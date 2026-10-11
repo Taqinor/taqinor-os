@@ -34,7 +34,7 @@ from apps.calepinage.services.rapport import (
     construire_rapport, html_de_rapport, nombre_tel_que_servi,
 )
 from apps.calepinage.services.rapport.pertes import (
-    MENTION_CASCADE_ABSENTE, energie_livree, html_de_section,
+    MENTION_CASCADE_ABSENTE, _energie_livree, html_de_section,
 )
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
@@ -77,7 +77,7 @@ class AucuneArithmetiqueTest(unittest.TestCase):
                     if e['kwh_apres'] is not None][-1]
         self.assertEqual(imprimees[-1], nombre_tel_que_servi(attendue))
         self.assertEqual(imprimees[-1], '15792,3')
-        self.assertEqual(energie_livree(cascade), attendue)
+        self.assertEqual(_energie_livree(cascade), attendue)
 
     def test_aucun_arrondi(self):
         cascade = cascade_du_contrat()

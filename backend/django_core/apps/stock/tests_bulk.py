@@ -1,4 +1,5 @@
 """T8 — édition en masse du catalogue produit + export Excel."""
+import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -26,7 +27,7 @@ class ProductBulkBase(TestCase):
     def mk(self, **kw):
         kw.setdefault('company', self.company)
         kw.setdefault('nom', 'P')
-        kw.setdefault('sku', f"SKU-{Produit.objects.count()+1}")
+        kw.setdefault('sku', f"SKU-{uuid.uuid4().hex[:8]}")
         kw.setdefault('prix_vente', Decimal('1000'))
         kw.setdefault('prix_achat', Decimal('600'))
         kw.setdefault('quantite_stock', 5)

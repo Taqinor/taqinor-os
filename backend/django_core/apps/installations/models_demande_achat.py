@@ -99,7 +99,7 @@ class DemandeAchat(DocumentMetier):
     # Redéclarée à l'identique (SCA36) : conserve le related_name + la
     # nullabilité historiques — colonne DB inchangée (state-only).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_demandes_achat')
     reference = models.CharField(max_length=50)
@@ -189,7 +189,7 @@ class DemandeAchatLigne(models.Model):
     une quantité et un prix unitaire ESTIMÉ (INTERNE, indicatif)."""
 
     demande = models.ForeignKey(
-        DemandeAchat, on_delete=models.CASCADE, related_name='lignes')
+        DemandeAchat, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de DemandeAchat — n'existe pas sans son document parent
     # Produit catalogue (string-FK vers stock). PROTECT côté DB pour ne pas
     # casser une demande si un produit est supprimé est inutile : on garde le
     # désignation libre en repli quand le produit n'est pas catalogué.

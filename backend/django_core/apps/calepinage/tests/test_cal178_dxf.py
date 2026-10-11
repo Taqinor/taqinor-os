@@ -16,7 +16,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.export_dxf import (
     CALQUE_COTES, CALQUE_MODULES, CALQUE_OBSTACLES, CALQUE_TOITURE, CALQUES,
-    document_dxf, octets_dxf,
+    _document_dxf, octets_dxf,
 )
 from apps.calepinage.services.planche import geometrie_de_planche
 
@@ -95,7 +95,7 @@ class ModuleSansEmpriseTest(SimpleTestCase):
         layout = dict(LAYOUT)
         layout.pop('panelWatt', None)
         self.geometrie = geometrie_de_planche(layout)
-        self.document = document_dxf(self.geometrie)
+        self.document = _document_dxf(self.geometrie)
 
     def test_les_modules_sont_des_points(self):
         self.assertIsNone(self.geometrie['module_m'])

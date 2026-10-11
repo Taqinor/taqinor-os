@@ -117,7 +117,7 @@ class DepotTests(unittest.TestCase):
 
     def test_retirer_l_atomic_de_marquer_nomme_l_action(self):
         vues = (ROOT / guard.VIEWS_REL).read_text(encoding="utf-8")
-        services = (ROOT / guard.SERVICES_REL).read_text(encoding="utf-8")
+        services = guard.source_services()
         casse = vues.replace("@_geste_atomique\n    def _marquer",
                              "def _marquer", 1)
         self.assertNotEqual(vues, casse)

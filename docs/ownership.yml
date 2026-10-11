@@ -915,6 +915,8 @@ append_only:
     rule: "une ligne d'index par nouveau contrat JSON (PACT10) ; le JSON lui-même appartient au propriétaire de la fonctionnalité"
   - path: backend/django_core/apps/crm/tasks.py
     rule: "une @shared_task par fonctionnalité, nom unique « crm.<x> », ajoutée en fin ; jamais éditer la tâche d'un autre"
+  - path: backend/django_core/apps/crm/services.py
+    rule: "façade pure (SPL26) : seulement des lignes `from .<module> import (...)  # noqa: F401 — façade` pour un nouveau point d'entrée inter-propriétaires ; jamais un corps"
   - path: backend/django_core/apps/ventes/services.py
     rule: "façade pure (QJR68/QJR76) : seulement des ré-exports « nom = _module.nom » + __all__, jamais un corps"
   - path: backend/django_core/apps/ventes/tests/test_services_surface.py

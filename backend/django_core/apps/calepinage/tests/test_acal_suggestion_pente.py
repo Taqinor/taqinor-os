@@ -66,7 +66,7 @@ class SuggestionPenteApiTest(BaseApiCalepinage):
     def _poster(self, operation, base, api=None, **autres):
         corps = {'operation': operation, 'base_empreinte': base}
         corps.update(autres)
-        with mock.patch('apps.calepinage.services.lidar_ign.altimetre_ign',
+        with mock.patch('apps.calepinage.services.lidar_ign._altimetre_ign',
                         _altimetre_plan):
             return (api or self.api).post(self.url, corps, format='json')
 

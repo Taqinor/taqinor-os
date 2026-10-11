@@ -46,7 +46,7 @@ from .pertes_politique import SOURCES_ADMISES, PertesInvalides
 
 __all__ = [
     'CATALOGUE', 'CATALOGUE_PAR_POSTE', 'MOIS_LIBELLES', 'SOURCES_ADMISES',
-    'PertesInvalides', 'enregistrer_pertes', 'moyenne_mensuelle',
+    'PertesInvalides', 'enregistrer_pertes',
     'postes_du_calepinage', 'valider_postes',
 ]
 
@@ -121,7 +121,7 @@ def _pourcentage(valeur, *, champ):
     return nombre
 
 
-def moyenne_mensuelle(mensuel, *, champ):
+def _moyenne_mensuelle(mensuel, *, champ):
     """La valeur ANNUELLE d'un poste mensuel : la moyenne de ses douze mois.
 
     Douze valeurs sont exigées — onze mois et un trou, ce serait une moyenne
@@ -202,7 +202,7 @@ def valider_postes(postes):
         reference_catalogue = CATALOGUE_PAR_POSTE.get(nom, {})
         mensuel = brut.get('mensuel')
         if mensuel is not None:
-            pct, mensuel = moyenne_mensuelle(mensuel, champ=nom)
+            pct, mensuel = _moyenne_mensuelle(mensuel, champ=nom)
         else:
             pct = _pourcentage(brut.get('pct'), champ=nom)
 

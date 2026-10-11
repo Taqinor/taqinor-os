@@ -25,7 +25,7 @@ RACINES = (BACKEND / 'apps', BACKEND / 'core')
 
 #: Modules sans importeur dont le sort est décidé PAR UNE AUTRE tâche.
 DECIDES_AILLEURS = {
-    'kits': 'construire_kit_de_pose — sort décidé avec C-ACAL-033 (D-ACAL-17)',
+    'kits': '_construire_kit_de_pose — sort décidé avec C-ACAL-033 (D-ACAL-17)',
     'traduction': 'gardé (D-ACAL-17)',
 }
 

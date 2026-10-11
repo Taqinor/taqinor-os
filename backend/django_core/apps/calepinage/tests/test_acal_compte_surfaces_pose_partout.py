@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.chaines import pans_poses
+from apps.calepinage.services.chaines import _pans_poses
 from apps.calepinage.services.production import _pans_du_layout
 from apps.ventes.services import pans_du_document
 
@@ -43,7 +43,7 @@ class CompteSurfacesPosePartoutTest(SimpleTestCase):
         primitive = pans_du_document(SOL_340)
         self.assertEqual([p['modules'] for p in primitive], [340])
 
-        chaines = pans_poses(SOL_340)
+        chaines = _pans_poses(SOL_340)
         self.assertEqual(len(chaines), 1)
         self.assertEqual(chaines[0].modules, 340)
         self.assertEqual(chaines[0].label, 'Champ sud')
@@ -66,7 +66,7 @@ class CompteSurfacesPosePartoutTest(SimpleTestCase):
         self.assertEqual([p['modules'] for p in primitive], [0])
 
         # neededPanels n'est JAMAIS un compte posé : rien à chaîner.
-        self.assertEqual(pans_poses(PAN_NON_PAVE), ())
+        self.assertEqual(_pans_poses(PAN_NON_PAVE), ())
 
         production = _pans_du_layout(PAN_NON_PAVE)
         self.assertEqual([p['modules'] for p in production], [0])
@@ -77,7 +77,7 @@ class CompteSurfacesPosePartoutTest(SimpleTestCase):
             'id': 'z1', 'label': 'Pan est', 'pitchDeg': 15,
             'facingAzimuthDeg': 90, 'geometry': {'count': 8}}]}
 
-        pan, = pans_poses(layout)
+        pan, = _pans_poses(layout)
 
         self.assertEqual(pan.modules, 8)
         self.assertEqual(pan.azimut_deg, 90.0)

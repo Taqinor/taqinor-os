@@ -15,8 +15,8 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.crm.models import Client, Lead
-from apps.crm.services import (
-    create_lead_from_meta_lead_ads, resolve_client_for_lead)
+from apps.crm.leads_meta import create_lead_from_meta_lead_ads
+from apps.crm.clients_identite import resolve_client_for_lead
 
 
 class IdentiteClientTests(TestCase):

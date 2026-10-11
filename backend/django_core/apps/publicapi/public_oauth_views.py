@@ -49,7 +49,7 @@ def _erreur(code, message, *, param=None, statut=status.HTTP_401_UNAUTHORIZED,
 @extend_schema(
     summary='Jeton OAuth2 client_credentials (NTAPI19).',
     request=inline_serializer('PublicOAuthTokenRequest', {
-        'grant_type': serializers.CharField(),
+        'grant_type': serializers.ChoiceField(choices=[GRANT_TYPE]),
         'client_id': serializers.CharField(),
         'client_secret': serializers.CharField(),
         'scope': serializers.CharField(required=False),

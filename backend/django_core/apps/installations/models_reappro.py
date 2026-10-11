@@ -24,14 +24,14 @@ class RegleReappro(models.Model):
     (société, produit, emplacement cible)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_regles_reappro')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: RegleReappro est le détail de Produit — n'existe pas sans lui
         related_name='installations_regles_reappro')
     emplacement_cible = models.ForeignKey(
-        'stock.EmplacementStock', on_delete=models.CASCADE,
+        'stock.EmplacementStock', on_delete=models.CASCADE,  # on_delete: RegleReappro est le détail de EmplacementStock — n'existe pas sans lui
         related_name='installations_regles_reappro_cibles')
     emplacement_source = models.ForeignKey(
         'stock.EmplacementStock', on_delete=models.SET_NULL,

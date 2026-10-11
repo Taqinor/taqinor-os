@@ -75,7 +75,7 @@ class TestNumeroSuivi(TestCase):
 
     def test_numero_suivi_writable_and_exposed(self):
         r = self.api.patch(
-            f'{BASE}/livraisons/{self.liv.id}/', {'numero_suivi': 'DHL123456'})
+            f'{BASE}/livraisons/{self.liv.id}/', {'numero_suivi': 'DHL123456'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.liv.refresh_from_db()
         self.assertEqual(self.liv.numero_suivi, 'DHL123456')

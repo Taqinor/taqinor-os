@@ -105,10 +105,10 @@ _CALQUE = re.compile(r'^[a-z][a-z0-9_-]*$')
 
 __all__ = [
     'SECTION', 'FOURNISSEURS', 'FOURNISSEURS_GATES', 'CLES', 'CLES_LISTE',
-    'normaliser_section_imagerie', 'section_vide', 'fournisseur_actif',
+    'normaliser_section_imagerie', 'section_vide',
     # CAL55 — altitude et fuseau SOURCÉS (jamais devinés, jamais dérivés de
     # la longitude).
-    'SOURCE_PVGIS', 'SOURCE_SAISIE', 'altitude_pvgis', 'altitude_du_site',
+    'SOURCE_PVGIS', 'SOURCE_SAISIE', 'altitude_du_site',
     'fuseau_du_site', 'decalage_utc_minutes',
 ]
 
@@ -124,7 +124,7 @@ def section_vide():
     return {cle: ([] if cle in CLES_LISTE else None) for cle in CLES}
 
 
-def fournisseur_actif(section):
+def _fournisseur_actif(section):
     """Le fournisseur à utiliser, ou ``None`` si la société n'a rien réglé.
 
     ``fournisseur_imagerie`` fait foi ; à défaut, le PREMIER de la liste
@@ -329,7 +329,7 @@ def _controler_coherence(section):
             "« Source de l'altitude » (relevé GPS, plan topographique…).",
             'source_altitude')
 
-    actif = fournisseur_actif(section)
+    actif = _fournisseur_actif(section)
     if actif is None:
         return
     if actif in FOURNISSEURS_AVEC_ATTRIBUTION and not section['attribution']:
@@ -384,7 +384,7 @@ MENTION_FUSEAU_INCONNU = (
 )
 
 
-def altitude_pvgis(charge):
+def _altitude_pvgis(charge):
     """L'altitude que PVGIS publie avec sa réponse, ou ``None``.
 
     PVGIS rend ``inputs.location.elevation`` (mètres). Une réponse sans
@@ -422,7 +422,7 @@ def altitude_du_site(section, *, charge_pvgis=None):
             'source': section.get('source_altitude') or SOURCE_SAISIE,
             'mention': '',
         }
-    depuis_pvgis = altitude_pvgis(charge_pvgis)
+    depuis_pvgis = _altitude_pvgis(charge_pvgis)
     if depuis_pvgis is None:
         return {'altitude_m': None, 'source': None,
                 'mention': MENTION_ALTITUDE_INCONNUE}

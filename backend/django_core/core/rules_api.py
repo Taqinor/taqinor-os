@@ -9,6 +9,7 @@ avant de le sauver — un seul évaluateur, jamais dupliqué.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -40,11 +41,13 @@ class RegleValiderView(APIView):
     ``core.rules.validate_condition_group`` : AUCUN effet de bord, rien
     n'est évalué ni enregistré — seule la STRUCTURE est vérifiée."""
 
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAnyRole]
 
     @extend_schema(
         request=inline_serializer('RegleValiderRequete', {
-            'conditions': drf_serializers.JSONField(),
+            # Absent : le serveur répond 200 {ok: false} (dry-run).
+            'conditions': drf_serializers.JSONField(required=False),
         }),
         responses=inline_serializer('RegleValiderReponse', {
             'ok': drf_serializers.BooleanField(),
