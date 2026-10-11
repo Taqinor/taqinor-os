@@ -175,6 +175,15 @@ class TestCrud(TestCase):
             'taux_pct': '3'}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('owner', r.data)
+        # ENF17 — même réponse qu'un id absent (aucun oracle d'existence).
+        self.assertEqual(r.data['owner'][0].code, 'does_not_exist')
+        absent = self.api.post(f'{BASE}/', {
+            'owner': 99999999, 'base': 'ca_devis_signe',
+            'taux_pct': '3'}, format='json')
+        self.assertEqual(
+            str(r.data['owner'][0]).replace(str(etranger.id), '<ID>'),
+            str(absent.data['owner'][0]).replace('99999999', '<ID>'))
+        self.assertFalse(PlanCommission.objects.filter(owner=etranger).exists())
 
     def test_isolation_multi_tenant_en_liste(self):
         autre_company, autre_user = another_tenant()

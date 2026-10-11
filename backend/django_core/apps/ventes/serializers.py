@@ -115,8 +115,9 @@ class LigneDevisSerializer(SameCompanyFKSerializerMixin,
     société de la requête : l'id d'une autre société (ou un id absent) donne
     400 sur le champ, sans écriture. ``produit`` admet en plus le catalogue
     global (``_ProduitSocieteOuCatalogueGlobalField``, parité avec le jumeau
-    ``domain/lignes.py``). ``devis`` reste gardé par la vue (``_check_tenant``,
-    message « Devis inconnu. » inchangé).
+    ``domain/lignes.py``). ENF17 — ``devis`` est borné de même (le devis d'une
+    autre société = id absent, plus « Devis inconnu. ») ; la vue garde la
+    portée équipe (``_check_tenant``, ADEV41).
 
     QJR59 / décision fondateur D12 — ``quantite_manuelle`` et ``prix_manuel``
     voyagent des DEUX côtés (``fields = '__all__'``) : une quantité ou un prix
@@ -137,7 +138,7 @@ class LigneDevisSerializer(SameCompanyFKSerializerMixin,
         source='produit.tva', max_digits=5, decimal_places=2,
         read_only=True, allow_null=True, default=None)
 
-    same_company_fields = ('produit', 'lot')
+    same_company_fields = ('devis', 'produit', 'lot')
     #: Sous-ensemble de ``same_company_fields`` qui admet aussi le catalogue
     #: global (``company IS NULL``) — PV15.
     champs_catalogue_global = ('produit',)
@@ -433,8 +434,11 @@ class TiersPayeurValidationMixin:
                 'plafond': value.get('plafond')}
 
 
-class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
-                      serializers.ModelSerializer):
+class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
+                      EcheancierValidationMixin, serializers.ModelSerializer):
+    # ENF17 — client / lead / entité / approbateur d'une AUTRE société = id
+    # absent (400 « objet inexistant »).
+    same_company_fields = ('client', 'lead', 'entite', 'remise_approuvee_par')
     lignes = LigneDevisSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -963,7 +967,8 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
-class DevisWriteSerializer(TiersPayeurValidationMixin,
+class DevisWriteSerializer(SameCompanyFKSerializerMixin,
+                           TiersPayeurValidationMixin,
                            EcheancierValidationMixin,
                            serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
@@ -1015,7 +1020,13 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
     ``reference``/``fichier_pdf`` : un champ de modèle ajouté demain n'y entre
     plus tout seul — il faut l'y écrire, en connaissance de cause
     (``tests/test_qjr_serializer_surface.py`` fait rougir l'oubli).
+
+    ENF17 — ``client``, ``lead`` et ``entite`` sont BORNÉS à la société de la
+    requête : l'id d'une autre société reçoit la réponse d'un id absent
+    (400 « objet inexistant ») au lieu du « Client/Lead inconnu. » de la vue.
     """
+    same_company_fields = ('client', 'lead', 'entite')
+
     class Meta:
         model = Devis
         fields = [
@@ -1132,8 +1143,12 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
         return super().create(validated_data)
 
 
-class DevisActivitySerializer(serializers.ModelSerializer):
+class DevisActivitySerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """Chatter d'un devis (N25) — lecture seule côté API."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('devis',)
     user_nom = serializers.CharField(
         source='user.username', read_only=True, allow_null=True, default=None)
 
@@ -1144,8 +1159,12 @@ class DevisActivitySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class EmailLogSerializer(serializers.ModelSerializer):
+class EmailLogSerializer(SameCompanyFKSerializerMixin,
+                         serializers.ModelSerializer):
     """Fil des emails (N87/N88) — lecture seule côté API."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('client', 'devis', 'facture')
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True, default=None)
 
@@ -1175,9 +1194,12 @@ class DevisPresetSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_by_nom', 'created_at']
 
 
-class LignePrixListeSerializer(serializers.ModelSerializer):
+class LignePrixListeSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """XSAL1 — jamais `prix_achat` : seul `prix_unitaire` (prix négocié) est
     exposé, `produit` reste une simple string-FK id."""
+    # ENF17 — liste / produit d'une AUTRE société = id absent (400).
+    same_company_fields = ('liste', 'produit')
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
 
     class Meta:
@@ -1202,8 +1224,9 @@ class RegleListePrixSerializer(SameCompanyFKSerializerMixin,
     ASEC22 — ``produit`` borné à la société de la requête (parité avec la
     sœur ``ListePrixViewSet.lignes``, CRX18, ``get_produit_scoped``) : l'id
     d'une autre société ou un id absent → 400 sur ``produit``. Exige le
-    ``request`` dans le contexte (``ListePrixViewSet.regles`` le passe)."""
-    same_company_fields = ('produit',)
+    ``request`` dans le contexte (``ListePrixViewSet.regles`` le passe).
+    ENF17 — ``liste`` bornée de même (la vue pose la liste de l'URL)."""
+    same_company_fields = ('liste', 'produit')
 
     class Meta:
         model = RegleListePrix
@@ -1432,7 +1455,8 @@ class OffreTailleRegenerationSerializer(serializers.Serializer):
         return value
 
 
-class PlanCommissionSerializer(serializers.ModelSerializer):
+class PlanCommissionSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """WIR281/XSAL6 - plan de commission d'un commercial (ou plan PAR DEFAUT
     de la societe quand ``owner`` est nul).
 
@@ -1444,7 +1468,11 @@ class PlanCommissionSerializer(serializers.ModelSerializer):
 
     ``company`` n'apparait PAS dans les champs : elle est TOUJOURS posee cote
     serveur (``perform_create``/``perform_update``), jamais lue du corps.
-    Contrat partage : ``apps/ventes/contract_samples/plan_commission.json``."""
+    Contrat partage : ``apps/ventes/contract_samples/plan_commission.json``.
+
+    ENF17 — ``owner`` d'une AUTRE societe = id absent (400 « objet
+    inexistant »), avant la garde de la vue (« Commercial inconnu. »)."""
+    same_company_fields = ('owner',)
     owner_nom = serializers.CharField(
         source='owner.username', read_only=True, allow_null=True, default=None)
     base_display = serializers.CharField(

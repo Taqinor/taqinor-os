@@ -110,6 +110,46 @@ class CommissioningApiTest(TestCase):
             'devis': other_devis.id, 'isolement_ok': True,
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
+        # ENF17 — même réponse qu'un devis absent (aucun oracle).
+        self.assertEqual(resp.data['devis'][0].code, 'does_not_exist')
+
+    def test_enf17_fk_mise_en_service_bornees_societe(self):
+        """ENF17 — chantier / devis / recette d'une autre société = id absent
+        (400 « objet inexistant ») sur les six sérialiseurs ; ceux de la
+        société passent."""
+        from types import SimpleNamespace
+
+        from apps.installations.models import Installation
+        from apps.ventes import serializers_commissioning as sc
+        other_user = make_user(self.other, 'mes_enf17_o')
+        devis_b = make_devis(self.other, other_user, ref='DEV-ENF17-MES-B')
+        objets = {
+            'devis': (self.devis, devis_b),
+            'chantier': tuple(
+                Installation.objects.create(
+                    company=d.company, reference=f'CH-ENF17-{d.pk}',
+                    client=d.client)
+                for d in (self.devis, devis_b)),
+            'recette': tuple(
+                CommissioningTest.objects.create(company=d.company, devis=d)
+                for d in (self.devis, devis_b)),
+        }
+        ctx = {'request': SimpleNamespace(user=self.user)}
+        for cls in (sc.IVCurveCaptureSerializer, sc.CommissioningTestSerializer,
+                    sc.AsBuiltPackSerializer, sc.AttestationConformiteSerializer,
+                    sc.TestPerformanceReceptionSerializer,
+                    sc.AttestationRESerializer):
+            for champ in cls.same_company_fields:
+                propre, etranger = objets[champ]
+                with self.subTest(serializer=cls.__name__, champ=champ):
+                    ser = cls(data={champ: etranger.pk}, partial=True,
+                              context=ctx)
+                    self.assertFalse(ser.is_valid())
+                    self.assertEqual(ser.errors[champ][0].code,
+                                     'does_not_exist')
+                    champ_lie = cls(context=ctx).fields[champ]
+                    self.assertEqual(champ_lie.to_internal_value(propre.pk),
+                                     propre)
 
     def test_list_scoped_and_filter_resultat(self):
         CommissioningTest.objects.create(

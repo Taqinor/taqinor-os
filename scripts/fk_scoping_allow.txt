@@ -10,42 +10,11 @@
 #
 # Format : chemin::Serializer.champ  (une ligne par champ)
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.activity_type
-backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.facture
-backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.paiement
-backend/django_core/apps/ventes/serializers_facturation.py::AvoirSerializer.client
-backend/django_core/apps/ventes/serializers.py::DevisSerializer.client
-backend/django_core/apps/ventes/serializers.py::DevisSerializer.entite
-backend/django_core/apps/ventes/serializers.py::DevisSerializer.lead
-backend/django_core/apps/ventes/serializers.py::DevisWriteSerializer.client
-backend/django_core/apps/ventes/serializers.py::DevisWriteSerializer.entite
-backend/django_core/apps/ventes/serializers.py::DevisWriteSerializer.lead
-backend/django_core/apps/ventes/serializers.py::EmailLogSerializer.client
-backend/django_core/apps/ventes/serializers.py::EmailLogSerializer.facture
-backend/django_core/apps/ventes/serializers_facturation.py::FactureActivitySerializer.facture
-backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.bon_commande
-backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.client
-backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.devis
-backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.entite
-backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.lead
-backend/django_core/apps/ventes/serializers_facturation.py::LigneAvoirSerializer.produit
-backend/django_core/apps/ventes/serializers_facturation.py::LigneNoteDebitSerializer.produit
-backend/django_core/apps/ventes/serializers.py::LignePrixListeSerializer.produit
-backend/django_core/apps/ventes/serializers_facturation.py::LigneRemiseEncaissementSerializer.paiement
-backend/django_core/apps/ventes/serializers_facturation.py::NoteDebitSerializer.client
-backend/django_core/apps/ventes/serializers_facturation.py::NoteDebitSerializer.facture
-backend/django_core/apps/ventes/serializers_facturation.py::PaiementSerializer.client
-backend/django_core/apps/ventes/serializers_facturation.py::PromessePaiementSerializer.facture
 # SPL72 — 95 sites PRÉEXISTANTS que la garde ne voyait pas (découverte étendue à
 # serializers*.py / *_serializers.py / models*.py et héritage résolu à l'échelle de l'app) :
 # installations 66, stock 17, ventes 8, sav 4 (72 dans des serializers.py d'autres apps,
 # 23 dans les serializers_*.py / publicapi/public_serializers.py). CONSTATÉS, pas approuvés :
 # ils sont résorbés par la ligne ERR-SPL72-FK-SCOPING-95 de docs/ERROR_PLAN.md.
-backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.condition_paiement_ref
-backend/django_core/apps/ventes/serializers_commissioning.py::AsBuiltPackSerializer.chantier
-backend/django_core/apps/ventes/serializers_commissioning.py::AttestationConformiteSerializer.chantier
-backend/django_core/apps/ventes/serializers_commissioning.py::AttestationRESerializer.chantier
-backend/django_core/apps/ventes/serializers_commissioning.py::CommissioningTestSerializer.chantier
-backend/django_core/apps/ventes/serializers_commissioning.py::TestPerformanceReceptionSerializer.chantier
 
 # AANA47 - sites PRE-EXISTANTS releves le 2026-10-07 (M2M, FK utilisateur/role, serialiseurs hors serializers*.py). CONSTATES, pas approuves : chaque ligne retiree = une fuite fermee ; correction par proprietaire.
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.assigne_par_defaut
@@ -56,10 +25,6 @@ backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.created_by
 backend/django_core/apps/ged/serializers.py::JournalAccesSerializer.utilisateur
 backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.created_by
 backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_definition
-backend/django_core/apps/ventes/serializers.py::DevisSerializer.remise_approuvee_par
-backend/django_core/apps/ventes/serializers.py::DevisWriteSerializer.updated_by
-backend/django_core/apps/ventes/serializers.py::PlanCommissionSerializer.owner
-backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.abandon_par
 
 # ASTK9 - pre-existant (releve 2026-10-07) : FK meme-app vers modele a societe, sites hors stock ; CONSTATES, pas approuves
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.plan
@@ -79,27 +44,6 @@ backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.demande
 backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.role_signataire
 backend/django_core/apps/identity/serializers.py::IpAllowRuleSerializer.policy
 backend/django_core/apps/reporting/saved_reports_api.py::EnvoiRapportSerializer.saved_report
-backend/django_core/apps/ventes/serializers.py::DevisActivitySerializer.devis
-backend/django_core/apps/ventes/serializers.py::EmailLogSerializer.devis
-backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.devis
-backend/django_core/apps/ventes/serializers.py::LignePrixListeSerializer.liste
-backend/django_core/apps/ventes/serializers.py::RegleListePrixSerializer.liste
-backend/django_core/apps/ventes/serializers_commissioning.py::AsBuiltPackSerializer.devis
-backend/django_core/apps/ventes/serializers_commissioning.py::AsBuiltPackSerializer.recette
-backend/django_core/apps/ventes/serializers_commissioning.py::AttestationConformiteSerializer.recette
-backend/django_core/apps/ventes/serializers_commissioning.py::CommissioningTestSerializer.devis
-backend/django_core/apps/ventes/serializers_commissioning.py::IVCurveCaptureSerializer.recette
-backend/django_core/apps/ventes/serializers_commissioning.py::TestPerformanceReceptionSerializer.recette
-backend/django_core/apps/ventes/serializers_facturation.py::AvoirSerializer.facture
-backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.facture
-backend/django_core/apps/ventes/serializers_facturation.py::RelanceLogSerializer.facture
-backend/django_core/apps/ventes/serializers_regulatory.py::DossierChecklistItemSerializer.dossier
-backend/django_core/apps/ventes/serializers_regulatory.py::DossierExchangeSerializer.dossier
-backend/django_core/apps/ventes/serializers_regulatory.py::Regularisation8221Serializer.devis
-backend/django_core/apps/ventes/serializers_regulatory.py::RegulatoryDossierSerializer.devis
-backend/django_core/apps/ventes/serializers_regulatory.py::SubventionDossierSerializer.devis
 # ASEC46 — FactureWriteSerializer déclare ses champs par Meta.exclude (invisible avant ASEC46) : 8 FK
 # écrivables non bornées CONSTATÉES, à corriger par la lane ventes (same_company_fields) ; chaque ligne
 # se retire dès que son champ est borné (sinon « ligne d'allowlist inutile »).
-backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.abandon_par
-backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.updated_by

@@ -161,7 +161,8 @@ class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC27 (C-ASEC-005) — `produit` et `source_devis` bornés à la société
     # de la requête : un id étranger = 400 « objet inexistant » (ACAL298).
-    same_company_fields = ('produit', 'source_devis')
+    # ENF17 — `facture` de même (plus « Facture inconnue. » de la vue).
+    same_company_fields = ('facture', 'produit', 'source_devis')
 
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
@@ -271,7 +272,10 @@ class PaiementSerializer(serializers.ModelSerializer):
                             'annule_le', 'annule_par', 'motif_annulation']
 
 
-class AffectationPaiementSerializer(serializers.ModelSerializer):
+class AffectationPaiementSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
+    # ENF17 — paiement / facture d'une AUTRE société = id absent (400).
+    same_company_fields = ('paiement', 'facture')
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
 
@@ -338,7 +342,12 @@ class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default='')
 
 
-class FactureSerializer(serializers.ModelSerializer):
+class FactureSerializer(SameCompanyFKSerializerMixin,
+                        serializers.ModelSerializer):
+    # ENF17 — mêmes bornes que FactureWriteSerializer (ASEC27) + l'auteur de
+    # l'abandon : un id d'une AUTRE société = id absent (400).
+    same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
+                           'entite', 'condition_paiement_ref', 'abandon_par')
     lignes = LigneFactureSerializer(many=True, read_only=True)
     paiements = PaiementSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -503,7 +512,11 @@ class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
         ]
 
 
-class LigneAvoirSerializer(_BornesArgentMixin, serializers.ModelSerializer):
+class LigneAvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
+    # ENF17 — produit d'une AUTRE société = id absent (400), comme la ligne
+    # de facture (ASEC27).
+    same_company_fields = ('produit',)
     total_ht = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
 
@@ -517,7 +530,10 @@ class LigneAvoirSerializer(_BornesArgentMixin, serializers.ModelSerializer):
         extra_kwargs = {'produit': {'required': True, 'allow_null': False}}
 
 
-class AvoirSerializer(_BornesArgentMixin, serializers.ModelSerializer):
+class AvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
+                      serializers.ModelSerializer):
+    # ENF17 — client / facture d'une AUTRE société = id absent (400).
+    same_company_fields = ('client', 'facture')
     lignes = LigneAvoirSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
@@ -558,7 +574,10 @@ class AvoirSerializer(_BornesArgentMixin, serializers.ModelSerializer):
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
 
 
-class LigneNoteDebitSerializer(serializers.ModelSerializer):
+class LigneNoteDebitSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
+    # ENF17 — produit d'une AUTRE société = id absent (400).
+    same_company_fields = ('produit',)
     total_ht = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
 
@@ -569,7 +588,10 @@ class LigneNoteDebitSerializer(serializers.ModelSerializer):
                   'remise', 'taux_tva', 'total_ht']
 
 
-class NoteDebitSerializer(serializers.ModelSerializer):
+class NoteDebitSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # ENF17 — client / facture d'une AUTRE société = id absent (400).
+    same_company_fields = ('client', 'facture')
     lignes = LigneNoteDebitSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
@@ -606,7 +628,8 @@ class NoteDebitSerializer(serializers.ModelSerializer):
         return obj.avoirs_annulation.filter(statut=Avoir.Statut.EMISE).exists()
 
 
-class PromessePaiementSerializer(serializers.ModelSerializer):
+class PromessePaiementSerializer(SameCompanyFKSerializerMixin,
+                                 serializers.ModelSerializer):
     """XFAC5 — engagement de paiement client (« je paie le 15 »).
 
     AUD133 — ``date_promise`` n'était BORNÉE nulle part : la valeur du corps
@@ -615,7 +638,11 @@ class PromessePaiementSerializer(serializers.ModelSerializer):
     promesse au 31/12/2030 gelait donc la relance pour toujours. Elle doit
     désormais être FUTURE et rester sous le plafond société
     (``recouvrement.PROMESSE_HORIZON_JOURS_MAX``, 90 j par défaut).
+
+    ENF17 — ``facture`` d'une AUTRE société = id absent (400 « objet
+    inexistant »), avant la garde de la vue (« Facture inconnue. »).
     """
+    same_company_fields = ('facture',)
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
     statut_display = serializers.CharField(
@@ -708,7 +735,11 @@ class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['company']
 
 
-class RelanceLogSerializer(serializers.ModelSerializer):
+class RelanceLogSerializer(SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('facture',)
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True, default=None)
 
@@ -720,8 +751,12 @@ class RelanceLogSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class FactureActivitySerializer(serializers.ModelSerializer):
+class FactureActivitySerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """Chatter d'une facture — lecture seule côté API."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('facture',)
     user_nom = serializers.CharField(
         source='user.username', read_only=True, allow_null=True, default=None)
 
@@ -733,10 +768,14 @@ class FactureActivitySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class LigneRemiseEncaissementSerializer(serializers.ModelSerializer):
+class LigneRemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
+                                        serializers.ModelSerializer):
     """XFSM19 — une ligne = un Paiement rattaché à la remise. Lecture seule
     des attributs utiles du paiement (montant/mode/date/facture) pour
-    l'écran du responsable, sans jamais dupliquer le modèle Paiement."""
+    l'écran du responsable, sans jamais dupliquer le modèle Paiement.
+
+    ENF17 — ``paiement`` d'une AUTRE société = id absent (400)."""
+    same_company_fields = ('paiement',)
     montant = serializers.DecimalField(
         source='paiement.montant', max_digits=12, decimal_places=2,
         read_only=True)

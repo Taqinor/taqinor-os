@@ -14,8 +14,11 @@ from .models import (
 )
 
 
-class DossierChecklistItemSerializer(serializers.ModelSerializer):
+class DossierChecklistItemSerializer(SameCompanyFKSerializerMixin,
+                                     serializers.ModelSerializer):
     """FG268 — pièce/étape de checklist d'un dossier."""
+    # ENF17 — dossier d'une AUTRE société = id absent (400).
+    same_company_fields = ('dossier',)
 
     class Meta:
         model = DossierChecklistItem
@@ -35,9 +38,9 @@ class RegulatoryDossierSerializer(SameCompanyFKSerializerMixin,
     ``installations.Installation``) est BORNÉ à la société de la requête, en
     création comme en mise à jour : l'id d'un chantier d'une autre société ou
     un id absent → 400 sur ``chantier`` (« objet inexistant », aucun libellé
-    étranger renvoyé). ``devis`` reste gardé par la vue (``_resolve_company``,
-    « Devis inconnu. »)."""
-    same_company_fields = ('chantier',)
+    étranger renvoyé). ENF17 — ``devis`` borné de même (plus « Devis
+    inconnu. » de la vue pour le devis d'une autre société)."""
+    same_company_fields = ('chantier', 'devis')
     checklist_items = DossierChecklistItemSerializer(
         many=True, read_only=True)
     regime_label = serializers.CharField(
@@ -88,8 +91,11 @@ class RegulatoryDossierSerializer(SameCompanyFKSerializerMixin,
         return pieces_contrat_dossier(obj)
 
 
-class DossierExchangeSerializer(serializers.ModelSerializer):
+class DossierExchangeSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """FG269 — échange de la navette opérateur."""
+    # ENF17 — dossier d'une AUTRE société = id absent (400).
+    same_company_fields = ('dossier',)
     sens_label = serializers.CharField(
         source='get_sens_display', read_only=True)
     type_label = serializers.CharField(
@@ -107,8 +113,11 @@ class DossierExchangeSerializer(serializers.ModelSerializer):
         ]
 
 
-class SubventionDossierSerializer(serializers.ModelSerializer):
+class SubventionDossierSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
     """FG270 — dossier de subvention/incitation."""
+    # ENF17 — devis d'une AUTRE société = id absent (400).
+    same_company_fields = ('devis',)
     programme_label = serializers.CharField(
         source='get_programme_display', read_only=True)
     statut_label = serializers.CharField(
@@ -132,8 +141,9 @@ class Regularisation8221Serializer(SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
     """FG271 — régularisation Article 33 (installation existante).
 
-    ASEC26 — même borne que le dossier réglementaire sur ``chantier``."""
-    same_company_fields = ('chantier',)
+    ASEC26 — même borne que le dossier réglementaire sur ``chantier`` ;
+    ENF17 — et sur ``devis``."""
+    same_company_fields = ('chantier', 'devis')
 
     regime_label = serializers.CharField(
         source='get_regime_8221_display', read_only=True)
