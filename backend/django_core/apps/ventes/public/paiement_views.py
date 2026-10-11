@@ -21,9 +21,6 @@ from .noyau import (
     _resolve_proposal_link,
 )
 from .payload_conditions import _acompte_publique
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 def _company_rib(company=None):
@@ -67,7 +64,7 @@ def _deposit_success_payload(devis, token):
             payload['message'] = deposit_protection_message(
                 acompte, reference=devis.reference)
     except Exception:  # noqa: BLE001 — best-effort
-        logger.warning("paiement_views._deposit_success_payload : erreur ignorée (mode dégradé)", exc_info=True)
+        pass
     return payload
 
 
@@ -106,7 +103,7 @@ def proposal_virement_declare(request, token):
                 'already': True,
             }))
     except Exception:  # noqa: BLE001
-        logger.warning("paiement_views.proposal_virement_declare : erreur ignorée (mode dégradé)", exc_info=True)
+        pass
     # Chatter + notification vendeur (best-effort).
     try:
         from .. import activity
@@ -114,7 +111,7 @@ def proposal_virement_declare(request, token):
             devis, None,
             'Le client déclare avoir effectué le virement de l\'acompte.')
     except Exception:  # noqa: BLE001
-        logger.warning("paiement_views.proposal_virement_declare : erreur ignorée (mode dégradé)", exc_info=True)
+        pass
     try:
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
@@ -128,7 +125,7 @@ def proposal_virement_declare(request, token):
                 link=f'/ventes/devis?devis={devis.id}',
                 company=devis.company)
     except Exception:  # noqa: BLE001
-        logger.warning("paiement_views.proposal_virement_declare : erreur ignorée (mode dégradé)", exc_info=True)
+        pass
     return _noindex(Response({
         'detail': 'Merci ! Votre déclaration a été transmise à votre '
                   'conseiller.',

@@ -1785,7 +1785,6 @@ def _reglages_tarifaires(company):
                 selective_threshold=surcharge['selective_threshold'],
                 boundary_tolerance=surcharge['boundary_tolerance'])
     except Exception:  # noqa: BLE001 — surcharge absente ⇒ grille nationale
-        logger.warning("etude_horaire._reglages_tarifaires : erreur ignorée (mode dégradé)", exc_info=True)
         tranches = None
     try:
         from apps.parametres.models_tariff import TariffSettings
@@ -1793,7 +1792,6 @@ def _reglages_tarifaires(company):
         brut = getattr(reglages, 'redevance_compteur_mad_mois', None)
         charges_fixes = float(brut) if brut is not None else None
     except Exception:  # noqa: BLE001 — réglage absent ⇒ défaut sourcé
-        logger.warning("etude_horaire._reglages_tarifaires : erreur ignorée (mode dégradé)", exc_info=True)
         charges_fixes = None
     return tranches, charges_fixes
 

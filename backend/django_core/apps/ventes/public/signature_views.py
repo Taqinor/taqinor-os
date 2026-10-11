@@ -24,9 +24,6 @@ from .noyau import (
     _resolve_proposal_link, _texte_du_corps,
 )
 from .paiement_views import _deposit_success_payload
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 #: ADEV51 — le refus 409 du contrat ``proposal_accept.json``
@@ -153,7 +150,6 @@ def proposal_contact_request(request, token):
         cache_key = f'qj27-contact:{link.pk}:{canal or "default"}'
         already = not cache.add(cache_key, True, 3600)
     except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien
-        logger.warning("signature_views.proposal_contact_request : erreur ignorée (mode dégradé)", exc_info=True)
         already = False
     if already:
         return _noindex(Response({
@@ -195,7 +191,7 @@ def proposal_contact_request(request, token):
                     company=devis.company,
                 )
     except Exception:  # noqa: BLE001 — jamais d'erreur interne exposée
-        logger.warning("signature_views.proposal_contact_request : erreur ignorée (mode dégradé)", exc_info=True)
+        pass
 
     return _noindex(Response({
         'detail': ('Votre demande a bien été transmise. '

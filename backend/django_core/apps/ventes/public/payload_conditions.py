@@ -1,6 +1,3 @@
-import logging
-
-logger = logging.getLogger(__name__)
 """Conditions, acompte et validité de la proposition publique (SPL251, déplacé de ``public_views.py``).
 
 Moyens de règlement proposables, acompte (échéancier du devis), clauses CGV
@@ -89,7 +86,6 @@ def _acompte_publique(devis, lignes=None):
             'montants': montants,
         }
     except Exception:  # noqa: BLE001 — best-effort
-        logger.warning("payload_conditions._acompte_publique : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -140,7 +136,6 @@ def _conditions_publiques(data, devis=None):
                if txt]
         return out or None
     except Exception:  # noqa: BLE001 — best-effort
-        logger.warning("payload_conditions._conditions_publiques : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -159,7 +154,6 @@ def _conditions_titre_publique(data):
         from ..quote_engine.clauses_cgv import cgv_imprimees
         return _html.unescape(str(cgv_imprimees(data or {})["titre"])).strip()
     except Exception:  # noqa: BLE001 — best-effort
-        logger.warning("payload_conditions._conditions_titre_publique : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
 
@@ -176,7 +170,6 @@ def _date_validite_publique(devis):
         exp = date_expiration(devis)
         return exp.isoformat() if exp else None
     except Exception:  # noqa: BLE001 — best-effort
-        logger.warning("payload_conditions._date_validite_publique : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -225,6 +218,4 @@ def _confirmation_email_publique(devis):
         client = getattr(devis, 'client', None)
         return bool((getattr(client, 'email', '') or '').strip())
     except Exception:  # noqa: BLE001 — best-effort
-        logger.warning(
-            "payload_conditions._confirmation_email_publique : erreur ignorée (mode dégradé)", exc_info=True)
         return False
