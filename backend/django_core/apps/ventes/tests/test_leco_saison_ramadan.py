@@ -192,9 +192,7 @@ class FenetreRamadanTest(SimpleTestCase):
         qui sert déjà la forme de production de ce devis, jamais une seconde
         géographie ni un repli Casablanca silencieux."""
         from apps.parametres.pvgis_profils import PRODUCTIBLE_MENSUEL_VILLE
-        oujda = PRODUCTIBLE_MENSUEL_VILLE.get('oujda') or {}
-        if not oujda.get('lat'):
-            self.skipTest('Oujda absente de la table de référence')
+        oujda = PRODUCTIBLE_MENSUEL_VILLE['oujda']
         par_ville = CJ.contexte_ramadan_du_mois(_PLAGE_2028, ville='Oujda')
         par_gps = CJ.contexte_ramadan_du_mois(
             _PLAGE_2028, lat=oujda['lat'], lon=oujda['lon'])

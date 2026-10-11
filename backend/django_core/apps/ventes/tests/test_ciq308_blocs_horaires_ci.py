@@ -65,8 +65,7 @@ class CourbesCiPuresTest(SimpleTestCase):
         surplus des mois d'été de ``bilan.horaire`` — aucun autre modèle."""
         horaire = ETUDE_CI['exemple']['bilan']['horaire']
         ete = [e for e in horaire if e['mois'] in (6, 7, 8)]
-        if not ete:
-            self.skipTest('contrat sans mois d\'été')
+        self.assertTrue(ete, "contrat sans mois d'été")
         jours = sum(e['nb_jours'] for e in ete)
         attendu = sum(sum(e['autoconso_kwh']) + sum(e['surplus_kwh'])
                       for e in ete for _ in range(e['nb_jours'])) / jours
