@@ -56,9 +56,6 @@ backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.created_by
 backend/django_core/apps/ged/serializers.py::JournalAccesSerializer.utilisateur
 backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.created_by
 backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_definition
-backend/django_core/apps/stock/serializers.py::RevisionKitSerializer.user
-backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.bon_commande
-backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.demande_achat
 backend/django_core/apps/ventes/serializers.py::DevisSerializer.remise_approuvee_par
 backend/django_core/apps/ventes/serializers.py::DevisWriteSerializer.updated_by
 backend/django_core/apps/ventes/serializers.py::PlanCommissionSerializer.owner
@@ -82,11 +79,6 @@ backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.demande
 backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.role_signataire
 backend/django_core/apps/identity/serializers.py::IpAllowRuleSerializer.policy
 backend/django_core/apps/reporting/saved_reports_api.py::EnvoiRapportSerializer.saved_report
-backend/django_core/apps/stock/serializers.py::LotEntrepotSerializer.emplacement
-backend/django_core/apps/stock/serializers.py::LotEntrepotSerializer.produit
-backend/django_core/apps/stock/serializers.py::RevisionKitSerializer.kit
-backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.budget
-backend/django_core/apps/stock/views/catalogue_achat.py::CatalogueAchatSerializer.categorie
 backend/django_core/apps/ventes/serializers.py::DevisActivitySerializer.devis
 backend/django_core/apps/ventes/serializers.py::EmailLogSerializer.devis
 backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.devis
