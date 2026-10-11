@@ -313,3 +313,83 @@ class NumeroEmissionTests(TestCase):
             'logo_uri': None, 'signature_uri': None, 'rib': '',
             'banque': ''})
         self.assertIn(f'BROUILLON-{facture.pk}', html)
+
+
+class PortesSavInterventionNumeroTests(TestCase):
+    """AFAC90 (sonde W5-1, classe C-ATOT-018) — portes 6 (ticket SAV) et 7
+    (intervention) : le brouillon qu'elles créent ne porte aucun numéro
+    légal ; ``emettre_facture`` lui attribue le suivant de la série. Totaux
+    au prix catalogue HT (1 000 HT, TVA 20 %, 1 200 TTC)."""
+    setUp = PortesFacturationTests.setUp
+    _emettre = NumeroEmissionTests._emettre
+    _mois = NumeroEmissionTests._mois
+
+    def _onduleur(self):
+        from apps.stock.models import Produit
+        return Produit.objects.create(
+            company=self.company, nom='Onduleur AFAC90',
+            sku=f'AFAC90-OND-{_nxt()}', prix_vente=Decimal('1000'),
+            prix_achat=Decimal('600'), tva=Decimal('20'), quantite_stock=10)
+
+    def _ticket(self, produit):
+        from apps.sav.models import PieceConsommee, Ticket
+        ticket = Ticket.objects.create(
+            company=self.company, reference=f'SAV-AFAC90-{_nxt()}',
+            client=self.client_obj, type=Ticket.Type.CORRECTIF,
+            couverture=Ticket.Couverture.FACTURABLE, created_by=self.user)
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ticket, produit=produit,
+            quantite=Decimal('1'), created_by=self.user)
+        return ticket
+
+    def _intervention(self, produit, ticket=None):
+        from apps.installations.models import (
+            ConsommationLigne, Installation, Intervention,
+            MaterielConsommation,
+        )
+        chantier = Installation.objects.create(
+            company=self.company, reference=f'CHT-AFAC90-{_nxt()}',
+            client=self.client_obj)
+        interv = Intervention.objects.create(
+            company=self.company, installation=chantier, ticket=ticket,
+            type_intervention='depannage', created_by=self.user)
+        conso = MaterielConsommation.objects.create(
+            company=self.company, intervention=interv)
+        ConsommationLigne.objects.create(
+            company=self.company, consommation=conso, produit=produit,
+            designation=produit.nom, quantite_prevue=Decimal('1'),
+            quantite_utilisee=Decimal('1'))
+        return interv
+
+    def _verifier_brouillon_puis_emission(self, facture_id, reference):
+        from apps.ventes.models import Facture
+        facture = Facture.objects.get(pk=facture_id)
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+        self.assertEqual(reference, f'BROUILLON-{facture.pk}')
+        self.assertEqual(facture.reference, reference)
+        self.assertEqual(
+            (facture.total_ht, facture.total_tva, facture.total_ttc),
+            (Decimal('1000'), Decimal('200'), Decimal('1200')))
+        resp = self._emettre(facture.pk)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        attendu = f'FAC-{self._mois()}-0001'
+        self.assertEqual(resp.data['reference'], attendu)
+        self.assertEqual(Facture.objects.get(pk=facture.pk).reference, attendu)
+
+    def test_ticket_sav_brouillon_sans_numero_legal(self):
+        ticket = self._ticket(self._onduleur())
+        r = self.api.post(
+            f'/api/django/sav/tickets/{ticket.id}/facturer/', {},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self._verifier_brouillon_puis_emission(
+            r.data['facture_id'], r.data['facture_reference'])
+
+    def test_intervention_brouillon_sans_numero_legal(self):
+        interv = self._intervention(self._onduleur())
+        r = self.api.post(
+            f'/api/django/installations/interventions/{interv.id}/'
+            'generer-facture/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self._verifier_brouillon_puis_emission(
+            r.data['facture_id'], r.data['facture_reference'])
