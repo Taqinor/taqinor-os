@@ -10,11 +10,14 @@ READ-ONLY de bout en bout : la vue lit Odoo via le connecteur lecture-seule et n
 mute rien. Sans clés Odoo, la réponse est propre (``configured=False``,
 ``signatures=0``) — jamais un 500.
 """
+from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.permissions import _user_has_or_legacy
+
+from . import schema_docs as sd
 
 
 class OdooCostPerSignatureView(APIView):
@@ -22,6 +25,7 @@ class OdooCostPerSignatureView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses=sd.COST_PER_SIGNATURE_ODOO)
     def get(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_view'):
             return Response({'detail': 'Permission refusée.'}, status=403)
