@@ -162,8 +162,6 @@ class LangueRectificatifsTests(TestCase):
         from apps.parametres.models import CompanyProfile
         from apps.ventes.utils.pdf import generate_facture_pdf
         profil = CompanyProfile.get(company=self.company)
-        if not hasattr(profil, 'langue_repli'):  # pragma: no cover
-            self.skipTest('langue_repli absent du profil société')
         profil.langue_repli = 'en'
         profil.save()
         from apps.crm.models import Client
