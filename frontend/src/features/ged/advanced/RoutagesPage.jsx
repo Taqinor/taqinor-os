@@ -8,6 +8,7 @@ import {
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import { errMessage, toutesLesPages } from './shared.js'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
    PACT136 — Routage documentaire automatique (ZGED6).
@@ -163,42 +164,33 @@ function CreateRoutageDialog({ cabinets, tags, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouveau routage documentaire</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Source (code de module)</Label>
-            <Input aria-label="Source" placeholder="Ex. paie_bulletin, rh_document, sav_piece_jointe"
-              value={source} onChange={(e) => setSource(e.target.value)} />
-          </div>
-          <div>
-            <Label>Cabinet cible</Label>
-            <Select value={cabinetId} onValueChange={setCabinetId}>
-              <SelectTrigger aria-label="Choisir un cabinet cible"><SelectValue placeholder="Choisir un cabinet…" /></SelectTrigger>
-              <SelectContent>
-                {cabinets.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Dossier cible</Label>
-            <Input aria-label="Dossier cible" placeholder="Ex. Paie/{{ annee }}"
-              value={dossierCible} onChange={(e) => setDossierCible(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="routage-tags">Tags par défaut (optionnels)</Label>
-            <MultiSelect
-              id="routage-tags" options={tagOptions} value={tagIds} onChange={setTagIds}
-              placeholder="Choisir des tags…"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouveau routage documentaire" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Source (code de module)</Label>
+        <Input aria-label="Source" placeholder="Ex. paie_bulletin, rh_document, sav_piece_jointe"
+          value={source} onChange={(e) => setSource(e.target.value)} />
+      </div>
+      <div>
+        <Label>Cabinet cible</Label>
+        <Select value={cabinetId} onValueChange={setCabinetId}>
+          <SelectTrigger aria-label="Choisir un cabinet cible"><SelectValue placeholder="Choisir un cabinet…" /></SelectTrigger>
+          <SelectContent>
+            {cabinets.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Dossier cible</Label>
+        <Input aria-label="Dossier cible" placeholder="Ex. Paie/{{ annee }}"
+          value={dossierCible} onChange={(e) => setDossierCible(e.target.value)} />
+      </div>
+      <div>
+        <Label htmlFor="routage-tags">Tags par défaut (optionnels)</Label>
+        <MultiSelect
+          id="routage-tags" options={tagOptions} value={tagIds} onChange={setTagIds}
+          placeholder="Choisir des tags…"
+        />
+      </div>
+    </DialogueFormulaire>
   )
 }

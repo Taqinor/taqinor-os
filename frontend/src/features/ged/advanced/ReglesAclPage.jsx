@@ -9,6 +9,8 @@ import {
 import gedApi from '../../../api/gedApi'
 import rolesApi from '../../../api/rolesApi'
 import { errMessage, toutesLesPages } from './shared.js'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
+import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
 
 /* ============================================================================
    PACT133 — Règles d'accès par métadonnée (XGED21, couche dynamique).
@@ -181,64 +183,40 @@ function CreateRegleAclDialog({ roles, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle règle d'accès par métadonnée</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Nom de la règle</Label>
-            <Input aria-label="Nom de la règle" value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <div>
-              <Label>Champ</Label>
-              <Input aria-label="Champ de la condition" placeholder="Ex. tags, type, custom_data.confidentiel"
-                value={champ} onChange={(e) => setChamp(e.target.value)} className="w-56" />
-            </div>
-            <div>
-              <Label>Opérateur</Label>
-              <Select value={operateur} onValueChange={setOperateur}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {OPERATEURS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {operateur !== 'exists' && (
-              <div>
-                <Label>Valeur</Label>
-                <Input aria-label="Valeur de la condition" value={valeur} onChange={(e) => setValeur(e.target.value)} className="w-40" />
-              </div>
-            )}
-          </div>
-          <div>
-            <Label>Rôle cible</Label>
-            <Select value={roleId} onValueChange={setRoleId}>
-              <SelectTrigger aria-label="Choisir un rôle cible"><SelectValue placeholder="Choisir un rôle…" /></SelectTrigger>
-              <SelectContent>
-                {roles.map((r) => <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Niveau d'accès</Label>
-            <Select value={niveau} onValueChange={setNiveau}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {NIVEAUX.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Priorité</Label>
-            <Input type="number" step="1" value={priorite} onChange={(e) => setPriorite(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouvelle règle d'accès par métadonnée" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Nom de la règle</Label>
+        <Input aria-label="Nom de la règle" value={nom} onChange={(e) => setNom(e.target.value)} />
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <ConditionOperateurValeur
+          champ={champ} setChamp={setChamp} placeholder="Ex. tags, type, custom_data.confidentiel" champClassName="w-56"
+          operateurs={OPERATEURS} operateur={operateur} setOperateur={setOperateur}
+          valeur={valeur} setValeur={setValeur}
+        />
+      </div>
+      <div>
+        <Label>Rôle cible</Label>
+        <Select value={roleId} onValueChange={setRoleId}>
+          <SelectTrigger aria-label="Choisir un rôle cible"><SelectValue placeholder="Choisir un rôle…" /></SelectTrigger>
+          <SelectContent>
+            {roles.map((r) => <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Niveau d'accès</Label>
+        <Select value={niveau} onValueChange={setNiveau}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {NIVEAUX.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Priorité</Label>
+        <Input type="number" step="1" value={priorite} onChange={(e) => setPriorite(e.target.value)} />
+      </div>
+    </DialogueFormulaire>
   )
 }

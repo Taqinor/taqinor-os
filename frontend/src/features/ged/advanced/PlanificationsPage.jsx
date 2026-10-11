@@ -9,6 +9,8 @@ import {
 import { formatDate } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { errMessage, toutesLesPages } from './shared.js'
+import { ChampDocument } from './ChampsGed.jsx'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
    PACT137 — Planifications de document (XGED15).
@@ -150,42 +152,25 @@ function CreatePlanificationDialog({ documents, users, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle planification</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger aria-label="Choisir un document"><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Libellé</Label>
-            <Input aria-label="Libellé de la planification" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
-          </div>
-          <div>
-            <Label>Échéance</Label>
-            <Input aria-label="Échéance" type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} />
-          </div>
-          <div>
-            <Label>Assigné à (optionnel)</Label>
-            <Select value={assigneA} onValueChange={setAssigneA}>
-              <SelectTrigger aria-label="Choisir un assigné"><SelectValue placeholder="Choisir un utilisateur…" /></SelectTrigger>
-              <SelectContent>
-                {users.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouvelle planification" onClose={onClose} submit={submit} saving={saving}>
+      <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} ariaLabel="Choisir un document" />
+      <div>
+        <Label>Libellé</Label>
+        <Input aria-label="Libellé de la planification" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+      </div>
+      <div>
+        <Label>Échéance</Label>
+        <Input aria-label="Échéance" type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} />
+      </div>
+      <div>
+        <Label>Assigné à (optionnel)</Label>
+        <Select value={assigneA} onValueChange={setAssigneA}>
+          <SelectTrigger aria-label="Choisir un assigné"><SelectValue placeholder="Choisir un utilisateur…" /></SelectTrigger>
+          <SelectContent>
+            {users.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+    </DialogueFormulaire>
   )
 }

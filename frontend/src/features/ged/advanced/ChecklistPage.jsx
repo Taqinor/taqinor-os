@@ -13,6 +13,8 @@ import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { errMessage, toutesLesPages } from './shared.js'
+import { ChampDocument } from './ChampsGed.jsx'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
    WIR164 — GED avancée, groupe (a) : checklist de pièces (XGED8), validation
@@ -344,60 +346,51 @@ function ExigenceDialog({ cabinets, folders, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle exigence de dossier</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Pièce requise</Label>
-            <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Ex. Attestation CNSS" />
-          </div>
-          <div>
-            <Label>Description (optionnelle)</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-          </div>
-          <div>
-            <Label>Portée</Label>
-            <Select value={scope} onValueChange={setScope}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cabinet">Tout un cabinet (générique)</SelectItem>
-                <SelectItem value="folder">Un dossier précis</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {scope === 'cabinet' ? (
-            <div>
-              <Label>Cabinet</Label>
-              <Select value={cabinetId} onValueChange={setCabinetId}>
-                <SelectTrigger><SelectValue placeholder="Choisir un cabinet…" /></SelectTrigger>
-                <SelectContent>
-                  {cabinets.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <div>
-              <Label>Dossier</Label>
-              <Select value={folderId} onValueChange={setFolderId}>
-                <SelectTrigger><SelectValue placeholder="Choisir un dossier…" /></SelectTrigger>
-                <SelectContent>
-                  {folders.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={obligatoire} onCheckedChange={setObligatoire} />
-            Pièce obligatoire
-          </label>
+    <DialogueFormulaire titre="Nouvelle exigence de dossier" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Pièce requise</Label>
+        <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Ex. Attestation CNSS" />
+      </div>
+      <div>
+        <Label>Description (optionnelle)</Label>
+        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+      </div>
+      <div>
+        <Label>Portée</Label>
+        <Select value={scope} onValueChange={setScope}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cabinet">Tout un cabinet (générique)</SelectItem>
+            <SelectItem value="folder">Un dossier précis</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {scope === 'cabinet' ? (
+        <div>
+          <Label>Cabinet</Label>
+          <Select value={cabinetId} onValueChange={setCabinetId}>
+            <SelectTrigger><SelectValue placeholder="Choisir un cabinet…" /></SelectTrigger>
+            <SelectContent>
+              {cabinets.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ) : (
+        <div>
+          <Label>Dossier</Label>
+          <Select value={folderId} onValueChange={setFolderId}>
+            <SelectTrigger><SelectValue placeholder="Choisir un dossier…" /></SelectTrigger>
+            <SelectContent>
+              {folders.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={obligatoire} onCheckedChange={setObligatoire} />
+        Pièce obligatoire
+      </label>
+    </DialogueFormulaire>
   )
 }
 
@@ -431,53 +424,44 @@ function DemandeDialog({ folders, exigences, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle demande de pièce</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Dossier</Label>
-            <Select value={folderId} onValueChange={setFolderId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un dossier…" /></SelectTrigger>
-              <SelectContent>
-                {folders.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Exigence liée (optionnelle)</Label>
-            <Select value={exigenceId} onValueChange={setExigenceId}>
-              <SelectTrigger><SelectValue placeholder="Aucune…" /></SelectTrigger>
-              <SelectContent>
-                {exigencesDuDossier.map((e) => (
-                  <SelectItem key={e.id} value={String(e.id)}>{e.libelle}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Pièce demandée</Label>
-            <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} />
-          </div>
-          <div>
-            <Label>Contact externe — nom (optionnel)</Label>
-            <Input value={destinataireNom} onChange={(e) => setDestinataireNom(e.target.value)} />
-          </div>
-          <div>
-            <Label>Contact externe — e-mail (optionnel)</Label>
-            <Input type="email" value={destinataireEmail} onChange={(e) => setDestinataireEmail(e.target.value)} />
-          </div>
-          <div>
-            <Label>Échéance (optionnelle)</Label>
-            <Input type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouvelle demande de pièce" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Dossier</Label>
+        <Select value={folderId} onValueChange={setFolderId}>
+          <SelectTrigger><SelectValue placeholder="Choisir un dossier…" /></SelectTrigger>
+          <SelectContent>
+            {folders.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Exigence liée (optionnelle)</Label>
+        <Select value={exigenceId} onValueChange={setExigenceId}>
+          <SelectTrigger><SelectValue placeholder="Aucune…" /></SelectTrigger>
+          <SelectContent>
+            {exigencesDuDossier.map((e) => (
+              <SelectItem key={e.id} value={String(e.id)}>{e.libelle}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Pièce demandée</Label>
+        <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+      </div>
+      <div>
+        <Label>Contact externe — nom (optionnel)</Label>
+        <Input value={destinataireNom} onChange={(e) => setDestinataireNom(e.target.value)} />
+      </div>
+      <div>
+        <Label>Contact externe — e-mail (optionnel)</Label>
+        <Input type="email" value={destinataireEmail} onChange={(e) => setDestinataireEmail(e.target.value)} />
+      </div>
+      <div>
+        <Label>Échéance (optionnelle)</Label>
+        <Input type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} />
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -496,21 +480,12 @@ function TamponDialog({ onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouveau tampon de société</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Libellé</Label>
-            <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Ex. Archivé RH" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouveau tampon de société" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Libellé</Label>
+        <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Ex. Archivé RH" />
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -559,17 +534,7 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
       <DialogContent>
         <DialogHeader><DialogTitle>Apposer un tampon</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId} disabled={!!annotatedVersionId}>
-              <SelectTrigger aria-label="Choisir un document">
-                <SelectValue placeholder="Choisir un document…" />
-              </SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} disabled={!!annotatedVersionId} ariaLabel="Choisir un document" />
           <div>
             <Label>Tampon</Label>
             <Select value={stamp} onValueChange={setStamp} disabled={!!annotatedVersionId}>

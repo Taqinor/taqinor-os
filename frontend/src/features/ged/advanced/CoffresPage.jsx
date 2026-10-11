@@ -9,6 +9,7 @@ import {
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { errMessage, toutesLesPages } from './shared.js'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
    PACT131 — Coffres-forts documentaires (GED8).
@@ -167,60 +168,51 @@ function CreateCoffreDialog({ clients, users, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouveau coffre</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Nom</Label>
-            <Input aria-label="Nom du coffre" value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div>
-            <Label>Description (optionnelle)</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-          </div>
-          <div>
-            <Label>Propriétaire</Label>
-            <Select value={type} onValueChange={(v) => { setType(v); setProprietaireId(''); setClientId('') }}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="employe">Employé</SelectItem>
-                <SelectItem value="client">Client</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {type === 'employe' ? (
-            <div>
-              <Label>Employé</Label>
-              <Select value={proprietaireId} onValueChange={setProprietaireId}>
-                <SelectTrigger aria-label="Choisir un employé"><SelectValue placeholder="Choisir un employé…" /></SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email || `#${u.id}`}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <div>
-              <Label>Client</Label>
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger aria-label="Choisir un client"><SelectValue placeholder="Choisir un client…" /></SelectTrigger>
-                <SelectContent>
-                  {clients.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+    <DialogueFormulaire titre="Nouveau coffre" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Nom</Label>
+        <Input aria-label="Nom du coffre" value={nom} onChange={(e) => setNom(e.target.value)} />
+      </div>
+      <div>
+        <Label>Description (optionnelle)</Label>
+        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+      </div>
+      <div>
+        <Label>Propriétaire</Label>
+        <Select value={type} onValueChange={(v) => { setType(v); setProprietaireId(''); setClientId('') }}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="employe">Employé</SelectItem>
+            <SelectItem value="client">Client</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {type === 'employe' ? (
+        <div>
+          <Label>Employé</Label>
+          <Select value={proprietaireId} onValueChange={setProprietaireId}>
+            <SelectTrigger aria-label="Choisir un employé"><SelectValue placeholder="Choisir un employé…" /></SelectTrigger>
+            <SelectContent>
+              {users.map((u) => (
+                <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email || `#${u.id}`}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ) : (
+        <div>
+          <Label>Client</Label>
+          <Select value={clientId} onValueChange={setClientId}>
+            <SelectTrigger aria-label="Choisir un client"><SelectValue placeholder="Choisir un client…" /></SelectTrigger>
+            <SelectContent>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </DialogueFormulaire>
   )
 }
 
