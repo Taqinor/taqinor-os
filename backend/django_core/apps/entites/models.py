@@ -19,7 +19,8 @@ class Entite(TenantModel):
     nom = models.CharField(max_length=150)
     code = models.CharField(max_length=50)
     parent = models.ForeignKey(
-        'self', on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: une entité orpheline (parent supprimé) redevient racine plutôt que de disparaître en cascade
+        # on_delete: une entité orpheline (parent supprimé) redevient racine plutôt que de disparaître en cascade
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='enfants')
     actif = models.BooleanField(default=True)
 

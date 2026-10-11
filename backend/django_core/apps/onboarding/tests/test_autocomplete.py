@@ -65,6 +65,26 @@ class OnboardingAutoCompleteTest(TestCase):
             company=self.company)
         self.assertTrue(self._is_done('premier_paiement'))
 
+    def test_apar52_facture_payee_credite_l_encaisseur_pas_le_createur(self):
+        # Given facture créée par un Commercial, When un admin l'encaisse,
+        # Then l'item de l'admin est coché et celui du Commercial ne l'est pas.
+        commercial = User.objects.create_user(
+            'comm', password='x', company=self.company)
+        facture_payee.send_robust(
+            sender=None, instance=_FakeFacture(self.company, commercial),
+            company=self.company, user=self.user)
+        item = OnboardingChecklistItem.objects.get(key='premier_paiement')
+        self.assertTrue(OnboardingProgress.objects.filter(
+            user=self.user, item=item, complete_le__isnull=False).exists())
+        self.assertFalse(OnboardingProgress.objects.filter(
+            user=commercial, item=item).exists())
+
+    def test_apar52_facture_payee_sans_utilisateur_repli_createur(self):
+        facture_payee.send_robust(
+            sender=None, instance=_FakeFacture(self.company, self.user),
+            company=self.company, user=None)
+        self.assertTrue(self._is_done('premier_paiement'))
+
     def test_idempotent_no_double_complete(self):
         d = _FakeDevis(self.company)
         devis_sent.send_robust(sender=None, devis=d, user=self.user,

@@ -33,7 +33,9 @@ class HistoriqueCasier(TenantModel):
         REACTIVATION = 'reactivation', 'Réactivation'
 
     bin = models.ForeignKey(
-        'installations.BinLocation', on_delete=models.CASCADE,  # on_delete: CASCADE — le journal décrit CE casier ; le casier supprimé, ses lignes n'ont plus de sujet (composition stricte)
+        # on_delete: CASCADE — le journal décrit CE casier ; le casier supprimé, ses lignes n'ont plus de sujet
+        # (composition stricte)
+        'installations.BinLocation', on_delete=models.CASCADE,
         related_name='historique_stock')
     action = models.CharField(max_length=20, choices=Action.choices)
     champ = models.CharField(max_length=40, blank=True, default='')

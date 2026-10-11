@@ -1,10 +1,11 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 # AUD105/AUD106/AUD107 — la chaîne d'argent des documents client vit dans
 # un module SANS modèle, pour que ``apps.ventes.models`` (NoteDebit)
 # puisse l'importer en tête de fichier sans toucher l'ordre de chargement.
-from .totaux import TotauxDocumentMixin  # noqa: F401
+from .totaux import TotauxDocumentMixin
 
 # ODX17 — App Facturation, étape 1 (modèles, state-only).
 #
@@ -22,6 +23,11 @@ from .totaux import TotauxDocumentMixin  # noqa: F401
 # référencent Devis/BonCommande (restés dans ``apps.ventes``) en string-FK
 # ('ventes.Devis', 'ventes.BonCommande') ; les FKs vers Client/Lead restent
 # telles quelles ('crm.Client', 'crm.Lead').
+
+#: AFAC48 — repli d'échéance d'une facture sans ``date_echeance`` : émission
+#: + N jours. LA seule définition, lue par ``Facture.echeance_appliquee``,
+#: ``emettre_facture`` et le beat ``ventes.scheduled._echeance_effective``.
+DEFAULT_ECHEANCE_DAYS = 30
 
 
 class Facture(TotauxDocumentMixin, models.Model):
@@ -115,7 +121,10 @@ class Facture(TotauxDocumentMixin, models.Model):
         choices=Statut.choices,
         default=Statut.BROUILLON,
     )
-    date_emission = models.DateField(auto_now_add=True)
+    # AFAC14 — posée à la CRÉATION (date locale) puis RE-posée au passage à
+    # ÉMISE par ``emettre_facture`` : la date d'émission est le jour de
+    # l'émission, jamais celui du brouillon (ex-``auto_now_add``).
+    date_emission = models.DateField(default=timezone.localdate)
     date_echeance = models.DateField(null=True, blank=True)
     taux_tva = models.DecimalField(
         max_digits=5, decimal_places=2, default=20.00
@@ -456,7 +465,22 @@ class Facture(TotauxDocumentMixin, models.Model):
             libelle = getattr(self.condition_paiement_ref, 'libelle', '')
             if libelle:
                 self.conditions_paiement = libelle
+        # ATOT27 (D-ATOT-5) — une facture créée SANS numéro (les portes de
+        # création passent par ``create_provisoire``) naît sous la référence
+        # provisoire « BROUILLON-<id> », hors série légale : un brouillon ne
+        # consomme aucun numéro, le numéro légal est posé par l'émission
+        # (``emettre_facture``). Placé APRÈS le bloc ARC24 (``pk is None``).
+        provisoire = self.pk is None and not (self.reference or '').strip()
+        if provisoire:
+            from core.numbering import PREFIXE_PROVISOIRE, reserver_id
+            self.pk = reserver_id(type(self), kwargs.get('using'))
+            if self.pk is not None:
+                self.reference = f'{PREFIXE_PROVISOIRE}{self.pk}'
         super().save(*args, **kwargs)
+        if provisoire and not self.reference:  # hors PostgreSQL
+            self.reference = f'{PREFIXE_PROVISOIRE}{self.pk}'
+            type(self).objects.filter(pk=self.pk).update(
+                reference=self.reference)
 
     # AUD106 — `_remise_globale_active`, `total_ht`, `tva_par_taux`,
     # `total_tva`, `total_ttc` et `totaux_affichage` vivent désormais dans
@@ -593,14 +617,27 @@ class Facture(TotauxDocumentMixin, models.Model):
         return reste if reste > 0 else Decimal('0')
 
     @property
+    def echeance_appliquee(self):
+        """AFAC48 — l'échéance réellement appliquée : ``date_echeance`` si
+        posée, sinon (facture émise historique sans date) émission +
+        ``DEFAULT_ECHEANCE_DAYS`` ; ``None`` pour un brouillon sans date."""
+        if self.date_echeance:
+            return self.date_echeance
+        if self.statut == self.Statut.BROUILLON or not self.date_emission:
+            return None
+        from datetime import timedelta
+        return self.date_emission + timedelta(days=DEFAULT_ECHEANCE_DAYS)
+
+    @property
     def jours_retard(self):
-        """Jours de retard si l'EXIGIBLE reste dû (AFAC25 : jamais la retenue)."""
-        from django.utils import timezone
-        if not self.date_echeance or self.statut in ('payee', 'annulee'):
+        """Jours de retard si l'EXIGIBLE reste dû (AFAC25 : jamais la retenue),
+        comptés depuis l'échéance APPLIQUÉE (AFAC48 : repli émission + 30 j)."""
+        echeance = self.echeance_appliquee
+        if not echeance or self.statut in ('payee', 'annulee'):
             return 0
         if self.montant_exigible <= 0:
             return 0
-        delta = (timezone.now().date() - self.date_echeance).days
+        delta = (timezone.now().date() - echeance).days
         return delta if delta > 0 else 0
 
     @staticmethod
@@ -688,9 +725,10 @@ class Facture(TotauxDocumentMixin, models.Model):
         if not self.escompte_pct or not self.escompte_jours:
             return None
         from decimal import Decimal
-        montant = (
-            self.total_ttc * Decimal(self.escompte_pct) / Decimal('100')
-        ).quantize(Decimal('0.01'))
+
+        from core.money import quantize_mad
+        montant = quantize_mad(
+            self.total_ttc * Decimal(self.escompte_pct) / Decimal('100'))
         return {
             'pct': self.escompte_pct, 'jours': self.escompte_jours,
             'montant': montant,
@@ -713,16 +751,18 @@ class Facture(TotauxDocumentMixin, models.Model):
         ``montant`` fait le ``date_paiement``, dans la fenêtre. Hors fenêtre
         (ou non configuré) → 0 (comportement actuel inchangé)."""
         from decimal import Decimal
+
+        from core.money import quantize_mad
         if not self.escompte_applicable(date_paiement):
             return Decimal('0.00')
-        return (
-            Decimal(montant) * Decimal(self.escompte_pct) / Decimal('100')
-        ).quantize(Decimal('0.01'))
+        return quantize_mad(
+            Decimal(montant) * Decimal(self.escompte_pct) / Decimal('100'))
 
 
 class LigneFacture(models.Model):
     facture = models.ForeignKey(
-        Facture, on_delete=models.CASCADE, related_name='lignes'  # on_delete: ligne de Facture — n'existe pas sans son document parent
+        # on_delete: ligne de Facture — n'existe pas sans son document parent
+        Facture, on_delete=models.CASCADE, related_name='lignes'
     )
     produit = models.ForeignKey(
         'stock.Produit',
@@ -1001,7 +1041,8 @@ class Paiement(models.Model):
     def montant_disponible(self):
         """Solde de l'avance encore disponible pour ventilation."""
         from decimal import Decimal
-        if (self.facture_id and not self.affectations.exists()) or self.statut in self.STATUTS_NON_COMPTES:  # AFAC9/AFAC17 : avance rejetée ou annulée
+        # AFAC9/AFAC17 : avance rejetée ou annulée
+        if (self.facture_id and not self.affectations.exists()) or self.statut in self.STATUTS_NON_COMPTES:
             return Decimal('0')
         montant = self.montant if isinstance(self.montant, Decimal) \
             else Decimal(str(self.montant))
@@ -1031,7 +1072,8 @@ class Avoir(TotauxDocumentMixin, models.Model):
         RETOUR = 'retour', 'Retour'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='avoirs')
     type = models.CharField(
         max_length=20, choices=Type.choices, default=Type.GESTE_COMMERCIAL)
@@ -1128,7 +1170,8 @@ class Avoir(TotauxDocumentMixin, models.Model):
 
 class LigneAvoir(models.Model):
     avoir = models.ForeignKey(
-        Avoir, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de Avoir — n'existe pas sans son document parent
+        # on_delete: ligne de Avoir — n'existe pas sans son document parent
+        Avoir, on_delete=models.CASCADE, related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_avoir')
@@ -1188,7 +1231,8 @@ class FollowupLevel(models.Model):
     s'applique. Le niveau courant d'une facture est le plus élevé dont le
     seuil est atteint. Modifiable par l'admin dans Paramètres."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='followup_levels')
     ordre = models.PositiveIntegerField(default=0)
     nom = models.CharField(max_length=120)
@@ -1245,10 +1289,12 @@ class FollowupLevel(models.Model):
 class RelanceLog(models.Model):
     """Trace d'une relance effectuée sur une facture (consigne, jamais envoi)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='relance_logs')
     facture = models.ForeignKey(
-        Facture, on_delete=models.CASCADE, related_name='relances')  # on_delete: RelanceLog est le détail de Facture — n'existe pas sans lui
+        # on_delete: RelanceLog est le détail de Facture — n'existe pas sans lui
+        Facture, on_delete=models.CASCADE, related_name='relances')
     niveau = models.PositiveIntegerField(null=True, blank=True)
     niveau_nom = models.CharField(max_length=120, blank=True, default='')
     note = models.TextField(blank=True, default='')

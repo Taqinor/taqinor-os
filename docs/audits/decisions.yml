@@ -1972,3 +1972,59 @@ decisions:
     date: "2026-10-09"
     source: "docs/plans/PLAN_AUDIT_DEVIS.md (ADEV6 consigne ; ADEV40 porte « D-ADEV-4 = (a) »)"
     taches: [ADEV6, ADEV40]
+
+  - id: D-QJR113
+    question: "Ancre QJR113 du chantier D10 (moteur serveur industriel/commercial/agricole) : les deux volets sont ouverts (D-CIQ-0, D-AGR-1) et livrés ; que fait-on de la ligne ?"
+    options:
+      - cle: a
+        texte: "clore maintenant : ancre remplie, chantier ouvert et livré dans les groupes CIQ et AGR"
+      - cle: b
+        texte: "clore quand CIQ et AGR sont à 100 %"
+      - cle: c
+        texte: "garder l'ancre GATED pour toujours"
+    reponse: a
+    date: "2026-10-11"
+    source: "question interactive du 11/10/2026 (session loop work on all plans, dev-all-laptop)"
+    taches: [QJR113]
+
+  - id: D-AMET101
+    question: "Quand jouer la PR dédiée de migration de propriété D-OWN-FUSION (AMET101 : ~20 fichiers de plan réécrits, aucune autre session de plan vivante, table id→action à reconstruire) ?"
+    options:
+      - cle: a
+        texte: "cette nuit, pool vide : la session maestro la joue quand les deux sessions de plan ont mergé et sont à l'arrêt (table reconstruite depuis unites.yml + ownership.yml, PR docs-only, garde en --bloquant)"
+      - cle: b
+        texte: "maintenant, en arrêtant l'autre session"
+      - cle: c
+        texte: "pas pendant ce run"
+    reponse: a
+    date: "2026-10-11"
+    source: "question interactive du 11/10/2026 (session loop work on all plans, dev-all-laptop)"
+    taches: [AMET101]
+
+  - id: D-ENF22-BLE001
+    question: "ENF22 « # noqa à zéro » : ~2 000 `# noqa: BLE001` (except Exception larges) — rétrécir cas par cas ou exception signée ?"
+    options:
+      - cle: a
+        texte: "exception permanente signée : un except large est toléré s'il JOURNALISE et dégrade proprement (OCR/IA/PDF/webhooks/appels externes) ; les catchs silencieux (except Exception: pass et assimilés) sont rétrécis un à un ; objectif ENF22 = zéro noqa NON signé, garde check_except_larges.py lisant exceptions_permanentes.yml"
+      - cle: b
+        texte: "tout rétrécir, cas par cas, par vagues d'app"
+      - cle: c
+        texte: "arrêter ENF22 à F401/E402/E731"
+    reponse: a
+    date: "2026-10-11"
+    source: "question interactive du 11/10/2026 (session loop work on all plans, dev-all-laptop)"
+    taches: [ENF22]
+
+  - id: D-NTADM20
+    question: "roles ntadm20 : deux tests exercent l'endpoint RH parqué (core.parked) et sont sautés à chaque run — supprimer, garder en saut déclaré, ou dé-parquer RH ?"
+    options:
+      - cle: a
+        texte: "supprimer les deux tests et leur helper (_skip_si_rh_parquee), motif dans le commit ; à réécrire le jour où RH est dé-parquée"
+      - cle: b
+        texte: "garder, saut déclaré comme exception d'environnement (ENF14)"
+      - cle: c
+        texte: "dé-parquer RH"
+    reponse: a
+    date: "2026-10-11"
+    source: "question interactive du 11/10/2026 (session loop work on all plans, dev-all-laptop) — le mode auto avait refusé la suppression à la lane ENF23"
+    taches: [ENF23]

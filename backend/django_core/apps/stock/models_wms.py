@@ -124,11 +124,14 @@ class LignePicking(TenantModel):
     """
 
     vague = models.ForeignKey(
-        VaguePicking, on_delete=models.CASCADE,  # on_delete: CASCADE - une ligne n'existe QUE dans sa vague (composition stricte, aucune valeur orpheline)
+        # on_delete: CASCADE - une ligne n'existe QUE dans sa vague (composition stricte, aucune valeur orpheline)
+        VaguePicking, on_delete=models.CASCADE,
         related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
-        related_name='lignes_picking')  # on_delete: PROTECT — une ligne prélevée est une trace d'exécution magasin ; aligné sur MouvementStock/LigneInventaire
+        # on_delete: PROTECT — une ligne prélevée est une trace d'exécution magasin ; aligné sur
+        # MouvementStock/LigneInventaire
+        related_name='lignes_picking')
     quantite_demandee = models.PositiveIntegerField(default=0)
     quantite_prelevee = models.PositiveIntegerField(default=0)
     # Casier SOURCE — string-FK vers la hiérarchie FG319 (jamais dupliquée).
@@ -250,11 +253,14 @@ class UniteLogistiqueLigne(TenantModel):
     """Ligne de contenu d'une unité logistique (produit + quantité + lot)."""
 
     unite = models.ForeignKey(
-        UniteLogistique, on_delete=models.CASCADE,  # on_delete: CASCADE - le contenu n'existe QUE dans son colis (composition stricte)
+        # on_delete: CASCADE - le contenu n'existe QUE dans son colis (composition stricte)
+        UniteLogistique, on_delete=models.CASCADE,
         related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
-        related_name='lignes_unite_logistique')  # on_delete: PROTECT — contenu réel d'un colis expédié, conservé pour la traçabilité (aligné sur LignePicking/MouvementStock)
+        # on_delete: PROTECT — contenu réel d'un colis expédié, conservé pour la traçabilité (aligné sur
+        # LignePicking/MouvementStock)
+        related_name='lignes_unite_logistique')
     quantite = models.PositiveIntegerField(default=0)
     lot = models.ForeignKey(
         'stock.LotEntrepot', on_delete=models.SET_NULL,
@@ -301,7 +307,8 @@ class Quai(TenantModel):
     type_quai = models.CharField(
         max_length=20, choices=TypeQuai.choices, default=TypeQuai.MIXTE)
     emplacement = models.ForeignKey(
-        'stock.EmplacementStock', on_delete=models.CASCADE,  # on_delete: CASCADE - un quai est une partie physique de son entrepot ; sans entrepot il n'a aucun sens
+        # on_delete: CASCADE - un quai est une partie physique de son entrepot ; sans entrepot il n'a aucun sens
+        'stock.EmplacementStock', on_delete=models.CASCADE,
         related_name='quais')
     actif = models.BooleanField(default=True)
 
@@ -343,7 +350,8 @@ class RendezVousTransporteur(TenantModel):
     )
 
     quai = models.ForeignKey(
-        Quai, on_delete=models.CASCADE,  # on_delete: CASCADE - un creneau ne survit pas a la suppression du quai qu'il reserve
+        # on_delete: CASCADE - un creneau ne survit pas a la suppression du quai qu'il reserve
+        Quai, on_delete=models.CASCADE,
         related_name='rendez_vous')
     # String-FK cross-app : le référentiel transporteur vit dans installations
     # (FG324), jamais dupliqué ici.
@@ -495,7 +503,8 @@ class ExpeditionTransporteur(TenantModel):
         ANNULE = 'annule', 'Annulé'
 
     unite_logistique = models.ForeignKey(
-        UniteLogistique, on_delete=models.CASCADE,  # on_delete: CASCADE - une expedition n'expedie qu'une unite ; sans elle elle n'a plus d'objet
+        # on_delete: CASCADE - une expedition n'expedie qu'une unite ; sans elle elle n'a plus d'objet
+        UniteLogistique, on_delete=models.CASCADE,
         related_name='expeditions')
     transporteur_provider = models.CharField(
         max_length=20, choices=Provider.choices, default=Provider.AUCUN)
@@ -612,17 +621,21 @@ class AffectationCrossDock(TenantModel):
     """
 
     reception = models.ForeignKey(
-        'achats.ReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE - une affectation ne decrit qu'une reception ; sans elle elle ne designe plus rien
+        # on_delete: CASCADE - une affectation ne decrit qu'une reception ; sans elle elle ne designe plus rien
+        'achats.ReceptionFournisseur', on_delete=models.CASCADE,
         related_name='affectations_cross_dock')
     ligne_reception = models.ForeignKey(
-        'achats.LigneReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE - l'affectation route UNE ligne recue ; la ligne disparue, elle est vide de sens
+        # on_delete: CASCADE - l'affectation route UNE ligne recue ; la ligne disparue, elle est vide de sens
+        'achats.LigneReceptionFournisseur', on_delete=models.CASCADE,
         related_name='affectations_cross_dock')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
-        related_name='affectations_cross_dock')  # on_delete: PROTECT — trace d'exécution magasin (aligné sur LignePicking/MouvementStock)
+        # on_delete: PROTECT — trace d'exécution magasin (aligné sur LignePicking/MouvementStock)
+        related_name='affectations_cross_dock')
     quantite = models.PositiveIntegerField(default=0)
     unite_logistique = models.ForeignKey(
-        UniteLogistique, on_delete=models.CASCADE,  # on_delete: CASCADE - le routage n'existe que par le colis d'expedition qu'il alimente
+        # on_delete: CASCADE - le routage n'existe que par le colis d'expedition qu'il alimente
+        UniteLogistique, on_delete=models.CASCADE,
         related_name='affectations_cross_dock')
     ligne_picking = models.ForeignKey(
         LignePicking, on_delete=models.SET_NULL, null=True, blank=True,
@@ -669,7 +682,8 @@ class AlerteRappel(TenantModel):
 
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
-        related_name='alertes_rappel')  # on_delete: PROTECT — un rappel est une trace réglementaire ; il ne disparaît pas avec la fiche produit
+        # on_delete: PROTECT — un rappel est une trace réglementaire ; il ne disparaît pas avec la fiche produit
+        related_name='alertes_rappel')
     lot = models.ForeignKey(
         'stock.LotEntrepot', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='alertes_rappel',
@@ -782,7 +796,8 @@ class RetourClient(TenantModel):
     # modèles depuis stock.
     client = models.ForeignKey(
         'crm.Client', on_delete=models.PROTECT,
-        related_name='retours_entrepot')  # on_delete: PROTECT — un retour est une trace logistique et comptable ; il survit à l'archivage du client
+        # on_delete: PROTECT — un retour est une trace logistique et comptable ; il survit à l'archivage du client
+        related_name='retours_entrepot')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.SET_NULL, null=True,
         blank=True, related_name='retours_entrepot')
@@ -900,11 +915,13 @@ class LigneRetourClient(TenantModel):
         REBUT = 'rebut', 'Rebut'
 
     retour = models.ForeignKey(
-        RetourClient, on_delete=models.CASCADE,  # on_delete: CASCADE - une ligne n'existe QUE dans son retour (composition stricte)
+        # on_delete: CASCADE - une ligne n'existe QUE dans son retour (composition stricte)
+        RetourClient, on_delete=models.CASCADE,
         related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
-        related_name='lignes_retour_client')  # on_delete: PROTECT — trace d'un mouvement de stock réel (aligné sur MouvementStock)
+        # on_delete: PROTECT — trace d'un mouvement de stock réel (aligné sur MouvementStock)
+        related_name='lignes_retour_client')
     quantite = models.PositiveIntegerField(default=0)
     etat_constate = models.CharField(
         max_length=20, choices=EtatConstate.choices,
@@ -965,7 +982,8 @@ class MouvementRebut(TenantModel):
 
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
-        related_name='mouvements_rebut')  # on_delete: PROTECT — pièce de suivi comptable des pertes (aligné sur MouvementStock)
+        # on_delete: PROTECT — pièce de suivi comptable des pertes (aligné sur MouvementStock)
+        related_name='mouvements_rebut')
     quantite = models.PositiveIntegerField(default=0)
     motif = models.CharField(max_length=20, choices=Motif.choices)
     bin = models.ForeignKey(

@@ -32,7 +32,9 @@ class IncidentQualiteFournisseur(TenantModel):
         CRITIQUE = 'critique', 'Critique'
 
     fournisseur = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.PROTECT,  # on_delete: PROTECT — un incident est une donnée RÉELLE d'historique qualité, non reconstructible ; on refuse la suppression du fournisseur plutôt que d'effacer son passif
+        # on_delete: PROTECT — un incident est une donnée RÉELLE d'historique qualité, non reconstructible ; on refuse
+        # la suppression du fournisseur plutôt que d'effacer son passif
+        'stock.Fournisseur', on_delete=models.PROTECT,
         related_name='incidents_qualite')
     bon_commande_fournisseur = models.ForeignKey(
         'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,

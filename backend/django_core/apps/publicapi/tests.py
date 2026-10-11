@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import re
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -1263,3 +1264,21 @@ class EdiParqueTests(SimpleTestCase):
         from django.apps import apps
         with self.assertRaises(LookupError):
             apps.get_model('publicapi', 'PartenaireEdi')
+
+
+class Enf17FkLectureSeuleTests(SimpleTestCase):
+    """ENF17 — ``created_by`` (clé) et ``webhook`` (livraison) sont en lecture
+    seule : un id d'une autre société posté n'est jamais écrit (bornés société
+    s'ils redeviennent inscriptibles)."""
+
+    def test_fk_etrangere_jamais_ecrite(self):
+        from .serializers import ApiKeySerializer, WebhookDeliverySerializer
+        user = SimpleNamespace(company_id=1, is_authenticated=True)
+        ctx = {'request': SimpleNamespace(user=user)}
+        for cls, champ in ((ApiKeySerializer, 'created_by'),
+                           (WebhookDeliverySerializer, 'webhook')):
+            with self.subTest(serializer=cls.__name__):
+                ser = cls(data={champ: 424242}, partial=True, context=ctx)
+                self.assertTrue(ser.is_valid(), ser.errors)
+                self.assertNotIn(champ, ser.validated_data)
+                self.assertIn(champ, cls.same_company_fields)

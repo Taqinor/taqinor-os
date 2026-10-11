@@ -751,7 +751,8 @@ def compute_marge_snapshot(devis):
             cout += Decimal(str(li.quantite)) * Decimal(str(prix_achat))
     if not a_un_cout:
         return None
-    return (ht - cout).quantize(Decimal('0.01'))
+    from core.money import quantize_mad
+    return quantize_mad(ht - cout)
 
 
 def refresh_marge_snapshot(devis):

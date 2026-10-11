@@ -61,7 +61,7 @@ from typing import Optional, Tuple
 # zéros, sans centimes : garde les prix des articles, baisse juste le total au
 # palier de 100 DH inférieur ». LE palier de TOUT devis, par option et par
 # villa : le TTC est ramené au multiple de 100 MAD inférieur par
-# ``selectors._absorber_arrondi`` (une baisse de HT, ``ht_net + tva == ttc``
+# ``noyau_totaux._absorber_arrondi`` (une baisse de HT, ``ht_net + tva == ttc``
 # au centime). Miroir écran : ``PAS_ARRONDI_DEVIS`` de
 # ``frontend/src/features/ventes/remise.js``.
 PAS_ARRONDI_DEVIS = Decimal('100')
@@ -176,9 +176,10 @@ def _totaux_canoniques(devis, lignes, option, *, unitaire=False):
     porte donc aucune copie — c'est ce qui garantit que le total imprimé et le
     total du noyau décrivent le même panier.
     """
-    from apps.ventes.selectors import (
-        _canonical_totaux, nombre_proprietes, totaux_multi_proprietes,
+    from apps.ventes.domain.noyau_totaux import (
+        _canonical_totaux, totaux_multi_proprietes,
     )
+    from apps.ventes.multivilla import nombre_proprietes
     from apps.ventes.utils.options import (
         filter_lines_for_option, has_two_options,
     )
@@ -329,7 +330,7 @@ def repartir_remise_par_ligne(lignes, remise, *, cle_montant='total_ht'):
     """
     from core.money import quantize_mad
 
-    from apps.ventes.selectors import ligne_compte_dans_totaux
+    from apps.ventes.domain.noyau_totaux import ligne_compte_dans_totaux
 
     lignes = list(lignes)
     comptees = [i for i, li in enumerate(lignes)

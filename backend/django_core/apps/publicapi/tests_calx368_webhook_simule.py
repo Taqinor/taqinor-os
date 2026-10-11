@@ -198,7 +198,8 @@ class AbonneTests(SimpleTestCase):
 
     def test_un_echec_de_livraison_ne_remonte_jamais(self):
         with mock.patch.object(delivery, 'dispatch_event',
-                               side_effect=RuntimeError('broker')),                 self.assertLogs(recepteurs.logger, 'ERROR') as journal:
+                               side_effect=RuntimeError('broker')), \
+              self.assertLogs(recepteurs.logger, 'ERROR') as journal:
             recepteurs.calepinage_simule_recu(
                 None, calepinage=_Calepinage(), company_id=7)
         self.assertIn(EVENT_CALEPINAGE_SIMULE, journal.output[0])
@@ -256,7 +257,8 @@ class EmetteurTests(SimpleTestCase):
         from apps.calepinage.services import simulation
 
         with mock.patch.object(events.calepinage_simule, 'send',
-                               side_effect=RuntimeError('abonné')),                 self.assertLogs(simulation.logger, 'ERROR') as journal:
+                               side_effect=RuntimeError('abonné')), \
+                self.assertLogs(simulation.logger, 'ERROR') as journal:
             simulation._annoncer_simulation(_Calepinage())
         self.assertIn('calepinage_simule', journal.output[0])
 

@@ -7,9 +7,9 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, Archive, ArchiveRestore, Eye } from 'lucide-react'
 import {
   Card, CardContent, Input, Textarea, Select, SelectTrigger, SelectValue,
-  SelectContent, SelectItem, Button, IconButton, Spinner,
+  SelectContent, SelectItem, Button, IconButton,
 } from '../../ui'
-import { SectionTitle, Field } from './peComponents'
+import { SectionTitle, Field, ChargementErreur } from './peComponents'
 import crmApi from '../../api/crmApi'
 import { useConfirmDialog } from '../../ui/confirm'
 
@@ -95,12 +95,7 @@ export default function MessageTemplatesCrmSection() {
           visite tokenisé, résolu au moment de l'envoi (nécessite un lead).
         </p>
 
-        {loading && (
-          <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-            <Spinner className="size-3.5 text-primary" /> Chargement…
-          </div>
-        )}
-        {error && <p className="form-error mb-2" role="alert">{error}</p>}
+        <ChargementErreur loading={loading} error={error} />
         {!loading && templates.length === 0 && (
           <p className="mb-3 text-xs text-muted-foreground">Aucun modèle configuré.</p>
         )}

@@ -16,7 +16,8 @@ class StockVehicule(TenantModel):
     SOLMVP12 — la colonne de lien véhicule a été supprimée)."""
 
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — trace de stock physique (aligné sur MouvementStock/StockEmplacement)
+        # on_delete: PROTECT — trace de stock physique (aligné sur MouvementStock/StockEmplacement)
+        'stock.Produit', on_delete=models.PROTECT,
         related_name='stocks_vehicule')
     quantite_embarquee = models.PositiveIntegerField(default=0)
 

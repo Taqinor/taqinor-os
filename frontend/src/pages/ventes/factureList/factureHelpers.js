@@ -1,13 +1,14 @@
 // SPL211 — aides partagées entre FactureList.jsx et factureList/FactureRow.jsx
 // (déplacées VERBATIM ; `today` reste évalué au chargement du module).
 import { toNumber } from '../../../lib/format.js'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 // Facture à solde partiel : un acompte encaissé mais reste dû > 0.
 export const isPartiallyPaid = f =>
   toNumber(f?.montant_paye) > 0 && toNumber(f?.montant_du) > 0 &&
   f?.statut !== 'annulee'
 
-export const today = new Date().toISOString().slice(0, 10)
+export const today = todayLocalIso()
 // ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — une facture au STATUT « en_retard »
 // (même sans échéance) est affichée « En retard » : elle doit aussi tomber dans
 // l'onglet « En retard » (sinon 4 lignes « En retard » et un onglet vide).

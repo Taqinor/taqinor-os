@@ -158,9 +158,13 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
             })
 
 
-class AutomationRuleVersionSerializer(serializers.ModelSerializer):
+class AutomationRuleVersionSerializer(SameCompanyFKSerializerMixin,
+                                      serializers.ModelSerializer):
     """NTEXT30 — un snapshot en lecture seule (jamais éditable : une version
     se RESTAURE, elle ne se modifie pas en place)."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('rule',)
     auteur_username = serializers.CharField(
         source='auteur.username', read_only=True, default='')
 
@@ -171,7 +175,11 @@ class AutomationRuleVersionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AutomationRunSerializer(serializers.ModelSerializer):
+class AutomationRunSerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('rule',)
     status_display = serializers.CharField(
         source='get_status_display', read_only=True)
     rule_nom = serializers.CharField(
@@ -186,7 +194,11 @@ class AutomationRunSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AutomationApprovalSerializer(serializers.ModelSerializer):
+class AutomationApprovalSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornées
+    # société si l'une redevient inscriptible.
+    same_company_fields = ('rule', 'requested_by', 'decided_by')
     status_display = serializers.CharField(
         source='get_status_display', read_only=True)
     rule_nom = serializers.CharField(

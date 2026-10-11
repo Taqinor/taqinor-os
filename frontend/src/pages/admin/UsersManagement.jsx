@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { UserPlus, Users, Pencil, Trash2, ShieldCheck, UserCheck, UserX, AlertTriangle } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import adminopsApi from '../../features/adminops/adminopsApi'
 import Avatar from '../../components/Avatar'
 import {
@@ -155,28 +156,29 @@ export default function UsersManagement() {
     }
   }
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [usersRes, rolesRes] = await Promise.all([
-        api.get('/users/'),
-        rolesApi.getRoles(),
+      // ADOC38 — toutes les pages (fetchAllPages), jamais la seule page 1.
+      const [userList, roleListBrut] = await Promise.all([
+        fetchAllPages((page) => api.get('/users/', { params: { page } }).then((r) => r.data), { concurrency: 3 }),
+        fetchAllPages((page) => rolesApi.getRoles({ page }).then((r) => r.data), { concurrency: 3 }),
       ])
-      setUsers(usersRes.data.results ?? usersRes.data)
-      const roleList = rolesRes.data.results ?? rolesRes.data
+      setUsers(Array.isArray(userList) ? userList : (userList?.results ?? []))
+      const roleList = Array.isArray(roleListBrut) ? roleListBrut : (roleListBrut?.results ?? [])
       setRoles(roleList)
       // Default form role to first role in list
-      if (roleList.length > 0 && !form.role) {
-        setForm(f => ({ ...f, role: roleList.find(r => r.nom === 'Utilisateur')?.id || roleList[0].id }))
+      if (roleList.length > 0) {
+        setForm(f => (f.role ? f : { ...f, role: roleList.find(r => r.nom === 'Utilisateur')?.id || roleList[0].id }))
       }
     } catch {
       setError('Impossible de charger les données.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { load() }, []) // eslint-disable-line
+  useEffect(() => { load() }, [load])
 
   // NTADM8 — statut des sièges pour la bannière (best-effort, silencieux si
   // l'endpoint échoue — jamais bloquant pour l'écran Utilisateurs).

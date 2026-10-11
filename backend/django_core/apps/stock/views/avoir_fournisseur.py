@@ -1,13 +1,13 @@
-from django.db import transaction  # noqa: F401
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import INT, P, corps
 from core.viewsets import CompanyScopedModelViewSet
-from apps.ventes.utils.references import create_with_reference  # noqa: F401
+from apps.ventes.utils.references import create_with_reference
 from ..models import AvoirFournisseur, FactureFournisseur
 from ..serializers import AvoirFournisseurSerializer
 from authentication.permissions import (  # noqa: F401
@@ -109,7 +109,9 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
         avoir.save(update_fields=['statut'])
         return Response(self.get_serializer(avoir).data)
 
-    @extend_schema(request=corps('AvoirImputerCorps', facture=serializers.IntegerField(), montant=serializers.DecimalField(max_digits=14, decimal_places=2, required=False)), responses=AvoirFournisseurSerializer)
+    @extend_schema(request=corps('AvoirImputerCorps', facture=serializers.IntegerField(),
+                                 montant=serializers.DecimalField(max_digits=14, decimal_places=2, required=False)),
+                   responses=AvoirFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='imputer')
     def imputer(self, request, pk=None):
         """Corps : ``{"facture": <id>, "montant"?: <decimal>}``. Sans

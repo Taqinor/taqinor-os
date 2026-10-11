@@ -11,13 +11,13 @@ import api from './axios'
 const identityApi = {
   // NTSEC11 — politique réseau (une par société) + plages CIDR autorisées.
   networkPolicies: {
-    list: () => api.get('/identity/network-policies/'),
+    list: (params) => api.get('/identity/network-policies/', { params }),
     create: (data) => api.post('/identity/network-policies/', data),
     update: (id, data) => api.patch(`/identity/network-policies/${id}/`, data),
     remove: (id) => api.delete(`/identity/network-policies/${id}/`),
   },
   ipRules: {
-    list: () => api.get('/identity/ip-allow-rules/'),
+    list: (params) => api.get('/identity/ip-allow-rules/', { params }),
     create: (data) => api.post('/identity/ip-allow-rules/', data),
     remove: (id) => api.delete(`/identity/ip-allow-rules/${id}/`),
   },
@@ -25,7 +25,7 @@ const identityApi = {
   // NTSEC14 — appareils de confiance de l'utilisateur (liste + « oublier »,
   // révocation douce qui reforce la MFA sur cet appareil).
   trustedDevices: {
-    list: () => api.get('/identity/trusted-devices/'),
+    list: (params) => api.get('/identity/trusted-devices/', { params }),
     forget: (id) => api.delete(`/identity/trusted-devices/${id}/`),
   },
 
@@ -39,7 +39,7 @@ const identityApi = {
 
   // NTSEC24 — comptes de service (jetons machine-à-machine).
   serviceAccounts: {
-    list: () => api.get('/identity/service-accounts/'),
+    list: (params) => api.get('/identity/service-accounts/', { params }),
     create: (data) => api.post('/identity/service-accounts/', data),
     remove: (id) => api.delete(`/identity/service-accounts/${id}/`),
   },
@@ -49,7 +49,7 @@ const identityApi = {
 
   // NTSEC22 — accès break-glass : liste + octroi (Directeur only, MFA requise).
   breakGlass: {
-    list: () => api.get('/identity/break-glass/'),
+    list: (params) => api.get('/identity/break-glass/', { params }),
     grant: (data) => api.post('/identity/break-glass/', data),
   },
 

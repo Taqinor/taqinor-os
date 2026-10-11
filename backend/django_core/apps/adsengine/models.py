@@ -46,7 +46,8 @@ class MetaConnection(TenantModel):
 
     company = models.OneToOneField(
         'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: CASCADE — connexion Meta strictement tenant : supprimer la société purge sa connexion pub
+        # on_delete: CASCADE — connexion Meta strictement tenant : supprimer la société purge sa connexion pub
+        on_delete=models.CASCADE,
         related_name='adsengine_meta_connection',
         verbose_name='Société',
     )
@@ -348,7 +349,8 @@ class AdSetMirror(TenantModel):
     # FK MÊME APP (adsengine) — autorisée. Nullable : un ad set peut être
     # synchronisé avant que son miroir de campagne parent existe.
     campaign = models.ForeignKey(
-        'adsengine.AdCampaignMirror', on_delete=models.CASCADE,  # on_delete: CASCADE — miroir d'adset sans vie propre : suit sa campagne miroir
+        # on_delete: CASCADE — miroir d'adset sans vie propre : suit sa campagne miroir
+        'adsengine.AdCampaignMirror', on_delete=models.CASCADE,
         null=True, blank=True, related_name='adsets',
         verbose_name='Campagne')
 
@@ -417,7 +419,8 @@ class AdMirror(TenantModel):
     created_via_engine = models.BooleanField(
         default=False, verbose_name='Créée par le moteur')
     adset = models.ForeignKey(
-        'adsengine.AdSetMirror', on_delete=models.CASCADE,  # on_delete: CASCADE — miroir d'annonce sans vie propre : suit son adset miroir
+        # on_delete: CASCADE — miroir d'annonce sans vie propre : suit son adset miroir
+        'adsengine.AdSetMirror', on_delete=models.CASCADE,
         null=True, blank=True, related_name='ads',
         verbose_name='Ad set')
 
@@ -461,7 +464,8 @@ class AdCreativeMirror(TenantModel):
     """
 
     ad = models.OneToOneField(
-        'adsengine.AdMirror', on_delete=models.CASCADE,  # on_delete: un miroir créatif n'existe que pour son ad (composition, OneToOne)
+        # on_delete: un miroir créatif n'existe que pour son ad (composition, OneToOne)
+        'adsengine.AdMirror', on_delete=models.CASCADE,
         related_name='creative_mirror', verbose_name='Ad')
     creative_meta_id = models.CharField(
         max_length=64, blank=True, default='',
@@ -509,7 +513,8 @@ class InsightSnapshot(TenantModel):
     """
 
     content_type = models.ForeignKey(
-        'contenttypes.ContentType', on_delete=models.CASCADE,  # on_delete: snapshot d'insight rattaché à sa cible générique; disparaît avec elle
+        # on_delete: snapshot d'insight rattaché à sa cible générique; disparaît avec elle
+        'contenttypes.ContentType', on_delete=models.CASCADE,
         verbose_name='Type de cible')
     object_id = models.PositiveIntegerField(verbose_name='ID cible')
     content_object = GenericForeignKey('content_type', 'object_id')
@@ -615,7 +620,8 @@ class InsightBreakdown(TenantModel):
         HOURLY = 'hourly', 'Horaire'
 
     content_type = models.ForeignKey(
-        'contenttypes.ContentType', on_delete=models.CASCADE,  # on_delete: breakdown rattaché à sa cible générique; disparaît avec elle
+        # on_delete: breakdown rattaché à sa cible générique; disparaît avec elle
+        'contenttypes.ContentType', on_delete=models.CASCADE,
         verbose_name='Type de cible')
     object_id = models.PositiveIntegerField(verbose_name='ID cible')
     content_object = GenericForeignKey('content_type', 'object_id')
@@ -1202,7 +1208,8 @@ class CreativePolicy(TenantModel):
     """
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: la police créative d'une société disparaît avec elle (tenant, OneToOne)
+        # on_delete: la police créative d'une société disparaît avec elle (tenant, OneToOne)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='adsengine_creative_policy', verbose_name='Société')
     forbidden_rules = models.JSONField(
         default=list, blank=True, verbose_name='Règles interdites')
@@ -1297,7 +1304,8 @@ class ExperimentArm(TenantModel):
     """
 
     experiment = models.ForeignKey(
-        'adsengine.Experiment', on_delete=models.CASCADE,  # on_delete: un bras n'existe que dans son expérience (composition)
+        # on_delete: un bras n'existe que dans son expérience (composition)
+        'adsengine.Experiment', on_delete=models.CASCADE,
         related_name='arms', verbose_name='Expérience')
     creative_asset = models.ForeignKey(
         'adsengine.CreativeAsset', on_delete=models.SET_NULL,
@@ -1338,7 +1346,8 @@ class ArmDailyStat(TenantModel):
     """
 
     arm = models.ForeignKey(
-        'adsengine.ExperimentArm', on_delete=models.CASCADE,  # on_delete: une stat quotidienne n'existe que pour son bras (composition)
+        # on_delete: une stat quotidienne n'existe que pour son bras (composition)
+        'adsengine.ExperimentArm', on_delete=models.CASCADE,
         related_name='daily_stats', verbose_name='Bras')
     date = models.DateField(verbose_name='Date')
     impressions = models.PositiveIntegerField(
@@ -1393,7 +1402,8 @@ class DecisionLog(TenantModel):
     """
 
     experiment = models.ForeignKey(
-        'adsengine.Experiment', on_delete=models.CASCADE,  # on_delete: une décision n'existe que dans son expérience (composition)
+        # on_delete: une décision n'existe que dans son expérience (composition)
+        'adsengine.Experiment', on_delete=models.CASCADE,
         related_name='decisions', verbose_name='Expérience')
     inputs = models.JSONField(
         default=dict, blank=True, verbose_name='Entrées (instantané)')
@@ -1731,7 +1741,8 @@ class CreativeBacklogItem(TenantModel):
         RETIRE = 'retire', 'Retiré'
 
     asset = models.ForeignKey(
-        'adsengine.CreativeAsset', on_delete=models.CASCADE,  # on_delete: un item de backlog rattaché à son asset disparaît avec lui (composition)
+        # on_delete: un item de backlog rattaché à son asset disparaît avec lui (composition)
+        'adsengine.CreativeAsset', on_delete=models.CASCADE,
         related_name='backlog_items', verbose_name='Asset')
     batch = models.ForeignKey(
         'adsengine.CreativeGenerationBatch', on_delete=models.SET_NULL,
@@ -1811,7 +1822,8 @@ class FlightPhase(TenantModel):
     """
 
     plan = models.ForeignKey(
-        'adsengine.FlightPlan', on_delete=models.CASCADE,  # on_delete: une phase n'existe que dans son plan de vol (composition)
+        # on_delete: une phase n'existe que dans son plan de vol (composition)
+        'adsengine.FlightPlan', on_delete=models.CASCADE,
         related_name='phases', verbose_name='Plan')
     order = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     name = models.CharField(max_length=120, verbose_name='Nom')
@@ -2561,7 +2573,8 @@ class FactEntry(TenantModel):
     modèle."""
 
     table = models.ForeignKey(
-        'adsengine.FactTable', on_delete=models.CASCADE,  # on_delete: CASCADE — ligne de fait sans vie propre : suit sa table de faits
+        # on_delete: CASCADE — ligne de fait sans vie propre : suit sa table de faits
+        'adsengine.FactTable', on_delete=models.CASCADE,
         related_name='entries', verbose_name='Table de faits')
     cle = models.CharField(max_length=100, verbose_name='Clé')
     valeur = models.CharField(max_length=255, verbose_name='Valeur')
@@ -2824,7 +2837,8 @@ class BrandKit(TenantModel):
     comme ``CreativeAsset.file_key``)."""
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: le kit de marque disparaît avec la société (tenant, OneToOne)
+        # on_delete: le kit de marque disparaît avec la société (tenant, OneToOne)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='adsengine_brand_kit', verbose_name='Société')
     name = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Nom du kit')

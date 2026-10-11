@@ -253,7 +253,11 @@ class DevisEditionActionsMixin:
         from ..domain.etude_schema import ECRAN, ecrire
         etude_in = head.pop('etude_params', None)
         _valider_etude_ecran(etude_in)
-        serializer = DevisWriteSerializer(data=head)
+        # ENF17 — la requête en contexte : le mixin borne ``entite`` (et
+        # ``client``/``lead``) à la société, ``TiersPayeurValidationMixin``
+        # lit sa société, ``create`` pose ``updated_by`` (parité POST /devis/).
+        serializer = DevisWriteSerializer(data=head,
+                                          context={'request': request})
         serializer.is_valid(raise_exception=True)
 
         lead = serializer.validated_data.get('lead')

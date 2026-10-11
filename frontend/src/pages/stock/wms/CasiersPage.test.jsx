@@ -117,4 +117,20 @@ describe('ASTK215 — CasiersPage', () => {
     expect(await screen.findByText('Onduleur star')).toBeInTheDocument()
     expect(screen.getByText('A-01-02')).toBeInTheDocument()
   })
+
+  it('lit TOUTES les pages des produits (51 objets ⇒ le 51e est proposé)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({ id: 1000 + i, nom: `Produit ${i + 1}` }))
+    const base = api.get.getMockImplementation()
+    api.get.mockImplementation((url, cfg) => {
+      if (!url.includes('produits')) return base(url, cfg)
+      const page = cfg?.params?.page ?? 1
+      return Promise.resolve({ data: {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      } })
+    })
+    monter()
+    expect(await screen.findByRole('option', { name: 'Produit 51' })).toBeInTheDocument()
+  })
 })

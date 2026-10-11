@@ -42,10 +42,14 @@ class CompteFournisseurPortail(TenantModel):
     """
 
     fournisseur = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE — un compte d'accès n'existe QUE pour son fournisseur (aucune donnée métier propre, aucune écriture comptable) ; le fournisseur supprimé, son accès n'a plus d'objet
+        # on_delete: CASCADE — un compte d'accès n'existe QUE pour son fournisseur (aucune donnée métier propre, aucune
+        # écriture comptable) ; le fournisseur supprimé, son accès n'a plus d'objet
+        'stock.Fournisseur', on_delete=models.CASCADE,
         related_name='comptes_portail', verbose_name='Fournisseur')
     utilisateur = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: CASCADE — le rattachement n'a aucun sens sans le compte utilisateur qu'il rattache ; le compte supprimé, la ligne ne désigne plus personne
+        # on_delete: CASCADE — le rattachement n'a aucun sens sans le compte utilisateur qu'il rattache ; le compte
+        # supprimé, la ligne ne désigne plus personne
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='compte_fournisseur_portail',
         verbose_name='Compte utilisateur')
     actif = models.BooleanField(default=True, verbose_name='Actif')
@@ -104,7 +108,9 @@ class AnnonceLivraisonFournisseur(TenantModel):
         LIVREE = 'livree', 'Livrée'
 
     bon_commande_fournisseur = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE — une annonce d'expédition ne désigne QUE son bon de commande (déclaration informative, aucun mouvement de stock, aucune écriture comptable) ; le bon supprimé, elle n'annonce plus rien
+        # on_delete: CASCADE — une annonce d'expédition ne désigne QUE son bon de commande (déclaration informative,
+        # aucun mouvement de stock, aucune écriture comptable) ; le bon supprimé, elle n'annonce plus rien
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
         related_name='annonces_livraison', verbose_name='Bon de commande')
     date_expedition = models.DateField(
         null=True, blank=True, verbose_name="Date d'expédition")

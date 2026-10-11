@@ -34,6 +34,7 @@ import { DOC_STATUT_TRACK } from '../../../features/ventes/documentChain.js'
 import { peutEditerDevis, chantierEnCours } from '../../../features/ventes/devisStatuts.js'
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis.js'
 import { STATUT_DISPLAY } from './devisListConstants.js'
+import HistoriqueActivitesListe from '../HistoriqueActivitesListe'
 
 // VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
 // la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
@@ -905,29 +906,7 @@ export default function DevisRow({ d, ctx }) {
                 Aucune modification consignée.
               </p>
             ) : (
-              <ul className="space-y-1 text-sm">
-                {histoCache[d.id].map(a => (
-                  <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {a.created_at ? formatDateTime(a.created_at) : '—'}
-                      {a.user_nom ? ` · ${a.user_nom}` : ''}
-                    </span>
-                    <span>
-                      {a.body
-                        ? a.body
-                        : (
-                          <>
-                            <strong>{a.field_label || a.field}</strong>
-                            {' : '}
-                            <span className="text-muted-foreground">{a.old_value || '—'}</span>
-                            {' → '}
-                            <span>{a.new_value || '—'}</span>
-                          </>
-                        )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <HistoriqueActivitesListe activites={histoCache[d.id]} />
             )}
             {/* ── WIR274 — Composeur de note manuelle ──────────────────────
                 `noterDevis` n'était appelé que par l'auto-note de relance

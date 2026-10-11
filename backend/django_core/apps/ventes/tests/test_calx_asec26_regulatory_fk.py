@@ -5,7 +5,12 @@ l'utilisateur, en création comme en mise à jour.
 Un chantier (``installations.Installation``) d'une autre société, ou un id
 inexistant, donne 400 sur ``chantier`` sans rien créer ni modifier, et sans
 renvoyer aucun libellé de l'autre société ; un chantier de la société passe.
+
+ENF17 — même borne sur ``devis`` (dossier, régularisation, subvention) et
+``dossier`` (checklist, navette) : l'id de B reçoit la réponse d'un id absent.
 """
+from types import SimpleNamespace
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -118,3 +123,45 @@ class RegulatoryFkSocieteTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         dossier.refresh_from_db()
         self.assertEqual(dossier.chantier_id, self.chantier_a.id)
+
+    def test_enf17_devis_etranger_comme_absent(self):
+        devis_b = Devis.objects.create(
+            company=self.co_b, reference='DEV-ENF17-B', client=self.client_b,
+            statut='brouillon')
+        avant = RegulatoryDossier.objects.count()
+        r = self.api.post(URL, {'devis': devis_b.id,
+                                'regime_8221': 'declaration_bt'}, format='json')
+        absent = self.api.post(URL, {'devis': 999999999,
+                                     'regime_8221': 'declaration_bt'},
+                               format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.data['devis'][0].code, 'does_not_exist')
+        self.assertEqual(
+            str(r.data['devis'][0]).replace(str(devis_b.id), '<ID>'),
+            str(absent.data['devis'][0]).replace('999999999', '<ID>'))
+        self.assertEqual(RegulatoryDossier.objects.count(), avant)
+
+    def test_enf17_serialiseurs_devis_dossier_bornes(self):
+        from apps.ventes import serializers_regulatory as sr
+        devis_b = Devis.objects.create(
+            company=self.co_b, reference='DEV-ENF17-B2', client=self.client_b,
+            statut='brouillon')
+        dossier_a = self._dossier()
+        dossier_b = RegulatoryDossier.objects.create(
+            company=self.co_b, devis=devis_b, regime_8221='declaration_bt')
+        objets = {'devis': (self.devis_a, devis_b),
+                  'dossier': (dossier_a, dossier_b)}
+        ctx = {'request': SimpleNamespace(user=self.user_a)}
+        for cls, champ in (
+                (sr.RegulatoryDossierSerializer, 'devis'),
+                (sr.Regularisation8221Serializer, 'devis'),
+                (sr.SubventionDossierSerializer, 'devis'),
+                (sr.DossierChecklistItemSerializer, 'dossier'),
+                (sr.DossierExchangeSerializer, 'dossier')):
+            propre, etranger = objets[champ]
+            with self.subTest(serializer=cls.__name__, champ=champ):
+                ser = cls(data={champ: etranger.pk}, partial=True, context=ctx)
+                self.assertFalse(ser.is_valid())
+                self.assertEqual(ser.errors[champ][0].code, 'does_not_exist')
+                champ_lie = cls(context=ctx).fields[champ]
+                self.assertEqual(champ_lie.to_internal_value(propre.pk), propre)

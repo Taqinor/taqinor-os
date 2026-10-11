@@ -37,6 +37,22 @@ describe('useFavoris (NTUX12)', () => {
     expect(result.current.favoris).toEqual(FAVORIS)
   })
 
+  it('lit TOUTES les pages des favoris (51 objets ⇒ 51 lignes)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({
+      id: i + 1, modele: 'crm.lead', object_id: i + 1, libelle: `L${i + 1}`, ordre: i,
+    }))
+    listFavorisMock.mockImplementation(({ page = 1 } = {}) => Promise.resolve({
+      data: {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      },
+    }))
+    const { result } = renderHook(() => useFavoris())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.favoris).toHaveLength(51)
+  })
+
   it('isFavori détecte une cible déjà épinglée, insensible au type (string vs number) de object_id', async () => {
     const { result } = renderHook(() => useFavoris())
     await waitFor(() => expect(result.current.loading).toBe(false))

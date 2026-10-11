@@ -10,8 +10,14 @@ Deux sociétés A et B. Un utilisateur de A ne peut :
 
 Chaque refus est un 400 sur le champ nommé, sans écriture ; un id inexistant
 donne le même 400 (jamais un 500) ; les ids de A passent comme avant.
+
+ENF17 — la ligne (``devis``), le devis (``client``/``lead``/``entite``/
+``remise_approuvee_par``), les listes de prix (``liste``) et les fils
+chatter/e-mails (lecture seule) suivent la même borne : l'id de B reçoit la
+réponse d'un id absent (« objet inexistant »).
 """
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -214,3 +220,94 @@ class FkDevisSocieteTests(TestCase):
                 'valeur': '8', 'quantite_min': '1',
             }, format='json')
         self.assertEqual(r.status_code, 201, r.content)
+
+    # ── ENF17 — FK restantes du devis bornées société ───────────────────
+    def _assert_comme_absent(self, r, r_absent, champ, id_etranger):
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.data[champ][0].code, 'does_not_exist', r.content)
+        self.assertEqual(
+            str(r.data[champ][0]).replace(str(id_etranger), '<ID>'),
+            str(r_absent.data[champ][0]).replace('999999999', '<ID>'))
+
+    def _assert_borne(self, cls, champ, propre, etranger):
+        ctx = {'request': SimpleNamespace(user=self.user_a)}
+        with self.subTest(serializer=cls.__name__, champ=champ):
+            ser = cls(data={champ: etranger.pk}, partial=True, context=ctx)
+            self.assertFalse(ser.is_valid())
+            self.assertEqual(ser.errors[champ][0].code, 'does_not_exist')
+            champ_lie = cls(context=ctx).fields[champ]
+            self.assertEqual(champ_lie.to_internal_value(propre.pk), propre)
+
+    def test_enf17_ligne_devis_etranger_comme_absent(self):
+        r = self._ligne(devis=self.devis_b.id)
+        r_absent = self._ligne(devis=999999999)
+        self._assert_comme_absent(r, r_absent, 'devis', self.devis_b.id)
+        self.assertFalse(
+            LigneDevis.objects.filter(devis=self.devis_b).exists())
+
+    def test_enf17_devis_client_lead_entite_etrangers_400(self):
+        from apps.crm.models import Lead
+        from apps.entites.models import Entite
+        lead_b = Lead.objects.create(company=self.co_b, nom='Lead', prenom='B')
+        entite_b = Entite.objects.create(
+            company=self.co_b, nom='Entité B', code='ENF17-B')
+        url = '/api/django/ventes/devis/'
+        r = self.api.post(url, {'client': self.client_b.id, 'taux_tva': '20'},
+                          format='json')
+        r_absent = self.api.post(url, {'client': 999999999, 'taux_tva': '20'},
+                                 format='json')
+        self._assert_comme_absent(r, r_absent, 'client', self.client_b.id)
+        for champ, etranger in (('client', self.client_b), ('lead', lead_b),
+                                ('entite', entite_b)):
+            with self.subTest(champ=champ):
+                r = self.api.patch(f'{url}{self.devis_a.id}/',
+                                   {champ: etranger.id}, format='json')
+                r_absent = self.api.patch(f'{url}{self.devis_a.id}/',
+                                          {champ: 999999999}, format='json')
+                self._assert_comme_absent(r, r_absent, champ, etranger.id)
+        self.devis_a.refresh_from_db()
+        self.assertEqual(self.devis_a.client_id, self.client_a.id)
+        self.assertIsNone(self.devis_a.lead_id)
+        self.assertIsNone(self.devis_a.entite_id)
+
+    def test_enf17_serialiseurs_devis_et_listes_bornes(self):
+        from apps.crm.models import Lead
+        from apps.entites.models import Entite
+        from apps.ventes.serializers import (
+            DevisSerializer, LignePrixListeSerializer,
+            RegleListePrixSerializer,
+        )
+        lead_a = Lead.objects.create(company=self.co_a, nom='Lead', prenom='A')
+        lead_b = Lead.objects.create(company=self.co_b, nom='Lead', prenom='B')
+        entite_a = Entite.objects.create(
+            company=self.co_a, nom='Entité A', code='ENF17-A')
+        entite_b = Entite.objects.create(
+            company=self.co_b, nom='Entité B', code='ENF17-B')
+        liste_b = ListePrix.objects.create(company=self.co_b, nom='Gros B')
+        for champ, propre, etranger in (
+                ('client', self.client_a, self.client_b),
+                ('lead', lead_a, lead_b), ('entite', entite_a, entite_b),
+                ('remise_approuvee_par', self.user_a, self.user_b)):
+            self._assert_borne(DevisSerializer, champ, propre, etranger)
+        self._assert_borne(LignePrixListeSerializer, 'liste',
+                           self.liste_a, liste_b)
+        self._assert_borne(LignePrixListeSerializer, 'produit',
+                           self.produit_a, self.produit_b)
+        self._assert_borne(RegleListePrixSerializer, 'liste',
+                           self.liste_a, liste_b)
+
+    def test_enf17_fils_lecture_seule_jamais_ecrits(self):
+        from apps.ventes.serializers import (
+            DevisActivitySerializer, EmailLogSerializer,
+        )
+        ctx = {'request': SimpleNamespace(user=self.user_a)}
+        for cls, champs in ((DevisActivitySerializer, ('devis',)),
+                            (EmailLogSerializer, ('client', 'devis',
+                                                  'facture'))):
+            for champ in champs:
+                with self.subTest(serializer=cls.__name__, champ=champ):
+                    ser = cls(data={champ: self.devis_b.id}, partial=True,
+                              context=ctx)
+                    self.assertTrue(ser.is_valid(), ser.errors)
+                    self.assertNotIn(champ, ser.validated_data)
+                    self.assertIn(champ, cls.same_company_fields)

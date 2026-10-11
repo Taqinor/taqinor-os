@@ -948,8 +948,11 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     """Crée et retourne la prochaine facture de tranche (postée/Émise).
 
     Lève ValueError si le devis n'est pas accepté ou si l'échéancier est complet.
-    ``create_with_reference`` est injecté (utils.references) pour la numérotation
-    sans collision, identique au reste du module ventes.
+    ``create_with_reference`` reste dans la signature (appelants inchangés)
+    mais n'est plus appelé : ATOT27 (D-ATOT-5) — la tranche naît sous la
+    référence provisoire « BROUILLON-<id> » et ``emettre_facture`` lui
+    attribue le numéro légal de la série configurée, dans la même
+    transaction (même geste que les autres portes).
 
     AUD101 — la tranche naît BROUILLON puis passe par LE service d'émission
     (``domain.facturation_ops.emettre_facture``). C'était le plus grave des
@@ -1045,13 +1048,10 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     from apps.ventes.domain.facturation_ops import (
         EmissionRefusee, emettre_facture,
     )
-    from apps.ventes.utils.company_settings import numbering_config
-    cfg = numbering_config(company, 'facture')
+    from apps.ventes.utils.company_settings import create_provisoire
     try:
         with transaction.atomic():
-            facture = create_with_reference(
-                Facture, cfg['prefix'], company, _create,
-                padding=cfg['padding'], period=cfg['period'])
+            facture = create_provisoire(_create)
             emettre_facture(facture, user=user, source='echeancier_tranche')
     except EmissionRefusee as exc:
         # CIQ217 — un refus d'émission (p. ex. client entreprise sans ICE)

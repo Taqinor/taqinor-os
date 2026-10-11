@@ -10,6 +10,7 @@ import {
   Switch, toast,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
+import { toutesLesPages } from './advanced/shared.js'
 
 /* ============================================================================
    WIR70 — Panneau « Détails » d'un document GED : timeline + rapport ACL.
@@ -75,7 +76,8 @@ export default function GedDocumentInsights({ document, onClose }) {
     gedApi.getPermissionsEffectives(document.id)
       .then((r) => setAcl(toArray(r.data)))
       .catch(() => setAcl([]))
-    gedApi.getAcls({ document: document.id })
+    // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
+    toutesLesPages(gedApi.getAcls, { document: document.id })
       .then((r) => setEntries(toArray(r.data)))
       .catch(() => setEntries([]))
   }

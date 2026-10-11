@@ -4,16 +4,6 @@
 # (pure increment) or select_for_update() (read-decide-write), do not append.
 # Baseline captured 2026-07-13; many of these are non-concurrent single-actor
 # writes or string/path fields caught by the coarse v1 heuristic.
-backend/django_core/apps/stock/services.py::alimenter_lot_entrepot
-backend/django_core/apps/stock/services.py::annuler_reception_confirmee
-backend/django_core/apps/stock/services.py::confirm_reception_fournisseur
-backend/django_core/apps/stock/services.py::credit_emplacement_destination
-backend/django_core/apps/stock/services.py::generer_bcf_reappro
-backend/django_core/apps/stock/services.py::imputer_avoir_fournisseur
-backend/django_core/apps/stock/services.py::remplacer_composant_masse
-backend/django_core/apps/stock/services.py::resoudre_exception_facture
-backend/django_core/apps/stock/services.py::reviser_bcf
-backend/django_core/apps/stock/services.py::sortir_lot_entrepot
 
 # ASTK53 - controles de statut hors verrou, PRE-EXISTANTS (releve 2026-10-07), hors stock : CONSTATES, pas approuves ; a corriger par leur proprietaire (select_for_update + relecture du statut dans atomic()).
 backend/django_core/apps/installations/services.py::valider_retour_materiel

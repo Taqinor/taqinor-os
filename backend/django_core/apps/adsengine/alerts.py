@@ -181,7 +181,8 @@ def deep_link(name):
     return base + DEEP_LINKS.get(name, DEEP_LINKS['dashboard'])
 
 
-# 10 gabarits (AACQ7 : + coût par lead ; AACQ22 : + alerte de règle générique). ``body`` = cause racine + recommandation (une phrase chacune) ;
+# 10 gabarits (AACQ7 : + coût par lead ; AACQ22 : + alerte de règle générique).
+# ``body`` = cause racine + recommandation (une phrase chacune) ;
 # ``severity`` pilote emoji + label + cooldown ; ``link`` = destination du deep
 # link ; ``cta`` = libellé de l'appel à l'action.
 WA_TEMPLATES = {

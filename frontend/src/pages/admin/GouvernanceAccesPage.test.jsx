@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../design/ThemeProvider'
+// PACT13 : la forme serveur vient du contrat partagé, jamais d'un mock écrit à la main.
+import REVUE_ACCES from '../../../../backend/django_core/apps/roles/contract_samples/revue_acces.json'
 
 /* WIR135 — l'écran Gouvernance des accès lance une campagne, atteste/révoque un
    item, liste les règles SoD + violations, et lit le rapport de certification. */
@@ -21,7 +23,7 @@ const H = vi.hoisted(() => ({
   sodList: vi.fn(() => Promise.resolve({ data: [] })),
   sodViolations: vi.fn(() => Promise.resolve({ data: [{ user: 5, libelle: 'Achat ⊗ Paiement' }] })),
   sodCreate: vi.fn(() => Promise.resolve({ data: {} })),
-  revueAcces: vi.fn(() => Promise.resolve({ data: [{ username: 'sami', role: 'Commercial', last_login: '2026-07-01T09:00:00Z' }] })),
+  revueAcces: vi.fn(),
 }))
 vi.mock('../../api/accessReviewApi', () => ({
   default: {
@@ -35,7 +37,10 @@ import GouvernanceAccesPage from './GouvernanceAccesPage'
 
 const renderPage = () => render(<ThemeProvider><GouvernanceAccesPage /></ThemeProvider>)
 
-beforeEach(() => Object.values(H).forEach((f) => f.mockClear()))
+beforeEach(() => {
+  Object.values(H).forEach((f) => f.mockClear())
+  H.revueAcces.mockImplementation(() => Promise.resolve({ data: { ...REVUE_ACCES.exemple } }))
+})
 afterEach(() => cleanup())
 
 describe('WIR135 GouvernanceAccesPage', () => {
@@ -54,6 +59,29 @@ describe('WIR135 GouvernanceAccesPage', () => {
     fireEvent.click(await screen.findByText('Révoquer'))
     await waitFor(() => expect(H.attester).toHaveBeenCalledWith(1,
       expect.objectContaining({ item: 10, decision: 'revoque' })))
+  })
+
+  it('lit TOUTES les pages des campagnes et des règles SoD (51 objets ⇒ 51 lignes)', async () => {
+    const campagnes = Array.from({ length: 51 }, (_, i) => ({
+      id: i + 1, nom: `Camp ${i + 1}`, statut: 'ouverte', items: [],
+    }))
+    const regles = Array.from({ length: 51 }, (_, i) => ({
+      id: i + 1, permission_a: `a${i}`, permission_b: `b${i}`, severite: 'info',
+    }))
+    const paginer = (tout) => ({ page = 1 } = {}) => Promise.resolve({ data: {
+      count: 51,
+      next: page === 1 ? 'http://x/?page=2' : null,
+      results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+    } })
+    H.campList.mockImplementation(paginer(campagnes))
+    H.sodList.mockImplementation(paginer(regles))
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByText('Camp 51')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: /Règles SoD/ }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Supprimer la règle' })).toHaveLength(51))
+    H.campList.mockImplementation(() => Promise.resolve({ data: [] }))
+    H.sodList.mockImplementation(() => Promise.resolve({ data: [] }))
   })
 
   it('affiche les violations SoD', async () => {

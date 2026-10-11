@@ -3,16 +3,24 @@
 ``company`` et ``created_by`` sont forcés côté serveur. ``resultat`` (recette) et
 ``ecart_pmax_pct``/``defaut_detecte`` (I-V) sont calculés côté serveur, jamais
 acceptés du corps. Aucun prix exposé.
+
+ENF17 — chaque FK inscriptible (chantier, devis, recette) est BORNÉE à la
+société de la requête (``SameCompanyFKSerializerMixin``) : l'id d'une autre
+société reçoit la réponse d'un id absent (400 « objet inexistant »).
 """
 from rest_framework import serializers
+
+from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
     CommissioningTest, IVCurveCapture, AsBuiltPack, AttestationConformite,
     TestPerformanceReception, AttestationRE)
 
 
-class IVCurveCaptureSerializer(serializers.ModelSerializer):
+class IVCurveCaptureSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """FG275 — mesure I-V par string ; écart & défaut calculés serveur."""
+    same_company_fields = ('recette',)
 
     class Meta:
         model = IVCurveCapture
@@ -29,8 +37,10 @@ class IVCurveCaptureSerializer(serializers.ModelSerializer):
         ]
 
 
-class CommissioningTestSerializer(serializers.ModelSerializer):
+class CommissioningTestSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
     """FG274 — fiche de recette IEC 62446 ; ``resultat`` calculé serveur."""
+    same_company_fields = ('chantier', 'devis')
     iv_curves = IVCurveCaptureSerializer(many=True, read_only=True)
     resultat_label = serializers.CharField(
         source='get_resultat_display', read_only=True)
@@ -52,8 +62,10 @@ class CommissioningTestSerializer(serializers.ModelSerializer):
         ]
 
 
-class AsBuiltPackSerializer(serializers.ModelSerializer):
+class AsBuiltPackSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
     """FG276 — pack documentaire as-built ; ``company`` forcée serveur."""
+    same_company_fields = ('chantier', 'devis', 'recette')
 
     class Meta:
         model = AsBuiltPack
@@ -64,8 +76,10 @@ class AsBuiltPackSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class AttestationConformiteSerializer(serializers.ModelSerializer):
+class AttestationConformiteSerializer(SameCompanyFKSerializerMixin,
+                                      serializers.ModelSerializer):
     """FG277 — attestation de conformité électrique."""
+    same_company_fields = ('chantier', 'recette')
     statut_label = serializers.CharField(
         source='get_statut_display', read_only=True)
 
@@ -82,8 +96,10 @@ class AttestationConformiteSerializer(serializers.ModelSerializer):
         ]
 
 
-class TestPerformanceReceptionSerializer(serializers.ModelSerializer):
+class TestPerformanceReceptionSerializer(SameCompanyFKSerializerMixin,
+                                         serializers.ModelSerializer):
     """FG278 — PR de réception ; pr_mesure/ecart/verdict dérivés serveur."""
+    same_company_fields = ('chantier', 'recette')
     verdict_label = serializers.CharField(
         source='get_verdict_display', read_only=True)
 
@@ -103,8 +119,10 @@ class TestPerformanceReceptionSerializer(serializers.ModelSerializer):
         ]
 
 
-class AttestationRESerializer(serializers.ModelSerializer):
+class AttestationRESerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """FG287 — attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
+    same_company_fields = ('chantier',)
     statut_label = serializers.CharField(
         source='get_statut_display', read_only=True)
 

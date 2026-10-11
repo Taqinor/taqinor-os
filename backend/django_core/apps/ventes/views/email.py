@@ -3,7 +3,7 @@ from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.response import Response
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, record_stock_movement,
 )

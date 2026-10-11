@@ -52,13 +52,15 @@ class SandboxEnvironment(TenantModel):
         ECHEC = 'echec', 'Échec'
 
     sandbox_company = models.ForeignKey(
-        'authentication.Company', on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: le tenant sandbox peut être purgé indépendamment de cet enregistrement historique
+        # on_delete: le tenant sandbox peut être purgé indépendamment de cet enregistrement historique
+        'authentication.Company', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='sandbox_environments_cibles')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EN_CREATION)
     date_expiration = models.DateTimeField()
     cree_par = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: l'environnement sandbox reste traçable même si son créateur est supprimé
+        # on_delete: l'environnement sandbox reste traçable même si son créateur est supprimé
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='sandbox_environments_crees')
     prolongations_count = models.PositiveSmallIntegerField(default=0)
     rappel_j3_envoye = models.BooleanField(default=False)
@@ -84,7 +86,8 @@ class ConfigPackage(TenantModel):
     contenu = models.JSONField(default=dict, blank=True)
     contenu_purge = models.BooleanField(default=False)
     cree_par = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: l'historique d'export reste traçable même si son auteur est supprimé
+        # on_delete: l'historique d'export reste traçable même si son auteur est supprimé
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='config_packages_crees')
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -110,7 +113,8 @@ class ConfigPackageApplication(TenantModel):
     action = models.CharField(max_length=20, choices=Action.choices)
     diff = models.JSONField(default=dict, blank=True)
     applique_par = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: le journal d'application reste traçable même si l'acteur est supprimé
+        # on_delete: le journal d'application reste traçable même si l'acteur est supprimé
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='config_package_applications')
     date_action = models.DateTimeField(auto_now_add=True)
 
@@ -130,7 +134,8 @@ class EvenementUsage(TenantModel):
     module = models.CharField(max_length=60)
     ecran = models.CharField(max_length=120, blank=True, default='')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: l'agrégat d'adoption reste utile même après suppression de l'utilisateur (anonymisé)
+        # on_delete: l'agrégat d'adoption reste utile même après suppression de l'utilisateur (anonymisé)
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='evenements_usage')
     horodatage = models.DateTimeField(auto_now_add=True)
 
@@ -158,11 +163,13 @@ class SessionImpersonation(TenantModel):
     """
 
     utilisateur_cible = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: la session n'a plus d'objet sans son utilisateur cible (composition)
+        # on_delete: la session n'a plus d'objet sans son utilisateur cible (composition)
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='impersonations_subies',
         verbose_name='Utilisateur assisté')
     initiee_par = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la trace d'audit survit à la suppression du compte support
+        # on_delete: la trace d'audit survit à la suppression du compte support
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='impersonations_initiees',
         verbose_name='Demandée par (support)')
     motif = models.TextField(
@@ -173,7 +180,8 @@ class SessionImpersonation(TenantModel):
         default=False, verbose_name='Consentement donné')
     consentement_le = models.DateTimeField(null=True, blank=True)
     consentement_par = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la preuve de consentement reste lisible même si son auteur est supprimé
+        # on_delete: la preuve de consentement reste lisible même si son auteur est supprimé
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='impersonations_consenties',
         verbose_name='Consentement donné par')
     refusee = models.BooleanField(default=False, verbose_name='Refusée')
@@ -267,12 +275,14 @@ class DemandeInscription(models.Model):
     notes = models.TextField(blank=True, default='', verbose_name='Notes')
     traite_le = models.DateTimeField(null=True, blank=True)
     traite_par = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la décision reste tracée même si son auteur est supprimé
+        # on_delete: la décision reste tracée même si son auteur est supprimé
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='demandes_inscription_traitees',
         verbose_name='Traitée par')
     #: Société effectivement créée à l'approbation (N100b), si elle l'a été.
     company_creee = models.ForeignKey(
-        'authentication.Company', on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la demande historique survit à la fermeture du tenant créé
+        # on_delete: la demande historique survit à la fermeture du tenant créé
+        'authentication.Company', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='demandes_inscription', verbose_name='Société créée')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -384,7 +394,8 @@ class AnnonceProduit(models.Model):
         'roles.Role', blank=True, related_name='annonces_produit_plateforme',
         verbose_name='Rôles ciblés')
     auteur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: l'annonce publiée survit à la suppression de son auteur
+        # on_delete: l'annonce publiée survit à la suppression de son auteur
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='annonces_produit_publiees', verbose_name='Publiée par')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -406,10 +417,12 @@ class LectureAnnonce(models.Model):
     (utilisateur, annonce) est unique : marquer lu deux fois est sans effet."""
 
     annonce = models.ForeignKey(
-        AnnonceProduit, on_delete=models.CASCADE,  # on_delete: composition — un accusé de lecture n'a aucun sens sans son annonce
+        # on_delete: composition — un accusé de lecture n'a aucun sens sans son annonce
+        AnnonceProduit, on_delete=models.CASCADE,
         related_name='lectures', verbose_name='Annonce')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition — l'accusé disparaît avec le compte qui l'a posé
+        # on_delete: composition — l'accusé disparaît avec le compte qui l'a posé
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='lectures_annonces_produit', verbose_name='Utilisateur')
     lu_le = models.DateTimeField(auto_now_add=True, verbose_name='Lu le')
 
@@ -428,7 +441,8 @@ class AdminOpsSettings(TenantModel):
     comportement documenté existant (jamais restrictif par défaut)."""
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: réglage 1-1, disparaît avec la société (scope multi-société)
+        # on_delete: réglage 1-1, disparaît avec la société (scope multi-société)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='adminops_settings', verbose_name='Société')
     sandbox_duree_defaut_jours = models.PositiveSmallIntegerField(default=14)
     sandbox_grace_purge_jours = models.PositiveSmallIntegerField(default=7)

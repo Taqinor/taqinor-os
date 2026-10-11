@@ -473,17 +473,28 @@ ARTEFACTS_ONDULEUR_SKUS = [
 OSP_DEBITS_M3H = [0, 12, 24, 30, 36, 39]
 # (nom, sku, cv, kw, [hmt aux débits ci-dessus])
 OSP = [
-    ('Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)',    'PMP-OSP-30-8',  '10',   '7.5',  [91, 85, 70, 60, 43, 34]),
-    ('Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3", 380V)', 'PMP-OSP-30-11', '12.5', '9.3',  [125, 117, 97, 83, 59, 46]),
-    ('Pompe immergée OSP 30/13 — 15 CV / 11 kW (3", 380V)',    'PMP-OSP-30-13', '15',   '11',   [148, 138, 114, 98, 70, 55]),
-    ('Pompe immergée OSP 30/15 — 17.5 CV / 13 kW (3", 380V)',  'PMP-OSP-30-15', '17.5', '13',   [171, 159, 132, 113, 81, 63]),
-    ('Pompe immergée OSP 30/16 — 20 CV / 15 kW (3", 380V)',    'PMP-OSP-30-16', '20',   '15',   [182, 170, 141, 120, 86, 67]),
-    ('Pompe immergée OSP 30/17 — 20 CV / 15 kW (3", 380V)',    'PMP-OSP-30-17', '20',   '15',   [194, 180, 150, 128, 92, 71]),
-    ('Pompe immergée OSP 30/20 — 25 CV / 18.5 kW (3", 380V)',  'PMP-OSP-30-20', '25',   '18.5', [228, 212, 176, 150, 108, 84]),
-    ('Pompe immergée OSP 30/21 — 25 CV / 18.5 kW (3", 380V)',  'PMP-OSP-30-21', '25',   '18.5', [239, 223, 185, 158, 113, 88]),
-    ('Pompe immergée OSP 30/25 — 30 CV / 22 kW (3", 380V)',    'PMP-OSP-30-25', '30',   '22',   [285, 265, 220, 188, 135, 105]),
-    ('Pompe immergée OSP 30/26 — 30 CV / 22 kW (3", 380V)',    'PMP-OSP-30-26', '30',   '22',   [296, 276, 229, 195, 140, 109]),
-    ('Pompe immergée OSP 30/35 — 40 CV / 30 kW (3", 380V)',    'PMP-OSP-30-35', '40',   '30',   [399, 371, 308, 263, 189, 147]),
+    ('Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)',    'PMP-OSP-30-8',  '10',   '7.5',  [91, 85, 70, 60, 43,
+                                                                                                 34]),
+    ('Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3", 380V)', 'PMP-OSP-30-11', '12.5', '9.3',  [125, 117, 97, 83, 59,
+                                                                                                 46]),
+    ('Pompe immergée OSP 30/13 — 15 CV / 11 kW (3", 380V)',    'PMP-OSP-30-13', '15',   '11',   [148, 138, 114, 98, 70,
+                                                                                                 55]),
+    ('Pompe immergée OSP 30/15 — 17.5 CV / 13 kW (3", 380V)',  'PMP-OSP-30-15', '17.5', '13',   [171, 159, 132, 113,
+                                                                                                 81, 63]),
+    ('Pompe immergée OSP 30/16 — 20 CV / 15 kW (3", 380V)',    'PMP-OSP-30-16', '20',   '15',   [182, 170, 141, 120,
+                                                                                                 86, 67]),
+    ('Pompe immergée OSP 30/17 — 20 CV / 15 kW (3", 380V)',    'PMP-OSP-30-17', '20',   '15',   [194, 180, 150, 128,
+                                                                                                 92, 71]),
+    ('Pompe immergée OSP 30/20 — 25 CV / 18.5 kW (3", 380V)',  'PMP-OSP-30-20', '25',   '18.5', [228, 212, 176, 150,
+                                                                                                 108, 84]),
+    ('Pompe immergée OSP 30/21 — 25 CV / 18.5 kW (3", 380V)',  'PMP-OSP-30-21', '25',   '18.5', [239, 223, 185, 158,
+                                                                                                 113, 88]),
+    ('Pompe immergée OSP 30/25 — 30 CV / 22 kW (3", 380V)',    'PMP-OSP-30-25', '30',   '22',   [285, 265, 220, 188,
+                                                                                                 135, 105]),
+    ('Pompe immergée OSP 30/26 — 30 CV / 22 kW (3", 380V)',    'PMP-OSP-30-26', '30',   '22',   [296, 276, 229, 195,
+                                                                                                 140, 109]),
+    ('Pompe immergée OSP 30/35 — 40 CV / 30 kW (3", 380V)',    'PMP-OSP-30-35', '40',   '30',   [399, 371, 308, 263,
+                                                                                                 189, 147]),
 ]
 
 # ── PVG3 — Câbles & protections DC/AC (prix vides, approuvé fondateur
@@ -1121,7 +1132,8 @@ MODELE_SUPPOSE_PVG4 = {
     # SUN-3.6/5/6/7.6/8K-SG05LP1-EU — le 5 kW y figure nommément. Suffixe
     # « (-SM2) » laissé en supposition (comme avant) : la datasheet officielle
     # ne montre que « -EU » sans variante de révision.
-    'OND-H-DEY-5M': 'Deye SUN-5K-SG05LP1-EU(-SM2)',      # deyeinverter.com datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf
+    # deyeinverter.com datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf
+    'OND-H-DEY-5M': 'Deye SUN-5K-SG05LP1-EU(-SM2)',
     # G4 — INCHANGÉ : la gamme SG05LP1 confirmée le 15/08 s'arrête à 8 kW
     # (famille SUN-3.6/5/6/7.6/8K-SG05LP1-EU, même datasheet 230731 ci-dessus).
     # Une révision « AM2-P » plus récente (manual_sun-3.6-10k-sg05lp1-eu-am2-p
@@ -1138,7 +1150,8 @@ MODELE_SUPPOSE_PVG4 = {
     # LV ») : les identifications SG01HP3 « haute tension » (PVG4, supposées
     # depuis solarhouse.bg/pretapower) étaient FAUSSES — le parc réel est la
     # famille basse tension SG05LP3 14-20K, même datasheet que le 10T.
-    'OND-H-DEY-15T': 'Deye SUN-15K-SG05LP3-EU-SM2',      # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
+    # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
+    'OND-H-DEY-15T': 'Deye SUN-15K-SG05LP3-EU-SM2',
     'OND-H-DEY-20T': 'Deye SUN-20K-SG05LP3-EU-SM2',      # même datasheet, colonne 20K
     'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
     # PVCOMPAT (2026-08-21) — tranché entre Pro et G2 par les fiches

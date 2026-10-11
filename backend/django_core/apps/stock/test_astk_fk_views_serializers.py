@@ -214,3 +214,35 @@ class FkViewsSerializersTests(TestCase):
             reference='RET-ASTK7-0001').exists())
         self.pa.refresh_from_db()
         self.assertEqual(self.pa.quantite_stock, 50)
+
+    # --- ENF17 : FK en lecture seule des sérialiseurs restants ---------------
+    def test_enf17_fk_lecture_seule_jamais_ecrites(self):
+        """Un id de B posté sur ces FK en lecture seule n'est jamais écrit ;
+        chaque sérialiseur porte le mixin qui les bornerait sinon."""
+        from types import SimpleNamespace
+
+        from core.serializers import CompanyScopedRelationsMixin
+        from apps.stock.serializers import (
+            LotEntrepotSerializer, RevisionKitSerializer,
+        )
+        from apps.stock.views.budget_departement import (
+            EngagementBudgetSerializer,
+        )
+        from apps.stock.views.catalogue_achat import CatalogueAchatSerializer
+
+        ctx = {'request': SimpleNamespace(user=self.resp_a)}
+        cas = (
+            (RevisionKitSerializer, {'kit': self.pb.pk, 'user': 1}),
+            (LotEntrepotSerializer, {'produit': self.pb.pk,
+                                     'emplacement': self.bin_b.emplacement_id}),
+            (EngagementBudgetSerializer, {'budget': 1, 'demande_achat': 1,
+                                          'bon_commande': 1}),
+            (CatalogueAchatSerializer, {'categorie': self.cat_b.pk}),
+        )
+        for cls, corps in cas:
+            with self.subTest(serializer=cls.__name__):
+                self.assertTrue(issubclass(cls, CompanyScopedRelationsMixin))
+                ser = cls(data=corps, partial=True, context=ctx)
+                self.assertTrue(ser.is_valid(), ser.errors)
+                for champ in corps:
+                    self.assertNotIn(champ, ser.validated_data)

@@ -528,7 +528,7 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
     if (!stamp) { toast.error('Choisissez un tampon.'); return }
     setSaving(true)
     try {
-      const versions = await gedApi.getVersions({ document: documentId })
+      const versions = await toutesLesPages(gedApi.getVersions, { document: documentId })
       const rows = unpage(versions.data)
       const derniere = rows.reduce(
         (best, v) => (!best || v.version > best.version ? v : best), null)

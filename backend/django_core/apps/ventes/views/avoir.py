@@ -1,12 +1,12 @@
 from drf_spectacular.utils import extend_schema_view, extend_schema
 from ..openapi_params import qint
-from django.db import transaction  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
+from django.db import transaction
+from django.http import HttpResponse
 from django.utils import timezone  # noqa: F401
-from rest_framework import viewsets, status, filters  # noqa: F401
+from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
-from apps.stock.services import (  # noqa: F401
+from rest_framework.response import Response
+from apps.stock.services import (
     mouvement_type_sortie, record_stock_movement,
 )
 from ..models import (  # noqa: F401
@@ -30,7 +30,7 @@ from ..serializers_facturation import (  # noqa: F401
     NoteDebitSerializer,
     RelanceLogSerializer,
 )
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,

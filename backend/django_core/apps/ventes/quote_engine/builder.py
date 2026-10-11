@@ -1206,13 +1206,18 @@ def _ville_du_devis(devis, etude):
 MODES_CGV_CI = ("commercial", "industriel")
 
 
-def _marqueurs_cgv_ci(devis, tva_note):
+def _marqueurs_cgv_ci(devis, tva_note, langue=None):
     """CIQ218 — valeurs des marqueurs ``{echeancier}`` (les N jalons de
     l'échéancier, CIQ212), ``{retenue}`` (retenue de garantie DEMANDÉE par
     le client, CIQ214 ; vide sinon) et ``{tva_note}``. Aucun chiffre inventé :
-    tout est relu sur le devis."""
+    tout est relu sur le devis.
+
+    ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — ``langue`` traduit les libellés PAR
+    DÉFAUT des jalons (``TRANCHE_LABELS`` → ``cgv_jalon_*``), l'unité et la
+    retenue ; un libellé renommé par la société reste tel quel ; français :
+    le texte d'hier, octet pour octet."""
     from apps.ventes.utils.echeancier import (
-        UNITE_MONTANT, tranches_normalisees,
+        TRANCHE_LABELS, UNITE_MONTANT, tranches_normalisees,
     )
     jalons = []
     try:
@@ -1224,13 +1229,20 @@ def _marqueurs_cgv_ci(devis, tva_note):
             valeur = format(Decimal(str(t.get("valeur"))).normalize(), "f")
         except (ArithmeticError, ValueError, TypeError):
             valeur = str(t.get("valeur"))
-        unite = "MAD TTC" if t.get("unite") == UNITE_MONTANT else "%"
-        jalons.append(f"{t.get('libelle') or t.get('key')} : {valeur} {unite}")
+        jalons.append(_i18n.libelle("cgv_jalon_format", langue).format(
+            libelle=(_i18n.libelle(f"cgv_jalon_{t.get('key')}", langue)
+                     if (t.get("libelle") or t.get("key"))
+                     == TRANCHE_LABELS.get(t.get("key"))
+                     and f"cgv_jalon_{t.get('key')}" in _i18n.LIBELLES
+                     else t.get("libelle") or t.get("key")),
+            valeur=valeur, unite=(_i18n.libelle("cgv_mad_ttc", langue)
+                                  if t.get("unite") == UNITE_MONTANT
+                                  else "%")))
     retenue = ""
     rg = getattr(devis, "retenue_garantie", None)
     if isinstance(rg, dict) and rg.get("taux_pct") not in (None, ""):
-        retenue = (f"retenue de garantie de {rg['taux_pct']} %, libérée à la "
-                   "réception définitive")
+        retenue = _i18n.libelle("cgv_retenue", langue).format(
+            taux=rg["taux_pct"])
     return {"echeancier": " ; ".join(jalons), "retenue": retenue,
             "tva_note": tva_note or ""}
 
@@ -1327,7 +1339,7 @@ def _entreprise_avec_logo(devis, entreprise, pdf_options):
     return entreprise
 
 
-def cgv_ci_du_devis(devis, tva_note=""):
+def cgv_ci_du_devis(devis, tva_note="", langue=None):
     """CIQ218 — les conditions générales C&I d'un devis commercial ou
     industriel, marqueurs substitués, ou ``None``.
 
@@ -1339,7 +1351,7 @@ def cgv_ci_du_devis(devis, tva_note=""):
     source = _source_cgv_ci(devis)
     if not source or not isinstance(source.get("bullets"), list):
         return None
-    valeurs = _marqueurs_cgv_ci(devis, tva_note)
+    valeurs = _marqueurs_cgv_ci(devis, tva_note, langue)
     puces = []
     for b in source["bullets"]:
         texte = str(b)
@@ -4357,7 +4369,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ── CIQ218 — conditions générales C&I PAR MODE (texte de la société relu
     # par un juriste, gelé à l'envoi). Additif : clé posée seulement quand un
     # texte existe → tout autre devis reste octet-identique.
-    _cgv_ci = cgv_ci_du_devis(devis, data.get("tva_note"))
+    _cgv_ci = cgv_ci_du_devis(devis, data.get("tva_note"),
+                              data.get("langue_sortie"))
     if _cgv_ci:
         data["cgv_ci"] = _cgv_ci
         data.update(_titre_cgv_ci(devis))  # APDF12 — titre de la variante

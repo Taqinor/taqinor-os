@@ -14,7 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const src = readFileSync(path.join(__dirname, 'ReceptionsFournisseur.jsx'), 'utf8')
 
 test('la date de réception vaut AUJOURD’HUI par défaut', () => {
-  assert.match(src, /useState\(\(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\)/)
+  assert.match(src, /useState\(\(\) => todayLocalIso\(\)\)/)
   assert.doesNotMatch(src, /const \[dateReception, setDateReception\] = useState\(''\)/)
 })
 

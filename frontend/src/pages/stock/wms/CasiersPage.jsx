@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '../../../ui'
 import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import entrepotCasiersApi from '../../../features/stock/api/entrepotCasiersApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { formatDateTime } from '../../../lib/format'
 import {
   messageServeur, messageServeurBlob, ouvrirBlob,
@@ -42,6 +43,12 @@ const TD = ({ children, ...p }) => <td className="px-2 py-1.5 text-sm" {...p}>{c
 
 const selectCls = 'h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm'
 
+// Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1 : la
+// réponse est ramenée à la forme `{ data }` des appels bruts.
+const toutesLesPages = (appel, params = {}) => fetchAllPages(
+  (page, o) => appel({ ...params, page, ...o }).then((r) => r?.data),
+).then((data) => ({ data }))
+
 export default function CasiersPage() {
   const [seuils, setSeuils] = useState([])
   const [taches, setTaches] = useState([])
@@ -60,8 +67,8 @@ export default function CasiersPage() {
 
   const charger = useCallback(async () => {
     const [a, b, c, d] = await Promise.allSettled([
-      entrepotCasiersApi.listSeuils(),
-      entrepotCasiersApi.listTaches({ statut: 'a_faire' }),
+      toutesLesPages(entrepotCasiersApi.listSeuils),
+      toutesLesPages(entrepotCasiersApi.listTaches, { statut: 'a_faire' }),
       entrepotCasiersApi.casiersSousSeuil(),
       entrepotCasiersApi.reslotting(),
     ])
@@ -75,11 +82,11 @@ export default function CasiersPage() {
 
   useEffect(() => {
     Promise.resolve().then(charger)
-    entrepotCasiersApi.listCasiers()
+    toutesLesPages(entrepotCasiersApi.listCasiers)
       .then((r) => setCasiers(liste(r.data))).catch(() => {})
-    entrepotCasiersApi.listEmplacements()
+    toutesLesPages(entrepotCasiersApi.listEmplacements)
       .then((r) => setEmplacements(liste(r.data))).catch(() => {})
-    entrepotCasiersApi.listProduits()
+    toutesLesPages(entrepotCasiersApi.listProduits)
       .then((r) => setProduits(liste(r.data))).catch(() => {})
   }, [charger])
 

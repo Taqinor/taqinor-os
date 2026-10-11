@@ -14,11 +14,12 @@ import { formatMAD } from '../../lib/format'
 import { openPdfBlob } from '../../utils/pdfBlob'
 // Mêmes modes que la modale d'encaissement (une seule liste).
 import { MODES_PAIEMENT } from './modesPaiement'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 
 const MAX_LIGNES = 5
 const LIGNES_DEFAUT = 3
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => todayLocalIso()
 const ligneVide = () => ({ montant: '', date: todayIso(), mode: 'virement', reference: '' })
 const num = (v) => {
   const n = parseFloat(String(v ?? '').replace(',', '.'))

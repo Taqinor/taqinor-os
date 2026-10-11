@@ -13,6 +13,8 @@ plus a strong "Signez en ligne" call to action.
 """
 from __future__ import annotations
 
+import re
+
 
 def _link(url: str) -> str:
     """Normalise a bare 'taqinor.ma/...' link into an href."""
@@ -201,7 +203,7 @@ def _bloc_paiement(d, ctx, ident) -> str:
         cases = (case(rep.get("pct_a"), rep.get("acompte"), l_ac)
                  + case(rep.get("pct_s2"), rep.get("solde2"), l_sd2))
     rib = _ligne_rib(d)
-    rib_html = (f'<div class="p3-pay-rib">Virement bancaire&nbsp;: {rib}</div>'
+    rib_html = (f'<div class="p3-pay-rib">{L("res_virement", "Virement bancaire&nbsp;:")} {rib}</div>'
                 if rib else "")
     return (
         "<style>"
@@ -225,11 +227,43 @@ def _bloc_paiement(d, ctx, ident) -> str:
         '</div>')
 
 
+#: ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — phrase de méthode du builder (QF3)
+#: → clé du catalogue, par modèle RÉELLEMENT employé.
+_CLES_METHODE = {"factures": "res_methode_factures",
+                 "horaire": "res_methode_horaire",
+                 "estimation": "res_methode_estimation"}
+_EXEMPLE_FR = re.compile(r"Facture actuelle ≈ (.+?) MAD/an → avec solaire ≈ "
+                         r"(.+?) MAD/an → économie ≈ (.+?) MAD/an")
+
+
+def _methode_traduite(d, sm):
+    """(phrase de méthode, exemple) du bloc QF3 dans la langue du document.
+
+    Français : les textes du builder, tels quels. En / ar : la phrase du
+    modèle employé (``savings_method['model']``) et l'exemple recomposé avec
+    les nombres que le builder a ÉCRITS (aucun chiffre reformaté) ; un texte
+    hors catalogue reste tel quel."""
+    from . import theme
+    from .cover import libelle_cat
+    ligne = (sm.get("ligne_methode") or "").strip()
+    exemple = (sm.get("exemple") or "").strip()
+    if theme.langue_doc(d) == "fr" or not ligne:
+        return ligne, exemple
+    cle = _CLES_METHODE.get(sm.get("model"))
+    if sm.get("model") == "etude":
+        cle = ("res_methode_etude_corrige" if ligne.startswith(
+            "Économies saisies") else "res_methode_etude")
+    nombres = _EXEMPLE_FR.fullmatch(exemple)
+    return (libelle_cat(d, cle) if cle else ligne,
+            libelle_cat(d, "res_methode_exemple", a=nombres[1], b=nombres[2],
+                        c=nombres[3]) if nombres else exemple)
+
+
 def build(ctx) -> str:
     from . import theme
     # APDF8 — libellés FIXES de la page de confiance (fr : littéral d'origine,
     # octet pour octet ; en/ar : ``i18n_labels``), la fonction de la couverture.
-    from .cover import libelle_fixe as LF
+    from .cover import libelle_cat as LC, libelle_fixe as LF, nom_option
 
     d = ctx["d"]
     C = ctx["C"]
@@ -240,7 +274,8 @@ def build(ctx) -> str:
     brand = ident.get("brand_name") or "TAQINOR"
 
     client_full = (theme.titlecase_name(
-        d.get("client_full") or d.get("client_name")) or "Le client")
+        d.get("client_full") or d.get("client_name"))
+        or LC(d, "res_le_client"))
     # M7 — la validité vient du DEVIS (date_validite, sinon création + réglage
     # société), servie par le builder ; plus de « 30 jours » par défaut.
     validity_days = d.get("validity_days")
@@ -297,8 +332,9 @@ def build(ctx) -> str:
         + LF(d, "res_nos_garanties", "Nos garanties") + '</span>'
         + " &middot; ".join(
             f'<span class="p3-gar-i"><b>{n} {u}</b> — {label}'
-            f'{(" (" + sub + ")") if label == "Performance" else ""}</span>'
-            for n, u, label, sub in theme.warranties_for(d))
+            f'{(" (" + sub + ")") if w[2] == "Performance" else ""}</span>'
+            for w in theme.warranties_for(d)
+            for n, u, label, sub in (theme.garantie_doc(d, w),))
         + '<div class="p3-gar-n">'
         + LF(d, "res_garanties_note",
              "Les garanties fabricant sont attachées au "
@@ -370,9 +406,8 @@ def build(ctx) -> str:
     # conditions, il servait surtout de BOURRAGE vertical à la colonne de gauche
     # — la rangée alignait ses boîtes par chance de contenu, plus par structure.
     sm = d.get("savings_method") or {}
-    sm_line = (sm.get("ligne_methode") or "").strip()
-    sm_ex = (sm.get("exemple") or "").strip()
-    sm_approx = " (approximatif)" if sm.get("approximatif") else ""
+    sm_line, sm_ex = _methode_traduite(d, sm)
+    sm_approx = LC(d, "res_approximatif") if sm.get("approximatif") else ""
     method_html = ""
     if sm_line:
         _v = sm_line
@@ -380,8 +415,8 @@ def build(ctx) -> str:
             _v += f' <b>{sm_ex}{sm_approx}</b>'
         method_html = (
             '<div class="p3-method">'
-            '<span class="p3-method-k">Comment nous calculons vos '
-            'économies</span>'
+            '<span class="p3-method-k">' + LC(d, "res_methode_titre")
+            + '</span>'
             f'<span class="p3-method-v">{_v}</span></div>')
     # QRES61 (fondateur, 2026-07-18) — les hypothèses de calcul quittent le
     # PDF : elles vivent sur la proposition EN LIGNE (page /proposition —
@@ -400,7 +435,7 @@ def build(ctx) -> str:
     if _s_nom:
         _s_tel = (seller.get("telephone") or "").strip()
         _s_v = _s_nom + (f" &middot; {_s_tel}" if _s_tel else "")
-        conditions.append(("Votre conseiller", _s_v))
+        conditions.append((LC(d, "res_votre_conseiller"), _s_v))
     cond_html = "".join(
         f'<div class="p3-cond-row"><span class="p3-cond-k">{k}</span>'
         f'<span class="p3-cond-v">{v}</span></div>'
@@ -413,7 +448,7 @@ def build(ctx) -> str:
     _note_client = (d.get("note_client") or "").strip()
     note_html = (
         '<div class="p3-method p3-note-client">'
-        '<span class="p3-method-k">Note</span>'
+        '<span class="p3-method-k">' + LC(d, "res_note") + '</span>'
         f'<span class="p3-method-v">{_note_client}</span></div>'
         if _note_client else "")
     # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
@@ -430,9 +465,11 @@ def build(ctx) -> str:
         ("1", LF(d, "res_signature_devis", "Signature du devis"),
          LF(d, "res_plus_acompte", f"+ acompte {acompte}%", pct=acompte)),
         ("2", LF(d, "res_visite_technique", "Visite technique"),
-         f"sous {_delai_visite} (indicatif)" if _delai_visite else ""),
+         LC(d, "res_delai_sous", delai=_delai_visite) if _delai_visite
+         else ""),
         ("3", LF(d, "res_installation", "Installation"),
-         f"{_delai_install} (indicatif)" if _delai_install else ""),
+         LC(d, "res_delai_indicatif", delai=_delai_install)
+         if _delai_install else ""),
         ("4", LF(d, "res_mise_en_service", "Mise en service"),
          LF(d, "res_tests_formation", "tests + formation")),
     ]
@@ -473,7 +510,7 @@ def build(ctx) -> str:
     _deux = bool(d.get("deux_options", True))
     _avec_ok = bool(d.get("avec_ok", True))
     # BAT-DIFF — libellé de l'option « avec » fourni par le builder.
-    _libelle_avec = d.get("libelle_avec") or "Avec batterie"
+    _libelle_avec = nom_option(d, "avec")
     if _deux:
         # QRES33/44 — le client coche une option CHIFFRÉE avant de signer
         # (l'ancienne rangée de cases sans prix laissait signer un accord
@@ -490,20 +527,22 @@ def build(ctx) -> str:
         # le serveur ; aucune recommandation ⇒ aucune pastille.
         from ..figures import option_recommandee
         _reco = option_recommandee(d)
-        _mini = '<span class="p3-reco-mini">recommandé</span>'
+        _mini = ('<span class="p3-reco-mini">' + LC(d, "res_recommande_min")
+                 + '</span>')
         accord_pick_html = (
             '<div class="p3-accord-pick">'
             + LF(d, "res_cochez_option", "Cochez votre option :")
             + ''
-            f'<span class="p3-box"></span> Sans batterie — '
-            f'<b>{fmt_mad(_ts)} MAD TTC</b>'
+            f'<span class="p3-box"></span> {nom_option(d, "sans")} — '
+            f'<b>{fmt_mad(_ts)} {LC(d, "cgv_mad_ttc")}</b>'
             + (_mini if _reco == "sans" else "")
             + f'<span class="p3-box"></span> {_libelle_avec} — '
-            f'<b>{fmt_mad(_ta)} MAD TTC</b>'
+            f'<b>{fmt_mad(_ta)} {LC(d, "cgv_mad_ttc")}</b>'
             + (_mini if _reco == "avec" else "")
             + '</div>')
     else:
-        accord_opt_html = (_libelle_avec if _avec_ok else "Sans batterie")
+        accord_opt_html = (_libelle_avec if _avec_ok
+                           else nom_option(d, "sans"))
         accord_pick_html = ""
 
     # Scan-to-sign QR (degrades to the text link if qrcode is unavailable).
@@ -776,7 +815,6 @@ def build(ctx) -> str:
   </div>
 
   <div class="qj" data-w="25"></div>
-  <div class="p3-legal">{legal} &middot; Estimations non contractuelles —
-    hypothèses de calcul détaillées sur votre proposition en ligne.</div>
+  <div class="p3-legal">{legal} &middot; {LC(d, 'res_estimations_nc')}</div>
 </div>
 """

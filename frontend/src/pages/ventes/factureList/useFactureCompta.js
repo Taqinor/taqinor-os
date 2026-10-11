@@ -8,6 +8,7 @@ import api from '../../../api/axios'
 import { downloadXlsx } from '../../../api/importApi'
 import { toast } from '../../../ui'
 import { openPdfBlob } from '../../../utils/pdfBlob'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 // FE-SCA41 — au-delà du seuil (2 000 lignes par défaut, `VENTES_EXPORT_
 // ASYNC_ROW_THRESHOLD` côté serveur), journal-ventes / export-comptable
@@ -68,7 +69,7 @@ export default function useFactureCompta() {
   // de deux window.prompt() successifs.
   const [exportComptableOpen, setExportComptableOpen] = useState(false)
   const [exportStart, setExportStart] = useState(() => new Date().toISOString().slice(0, 8) + '01')
-  const [exportEnd, setExportEnd] = useState(() => new Date().toISOString().slice(0, 10))
+  const [exportEnd, setExportEnd] = useState(() => todayLocalIso())
   const [exportComptableBusy, setExportComptableBusy] = useState(false)
   // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
   // d'erreur ; ceci ajoute juste l'état chargement manquant).

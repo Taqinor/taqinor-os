@@ -7,6 +7,7 @@ création, par les vues dédiées.
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
 from core.models import ApiUsagePlan
 
 from .portees import ALL_SCOPES, SCOPE_CHOICES
@@ -16,8 +17,12 @@ from .models import ApiKey, ServiceAccount, Webhook, WebhookDelivery
 from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
 
-class ApiKeySerializer(serializers.ModelSerializer):
+class ApiKeySerializer(SameCompanyFKSerializerMixin,
+                       serializers.ModelSerializer):
     """Représentation en lecture d'une clé (jamais le secret)."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('created_by',)
     created_by_nom = serializers.SerializerMethodField()
 
     class Meta:
@@ -111,7 +116,12 @@ def scope_catalogue():
     }
 
 
-class WebhookDeliverySerializer(serializers.ModelSerializer):
+class WebhookDeliverySerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('webhook',)
+
     class Meta:
         model = WebhookDelivery
         fields = [

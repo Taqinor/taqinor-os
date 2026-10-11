@@ -73,7 +73,7 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 #: écrit dans `notes.structure_de_la_reponse`. Si ces deux nombres bougent,
 #: le contrat ET cette constante changent ensemble — jamais l'un sans l'autre.
 NB_CLES_BASE = 48
-NB_CLES_ADDITIVES = 29  # AGR308 : + `synthese_agricole` ; ACAL173 : + `fiche_batterie` ; CIQ306 : + `synthese_ci` ; CIQ319 : + `signature_entreprise` ; ADEV50 : + `economies_cumul_25_ans` ; ADEV51 : + `empreinte_contenu` ; ADEV52 : + `offre_expiree`, `date_expiration` ; ADEV49 : + `pdf_disponible`
+NB_CLES_ADDITIVES = 30  # AGR308 : + `synthese_agricole` ; ACAL173 : + `fiche_batterie` ; CIQ306 : + `synthese_ci` ; CIQ319 : + `signature_entreprise` ; ADEV50 : + `economies_cumul_25_ans` ; ADEV51 : + `empreinte_contenu` ; ADEV52 : + `offre_expiree`, `date_expiration` ; ADEV49 : + `pdf_disponible` ; APDF19 : + `conditions_titre`
 
 #: Les clés que l'échantillon déclare pour les réponses d'ERREUR, jamais pour
 #: la charge utile 200 (contrat, bloc `notes.cle_detail`). QJR228 (31/08/2026)

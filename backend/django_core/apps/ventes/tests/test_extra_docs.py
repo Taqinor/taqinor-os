@@ -71,9 +71,9 @@ class _Base(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
-    def _facture(self):
+    def _facture(self, reference='FAC-N106-0001'):
         f = Facture.objects.create(
-            company=self.company, reference='FAC-N106-0001',
+            company=self.company, reference=reference,
             client=self.client_obj, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20.00'),
             date_echeance=date.today() - timedelta(days=40))

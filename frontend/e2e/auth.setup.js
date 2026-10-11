@@ -50,5 +50,21 @@ setup('authenticate', async ({ page }) => {
     const ignorer = await page.request.post(`/api/django/onboarding/progress/${item.id}/ignorer/`)
     expect(ignorer.ok(), `assistant de démarrage passé (${ignorer.status()})`).toBeTruthy()
   }
+  // CAD177 — NTDMO15 : sur un utilisateur RÉCENT (< 30 j : l'admin seedé de la
+  // CI est créé le jour même) <ProductTour> ouvre à la 1re visite d'un écran
+  // cible (devis, leads, factures…) une bulle CENTRÉE sur bureau, qui capte le
+  // pointeur : `choisirMarche` / « Créer le devis » restaient interceptés
+  // (« Visite guidée — devis » dans le journal d'erreur, runs 38041876480 et
+  // 38129616897 : 9 specs de création de devis). L'utilisateur simulé par cet
+  // état partagé est un HABITUÉ : il a déjà fermé chaque visite, exactement
+  // par `POST …/tours/<clé>/vu/` (suivi serveur). demo-first-login.spec.js
+  // garde son propre compte à froid (visite attendue).
+  const visites = await page.request.get('/api/django/onboarding/tours/')
+  expect(visites.ok(), `GET /onboarding/tours/ (${visites.status()})`).toBeTruthy()
+  for (const visite of await visites.json()) {
+    if (visite.vu) continue
+    const vu = await page.request.post(`/api/django/onboarding/tours/${visite.tour_key}/vu/`)
+    expect(vu.ok(), `visite « ${visite.tour_key} » fermée (${vu.status()})`).toBeTruthy()
+  }
   await page.context().storageState({ path: AUTH_FILE })
 })

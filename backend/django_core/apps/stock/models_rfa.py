@@ -21,7 +21,9 @@ class AccordRFAFournisseur(TenantModel):
         CLOS = 'clos', 'Clos'
 
     fournisseur = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.PROTECT,  # on_delete: PROTECT — un accord commercial NÉGOCIÉ (donnée réelle non reconstructible) ; on refuse la suppression du fournisseur plutôt que d'effacer l'accord
+        # on_delete: PROTECT — un accord commercial NÉGOCIÉ (donnée réelle non reconstructible) ; on refuse la
+        # suppression du fournisseur plutôt que d'effacer l'accord
+        'stock.Fournisseur', on_delete=models.PROTECT,
         related_name='accords_rfa')
     periode_debut = models.DateField()
     periode_fin = models.DateField()

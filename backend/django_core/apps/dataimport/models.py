@@ -17,12 +17,14 @@ class ExternalRef(models.Model):
     """Lien technique stable entre un système externe et un objet TAQINOR."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='dataimport_external_refs')
     external_system = models.CharField(max_length=50)
     external_id = models.CharField(max_length=150)
 
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE)  # on_delete: référence générique — disparaît avec son ContentType
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
 
@@ -52,7 +54,8 @@ class ImportMapping(models.Model):
     """XPLT2 — mapping colonne→champ sauvegardé, proposé au dry-run suivant."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='dataimport_mappings')
     nom = models.CharField(max_length=150)
     entity = models.CharField(max_length=50)
@@ -82,7 +85,8 @@ class ImportJob(models.Model):
         ECHEC = 'echec', 'Échoué (rollback)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='dataimport_jobs')
     target = models.CharField(max_length=50)
     fichier_nom = models.CharField(max_length=255, blank=True, null=True)
@@ -123,7 +127,8 @@ class ImportJobRow(models.Model):
         ERREUR = 'erreur', 'Erreur'
 
     job = models.ForeignKey(
-        ImportJob, on_delete=models.CASCADE, related_name='rows')  # on_delete: ImportJobRow est le détail de ImportJob — n'existe pas sans lui
+        # on_delete: ImportJobRow est le détail de ImportJob — n'existe pas sans lui
+        ImportJob, on_delete=models.CASCADE, related_name='rows')
     ligne = models.PositiveIntegerField()
     statut = models.CharField(max_length=10, choices=Statut.choices)
     motif = models.CharField(max_length=255, blank=True, null=True)

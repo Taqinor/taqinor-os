@@ -166,11 +166,12 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
             pass
 
 
-_VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE = inline_serializer('ViewsConfigPackageViewSetPrevisualiserReponse', {
-    'roles_custom': drf_serializers.JSONField(required=False, allow_null=True),
-    'custom_fields': drf_serializers.JSONField(required=False, allow_null=True),
-    'message_templates': drf_serializers.JSONField(required=False, allow_null=True),
-})
+_VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE = inline_serializer(
+    'ViewsConfigPackageViewSetPrevisualiserReponse', {
+        'roles_custom': drf_serializers.JSONField(required=False, allow_null=True),
+        'custom_fields': drf_serializers.JSONField(required=False, allow_null=True),
+        'message_templates': drf_serializers.JSONField(required=False, allow_null=True),
+    })
 
 
 _VIEWS_CONFIG_PACKAGE_VIEW_SET_APPLIQUER_REPONSE = inline_serializer('ViewsConfigPackageViewSetAppliquerReponse', {

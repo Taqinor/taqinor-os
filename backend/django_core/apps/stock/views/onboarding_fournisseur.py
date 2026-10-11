@@ -116,7 +116,9 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
     # du champ ``fournisseur`` (CompanyScopedRelationsMixin) : un id d'une
     # autre société répond « objet inexistant » avant toute écriture.
 
-    @extend_schema(request=corps('DossierValiderCorps', valider=serializers.BooleanField(), motif_rejet=serializers.CharField(required=False, allow_blank=True)), responses=DossierOnboardingFournisseurSerializer)
+    @extend_schema(request=corps('DossierValiderCorps', valider=serializers.BooleanField(),
+                                 motif_rejet=serializers.CharField(required=False, allow_blank=True)),
+                   responses=DossierOnboardingFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='valider-dossier')
     def valider_dossier(self, request, pk=None):
         """NTP2P7 — valide (ou rejette) le dossier.
@@ -216,7 +218,9 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company,
                         televerse_par=self.request.user)
 
-    @extend_schema(request={'multipart/form-data': corps('DocumentFournisseurTeleverserCorps', file=serializers.FileField())}, responses=DocumentFournisseurSerializer)
+    @extend_schema(request={'multipart/form-data': corps('DocumentFournisseurTeleverserCorps',
+                                                         file=serializers.FileField())},
+                   responses=DocumentFournisseurSerializer)
     @action(detail=True, methods=['post'])
     def televerser(self, request, pk=None):
         """NTP2P7 — attache le fichier de la pièce (MinIO, clé par société).

@@ -115,6 +115,21 @@ class JournalisationTests(CorbeilleBase):
         record_soft_deleted.send(sender=Lead, instance=None, company=None)
         self.assertEqual(ElementSupprime.objects.count(), 0)
 
+    def test_enf17_supprime_par_lecture_seule_jamais_ecrit(self):
+        """ENF17 — un compte d'une autre société posté en ``supprime_par`` n'est
+        jamais écrit (borné société s'il redevient inscriptible)."""
+        from types import SimpleNamespace
+
+        from .serializers import ElementSupprimeSerializer
+        ctx = {'request': SimpleNamespace(user=self.directeur)}
+        ser = ElementSupprimeSerializer(
+            data={'supprime_par': self.directeur_b.pk}, partial=True,
+            context=ctx)
+        self.assertTrue(ser.is_valid(), ser.errors)
+        self.assertNotIn('supprime_par', ser.validated_data)
+        self.assertIn('supprime_par',
+                      ElementSupprimeSerializer.same_company_fields)
+
 
 class CorbeilleApiTests(CorbeilleBase):
     def test_liste_reservee_directeur_admin(self):

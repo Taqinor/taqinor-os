@@ -78,9 +78,32 @@ describe('CAD143 onglet Générique en lecture', () => {
       name: 'Générique — historique, ne plus assigner',
     }))
     await waitFor(() =>
-      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('generique'))
+      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('generique', expect.anything()))
     expect(await screen.findByText('Relance J+2')).toBeInTheDocument()
     expect(screen.getByText('Relance J+35')).toBeInTheDocument()
+  })
+
+  it('lit TOUTES les pages de la cadence en lecture (51 objets ⇒ page 2 lue)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({
+      id: 200 + i, cadence: 'generique', ordre: i + 1, delai_jours: i + 1,
+      delai_minutes: 0, heure_cible: null, canal: 'whatsapp',
+      libelle: `Relance J+${i + 1}`, template_cle: '', actif: true,
+    }))
+    const origine = parametresApi.getCadenceRelance.getMockImplementation()
+    parametresApi.getCadenceRelance.mockImplementation(async (cadence, { page = 1 } = {}) => ({
+      data: cadence !== 'generique' ? [] : {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      },
+    }))
+    await renderEditor()
+    const { default: userEvent } = await import('@testing-library/user-event')
+    await userEvent.setup().click(screen.getByRole('tab', {
+      name: 'Générique — historique, ne plus assigner',
+    }))
+    expect(await screen.findByText('Relance J+51')).toBeInTheDocument()
+    parametresApi.getCadenceRelance.mockImplementation(origine)
   })
 
   it('ne rend AUCUN contrôle éditable (lecture seule)', async () => {
