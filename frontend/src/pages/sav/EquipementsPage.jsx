@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
-  Wrench, Pencil, ShieldCheck, Trash2, ChevronRight, Activity, QrCode,
+  Wrench, Pencil, ShieldCheck, Trash2, Activity, QrCode,
   ScanLine,
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
@@ -40,9 +40,7 @@ import {
   TooltipProvider,
   Button,
   StatusPill,
-  Card,
   EmptyState,
-  Skeleton,
   Spinner,
   Input,
   Textarea,
@@ -54,6 +52,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+import { CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe } from './SavCommun'
 
 const formatDateFR = (iso) => {
   if (!iso) return '—'
@@ -111,20 +110,6 @@ function frError(data, fallback) {
     }
   }
   return fallback
-}
-
-// XSAV15/16/17 — section repliable (même patron que TicketsPage.CollapsibleSection).
-function CollapsibleSection({ icon: Icon, title, children }) {
-  return (
-    <details open className="group flex flex-col gap-3 [&[open]>summary>svg.chevron]:rotate-90">
-      <summary className="flex cursor-pointer list-none items-center gap-2 font-display text-base font-semibold text-foreground">
-        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-        <span className="flex-1">{title}</span>
-        <ChevronRight className="chevron size-4 rotate-0 text-muted-foreground transition-transform" aria-hidden="true" />
-      </summary>
-      <div className="flex flex-col gap-3 pt-2">{children}</div>
-    </details>
-  )
 }
 
 export function EquipementDetail({ equipement, onClose, onSaved }) {
@@ -313,11 +298,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
                     <SelectTrigger><SelectValue placeholder="— Chantier —" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none">— Chantier —</SelectItem>
-                      {installations.map((i) => (
-                        <SelectItem key={i.id} value={String(i.id)}>
-                          {i.reference ?? `Chantier ${i.id}`}
-                        </SelectItem>
-                      ))}
+                      <OptionsChantier installations={installations} />
                     </SelectContent>
                   </Select>
                 </FormField>
@@ -786,16 +767,9 @@ export default function EquipementsPage() {
         )}
 
         {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
+          <SqueletteListe lignes={6} />
         ) : error ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="Chargement impossible"
-            description="Le parc d'équipements n'a pas pu être chargé. Réessayez."
-            action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
-          />
+          <ErreurChargement description="Le parc d'équipements n'a pas pu être chargé. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={PackageSearch}

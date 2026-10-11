@@ -81,9 +81,7 @@ import {
   Badge,
   HelpTip,
   StatusPill,
-  Card,
   EmptyState,
-  Skeleton,
   Spinner,
   Input,
   Textarea,
@@ -100,6 +98,7 @@ import {
   DataTable,
   toast,
 } from '../../ui'
+import { CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe } from './SavCommun'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -164,21 +163,6 @@ export function frError(err, fallback = 'Action impossible.') {
 const DESKTOP_SPLIT_QUERY = '(min-width: 1280px)'
 function useIsDesktopSplit() {
   return useIsMobile(DESKTOP_SPLIT_QUERY)
-}
-
-// L313 — section repliable (usage terrain/mobile). Utilise <details> natif :
-// ouverte par défaut, le résumé fait office d'en-tête d'accordéon cliquable.
-function CollapsibleSection({ icon: Icon, title, children }) {
-  return (
-    <details open className="group flex flex-col gap-3 [&[open]>summary>svg.chevron]:rotate-90">
-      <summary className="flex cursor-pointer list-none items-center gap-2 font-display text-base font-semibold text-foreground">
-        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-        <span className="flex-1">{title}</span>
-        <ChevronRight className="chevron size-4 rotate-0 text-muted-foreground transition-transform" aria-hidden="true" />
-      </summary>
-      <div className="flex flex-col gap-3 pt-2">{children}</div>
-    </details>
-  )
 }
 
 // Statut de ticket → ton StatusPill (cycle de vie ticketStatuses.js : couche
@@ -1086,11 +1070,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                   <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none">— Aucun (garantie manuelle) —</SelectItem>
-                    {equipements.map((e) => (
-                      <SelectItem key={e.id} value={String(e.id)}>
-                        {(e.produit_nom ?? 'Produit')} — {e.numero_serie ?? 'sans n° série'}
-                      </SelectItem>
-                    ))}
+                    <OptionsEquipement equipements={equipements} />
                   </SelectContent>
                 </Select>
                 {/* NTMOB15 — scan QR/n° de série au lieu d'une recherche manuelle. */}
@@ -2490,16 +2470,9 @@ export default function TicketsPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
           <div className="min-w-0 flex-1">
             {loading ? (
-              <Card className="space-y-2 p-4">
-                {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-              </Card>
+              <SqueletteListe lignes={6} />
             ) : error ? (
-              <EmptyState
-                icon={AlertTriangle}
-                title="Chargement impossible"
-                description="Les tickets n'ont pas pu être chargés. Réessayez."
-                action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
-              />
+              <ErreurChargement description="Les tickets n'ont pas pu être chargés. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
             ) : rows.length === 0 ? (
               // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
               <EmptyState

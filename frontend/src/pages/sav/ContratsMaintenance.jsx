@@ -35,6 +35,7 @@ import {
   DataTable,
   toast,
 } from '../../ui'
+import { ErreurChargement, ErreurFormulaire, OptionsChantier, SqueletteListe } from './SavCommun'
 
 const PERIODES = [
   { value: 'mensuel', label: 'Mensuel' },
@@ -701,11 +702,7 @@ export function Component() {
                 <SelectTrigger><SelectValue placeholder="— Aucun chantier —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Aucun chantier —</SelectItem>
-                  {installations.map((i) => (
-                    <SelectItem key={i.id} value={String(i.id)}>
-                      {i.reference ?? `Chantier ${i.id}`}
-                    </SelectItem>
-                  ))}
+                  <OptionsChantier installations={installations} />
                 </SelectContent>
               </Select>
             </FormField>
@@ -771,13 +768,7 @@ export function Component() {
             </div>
           </details>
 
-          {formError && (
-            <div role="alert"
-                 className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
-              <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
-              {formError}
-            </div>
-          )}
+          <ErreurFormulaire message={formError} />
         </Card>
 
         {vue === 'tournee' ? (
@@ -889,17 +880,10 @@ export function Component() {
           </Card>
         ) : loading ? (
           // L329 — état de chargement explicite.
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
+          <SqueletteListe lignes={5} />
         ) : loadError ? (
           // L329 — distinction vide vs erreur de chargement.
-          <EmptyState
-            icon={AlertTriangle}
-            title="Chargement impossible"
-            description="Les contrats n'ont pas pu être chargés. Réessayez."
-            action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>}
-          />
+          <ErreurChargement description="Les contrats n'ont pas pu être chargés. Réessayez." onRetry={load} />
         ) : visibleRows.length === 0 ? (
           <EmptyState
             icon={vue === 'tous' ? ClipboardList : CalendarClock}
