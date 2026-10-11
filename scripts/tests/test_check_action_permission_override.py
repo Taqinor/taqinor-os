@@ -202,12 +202,14 @@ class PerimetreTests(unittest.TestCase):
 class AllowlistTests(unittest.TestCase):
     def test_la_ligne_de_base_du_sweep_est_gelee(self):
         allow = guard._load_allowlist()
-        self.assertGreaterEqual(
-            len(allow), 20,
-            'les écarts motivés (ACRM48) ont été vidés : la garde '
-            'échouerait sur des actions dont le repli est plus strict.')
+        # Ligne de base GELEE : la liste ne fait que RETRECIR (ENF15/ENF28 en
+        # ont retire des entrees : 7 restantes). Toute nouvelle entree = echec.
+        self.assertLessEqual(
+            len(allow), 7,
+            'la liste des ecarts motives ne doit jamais grossir : corriger la '
+            'classe plutot que l ajouter a l allowlist.')
         self.assertIn(
-            'backend/django_core/apps/crm/clients_views.py::SalleVenteViewSet.analytics',
+            'backend/django_core/apps/stock/views/produit.py::ProduitViewSet.etiquettes',
             allow)
 
     def test_le_patron_d_or_reel_est_detecte_sans_allowlist(self):

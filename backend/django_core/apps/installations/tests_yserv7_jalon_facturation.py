@@ -260,7 +260,7 @@ class TestChantiersAFacturerPortee(TestCase):
         self.client_obj = make_client(self.company)
         role = Role.objects.create(
             company=self.company, nom='resp-equipe-portee',
-            permissions=['installation_voir', SCOPE_TEAM])
+            permissions=['installation_voir', 'installation_gerer', SCOPE_TEAM])
         self.proprio = User.objects.create_user(
             username=f'yserv7-p-{next(_seq)}', password='x',
             company=self.company, role_legacy='responsable', role=role)

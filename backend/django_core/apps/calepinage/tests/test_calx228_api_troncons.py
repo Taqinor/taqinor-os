@@ -296,7 +296,7 @@ class RattachementDesCourantsTest(SimpleTestCase):
         conception = _conception()
         toutes = [chaine.repere for chaine in conception.chaines]
         self.assertGreaterEqual(len(toutes), 2)
-        servi =_troncons_du_document(_document([
+        servi = _troncons_du_document(_document([
             {'id': 'amont', 'cote': 'dc', 'de': 'eq1', 'vers': 'eq2',
              'longueurSaisieM': 40.0, 'chaines': toutes},
             {'id': 'terminal', 'cote': 'dc', 'de': 'eq2', 'vers': 'eq3',
