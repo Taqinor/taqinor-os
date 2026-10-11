@@ -63,9 +63,7 @@ class ExceptLargesTests(unittest.TestCase):
     def test_chargement_allowlist(self):
         with tempfile.TemporaryDirectory() as tmp:
             allow = Path(tmp) / "a.txt"
-            allow.write_text("# c
-backend/django_core/apps/x/y.py::f
-", encoding="utf-8")
+            allow.write_text("# c\nbackend/django_core/apps/x/y.py::f\n", encoding="utf-8")
             self.assertEqual(guard._load_allowlist(allow),
                              {"backend/django_core/apps/x/y.py::f"})
 
