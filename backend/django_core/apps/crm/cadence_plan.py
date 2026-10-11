@@ -1587,13 +1587,37 @@ def _recaler_file(lead, user):
     touche ouverte — le geste de fin de toutes les écritures de relance."""
     prochaine = _prochaine_touche_a_faire(lead)
     # AMET20 — une date de relance SAISIE à la main (``saisies_humaines``)
-    # n'est jamais remplacée par le moteur (placement compris) ; le refus
-    # n'est journalisé que s'il change quelque chose.
+    # n'est pas remplacée par le moteur (placement compris) TANT QU'elle est
+    # à venir et que sa touche est ouverte (décision fondateur 11/10/2026,
+    # « le moteur reprend après ») ; le refus n'est journalisé que s'il
+    # change quelque chose.
     valeur = prochaine.due_date if prochaine else None
+    champs = ['relance_date']
+    if _saisie_relance_echue(lead):
+        lead.saisies_humaines = [c for c in lead.saisies_humaines
+                                 if c != 'relance_date']
+        champs.append('saisies_humaines')
     if ecrire_si_libre(lead, 'relance_date', valeur, user=user,
                        journal=valeur != lead.relance_date):
-        lead.save(update_fields=['relance_date'])
+        lead.save(update_fields=champs)
     sync_relance_activity(lead, user)
+
+
+def _saisie_relance_echue(lead):
+    """AMET20 (décision fondateur 11/10/2026) — la ``relance_date`` saisie à
+    la main a-t-elle fini de primer ? Oui quand elle est passée, ou quand la
+    touche qu'elle couvre (une touche datée de ce jour) est close ; elle cesse
+    alors d'être une saisie humaine et le moteur la déplace de nouveau."""
+    from core.dates import aujourd_hui_local
+
+    if 'relance_date' not in (lead.saisies_humaines or []):
+        return False
+    jour = lead.relance_date
+    if jour is None or jour < aujourd_hui_local():
+        return True
+    couvertes = lead.relance_etapes.filter(due_date=jour)
+    return (couvertes.exists() and not couvertes.filter(
+        statut=RelanceEtape.Statut.A_FAIRE).exists())
 
 
 # ── CAD-G ── CAD74 — réveil saisonnier (`reveil_b`) ────────────────────────
