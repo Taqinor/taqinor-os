@@ -678,6 +678,8 @@ retiré plus un hook ajouté.
 | `cal-fiches-materiel-calcul` | fiches « Matériel utilisé par le calcul » (ACAL264). |
 | `cal-fiches-materiel` | fiches ligne de matériel du calcul (ACAL264). |
 | `cal-fiches-ecart-module` | fiches écart calcul ↔ devis sur le module (ACAL264). |
+| `cal-fiches-modules-par-pan` | fiches liste du module posé sur chaque pan (ACAL359). |
+| `cal-fiches-module-pan` | fiches ligne d'un pan : désignation et état de la fiche du module posé (ACAL359). |
 
 ## PompagePanel (`pompage/PompagePanel.jsx`)
 

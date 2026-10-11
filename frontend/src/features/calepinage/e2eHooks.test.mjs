@@ -559,6 +559,8 @@ export const ALL_HOOKS = [
   'cal-fiches-materiel-calcul',
   'cal-fiches-materiel',
   'cal-fiches-ecart-module',
+  'cal-fiches-modules-par-pan',
+  'cal-fiches-module-pan',
   // ── pompage/PompagePanel.jsx ──
   'cal-pompage-autonomie',
   'cal-pompage-avertissements',
