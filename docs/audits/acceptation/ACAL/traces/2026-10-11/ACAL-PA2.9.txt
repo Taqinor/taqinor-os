@@ -1,0 +1,15 @@
+Pile locale à e380f019a, demo_admin. Devis de test DEV-202610-0007 né de /ventes/devis/from-layout/ (toit 12 × Panneau Canadien Solar 710W,
+onduleur réseau tarifé) : TTC 58 700,00 ; calepinage lié CAL-2610-0016 créé par from-layout.
+ACAL353 — POST /ventes/devis/<id>/sync-layout/ avec (a) une surface au sol « Champ au sol » engine.modules = 40 sans moduleWc => 409
+{"detail": "Surface de pose « Champ au sol » : la puissance du module (moduleWc) n'est pas renseignée — ses 40 modules ne peuvent pas être
+chiffrés. Saisissez le module de la surface puis relancez.", "revision_possible": false} ; (b) un pan « Pan B » moduleId « mX » absent de
+modules[] => 409 « Pan « Pan B » : le module « mX » ne figure pas dans « modules » (modèles déclarés : m1). » — après chaque 409 : TTC, lignes
+panneau et layout_hash relus IDENTIQUES. Même document posé sur le calepinage (POST calepinages/16/layout/ avec If-Match) puis
+POST calepinages/16/sync-devis/ (la route du bouton « Resynchroniser le devis ») => même 409 nommant « Champ au sol », devis inchangé
+(total, lignes, layout_hash, updated_at).
+ACAL354 — fiche « Panneau 710W premium TEST ACAL354 » à prix 0 désignée (modules[].produitId) => sync-layout 409 « Le module désigné par le
+calepinage n'est pas tarifé : tarifez la fiche « Panneau 710W premium TEST ACAL354 » (prix de vente) puis relancez. », rien écrit ; fiche
+tarifée (1 400) => la même resynchro répond 200, crée la ligne premium (12) et ramène l'ancienne ligne 710 W à 0 (comportement ACAL63
+conservé) ; même refus 409 par calepinages/16/sync-devis/ sur une seconde fiche non tarifée, devis relu identique.
+Non rejoué : l'affichage du message dans l'atelier — sur cette pile la clé MapTiler (PUBLIC_MAPTILER_KEY) est absente, l'atelier reste en
+« Chargement… » et le bouton n'envoie rien (aucune requête) ; la tâche ne porte que sur le refus serveur (fichiers backend seuls).
