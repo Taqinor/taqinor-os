@@ -88,7 +88,6 @@ SONDES_CLIENT = {
     'export_xlsx': [('post', 'clients/export-xlsx/', {'ids': ['{C1}']})],
     'search': [('get', 'clients/search/', _RECHERCHE)],
     'dormants': [('get', 'clients/dormants/', {})],
-    'engagement_bulk': [('get', 'clients/engagement-bulk/', {})],
     'mon_portefeuille': [('get', 'clients/mon-portefeuille/', {})],
 }
 
