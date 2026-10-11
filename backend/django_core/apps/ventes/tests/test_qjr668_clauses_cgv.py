@@ -435,6 +435,12 @@ def puces_attendues(devis):
             if str(p).strip()]
 
 
+def titre_attendu(devis):
+    """Le titre des conditions du PDF de CE devis (``cgv_imprimees``)."""
+    return html.unescape(str(
+        cgv_imprimees(build_quote_data(devis, {}))['titre'])).strip()
+
+
 class ConditionsPubliquesParitePdfTests(TestCase):
     """APDF19 (C-APDF-005) — la page publique de signature sert les conditions
     générales du PDF de CE devis, brouillon comme envoyé.
@@ -449,7 +455,9 @@ class ConditionsPubliquesParitePdfTests(TestCase):
 
     Test-du-test : faire revenir ``_conditions_publiques`` à
     ``cgv_bullets_remplies`` ⇒ ``test_brouillon_industriel`` échoue (la page
-    servait les puces résidentielles par défaut au lieu de la variante C&I).
+    servait les puces résidentielles par défaut au lieu de la variante C&I) ;
+    ne plus poser ``conditions_titre`` (``public_views.proposal_data``) ⇒ les
+    trois premiers tests échouent (clé absente, titre du PDF attendu).
     """
 
     def setUp(self):
@@ -468,10 +476,13 @@ class ConditionsPubliquesParitePdfTests(TestCase):
         self.lien = ShareLink.for_devis(self.devis)
         self.api = APIClient()
 
-    def _conditions(self, jeton):
+    def _payload(self, jeton):
         reponse = self.api.get(f'/api/django/public/proposal/{jeton}/data/')
         self.assertEqual(reponse.status_code, 200, reponse.content[:300])
-        return reponse.json().get('conditions')
+        return reponse.json()
+
+    def _conditions(self, jeton):
+        return self._payload(jeton).get('conditions')
 
     def _envoyer(self, devis):
         from apps.ventes.domain.envoi import mark_devis_sent
@@ -479,17 +490,22 @@ class ConditionsPubliquesParitePdfTests(TestCase):
         devis.refresh_from_db()
 
     def test_brouillon_industriel(self):
-        conditions = self._conditions(self.lien.token_interne)
+        payload = self._payload(self.lien.token_interne)
+        conditions = payload.get('conditions')
         self.assertIn('Clause industrielle XYZ', conditions)
         self.assertEqual(conditions, puces_attendues(self.devis))
+        self.assertEqual(payload.get('conditions_titre'), TITRE_IND)
+        self.assertEqual(titre_attendu(self.devis), TITRE_IND)
         # Plus les puces résidentielles par défaut du moteur.
         self.assertFalse([p for p in conditions
                           if p.startswith('Acompte à la commande')])
 
     def test_envoye_industriel_marqueurs_substitues(self):
         self._envoyer(self.devis)
-        conditions = self._conditions(self.lien.token)
+        payload = self._payload(self.lien.token)
+        conditions = payload.get('conditions')
         self.assertEqual(conditions, puces_attendues(self.devis))
+        self.assertEqual(payload.get('conditions_titre'), TITRE_IND)
         texte = ' '.join(conditions)
         self.assertNotIn('{echeancier}', texte)
         self.assertNotIn('{retenue}', texte)
@@ -503,10 +519,12 @@ class ConditionsPubliquesParitePdfTests(TestCase):
         devis = devis_residentiel(self.company, 'DEV-APDF19-RES',
                                   user=self.user, client=self.client_obj)
         self._envoyer(devis)
-        lien = ShareLink.for_devis(devis)
-        conditions = self._conditions(lien.token)
+        payload = self._payload(ShareLink.for_devis(devis).token)
+        conditions = payload.get('conditions')
         self.assertTrue(conditions)
         self.assertEqual(conditions, puces_attendues(devis))
+        self.assertEqual(payload.get('conditions_titre'), titre_attendu(devis))
+        self.assertNotEqual(payload.get('conditions_titre'), TITRE_IND)
 
     @tag('pdf')
     def test_pdf_imprime_les_memes_puces(self):

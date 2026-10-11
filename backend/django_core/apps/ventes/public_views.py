@@ -38,7 +38,8 @@ from .public.payload_batterie import (
 )
 from .public.payload_conditions import (
     PAIEMENT_MOYENS_PUBLICS, _acompte_publique, _conditions_publiques,
-    _confirmation_email_publique, _date_validite_publique,
+    _conditions_titre_publique, _confirmation_email_publique,
+    _date_validite_publique,
 )
 from .public.payload_economie import (
     _bankable_headline, _economies_mensuelles_publiques, _mode_kpis,
@@ -1813,9 +1814,10 @@ def proposal_data(request, token):
         _date_validite = _date_validite_publique(devis)
         if _date_validite is not None:
             payload['date_validite'] = _date_validite
-        _conditions = _conditions_publiques(data, devis)
-        if _conditions is not None:
+        # APDF19 — avec les puces, le titre que le PDF imprime au-dessus.
+        if (_conditions := _conditions_publiques(data, devis)) is not None:
             payload['conditions'] = _conditions
+            payload['conditions_titre'] = _conditions_titre_publique(data)
         # ADEV51 (C-ADEV-018) — l'empreinte du contenu SIGNABLE au moment de
         # la lecture : la page la renvoie à ``/accept/``, qui refuse (409
         # ``empreinte_perimee``) si le devis a été corrigé entre-temps.
