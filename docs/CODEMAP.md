@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: f485809b1f91fdd0ef15b9c34cc015bed08ddeebfdd3fb869bb4c0132dec91e3
+Structure fingerprint: 1526bc7e168f3ac15cc8f5b3773719bb3c37e9efd89eeceb0e4a08f9e452af6b
 Plan fingerprint: b37754b86f410d033fb86c95e34385641b5e71e1ff2bd2046972f99651c81665
 
 
@@ -222,7 +222,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | App | Prefix | Models | Role |
 |---|---|---|---|
 | `authentication` | `/` | 2 (+CustomUser) | **Tenant root**: `Company`, `CustomUser`, `UserSession`; JWT, registration, per-user locale/calendar. NOT under `apps/`. |
-| `crm` | `crm/` | 44 | Leads (funnel via STAGES.py), Clients, chatter (`LeadActivity`), canaux/tags/motifs de perte (+`MotifPerteStandardPropose`, ACRM25), `SiteProfile`, salle de vente, forecast, parrainage, playbooks, équipes. |
+| `crm` | `crm/` | 44 | Leads (funnel via STAGES.py), Clients, chatter (`LeadActivity`), canaux/tags/motifs de perte (+`MotifPerteStandardPropose`, ACRM25), `SiteProfile`, salle de vente, forecast, parrainage, playbooks, équipes. Modèles scindés (move only, ré-exportés en bas de `models.py`, même app_label) : `models_clients.py` = partenaires, apporteurs, deals, salle de vente, T-TRACE (SPL91). |
 | `visites` | `visites/` | 2 | Visites techniques terrain (`VisiteTerrain`, `VisiteMedia`) — autonomous app; the field rep has no CRM access. |
 | `calepinage` | `calepinage/` | 10 | Roof design studio: `Calepinage` + variantes/versions, `ReleveTerrain`, `PhotoSite`, `PoseReelle`, `DossierReglementaire`. Holds the villa engine + kit catalogue + roof-marker helper repatriated from `ao`. |
 | `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink` (ADOC131 : `suivi_prolonge_le`/`revoque_le`, action `devis/<id>/revoquer-lien-public/`), affiche de toiture servie même origine (ACAL314 : `devis/<id>/roof-image/fichier/` + public `proposal/<token>/roof-image/`, chemins fabriqués par `domain/stockage_toiture.py`), listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). Découpes SPL (move-only, goldens dans `tests/golden/` via `tests/split_golden.py`) : `selectors.py` = façade ré-exportant `selectors_{cadence,calepinage,facturation,portail,publicite,stock}.py` ; `public_views.py` garde document/proposal/suivi publics, le reste vit dans `public/` (`noyau`, `lecture_views` engagement, `paiement_views`, `signature_views`, `payload_*`) ; `etude_horaire.py` délègue à `horaire/` (`base`, `batterie_lignes`, `public`, `conso`, `ve_nocturne`) ; `views/devis.py` = viewset réparti en mixins `views/devis_{cadence,calepinage,cycle,edition,envoi,etudes,facturation,gardes,pdf}.py` ; `solar_design.py` ré-exporte `solar_{base,finance,classification}.py` ; `domain/cycle_vie.py`/`creation.py` répartis en `domain/{envoi,revision,creation_auto,creation_calepinage,creation_clone,…}.py` ; frontend `pages/ventes/DevisList.jsx` délègue à `devisList/`. |
