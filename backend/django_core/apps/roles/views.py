@@ -25,7 +25,10 @@ class _CsvOrJSONRenderer(JSONRenderer):
     """XPLT12 — DRF négocie `?format=csv` AVANT le corps de la vue
     (`DefaultContentNegotiation`) : sans renderer déclaré pour `csv`, l'appel
     échoue en 404 en amont. On déclare le format sur l'action ; la vue renvoie
-    ensuite un `HttpResponse` CSV manuel (JSON reste le défaut sans `?format`)."""
+    ensuite un `HttpResponse` CSV manuel (JSON reste le défaut sans `?format`).
+
+    ENF11 — listé APRÈS ``JSONRenderer`` : sans cela, une erreur (400…) était
+    rendue en ``text/csv`` au lieu de ``application/json`` (contrat menteur)."""
     format = 'csv'
     media_type = 'text/csv'
 
@@ -354,7 +357,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             (200, 'text/csv'): OpenApiTypes.STR,
         })
     @action(detail=False, methods=['get'], url_path='revue-acces',
-            renderer_classes=[_CsvOrJSONRenderer])
+            renderer_classes=[JSONRenderer, _CsvOrJSONRenderer])
     def revue_acces(self, request):
         """XPLT12 — Rapport de revue d'accès & comptes dormants (admin).
 

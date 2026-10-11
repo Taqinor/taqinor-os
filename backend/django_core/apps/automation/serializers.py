@@ -1,3 +1,6 @@
+import datetime
+
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -295,6 +298,7 @@ class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
                     for k in figes})
         return attrs
 
+    @extend_schema_field(serializers.IntegerField())
     def get_approvals_count(self, obj):
         from .models import ApprovalDecision
         return obj.decisions.filter(
@@ -310,6 +314,13 @@ class ApprovalDelegationSerializer(SameCompanyFKSerializerMixin,
         source='delegant.username', read_only=True, default=None)
     suppleant_nom = serializers.CharField(
         source='suppleant.username', read_only=True, default=None)
+    # ENF11 — dates rendues en UTC (``…Z``) : le fuseau local rendait un
+    # décalage historique (-00:30:20) invalide en RFC 3339 pour les dates
+    # anciennes que le schéma accepte.
+    date_debut = serializers.DateTimeField(
+        default_timezone=datetime.timezone.utc)
+    date_fin = serializers.DateTimeField(
+        default_timezone=datetime.timezone.utc)
 
     class Meta:
         model = ApprovalDelegation
@@ -320,6 +331,16 @@ class ApprovalDelegationSerializer(SameCompanyFKSerializerMixin,
             'date_debut', 'date_fin', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        # ENF11 — une fenêtre inversée (fin avant début) n'est jamais active :
+        # elle était acceptée en silence.
+        debut = attrs.get('date_debut', getattr(self.instance, 'date_debut', None))
+        fin = attrs.get('date_fin', getattr(self.instance, 'date_fin', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError({
+                'date_fin': 'La date de fin précède la date de début.'})
+        return attrs
 
     def update(self, instance, validated_data):
         # ASEC30 — le délégant est fixé à la création : un PATCH ne le
@@ -346,6 +367,7 @@ class IncomingWebhookTriggerSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id', 'rule_nom', 'token', 'url_path',
                             'date_creation', 'date_modification']
 
+    @extend_schema_field(serializers.CharField())
     def get_url_path(self, obj):
         return f'/api/django/public/hooks/{obj.token}/'
 

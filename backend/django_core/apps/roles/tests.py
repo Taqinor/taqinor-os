@@ -348,6 +348,12 @@ class RevueAccesTest(TestCase):
         rows = self._rows_by_username(resp.data)
         self.assertTrue(rows['recent_user']['dormant'])
 
+    def test_erreur_revue_acces_reste_en_json(self):
+        """ENF11 — une erreur (400) n'est plus rendue en ``text/csv``."""
+        resp = self.api.get('/api/django/roles/revue-acces/?x-inconnu=1')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('application/json', resp['Content-Type'])
+
     def test_csv_export(self):
         resp = self.api.get('/api/django/roles/revue-acces/?format=csv')
         self.assertEqual(resp.status_code, 200)

@@ -64,6 +64,12 @@ class ApiKeyCreateSerializer(serializers.Serializer):
 
 class WebhookSerializer(serializers.ModelSerializer):
     """Représentation en lecture d'un webhook (jamais le secret en clair)."""
+    # ENF11 — la règle « https uniquement » est exprimée dans le schéma
+    # (``pattern``) ; l'hôte public/résolvable reste contrôlé par
+    # ``validate_target_url`` (DNS, anti-SSRF), non exprimable.
+    target_url = serializers.RegexField(
+        r'^https://\S+$', max_length=500,
+        error_messages={'invalid': "L'URL du webhook doit utiliser https."})
 
     class Meta:
         model = Webhook

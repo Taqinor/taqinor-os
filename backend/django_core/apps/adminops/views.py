@@ -97,8 +97,18 @@ def tracker_usage_view(request):
     return Response({'ok': True}, status=201)
 
 
+class _TexteStrict(drf_serializers.CharField):
+    """ENF11 — refuse un nombre/booléen là où le schéma déclare une chaîne
+    (``CharField`` DRF coerce ``0`` en ``"0"`` et l'accepte en silence)."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
 class ExporterConfigSerializer(drf_serializers.Serializer):
-    nom = drf_serializers.CharField(max_length=150, required=False)
+    nom = _TexteStrict(max_length=150, required=False)
 
 
 class ContenuConfigSerializer(drf_serializers.Serializer):
@@ -111,6 +121,8 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SandboxEnvironmentSerializer
     permission_classes = [IsAdministrateur]
     parser_classes = [JSONParser]
+    # ENF11 — type du paramètre de chemin ``id`` (get_queryset reste la source).
+    queryset = SandboxEnvironment.objects.none()
 
     def get_queryset(self):
         return SandboxEnvironment.objects.filter(
@@ -192,6 +204,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ConfigPackageSerializer
     permission_classes = [IsAdministrateur]
     parser_classes = [JSONParser]
+    # ENF11 — type du paramètre de chemin ``id`` (get_queryset reste la source).
+    queryset = ConfigPackage.objects.none()
 
     def get_queryset(self):
         return ConfigPackage.objects.filter(
@@ -218,7 +232,9 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                    responses=_VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE)
     @action(detail=False, methods=['post'])
     def previsualiser(self, request):
-        contenu = request.data.get('contenu')
+        # ENF11 — un corps JSON non objet (liste, null) répondait 500.
+        contenu = (request.data.get('contenu')
+                   if isinstance(request.data, dict) else None)
         if not isinstance(contenu, dict):
             return Response({'detail': 'contenu (JSON) requis.'}, status=400)
         diff = config_package_service.previsualiser_import(
@@ -242,7 +258,9 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': "Permission 'adminops_config_package_importer' requise."},
                 status=403)
-        contenu = request.data.get('contenu')
+        # ENF11 — un corps JSON non objet (liste, null) répondait 500.
+        contenu = (request.data.get('contenu')
+                   if isinstance(request.data, dict) else None)
         if not isinstance(contenu, dict):
             return Response({'detail': 'contenu (JSON) requis.'}, status=400)
         diff = config_package_service.appliquer_import(

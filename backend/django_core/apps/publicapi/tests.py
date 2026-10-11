@@ -186,6 +186,22 @@ class ManagementEndpointTests(TestCase):
         self.admin = make_user(self.co, 'pa-admin', 'admin')
         self.normal = make_user(self.co, 'pa-normal', 'normal')
 
+    def test_sandbox_try_corps_invalide_400_jamais_500(self):
+        """ENF11 — ressource non textuelle / corps non objet : 400."""
+        api = session_auth(self.admin)
+        for corps in ({'resource': {}}, {'resource': 'devis'}, [1, 2], 3.5):
+            resp = api.post(
+                '/api/django/publicapi/sandbox/try/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_webhook_http_refuse_par_le_schema(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/webhooks/', {
+            'label': 'x', 'target_url': 'http://8.8.8.8/hook',
+            'events': [EVENT_LEAD_CREATED]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('target_url', resp.data)
+
     def test_admin_creates_key_returns_raw_once(self):
         api = session_auth(self.admin)
         resp = api.post('/api/django/publicapi/keys/', {

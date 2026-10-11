@@ -10,7 +10,8 @@ class OutillageSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     emplacement_nom = serializers.CharField(
-        source='emplacement.nom', read_only=True, allow_null=True, default=None)
+        source='emplacement.nom', read_only=True, allow_null=True, default=None,
+        required=False)  # ENF11 — absent d'une réponse PATCH (default + partial)
 
     # FG80 — badge « à calibrer » : intervalle > 0 ET date dépassée.
     a_calibrer = serializers.SerializerMethodField()

@@ -16,7 +16,9 @@ from core.selectors import get_company_object
 
 from . import builders
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer)
+from rest_framework import serializers as drf_serializers
 
 # ADOC69 — champs propriétaires de la portée d'un chantier : la MÊME liste que
 # le viewset chantier (installations/views/installation.py, get_queryset). Un
@@ -102,7 +104,10 @@ def _pdf_response(pdf_bytes, filename):
     return resp
 
 
-_PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
+# ADOC72 — refus d'état documenté (409 {detail}) en plus du PDF.
+_Refus409 = inline_serializer('DocumentChantierRefusEtat', {
+    'detail': drf_serializers.CharField()})
+_PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY, 409: _Refus409}
 
 
 class _BaseDocumentView(APIView):
