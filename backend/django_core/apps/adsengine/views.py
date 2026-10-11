@@ -22,6 +22,7 @@ from authentication.permissions import HasPermissionOrLegacy
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
+from .metrics import cout_par_lead
 from .models import (
     AdCampaignMirror, AdEngineActivity,
     Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
@@ -2872,8 +2873,7 @@ def _dashboard_spend_window(company, ct, debut, fin):
     agg = qs.aggregate(
         spend=Sum('spend'), results=Sum('results'), freq=Avg('frequency'))
     spend = agg['spend'] or Decimal('0')
-    results = agg['results'] or 0
-    cpl = (spend / results) if results else None
+    cpl = cout_par_lead(spend, agg['results'], source='resultats_meta').valeur
     return {'spend': spend, 'cpl': cpl, 'frequency': agg['freq']}
 
 
@@ -4353,7 +4353,7 @@ def _gather_signal_inputs(company, config):
     avg_freq = float(agg['freq']) if agg['freq'] is not None else None
 
     ctr = (clicks / impressions) if impressions else None
-    cpl = (spend / results) if results else None
+    cpl = None if (c := cout_par_lead(spend, results, source='resultats_meta').valeur) is None else float(c)
 
     ctr_healthy = float(getattr(config, 'signal_ctr_healthy', None)
                         or SIGNAL_CTR_HEALTHY)

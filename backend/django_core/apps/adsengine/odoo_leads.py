@@ -41,6 +41,7 @@ import datetime
 from collections import Counter
 from decimal import ROUND_HALF_UP, Decimal
 
+from .metrics import cout_par_lead
 from .odoo_client import is_configured as odoo_is_configured
 from .odoo_selectors import all_leads as odoo_all_leads
 from .odoo_selectors import parse_odoo_lead_name
@@ -243,7 +244,7 @@ def _ad_row(ad_id, bucket, spend_by_ad, name_by_meta):
     ``mixte`` si plusieurs."""
     total = bucket['exact'] + bucket['formulaire'] + bucket['estimes']
     spend = spend_by_ad.get(ad_id)
-    cpl = (spend / total) if (spend is not None and total) else None
+    cpl = cout_par_lead(spend, total, source='odoo').valeur
     non_zero = [name for count, name in (
         (bucket['exact'], 'exact'),
         (bucket['formulaire'], 'formulaire'),
@@ -278,13 +279,13 @@ def _campaign_row(campaign_id, bucket, spend_by_ad, campaign_names):
         if s is not None:
             total_spend += s
             has_spend = True
-    cpl = (total_spend / total_leads) if (total_leads and total_spend) else None
+    cpl = cout_par_lead(total_spend or None, total_leads, source='odoo').valeur
     per_ad = []
     for ad_id in ad_ids:
         s = spend_by_ad.get(ad_id)
         if s is not None and total_spend > 0 and total_leads:
             share = total_leads * (s / total_spend)
-            ad_cpl = (s / share) if share else None
+            ad_cpl = cout_par_lead(s, share, source='odoo').valeur
         else:
             share = ad_cpl = None
         per_ad.append({
