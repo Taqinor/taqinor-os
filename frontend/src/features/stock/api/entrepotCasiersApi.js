@@ -26,9 +26,9 @@ const entrepotCasiersApi = {
   reslotting: (params) => api.get('/stock/reslotting-suggestions/', { params }),
   // Sélecteurs.
   // Casiers adressables (BinLocation) : l'id attendu par seuil/tâches/historique.
-  listCasiers: () => api.get('/installations/bin-locations/'),
+  listCasiers: (params) => api.get('/installations/bin-locations/', { params }),
   // Emplacements de stock : la planche d'étiquettes se demande par emplacement.
-  listEmplacements: () => api.get('/stock/emplacements/'),
+  listEmplacements: (params) => api.get('/stock/emplacements/', { params }),
   listProduits: (params) => api.get('/stock/produits/', { params }),
 }
 

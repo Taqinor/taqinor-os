@@ -18,6 +18,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Info, AlertTriangle } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   Input, Switch, Spinner, Label, Button, IconButton, FormErrorSummary, Badge,
   Tabs, TabsList, TabsTrigger, TabsContent,
@@ -154,14 +155,17 @@ function CadenceTable({ cadence, gabarits }) {
 
   useEffect(() => {
     let cancelled = false
-    parametresApi.getCadenceRelance(cadence)
-      .then(r => { if (!cancelled) setRows(asList(r.data)) })
+    // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
+    fetchAllPages((page, o) => parametresApi.getCadenceRelance(cadence, { page, ...o })
+      .then(r => r?.data))
+      .then(data => { if (!cancelled) setRows(asList(data)) })
       .catch(() => { if (!cancelled) setRows([]) })
     return () => { cancelled = true }
   }, [cadence])
 
-  const recharger = () => parametresApi.getCadenceRelance(cadence)
-    .then(r => setRows(asList(r.data)))
+  const recharger = () => fetchAllPages((page, o) => parametresApi.getCadenceRelance(cadence, { page, ...o })
+    .then(r => r?.data))
+    .then(data => setRows(asList(data)))
     .catch(() => { /* la liste affichée reste celle qu'on avait */ })
 
   const ajouter = async () => {
@@ -480,8 +484,10 @@ function CadenceTableReadOnly({ cadence }) {
 
   useEffect(() => {
     let cancelled = false
-    parametresApi.getCadenceRelance(cadence)
-      .then(r => { if (!cancelled) setRows(asList(r.data)) })
+    // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
+    fetchAllPages((page, o) => parametresApi.getCadenceRelance(cadence, { page, ...o })
+      .then(r => r?.data))
+      .then(data => { if (!cancelled) setRows(asList(data)) })
       .catch(() => { if (!cancelled) setRows([]) })
     return () => { cancelled = true }
   }, [cadence])

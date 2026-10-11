@@ -12,7 +12,7 @@ import api from './axios'
 const accessReviewApi = {
   // NTSEC19 — campagnes de revue d'accès (lancement génère un item par compte).
   campaigns: {
-    list: () => api.get('/accessreview/campaigns/'),
+    list: (params) => api.get('/accessreview/campaigns/', { params }),
     get: (id) => api.get(`/accessreview/campaigns/${id}/`),
     create: (data) => api.post('/accessreview/campaigns/', data),
     remove: (id) => api.delete(`/accessreview/campaigns/${id}/`),
@@ -23,7 +23,7 @@ const accessReviewApi = {
 
   // NTSEC20 — règles de séparation des tâches (SoD) + rapport de violations.
   sodRules: {
-    list: () => api.get('/accessreview/sod-rules/'),
+    list: (params) => api.get('/accessreview/sod-rules/', { params }),
     create: (data) => api.post('/accessreview/sod-rules/', data),
     remove: (id) => api.delete(`/accessreview/sod-rules/${id}/`),
     violations: () => api.get('/accessreview/sod-rules/violations/'),

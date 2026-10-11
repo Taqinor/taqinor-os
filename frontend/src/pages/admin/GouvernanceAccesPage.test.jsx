@@ -56,6 +56,29 @@ describe('WIR135 GouvernanceAccesPage', () => {
       expect.objectContaining({ item: 10, decision: 'revoque' })))
   })
 
+  it('lit TOUTES les pages des campagnes et des règles SoD (51 objets ⇒ 51 lignes)', async () => {
+    const campagnes = Array.from({ length: 51 }, (_, i) => ({
+      id: i + 1, nom: `Camp ${i + 1}`, statut: 'ouverte', items: [],
+    }))
+    const regles = Array.from({ length: 51 }, (_, i) => ({
+      id: i + 1, permission_a: `a${i}`, permission_b: `b${i}`, severite: 'info',
+    }))
+    const paginer = (tout) => ({ page = 1 } = {}) => Promise.resolve({ data: {
+      count: 51,
+      next: page === 1 ? 'http://x/?page=2' : null,
+      results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+    } })
+    H.campList.mockImplementation(paginer(campagnes))
+    H.sodList.mockImplementation(paginer(regles))
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByText('Camp 51')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: /Règles SoD/ }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Supprimer la règle' })).toHaveLength(51))
+    H.campList.mockImplementation(() => Promise.resolve({ data: [] }))
+    H.sodList.mockImplementation(() => Promise.resolve({ data: [] }))
+  })
+
   it('affiche les violations SoD', async () => {
     const user = userEvent.setup()
     renderPage()

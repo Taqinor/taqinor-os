@@ -92,6 +92,21 @@ const taperDelaiMinutes = async (valeur) => {
 }
 
 describe('CAD113 — le champ fautif, le message exact', () => {
+  it('lit TOUTES les pages de la cadence (51 barreaux ⇒ le 51e est affiché)', async () => {
+    const tout = Array.from({ length: 51 }, (_, i) => ({
+      ...BARREAU, id: 300 + i, ordre: i + 1, libelle: `Étape ${i + 1}`,
+    }))
+    parametresApi.getCadenceRelance.mockImplementation(async (cadence, { page = 1 } = {}) => ({
+      data: cadence !== 'contact' ? [] : {
+        count: 51,
+        next: page === 1 ? 'http://x/?page=2' : null,
+        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
+      },
+    }))
+    render(<ThemeProvider><CadenceRelanceEditor /></ThemeProvider>)
+    expect(await screen.findByDisplayValue('Étape 51')).toBeInTheDocument()
+  })
+
   it('affiche le message du serveur SOUS le champ delai_minutes', async () => {
     parametresApi.updateCadenceRelanceEtape.mockRejectedValue(
       refus400({ delai_minutes: [MESSAGE_SERVEUR] }))

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Shield, Plus, Trash2, Network, Smartphone, Activity, KeyRound, ServerCog, FileText } from 'lucide-react'
 import identityApi from '../../api/identityApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import parametresApi from '../../api/parametresApi'
 import {
   Card, CardContent, CardHeader, CardTitle, Button, Input, Textarea, Label,
@@ -28,12 +29,13 @@ function ReseauTab() {
   const [label, setLabel] = useState('')
   const [loading, setLoading] = useState(true)
 
+  // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
   const load = () => Promise.all([
-    identityApi.networkPolicies.list(),
-    identityApi.ipRules.list(),
+    fetchAllPages((page, o) => identityApi.networkPolicies.list({ page, ...o }).then((r) => r?.data)),
+    fetchAllPages((page, o) => identityApi.ipRules.list({ page, ...o }).then((r) => r?.data)),
   ]).then(([p, r]) => {
-    setPolicy(asList(p.data)[0] ?? null)
-    setRules(asList(r.data))
+    setPolicy(asList(p)[0] ?? null)
+    setRules(asList(r))
   }).catch(() => {}).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
@@ -94,8 +96,9 @@ function ReseauTab() {
 function AppareilsTab() {
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
-  const load = () => identityApi.trustedDevices.list()
-    .then((r) => setDevices(asList(r.data))).catch(() => {}).finally(() => setLoading(false))
+  const load = () => fetchAllPages((page, o) => identityApi.trustedDevices.list({ page, ...o })
+    .then((r) => r?.data))
+    .then((data) => setDevices(asList(data))).catch(() => {}).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const forget = async (d) => {
@@ -167,8 +170,9 @@ function BreakGlassTab() {
   const [motif, setMotif] = useState('')
   const [duree, setDuree] = useState('60')
   const [loading, setLoading] = useState(true)
-  const load = () => identityApi.breakGlass.list()
-    .then((r) => setGrants(asList(r.data))).catch(() => {}).finally(() => setLoading(false))
+  const load = () => fetchAllPages((page, o) => identityApi.breakGlass.list({ page, ...o })
+    .then((r) => r?.data))
+    .then((data) => setGrants(asList(data))).catch(() => {}).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const grant = async () => {
@@ -219,8 +223,9 @@ function ServiceAccountsTab() {
   const [accounts, setAccounts] = useState([])
   const [nom, setNom] = useState('')
   const [loading, setLoading] = useState(true)
-  const load = () => identityApi.serviceAccounts.list()
-    .then((r) => setAccounts(asList(r.data))).catch(() => {}).finally(() => setLoading(false))
+  const load = () => fetchAllPages((page, o) => identityApi.serviceAccounts.list({ page, ...o })
+    .then((r) => r?.data))
+    .then((data) => setAccounts(asList(data))).catch(() => {}).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
   const create = async () => {
     if (!nom.trim()) { toast.error('Nom requis.'); return }

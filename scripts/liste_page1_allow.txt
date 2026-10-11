@@ -226,14 +226,5 @@ frontend/src/pages/visites/VisitesListPage.jsx::VisitesListPage
 # sites constates au releve du jour, memes regles (fichier::fonction, decroissant).
 frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog
 frontend/src/features/ged/advanced/ReglesDossierPage.jsx::JournalDialog
-frontend/src/features/uxviews/useFavoris.js::useFavoris
 frontend/src/pages/admin/GouvernanceAccesPage.jsx::RapportTab
-frontend/src/pages/admin/GouvernanceAccesPage.jsx::load
-frontend/src/pages/admin/SecuriteIdentitePage.jsx::load
 frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor
-frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceTable
-frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceTableReadOnly
-frontend/src/pages/parametres/CadenceRelanceEditor.jsx::recharger
-frontend/src/pages/parametres/RealisationsSection.jsx::load
-frontend/src/pages/parametres/ReferentielsSection.jsx::load
-frontend/src/pages/stock/wms/CasiersPage.jsx::CasiersPage
