@@ -38,6 +38,20 @@ export function SectionTitle({ icon, label }) {
 }
 
 // ── Field (label au-dessus + contrôle) ─────────────────────────────────────────
+// Indicateur de chargement + bandeau d'erreur communs aux sections (ENF19).
+export function ChargementErreur({ loading, error }) {
+  return (
+    <>
+      {loading && (
+        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+          <Spinner className="size-3.5 text-primary" /> Chargement…
+        </div>
+      )}
+      {error && <p className="form-error mb-2" role="alert">{error}</p>}
+    </>
+  )
+}
+
 export function Field({ label, required, htmlFor, children }) {
   return (
     <div className="flex flex-col gap-1.5">

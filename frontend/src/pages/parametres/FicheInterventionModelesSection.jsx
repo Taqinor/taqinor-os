@@ -11,9 +11,9 @@ import { useEffect, useState } from 'react'
 import { useConfirmDialog } from '../../ui/confirm'
 import { Plus, Trash2 } from 'lucide-react'
 import {
-  Card, CardContent, Input, Badge, IconButton, Button, Spinner, Checkbox,
+  Card, CardContent, Input, Badge, IconButton, Button, Checkbox,
 } from '../../ui'
-import { SectionTitle, Field } from './peComponents'
+import { SectionTitle, Field, ChargementErreur } from './peComponents'
 import installationsApi from '../../api/installationsApi'
 import { apiErrorMessage } from '../../lib/apiError'
 
@@ -78,12 +78,7 @@ export default function FicheInterventionModelesSection() {
           type ; un champ obligatoire non renseigné bloque la clôture.
         </p>
 
-        {loading && (
-          <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-            <Spinner className="size-3.5 text-primary" /> Chargement…
-          </div>
-        )}
-        {error && <p className="form-error mb-2" role="alert">{error}</p>}
+        <ChargementErreur loading={loading} error={error} />
 
         {!loading && templates.length === 0 && (
           <p className="mb-3 text-xs text-muted-foreground">Aucun modèle de fiche configuré.</p>
