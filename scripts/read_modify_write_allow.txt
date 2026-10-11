@@ -9,7 +9,6 @@ backend/django_core/apps/ged/services.py::move_folder
 backend/django_core/apps/ged/services.py::relancer_demande_document
 backend/django_core/apps/ged/services.py::relancer_signataires_dus
 backend/django_core/apps/ged/services.py::valider_code_otp_signataire
-backend/django_core/apps/notifications/services.py::sweep_annonce_reminders
 backend/django_core/apps/stock/services.py::alimenter_lot_entrepot
 backend/django_core/apps/stock/services.py::annuler_reception_confirmee
 backend/django_core/apps/stock/services.py::confirm_reception_fournisseur

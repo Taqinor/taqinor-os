@@ -15,6 +15,7 @@ NO-OP silencieux (comportement actuel préservé).
 import logging
 
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from .models import (
@@ -1241,10 +1242,10 @@ def sweep_annonce_reminders(company, *, delay_days=None, today=None):
                     user, EventType.ANNONCE_READ_REMINDER,
                     f"Lecture obligatoire en attente : {annonce.titre}",
                     body=annonce.corps, link=link, company=company)
-                relance.relances_envoyees = (relance.relances_envoyees or 0) + 1
-                relance.derniere_relance_le = timezone.now()
-                relance.save(update_fields=[
-                    'relances_envoyees', 'derniere_relance_le'])
+                # ENF28 — incrément atomique (F) : pas de lecture-modif-écriture.
+                AnnonceRelance.objects.filter(pk=relance.pk).update(
+                    relances_envoyees=F('relances_envoyees') + 1,
+                    derniere_relance_le=timezone.now())
                 count += 1
         except Exception:  # pragma: no cover - défensif
             logger.warning('sweep_annonce_reminders: annonce %s échouée',
