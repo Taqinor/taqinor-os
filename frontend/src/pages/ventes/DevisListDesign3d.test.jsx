@@ -11,25 +11,11 @@ import { configureStore } from '@reduxjs/toolkit'
    CONSULTE (`/ventes/devis/:id/3d`), et seulement s'il porte réellement un plan
    (`roof_layout`, déjà exposé par le serializer : aucun champ backend ajouté). */
 
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }) }
-})
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: { ...actual.default, getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })) },
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).ventesSliceSansFetch(await importOriginal()))
+vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).crmApiMotifsPerteVide(await importOriginal()))
 
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {

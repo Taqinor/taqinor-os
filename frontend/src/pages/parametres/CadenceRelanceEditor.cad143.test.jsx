@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 
 /* CAD143 — onglet EN LECTURE pour la cadence « Générique » (historique,
    encore active sur de vrais leads d'avant le protocole v3, mais qu'aucun
@@ -30,24 +30,12 @@ vi.mock('../../api/parametresApi', () => ({
 }))
 
 import parametresApi from '../../api/parametresApi'
-import { ThemeProvider } from '../../design/ThemeProvider'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
+import { monterEditeur, declarerHooksCadence } from './cadenceRelance.testHelpers.jsx'
 
-beforeEach(() => {
-  parametresApi.getCadenceRelance.mockClear()
-  parametresApi.updateCadenceRelanceEtape.mockClear()
-})
-afterEach(() => cleanup())
+declarerHooksCadence(parametresApi)
 
-const renderEditor = async () => {
-  await act(async () => {
-    render(
-      <ThemeProvider>
-        <CadenceRelanceEditor />
-      </ThemeProvider>,
-    )
-  })
-}
+const renderEditor = () => monterEditeur(CadenceRelanceEditor)
 
 describe('CAD143 onglet Générique en lecture', () => {
   it('affiche un quatrième onglet libellé « historique — ne plus assigner »', async () => {

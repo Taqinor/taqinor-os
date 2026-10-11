@@ -19,13 +19,7 @@ import CONTRAT from
 
 const LIGNES = CONTRAT.exemple_liste
 
-vi.mock('../../api/parametresApi', () => ({
-  default: {
-    getMessages: vi.fn(async () => ({ data: [] })),
-    getCadenceRelance: vi.fn(async () => ({ data: [] })),
-    updateCadenceRelanceEtape: vi.fn(async () => ({ data: {} })),
-  },
-}))
+vi.mock('../../api/parametresApi', async () => (await import('./cadenceRelance.testHelpers.jsx')).cadenceApiVide())
 
 import parametresApi from '../../api/parametresApi'
 import { ThemeProvider } from '../../design/ThemeProvider'

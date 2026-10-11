@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
+import { renderGedPage } from './gedPage.testHelpers.jsx'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { toast } from '../../../ui'
@@ -25,22 +24,12 @@ vi.mock('../../../api/gedApi', () => ({
   },
 }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [{ id: 5, nom: 'Client Alpha' }] })),
-  },
-}))
+vi.mock('../../../api/crmApi', async () => (await import('./gedPage.testHelpers.jsx')).crmApiClientAlpha())
 
-vi.mock('../../../ui', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }
-})
+vi.mock('../../../ui', async (importOriginal) =>
+  (await import('./gedPage.testHelpers.jsx')).uiToastEspion(await importOriginal()))
 
-function renderPage() {
-  return render(
-    <MemoryRouter><ThemeProvider><CoffresPage /></ThemeProvider></MemoryRouter>,
-  )
-}
+const renderPage = () => renderGedPage(CoffresPage)
 
 beforeEach(() => {
   vi.clearAllMocks()

@@ -41,6 +41,7 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 import RolesManagement from './RolesManagement'
 import { ThemeProvider } from '../../design/ThemeProvider'
 import { ConfirmProvider } from '../../providers/ConfirmProvider'
+import { confirmerSuppression } from './confirmation.testHelpers.js'
 
 const ROLES = [
   {
@@ -106,13 +107,7 @@ describe('RolesManagement (VX234 — dialogue de réassignation)', () => {
 
     // Confirmation maison (AlertDialog du ConfirmProvider), JAMAIS window.confirm.
     // On clique « Supprimer » DANS la boîte de dialogue (portée dans le body).
-    const confirmBtn = await waitFor(() => {
-      const btn = [...document.querySelectorAll('[role="alertdialog"] button')]
-        .find((b) => b.textContent.trim() === 'Supprimer')
-      expect(btn).toBeTruthy()
-      return btn
-    })
-    await user.click(confirmBtn)
+    await confirmerSuppression(user)
 
     await waitFor(() => screen.getByText('Réassigner avant de supprimer'))
     const combo = screen.getByRole('combobox')
@@ -147,13 +142,7 @@ describe('RolesManagement (VX234 — dialogue de réassignation)', () => {
     const rowDeleteBtn = within(commercialRow).getByRole('button', { name: 'Supprimer' })
     await user.click(rowDeleteBtn)
 
-    const confirmBtn = await waitFor(() => {
-      const btn = [...document.querySelectorAll('[role="alertdialog"] button')]
-        .find((b) => b.textContent.trim() === 'Supprimer')
-      expect(btn).toBeTruthy()
-      return btn
-    })
-    await user.click(confirmBtn)
+    await confirmerSuppression(user)
 
     await waitFor(() => screen.getByText('Réassigner avant de supprimer'))
     const combo = screen.getByRole('combobox')

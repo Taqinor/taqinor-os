@@ -14,25 +14,11 @@ import { reponseContrat } from '../../test/fixtures/contractSamples'
    `features/ventes/ConceptionElectrique.test.jsx`). Ici on vérifie seulement
    le CÂBLAGE : le bon devis, la bonne API, le bon panneau. */
 
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }) }
-})
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: { ...actual.default, getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })) },
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).ventesSliceSansFetch(await importOriginal()))
+vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).crmApiMotifsPerteVide(await importOriginal()))
 vi.mock('../../api/ventesApi', async (importOriginal) => {
   const actual = await importOriginal()
   return {

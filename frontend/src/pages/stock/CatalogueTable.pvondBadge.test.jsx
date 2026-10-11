@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { wrapper } from './__tests__/WrapperRouterTheme.jsx'
+import { produitStockBase, propsCatalogueBase } from './catalogue.testHelpers.js'
 import { CatalogueTable } from './CatalogueTable.jsx'
 
 /* ============================================================================
@@ -20,28 +20,16 @@ import { CatalogueTable } from './CatalogueTable.jsx'
    normal les exécutera réellement.
    ========================================================================== */
 
-function wrapper({ children }) {
-  return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
-  )
-}
-
 const baseProduit = (over = {}) => ({
-  id: 1,
+  ...produitStockBase,
   nom: 'Onduleur hybride Deye 8kW',
   sku: 'OND-DEYE-8K',
   marque: 'Deye',
   prix_vente: '14000',
   prix_achat: '9000',
-  tva: 20,
   quantite_stock: 3,
-  quantite_reservee: 0,
   quantite_disponible: 3,
   seuil_alerte: 1,
-  is_low_stock: false,
-  is_archived: false,
   categorie: { id: 5, nom: 'Onduleurs hybrides', ordre: 2 },
   specs_solaire: { famille: 'onduleur', plage_batterie_v: null, v_nominal: null, manquantes: [] },
   ...over,
@@ -51,13 +39,7 @@ function renderTable(props = {}) {
   return render(
     <CatalogueTable
       produits={[baseProduit()]}
-      loading={false}
-      canWrite
-      canDelete
-      onEdit={() => {}}
-      onDelete={() => {}}
-      onHistorique={() => {}}
-      onReapprovisionner={() => {}}
+      {...propsCatalogueBase}
       selected={new Set()}
       onToggleSelect={() => {}}
       {...props}

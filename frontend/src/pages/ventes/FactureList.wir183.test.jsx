@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import CONTRAT_AVOIR from '../../../../backend/django_core/apps/facturation/contract_samples/avoir.json'
 
@@ -55,16 +52,8 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
   return { ...actual, default: { ...actual.default, ...api } }
 })
 
-vi.mock('../../api/parametresApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getProfile: vi.fn(() => Promise.resolve({ data: { dgi_export_actif: false } })),
-    },
-  }
-})
+vi.mock('../../api/parametresApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).parametresApiProfil(await importOriginal(), { dgi_export_actif: false }))
 
 // Le toast est la SEULE surface où le message d'erreur serveur apparaît ;
 // on le mocke pour l'affirmer directement (le barrel `ui` réexporte Toaster).
@@ -76,33 +65,14 @@ vi.mock('../../ui/Toaster', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
+vi.mock('../../api/uxviewsApi', async () =>
+  (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
 
 import FactureList from './FactureList'
+import { renderFactureList } from './factureList.testHelpers.jsx'
 import { toast } from '../../ui/Toaster'
 
-function renderList({ factures = [], role = 'admin' } = {}) {
-  const store = configureStore({
-    reducer: {
-      ventes: (s = { factures, loading: false, error: null }) => s,
-      auth: (s = { role }) => s,
-    },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/factures']}>
-        <ThemeProvider><FactureList /></ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderList = (opts) => renderFactureList(FactureList, opts)
 
 const emise = {
   id: 1, reference: 'FAC-2026-07-0001', client: 9, client_nom: 'ACME',
