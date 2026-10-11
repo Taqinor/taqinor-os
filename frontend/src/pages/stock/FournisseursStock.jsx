@@ -24,6 +24,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { frErrChamps as frErr } from '../../lib/frErr'
 import { AlerteErreurStock } from './BandeauxListeStock'
+import PiedDialogueFermer from './PiedDialogueFermer'
 
 // XPUR4 — les 4 statuts fournisseur (miroir de `Fournisseur.Statut` côté
 // serveur — le blocage est déjà appliqué et testé serveur, cf.
@@ -469,9 +470,7 @@ function ScorecardModal({ fournisseur, onClose }) {
           </div>
         )}
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedDialogueFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )

@@ -14,6 +14,7 @@ import { Table } from '../reporting/Table'
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
+import PiedDialogueFermer from '../stock/PiedDialogueFermer'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -388,9 +389,7 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged, onDeleted }) {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedDialogueFermer onClose={onClose} />
       </DialogContent>
 
       {addLigneOpen && (
