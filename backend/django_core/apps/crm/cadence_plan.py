@@ -6,6 +6,7 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 import datetime
 import logging
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.records.provenance import ecrire_si_libre
@@ -754,7 +755,13 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         return []
     if cadence == 'reveil':
         _adapter_gabarits_reveil(lead, etapes)
-    RelanceEtape.objects.bulk_create(etapes)
+    try:
+        with transaction.atomic():
+            RelanceEtape.objects.bulk_create(etapes)
+    except IntegrityError:
+        # ACRM55 — le barreau est DÉJÀ ouvert (contrainte) : on relit
+        # l'existant, sans seconde note ni 500.
+        return _barreaux_ouverts(lead, cadence, devis)
     # SUIVI E1 — les barreaux de CETTE cadence, jamais les gestes de visite
     # qui partagent sa cadence.
     resultats = list(
@@ -1053,7 +1060,13 @@ def _materialiser_touche_suivante(etape_close, user=None):
             devis_id=etape_close.devis_id, cadence_depart=ancre)
         if cadence == 'reveil':
             _adapter_gabarits_reveil(lead, [etape], rang_initial=suivant)
-        etape.save()
+        try:
+            with transaction.atomic():
+                etape.save()
+        except IntegrityError:
+            # ACRM55 — ce barreau est déjà OUVERT (contrainte) : même issue
+            # que l'idempotence ci-dessus, jamais une 500.
+            return None, RaisonSuite.DEJA_PRISE
         return etape, RaisonSuite.CREEE
     return None, RaisonSuite.FIN_GABARIT
 
@@ -1541,6 +1554,17 @@ def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
         logger.warning(
             'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
         return 0
+
+
+def _barreaux_ouverts(lead, cadence, devis):
+    """ACRM55 — les barreaux À FAIRE de `cadence` (hors gestes de visite),
+    relus quand la contrainte a refusé un doublon."""
+    ouverts = (lead.relance_etapes
+               .filter(cadence=cadence, statut=RelanceEtape.Statut.A_FAIRE)
+               .exclude(q_visite()).order_by('ordre', 'due_date'))
+    if devis is not None:
+        ouverts = ouverts.filter(devis=devis)
+    return list(ouverts)
 
 
 def _prochaine_touche_a_faire(lead):
