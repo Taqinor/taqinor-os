@@ -50,8 +50,8 @@ from .serializers import (
     VisiteExterneSerializer,
     masquer_pii_dict,
 )
-from .serializers_cadence import RelanceEtapeSerializer
 from .cadence_views import (
+    LeadCadenceActionsMixin,
     _best_effort, _geste_atomique, _parse_rappel, _prochaine_touche_publique,
 )
 from apps.records.views import ChatterViewSetMixin
@@ -781,8 +781,20 @@ class ClientViewSet(CompanyScopedModelViewSet):
         return Response({'count': len(results), 'results': results})
 
 
+class _RepliIsAdminMixin:
+    """SPL75 — fin de la chaîne des ``get_permissions`` coopératifs de
+    LeadViewSet : toute action qu'aucun mixin ni LeadViewSet ne garde
+    retombe sur ``[IsAdminRole()]`` (repli final, prouvé par l'action
+    absente du golden SPL70). Placé AVANT ``EntiteScopeMixin`` dans les
+    bases."""
+
+    def get_permissions(self):
+        return [IsAdminRole()]
+
+
 @extend_schema_view(list=extend_schema(parameters=[sd.param('stage'), sd.param('source'), sd.P_ARCHIVED, sd.P_ENTITE]))
-class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
+class LeadViewSet(LeadCadenceActionsMixin, _RepliIsAdminMixin, EntiteScopeMixin,
+                  CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
 
     L'utilisateur acteur et la société viennent toujours de la requête côté
@@ -1436,16 +1448,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['duplicates',
                                           'check_duplicates', 'doublons',
-                                          'export_xlsx', 'relances',
+                                          'export_xlsx',
                                           'roi_sources', 'sla_breach',
                                           # MRY19 — lecture ouverte à tout
                                           # rôle, comme `sla_breach`.
                                           'kpi_premier_contact',
-                                          'kpi_cadences',
-                                          # CAD87 — lecture seule, même
-                                          # ouverture que les deux KPI
-                                          # ci-dessus.
-                                          'mesure_cadence',
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
@@ -1468,13 +1475,6 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                              # `return [IsAdminRole()]` final — 403 pour la
                              # Commerciale, qui est justement celle qui lit.
                              'visites', 'message_visite',
-                             # CAD148 — le PANNEAU D'APPEL est une LECTURE de
-                             # la fiche (script, questions, équipements) :
-                             # même garde fine que l'historique. Sans cette
-                             # ligne il retomberait sur le `[IsAdminRole()]`
-                             # final et la commerciale — qui est justement
-                             # celle qui appelle — serait refusée (bug CI #25).
-                             'panneau_appel',
                              # AGR516 — les réalisations proches sont une
                              # LECTURE de la fiche : même garde fine que
                              # l'@action (sinon `[IsAdminRole()]` final).
@@ -1521,18 +1521,6 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'whatsapp_devis', 'whatsapp_devis_apercu', 'synchroniser_client',
             'bulk',
             'log_interaction',
-            'appliquer_plan', 'initialiser_relance',
-            # MRY9 — arrêt manuel d'une cadence. get_permissions()
-            # PRIME sur le permission_classes de l'@action (bug CI #25) :
-            # sans cette ligne, l'action retomberait sur IsAdminRole et
-            # la Commerciale — qui est justement celle qui arrête —
-            # serait refusée.
-            'arreter_relance',
-            # MRY30 — placement des anciens leads dans les cadences. MÊME
-            # motif : sans cette ligne l'action retomberait sur IsAdminRole
-            # et la Commerciale — qui pilote le moteur de relances — serait
-            # refusée alors que l'@action déclare IsResponsableOrAdmin.
-            'placement_cadences',
             # L-QUEST — get_permissions() PRIME sur le permission_classes de
             # l'@action : sans cette ligne, `questionnaire-lien` retomberait
             # sur le `return [IsAdminRole()]` final et la Commerciale — qui
@@ -1554,7 +1542,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         elif self.action == 'destroy':
             # La suppression DÉFINITIVE reste réservée à l'admin/propriétaire.
             return [IsAdminRole()]
-        return [IsAdminRole()]
+        # SPL75 — les actions des mixins (cadence…) se gardent elles-mêmes ;
+        # la chaîne finit sur _RepliIsAdminMixin ([IsAdminRole()]).
+        return super().get_permissions()
 
     @extend_schema(request=None, responses=LeadSerializer)
     @action(detail=True, methods=['post'], url_path='archiver',
@@ -2202,276 +2192,6 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data)
 
-    @extend_schema(request=sd.corps('CrmAppliquerPlanRequest', plan_id=serializers.IntegerField()), responses=sd.liste('CrmPlanActivites'))
-    @action(detail=True, methods=['post'], url_path='appliquer-plan',
-            permission_classes=[IsResponsableOrAdmin])
-    def appliquer_plan(self, request, pk=None):
-        """ZSAL2 — applique un PlanActivite (body {plan_id}) au lead : crée
-        une activité par étape, échéance = aujourd'hui + délai. Idempotent :
-        ré-appliquer le même plan ne duplique rien."""
-        lead = self.get_object()
-        plan_id = request.data.get('plan_id')
-        if not plan_id:
-            return Response({'plan_id': 'Requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        plan = PlanActivite.objects.filter(
-            id=plan_id, company=request.user.company).first()
-        if plan is None:
-            return Response({'detail': 'Plan introuvable.'},
-                            status=status.HTTP_404_NOT_FOUND)
-        from .fiche_ecritures import appliquer_plan_activite
-        try:
-            activites = appliquer_plan_activite(
-                lead=lead, plan=plan, user=request.user)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        from apps.records.serializers import ActivitySerializer
-        return Response(
-            ActivitySerializer(activites, many=True).data,
-            status=status.HTTP_200_OK)
-
-    # ── RELANCE FOUNDATION — plan de relance structuré (multi-touches) ──────
-    @extend_schema(request=sd.corps('CrmInitialiserRelanceRequest', cadence=serializers.CharField(required=False), confirmer_remplacement=serializers.BooleanField(required=False), devis=serializers.IntegerField(required=False), motif=serializers.CharField(required=False), sans_devis_confirme=serializers.BooleanField(required=False)), responses=RelanceEtapeSerializer(many=True))
-    @action(detail=True, methods=['post'], url_path='relance/initialiser',
-            permission_classes=[IsResponsableOrAdmin])
-    def initialiser_relance(self, request, pk=None):
-        """Initialise (à la demande) une cadence de relance sur le lead depuis
-        le gabarit de la société (Paramètres → CRM).
-
-        Corps : ``{cadence}`` parmi `contact` (défaut), `apres_devis`,
-        `reveil`, `generique` — 400 sur toute autre valeur. IDEMPOTENT PAR
-        CADENCE : un second appel renvoie le plan existant sans rien dupliquer
-        (voir ``services.initialiser_plan_relance``). Un lead « ne plus
-        contacter » est refusé (400) : c'est une demande explicite de la
-        personne, pas un réglage à contourner.
-
-        CAD51 — relancer une cadence PLUS prioritaire que celle en cours
-        l'ARRÊTE : jamais en silence. Sans ``confirmer_remplacement: true``,
-        refus 409 AVANT toute écriture, qui nomme la ou les cadences arrêtées
-        et le nombre de touches ouvertes perdues (``remplacement``) ; avec la
-        confirmation, ``motif`` est OBLIGATOIRE (400 qui nomme le champ,
-        comme « Arrêter la cadence ») et l'arrêt est tracé sous ce motif.
-
-        CAD55 — « Après devis » depuis la fiche rattache le devis ENVOYÉ du
-        lead à TOUTES les touches (et pose sa validité) : un seul → rattaché
-        d'office ; plusieurs → 409 ``devis_a_choisir`` (le plus récent
-        proposé), la réponse revient en ``devis`` ; aucun → 409
-        ``sans_devis`` qui le dit AVANT le lancement, ``sans_devis_confirme:
-        true`` lance quand même. Les questions en attente partent ENSEMBLE
-        dans un seul 409.
-        Forme : ``contract_samples/lead_relance_initialiser.json``."""
-        from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
-
-        lead = self.get_object()
-        cadence = (request.data.get('cadence') or Cadence.CONTACT)
-        # PARAM-CADENCE (25/09/2026) — « Après l'appel » et « Visite
-        # technique » sont les gabarits des étapes que le MOTEUR pose, jamais
-        # un plan qu'on démarre sur un lead.
-        plans = [c for c, _ in Cadence.choices if c not in CADENCES_MOTEUR]
-        if cadence not in plans:
-            return Response(
-                {'cadence': 'Cadence inconnue. Choisir parmi : '
-                            + ', '.join(plans) + '.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        if lead.ne_plus_contacter:
-            return Response(
-                {'detail': 'Lead marqué « ne plus contacter ».'},
-                status=status.HTTP_400_BAD_REQUEST)
-        from .cadence_plan import (
-            MESSAGE_RELANCE_PLUSIEURS_DEVIS,
-            MESSAGE_RELANCE_SANS_DEVIS,
-            CadenceActiveConflit,
-            CadenceRemplacementAConfirmer,
-            apercu_remplacement_cadence,
-            choix_devis_relance,
-            devis_envoyes_pour_relance,
-            initialiser_plan_relance,
-            message_remplacement_cadence,
-        )
-        oui = (True, 'true', 'True', '1', 1)
-        confirme = request.data.get('confirmer_remplacement') in oui
-        motif = str(request.data.get('motif') or '').strip()
-        questions, erreurs, messages = {}, {}, []
-        # CAD55 — le devis que le suivi « après devis » citera. Un plan
-        # après-devis déjà OUVERT est renvoyé tel quel (idempotence MRY5,
-        # inchangée) : aucune question, et jamais un second plan à côté.
-        # SUIVI E1 (30/09/2026) — un plan ouvert = un BARREAU du protocole :
-        # une étape de visite ouverte (même cadence) ne l'est pas.
-        from .cadence_reperes import q_visite
-        devis = None
-        if cadence == Cadence.APRES_DEVIS and not lead.relance_etapes.filter(
-                cadence=Cadence.APRES_DEVIS,
-                statut=RelanceEtape.Statut.A_FAIRE,
-        ).exclude(q_visite()).exists():
-            envoyes = devis_envoyes_pour_relance(lead)
-            devis_id = request.data.get('devis')
-            if devis_id not in (None, ''):
-                devis = next(
-                    (d for d in envoyes if str(d.pk) == str(devis_id)), None)
-                if devis is None:
-                    return Response(
-                        {'detail': "Ce devis n'est pas un devis envoyé de ce "
-                                   'lead, en attente de réponse.',
-                         'erreurs': {'devis': [
-                             "Ce devis n'est pas un devis envoyé de ce lead, "
-                             'en attente de réponse.']}},
-                        status=status.HTTP_400_BAD_REQUEST)
-            elif len(envoyes) == 1:
-                devis = envoyes[0]
-            elif len(envoyes) > 1:
-                questions['devis_a_choisir'] = {
-                    'choix': choix_devis_relance(envoyes),
-                    'propose': envoyes[0].pk}
-                erreurs['devis'] = [MESSAGE_RELANCE_PLUSIEURS_DEVIS]
-            elif request.data.get('sans_devis_confirme') not in oui:
-                questions['sans_devis'] = True
-                erreurs['devis'] = [MESSAGE_RELANCE_SANS_DEVIS]
-        # CAD51 — ce que ce démarrage ARRÊTERAIT, lu sans rien écrire.
-        apercu = apercu_remplacement_cadence(lead, cadence, devis=devis)
-        message = message_remplacement_cadence(apercu) if apercu else ''
-        if apercu is not None and not confirme:
-            questions['remplacement'] = apercu
-            erreurs['confirmer_remplacement'] = [message]
-            messages.append(message)
-        messages.extend(erreurs.get('devis', []))
-        if questions:
-            return Response(
-                {'detail': ' '.join(messages), 'erreurs': erreurs,
-                 **questions},
-                status=status.HTTP_409_CONFLICT)
-        if apercu is not None and not motif:
-            return Response(
-                {'detail': "Le motif d'arrêt est obligatoire.",
-                 'erreurs': {'motif': [
-                     "Le motif d'arrêt est obligatoire : " + message]},
-                 'remplacement': apercu},
-                status=status.HTTP_400_BAD_REQUEST)
-        try:
-            etapes = initialiser_plan_relance(
-                lead, request.user, cadence=cadence, devis=devis,
-                exiger_confirmation=True,
-                motif_remplacement=motif if apercu is not None else '')
-        except CadenceRemplacementAConfirmer as exc:
-            # Course : une cadence est apparue entre l'aperçu et l'écriture.
-            return Response(
-                {'detail': str(exc),
-                 'erreurs': {'confirmer_remplacement': [str(exc)]},
-                 'remplacement': exc.apercu},
-                status=status.HTTP_409_CONFLICT)
-        except CadenceActiveConflit as exc:
-            # CADX (fondateur 15/09/2026) — jamais deux cadences en
-            # parallèle : le refus NOMME le champ et dit le geste à faire
-            # (« Arrêter la cadence » d'abord).
-            return Response({'erreurs': {'cadence': [str(exc)]}},
-                            status=status.HTTP_400_BAD_REQUEST)
-        return Response(
-            RelanceEtapeSerializer(
-                etapes, many=True, context={'request': request}).data,
-            status=status.HTTP_200_OK)
-
-    @extend_schema(request=sd.corps('CrmArreterRelanceRequest', cadences=serializers.ListField(child=serializers.CharField(), required=False), motif=serializers.CharField()), responses=sd.OBJ)
-    @action(detail=True, methods=['post'], url_path='relance/arreter',
-            permission_classes=[IsResponsableOrAdmin])
-    def arreter_relance(self, request, pk=None):
-        """MRY9 — Arrête les cadences en cours du lead. Corps : ``{motif}``
-        OBLIGATOIRE (400 sinon) et ``{cadences: [...]}`` optionnel.
-
-        Le motif n'est pas une politesse : c'est lui qui distingue plus tard
-        « joint » d'un abandon dans le KPI de cadence (MRY21), et il est écrit
-        sur chaque touche arrêtée. Idempotent : zéro touche ouverte renvoie
-        ``{arretees: 0}`` sans rien journaliser."""
-        lead = self.get_object()
-        motif = (request.data.get('motif') or '').strip()
-        if not motif:
-            return Response(
-                {'motif': "Le motif d'arrêt est obligatoire."},
-                status=status.HTTP_400_BAD_REQUEST)
-        cadences = request.data.get('cadences') or None
-        if cadences is not None and not isinstance(cadences, list):
-            return Response(
-                {'cadences': 'Liste de cadences attendue.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        from .cadence_plan import arreter_cadence
-        arretees = arreter_cadence(
-            lead, user=request.user, motif=motif, cadences=cadences)
-        return Response({'arretees': arretees}, status=status.HTTP_200_OK)
-
-    @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False), limite=serializers.IntegerField(required=False)), responses=sd.OBJ)
-    @action(detail=False, methods=['post'], url_path='placement-cadences',
-            permission_classes=[IsResponsableOrAdmin])
-    def placement_cadences(self, request):
-        """MRY30 — Place les ANCIENS leads dans les cadences du moteur.
-
-        Corps ``{"apply": false, "limite": 40}`` — ``{"apply": false}``
-        (défaut) = APERÇU, n'écrit rien ; ``{"apply": true}`` applique AU PLUS
-        ``limite`` leads (1..200, défaut 40) et renvoie ``restants`` : l'écran
-        rappelle tant qu'il est > 0. Réponse = forme
-        `contract_samples/placement_anciens_leads.json` dans les deux cas —
-        c'est le point : l'aperçu et l'application rendent le MÊME rapport,
-        seuls ``applique``/``restants`` changent, si bien que l'écran ne peut
-        pas afficher deux choses différentes selon le mode.
-
-        Le LOT existe pour une raison mesurée : le 07/09/2026, un aperçu sur
-        277 candidats a dépassé les 20 s du délai axios et nginx a journalisé
-        deux 499. L'aperçu est désormais un calcul pur, et l'application ne
-        traite qu'un lot par requête — les deux moitiés du même incident.
-
-        Réservé responsable/admin (l'action déplace des centaines de dossiers
-        au froid et pose des cadences ; ce n'est pas un geste de file
-        quotidienne) — garde répétée dans ``get_permissions``, qui PRIME sur
-        le ``permission_classes`` de l'@action (bug CI #25)."""
-        apply = request.data.get('apply')
-        if apply in (None, ''):
-            apply = False
-        if not isinstance(apply, bool):
-            return Response(
-                {'apply': 'Booléen attendu (true pour appliquer).'},
-                status=status.HTTP_400_BAD_REQUEST)
-        from .cadence_placement import (
-            PLACEMENT_LOT_DEFAUT,
-            PLACEMENT_LOT_MAX,
-            placer_anciens_leads,
-        )
-        limite = request.data.get('limite')
-        if limite in (None, ''):
-            limite = PLACEMENT_LOT_DEFAUT
-        # `bool` est un `int` en Python : sans ce refus, `{"limite": true}`
-        # passerait pour un lot de 1.
-        elif isinstance(limite, bool):
-            limite = None
-        else:
-            try:
-                limite = int(limite)
-            except (TypeError, ValueError):
-                limite = None
-        if limite is None or not 1 <= limite <= PLACEMENT_LOT_MAX:
-            # LEVÉ, pas renvoyé : `check_api_shapes` lit le CONTRAT d'une vue
-            # comme l'union de tous ses `return Response({…})` littéraux — un
-            # refus rendu de cette façon ferait entrer `limite` dans la forme
-            # de la réponse, alors que c'est un champ du CORPS DE REQUÊTE.
-            # DRF rend le même 400.
-            raise DRFValidationError(
-                {'limite': f'Entier attendu entre 1 et {PLACEMENT_LOT_MAX} '
-                           f'(défaut {PLACEMENT_LOT_DEFAUT}).'})
-        # ALEA25 — borné par la portée du viewset (société + équipe).
-        from rest_framework.exceptions import APIException
-
-        from .cadence_placement import PlacementImpossible
-
-        class _PlacementSuspendu(APIException):
-            # ACRM47 — 503 ``{detail}`` (contrat ACRM61) ; LEVÉE, pas
-            # renvoyée, pour ne pas entrer ``detail`` dans la forme du rapport.
-            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-
-        try:
-            rapport = placer_anciens_leads(
-                request.user.company, request.user, apply=apply,
-                limite=limite, leads_en_portee=self._leads_en_portee())
-        except PlacementImpossible as exc:
-            raise _PlacementSuspendu(str(exc))
-        return Response(rapport, status=status.HTTP_200_OK)
-
     @extend_schema(request=sd.corps('CrmResoudreGpsRequest', adresse=serializers.CharField(required=False), lien=serializers.CharField(required=False), ville=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='resoudre-gps',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -2708,34 +2428,6 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'manquantes': quest.manquantes(lead),
         })
 
-    # ── FG31 — File de relance du jour ───────────────────────────────────────
-    @extend_schema(parameters=[sd.P_SCOPE], responses=sd.OBJ)
-    @action(detail=False, methods=['get'], url_path='relances',
-            permission_classes=[IsAnyRole])
-    def relances(self, request):
-        """File de relance consolidée.
-
-        scope= overdue (en retard) | today (aujourd'hui) | week (cette semaine)
-        Portée de visibilité de l'utilisateur respectée (scope_queryset).
-
-        VX83 — la logique de sélection vit désormais dans
-        ``crm.selectors.relances_du_jour`` (consommée aussi par « Ma file »
-        cross-module) ; cette vue ne fait que la présenter (convention
-        selectors — jamais deux implémentations divergentes).
-        """
-        from .selectors import relances_du_jour
-        scope = request.query_params.get('scope', 'today')
-        company = request.user.company if request.user.company_id else None
-        qs = relances_du_jour(company, request.user, scope=scope)
-        # CAD133 (fix CI #713) — les signaux comportement/fraîcheur sont annotés en
-        # sous-requêtes, comme dans get_queryset() : sans cela chaque lead relit ses
-        # agrégats (16 requêtes par carte sur la file du jour).
-        from .signaux import annotations_signaux
-        qs = qs.annotate(**annotations_signaux())
-        # APRF18 — sérialisation EN LOT (mêmes cartes que la liste).
-        return Response({'count': qs.count(),
-                         'results': self._serialiser_leads_en_lot(qs)})
-
     # ── FG34 — ROI par source / campagne ────────────────────────────────────
     @extend_schema(parameters=[sd.param('from', OpenApiTypes.DATE), sd.param('to', OpenApiTypes.DATE), sd.param('canal')], responses=sd.liste('CrmRoiSource'))
     @action(detail=False, methods=['get'], url_path='roi-sources',
@@ -2872,72 +2564,6 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'nb_chantiers': c.installations.count() if hasattr(c, 'installations') else 0,
             }, request.user))
         return Response(result)
-
-    # ── MRY21 — KPI de cadence (Cockpit + bilan hebdomadaire) ────────────────
-    # PACT7 — SANS cette déclaration, le schéma publierait cet agrégat avec le
-    # `LeadSerializer` du ViewSet alors qu'il renvoie sept chiffres : un schéma
-    # qui MENT est pire qu'un schéma vide. `allow_null` partout où le contrat
-    # MRY25 prévoit `null` sur un dénominateur vide.
-    @extend_schema(parameters=[sd.P_JOURS], responses=inline_serializer('CrmKpiCadences', {
-        'joints_sous_5j_pct': serializers.FloatField(allow_null=True),
-        'cadences_completes': serializers.IntegerField(),
-        'cadences_arretees_joint': serializers.IntegerField(),
-        'perdus_avec_motif_pct': serializers.FloatField(allow_null=True),
-        'signatures': serializers.IntegerField(),
-        'devis_envoyes': serializers.IntegerField(),
-        'tentatives_moy_avant_abandon': serializers.FloatField(
-            allow_null=True),
-    }))
-    @action(detail=False, methods=['get'], url_path='kpi-cadences',
-            permission_classes=[IsAnyRole])
-    def kpi_cadences(self, request):
-        """Forme `kpi_cadences` (contrat MRY25). ``?jours=`` (30).
-
-        `null` dès qu'un dénominateur est 0 — jamais un 0 % qui se lirait
-        comme un échec là où il n'y a rien à mesurer."""
-        try:
-            jours = max(1, min(365, int(request.query_params.get('jours', 30))))
-        except (TypeError, ValueError):
-            jours = 30
-        from .selectors import kpi_cadences as _kpi
-        return Response(_kpi(request.user.company, jours=jours))
-
-    # ── CAD-I ── CAD87 — les trois mesures de la cadence ─────────────────────
-    # PACT7 — même raison que `kpi_cadences` : un agrégat déclare sa forme,
-    # sinon le schéma publierait le `LeadSerializer` du ViewSet à sa place.
-    @extend_schema(parameters=[sd.P_JOURS], responses=inline_serializer('CrmMesureCadence', {
-        'jours': serializers.IntegerField(),
-        'source_issue': serializers.CharField(),
-        'taux_joint_par_creneau': serializers.ListField(
-            child=serializers.DictField()),
-        'signatures_par_touches_consommees': serializers.ListField(
-            child=serializers.DictField()),
-        'part_contact_et_langue': serializers.DictField(),
-        # CAD178 — additif : les 4 gestes clés, par famille d'appareil.
-        'gestes_par_appareil': serializers.ListField(
-            child=serializers.DictField()),
-    }))
-    @action(detail=False, methods=['get'], url_path='mesure-cadence',
-            permission_classes=[IsAnyRole])
-    def mesure_cadence(self, request):
-        """Forme `mesure_cadence` (CAD87/CAD178). ``?jours=`` (90, borné
-        [1, 365]).
-
-        LECTURE SEULE, bornée à `request.user.company`. Quatre mesures et rien
-        d'autre : taux de joint par (touche × heure × jour × canal),
-        signatures par nombre de touches consommées, part de « WhatsApp
-        uniquement » et de darija, et (CAD178) les gestes clés (Fait,
-        Reporter, Appeler, WhatsApp) par famille d'appareil. Aucun seuil,
-        aucune couleur — le jugement reste humain, et `null`/liste vide dès
-        qu'un dénominateur est 0 ou qu'aucun geste n'a encore été compté."""
-        from .mesure_cadence import JOURS_MESURE_DEFAUT
-        from .mesure_cadence import mesure_cadence as _mesure
-        try:
-            jours = max(1, min(365, int(request.query_params.get(
-                'jours', JOURS_MESURE_DEFAUT))))
-        except (TypeError, ValueError):
-            jours = JOURS_MESURE_DEFAUT
-        return Response(_mesure(request.user.company, jours=jours))
 
     # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
     # PACT7 — même raison que `kpi_cadences` ci-dessous : un agrégat déclare
@@ -3520,22 +3146,6 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .serializers import pii_masquee_pour
         return export_leads_xlsx(
             leads, masquer_pii=pii_masquee_pour(request.user))
-
-    # ── CAD-L ── CAD148 — le panneau d'appel guidé.
-    @extend_schema(responses=sd.OBJ)
-    @action(detail=True, methods=['get'], url_path='panneau-appel',
-            permission_classes=[IsAnyRole])
-    def panneau_appel(self, request, pk=None):
-        """CAD148 — tout ce qu'un écran d'appel attend du serveur, en UNE
-        réponse : segment, touche en cours, script rendu, questions encore à
-        poser (jamais une déjà répondue) et, par équipement, « compté dans
-        l'étude » ou le champ qui lui manque.
-
-        Contrat : `apps/crm/contract_samples/panneau_appel.json` (CAD147).
-        Lecture seule, company-scopée par `get_object()` — aucune écriture."""
-        from .panneau_appel import panneau_appel as _panneau
-        lead = self.get_object()
-        return Response(_panneau(lead, request=request, user=request.user))
 
 
 class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
