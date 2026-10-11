@@ -2662,8 +2662,10 @@ from .models_consignation import (  # noqa: E402
     DepotConsignation,
 )
 from .models_rfa import AccordRFAFournisseur  # noqa: E402
+from .models_van_sales import StockVehicule  # noqa: E402  (enregistrement du modèle van-sales)
 
 __all__ = [
+    'StockVehicule',
     'AccordRFAFournisseur', 'AffectationCrossDock', 'AlerteRappel', 'BlocageQualite',
     'CompatibiliteHazmatCasier', 'ControleReception', 'DeclarationConsommation',
     'DepotConsignation', 'ExpeditionTransporteur', 'HistoriqueCasier',
