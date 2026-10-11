@@ -81,7 +81,7 @@ LITERAL_EXEMPT = {
 LITERAL_ALLOW = {
     "backend/django_core/apps/crm/leads_selectors.py": 1,
     "backend/django_core/apps/crm/fiche_funnel.py": 3,
-    "backend/django_core/apps/crm/views.py": 1,
+    "backend/django_core/apps/crm/leads_views.py": 1,  # SPL77 : venu de crm/views.py (move only)
     "backend/django_core/core/win_probability.py": 6,
 }
 

@@ -3,11 +3,11 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AppointmentViewSet, ClientViewSet,
     ConcurrentPerteViewSet, LeadViewSet,
-    assignable_users, equipes_statistiques, rapport_attribution,
+    assignable_users, equipes_statistiques,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
     ObjectifCommercialViewSet,
     PlanActiviteViewSet,
-    PointContactViewSet, SavedViewViewSet,
+    SavedViewViewSet,
     SiteProfileViewSet,
     EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
 )
@@ -33,6 +33,8 @@ from .views import (
     PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
     forecast_historique_view, forecast_rollup_view, lead_playbook_view,
 )
+# SPL77 — intake des leads (rapport d'attribution, points de contact).
+from .leads_views import PointContactViewSet, rapport_attribution
 # SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
 # deals, défis, T-TRACE.
 from .clients_views import (
