@@ -902,7 +902,7 @@ app.conf.beat_schedule = {
     # (apps/parametres/retention.purge_all_companies, plancher légal 365 j)
     # pour les seules sociétés ayant réglé audit_retention_days > 0.
     'parametres-purger-audit': {
-        'task': 'parametres.purger_audit',
+        'task': 'parametres.purge_audit_retention',
         'schedule': crontab(hour=3, minute=40),
     },
     # ACHT75 — échéances de calibration d'outillage à 30 jours ou moins

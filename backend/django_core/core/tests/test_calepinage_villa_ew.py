@@ -202,7 +202,10 @@ class LesDeuxFamillesNeRendentPasLeMemeCompte(unittest.TestCase):
         """14 m est-ouest × 10 m nord-sud : en rangées nord-sud, x mesure 10."""
         sud, _p, _pol, _r = _calepiner(self.area, FAMILLE_SUD)
         ew, _p2, _pol2, _r2 = _calepiner(self.area, FAMILLE_EST_OUEST)
-        etendue = lambda c, i: (max(p[i] for p in c) - min(p[i] for p in c))  # noqa: E731
+
+        def etendue(c, i):
+            return max(p[i] for p in c) - min(p[i] for p in c)
+
         self.assertAlmostEqual(etendue(sud.surfaces[0].contour, 0),
                                etendue(ew.surfaces[0].contour, 1), places=6)
         self.assertAlmostEqual(etendue(sud.surfaces[0].contour, 1),

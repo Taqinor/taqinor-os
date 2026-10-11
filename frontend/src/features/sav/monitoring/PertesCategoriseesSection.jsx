@@ -30,9 +30,13 @@ export default function PertesCategoriseesSection({ systems, loadingSystems }) {
   useEffect(() => {
     if (!systeme) return undefined
     let actif = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true)
-    setErreur(null)
+    // ENF28 — état « en cours » posé une microtâche plus tard (aucun setState
+    // synchrone dans l'effet) ; toujours avant la réponse, mise en file après.
+    Promise.resolve().then(() => {
+      if (!actif) return
+      setLoading(true)
+      setErreur(null)
+    })
     monitoringApi.getPertesCategorisees(systeme, { window_days: fenetre })
       .then((r) => { if (actif) setPertes(r.data) })
       .catch((e) => {

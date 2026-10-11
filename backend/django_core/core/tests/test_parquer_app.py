@@ -50,7 +50,7 @@ class JouetConfig(AppConfig):
     module_manifest = {'key': 'jouet', 'label': 'Jouet', 'depends': []}
 
     def ready(self):
-        from . import receivers  # noqa: F401
+        from . import receivers
 """
 
 MODELS_PY = """from django.db import models

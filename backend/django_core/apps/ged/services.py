@@ -11,7 +11,7 @@ import re
 
 from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
-from django.db.models import Value
+from django.db.models import F, Value
 
 from core.pdf import render_pdf
 
@@ -447,7 +447,7 @@ def classer_ia(texte):  # pragma: no cover - dépend d'un provider externe non c
         return ''
     provider = None
     try:
-        from . import classification_provider as provider  # noqa: F401
+        from . import classification_provider as provider
     except ImportError:
         provider = None
     if provider is None:
@@ -512,7 +512,7 @@ def compute_embedding(text):
     # n'est câblé, on reste no-op même flag activé — jamais d'appel fantôme.
     provider = None
     try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import embedding_provider as provider  # noqa: F401
+        from . import embedding_provider as provider
     except ImportError:
         provider = None
     if provider is None:
@@ -691,7 +691,7 @@ def assign_tag(document, tag, *, created_by=None):
     Le tag et le document doivent appartenir à la même société (jamais de fuite
     cross-société). Renvoie (assignment, created).
     """
-    from .models import DocumentTag, DocumentTagAssignment  # noqa: F401
+    from .models import DocumentTagAssignment
     if tag.company_id != document.company_id:
         raise ValueError("Le tag doit appartenir à la même société.")
     assignment, created = DocumentTagAssignment.objects.get_or_create(
@@ -744,7 +744,7 @@ def move_folder(folder, new_parent):
         new_path = folder.path
         # Réécrit le préfixe de chemin de chaque descendant.
         if old_path and old_path != new_path:
-            for desc in Folder.objects.filter(
+            for desc in Folder.objects.select_for_update().filter(
                     company=folder.company, path__startswith=old_path
             ).exclude(pk=folder.pk):
                 desc.path = new_path + desc.path[len(old_path):]
@@ -3160,7 +3160,7 @@ def demander_signature(document, *, signataire_nom, signataire_email,
         # fantôme ni de dépendance nouvelle.
         prov = None
         try:
-            from . import esign_provider as prov  # noqa: F401
+            from . import esign_provider as prov
         except ImportError:
             prov = None
         if prov is not None:
@@ -3831,8 +3831,9 @@ def valider_code_otp_signataire(signataire, code):
     if signataire.otp_essais >= OTP_MAX_ESSAIS:
         raise ValueError("Nombre maximal d'essais atteint.")
     if _hash_otp((code or '').strip()) != signataire.otp_code_hash:
-        signataire.otp_essais += 1
+        signataire.otp_essais = F('otp_essais') + 1  # ENF28 : essai compté en base
         signataire.save(update_fields=['otp_essais', 'updated_at'])
+        signataire.refresh_from_db(fields=['otp_essais'])
         raise ValueError("Code d'authentification incorrect.")
     signataire.otp_valide = True
     signataire.otp_valide_le = timezone.now()
@@ -3950,16 +3951,15 @@ def annuler_demande(demande, *, user):
     from django.utils import timezone
     from .models import SIGNATURE_ANNULE, SIGNATURE_REFUSE, SIGNATURE_SIGNE
 
-    if demande.statut in (SIGNATURE_SIGNE, SIGNATURE_REFUSE):
-        raise ValueError(
-            "Une demande déjà signée ou refusée ne peut plus être annulée.")
-    if demande.statut == SIGNATURE_ANNULE:
-        return demande
-    demande.statut = SIGNATURE_ANNULE
-    demande.annule_le = timezone.now()
-    demande.annule_par = user
-    demande.save(update_fields=[
-        'statut', 'annule_le', 'annule_par', 'updated_at'])
+    with transaction.atomic():  # ENF28 : statut relu sous verrou
+        demande = type(demande).objects.select_for_update().get(pk=demande.pk)
+        if demande.statut in (SIGNATURE_SIGNE, SIGNATURE_REFUSE):
+            raise ValueError(
+                "Une demande déjà signée ou refusée ne peut plus être annulée.")
+        if demande.statut == SIGNATURE_ANNULE:
+            return demande
+        demande.statut, demande.annule_le, demande.annule_par = SIGNATURE_ANNULE, timezone.now(), user
+        demande.save(update_fields=['statut', 'annule_le', 'annule_par', 'updated_at'])
     return demande
 
 
@@ -4088,9 +4088,9 @@ def relancer_signataires_dus(company, *, now=None):
         if now - reference < timedelta(days=cadence):
             continue
         signataire.derniere_relance_le = now
-        signataire.nb_relances += 1
-        signataire.save(update_fields=[
-            'derniere_relance_le', 'nb_relances', 'updated_at'])
+        signataire.nb_relances = F('nb_relances') + 1  # ENF28 : incrément atomique
+        signataire.save(update_fields=['derniere_relance_le', 'nb_relances', 'updated_at'])
+        signataire.refresh_from_db(fields=['nb_relances'])
         _send_signataire_email(signataire, signataire.demande, relance=True)
         relances.append(signataire)
     return relances
@@ -4614,7 +4614,7 @@ def _pades_signer_disponible():
     reconstruite, etc.), le scellement dégrade proprement en no-op plutôt que
     de lever au chargement du module."""
     try:
-        import pyhanko  # noqa: F401
+        __import__('pyhanko')  # sonde de disponibilité de la lib
         return True
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
         return False
@@ -5158,10 +5158,10 @@ def relancer_demande_document(demande, *, now=None):
                 company=demande.company)
         except Exception:  # pragma: no cover - défensif.
             pass
-    demande.nombre_relances += 1
+    demande.nombre_relances = F('nombre_relances') + 1  # ENF28 : incrément atomique
     demande.derniere_relance_le = now or _tz.now()
-    demande.save(update_fields=[
-        'nombre_relances', 'derniere_relance_le', 'updated_at'])
+    demande.save(update_fields=['nombre_relances', 'derniere_relance_le', 'updated_at'])
+    demande.refresh_from_db(fields=['nombre_relances'])
     return demande
 
 
@@ -5224,7 +5224,7 @@ def checklist_dossier(folder):
 # s'abonne pas au registre de handlers générique (celui-ci route vers
 # leads/tickets, pas vers des documents).
 
-import re as _re_mod  # noqa: E402 — regroupé ici, section XGED9 auto-contenue.
+_re_mod = re  # alias local de la section XGED9 auto-contenue.
 
 # Clé réservée dans `Document.custom_data` traçant le Message-ID source d'un
 # import email — ancre d'idempotence (un même message retraité ne duplique pas).
@@ -5595,7 +5595,7 @@ def _decoder_barcode(image):
 def barcode_lib_disponible():
     """XGED11 — True si `pyzbar` est installé (dégrade proprement sinon)."""
     try:
-        import pyzbar.pyzbar  # noqa: F401
+        __import__('pyzbar.pyzbar')  # sonde de disponibilité de la lib
     except Exception:
         return False
     return True
@@ -6286,13 +6286,13 @@ def executer_demande_disposition(demande, *, user):
 
     if demande.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Demande de disposition inaccessible.")
-    if demande.statut != DISPOSITION_APPROUVEE:
-        raise DemandeDispositionError(
-            "Seule une demande APPROUVÉE peut être exécutée.")
 
     certificats = []
     ignores = 0
-    with transaction.atomic():
+    with transaction.atomic():  # ENF28 : statut relu sous verrou (jamais exécutée deux fois)
+        demande = type(demande).objects.select_for_update().get(pk=demande.pk)
+        if demande.statut != DISPOSITION_APPROUVEE:
+            raise DemandeDispositionError("Seule une demande APPROUVÉE peut être exécutée.")
         for doc_id in (demande.documents or []):
             document = Document.objects.filter(
                 company=demande.company, pk=doc_id).first()
@@ -6669,10 +6669,9 @@ def _resoudre_dossier_cible(routage, contexte):
     ]
     parent = None
     folder = None
-    for segment in segments:
-        folder, _created = Folder.objects.get_or_create(
-            company=routage.company, cabinet=routage.cabinet_cible,
-            parent=parent, nom=segment)
+    for segment in segments:  # ENF28 : un homonyme manuel → le plus ancien
+        f = dict(company=routage.company, cabinet=routage.cabinet_cible, parent=parent, nom=segment)
+        folder = Folder.objects.filter(**f).order_by('id').first() or Folder.objects.create(**f)
         parent = folder
     return folder
 

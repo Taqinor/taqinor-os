@@ -4,10 +4,6 @@
 # (pure increment) or select_for_update() (read-decide-write), do not append.
 # Baseline captured 2026-07-13; many of these are non-concurrent single-actor
 # writes or string/path fields caught by the coarse v1 heuristic.
-backend/django_core/apps/ged/services.py::move_folder
-backend/django_core/apps/ged/services.py::relancer_demande_document
-backend/django_core/apps/ged/services.py::relancer_signataires_dus
-backend/django_core/apps/ged/services.py::valider_code_otp_signataire
 backend/django_core/apps/stock/services.py::alimenter_lot_entrepot
 backend/django_core/apps/stock/services.py::annuler_reception_confirmee
 backend/django_core/apps/stock/services.py::confirm_reception_fournisseur
@@ -20,8 +16,6 @@ backend/django_core/apps/stock/services.py::reviser_bcf
 backend/django_core/apps/stock/services.py::sortir_lot_entrepot
 
 # ASTK53 - controles de statut hors verrou, PRE-EXISTANTS (releve 2026-10-07), hors stock : CONSTATES, pas approuves ; a corriger par leur proprietaire (select_for_update + relecture du statut dans atomic()).
-backend/django_core/apps/ged/services.py::annuler_demande
-backend/django_core/apps/ged/services.py::executer_demande_disposition
 backend/django_core/apps/installations/services.py::valider_retour_materiel
 backend/django_core/apps/installations/services.py::decider_demande_achat
 backend/django_core/apps/installations/services.py::valider_retour_livraison

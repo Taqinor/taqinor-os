@@ -25,6 +25,8 @@ from apps.ged.models import (
     PolitiqueRetention, RETENTION_SIGNALER, RETENTION_SUPPRIMER,
 )
 from apps.roles.models import Role
+import datetime
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -3357,9 +3359,6 @@ class WatermarkPublicPartageTests(GedBase):
 
 
 # ── GED22 — Politiques de rétention (durée + action à l'échéance) ─────────
-import datetime  # noqa: E402
-
-from django.utils import timezone  # noqa: E402
 
 
 class RetentionBase(GedBase):

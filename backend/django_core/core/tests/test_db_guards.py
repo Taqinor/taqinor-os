@@ -12,4 +12,5 @@ class StatementTimeoutSettingTests(SimpleTestCase):
         self.assertIn('statement_timeout', opts['options'])
 
     def test_helper_importable(self):
-        from core.db_guards import statement_timeout  # noqa: F401
+        from core.db_guards import statement_timeout
+        self.assertTrue(callable(statement_timeout))

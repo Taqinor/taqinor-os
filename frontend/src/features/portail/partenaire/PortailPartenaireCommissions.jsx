@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Coins, Download } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
+import EnteteCarteStatut from '../EnteteCarteStatut'
 import {
-  Badge, Button, Card, EmptyState, FormField, Input, Spinner, toast,
+  Button, Card, EmptyState, FormField, Input, Spinner, toast,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 
@@ -163,19 +164,14 @@ export default function PortailPartenaireCommissions() {
             <ul className="flex flex-col gap-3">
               {releve.lignes.map((l) => (
                 <Card key={l.id} className="flex flex-col gap-1 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium">{formatMAD(l.montant)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(l.date_creation)}
-                        {l.devis_id ? ` — devis n° ${l.devis_id}` : ''}
-                        {` — ${formatMAD(l.base_ht)} × ${l.taux} %`}
-                      </p>
-                    </div>
-                    <Badge tone={TON_STATUT[l.statut] || 'neutral'}>
-                      {l.statut_display}
-                    </Badge>
-                  </div>
+                  <EnteteCarteStatut ton={TON_STATUT[l.statut]} libelle={l.statut_display}>
+                    <p className="font-medium">{formatMAD(l.montant)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(l.date_creation)}
+                      {l.devis_id ? ` — devis n° ${l.devis_id}` : ''}
+                      {` — ${formatMAD(l.base_ht)} × ${l.taux} %`}
+                    </p>
+                  </EnteteCarteStatut>
                   {l.paye_le && (
                     <p className="text-sm text-muted-foreground">
                       Payée le {formatDate(l.paye_le)}

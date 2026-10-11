@@ -202,7 +202,7 @@ def redis_queue_length(queue_name='celery'):
 
 def _django_prometheus_available():
     try:
-        import django_prometheus  # noqa: F401
+        __import__('django_prometheus')  # sonde de disponibilité
         return True
     except Exception:  # noqa: BLE001 — dépendance optionnelle non installée
         return False

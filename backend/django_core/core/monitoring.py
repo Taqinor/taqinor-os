@@ -56,7 +56,7 @@ def bind_company(company_id: Optional[int]) -> None:
     if not _INITIALISE:
         return
     try:
-        import sentry_sdk  # noqa: WPS433 — paresseux, présent seulement si init
+        import sentry_sdk  # paresseux, présent seulement si init
         sentry_sdk.set_tag('company', str(company_id) if company_id else None)
     except Exception:  # noqa: BLE001 — jamais casser une requête pour un tag
         pass
@@ -91,7 +91,7 @@ def init_sentry():
     if _INITIALISE:
         return True
     try:
-        import sentry_sdk  # noqa: WPS433 — import paresseux, dépendance optionnelle
+        import sentry_sdk  # import paresseux, dépendance optionnelle
     except Exception:  # noqa: BLE001 — paquet absent → no-op silencieux
         logger.info(
             'SENTRY_DSN défini mais sentry-sdk introuvable — monitoring ignoré.')

@@ -31,7 +31,6 @@ def build_ticket_transition_message(ticket, cle, *, request=None):
     """Construit `(sujet_ou_none, corps)` pour la clé donnée (WhatsApp = pas de
     sujet). Le lien client (FG86) est généré/résolu ici — jamais le chatter ni
     le coût interne."""
-    from .models import Ticket  # noqa: F401 - documente le type attendu
     from apps.parametres.models import MessageTemplate
     from apps.parametres.models_email import EmailTemplate
     from apps.ventes.utils.whatsapp import render_message_template

@@ -37,7 +37,9 @@ class KpiAlerteSerializer(SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
     # AANA17 — un destinataire d'une AUTRE société est refusé (400) : l'alerte
     # lui enverrait le chiffre de la société courante.
-    same_company_fields = ('destinataires_utilisateurs',)
+    # ENF28 — la métrique nommée naît bornée à la société : l'id d'une métrique
+    # voisine reçoit la même réponse qu'un id absent (aucun oracle).
+    same_company_fields = ('destinataires_utilisateurs', 'metric_definition')
 
     kpi_label = serializers.CharField(source='get_kpi_display', read_only=True)
     operateur_label = serializers.CharField(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { AlarmClock, Gauge, ShieldAlert, Timer, Plus } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { useHasPermission } from '../../hooks/useHasPermission'
@@ -68,7 +68,9 @@ export default function EquipementFiabilitePanel({ equipementId }) {
 
   const charger = () => { setLoading(true); return load() }
 
-  useEffect(() => { load() }, [equipementId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
+  const chargerFiabilite = useEffectEvent(load)
+  useEffect(() => { chargerFiabilite() }, [equipementId])
 
   const enCours = downtimes.find((d) => d.en_cours)
 

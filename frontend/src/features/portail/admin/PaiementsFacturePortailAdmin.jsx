@@ -16,9 +16,10 @@ import { formatDateTime } from '../../../lib/format'
 import { Check, Banknote } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
+import EtatChargementAdmin from './EtatChargementAdmin'
 import { formatMAD } from '../../../lib/format'
 import {
-  Button, Card, EmptyState, Skeleton, StatusPill,
+  Button, EmptyState, StatusPill,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, DataTable, toast,
 } from '../../../ui'
 
@@ -115,22 +116,17 @@ export default function PaiementsFacturePortailAdmin() {
         </Select>
       </div>
 
-      {loading ? (
-        <Card className="space-y-2 p-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </Card>
-      ) : loadError ? (
-        <EmptyState title="Chargement impossible"
-                    description="Les paiements n'ont pas pu être chargés. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
-      ) : rows.length === 0 ? (
-        <EmptyState icon={Banknote} title="Aucun paiement"
-                    description="Aucune intention de paiement pour ce filtre." />
-      ) : (
-        <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
-                   searchable={false} exportName="paiements-facture-portail"
-                   emptyTitle="Aucun paiement" />
-      )}
+      <EtatChargementAdmin loading={loading} loadError={loadError} onRetry={load}
+                           erreur="Les paiements n'ont pas pu être chargés. Réessayez.">
+        {rows.length === 0 ? (
+          <EmptyState icon={Banknote} title="Aucun paiement"
+                      description="Aucune intention de paiement pour ce filtre." />
+        ) : (
+          <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
+                     searchable={false} exportName="paiements-facture-portail"
+                     emptyTitle="Aucun paiement" />
+        )}
+      </EtatChargementAdmin>
     </div>
   )
 }

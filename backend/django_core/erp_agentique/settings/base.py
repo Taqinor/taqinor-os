@@ -1348,7 +1348,7 @@ CELERY_TASK_ROUTES = {
     'parametres.notifier_traductions_manquantes_hebdo': {
         'queue': 'scheduled'},
     # APAR34 — purge quotidienne de rétention des journaux d'audit.
-    'parametres.purger_audit': {'queue': 'scheduled'},
+    'parametres.purge_audit_retention': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
@@ -1996,3 +1996,4 @@ CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
 # (`sweeps._sweep_hot_leads`), mêmes valeurs que les défauts du module.
 HOT_LEAD_SCORE_THRESHOLD = 60
 HOT_LEAD_MINUTES_OUVREES = 30
+ICS_TOKEN_MAX_AGE_DAYS, BI_WIDGET_CACHE_TTL, AI_GUARD_MAX_CHARS, AI_TOXIC_TERMS, TENANT_TASK_RATE_LIMITS = 180, 300, 6000, None, None  # ENF28 : défauts de reporting.calendar et core (bi_cache, ai, tenant_ratelimit) ; None = repli du module

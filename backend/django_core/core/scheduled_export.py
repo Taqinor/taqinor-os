@@ -167,7 +167,7 @@ class MinioWarehouseDestination(ExportDestinationProvider):
         if not getattr(settings, 'MINIO_ENDPOINT', ''):
             return False
         try:  # pragma: no cover - boto3 est présent en prod comme en CI
-            import boto3  # noqa: F401
+            __import__('boto3')  # sonde de disponibilité
         except Exception:
             return False
         return True
@@ -282,7 +282,7 @@ class SnowflakeDestination(ExportDestinationProvider):
         if not all(env.get(k) for k in SNOWFLAKE_ENV_REQUIRED):
             return False
         try:
-            import snowflake.connector  # noqa: F401
+            __import__('snowflake.connector')  # sonde de disponibilité
         except Exception:
             return False
         return True

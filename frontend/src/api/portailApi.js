@@ -135,7 +135,7 @@ const portailApi = {
     // connecté côté serveur. `confirmer` produit le MÊME effet que l'ancien
     // lien tokenisé XPUR22 (accusé posé, date demandée jamais écrasée).
     bonsCommande: {
-      liste: () => api.get('/portail/mes-bons-commande/'),
+      liste: (params) => api.get('/portail/mes-bons-commande/', { params }),
       detail: (id) => api.get(`/portail/mes-bons-commande/${id}/`),
       confirmer: (id, payload) =>
         api.post(`/portail/mes-bons-commande/${id}/confirmer/`, payload),
@@ -146,7 +146,7 @@ const portailApi = {
     // NTPRT28 — deal registration : le partenaire vient du compte connecté,
     // jamais du corps. Un 409 signifie « déjà soumis » (anti-doublon 30 j).
     soumissions: {
-      liste: () => api.get('/portail/mes-soumissions/'),
+      liste: (params) => api.get('/portail/mes-soumissions/', { params }),
       detail: (id) => api.get(`/portail/mes-soumissions/${id}/`),
       creer: (payload) => api.post('/portail/mes-soumissions/', payload),
     },

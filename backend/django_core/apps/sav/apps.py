@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -23,7 +25,7 @@ class SavConfig(AppConfig):
         from . import bi_datasets
         bi_datasets.register_dataset()
         # YSERV2/YSERV10 — abonne sav aux événements métier (core.events).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
         # ZMFG7 — abonne sav au bus e-mail entrant (core.email_intake,
         # FG373) : route un message reçu à l'alias d'une catégorie
         # d'équipement vers un ticket correctif pré-catégorisé.

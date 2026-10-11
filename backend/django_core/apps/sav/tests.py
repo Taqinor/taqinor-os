@@ -33,7 +33,7 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.installations.models import Installation
 from apps.sav.models import Equipement, Ticket, TicketActivity, ContratMaintenance
-from apps.sav.services import add_months
+from apps.sav.dateutils import add_months
 
 User = get_user_model()
 

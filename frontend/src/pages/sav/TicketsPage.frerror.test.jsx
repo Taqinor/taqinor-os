@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { frError } from './TicketsPage'
+import { frError } from './ticketsLogique'
 
 describe('frError — ERR-QAH-SAV-ERREUR-OBJECT-OBJECT', () => {
   it("n'affiche jamais l'enveloppe error comme [object Object]", () => {

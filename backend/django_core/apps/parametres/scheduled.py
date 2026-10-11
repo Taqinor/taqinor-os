@@ -291,7 +291,7 @@ def notifier_traductions_manquantes_hebdo(limite=None):
 # plancher légal de 365 j (``effective_retention_days``), chaque purge
 # journalisée par société (section ``audit``, champ ``purge_retention``).
 # ───────────────────────────────────────────────────────────────────────────
-@shared_task(name='parametres.purger_audit')
+@shared_task(name='parametres.purge_audit_retention')
 def purger_audit():
     """Purge planifiée des journaux d'audit au-delà de la rétention réglée."""
     from .retention import purge_all_companies

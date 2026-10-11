@@ -258,7 +258,7 @@ class NoOpOCRProvider(OCRProvider):
     key = 'noop'
     label = 'Aucun OCR (saisie manuelle)'
 
-    def extract(self, *, content, mime_type, schema, hint=None):  # noqa: D401
+    def extract(self, *, content, mime_type, schema, hint=None):
         return AIResult.noop(self.key)
 
 
@@ -266,7 +266,7 @@ class NoOpSTTProvider(STTProvider):
     key = 'noop'
     label = 'Aucune transcription (saisie manuelle)'
 
-    def transcribe(self, *, content, mime_type, language='fr'):  # noqa: D401
+    def transcribe(self, *, content, mime_type, language='fr'):
         return AIResult.noop(self.key)
 
 
@@ -274,7 +274,7 @@ class NoOpVisionQAProvider(VisionQAProvider):
     key = 'noop'
     label = 'Aucun contrôle vision'
 
-    def inspect(self, *, content, mime_type, checklist):  # noqa: D401
+    def inspect(self, *, content, mime_type, checklist):
         return AIResult.noop(self.key)
 
 
@@ -282,7 +282,7 @@ class NoOpLLMProvider(LLMProvider):
     key = 'noop'
     label = 'Aucune génération (heuristique uniquement)'
 
-    def complete(self, *, prompt, system=None, max_tokens=512):  # noqa: D401
+    def complete(self, *, prompt, system=None, max_tokens=512):
         return AIResult.noop(self.key)
 
 
@@ -300,7 +300,7 @@ class BudgetExhaustedLLMProvider(NoOpLLMProvider):
     #: Motif lisible par l'appelant qui veut distinguer les deux no-op.
     raison = 'budget_epuise'
 
-    def complete(self, *, prompt, system=None, max_tokens=512):  # noqa: D401
+    def complete(self, *, prompt, system=None, max_tokens=512):
         return AIResult(
             ok=False, configured=False, data={}, provider=self.key,
             error='Budget IA du mois épuisé — génération suspendue jusqu\'au '
