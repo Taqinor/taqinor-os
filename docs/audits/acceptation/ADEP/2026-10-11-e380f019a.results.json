@@ -1,0 +1,209 @@
+{
+  "sha": "e380f019a0f412ae1567974390a32ae26df01538",
+  "date": "2026-10-11",
+  "groupe": "ADEP",
+  "verdict": "PASS",
+  "couvre": [
+    "ADEP16",
+    "ADEP17",
+    "ADEP18",
+    "ADEP19",
+    "ADEP33",
+    "ADEP40",
+    "ADEP44",
+    "ADEP45",
+    "ADEP46",
+    "ACHT69",
+    "ADEP99"
+  ],
+  "couvre_avec_ecart": [
+    "ADEP40"
+  ],
+  "etapes": [
+    {
+      "id": "P5.1",
+      "taches": [
+        "ADEP16",
+        "ADEP17",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P5.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.2",
+      "taches": [
+        "ADEP16",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P5.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.3",
+      "taches": [
+        "ADEP18",
+        "ACHT69",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P5.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.3-500",
+      "taches": [
+        "ACHT69",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P5.3-500.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.4",
+      "taches": [
+        "ADEP19",
+        "ADEP33",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P5.4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.13",
+      "taches": [
+        "ADEP40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P1.13.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : aperçu du logo Paramètres bloqué par la CSP (URL interne minio:9000, `peConstants.js::mediaUrl`), défaut antérieur hors ADEP40 ; à la base (avant ADEP40) le PDF n'avait aucun logo"
+    },
+    {
+      "id": "P5.5",
+      "taches": [
+        "ADEP44",
+        "ADEP45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P5.5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.6",
+      "taches": [
+        "ADEP46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-11/ACCEPTATION-ADEP-P5.6.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
