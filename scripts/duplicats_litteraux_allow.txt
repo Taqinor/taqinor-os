@@ -344,7 +344,6 @@
 4a95acbda332|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
 4b01b9bf39d4|frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx
 4b090f0f9ba8|apps/web/src/pages/ar/politique-de-confidentialite.astro,apps/web/src/pages/en/politique-de-confidentialite.astro,apps/web/src/pages/politique-de-confidentialite.astro
-4b15532edcc3|frontend/src/pages/sav/KbArticlesPage.jsx,frontend/src/pages/sav/SavAlarmesPage.jsx
 4be1011c2ae2|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src/pages/installations/ParcInstallePage.jsx,frontend/src/pages/interventions/InterventionsPage.jsx
 4c0aa2ccedd7|apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/marocains-du-monde.astro
 4c4e288e3ade|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/Journal.jsx,frontend/src/pages/admin/GouvernanceAccesPage.jsx,frontend/src/pages/ia/OcrUpload.jsx,frontend/src/pages/installations/PlanificationPage.jsx,frontend/src/pages/parametres/AvanceSection.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/parametres/EquipeSection.jsx,frontend/src/pages/parametres/GammesMarquesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx,frontend/src/pages/ventes/DossiersReglementairesPage.jsx,frontend/src/pages/ventes/generator/PanneauSurcharges.jsx
@@ -788,7 +787,6 @@ ab6433b185a8|frontend/src/pages/stock/ProduitForm.calx355FicheChamps.test.jsx,fr
 ab93db51dfd0|frontend/src/pages/parametres/AchatsParametresPage.jsx,frontend/src/pages/parametres/GammesMarquesPage.jsx
 ab9a51f6bbb2|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 ac22ea62eb3b|frontend/src/features/adsengine/AdDetailScreen.jsx,frontend/src/features/adsengine/AdsCockpitScreen.jsx
-ac3f06923b67|frontend/src/pages/sav/KbArticlesPage.jsx,frontend/src/pages/sav/SavParametresPage.jsx
 ac6d8ac2b808|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 acd66a698e97|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 ace50b6e80b1|frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
@@ -840,7 +838,6 @@ b9085ab93a5f|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 b963ae28fa9a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 b969c5da8c58|apps/web/src/lib/obstacles.ts,apps/web/src/scripts/roofPro11/prefill.ts
 b9800ff3a0a4|frontend/src/features/calepinage/atelier/Projet.jsx,frontend/src/features/calepinage/documents/PanneauDocuments.jsx
-b9b8ff6e4b14|frontend/src/pages/sav/EquipementsPage.jsx,frontend/src/pages/sav/TicketsPage.jsx
 b9c9afa6f925|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
 ba5e387374c0|frontend/src/pages/installations/InstallationDetail.jsx,frontend/src/pages/sav/EquipementsPage.jsx
 bb739021e242|apps/web/src/scripts/roofPro11/mapDraw.ts,apps/web/src/scripts/roofPro11/obstaclesUi.ts
@@ -868,7 +865,6 @@ c0874e8d8422|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrai
 c09e7f7cf650|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts
 c0bc219e8b57|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro,apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 c0e6f247e55b|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-c14d8702daa8|frontend/src/pages/sav/EquipementsPage.jsx,frontend/src/pages/sav/TicketsPage.jsx
 c1bae43b42f6|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 c1c5e6a555e3|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 c1ce2060c086|frontend/src/features/crm/module.config.jsx,frontend/src/features/installations/module.config.jsx,frontend/src/features/ventes/module.config.jsx

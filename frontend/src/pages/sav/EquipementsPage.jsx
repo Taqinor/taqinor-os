@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Download, Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
+  Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
   Wrench, Pencil, ShieldCheck, Trash2, Activity, QrCode,
   ScanLine,
 } from 'lucide-react'
@@ -16,15 +16,12 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { ROUTE } from '../../lib/search/entityRoutes'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
-import importApi from '../../api/importApi'
-import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import ExcelImport from '../../components/ExcelImport'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
 // NTMOB15 — scan QR/code-barres natif : ouvre directement la fiche
 // équipement au lieu d'une recherche manuelle par n° de série.
-import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import PartageQrDialog from '../../features/sav/PartageQrDialog'
 import {
   EMPTY_EQUIP_FILTERS,
@@ -52,7 +49,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
-import { CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe } from './SavCommun'
+import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 
 const formatDateFR = (iso) => {
   if (!iso) return '—'
@@ -462,7 +459,6 @@ export default function EquipementsPage() {
   const [showRegistre, setShowRegistre] = useState(false)
   // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
   // d'erreur ; ceci ajoute juste l'état chargement manquant).
-  const [xlsxBusy, setXlsxBusy] = useState(false)
   // VX109 — import Excel/CSV du parc d'équipements.
   const [showImport, setShowImport] = useState(false)
   // WIR116 — génération des étiquettes QR (lien public /e/<token>).
@@ -663,17 +659,7 @@ export default function EquipementsPage() {
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload /> Importer
             </Button>
-            <Button variant="outline" size="sm" disabled={xlsxBusy}
-                    onClick={() => {
-                      const pending = downloadBlobInGesture()
-                      setXlsxBusy(true)
-                      importApi.exportList('equipements', rows.map((r) => r.id))
-                        .then((r) => pending.deliver(r.data, 'equipements.xlsx'))
-                        .catch(() => {})
-                        .finally(() => setXlsxBusy(false))
-                    }}>
-              {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-            </Button>
+            <BoutonExportExcel cible="equipements" ids={rows.map((r) => r.id)} />
           </div>
         </header>
 
@@ -685,18 +671,7 @@ export default function EquipementsPage() {
         {/* NTMOB15 — scan QR/code-barres natif : ouvre directement la fiche
             équipement au lieu d'une recherche manuelle par n° de série. */}
         {scannerOpen && (
-          <div
-            className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/60 p-4"
-            role="dialog" aria-modal="true"
-          >
-            <div className="w-full max-w-md">
-              <BarcodeScanner
-                formats={['qr_code']}
-                onDetected={handleScanned}
-                onClose={() => setScannerOpen(false)}
-              />
-            </div>
-          </div>
+          <ScannerQrPleinEcran onDetected={handleScanned} onClose={() => setScannerOpen(false)} />
         )}
 
         {/* ── Filtres ── */}

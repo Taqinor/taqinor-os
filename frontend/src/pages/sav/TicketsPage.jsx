@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
+  Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
   Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
   ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft, Link2, ScanLine,
 } from 'lucide-react'
@@ -28,11 +28,8 @@ import api from '../../api/axios'
 import { searchCompanies } from '../../features/crm/companyLookup'
 // NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
-import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { formatMAD, timeAgo } from '../../lib/format'
-import importApi from '../../api/importApi'
-import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import TicketClotureWizard from '../../components/sav/TicketClotureWizard'
@@ -82,7 +79,6 @@ import {
   HelpTip,
   StatusPill,
   EmptyState,
-  Spinner,
   Input,
   Textarea,
   Checkbox,
@@ -98,7 +94,7 @@ import {
   DataTable,
   toast,
 } from '../../ui'
-import { CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe } from './SavCommun'
+import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -1081,18 +1077,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </div>
             </FormField>
             {equipScannerOpen && (
-              <div
-                className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/60 p-4"
-                role="dialog" aria-modal="true"
-              >
-                <div className="w-full max-w-md">
-                  <BarcodeScanner
-                    formats={['qr_code']}
-                    onDetected={handleEquipScanned}
-                    onClose={() => setEquipScannerOpen(false)}
-                  />
-                </div>
-              </div>
+              <ScannerQrPleinEcran onDetected={handleEquipScanned} onClose={() => setEquipScannerOpen(false)} />
             )}
             <FormField
               label={fields.equipement
@@ -1992,7 +1977,6 @@ export default function TicketsPage() {
   const [view, setView] = useState('table') // L295/ZMFG3 — 'table' | 'kanban' | 'calendrier'
   // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
   // d'erreur ; ceci ajoute juste l'état chargement manquant).
-  const [xlsxBusy, setXlsxBusy] = useState(false)
   // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
   // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
   const { createView: createTicketView } = useServerSavedViews(TP_ECRAN)
@@ -2343,17 +2327,7 @@ export default function TicketsPage() {
                 <Link2 /> Copier le lien
               </Button>
             )}
-            <Button variant="outline" size="sm" disabled={xlsxBusy}
-                    onClick={() => {
-                      const pending = downloadBlobInGesture()
-                      setXlsxBusy(true)
-                      importApi.exportList('tickets', rows.map((r) => r.id))
-                        .then((r) => pending.deliver(r.data, 'tickets.xlsx'))
-                        .catch(() => {})
-                        .finally(() => setXlsxBusy(false))
-                    }}>
-              {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-            </Button>
+            <BoutonExportExcel cible="tickets" ids={rows.map((r) => r.id)} />
           </div>
         </header>
 

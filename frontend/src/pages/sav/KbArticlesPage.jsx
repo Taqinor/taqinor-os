@@ -3,14 +3,14 @@
 // texte libre + filtrable par catégorie. Lecture tout rôle, écriture
 // responsable/admin (gardée côté serveur).
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Check, X, BookOpen, Search } from 'lucide-react'
+import { Plus, Pencil, BookOpen, Search } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
-  TooltipProvider, Card, Button, Input, Textarea, EmptyState, Skeleton,
-  Badge, toast,
+  TooltipProvider, Card, Button, Input, Textarea, EmptyState, Badge, toast,
 } from '../../ui'
+import { BoutonsEdition, SqueletteListe } from './SavCommun'
 
 // ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
 // pour le total.
@@ -106,9 +106,7 @@ export default function KbArticlesPage() {
         )}
 
         {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
+          <SqueletteListe lignes={4} />
         ) : rows.length === 0 ? (
           <EmptyState icon={BookOpen} title="Aucun article"
                       description="Ajoutez un article ci-dessus pour capitaliser une résolution." />
@@ -126,10 +124,7 @@ export default function KbArticlesPage() {
                       <Input placeholder="Tags" value={edit.tags}
                              onChange={(e) => setEdit((s) => ({ ...s, tags: e.target.value }))} />
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={saveEdit}><Check /> Enregistrer</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEdit(null)}><X /></Button>
-                    </div>
+                    <BoutonsEdition onSave={saveEdit} onCancel={() => setEdit(null)} />
                   </div>
                 ) : (
                   <div className="flex items-start justify-between gap-2">

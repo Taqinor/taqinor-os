@@ -1,8 +1,12 @@
 // ENF28 (ENF19) — briques d'écran partagées des pages SAV (tickets,
 // équipements, contrats de maintenance, réclamations garantie). Chacune
 // existait en plusieurs copies recopiées à l'identique ; une seule ici.
-import { AlertTriangle, ChevronRight } from 'lucide-react'
-import { Button, Card, EmptyState, SelectItem, Skeleton } from '../../ui'
+import { useState } from 'react'
+import { AlertTriangle, Check, ChevronRight, Download, X } from 'lucide-react'
+import importApi from '../../api/importApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
+import BarcodeScanner from '../../features/pwa/BarcodeScanner'
+import { Button, Card, EmptyState, SelectItem, Skeleton, Spinner } from '../../ui'
 
 /** Section repliable (ouverte par défaut) à titre et icône. */
 export function CollapsibleSection({ icon: Icon, title, children }) {
@@ -47,6 +51,48 @@ export function ErreurFormulaire({ message }) {
          className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
       <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
       {message}
+    </div>
+  )
+}
+
+/** NTMOB15 — scanner QR plein écran (ouvre la fiche au lieu d'une recherche). */
+export function ScannerQrPleinEcran({ onDetected, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/60 p-4"
+      role="dialog" aria-modal="true"
+    >
+      <div className="w-full max-w-md">
+        <BarcodeScanner formats={['qr_code']} onDetected={onDetected} onClose={onClose} />
+      </div>
+    </div>
+  )
+}
+
+/** Export Excel de la liste affichée (`cible` = cible d'import/export). */
+export function BoutonExportExcel({ cible, ids }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <Button variant="outline" size="sm" disabled={busy}
+            onClick={() => {
+              const pending = downloadBlobInGesture()
+              setBusy(true)
+              importApi.exportList(cible, ids)
+                .then((r) => pending.deliver(r.data, `${cible}.xlsx`))
+                .catch(() => {})
+                .finally(() => setBusy(false))
+            }}>
+      {busy ? <Spinner /> : <Download />} Exporter Excel
+    </Button>
+  )
+}
+
+/** Boutons « Enregistrer » / annuler d'une ligne éditée en place. */
+export function BoutonsEdition({ onSave, onCancel }) {
+  return (
+    <div className="flex gap-2">
+      <Button size="sm" variant="outline" onClick={onSave}><Check /> Enregistrer</Button>
+      <Button size="sm" variant="ghost" onClick={onCancel}><X /></Button>
     </div>
   )
 }

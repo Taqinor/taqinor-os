@@ -9,9 +9,9 @@ import { fetchAllPages } from '../../utils/fetchAllPages'
 import api from '../../api/axios'
 import {
   TooltipProvider, Card, StatusPill, Button, Input, Textarea, Select,
-  SelectTrigger, SelectValue, SelectContent, SelectItem, EmptyState, Skeleton,
-  Combobox, toast,
+  SelectTrigger, SelectValue, SelectContent, SelectItem, EmptyState, Combobox, toast,
 } from '../../ui'
+import { SqueletteListe } from './SavCommun'
 import { formatDateTime } from '../../lib/format'
 
 const GRAVITE_TONES = { info: 'neutral', warning: 'warning', critique: 'danger' }
@@ -227,9 +227,7 @@ export default function SavAlarmesPage() {
         )}
 
         {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
+          <SqueletteListe lignes={4} />
         ) : rows.length === 0 ? (
           <EmptyState icon={ShieldAlert} title="Aucune alarme"
                       description="Aucune alarme onduleur pour ce filtre." />
