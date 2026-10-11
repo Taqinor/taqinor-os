@@ -7,9 +7,13 @@ import userEvent from '@testing-library/user-event'
 // jamais un mock écrit à la main.
 import ABONNEMENTS from '../../../../../backend/django_core/apps/monitoring/contract_samples/abonnements_monitoring.json'
 import SLA from '../../../../../backend/django_core/apps/monitoring/contract_samples/sla_disponibilite.json'
+import CERTIFICATS from '../../../../../backend/django_core/apps/monitoring/contract_samples/certificats_carbone.json'
+
+const vide = { count: 0, next: null, previous: null, results: [] }
 
 const serveur = vi.hoisted(() => ({
   abonnements: null, creations: [], resiliations: [], slas: null, slaSaves: [], ecarts: [],
+  certificats: { count: 0, next: null, previous: null, results: [] }, emissions: [],
 }))
 
 vi.mock('../../../api/monitoringApi', () => ({
@@ -19,6 +23,12 @@ vi.mock('../../../api/monitoringApi', () => ({
     ] } })),
     getAbonnements: vi.fn(() => Promise.resolve({ data: serveur.abonnements })),
     getSlasDisponibilite: vi.fn(() => Promise.resolve({ data: serveur.slas })),
+    getCertificatsCarbone: vi.fn(() => Promise.resolve({ data: serveur.certificats })),
+    emettreCertificatCarbone: vi.fn((data) => {
+      serveur.emissions.push(data)
+      serveur.certificats = CERTIFICATS.exemple
+      return Promise.resolve({ data: CERTIFICATS.exemple.results[0] })
+    }),
     saveSlaDisponibilite: vi.fn((id, data) => {
       serveur.slaSaves.push({ id, data })
       return Promise.resolve({ data: SLA.exemple_liste.reponse.results[0] })
@@ -55,9 +65,10 @@ afterEach(() => {
   serveur.resiliations.length = 0
   serveur.slaSaves.length = 0
   serveur.ecarts.length = 0
+  serveur.emissions.length = 0
+  serveur.certificats = vide
 })
 
-const vide = { count: 0, next: null, previous: null, results: [] }
 
 describe('SavMonitoringPage — ASAV100 abonnements de supervision', () => {
   it('liste les abonnements servis, en crée un et le résilie (motif obligatoire)', async () => {
@@ -117,5 +128,31 @@ describe('SavMonitoringPage — ASAV101 SLA de disponibilité', () => {
     expect(await within(section).findByText('Sous la garantie')).toBeInTheDocument()
     expect(ligne).toHaveTextContent(SLA.exemple.libelle_indicateur)
     expect(ligne).toHaveTextContent(/456,50/)
+  }, 60000)
+})
+describe('SavMonitoringPage — ASAV102 registre des certificats carbone', () => {
+  it('émet un certificat (tCO₂ calculées serveur) et l’affiche au registre', async () => {
+    serveur.abonnements = vide
+    serveur.slas = vide
+    serveur.certificats = vide
+    const user = userEvent.setup()
+    render(<SavMonitoringPage />)
+
+    const section = await screen.findByRole('region', { name: 'Certificats carbone' })
+    expect(await within(section).findByText('Aucun certificat émis')).toBeInTheDocument()
+
+    await user.type(within(section).getByLabelText('Début de période'), '2026-01-01', { delay: null })
+    await user.type(within(section).getByLabelText('Fin de période'), '2026-06-30', { delay: null })
+    await user.click(within(section).getByRole('button', { name: 'Émettre le certificat' }))
+    await waitFor(() => expect(serveur.emissions).toEqual([
+      { installation_id: 87, periode_debut: '2026-01-01', periode_fin: '2026-06-30' },
+    ]))
+    // Aucune tCO₂ envoyée par l'écran : c'est le serveur qui la calcule.
+    expect(serveur.emissions[0]).not.toHaveProperty('tco2_evitees')
+
+    const ligne = await within(section).findByRole('listitem')
+    expect(ligne).toHaveTextContent(CERTIFICATS.exemple.results[0].reference)
+    expect(ligne).toHaveTextContent('CHT-87 — Alami')
+    expect(ligne).toHaveTextContent(/3,402/)
   }, 60000)
 })

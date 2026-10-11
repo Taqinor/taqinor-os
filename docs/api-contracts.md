@@ -1280,10 +1280,14 @@
     source ∈ {auto, import, manual}
 - frontend/src/api/monitoringApi.js :: deleteWarranty -> /api/django/monitoring/warranties/<>  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
+- frontend/src/api/monitoringApi.js :: emettreCertificatCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
+    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
 - frontend/src/api/monitoringApi.js :: getAbonnements -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
     champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
     periodicite ∈ {annuel, mensuel}
     statut ∈ {actif, resilie, suspendu}
+- frontend/src/api/monitoringApi.js :: getCertificatsCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
+    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
 - frontend/src/api/monitoringApi.js :: getCleanings -> /api/django/monitoring/cleanings  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: getConfigForInstallation -> /api/django/monitoring/configs  [MonitoringConfigSerializer]

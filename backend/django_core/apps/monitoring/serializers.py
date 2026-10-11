@@ -2,8 +2,9 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
-    AbonnementMonitoring, CleaningEvent, MonitoringConfig, MonitoringSettings,
-    ProductionReading, ProductionWarranty, SlaDisponibilite,
+    AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
+    MonitoringSettings, ProductionReading, ProductionWarranty,
+    SlaDisponibilite,
 )
 from .providers import available_providers
 
@@ -199,3 +200,22 @@ class SlaDisponibiliteSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError('Compensation invalide.')
         return value
+
+
+class CertificatCarboneSerializer(serializers.ModelSerializer):
+    """ASAV102 — certificat du registre carbone. Entrée : la cible
+    (``installation_id`` OU ``client_id``) et la période ; ``tco2_evitees`` et
+    ``reference`` sont posées par le serveur (calcul mesuré, numérotation
+    race-safe). ``fichier_key`` (clé de stockage interne) n'est jamais servi."""
+    installation_id = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True)
+    client_id = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True)
+
+    class Meta:
+        model = CertificatCarbone
+        fields = [
+            'id', 'installation_id', 'client_id', 'periode_debut',
+            'periode_fin', 'tco2_evitees', 'reference', 'created_at',
+        ]
+        read_only_fields = ['tco2_evitees', 'reference', 'created_at']

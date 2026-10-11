@@ -5,7 +5,7 @@ from .views import (
     AbonnementMonitoringViewSet, CleaningEventViewSet,
     MonitoringConfigViewSet, MonitoringSettingsViewSet,
     ProductionReadingViewSet, ProductionWarrantyViewSet,
-    SlaDisponibiliteViewSet,
+    SlaDisponibiliteViewSet, CertificatCarboneViewSet,
 )
 
 router = DefaultRouter()
@@ -18,6 +18,8 @@ router.register(r'settings', MonitoringSettingsViewSet)
 router.register(r'abonnements', AbonnementMonitoringViewSet)
 # ASAV101 — SLA de disponibilité (saisie du taux garanti + écart).
 router.register(r'sla-disponibilite', SlaDisponibiliteViewSet)
+# ASAV102 — registre des certificats carbone (émission mesurée).
+router.register(r'certificats-carbone', CertificatCarboneViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

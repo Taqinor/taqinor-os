@@ -94,6 +94,11 @@ const monitoringApi = {
     : api.post('/monitoring/sla-disponibilite/', data),
   getSlaEcart: (id, params) =>
     api.get(`/monitoring/sla-disponibilite/${id}/ecart/`, { params }),
+
+  // ── ASAV102 — registre des certificats carbone (écran SAV/monitoring) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/certificats_carbone.json
+  getCertificatsCarbone: (params) => api.get('/monitoring/certificats-carbone/', { params }),
+  emettreCertificatCarbone: (data) => api.post('/monitoring/certificats-carbone/', data),
 }
 
 export default monitoringApi

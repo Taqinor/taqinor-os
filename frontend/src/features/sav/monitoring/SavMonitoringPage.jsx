@@ -3,11 +3,13 @@
 // utilisables. Responsable/admin (route gardée par le module SAV, chaque
 // endpoint gardé côté serveur). Une section par fonction :
 //   * ASAV100 — abonnements de supervision (création, résiliation) ;
-//   * ASAV101 — SLA de disponibilité (taux garanti saisi, écart, pénalité).
+//   * ASAV101 — SLA de disponibilité (taux garanti saisi, écart, pénalité) ;
+//   * ASAV102 — registre des certificats carbone (émission mesurée).
 import { TooltipProvider } from '../../../ui'
 import useSupervisedSystems from '../../../pages/monitoring/useSupervisedSystems'
 import AbonnementsSection from './AbonnementsSection'
 import SlaDisponibiliteSection from './SlaDisponibiliteSection'
+import CertificatsCarboneSection from './CertificatsCarboneSection'
 
 export default function SavMonitoringPage() {
   const { systems, loading } = useSupervisedSystems()
@@ -22,6 +24,7 @@ export default function SavMonitoringPage() {
         </header>
         <AbonnementsSection systems={systems} loadingSystems={loading} />
         <SlaDisponibiliteSection systems={systems} loadingSystems={loading} />
+        <CertificatsCarboneSection systems={systems} loadingSystems={loading} />
       </div>
     </TooltipProvider>
   )

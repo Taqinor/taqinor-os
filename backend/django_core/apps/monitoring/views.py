@@ -37,13 +37,15 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
-    AbonnementMonitoring, CleaningEvent, MonitoringConfig, MonitoringSettings,
-    ProductionReading, ProductionWarranty, SlaDisponibilite,
+    AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
+    MonitoringSettings, ProductionReading, ProductionWarranty,
+    SlaDisponibilite,
 )
 from .providers import available_providers
 from .serializers import (
     AbonnementMonitoringSerializer, CleaningEventSerializer,
-    MonitoringConfigSerializer, SlaDisponibiliteSerializer,
+    CertificatCarboneSerializer, MonitoringConfigSerializer,
+    SlaDisponibiliteSerializer,
     MonitoringSettingsSerializer, ProductionReadingSerializer,
     ProductionWarrantySerializer,
 )
@@ -865,8 +867,8 @@ class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-def _erreur_abonnement(exc):
-    """ASAV100 — erreur de service → corps DRF : champ nommé sous le champ,
+def _erreur_service(exc):
+    """ASAV100/102 — erreur de service → corps DRF : champ nommé sous le champ,
     sinon ``detail`` (texte, lu tel quel par ``getApiError`` côté écran)."""
     if exc.champ:
         return {exc.champ: [exc.message]}
@@ -905,7 +907,7 @@ class AbonnementMonitoringViewSet(TenantMixin, viewsets.ModelViewSet):
                 date_debut=data.get('date_debut'),
                 user=self.request.user)
         except AbonnementMonitoringError as exc:
-            raise serializers.ValidationError(_erreur_abonnement(exc))
+            raise serializers.ValidationError(_erreur_service(exc))
 
     @extend_schema(
         request=inline_serializer('MonitoringAbonnementResilier', {
@@ -925,7 +927,7 @@ class AbonnementMonitoringViewSet(TenantMixin, viewsets.ModelViewSet):
                 abonnement, motif=request.data.get('motif'),
                 user=request.user)
         except AbonnementMonitoringError as exc:
-            raise serializers.ValidationError(_erreur_abonnement(exc))
+            raise serializers.ValidationError(_erreur_service(exc))
         return Response(self.get_serializer(abonnement).data)
 
 
@@ -982,3 +984,34 @@ class SlaDisponibiliteViewSet(TenantMixin, viewsets.ModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(disponibilite_vs_garantie(
             sla.installation, window_days=window))
+
+
+class CertificatCarboneViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ASAV102 (D-ASAV-4 option (b), ASAV93) — registre des certificats
+    carbone (NTNRG27) : liste + émission. Responsable/admin seulement ;
+    société forcée côté serveur. Les tCO₂ sont CALCULÉES par le serveur
+    (production mesurée de la période), jamais lues du corps ; un certificat
+    émis ne se modifie ni ne se supprime (traçabilité). Contrat :
+    ``contract_samples/certificats_carbone.json``."""
+    queryset = CertificatCarbone.objects.all()
+    serializer_class = CertificatCarboneSerializer
+    parser_classes = [JSONParser]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        from .services import (
+            CertificatCarboneError, emettre_certificat_carbone_mesure,
+        )
+        data = serializer.validated_data
+        try:
+            serializer.instance = emettre_certificat_carbone_mesure(
+                self.request.user.company,
+                installation_id=data.get('installation_id'),
+                client_id=data.get('client_id'),
+                periode_debut=data['periode_debut'],
+                periode_fin=data['periode_fin'])
+        except CertificatCarboneError as exc:
+            raise serializers.ValidationError(_erreur_service(exc))

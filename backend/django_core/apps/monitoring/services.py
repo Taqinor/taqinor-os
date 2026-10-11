@@ -667,3 +667,55 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
             sender=AbonnementMonitoring, abonnement=abonnement, motif=motif,
             company=abonnement.company)
     return abonnement
+
+
+# ── ASAV102 — émission d'un certificat carbone depuis l'écran ───────────────
+
+class CertificatCarboneError(ValueError):
+    """Émission refusée ; ``champ`` nomme le champ fautif (``None`` = global)."""
+
+    def __init__(self, message, champ=None):
+        super().__init__(message)
+        self.message = message
+        self.champ = champ
+
+
+def emettre_certificat_carbone_mesure(company, *, installation_id=None,
+                                      client_id=None, periode_debut,
+                                      periode_fin):
+    """ASAV102 (D-ASAV-4 option (b)) — émet un certificat du registre
+    (``emettre_certificat_carbone``) dont les tCO₂ sont CALCULÉES depuis la
+    production mesurée de la période (``report_carbon.tco2_evitees_periode``),
+    jamais saisies. Sans production mesurée : refus (aucun certificat chiffré
+    à zéro). Le système doit appartenir à la société."""
+    from apps.installations import selectors as installations_selectors
+
+    from .report_carbon import tco2_evitees_periode
+
+    if bool(installation_id) == bool(client_id):
+        raise CertificatCarboneError(
+            'Choisissez soit un système, soit un client (jamais les deux).')
+    if periode_fin < periode_debut:
+        raise CertificatCarboneError(
+            'La fin de période doit suivre son début.', champ='periode_fin')
+    installation = None
+    if installation_id:
+        installation = installations_selectors.installation_scoped(
+            company, installation_id)
+        if installation is None:
+            raise CertificatCarboneError(
+                'Système inconnu.', champ='installation_id')
+    tonnes, has_data = tco2_evitees_periode(
+        company, installation=installation, client_id=client_id,
+        since=periode_debut, until=periode_fin)
+    if not has_data:
+        raise CertificatCarboneError(
+            'Aucune production mesurée sur la période : aucun certificat '
+            'chiffré ne peut être émis.')
+    try:
+        return emettre_certificat_carbone(
+            company, installation_id=installation_id or None,
+            client_id=client_id or None, periode_debut=periode_debut,
+            periode_fin=periode_fin, tco2_evitees=tonnes)
+    except ValueError as exc:
+        raise CertificatCarboneError(str(exc)) from exc
