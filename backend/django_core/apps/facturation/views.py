@@ -12,15 +12,18 @@ Les exports UBL 2.1 / DGI sont des ``@action`` sur ``FactureViewSet`` : servir l
 même classe sous le nouveau préfixe les expose automatiquement.
 """
 
-from apps.ventes.views import (  # noqa: F401
+from apps.ventes.views import (
     AvoirViewSet,
     FactureViewSet,
     LigneFactureViewSet,
     NoteDebitViewSet,
     PaiementViewSet,
 )
-from apps.ventes.recouvrement import (  # noqa: F401
+from apps.ventes.recouvrement import (
     FollowupLevelViewSet,
-    ParametrageRelanceClientViewSet,
-    PromessePaiementViewSet,
 )
+
+__all__ = [
+    'AvoirViewSet', 'FactureViewSet', 'FollowupLevelViewSet', 'LigneFactureViewSet',
+    'NoteDebitViewSet', 'PaiementViewSet',
+]
