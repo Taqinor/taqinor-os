@@ -1619,3 +1619,7 @@ API accepted schema-violating request|PATCH /api/django/stock/unites-logistiques
 API accepted schema-violating request|POST /api/django/stock/plans-chargement/
 API accepted schema-violating request|POST /api/django/stock/unites-logistiques/
 Response violates schema|POST /api/django/ventes/factures/{id}/envoyer-email/
+API accepted schema-violating request|POST /api/django/facturation/factures/{id}/lien-paiement/
+API accepted schema-violating request|POST /api/django/roles/
+API rejected schema-compliant request|POST /api/django/stock/categories-fournisseur/
+Response violates schema|POST /api/django/facturation/factures/{id}/envoyer-email/

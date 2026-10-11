@@ -116,15 +116,11 @@ _is_battery = _sc.is_battery
 # VÉRIFIÉE par la fixture de contrat
 # ``apps/ventes/contract_samples/classification_lignes.json`` (QJR2) et le test
 # de parité QJR91, jamais par cette phrase.
-_KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
 
 
-# QJR609 — UN lecteur de kWh, défini ICI (feuille pure) ; ``domain.catalogue``
-# le ré-exporte (ENF20 : ``utils.options`` ne doit plus tirer le catalogue, qui
-# lit ``stock.selectors``).
-def _parse_kwh(nom):
-    m = _KWH_RE.search(nom or '')
-    return float(m.group(1).replace(',', '.')) if m else None
+# QJR609 / ENF20 — UN lecteur de kWh : feuille pure ``domain.kwh_lecture`` (SPL162 :
+# aucun ``def`` ici ni dans builder.py ; ``domain.catalogue`` lit la même feuille).
+from apps.ventes.domain.kwh_lecture import _parse_kwh  # noqa: E402
 
 
 def _battery_kwh_from_items(rows, blob=None) -> float:

@@ -745,7 +745,7 @@ _KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
 _TRI_RE = re.compile(r"tri\s*phas", re.IGNORECASE)
 # ENF20 — lecteur de kWh unique, défini dans la feuille pure ``lignes_classement``.
-from apps.ventes.quote_engine.lignes_classement import _parse_kwh  # noqa: E402,F401
+from apps.ventes.domain.kwh_lecture import _parse_kwh  # noqa: E402,F401  (ré-export SPL162)
 
 
 def _sans_accents(texte):
