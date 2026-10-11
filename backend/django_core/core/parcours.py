@@ -19,7 +19,8 @@ import re
 from pathlib import Path
 
 RACINE_DJANGO = Path(__file__).resolve().parents[1]
-RACINE_DEPOT = RACINE_DJANGO.parents[1]
+# Arbre complet : <depot>/backend/django_core ; image docker : /app (sans parent) -> on retombe sur la racine Django.
+RACINE_DEPOT = RACINE_DJANGO.parents[1] if len(RACINE_DJANGO.parents) > 1 else RACINE_DJANGO
 
 TYPES_DECLENCHEUR = frozenset({'clic', 'evenement', 'beat', 'manuel'})
 REGLES_AVAL = frozenset({
