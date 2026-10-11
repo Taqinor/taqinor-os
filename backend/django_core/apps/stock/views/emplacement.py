@@ -1,11 +1,11 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
+from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet

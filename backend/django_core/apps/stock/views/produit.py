@@ -1,20 +1,20 @@
 import copy
-import operator  # noqa: F401
-from functools import reduce  # noqa: F401
+import operator
+from functools import reduce
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import transaction  # noqa: F401
-from django.db.models import (  # noqa: F401
+from django.db import transaction
+from django.db.models import (
     ProtectedError, Count, Min, Max, Prefetch, Q, Func, QuerySet, TextField,
     Value,
 )
-from django.db.models.functions import Lower  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
+from django.db.models.functions import Lower
+from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from core.entite_scoping import EntiteScopeMixin
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
@@ -40,7 +40,7 @@ from ..serializers import (  # noqa: F401
     FactureFournisseurSerializer,
     PaiementFournisseurSerializer,
 )
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
     IsResponsableOrAdmin,

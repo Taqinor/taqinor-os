@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from rest_framework import serializers
 from ..openapi_helpers import corps
-from ..serializers import BonCommandeFournisseurSerializer  # noqa: E402
+from ..serializers import BonCommandeFournisseurSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 from apps.ventes.utils.references import create_with_reference

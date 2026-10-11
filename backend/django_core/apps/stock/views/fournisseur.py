@@ -1,14 +1,14 @@
-from django.db import transaction  # noqa: F401
+from django.db import transaction
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import PTOKEN, BINARY, DATE, INT, LISTE, OBJET, P, STR, XLSX, corps
-from ..serializers import PortailFournisseurTokenSerializer  # noqa: E402
+from ..serializers import PortailFournisseurTokenSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -34,7 +34,7 @@ from ..serializers import (  # noqa: F401
     CategorieFournisseurSerializer,
     ContactFournisseurSerializer,
 )
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
     IsResponsableOrAdmin,

@@ -13,7 +13,7 @@ from rest_framework.response import Response
 
 from rest_framework import serializers
 from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, corps
-from ..serializers import RevisionKitSerializer  # noqa: E402
+from ..serializers import RevisionKitSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
