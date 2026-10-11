@@ -210,6 +210,25 @@ def _anonymiser_copies_brutes(company, lead, identifiants):
         filleul_nom='')
 
 
+def _poser_empreintes_opposition(company, le):
+    """ACRM62 — un lead « ne plus contacter » laisse l'empreinte hachée de
+    son e-mail et de son téléphone (WhatsApp compris) à la liste
+    d'opposition de la société ; un lead NON opposé ne laisse rien."""
+    if not getattr(le, 'ne_plus_contacter', False):
+        return
+    from .leads_selectors import empreintes_contact
+    from .models import EmpreinteOpposition
+
+    # La contrainte (company, nature, empreinte) absorbe un second effacement
+    # de la même personne : jamais de doublon, jamais d'erreur.
+    EmpreinteOpposition.objects.bulk_create(
+        [EmpreinteOpposition(company=company, nature=nature,
+                             empreinte=empreinte)
+         for nature, empreinte in empreintes_contact(
+             le.email, le.telephone, le.whatsapp)],
+        ignore_conflicts=True)
+
+
 def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     """Anonymise UN lead (jamais de suppression) + journalise la destruction.
 
@@ -229,6 +248,9 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # copies brutes d'intake qui ne portent pas (encore) le lien au lead.
     identifiants = [v.strip() for v in (le.email, le.telephone, le.whatsapp)
                     if (v or '').strip()]
+    # ACRM62 (D-ACRM-5 (2)=(a)) — l'opposition SURVIT à l'effacement, en
+    # empreinte seule (aucune valeur en clair), lue AVANT le scrub.
+    _poser_empreintes_opposition(company, le)
     le.nom = LEAD_NOM_ANONYMISE
     le.prenom = None
     le.email = None

@@ -548,3 +548,47 @@ def doublons_foyer_probables(company, *, include_archived=False):
             ],
         })
     return sorties
+
+
+# ── ACRM62 (D-ACRM-5 (2)=(a)) — liste d'opposition par empreinte ────────────
+def empreintes_contact(email=None, telephone=None, whatsapp=None):
+    """Empreintes ``{(nature, empreinte)}`` des contacts d'une personne.
+
+    SEUL hachage de la liste d'opposition (écrit par ``dsr_provider``, lu par
+    :func:`porte_une_opposition`) : HMAC-SHA256 clé ``SECRET_KEY`` de la valeur
+    normalisée par les ``normalize_*`` existants (QW10) — sans la clé du
+    serveur, aucune table de numéros ne renverse l'empreinte. Le WhatsApp est
+    un téléphone. Lecture pure, aucun accès base."""
+    import hashlib
+    import hmac
+
+    from django.conf import settings
+
+    from . import leads_doublons
+
+    cle = str(getattr(settings, 'SECRET_KEY', '') or '').encode('utf-8')
+    valeurs = [('email', leads_doublons.normalize_email(email))]
+    valeurs += [('telephone', leads_doublons.normalize_phone(v))
+                for v in (telephone, whatsapp)]
+    return {
+        (nature, hmac.new(cle, f'crm-opposition|{nature}|{valeur}'.encode(
+            'utf-8'), hashlib.sha256).hexdigest())
+        for nature, valeur in valeurs if valeur}
+
+
+def porte_une_opposition(company_id, email=None, telephone=None,
+                         whatsapp=None):
+    """ACRM62 — ce contact porte-t-il une empreinte d'opposition de la
+    société ``company_id`` (personne opposée puis effacée) ?"""
+    from django.db.models import Q
+
+    from .models import EmpreinteOpposition
+
+    empreintes = empreintes_contact(email, telephone, whatsapp)
+    if not company_id or not empreintes:
+        return False
+    cible = Q(pk__in=[])
+    for nature, empreinte in empreintes:
+        cible |= Q(nature=nature, empreinte=empreinte)
+    return EmpreinteOpposition.objects.filter(
+        company_id=company_id).filter(cible).exists()

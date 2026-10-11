@@ -1994,6 +1994,13 @@ class Lead(SoftDeleteModel):
         # ACRM32 — idem pour le WhatsApp (tronqué comme la colonne).
         self.whatsapp_normalise = (
             _crm_doublons.normalize_phone(self.whatsapp) or '')[:20]
+        # ACRM62 — une personne opposée puis effacée (empreinte) naît « ne
+        # plus contacter », quelle que soit la porte de création.
+        if self._state.adding and not self.ne_plus_contacter:
+            from .leads_selectors import porte_une_opposition
+            self.ne_plus_contacter = porte_une_opposition(
+                self.company_id, email=self.email, telephone=self.telephone,
+                whatsapp=self.whatsapp)
         super().save(*args, **kwargs)
 
     class Meta:
@@ -3016,6 +3023,37 @@ class QuestionnaireLien(TenantModel):
 # `apps.crm.models -> apps.visites.models` que le contrat `independence`
 # d'import-linter interdit, c'est-à-dire exactement le couplage que ce move
 # supprime. Le reste du CRM lit la visite par `apps.visites.selectors`.
+
+
+# ── ACRM62 (D-ACRM-5 (2)=(a)) — LISTE D'OPPOSITION PAR EMPREINTE ─────────────
+# À l'effacement (DSR ou rétention, chemin unique ``dsr_provider.anonymiser_lead``)
+# d'un lead « ne plus contacter », SEULE une empreinte de son e-mail et de son
+# téléphone survit : HMAC-SHA256 clé serveur de la valeur normalisée
+# (``leads_selectors.empreintes_contact``) — aucune valeur en clair, aucune FK
+# vers ``Lead``. Un lead qui naît plus tard avec l'une de ces empreintes naît
+# « ne plus contacter » (``Lead.save``) : il n'entre dans aucune prospection
+# automatique. Un lead NON opposé effacé ne laisse rien.
+class EmpreinteOpposition(TenantModel):
+    """Empreinte hachée d'un contact opposé puis effacé (par société)."""
+
+    class Nature(models.TextChoices):
+        EMAIL = 'email', 'E-mail'
+        TELEPHONE = 'telephone', 'Téléphone'
+
+    nature = models.CharField(max_length=10, choices=Nature.choices)
+    empreinte = models.CharField(max_length=64)
+
+    class Meta:
+        verbose_name = "Empreinte d'opposition"
+        verbose_name_plural = "Empreintes d'opposition"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nature', 'empreinte'],
+                name='crm_empreinte_opposition_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.nature}:{self.empreinte[:8]}…'
 
 
 # ── Ré-export (SPL91-SPL93) — UN SEUL bloc, TOUT EN BAS : les modèles déplacés vers

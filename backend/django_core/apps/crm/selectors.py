@@ -34,7 +34,7 @@ from .leads_selectors import (  # noqa: F401
     _objectif_premier_contact, lead_merge_fields, lead_contact_identifiers,
     existing_lead_emails, _PROGRESSIVE_PROFILING_STANDARD_FIELDS,
     lead_known_field_codes, lead_ids_by_contact, lead_ids_par_identifiant,
-    doublons_foyer_probables,
+    doublons_foyer_probables, empreintes_contact, porte_une_opposition,
 )
 from .clients_selectors import (  # noqa: F401
     client_base_qs, find_client_by_email, clients_pour_controle_ice,
