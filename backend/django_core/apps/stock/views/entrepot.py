@@ -22,14 +22,24 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 
+# ENF11 — borne commune des seuils du cockpit (jours ou heures) : bornée,
+# jamais de débordement de date ; au-delà ou illisible = 400.
+HORIZON_MAX = 87600
+
+
 def _int_param(value, defaut=None, nom='parametre'):
     """Entier de requête STRICT (400 si illisible) — ENF11."""
     return entier_ou_400(value, nom, defaut)
 
 
-@extend_schema(parameters=[P('emplacement', INT),
-                           P('horizon_peremption', INT, False, 'Horizon de péremption (jours, défaut 30)'),
-                           P('retard_heures', INT, False, 'Seuil de retard (heures, défaut 24)')], responses={
+@extend_schema(parameters=[
+    P('emplacement', INT),
+    P('horizon_peremption', INT, False,
+      'Horizon de péremption (jours, défaut 30, 0-87600 ; hors plage ou illisible = 400)',
+      mini=0, maxi=HORIZON_MAX),
+    P('retard_heures', INT, False,
+      'Seuil de retard (heures, défaut 24, 0-87600 ; hors plage ou illisible = 400)',
+      mini=0, maxi=HORIZON_MAX)], responses={
     200: inline_serializer('StockEntrepotCockpit', {
         'date': serializers.CharField(),
         'zones': serializers.ListField(child=serializers.DictField()),
@@ -66,10 +76,10 @@ def entrepot_cockpit_view(request):
             request.query_params.get('emplacement'), 'emplacement'),
         horizon_peremption_jours=entier_ou_400(
             request.query_params.get('horizon_peremption'),
-            'horizon_peremption', 30, 0, 36500),
+            'horizon_peremption', 30, 0, HORIZON_MAX),
         retard_vague_heures=entier_ou_400(
             request.query_params.get('retard_heures'), 'retard_heures',
-            24, 0, 87600),
+            24, 0, HORIZON_MAX),
     ))
 
 
