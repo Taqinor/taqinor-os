@@ -1239,7 +1239,8 @@ class BaremeExigeTests(TestCase):
             echelle_paliers_batterie(devis)
 
         attendues, _charges = _reglages_tarifaires(self.company)
-        if not vus:
-            self.skipTest("catalogue sans batterie : l'échelle ne sonde rien")
+        # ``seed_catalogue`` (setUpTestData) livre les batteries : l'échelle
+        # sonde donc au moins une fois le moteur horaire.
+        self.assertTrue(vus, "l'échelle ne sonde rien malgré le catalogue seedé")
         for table in vus:
             self.assertEqual(list(table or []), list(attendues))
