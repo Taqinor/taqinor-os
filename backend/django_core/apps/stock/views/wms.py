@@ -929,14 +929,19 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         company = request.user.company
         # ASTK6 — FK bornées société ; un id étranger répond 400.
         liens = _relations_scopees(self, request, ['livraison', 'expedition'])
+        # ENF11 — corps validé par le sérialiseur strict (texte/booléens) :
+        # une note entière répond 400 au lieu d'un 500 sur .strip().
+        corps = self.get_serializer(data=request.data, partial=True)
+        corps.is_valid(raise_exception=True)
+        valides = corps.validated_data
 
         plan = creer_plan_chargement(
             company=company, user=request.user,
             livraison=liens['livraison'],
             expedition=liens['expedition'],
-            capacite_kg=request.data.get('capacite_kg') or None,
-            capacite_m3=request.data.get('capacite_m3') or None,
-            note=request.data.get('note') or '')
+            capacite_kg=valides.get('capacite_kg') or None,
+            capacite_m3=valides.get('capacite_m3') or None,
+            note=valides.get('note') or '')
         return Response(self.get_serializer(plan).data,
                         status=status.HTTP_201_CREATED)
 

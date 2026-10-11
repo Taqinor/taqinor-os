@@ -1611,3 +1611,11 @@ Server error|POST /api/django/ventes/factures/{id}/lien-paiement/
 API accepted schema-violating request|GET /api/django/tiers/tiers/
 JSON deserialization error|POST /api/django/core/maintenance-windows/{id}/annuler/
 Missing Content-Type header|POST /api/django/core/maintenance-windows/{id}/annuler/
+API accepted schema-violating request|GET /api/django/achats/bons-commande-fournisseur/achats-hors-contrat/
+API accepted schema-violating request|GET /api/django/achats/factures-fournisseur/releve-deductions-tva/
+API accepted schema-violating request|GET /api/django/achats/paiements-fournisseur/ras-tva/export/
+API accepted schema-violating request|PATCH /api/django/stock/plans-chargement/{id}/
+API accepted schema-violating request|PATCH /api/django/stock/unites-logistiques/{id}/
+API accepted schema-violating request|POST /api/django/stock/plans-chargement/
+API accepted schema-violating request|POST /api/django/stock/unites-logistiques/
+Response violates schema|POST /api/django/ventes/factures/{id}/envoyer-email/
