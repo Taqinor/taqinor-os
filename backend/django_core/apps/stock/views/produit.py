@@ -392,8 +392,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # XPUR24/ZPUR9 — tableau de bord + rapport imprimable achats :
             # Admin/Responsable uniquement (get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite —
-            # sinon repli IsAdminRole).
-            return [IsResponsableOrAdmin()]
+            # sinon repli IsAdminRole). ERR-STK-PRIX-ACHAT-3-ROUTES — montants
+            # et prix d'achat (prix_nu, engagements) : `prix_achat_voir` EN PLUS.
+            from ..permissions import PeutVoirPrixAchat
+            return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
         # XSTK10 — `rapport_pertes` reste admin-only (valeur d'achat
         # interne, jamais client-facing) via le repli ci-dessous.
         return [IsAdminRole()]

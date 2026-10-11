@@ -282,6 +282,25 @@ class GardePrixAchat(TestCase):
         self.assertEqual(len(erreurs), 1, erreurs)
         self.assertIn(f'GET {url} -> HTTP 400', erreurs[0])
 
+    def test_trois_routes_prix_achat_err_stk(self):
+        """ERR-STK-PRIX-ACHAT-3-ROUTES — comparer-tco (`prix_nu` = prix
+        d'achat) et analyse-achats : 403 DÉCLARÉ (PeutVoirPrixAchat) pour
+        Commercial ; budgets-departement/disponible : le verdict sans aucun
+        montant. L'Administrateur reçoit les montants sur les trois."""
+        tco = f'/api/django/stock/produits/{self.produit.id}/comparer-tco/'
+        analyse = '/api/django/stock/produits/analyse-achats/'
+        budget = '/api/django/stock/budgets-departement/disponible/'
+        commercial, admin = _api(self.commercial), _api(self.admin)
+        for url in (tco, analyse):
+            self.assertEqual(commercial.get(url).status_code, 403, url)
+            self.assertTrue(refus_declare(url, self.commercial), url)
+        self.assertIn('prix_nu', admin.get(tco).json()['fournisseurs'][0])
+        self.assertTrue(cles_interdites(admin.get(analyse).json()))
+        rep = commercial.get(budget, {'montant': '100'})
+        self.assertEqual((rep.status_code, set(rep.json())),
+                         (200, {'controle_actif', 'suffisant', 'budget_id'}))
+        self.assertIn('montant_alloue', admin.get(budget).json())
+
     def test_controle_positif_administrateur(self):
         """L'Administrateur voit ces clés sur les mêmes données : la garde
         scanne donc un jeu de données qui en contient réellement."""

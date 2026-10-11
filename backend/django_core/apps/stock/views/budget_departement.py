@@ -136,6 +136,12 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
         verdict['montant_alloue'] = (
             budget.montant_alloue if budget is not None else None)
         verdict['montant_demande'] = montant
+        # ERR-STK-PRIX-ACHAT-3-ROUTES (D-ASTK-2) — sans `prix_achat_voir`, le
+        # demandeur garde le VERDICT (contrôle actif, suffisant) sans montant.
+        from ..permissions import PeutVoirPrixAchat
+        if not PeutVoirPrixAchat().has_permission(request, self):
+            verdict = {cle: verdict[cle] for cle in (
+                'controle_actif', 'suffisant', 'budget_id')}
         return Response(verdict)
 
 
