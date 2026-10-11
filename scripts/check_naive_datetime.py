@@ -60,7 +60,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
 # DateField dont le nom ressemble a un horodatage mais qui est une DATE (jour) revue.
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le : date de paiement (jour).
-    "backend/django_core/apps/crm/models.py::CommissionPartenaire.paye_le",
+    "backend/django_core/apps/crm/models_clients.py::CommissionPartenaire.paye_le",
     # PUB75 ConsentRecord.date_consentement : jour de recueil du consentement (loi 09-08).
     "backend/django_core/apps/adsengine/models.py::ConsentRecord.date_consentement",
 }

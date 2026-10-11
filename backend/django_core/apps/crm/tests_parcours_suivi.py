@@ -352,6 +352,50 @@ class ParcoursCompletsTests(ParcoursBase):
         self.assertFalse(ecrire_si_libre(lead, 'whatsapp', '0662000000', journal=False))
         self.assertTrue(ecrire_si_libre(lead, 'ville', 'Fès', journal=False))
 
+    def test_placement_respecte_une_relance_saisie(self):
+        """AMET20 — le placement des anciens leads (moteur ``_recaler_file``) ne remplace
+        jamais une ``relance_date`` saisie à la main ; un lead sans saisie est placé comme
+        avant ; un second placement ne change rien."""
+        from django.utils import timezone
+
+        from apps.crm.cadence_placement import placer_anciens_leads
+        from apps.crm.models import Lead
+        saisie = self.aujourdhui() - datetime.timedelta(days=10)
+        leads = {}
+        for nom, saisies in (('Relance saisie', ['relance_date']), ('Sans saisie', [])):
+            leads[nom] = Lead.objects.create(
+                company=self.company, nom=nom, stage=stages.CONTACTED, owner=self.acteur,
+                relance_date=saisie, saisies_humaines=saisies)
+        Lead.objects.filter(pk__in=[le.pk for le in leads.values()]).update(
+            date_creation=timezone.now() - datetime.timedelta(days=60))
+        for passe in (1, 2):
+            placer_anciens_leads(self.company, self.acteur, apply=True)
+            for lead in leads.values():
+                lead.refresh_from_db()
+                self.assertTrue(RelanceEtape.objects.filter(lead=lead).exists(), lead.nom)
+            self.assertEqual(leads['Relance saisie'].relance_date, saisie, f'passe {passe}')
+            self.assertNotEqual(leads['Sans saisie'].relance_date, saisie, f'passe {passe}')
+
+    def test_fusion_garde_un_zero_saisi(self):
+        """AMET21 — ``merge_leads`` : un 0 saisi du survivant survit (ACRM13), une clé de
+        ``saisies_humaines`` du survivant n'est jamais remplacée (même vidée à la main), un
+        champ réellement vide et non saisi prend la valeur du doublon."""
+        from apps.crm.leads_fusion import merge_leads
+        from apps.crm.models import Lead
+        survivant = Lead.objects.create(
+            company=self.company, nom='Survivant', owner=self.acteur, nb_etages=0,
+            ville='', saisies_humaines=['nb_etages', 'ville'])
+        doublon = Lead.objects.create(
+            company=self.company, nom='Doublon', owner=self.acteur, nb_etages=2,
+            ville='Fès', email='doublon.amet21@example.com')
+        merge_leads(survivant, [doublon], self.acteur)
+        survivant = Lead.objects.get(pk=survivant.pk)
+        self.assertEqual(survivant.nb_etages, 0)
+        self.assertEqual(survivant.ville, '')
+        self.assertEqual(survivant.email, 'doublon.amet21@example.com')
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=survivant, user__isnull=True, field__in=('nb_etages', 'ville')).exists())
+
     def _moment(self, jour, heure):
         return datetime.datetime.combine(jour, heure, tzinfo=horaires.CASABLANCA)
 

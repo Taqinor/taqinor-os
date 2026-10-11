@@ -8,6 +8,8 @@ import logging
 
 from django.utils import timezone
 
+from apps.records.provenance import ecrire_si_libre
+
 from . import stages
 from .cadence_config import CLES_APRES_CONTACT, est_etape
 from .cadence_messages import (
@@ -1560,8 +1562,13 @@ def _recaler_file(lead, user):
     """Remet ``Lead.relance_date`` (et le rappel Calendrier) sur la prochaine
     touche ouverte — le geste de fin de toutes les écritures de relance."""
     prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
-    lead.save(update_fields=['relance_date'])
+    # AMET20 — une date de relance SAISIE à la main (``saisies_humaines``)
+    # n'est jamais remplacée par le moteur (placement compris) ; le refus
+    # n'est journalisé que s'il change quelque chose.
+    valeur = prochaine.due_date if prochaine else None
+    if ecrire_si_libre(lead, 'relance_date', valeur, user=user,
+                       journal=valeur != lead.relance_date):
+        lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
 
 

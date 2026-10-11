@@ -75,3 +75,32 @@ class MetaRejeuTests(TestCase):
             self.assertIsNone(lignes[champ].user_id)
             self.assertEqual(lignes[champ].old_value, '—')
             self.assertNotEqual(lignes[champ].new_value, '—')
+
+    def _lead_existant(self, saisies):
+        """Lead Meta déjà capturé SANS note « [Formulaire Meta] » (importé
+        avant le mapping) : le rejeu l'enrichit — c'est le chemin d'AMET19."""
+        return Lead.objects.create(
+            company=self.company, nom='Amine Rejeu', telephone='+212600014014',
+            whatsapp='', priorite=Lead.Priorite.NORMALE,
+            external_system='meta_lead_ads', external_id='ACRM14-1',
+            saisies_humaines=saisies)
+
+    def test_rejeu_meta_respecte_les_saisies_humaines(self):
+        """AMET19 — WhatsApp vidé et priorité baissée à la main (clés dans
+        ``saisies_humaines``) : le rejeu ne les remet pas."""
+        lead = self._lead_existant(['priorite', 'whatsapp'])
+        self.assertEqual(self._passe().pk, lead.pk)
+        lead.refresh_from_db()
+        self.assertEqual(lead.priorite, Lead.Priorite.NORMALE)
+        self.assertIn(lead.whatsapp, (None, ''))
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=lead, user__isnull=True,
+            field__in=('priorite', 'whatsapp')).exists())
+
+    def test_rejeu_meta_remplit_un_lead_jamais_touche(self):
+        """AMET19 — sans saisie humaine, le rejeu remplit comme avant."""
+        lead = self._lead_existant([])
+        self._passe()
+        lead.refresh_from_db()
+        self.assertEqual(lead.priorite, Lead.Priorite.HAUTE)
+        self.assertEqual(lead.whatsapp, lead.telephone)
