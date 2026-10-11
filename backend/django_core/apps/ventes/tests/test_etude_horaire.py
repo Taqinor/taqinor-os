@@ -1051,7 +1051,9 @@ class GlitchSortieMoteurTest(SimpleTestCase):
                       ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
                       equipements=equipements)
         balayage = EH.balayer_stockage_horaire(capacites_kwh=[10.0], **commun)
-        etude = EH.calculer_etude_horaire(batterie_kwh_utile=10.0, **{'tranches': None, 'charges_fixes_mad': None, **commun})
+        etude = EH.calculer_etude_horaire(
+            batterie_kwh_utile=10.0,
+            **{'tranches': None, 'charges_fixes_mad': None, **commun})
         self.assertIsNotNone(balayage)
         palier = balayage['paliers'][0]
         self.assertAlmostEqual(palier['autoconsomme_kwh'],
