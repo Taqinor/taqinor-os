@@ -33,6 +33,13 @@ class RouteSansAppelantTests(unittest.TestCase):
         appels = {M + ("clients", "<>", "fusion")}
         self.assertEqual(cra.routes_sans_appelant(routes, appels), [])
 
+    def test_action_collection_soeur_non_masquee_par_detail(self):
+        # ACRM69 : l'appel detail `clients/<>` ne masque pas `clients/segments`.
+        routes = {M + ("clients",), M + ("clients", "<pk>"), M + ("clients", "segments")}
+        appels = {M + ("clients",), M + ("clients", "<>")}
+        self.assertEqual(cra.routes_sans_appelant(routes, appels),
+                         [M + ("clients", "segments")])
+
     def test_public_et_webhooks_sans_ecran_par_construction(self):
         routes = {M + ("public", "visite"), M + ("webhooks", "website-leads"),
                   M + ("apporteur-portail", "<>", "mes-deals")}
@@ -91,7 +98,8 @@ class DepotReelTests(unittest.TestCase):
         self.assertNotIn("crm/relance-etapes/kpi-adherence", noms)
         self.assertNotIn("crm/relance-etapes/mes-stats", noms)
         self.assertIn("crm/salles-vente", noms)
-        self.assertEqual(noms, set(cra.A_CORRIGER))
+        # ACRM69 : `clients/segments` (retiree D-ACRM-6) doit etre FORCEE rouge.
+        self.assertIn("crm/clients/segments", noms)
 
 
 if __name__ == "__main__":
