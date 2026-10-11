@@ -943,6 +943,7 @@ def versionner_si_modifie(document, contenu, *, filename='', mime='',
         size=meta.get('size') or len(contenu),
         mime=mime or meta.get('mime', ''),
         checksum=checksum, uploaded_by=uploaded_by)
+    update_search_vector(document)  # ADOC180 — trouvable comme create_document
     return version, True
 
 
@@ -2900,6 +2901,7 @@ def generer_document(modele, contexte, *, company, created_by=None,
         return existant, False
     pdf_bytes = rendre_modele(modele, contexte)
     if existant is not None:
+        assert_aucune_signature_en_attente(existant)  # ADOC178 (409, ADOC175)
         key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
         add_version(
             existant, file_key=key, company=existant.company,
@@ -5097,22 +5099,20 @@ def matcher_depot_demandes(document):
                 statut=DEMANDE_DOC_EN_ATTENTE)
         .select_related('exigence')
         .order_by('created_at', 'id'))
-    # ADOC12 — le dépôt solde la demande de SA PROPRE pièce : celle dont le
-    # libellé (ou celui de son exigence) figure dans le nom du document. À
-    # défaut, seule une demande UNIQUE en attente est soldée (jamais la plus
-    # ancienne d'une autre pièce).
-    nom = (document.nom or '').casefold()
+    # ADOC12/ADOC177 — le dépôt ne solde que la demande de SA PROPRE pièce :
+    # tous les mots du libellé (ou de son exigence) sont des mots entiers du
+    # nom, sans accents ni casse. Jamais de sous-chaîne ni de repli.
+    from django.utils.text import slugify
+    mots_nom = set(slugify(document.nom or '').split('-'))
     demande = None
     for candidate in en_attente:
         libelles = [candidate.libelle or '']
         if candidate.exigence_id:
             libelles.append(candidate.exigence.libelle or '')
-        if any(lib.strip() and lib.strip().casefold() in nom
+        if any(slugify(lib) and set(slugify(lib).split('-')) <= mots_nom
                for lib in libelles):
             demande = candidate
             break
-    if demande is None and len(en_attente) == 1:
-        demande = en_attente[0]
     if demande is None:
         return None
     demande.statut = DEMANDE_DOC_SOLDEE
@@ -6302,7 +6302,10 @@ def executer_demande_disposition(demande, *, user):
                 continue  # protégé entre-temps — exclusion silencieuse.
             # ADOC22 — archivé légalement entre-temps : ni détruit ni
             # ré-archivé ; compté « ignoré », la demande ne reste plus bloquée.
-            if _document_archive_legalement(document):
+            # ADOC179 — idem pour un « archiver » sur un document en corbeille.
+            if _document_archive_legalement(document) or (
+                    demande.action == DISPOSITION_ACTION_ARCHIVER
+                    and document.supprime_le is not None):
                 ignores += 1
                 continue
             if demande.action == DISPOSITION_ACTION_ARCHIVER:
@@ -6344,7 +6347,7 @@ def executer_demande_disposition(demande, *, user):
         champs = ['statut', 'executee_le', 'updated_at']
         if ignores:
             note = (f'{ignores} document(s) ignoré(s) : archivé(s) '
-                    f'légalement.')
+                    f'légalement ou en corbeille.')
             demande.commentaire = (
                 f'{demande.commentaire}\n{note}'.strip()
                 if demande.commentaire else note)

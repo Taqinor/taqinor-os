@@ -141,6 +141,31 @@ class ErreursMetierTests(TestCase):
         self.assertTrue(ArchivageLegal.objects.filter(document=archive).exists())
         self.assertEqual(DemandeDisposition.objects.count(), 1)
 
+    def test_disposition_archiver_ignore_corbeille(self):
+        """ADOC179 (sonde C-ADOC-VER-005) — « archiver » sur un document mis
+        en corbeille entre-temps : compté ignoré, jamais un 500 ; le lot
+        mixte archive les autres."""
+        jete = Document.objects.create(company=self.co, folder=self.folder,
+                                       nom='jete.pdf')
+        vivant = Document.objects.create(company=self.co, folder=self.folder,
+                                         nom='vivant.pdf')
+        demande = services.creer_demande_disposition(
+            self.co, libelle='Archivage', action='archiver',
+            document_ids=[jete.pk, vivant.pk], user=self.admin)
+        services.approuver_demande_disposition(demande, user=self.admin2)
+        services.mettre_en_corbeille(jete, self.admin)
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'abc', None)):
+            resp = auth(self.admin2).post(
+                f'{BASE}demandes-disposition/{demande.pk}/executer/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, 'executee')
+        self.assertIn('1 document(s) ignoré(s)', demande.commentaire)
+        self.assertFalse(ArchivageLegal.objects.filter(document=jete).exists())
+        self.assertIsNotNone(Document.objects.get(pk=jete.pk).supprime_le)
+        self.assertTrue(ArchivageLegal.objects.filter(document=vivant).exists())
+
     def test_archiver_corbeille_400(self):
         doc = Document.objects.create(company=self.co, folder=self.folder,
                                       nom='jete.pdf')

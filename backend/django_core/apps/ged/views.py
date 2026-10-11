@@ -3191,6 +3191,8 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except services.SignatureEnCoursError as exc:  # ADOC178
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             {'document': document.id, 'document_nom': document.nom,
              'created': created},
