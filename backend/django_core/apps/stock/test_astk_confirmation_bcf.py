@@ -111,6 +111,37 @@ class ConfirmationTests(ConfirmationBase):
         # La date DEMANDÉE n'est jamais écrasée.
         self.assertEqual(bc.date_livraison_prevue, datetime.date(2026, 10, 1))
 
+    def test_suggestions_sans_montant_pour_un_commercial(self):
+        """ASTK240 — sans `prix_achat_voir`, suggestions-bcf (et son alias
+        /achats/) sert le BCF du fournisseur SANS montant d'achat ; avec le
+        code (compte légacy responsable), les montants sont servis — les deux
+        formes sont celles du contrat suggestions_bcf.json."""
+        import json
+        from pathlib import Path
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        contrat = json.loads((Path(__file__).resolve().parent / 'contract_samples'
+                              / 'suggestions_bcf.json').read_text(encoding='utf-8'))
+        bc = self._bcf(BonCommandeFournisseur.Statut.ENVOYE)
+        BonCommandeFournisseur.objects.filter(pk=bc.pk).update(
+            date_commande=datetime.date.today())
+        commercial = User.objects.create_user(
+            username='astk240-commercial', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial',
+                permissions=dict(CANONICAL_SYSTEM_ROLES)['Commercial']))
+        for user, modele in ((commercial, 'exemple_sans_prix_achat'),
+                             (self.user, 'exemple')):
+            api = APIClient()
+            api.force_authenticate(user)
+            for prefixe in ('stock', 'achats'):
+                rep = api.get(f'/api/django/{prefixe}/factures-fournisseur/'
+                              f'suggestions-bcf/', {'fournisseur': self.fournisseur.id})
+                self.assertEqual(rep.status_code, 200, rep.data)
+                self.assertEqual([s['reference'] for s in rep.data], [bc.reference])
+                self.assertEqual(set(rep.data[0]),
+                                 set(contrat[modele]['suggestions'][0]), user.username)
+
     def test_porte_compte_meme_garde(self):
         bc = self._bcf(BonCommandeFournisseur.Statut.RECU, quantite_recue=2)
         with self.assertRaises(ConfirmationBcfRefusee):

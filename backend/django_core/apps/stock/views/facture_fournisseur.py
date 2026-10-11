@@ -316,6 +316,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         ne lie JAMAIS rien — l'utilisateur confirme via un PATCH classique
         (``factures-fournisseur/{id}/`` avec ``bon_commande``), qui déclenche
         alors l'évaluation 3 voies (``perform_update``)."""
+        from ..permissions import PeutVoirPrixAchat
         from ..selectors import suggerer_bcf_pour_facture
 
         fournisseur_id = request.query_params.get('fournisseur')
@@ -324,9 +325,15 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Le paramètre fournisseur est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         montant = request.query_params.get('montant')
-        return Response(suggerer_bcf_pour_facture(
+        suggestions = suggerer_bcf_pour_facture(
             request.user.company, fournisseur_id=fournisseur_id,
-            montant=montant))
+            montant=montant)
+        # ASTK240 (D-ASTK-2) — sans `prix_achat_voir`, aucun montant d'achat :
+        # ni `montant_*` ni l'écart (montant saisi ± écart = total du BCF).
+        if not PeutVoirPrixAchat().has_permission(request, self):
+            suggestions = [{k: v for k, v in s.items() if not k.startswith(
+                'montant') and k != 'ecart'} for s in suggestions]
+        return Response(suggestions)
 
     @extend_schema(
         request={'multipart/form-data': corps('FactureDepuisUblMultipart', file=serializers.FileField())},
