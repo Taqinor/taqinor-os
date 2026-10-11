@@ -53,12 +53,10 @@ CE QUI RESTE VRAI, ET QUI COMPTE : les fonctions de construction du registre
 le registre RÉSULTANT sans rien écrire. Seule :func:`ecrire_colonne` touche la
 base, et elle ne touche QUE cette colonne.
 """
-#: Les ORIGINES admises d'un override — jamais une quatrième inventée sans que
-#: le contrat PACT10 ne soit d'abord mis à jour.
-ORIGINE_MANUEL = 'manuel'
-ORIGINE_IMPORT = 'import'
-ORIGINE_API = 'api'
-ORIGINES = (ORIGINE_MANUEL, ORIGINE_IMPORT, ORIGINE_API)
+from apps.ventes.domain.lecture_overrides import (  # noqa: E402,F401 — ENF20
+    ORIGINE_API, ORIGINE_IMPORT, ORIGINE_MANUEL, ORIGINES, _registre,
+    effectif, registre_du_devis,
+)
 
 #: Le préfixe du SEUL chemin à motif dynamique : ``profil.equipements.<clef>``
 #: où ``<clef>`` est le nom d'un équipement RÉEL (piscine, climatisation,
@@ -374,42 +372,6 @@ def raison_retrait(chemin):
     if chemin.startswith(PREFIXE_EQUIPEMENT):
         return CHEMINS_RETIRES[PREFIXE_EQUIPEMENT + '<clef>']
     return CHEMINS_RETIRES.get(chemin)
-
-
-def registre_du_devis(devis):
-    """Le registre RANGÉ sur ce devis, toujours un dict (jamais ``None``).
-
-    Lu par ``getattr`` : la colonne ``Devis.overrides`` n'existe qu'à partir de
-    QJR58, ce module fonctionne donc AVANT elle comme APRÈS. Rendu par COPIE :
-    un appelant qui le modifie ne touche jamais l'instance.
-    """
-    brut = getattr(devis, 'overrides', None)
-    return dict(brut) if isinstance(brut, dict) else {}
-
-
-#: Alias interne historique — ce module l'utilise sous ce nom court.
-_registre = registre_du_devis
-
-
-def effectif(devis, chemin, auto):
-    """``(valeur, source)`` — LA valeur qui vaut aujourd'hui pour ce chemin.
-
-    ``auto`` est ce que le moteur dériverait MAINTENANT (l'appelant le lui
-    fournit : ce module ne calcule rien). Un override posé prime, et ``source``
-    NOMME sa provenance (``manuel`` / ``import`` / ``api``) ; sinon la valeur
-    automatique, ``source='auto'``.
-
-    RIEN N'EST STOCKÉ ICI : un devis dont le catalogue a changé depuis la pose
-    de l'override voit son ``auto`` bouger sans que ``manuel`` ne change, et un
-    chemin RESTÉ automatique reflète toujours l'état actuel — jamais une valeur
-    figée au moment d'une lecture passée.
-    """
-    entree = _registre(devis).get(chemin)
-    if not isinstance(entree, dict) or 'valeur' not in entree:
-        return auto, 'auto'
-    origine = entree.get('origine')
-    return entree['valeur'], (origine if origine in ORIGINES
-                              else ORIGINE_MANUEL)
 
 
 def vue_effective(devis, autos, chemins_supplementaires=()):

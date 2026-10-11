@@ -418,9 +418,10 @@ def _totaux_canoniques(devis, lignes) -> dict:
     PDF. Échéancier, solde, acompte public, BC, pro-forma, CA et commission
     héritent de ce seul point. N=1 → inchangé."""
     from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
-    from apps.ventes.selectors import (
-        _canonical_totaux, nombre_proprietes, totaux_multi_proprietes,
+    from apps.ventes.domain.noyau_totaux import (
+        _canonical_totaux, totaux_multi_proprietes,
     )
+    from apps.ventes.multivilla import nombre_proprietes
     # ARRONDI-100 — le palier de 100 MAD inférieur, par villa (avant le ×N),
     # exactement comme ``domain.argent`` : échéancier, solde, acompte public,
     # BC, pro-forma et commission héritent du même total rond.
@@ -592,7 +593,7 @@ def scenario_declare(devis):
     """
     stocke = (getattr(devis, 'etude_params', None) or {}).get('scenario')
     try:
-        from apps.ventes.domain.overrides import effectif
+        from apps.ventes.domain.lecture_overrides import effectif
         impose, source = effectif(devis, 'scenario', stocke)
         if source != 'auto' and impose:
             return impose

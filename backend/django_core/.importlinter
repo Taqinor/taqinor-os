@@ -119,7 +119,6 @@ ignore_imports =
 # le noyau dans la feuille pure `apps.ventes.domain.noyau_totaux` (aucun import
 # d'app) et `nombre_proprietes` dans `apps.ventes.multivilla` (feuille). Reste
 # `-> utils.options` (le filtre d'option tire `domain.overrides`, non feuille).
-    apps.ventes.domain.argent -> apps.ventes.utils.options
 # AUD105-107 (2026-09-06) — le mixin partagé `apps.facturation.totaux`
 # (TotauxDocumentMixin, remise globale honnête sur les 3 documents) délègue
 # LAZILY son calcul à `ventes.selectors._canonical_totaux`/`tva_buckets`

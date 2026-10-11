@@ -21,8 +21,6 @@ from decimal import Decimal
 # ``solar_classification`` (SPL261) est du stdlib pur : cet import ne tire ni
 # Django, ni modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_classification as _sc
-# QJR609 — UN lecteur de kWh : celui du catalogue (``domain.catalogue``).
-from apps.ventes.domain.catalogue import _parse_kwh
 # Politique monétaire (docs/money-convention.md) : 2 décimales, moitié vers le
 # haut — LA fonction de la base, jamais ``round()`` (check_money_rounding).
 from core.money import quantize_mad
@@ -121,8 +119,12 @@ _is_battery = _sc.is_battery
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
 
 
-# QJR609 — UN lecteur de kWh : celui du catalogue (``domain.catalogue``), même
-# expression ; la copie locale a été supprimée.
+# QJR609 — UN lecteur de kWh, défini ICI (feuille pure) ; ``domain.catalogue``
+# le ré-exporte (ENF20 : ``utils.options`` ne doit plus tirer le catalogue, qui
+# lit ``stock.selectors``).
+def _parse_kwh(nom):
+    m = _KWH_RE.search(nom or '')
+    return float(m.group(1).replace(',', '.')) if m else None
 
 
 def _battery_kwh_from_items(rows, blob=None) -> float:
