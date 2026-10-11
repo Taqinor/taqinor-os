@@ -13,27 +13,15 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { normalizeVirementResponse, virementEndpoint } from '../../lib/paiementAcceptation';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-import { jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
+import { clientIpFromRequest } from '../../lib/rateLimit';
+import { corpsAvecToken, jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
 
 export const POST: APIRoute = async ({ request }) => {
   if (!isSameOriginRequest(request)) return crossSiteRejection();
 
-  const rl = rateLimit(`proposition-virement:${clientIpFromRequest(request)}`, { limit: 10, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return json({ ok: false, status: 429, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
-      'retry-after': String(rl.retryAfterSec),
-    });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return json({ ok: false, status: 400, detail: 'Requête invalide.' }, 400);
-  }
-  const token = typeof body.token === 'string' ? body.token.trim() : '';
-  if (!token) return json({ ok: false, status: 400, detail: 'Lien de proposition manquant.' }, 400);
+  const garde = await corpsAvecToken(request, 'proposition-virement', 10);
+  if (garde instanceof Response) return garde;
+  const { body, token } = garde;
 
   const clientIp = clientIpFromRequest(request);
   const ip = clientIp && clientIp !== 'unknown' ? clientIp : '';
