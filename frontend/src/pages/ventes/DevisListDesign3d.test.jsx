@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, within, cleanup } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
+import { screen, cleanup } from '@testing-library/react'
 
 /* PV23 — entrées 3D de la liste des devis. Un devis encore OUVERT (brouillon /
    envoyé) se CONÇOIT (`/ventes/devis/:id/design`, l'écran PV20/PV21 qui
@@ -23,39 +19,13 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigateMock }
 })
 
-import DevisList from './DevisList'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderList, ouvrirMenu } from './devisListTestHelpers.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const devisBase = {
   id: 1, reference: 'DEV-2026-07-0001', client_nom: 'ACME',
   date_creation: '2026-07-01', total_ttc: 12000, nb_options: 1, version: 1,
-}
-
-function renderList(devis) {
-  const store = configureStore({
-    reducer: {
-      ventes: (s = { devis, loading: false, error: null }) => s,
-      auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
-    },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider>
-          <DevisList />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-async function ouvrirMenu(reference) {
-  const user = userEvent.setup()
-  const row = screen.getByText(reference).closest('tr')
-  await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
-  return user
 }
 
 describe('PV23 — entrées 3D par statut (liste des devis)', () => {

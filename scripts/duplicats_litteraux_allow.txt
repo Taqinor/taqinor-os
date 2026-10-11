@@ -773,7 +773,6 @@ ca3c70af9d41|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.j
 ca7f4da11612|apps/web/src/pages/ar/blog/index.astro,apps/web/src/pages/blog/index.astro,apps/web/src/pages/en/blog/index.astro
 ca91630fb946|frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx
 cb53db76a6a8|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
-cb6122877fc3|frontend/src/features/ventes/devisEnvoyerWhatsappStatut.test.jsx,frontend/src/pages/ventes/DevisListChantierDeepLink.cht21.test.jsx,frontend/src/pages/ventes/DevisListConceptionElectrique.test.jsx,frontend/src/pages/ventes/DevisListDesign3d.test.jsx,frontend/src/pages/ventes/DevisListEtudeBancable.test.jsx
 cb8bcd53741f|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 cbabba40545a|frontend/src/pages/installations/AteliersPage.jsx,frontend/src/pages/installations/ParcInstallePage.jsx
 cc07c18b2839|apps/web/src/pages/en/garanties.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/garanties.astro,apps/web/src/pages/équipement.astro
@@ -851,7 +850,6 @@ dbcac46bdc22|frontend/src/features/crm/workspace/LeadWorkspace.jsx,frontend/src/
 dbf2094ca765|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 dbf40fb4f637|apps/web/src/lib/batterySim.ts,apps/web/src/lib/proposalChart.ts,apps/web/src/lib/proposalCurve.ts
 dc5909cf3ef6|frontend/src/features/crm/relances/RelanceEtapeRow.canaux.test.jsx,frontend/src/features/crm/relances/RelanceEtapeRow.cle_avant_libelle.test.jsx,frontend/src/features/crm/relances/RelanceEtapeRow.visite_infos.test.jsx
-dd0881f0c340|frontend/src/features/ventes/devisEnvoyerWhatsappStatut.test.jsx,frontend/src/pages/ventes/DevisListChantierDeepLink.cht21.test.jsx,frontend/src/pages/ventes/DevisListConceptionElectrique.test.jsx,frontend/src/pages/ventes/DevisListDesign3d.test.jsx,frontend/src/pages/ventes/DevisListEtudeBancable.test.jsx
 dd2c745e120a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 dd6237d55182|apps/web/src/lib/offresTailles.ts,apps/web/src/lib/tailleDetail.ts
 dd9d915f96ed|frontend/src/features/calepinage/__tests__/mode_terrain.test.jsx,frontend/src/features/calepinage/__tests__/ombriere.test.jsx

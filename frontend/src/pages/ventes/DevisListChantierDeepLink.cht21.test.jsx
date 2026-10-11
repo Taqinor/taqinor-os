@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 
 /* CHT21(a) — `handleChantier` naviguait vers la liste nue `/chantiers`,
@@ -32,6 +30,7 @@ import installationsApi from '../../api/installationsApi'
 // ARC49 — le tableau DevisList passe par le moteur `ui/datatable` (useDensity),
 // qui EXIGE un <ThemeProvider> (présent en prod via <Layout>).
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderListAvecStore } from './devisListTestHelpers.jsx'
 
 function makeStore(devis) {
   return configureStore({
@@ -42,18 +41,7 @@ function makeStore(devis) {
   })
 }
 
-function renderList(devis) {
-  const store = makeStore(devis)
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider>
-          <DevisList />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderList = (devis) => renderListAvecStore(makeStore(devis))
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
