@@ -28,6 +28,7 @@ import { formatMAD, toNumber } from '../../lib/format'
 import { frenchError } from '../../lib/frenchError'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { parsePastedAmount } from '../../hooks/usePasteClean'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -43,7 +44,7 @@ const emptyLine = () => ({
   taux_tva: '',  // vide = taux global de la facture (N37)
 })
 
-const today = new Date().toISOString().slice(0, 10)
+const today = todayLocalIso()
 
 export default function FactureForm({ facture = null, onClose, onSaved }) {
   const dispatch = useDispatch()

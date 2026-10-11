@@ -10,6 +10,7 @@ import DataWindowNotice from './DataWindowNotice'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
 import MetricHelp from './MetricHelp'
+import { todayLocalIso } from '../../lib/dateLocale.js'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -60,9 +61,8 @@ const AUDIT_STATUT_STYLE = {
 
 function periodParams(days) {
   const fin = new Date()
-  const debut = new Date(fin)
-  debut.setDate(debut.getDate() - (days - 1))
-  const iso = (d) => d.toISOString().slice(0, 10)
+  const debut = new Date(fin.getTime() - (days - 1) * 86400000)
+  const iso = (d) => todayLocalIso(d)
   return { debut: iso(debut), fin: iso(fin) }
 }
 
