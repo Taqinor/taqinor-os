@@ -6517,12 +6517,12 @@ def match_fournisseur_from_ocr(company, fields):
     silencieuse). LECTURE SEULE."""
     from .models import Fournisseur
     fields = fields or {}
-    ice = (fields.get('ice') or '').strip()
+    ice = str(fields.get('ice') or '').strip()
     if ice:
         match = Fournisseur.objects.filter(company=company, ice=ice).first()
         if match is not None:
             return match
-    nom = (fields.get('fournisseur') or '').strip()
+    nom = str(fields.get('fournisseur') or '').strip()
     if nom:
         return Fournisseur.objects.filter(
             company=company, nom__iexact=nom).first()
@@ -6577,7 +6577,7 @@ def creer_facture_fournisseur_depuis_ocr(
     montant_ht = _num('montant_ht')
     montant_tva = _num('montant_tva')
     montant_ttc = _num('montant_ttc')
-    ref_fournisseur = (fields.get('numero') or '').strip() or None
+    ref_fournisseur = str(fields.get('numero') or '').strip() or None
 
     doublons = detect_facture_fournisseur_doublon(
         company, fournisseur_id=fournisseur.id,

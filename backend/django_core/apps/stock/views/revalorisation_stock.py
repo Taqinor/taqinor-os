@@ -36,13 +36,23 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..models import Produit
         from ..services import creer_revalorisation
-        donnees = request.data if isinstance(request.data, dict) else {}
+        # ENF11 : corps illisible ou identifiant mal formé = 400 (validation,
+        # comme une FK de corps) ; seul un identifiant entier inconnu de la
+        # société est un 404.
+        if not isinstance(request.data, dict):
+            return Response(
+                {'detail': 'Corps illisible : un objet JSON est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        donnees = request.data
         try:
-            produit = Produit.objects.filter(
-                company=request.user.company,
-                id=int(donnees.get('produit'))).first()
+            produit_id = int(donnees.get('produit'))
         except (TypeError, ValueError):
-            produit = None
+            return Response(
+                {'detail': 'Le champ « produit » doit être un identifiant '
+                           'entier.', 'champ': 'produit'},
+                status=status.HTTP_400_BAD_REQUEST)
+        produit = Produit.objects.filter(
+            company=request.user.company, id=produit_id).first()
         if produit is None:
             return Response(
                 {'detail': 'Produit introuvable.'},

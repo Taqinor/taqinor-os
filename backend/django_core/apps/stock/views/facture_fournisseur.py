@@ -282,7 +282,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             try:
                 fields = json.loads(fields)
             except (TypeError, ValueError):
-                fields = {}
+                return Response(
+                    {'detail': 'Le champ « fields » doit être un objet '
+                               '(JSON illisible).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(fields, dict):
             return Response(
                 {'detail': 'Le champ « fields » doit être un objet.'},
