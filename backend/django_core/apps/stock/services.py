@@ -6517,12 +6517,13 @@ def match_fournisseur_from_ocr(company, fields):
     silencieuse). LECTURE SEULE."""
     from .models import Fournisseur
     fields = fields or {}
-    ice = str(fields.get('ice') or '').strip()
+    ice = str(fields.get('ice') or '').replace('\x00', '').strip()
     if ice:
         match = Fournisseur.objects.filter(company=company, ice=ice).first()
         if match is not None:
             return match
-    nom = str(fields.get('fournisseur') or '').strip()
+    nom = str(fields.get('fournisseur') or '').replace(
+        '\x00', '').strip()
     if nom:
         return Fournisseur.objects.filter(
             company=company, nom__iexact=nom).first()
@@ -6557,7 +6558,11 @@ def creer_facture_fournisseur_depuis_ocr(
         if val is None or val == '':
             return None
         try:
-            return Decimal(str(val))
+            montant = Decimal(str(val))
+            # ENF11 — NaN/Infinity/hors plage (14,2) : champ laissé vide.
+            if not montant.is_finite() or abs(montant) >= Decimal(10) ** 12:
+                return None
+            return montant.quantize(Decimal('0.01'))
         except (InvalidOperation, TypeError, ValueError):
             return None
 
@@ -6577,7 +6582,11 @@ def creer_facture_fournisseur_depuis_ocr(
     montant_ht = _num('montant_ht')
     montant_tva = _num('montant_tva')
     montant_ttc = _num('montant_ttc')
-    ref_fournisseur = str(fields.get('numero') or '').strip() or None
+    ref_fournisseur = str(fields.get('numero') or '').replace(
+        '\x00', '').strip() or None
+    if ref_fournisseur is not None and len(ref_fournisseur) > 100:
+        raise ValueError(
+            'Le numéro de facture fournisseur dépasse 100 caractères.')
 
     doublons = detect_facture_fournisseur_doublon(
         company, fournisseur_id=fournisseur.id,

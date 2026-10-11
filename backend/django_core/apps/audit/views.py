@@ -59,7 +59,8 @@ FILTRES_AUDIT = [
     OpenApiParameter('search', OpenApiTypes.STR, required=False),
 ]
 LIMITE = OpenApiParameter(
-    'limit', OpenApiTypes.INT, required=False, description='1 à 500 (défaut 100).')
+    'limit', {'type': 'integer', 'minimum': 1}, required=False,
+    description='1 à 500 (défaut 100) ; au-delà de 500, plafonné à 500.')
 
 
 def _company_qs(request):

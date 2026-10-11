@@ -277,6 +277,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         import json
         from ..services import creer_facture_fournisseur_depuis_ocr
 
+        if not hasattr(request.data, 'get'):
+            return Response(
+                {'detail': 'Le corps doit être un objet.'},
+                status=status.HTTP_400_BAD_REQUEST)
         fields = request.data.get('fields') or {}
         if isinstance(fields, str):
             try:
@@ -334,7 +338,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         from ..utils.params import decimal_ou_400, entier_ou_400
         fournisseur_id = entier_ou_400(
             request.query_params.get('fournisseur'), 'fournisseur')
-        if not fournisseur_id:
+        if fournisseur_id is None:
             return Response(
                 {'detail': 'Le paramètre fournisseur est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
