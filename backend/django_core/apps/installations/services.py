@@ -705,9 +705,13 @@ def _realigner_nomenclature_revision(chantier, devis):
     a_des_reservations = StockReservation.objects.filter(
         installation=chantier).exists()
 
+    anciens = _bom_quantities(chantier)
     chantier.bom = _freeze_bom(devis)
     chantier.save(update_fields=['bom'])
     nouveaux = _bom_quantities(chantier)
+    # AMET14 — DA déjà émises : marquées « à revoir (V2) », jamais modifiées.
+    from .revision_achats import marquer_achats_a_revoir
+    marquer_achats_a_revoir(chantier, anciens, nouveaux)
 
     if (not a_des_reservations
             and methode_reservation_stock(chantier.company)

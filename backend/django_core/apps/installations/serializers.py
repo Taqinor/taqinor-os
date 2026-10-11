@@ -1452,11 +1452,14 @@ class DemandeAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeri
             # (protéger un brouillon de l'archivage automatique) ; `archivee`
             # et `date_archivage` sont posés par la tâche planifiée.
             'archivee', 'epinglee', 'date_archivage',
+            # AMET14 — « à revoir (V2) » + diff, posés par le serveur.
+            'a_revoir_v2', 'diff_v2',
         ]
         read_only_fields = [
             'reference', 'statut', 'bon_commande', 'approuvee_par',
             'date_decision', 'motif_refus', 'created_by', 'date_creation',
             'date_modification', 'archivee', 'date_archivage',
+            'a_revoir_v2', 'diff_v2',
         ]
 
     def get_fields(self):
