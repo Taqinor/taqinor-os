@@ -7,10 +7,12 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin
+from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
 
+from .erreurs_achats import ConflitEtat
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -1462,6 +1464,23 @@ class PrixFournisseurSerializer(CompanyScopedRelationsMixin,
         ]
         # company posé côté serveur.
 
+    def get_unique_together_validators(self):
+        return []  # ENF11 — le doublon (produit, fournisseur) est un 409, voir validate()
+
+    def validate(self, attrs):
+        produit = attrs.get('produit', getattr(self.instance, 'produit', None))
+        fournisseur = attrs.get(
+            'fournisseur', getattr(self.instance, 'fournisseur', None))
+        doublons = PrixFournisseur.objects.filter(
+            produit=produit, fournisseur=fournisseur)
+        if self.instance is not None:
+            doublons = doublons.exclude(pk=self.instance.pk)
+        if doublons.exists():
+            raise ConflitUnicite(
+                'Un prix existe déjà pour ce produit chez ce fournisseur.',
+                champs=['produit', 'fournisseur'])
+        return attrs
+
 
 def _peut_voir_montants_achat(user):
     """ASTK10/11 (D-ASTK-2) — seul garde des prix et montants d'ACHAT servis
@@ -1828,14 +1847,14 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
     def validate_bon_commande(self, value):
+        # ENF11 — état du BCF (annulé / pas encore envoyé) = 409, pas un 400.
         if value.statut == BonCommandeFournisseur.Statut.ANNULE:
-            raise serializers.ValidationError(
-                'Ce bon de commande est annulé.')
+            raise ConflitEtat('Ce bon de commande est annulé.')
         # ASTK22 — une réception ne se crée que sur un BCF envoyé.
         from .services import bcf_refuse_reception
         motif = bcf_refuse_reception(value)
         if motif:
-            raise serializers.ValidationError(motif)
+            raise ConflitEtat(motif)
         return value
 
     def create(self, validated_data):
@@ -1856,8 +1875,8 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         for ligne in lignes_data:
             ligne_cmd = bcf_lignes.get(ligne['ligne_commande'].id)
             if ligne_cmd is None:
-                raise serializers.ValidationError(
-                    {'lignes': 'Ligne de commande hors de ce bon de commande.'})
+                raise ConflitEtat(
+                    'Ligne de commande hors de ce bon de commande.')
             demande[ligne_cmd.id] = (
                 demande.get(ligne_cmd.id, 0) + ligne['quantite'])
             reste = reste_du_net_ligne_bcf(ligne_cmd)
@@ -1866,9 +1885,9 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
                     reste < reste_brut or reste <= 0):
                 libelle = (getattr(ligne_cmd.produit, 'nom', None)
                            or ligne_cmd.designation or 'ligne')
-                raise serializers.ValidationError({'lignes': (
+                raise ConflitEtat(
                     f'La quantité reçue pour « {libelle} » dépasse le reste '
-                    f'dû ({reste}, réceptions en brouillon déduites).')})
+                    f'dû ({reste}, réceptions en brouillon déduites).')
         reception = ReceptionFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             ligne_cmd = bcf_lignes.get(ligne['ligne_commande'].id)
@@ -1967,39 +1986,20 @@ class PaiementFournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
     def validate(self, attrs):
-        # ZACC9 — garde de SUR-PAIEMENT : un règlement ne doit jamais dépasser
-        # le solde dû de la facture (validate_montant refusait déjà un
-        # montant <= 0, mais n'empêchait PAS de payer plus que ce qui reste
-        # dû). Comparaison faite ici (object-level) car elle a besoin à la
-        # fois de `facture` et de `montant`.
-        #
-        # AUD208 — cette lecture de `facture.solde_du` tourne HORS verrou,
-        # AVANT même que la vue n'ouvre sa transaction : c'est un refus
-        # RAPIDE (feedback immédiat, un seul paiement) mais PAS l'autorité
-        # finale — deux paiements concurrents, chacun inférieur au solde dû
-        # pris ISOLÉMENT mais dont la SOMME le dépasse, passeraient tous les
-        # deux cette garde (chacun lit le même solde dû de départ). L'AUTORITÉ
-        # réelle est `apps.stock.services.
-        # verrouiller_facture_fournisseur_et_verifier_solde` (select_for_update
-        # + re-vérification), appelée DANS la transaction.atomic() de
-        # `PaiementFournisseurViewSet.perform_create` et de l'action
-        # `FactureFournisseurViewSet.paiements` — ne pas supprimer ce contrôle
-        # ici en pensant qu'il fait double emploi.
+        # ZACC9 — garde de SUR-PAIEMENT : refus RAPIDE hors verrou (409, ENF11 :
+        # le solde est un ÉTAT, pas une erreur de saisie). AUD208 : l'autorité
+        # réelle est `verrouiller_facture_fournisseur_et_verifier_solde`
+        # (select_for_update), appelée dans la transaction de la vue et de
+        # l'action `FactureFournisseurViewSet.paiements` — ne pas supprimer ce
+        # contrôle en pensant qu'il fait double emploi.
         facture = attrs.get('facture')
         montant = attrs.get('montant')
         if facture is not None and montant is not None:
             if montant > facture.solde_du:
-                raise serializers.ValidationError({
-                    'montant': (
-                        'Le montant dépasse le solde dû '
-                        f'({facture.solde_du}).'),
-                })
-        # ZACC9 — `date_paiement` reste nullable (saisie « date à confirmer »
-        # tolérée historiquement), mais l'événement `paiement_fournisseur_
-        # enregistre` (YLEDG2) peut poser une écriture comptable AUTO
-        # (COMPTA_AUTO_ECRITURES) qui exige une date non NULL. Défaut serveur
-        # = aujourd'hui quand omis, jamais None — pas de régression pour un
-        # appelant qui fournit déjà la date.
+                raise ConflitEtat(
+                    f'Le montant dépasse le solde dû ({facture.solde_du}).')
+        # ZACC9 — `date_paiement` nullable, mais l'écriture comptable AUTO
+        # (YLEDG2) exige une date : défaut serveur = aujourd'hui quand omise.
         if not attrs.get('date_paiement'):
             from django.utils import timezone
             attrs['date_paiement'] = timezone.localdate()

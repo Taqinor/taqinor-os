@@ -169,11 +169,11 @@ class TestDepuisOcrEndpoint(Xacc36Base):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(Decimal(resp.data['montant_ttc']), Decimal('9600'))
 
-    def test_endpoint_sans_fournisseur_refuse_400(self):
+    def test_endpoint_sans_fournisseur_introuvable_404(self):
         resp = self.api.post(
             '/api/django/stock/factures-fournisseur/depuis-ocr/',
             {'fields': {'fournisseur': 'Zzz Introuvable'}}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_endpoint_champ_fields_invalide(self):
         resp = self.api.post(

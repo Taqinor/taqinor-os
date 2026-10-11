@@ -89,7 +89,7 @@ class QuantiteAppliqueeTests(TestCase):
         r1 = self._creer_api(bc, ligne, 10)
         self.assertEqual(r1.status_code, 201, r1.content)
         r2 = self._creer_api(bc, ligne, 10)
-        self.assertEqual(r2.status_code, 400, r2.content)
+        self.assertEqual(r2.status_code, 409, r2.content)
         self.assertIn('dépasse le reste dû', str(r2.data))
         self.assertEqual(ReceptionFournisseur.objects.filter(
             bon_commande=bc).count(), 1)

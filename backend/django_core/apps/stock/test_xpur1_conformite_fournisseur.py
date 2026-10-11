@@ -194,7 +194,7 @@ class TestPaiementGate(Xpur1Base):
         resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
             'facture': self.facture.id, 'montant': '1200',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_gate_on_allows_payment_when_compliant(self):
         AchatsParametres.objects.create(

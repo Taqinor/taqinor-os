@@ -130,8 +130,9 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
             except FactureFournisseur.DoesNotExist:
                 pass
             except ValueError as exc:
+                # ENF11 — fournisseur bloqué / conformité / exception = état (409).
                 return Response(
-                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         self._escompte_flag = None
         response = super().create(request, *args, **kwargs)
         # XPUR6 — informatif (jamais déduit automatiquement) : ce paiement
@@ -142,7 +143,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     def perform_create(self, serializer):
-        from rest_framework.exceptions import ValidationError
+        from ..erreurs_achats import ConflitEtat
         from ..services import (
             recompute_facture_fournisseur_statut, compute_ras_tva,
         )
@@ -162,7 +163,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
                 facture = verrouiller_facture_fournisseur_et_verifier_solde(
                     facture, montant)
             except ValueError as exc:
-                raise ValidationError({'montant': str(exc)})
+                raise ConflitEtat(str(exc))
             # XPUR2 — RAS-TVA calculée côté serveur, jamais depuis le corps.
             taux, montant_ras = compute_ras_tva(
                 self.request.user.company, facture, montant)

@@ -6,6 +6,7 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
+from ..erreurs_achats import EtatIncompatible, IntrouvableMetier
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -333,8 +334,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             except Fournisseur.DoesNotExist:
                 pass
             except ValueError as exc:
+                # ENF11 — fournisseur bloqué = état (409), pas un corps invalide.
                 return Response(
-                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
             # NTP2P7 — onboarding OBLIGATOIRE (réglage société, OFF par
             # défaut) : un fournisseur au dossier incomplet/non validé ne peut
             # pas recevoir de nouveau BCF. No-op tant que le flag est OFF.
@@ -343,7 +345,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 request.user.company, fournisseur_id)
             if not autorise:
                 return Response({'detail': motif},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
         # XPUR1 — WARNING (non bloquant) si le fournisseur a un document de
         # conformité manquant/expiré ; ajouté à la réponse sans jamais
         # empêcher la création du BCF.
@@ -845,6 +847,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             cible = fusionner_bcf(request.user.company, request.user, ids)
+        except IntrouvableMetier as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except EtatIncompatible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

@@ -721,14 +721,7 @@ API rejected schema-compliant request|PATCH /api/django/ventes/tests-pr-receptio
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/calage/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
 API rejected schema-compliant request|POST /api/django/achats/bons-commande-fournisseur/
-API rejected schema-compliant request|POST /api/django/achats/bons-commande-fournisseur/fusionner/
-API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/depuis-ocr/
-API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/depuis-ubl/
-API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/{id}/echeancier/
-API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/{id}/paiements/
-API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/{id}/resoudre-exception/
 API rejected schema-compliant request|POST /api/django/achats/paiements-fournisseur/
-API rejected schema-compliant request|POST /api/django/achats/prix-fournisseurs/
 API rejected schema-compliant request|POST /api/django/achats/receptions-fournisseur/
 API rejected schema-compliant request|POST /api/django/achats/retours-fournisseur/
 API rejected schema-compliant request|POST /api/django/agent/actions/automation-draft/

@@ -8,6 +8,8 @@ import logging
 from decimal import Decimal, InvalidOperation
 from django.db import models
 
+from .erreurs_achats import EtatIncompatible, IntrouvableMetier
+
 logger = logging.getLogger('stock.audit')
 
 BULK_ACTIONS = {'set_price', 'set_warranty', 'set_category', 'set_brand'}
@@ -4080,18 +4082,19 @@ def fusionner_bcf(company, user, bon_commande_ids):
             company=company, id__in=bon_commande_ids)
         .select_related('fournisseur').prefetch_related('lignes__produit'))
     if len(bcs) != len(set(bon_commande_ids)):
-        raise ValueError('Un ou plusieurs bons de commande sont introuvables.')
+        raise IntrouvableMetier(
+            'Un ou plusieurs bons de commande sont introuvables.')
     if len(bcs) < 2:
         raise ValueError('Au moins deux bons de commande sont requis.')
     fournisseur_ids = {bc.fournisseur_id for bc in bcs}
     if len(fournisseur_ids) > 1:
-        raise ValueError(
+        raise EtatIncompatible(
             'Tous les bons de commande doivent être du même fournisseur.')
     non_brouillon = [
         bc for bc in bcs
         if bc.statut != BonCommandeFournisseur.Statut.BROUILLON]
     if non_brouillon:
-        raise ValueError(
+        raise EtatIncompatible(
             'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
             f'({non_brouillon[0].reference} ne l\'est pas).')
     # ASTK66 — des BCF rattachés à des chantiers / destinations / devises
@@ -4100,7 +4103,7 @@ def fusionner_bcf(company, user, bon_commande_ids):
     for champ, libelle in CHAMPS_RATTACHEMENT_BCF:
         valeurs = {getattr(bc, champ) for bc in bcs}
         if len(valeurs) > 1:
-            raise ValueError(
+            raise EtatIncompatible(
                 f'Fusion impossible : rattachements différents ({libelle}).')
 
     # Cumule les quantités par produit ; garde le prix du BCF le plus RÉCENT
@@ -6545,7 +6548,7 @@ def creer_facture_fournisseur_depuis_ocr(
     fields = fields or {}
     fournisseur = match_fournisseur_from_ocr(company, fields)
     if fournisseur is None:
-        raise ValueError(
+        raise IntrouvableMetier(
             'Aucun fournisseur trouvé pour ce document (ICE ou nom) — '
             'saisie manuelle requise.')
 
@@ -8571,7 +8574,7 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         'fournisseur': fields.get('nom_fournisseur'),
     })
     if fournisseur is None:
-        raise ValueError(
+        raise IntrouvableMetier(
             'Aucun fournisseur trouvé pour ce document UBL (ICE ou nom) — '
             'saisie manuelle requise.')
 

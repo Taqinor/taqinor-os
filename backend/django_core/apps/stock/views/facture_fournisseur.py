@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, NUM, P, PDF, STR, corps
+from ..erreurs_achats import IntrouvableMetier
 from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -32,6 +33,17 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
+
+
+class TrancheEcheancierSerializer(serializers.Serializer):
+    """ENF11 — une tranche d'échéancier : la forme que le service lit déjà
+    (``pourcentage``/``montant`` optionnels, ``date_echeance`` obligatoire),
+    déclarée au schéma au lieu d'un ``DictField`` libre."""
+    pourcentage = serializers.DecimalField(
+        max_digits=5, decimal_places=2, required=False, allow_null=True)
+    montant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True)
+    date_echeance = serializers.DateField()
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('statut', STR,
@@ -291,6 +303,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 confirmer_malgre_doublon=bool(
                     request.data.get('confirmer_malgre_doublon')),
             )
+        except IntrouvableMetier as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -349,10 +364,11 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
         parametres = AchatsParametres.for_company(request.user.company)
         if not parametres.einvoicing_entrant_actif:
+            # ENF11 — réglage société éteint = état (409), pas un corps invalide.
             return Response(
                 {'detail': "L'e-facturation entrante (UBL) n'est pas "
                            'activée pour cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
         upload = request.FILES.get('file')
         if upload is None:
@@ -364,6 +380,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             facture = creer_facture_fournisseur_depuis_ubl(
                 company=request.user.company, user=request.user,
                 xml_bytes=upload.read())
+        except IntrouvableMetier as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -441,8 +460,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 request.user.company, facture.fournisseur)
             check_facture_exception_gate(request.user.company, facture)
         except ValueError as exc:
+            # ENF11 — fournisseur bloqué / conformité / exception = état (409).
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         # POST — enregistre un paiement, company posée serveur.
         serializer = PaiementFournisseurSerializer(
             data={**request.data, 'facture': facture.id},
@@ -464,7 +484,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                     facture, montant)
             except ValueError as exc:
                 return Response(
-                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
             taux, montant_ras = compute_ras_tva(
                 request.user.company, facture, montant)
             paiement = serializer.save(
@@ -503,7 +523,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 commentaire=request.data.get('commentaire', ''))
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(facture).data)
 
     @extend_schema(responses=FactureFournisseurSerializer(many=True))
@@ -518,8 +538,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(methods=['GET'], responses=LISTE)
     @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps',
-                                                   tranches=serializers.ListField(child=serializers.DictField(),
-                                                                                  min_length=1)),
+                                                   tranches=serializers.ListField(
+                                                       child=TrancheEcheancierSerializer(), min_length=1)),
                    responses={201: EcheanceFactureFournisseurSerializer(many=True)})
     @action(detail=True, methods=['get', 'post'], url_path='echeancier')
     def echeancier(self, request, pk=None):
@@ -542,12 +562,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Au moins une tranche est requise.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        for t in tranches:
-            if not t.get('date_echeance'):
-                return Response(
-                    {'detail': 'Chaque tranche doit porter une date '
-                               "d'échéance."},
-                    status=status.HTTP_400_BAD_REQUEST)
+        saisie = TrancheEcheancierSerializer(data=tranches, many=True)
+        saisie.is_valid(raise_exception=True)
+        tranches = saisie.validated_data
         from ..services import creer_echeancier_facture_fournisseur
         created = creer_echeancier_facture_fournisseur(
             request.user.company, facture, tranches)

@@ -101,7 +101,7 @@ class Rapprochement3VoiesTests(TestCase):
             f'/api/django/stock/factures-fournisseur/{facture.id}/paiements/',
             {'montant': '1800', 'date_paiement': '2026-10-02'},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         facture = FactureFournisseur.objects.get(pk=facture.pk)
         self.assertEqual(facture.paiements.count(), 0)
 
