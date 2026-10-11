@@ -1997,7 +1997,7 @@ class Lead(SoftDeleteModel):
         # ACRM62 — une personne opposée puis effacée (empreinte) naît « ne
         # plus contacter », quelle que soit la porte de création.
         if self._state.adding and not self.ne_plus_contacter:
-            from .leads_selectors import porte_une_opposition
+            from .leads_doublons import porte_une_opposition
             self.ne_plus_contacter = porte_une_opposition(
                 self.company_id, email=self.email, telephone=self.telephone,
                 whatsapp=self.whatsapp)
@@ -3029,7 +3029,7 @@ class QuestionnaireLien(TenantModel):
 # À l'effacement (DSR ou rétention, chemin unique ``dsr_provider.anonymiser_lead``)
 # d'un lead « ne plus contacter », SEULE une empreinte de son e-mail et de son
 # téléphone survit : HMAC-SHA256 clé serveur de la valeur normalisée
-# (``leads_selectors.empreintes_contact``) — aucune valeur en clair, aucune FK
+# (``leads_doublons.empreintes_contact``) — aucune valeur en clair, aucune FK
 # vers ``Lead``. Un lead qui naît plus tard avec l'une de ces empreintes naît
 # « ne plus contacter » (``Lead.save``) : il n'entre dans aucune prospection
 # automatique. Un lead NON opposé effacé ne laisse rien.

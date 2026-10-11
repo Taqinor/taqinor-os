@@ -375,3 +375,48 @@ def cles_foyer(lead):
         'gps': normalize_gps(
             getattr(lead, 'gps_lat', None), getattr(lead, 'gps_lng', None)),
     }
+
+
+# ── ACRM62 (D-ACRM-5 (2)=(a)) — liste d'opposition par empreinte ────────────
+def empreintes_contact(email=None, telephone=None, whatsapp=None):
+    """Empreintes ``{(nature, empreinte)}`` des contacts d'une personne.
+
+    SEUL hachage de la liste d'opposition (écrit par ``dsr_provider``, lu par
+    :func:`porte_une_opposition` depuis ``Lead.save``) : HMAC-SHA256 clé
+    ``SECRET_KEY`` de la valeur normalisée par les ``normalize_*`` de ce
+    module (QW10) — sans la clé du serveur, aucune table de numéros ne
+    renverse l'empreinte. Le WhatsApp est un téléphone. Lecture pure, aucun
+    accès base. Vit ICI et non dans un ``*_selectors`` : ``models`` l'importe,
+    et le contrat import-linter M1 refuse toute chaîne models → selectors →
+    modèles d'une autre app."""
+    import hashlib
+    import hmac
+
+    from django.conf import settings
+
+    cle = str(getattr(settings, 'SECRET_KEY', '') or '').encode('utf-8')
+    valeurs = [('email', normalize_email(email))]
+    valeurs += [('telephone', normalize_phone(v))
+                for v in (telephone, whatsapp)]
+    return {
+        (nature, hmac.new(cle, f'crm-opposition|{nature}|{valeur}'.encode(
+            'utf-8'), hashlib.sha256).hexdigest())
+        for nature, valeur in valeurs if valeur}
+
+
+def porte_une_opposition(company_id, email=None, telephone=None,
+                         whatsapp=None):
+    """ACRM62 — ce contact porte-t-il une empreinte d'opposition de la
+    société ``company_id`` (personne opposée puis effacée) ?"""
+    from django.db.models import Q
+
+    from .models import EmpreinteOpposition
+
+    empreintes = empreintes_contact(email, telephone, whatsapp)
+    if not company_id or not empreintes:
+        return False
+    cible = Q(pk__in=[])
+    for nature, empreinte in empreintes:
+        cible |= Q(nature=nature, empreinte=empreinte)
+    return EmpreinteOpposition.objects.filter(
+        company_id=company_id).filter(cible).exists()

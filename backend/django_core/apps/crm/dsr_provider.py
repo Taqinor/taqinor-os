@@ -216,7 +216,7 @@ def _poser_empreintes_opposition(company, le):
     d'opposition de la société ; un lead NON opposé ne laisse rien."""
     if not getattr(le, 'ne_plus_contacter', False):
         return
-    from .leads_selectors import empreintes_contact
+    from .leads_doublons import empreintes_contact
     from .models import EmpreinteOpposition
 
     # La contrainte (company, nature, empreinte) absorbe un second effacement
