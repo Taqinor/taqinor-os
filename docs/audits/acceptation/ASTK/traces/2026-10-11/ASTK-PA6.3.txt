@@ -1,0 +1,4 @@
+BCF-202610-0005 daté du jour, 5 × 100, envoyé. GET /stock/factures-fournisseur/suggestions-bcf/?fournisseur=1 (et /achats/…) :
+demo_admin (prix_achat_voir) ⇒ [{id, reference, montant_total 500.0, ecart 100.0, date_commande}] ; compte Commercial de test ⇒ même BCF,
+clés {id, reference, date_commande} seulement (aucune clé montant_* ni ecart) ; compte payeur (achats_payer seul) ⇒ idem Commercial.
+Non rejoué à l'écran : les suggestions ne s'affichent que dans l'import OCR (pages/ia/OcrUpload.jsx), inerte sans clé ZHIPU_API_KEY en local.

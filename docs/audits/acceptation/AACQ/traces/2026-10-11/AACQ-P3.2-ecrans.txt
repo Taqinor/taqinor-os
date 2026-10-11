@@ -1,0 +1,8 @@
+Chromium Playwright, demo_admin. /publicite/regles : carte stop-loss armé « Seuil en MAD » (threshold_currency ''), carte coût par
+conversation « Seuil en USD » ; journal : la ligne du stop-loss affiche le blocked_fr servi « Seuil en MAD, compte facturé en USD : seuil
+non applicable — ressaisir le seuil… » (pas de « — ») ; rechargé : identique. Console 0 erreur, aucun 4xx (après reconnexion : un premier
+relevé portait un 401 /auth/me/ dû au jeton d'accès expiré de la session du navigateur, rejoué propre).
+/publicite/connexion : « Plafond budget quotidien (USD) », « Plafond budget mensuel (USD) », « Plancher d'exploration (USD/jour) », aide
+« (USD ou %) », « Plafond quotidien actuel : 120 USD. » ; plafond ancien sans devise (ceiling_currency '' posé en base) ⇒ « Plafond saisi en
+MAD, compte facturé en USD : non appliqué — ressaisissez-le. » ; saisie 150 + « Mettre à jour les garde-fous » ⇒ PATCH 200
+ceiling_currency 'USD' ; rechargé ⇒ GET ceiling_currency 'USD', « Plafond quotidien actuel : 150 USD. », alerte disparue. Console 0 erreur.

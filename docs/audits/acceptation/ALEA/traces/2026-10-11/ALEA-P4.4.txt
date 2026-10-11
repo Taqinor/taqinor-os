@@ -1,0 +1,9 @@
+Pile locale à e380f019a (ERP) + site apps/web local (astro dev, port 4321) lancé avec PUBLIC_API_BASE=http://localhost (jamais l'API de prod).
+Lead de test « Acceptation Test ALEA46 » créé, lien questionnaire-lien minté (jeton non écrit ici). Page /questionnaire/<jeton>/ servie avec
+les données de l'ERP local (titre « Questionnaire — TAQINOR Démo », « Bonjour Acceptation »).
+Scénario LFRONT-4 (requêtes réseau, Chromium Playwright) : Occupation « Présent », Équipements « Non » x4, Énergie facture d'hiver 800, été
+non => 1er POST /api/questionnaire-repondre (section energie) 200 ; « Modifier » la section Énergie, conso mensuelle 350, Continuer =>
+2e POST : {"section":"energie","reponses":{"facture_hiver":800,"conso_mensuelle_kwh":350,"ete_differente":false},
+"prefill_vu":{"facture_hiver":800,"facture_ete":null,"ete_differente":false,"conso_mensuelle_kwh":null,"raccordement":null}} — le « vu »
+porte les valeurs du 1er envoi (facture_hiver 800, absente du préremplissage initial), réponse 200, passage à l'étape 4. Console : 0 erreur.
+Persistance : lead relu dans l'ERP => facture_hiver 800.00, conso_mensuelle_kwh 350.00, ete_differente false, occupation_jour present.

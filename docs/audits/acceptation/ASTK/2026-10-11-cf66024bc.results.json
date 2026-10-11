@@ -1,0 +1,87 @@
+{
+  "sha": "cf66024bc105e4f8a191d188b7c9e14b7b626663",
+  "date": "2026-10-11",
+  "groupe": "ASTK",
+  "verdict": "PASS",
+  "couvre": [
+    "ASTK245",
+    "ASTK240",
+    "ASTK241",
+    "ASTK246"
+  ],
+  "couvre_avec_ecart": [
+    "ASTK241",
+    "ASTK246"
+  ],
+  "etapes": [
+    {
+      "id": "PA6",
+      "taches": [
+        "ASTK245"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASTK/traces/2026-10-11/ASTK-PA6.txt",
+      "notes": []
+    },
+    {
+      "id": "PA6.3",
+      "taches": [
+        "ASTK240"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASTK/traces/2026-10-11/ASTK-PA6.3.txt",
+      "notes": []
+    },
+    {
+      "id": "PA6.5",
+      "taches": [
+        "ASTK241",
+        "ASTK246"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASTK/traces/2026-10-11/ASTK-PA6.5.txt",
+      "notes": [
+        "écart accepté (base FAIL) : 403 GET /api/django/users/ sur les écrans du Commercial (Sidebar.jsx -> onboardingHelpers.js::useOnboardingSteps), défaut du shell frontend antérieur et hors ASTK241/ASTK246 (changements backend) -> ERR-SHELL-USERS-403-COMMERCIAL"
+      ]
+    }
+  ]
+}
