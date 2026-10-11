@@ -1555,9 +1555,6 @@ Undocumented HTTP status code|POST /api/public/v1/oauth/token/
 Undocumented HTTP status code|PUT /api/django/calepinage/calepinages/{id}/
 Unsupported methods|POST /api/django/core/module-toggles/
 Unsupported methods|TRACE /api/django/core/usage/couts/
-API accepted schema-violating request|GET /api/django/achats/bons-commande-fournisseur/achats-hors-contrat/
-API accepted schema-violating request|GET /api/django/achats/factures-fournisseur/releve-deductions-tva/
-API accepted schema-violating request|GET /api/django/achats/paiements-fournisseur/ras-tva/export/
 API accepted schema-violating request|GET /api/django/roles/revue-acces/
 API accepted schema-violating request|GET /api/django/stock/fournisseurs/{id}/delai-mesure/
 API accepted schema-violating request|GET /api/django/stock/profils-saisonniers/
@@ -1595,9 +1592,6 @@ API accepted schema-violating request|PUT /api/django/ventes/attestations-re/{id
 API accepted schema-violating request|PUT /api/django/ventes/recettes-mes/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/regularisations-8221/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/tests-pr-reception/{id}/
-API rejected schema-compliant request|GET /api/django/achats/factures-fournisseur/suggestions-bcf/
-API rejected schema-compliant request|GET /api/django/audit/portail/
-API rejected schema-compliant request|GET /api/django/audit/security/
 API rejected schema-compliant request|GET /api/django/stock/factures-fournisseur/suggestions-bcf/
 API rejected schema-compliant request|GET /api/django/stock/tache-retour/
 API rejected schema-compliant request|PATCH /api/django/stock/plans-comptage-tournant/{id}/
@@ -1617,7 +1611,6 @@ API accepted schema-violating request|PATCH /api/django/stock/unites-logistiques
 API accepted schema-violating request|POST /api/django/stock/unites-logistiques/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/whatsapp/
 API accepted schema-violating request|PUT /api/django/stock/unites-logistiques/{id}/
-Server error|POST /api/django/achats/factures-fournisseur/depuis-ocr/
 Undocumented HTTP status code|DELETE /api/django/ventes/devis/{id}/overrides/
 API rejected schema-compliant request|PATCH /api/django/core/formulaire-champs/{id}/
 API accepted schema-violating request|GET /api/django/stock/catalogue-b2b/
