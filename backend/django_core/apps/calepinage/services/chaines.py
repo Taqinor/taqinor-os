@@ -773,6 +773,37 @@ def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
     return resultat, (), tuple(messages)
 
 
+def _alertes_pans_sans_fiche(pans, layout, module_specs, module_designation,
+                             produits_sans_fiche):
+    """ACAL358 — un pan dont le module n'a PAS de fiche résolue est nommé.
+
+    Deux cas : un ``produitId`` que l'appelant n'a pas pu résoudre
+    (``produits_sans_fiche`` : introuvable ou d'une autre société), ou un
+    module saisi à la main (sans ``produitId``) de puissance différente du
+    défaut. Le pan est chaîné avec la fiche par défaut : on le dit.
+    """
+    libelles = {str(m.get('id')): m.get('libelle') or m.get('designation')
+                for m in (layout or {}).get('modules') or []
+                if isinstance(m, dict)}
+    defaut = _nombre((module_specs or {}).get('pmax_wc'))
+    sans = {str(p) for p in produits_sans_fiche or ()}
+    alertes = []
+    for pan in pans:
+        module = pan.module
+        if module is None:
+            continue
+        saisi = (module.produit_id in (None, '') and module.pmax_wc is not None
+                 and defaut is not None and module.pmax_wc != defaut)
+        if not (saisi or str(module.produit_id) in sans):
+            continue
+        alertes.append(
+            "Pan « %s » : module « %s » sans fiche produit — chaîné avec la "
+            "fiche « %s » ; tensions et courants de ce pan non garantis"
+            % (pan.label, libelles.get(str(module.module_id)) or '?',
+               module_designation or 'non désignée'))
+    return tuple(alertes)
+
+
 def _ecarts_de_module(pans, fiches_par_pan, module_designation):
     """ACAL264 — l'écart désignation devis ↔ document, PUBLIÉ par pan."""
     return tuple(
@@ -785,7 +816,8 @@ def _ecarts_de_module(pans, fiches_par_pan, module_designation):
 
 def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                       module_designation='', onduleur_designation='',
-                      optimiseur_specs=None, fiches_modules=None, **options):
+                      optimiseur_specs=None, fiches_modules=None,
+                      produits_sans_fiche=(), **options):
     """CAL124 — le chaînage COMPLET d'un document de conception.
 
     Args:
@@ -852,7 +884,8 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     else:
         resultat = concevoir_chaines(entree)
     regle, partage, messages = _verdict_mppt(pans, onduleur, onduleur_specs)
-    messages = tuple(messages) + ecarts
+    messages = tuple(messages) + ecarts + _alertes_pans_sans_fiche(
+        pans, layout, module_specs, module_designation, produits_sans_fiche)
     # CALX53 — l'origine des coefficients de température voyage AVEC le
     # verdict : une alerte de plus, jamais un bloquant (la conception tient,
     # c'est sa SOURCE qui manque).

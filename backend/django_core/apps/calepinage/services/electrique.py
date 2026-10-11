@@ -1413,19 +1413,10 @@ def _options_entree(entree):
     return options
 
 
-def _fiches_modules_du_document(company, document, materiel):
-    """ACAL264 — ``{produit_id: {'specs', 'designation'}}`` des modules POSÉS
-    sur les pans du document qui DIFFÈRENT du module par défaut.
-
-    Lecture cross-app par SÉLECTEUR uniquement (``get_produit_scoped`` : jamais
-    un produit d'une autre société, puis ``specs_for_produit``). Un produit
-    introuvable n'est pas inventé : son pan garde la puissance que le
-    document recopie (``modules[].pmaxWc``). Aucun prix n'est lu.
-    """
+def _produits_des_pans(document, materiel):
+    """ACAL264/358 — les ``produit_id`` posés qui DIFFÈRENT du défaut."""
     from apps.ventes.services import pans_du_document
 
-    if company is None or not isinstance(document, dict):
-        return {}
     defaut = ((materiel or {}).get('produits') or {}).get('module')
     produits = []
     for pan in pans_du_document(document):
@@ -1435,6 +1426,21 @@ def _fiches_modules_du_document(company, document, materiel):
                 or produit_id in produits):
             continue
         produits.append(produit_id)
+    return produits
+
+
+def _fiches_modules_du_document(company, document, materiel):
+    """ACAL264 — ``{produit_id: {'specs', 'designation'}}`` des modules POSÉS
+    sur les pans du document qui DIFFÈRENT du module par défaut.
+
+    Lecture cross-app par SÉLECTEUR uniquement (``get_produit_scoped`` : jamais
+    un produit d'une autre société, puis ``specs_for_produit``). Un produit
+    introuvable n'est pas inventé : son pan garde la puissance que le
+    document recopie (``modules[].pmaxWc``). Aucun prix n'est lu.
+    """
+    if company is None or not isinstance(document, dict):
+        return {}
+    produits = _produits_des_pans(document, materiel)
     if not produits:
         return {}
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
@@ -1476,9 +1482,16 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     # par le sélecteur du stock (bornée société). Posée dans ``materiel``
     # seulement quand un pan porte un AUTRE produit que le module par
     # défaut : l'empreinte de simulation d'un champ mono-module ne bouge pas.
+    company = getattr(calepinage, 'company', None)
     fiches = (materiel.get('fiches_modules')
               if 'fiches_modules' in materiel else _fiches_modules_du_document(
-                  getattr(calepinage, 'company', None), document, materiel))
+                  company, document, materiel))
+    # ACAL358 — un produit désigné sans fiche résolue (introuvable ou d'une
+    # autre société) : son pan est chaîné avec le défaut, et l'alerte le dit.
+    sans_fiche = (tuple(p for p in _produits_des_pans(document, materiel)
+                        if p not in (fiches or {}))
+                  if company is not None and isinstance(document, dict)
+                  else ())
     if fiches:
         materiel = {**materiel, 'fiches_modules': fiches}
     # ACAL164 — la fiche module (``noct_c``) fait du chaud TMY une
@@ -1493,6 +1506,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
         fiches_modules=materiel.get('fiches_modules'),
+        produits_sans_fiche=sans_fiche,
         **_options_entree(donnees), **_options_batterie(
             calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)
