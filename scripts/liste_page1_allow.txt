@@ -29,6 +29,7 @@ frontend/src/features/adsengine/VeilleAnnonceurs.jsx::VeilleAnnonceurs
 frontend/src/features/adsengine/VeilleDecouverte.jsx::VeilleDecouverte
 frontend/src/features/adsengine/VeilleScreen.jsx::SaisieManuelle
 frontend/src/features/audit/ObjectHistoryButton.jsx::charger
+frontend/src/features/core/ExplorateurDonneesPage.jsx::ExplorateurDonneesPage
 frontend/src/features/crm/ConcurrentsPerte.jsx::ConcurrentsPerte
 frontend/src/features/crm/ConcurrentsPerte.jsx::chargerConcurrents
 frontend/src/features/crm/companyLookup.js::searchCompanies
@@ -70,6 +71,7 @@ frontend/src/features/uxviews/useServerSavedViews.js::useServerSavedViews
 frontend/src/pages/Journal.jsx::run
 frontend/src/pages/Rapports.jsx::MesRapports
 frontend/src/pages/admin/RolesManagement.jsx::load
+frontend/src/pages/admin/SecuriteIdentitePage.jsx::load
 frontend/src/pages/admin/TenantsConsole.jsx::TenantsConsole
 frontend/src/pages/admin/UsersManagement.jsx::load
 frontend/src/pages/approbations/ApprobationsPage.jsx::load

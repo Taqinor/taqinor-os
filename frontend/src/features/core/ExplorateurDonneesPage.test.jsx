@@ -147,22 +147,6 @@ describe('ExplorateurDonneesPage (PACT122)', () => {
     expect(await screen.findByTestId('expl-resultat')).toBeTruthy()
   })
 
-  it('lit TOUTES les pages des requêtes sauvegardées (51 objets ⇒ 51 lignes)', async () => {
-    const tout = Array.from({ length: 51 }, (_, i) => ({
-      id: i + 1, titre: `Requête ${i + 1}`, dataset: 'sav_tickets', partage: false,
-    }))
-    listQueries.mockImplementation(({ page = 1 } = {}) => Promise.resolve({
-      data: {
-        count: 51,
-        next: page === 1 ? 'http://x/?page=2' : null,
-        results: page === 1 ? tout.slice(0, 50) : tout.slice(50),
-      },
-    }))
-    monter()
-    const zone = await screen.findByTestId('expl-sauvegardees')
-    await waitFor(() => expect(within(zone).getByTestId('expl-run-51')).toBeTruthy())
-  })
-
   it('dégrade proprement quand le catalogue est indisponible', async () => {
     datasets.mockRejectedValue({ response: { data: { detail: 'Catalogue KO.' } } })
     monter()

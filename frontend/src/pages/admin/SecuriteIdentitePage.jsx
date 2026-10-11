@@ -170,9 +170,9 @@ function BreakGlassTab() {
   const [motif, setMotif] = useState('')
   const [duree, setDuree] = useState('60')
   const [loading, setLoading] = useState(true)
-  const load = () => fetchAllPages((page, o) => identityApi.breakGlass.list({ page, ...o })
-    .then((r) => r?.data))
-    .then((data) => setGrants(asList(data))).catch(() => {}).finally(() => setLoading(false))
+  // Liste NON paginée côté serveur (BreakGlassView : 100 derniers octrois, sans `next`).
+  const load = () => identityApi.breakGlass.list()
+    .then((r) => setGrants(asList(r.data))).catch(() => {}).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const grant = async () => {

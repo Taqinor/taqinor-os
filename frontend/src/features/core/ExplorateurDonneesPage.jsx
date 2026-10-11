@@ -6,7 +6,6 @@ import {
 } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import coreApi from '../../api/coreApi'
-import { fetchAllPages } from '../../utils/fetchAllPages'
 
 /* ============================================================================
    PACT122 — écran « Explorateur de données » (`/donnees/explorateur`).
@@ -104,10 +103,9 @@ export default function ExplorateurDonneesPage() {
 
   const chargerRequetes = useCallback(async () => {
     try {
-      // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
-      const res = await fetchAllPages((page, o) =>
-        coreApi.savedQueries.list({ page, ...o }).then((r) => r?.data))
-      setRequetes(listeDe(res))
+      // Liste NON paginée côté serveur (SavedQueryViewSet.pagination_class = None).
+      const res = await coreApi.savedQueries.list()
+      setRequetes(listeDe(res?.data))
     } catch {
       setRequetes([])
     }

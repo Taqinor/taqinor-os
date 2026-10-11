@@ -12,7 +12,7 @@ import api from './axios'
 const accessReviewApi = {
   // NTSEC19 — campagnes de revue d'accès (lancement génère un item par compte).
   campaigns: {
-    list: (params) => api.get('/accessreview/campaigns/', { params }),
+    list: ({ page, page_size } = {}) => api.get('/accessreview/campaigns/', { params: { page, page_size } }),
     get: (id) => api.get(`/accessreview/campaigns/${id}/`),
     create: (data) => api.post('/accessreview/campaigns/', data),
     remove: (id) => api.delete(`/accessreview/campaigns/${id}/`),
