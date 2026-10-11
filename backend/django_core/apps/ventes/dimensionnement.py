@@ -2161,7 +2161,7 @@ def recommander_taille(*, company, conso_kwh_mensuelles, tranches,
 # EN BAS À DESSEIN : les deux moitiés se citent, et cette position (après
 # toutes les définitions, des deux côtés) rend le cycle inoffensif quel que
 # soit le module chargé le premier. Ne pas le remonter.
-from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402,F401
+from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402
     MAX_PALIERS_ECHELLE,
     MAX_SONDES_ECHELLE,
     _MEMO_PLAFOND_PHYSIQUE,
@@ -2184,3 +2184,27 @@ from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402,F401
     plus_grande_contenance,
     prix_client_composition,
 )
+
+__all__ = [
+    "MAX_PALIERS_ECHELLE",
+    "MAX_SONDES_ECHELLE",
+    "_MEMO_PLAFOND_PHYSIQUE",
+    "_cibles_au_dessus_du_plancher_ve",
+    "_compter_modules_batterie",
+    "_compter_modules_batterie_generique",
+    "_echelle_paliers_batterie",
+    "_lignes_produit_du_devis",
+    "_payback_publie_palier",
+    "capacite_batterie_des_lignes",
+    "comptes_panneaux_valides",
+    "contenance_toit_du_devis",
+    "contour_du_devis_lnglat",
+    "echelle_paliers_batterie",
+    "facteur_remise_du_devis",
+    "lignes_vendues",
+    "module_batterie_du_devis",
+    "plafond_physique_du_devis",
+    "plafond_toit_du_devis",
+    "plus_grande_contenance",
+    "prix_client_composition",
+]
