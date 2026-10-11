@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/roles/revue-acces/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ERR-ROLES-REVUE-ACCES-RAPPORT-VIDE (PACT13) — forme réellement servie par `RoleViewSet.revue_acces` (apps/roles/views.py) : un OBJET `{dormant_days, total, dormants, utilisateurs}`, jamais un tableau nu ni une enveloppe DRF `results`. Les lignes sont celles de `_revue_acces_rows` (le rôle est `role` = nom ou null, `is_active`, `last_login` ISO ou null).",
+  "exemple": {
+    "dormant_days": 90,
+    "total": 1,
+    "dormants": 0,
+    "utilisateurs": [
+      {
+        "id": 5,
+        "username": "sami",
+        "email": "sami@example.com",
+        "nom_complet": "Sami Test",
+        "role": "Commercial",
+        "is_active": true,
+        "last_login": "2026-07-01T09:00:00+00:00",
+        "jours_depuis_connexion": 12,
+        "dormant": false,
+        "deux_fa": false,
+        "sessions_actives": 1,
+        "permissions": ["leads_voir"]
+      }
+    ]
+  }
+}

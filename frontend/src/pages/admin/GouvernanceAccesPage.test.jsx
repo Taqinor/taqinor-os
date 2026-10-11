@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../design/ThemeProvider'
+// PACT13 : la forme serveur vient du contrat partagé, jamais d'un mock écrit à la main.
+import REVUE_ACCES from '../../../../backend/django_core/apps/roles/contract_samples/revue_acces.json'
 
 /* WIR135 — l'écran Gouvernance des accès lance une campagne, atteste/révoque un
    item, liste les règles SoD + violations, et lit le rapport de certification. */
@@ -21,7 +23,7 @@ const H = vi.hoisted(() => ({
   sodList: vi.fn(() => Promise.resolve({ data: [] })),
   sodViolations: vi.fn(() => Promise.resolve({ data: [{ user: 5, libelle: 'Achat ⊗ Paiement' }] })),
   sodCreate: vi.fn(() => Promise.resolve({ data: {} })),
-  revueAcces: vi.fn(() => Promise.resolve({ data: [{ username: 'sami', role: 'Commercial', last_login: '2026-07-01T09:00:00Z' }] })),
+  revueAcces: vi.fn(),
 }))
 vi.mock('../../api/accessReviewApi', () => ({
   default: {
@@ -35,7 +37,10 @@ import GouvernanceAccesPage from './GouvernanceAccesPage'
 
 const renderPage = () => render(<ThemeProvider><GouvernanceAccesPage /></ThemeProvider>)
 
-beforeEach(() => Object.values(H).forEach((f) => f.mockClear()))
+beforeEach(() => {
+  Object.values(H).forEach((f) => f.mockClear())
+  H.revueAcces.mockImplementation(() => Promise.resolve({ data: { ...REVUE_ACCES.exemple } }))
+})
 afterEach(() => cleanup())
 
 describe('WIR135 GouvernanceAccesPage', () => {

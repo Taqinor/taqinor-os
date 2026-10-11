@@ -197,7 +197,7 @@ function RapportTab() {
   const [rows, setRows] = useState(null)
   useEffect(() => {
     accessReviewApi.revueAcces()
-      .then((r) => setRows(asList(r.data))).catch(() => setRows([]))
+      .then((r) => setRows(Array.isArray(r.data?.utilisateurs) ? r.data.utilisateurs : [])).catch(() => setRows([]))
   }, [])
   const exportCsv = async () => {
     try {
@@ -227,8 +227,8 @@ function RapportTab() {
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={i} className="border-t">
-                    <td className="py-1">{r.username ?? r.user ?? '—'}</td>
-                    <td>{r.role ?? r.role_nom ?? '—'}</td>
+                    <td className="py-1">{r.username ?? '—'}</td>
+                    <td>{r.role ?? '—'}</td>
                     <td>{r.last_login ? formatDate(r.last_login) : '—'}</td>
                   </tr>
                 ))}
