@@ -34,9 +34,11 @@ class LettreRelanceExigibleTests(_Base):
         self.assertEqual(resp.status_code, 200)
 
     def test_facture_payee_ou_annulee_409(self):
-        for statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
+        for i, statut in enumerate(
+                (Facture.Statut.PAYEE, Facture.Statut.ANNULEE), start=1):
             with self.subTest(statut=statut):
-                facture = self._facture()
+                # Référence distincte par itération : unique (company, reference).
+                facture = self._facture(reference=f'FAC-N106-001{i}')
                 Facture.objects.filter(pk=facture.pk).update(statut=statut)
                 resp = self.api.get(self._url(facture))
                 self.assertEqual(resp.status_code, 409)

@@ -65,8 +65,13 @@ class EntiteSignalTests(TestCase):
     def test_entite_created_signal_emis(self):
         from core.events import entite_created
         recu = []
-        entite_created.connect(
-            lambda sender, entite, **kw: recu.append(entite), weak=False)
+        def _recoit(sender, entite, **kw):
+            recu.append(entite)
+
+        entite_created.connect(_recoit, weak=False)
+        # Déconnexion obligatoire : un récepteur résiduel rend périmées les
+        # listes blanches APAR43 dans la suite complète (nocturne, CAD177).
+        self.addCleanup(entite_created.disconnect, _recoit)
         e = creer_entite(self.company, nom='A', code='A')
         self.assertIn(e, recu)
 
@@ -74,8 +79,13 @@ class EntiteSignalTests(TestCase):
         from core.events import entite_deactivated
         from ..services import desactiver_entite
         recu = []
-        entite_deactivated.connect(
-            lambda sender, entite, **kw: recu.append(entite), weak=False)
+        def _recoit(sender, entite, **kw):
+            recu.append(entite)
+
+        entite_deactivated.connect(_recoit, weak=False)
+        # Déconnexion obligatoire : un récepteur résiduel rend périmées les
+        # listes blanches APAR43 dans la suite complète (nocturne, CAD177).
+        self.addCleanup(entite_deactivated.disconnect, _recoit)
         e = creer_entite(self.company, nom='A', code='A')
         desactiver_entite(e)
         self.assertIn(e, recu)
