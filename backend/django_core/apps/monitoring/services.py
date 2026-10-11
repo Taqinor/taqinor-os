@@ -660,6 +660,12 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
         raise AbonnementMonitoringError(
             'Indiquez le motif de résiliation.', champ='motif')
     with transaction.atomic():
+        # YDATA16 — verrou de ligne : deux résiliations concurrentes
+        # n'émettent jamais deux fois l'événement.
+        verrou = (AbonnementMonitoring.objects.select_for_update()
+                  .only('statut').get(pk=abonnement.pk))
+        if verrou.statut == AbonnementMonitoring.Statut.RESILIE:
+            raise AbonnementMonitoringError('Abonnement déjà résilié.')
         abonnement.statut = AbonnementMonitoring.Statut.RESILIE
         abonnement.motif_resiliation = motif[:255]
         abonnement.save(update_fields=['statut', 'motif_resiliation'])
