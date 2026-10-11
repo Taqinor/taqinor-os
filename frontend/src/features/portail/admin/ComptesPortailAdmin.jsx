@@ -18,8 +18,9 @@ import portailApi from '../../../api/portailApi'
 import crmApi from '../../../api/crmApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
+import EtatChargementAdmin from './EtatChargementAdmin'
 import {
-  Button, Card, EmptyState, Skeleton, Switch, Select, SelectTrigger,
+  Button, Card, EmptyState, Switch, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem, Form, FormField, DataTable, toast,
 } from '../../../ui'
 
@@ -210,21 +211,16 @@ export default function ComptesPortailAdmin() {
         </Form>
       </Card>
 
-      {loading ? (
-        <Card className="space-y-2 p-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </Card>
-      ) : loadError ? (
-        <EmptyState title="Chargement impossible"
-                    description="Les comptes portail n'ont pas pu être chargés. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
-      ) : rows.length === 0 ? (
-        <EmptyState title="Aucun compte portail"
-                    description="Créez un compte pour un client ci-dessus." />
-      ) : (
-        <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
-                   searchable={false} exportName="comptes-portail" emptyTitle="Aucun compte portail" />
-      )}
+      <EtatChargementAdmin loading={loading} loadError={loadError} onRetry={load}
+                           erreur="Les comptes portail n'ont pas pu être chargés. Réessayez.">
+        {rows.length === 0 ? (
+          <EmptyState title="Aucun compte portail"
+                      description="Créez un compte pour un client ci-dessus." />
+        ) : (
+          <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
+                     searchable={false} exportName="comptes-portail" emptyTitle="Aucun compte portail" />
+        )}
+      </EtatChargementAdmin>
     </div>
   )
 }
