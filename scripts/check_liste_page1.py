@@ -45,7 +45,7 @@ _RESULTS_RE = re.compile(r"\bdata\??\.results\b")
 _HTTP_RE = re.compile(
     r"\.get\(|\bapi\.\w+\(|\baxios\b|\bapiGet\(|\.then\(|\bawait\b")
 _PAGINE_RE = re.compile(
-    r"fetchAllPages|chargerToutesLesPages|\.next\b|\bnext\s*[:=]|\bnext\?\.")
+    r"fetchAllPages|chargerToutesLesPages|toutesLesPages|\.next\b|\bnext\s*[:=]|\bnext\?\.")
 
 _MOTS_CLES = {"if", "for", "while", "switch", "catch", "function", "return",
               "else", "do", "try", "with", "await", "typeof", "new", "super"}
@@ -134,9 +134,15 @@ def analyser() -> dict:
             continue
         decls = _declarations(lignes)
         bornes = [i for i, _ in decls] + [len(lignes)]
+        corps_de = ["\n".join(lignes[d:bornes[n + 1]]) for n, (d, _) in enumerate(decls)]
+        # ADOC182 : helpers locaux (`unpage`, `rows`) qui lisent `.results` sans appel HTTP
+        helpers = [nom for (_, nom), c in zip(decls, corps_de)
+                   if _RESULTS_RE.search(c) and not _HTTP_RE.search(c)]
         for n, (debut, nom) in enumerate(decls):
-            corps = "\n".join(lignes[debut:bornes[n + 1]])
-            if not _RESULTS_RE.search(corps) or not _HTTP_RE.search(corps):
+            corps = corps_de[n]
+            lit = _RESULTS_RE.search(corps) or any(
+                re.search(r"\b" + re.escape(h) + r"\(\s*\w+\??\.data\b", corps) for h in helpers)
+            if not lit or not _HTTP_RE.search(corps):
                 continue
             if _PAGINE_RE.search(corps):
                 continue
@@ -145,7 +151,7 @@ def analyser() -> dict:
                 continue
             ligne = debut + 1
             for k in range(debut, bornes[n + 1]):
-                if _RESULTS_RE.search(lignes[k]):
+                if _RESULTS_RE.search(lignes[k]) or any(h + "(" in lignes[k] for h in helpers):
                     ligne = k + 1
                     break
             trouves.setdefault(f"{_rel(path)}::{nom}", ligne)
