@@ -41,7 +41,7 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             exercice = int(request.data.get('exercice'))
             if not 1 <= exercice <= 9999:
                 raise ValueError
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return Response(
                 {'detail': 'Exercice invalide (attendu une année).'},
                 status=status.HTTP_400_BAD_REQUEST)

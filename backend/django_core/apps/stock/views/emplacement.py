@@ -154,7 +154,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             produit_id, emplacement_id = int(produit_id), int(emplacement_id)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return Response(
                 {'detail': 'produit_id/emplacement_id invalides.'},
                 status=status.HTTP_400_BAD_REQUEST)

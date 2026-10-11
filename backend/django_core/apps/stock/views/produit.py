@@ -1613,7 +1613,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  motif=serializers.CharField(), emplacement=serializers.IntegerField(required=False,
                                                                                                      allow_null=True),
                                  reference_chantier=serializers.CharField(required=False, allow_blank=True,
-                                                                          allow_null=True)),
+                                                                          allow_null=True, max_length=100)),
                    responses={201: corps('ProduitRebutReponse', mouvement_id=serializers.IntegerField(),
                                          valeur_perdue=serializers.CharField())})
     @action(detail=True, methods=['post'], url_path='rebuter')
@@ -1625,23 +1625,37 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         (optionnel)}``. Motif obligatoire ; respecte le garde de stock
         négatif (XSTK8)."""
         produit = self.get_object()
+        # ENF11 : corps non objet, motif non texte, emplacement illisible ou
+        # référence trop longue (> 100) = 400, jamais une 500.
+        donnees = request.data if isinstance(request.data, dict) else {}
         try:
-            quantite = int(request.data.get('quantite'))
-        except (TypeError, ValueError):
+            quantite = int(donnees.get('quantite'))
+        except (TypeError, ValueError, OverflowError):
             return Response(
                 {'detail': 'Quantité invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        motif = (request.data.get('motif') or '').strip()
+        motif = donnees.get('motif')
+        motif = motif.strip() if isinstance(motif, str) else ''
         if not motif:
             return Response(
                 {'detail': 'Le motif est obligatoire.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        reference = donnees.get('reference_chantier')
+        if reference is not None and (
+                not isinstance(reference, str) or len(reference) > 100):
+            return Response(
+                {'detail': 'reference_chantier : texte de 100 caractères max.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         emplacement = None
-        emplacement_id = request.data.get('emplacement')
+        emplacement_id = donnees.get('emplacement')
         if emplacement_id:
-            emplacement = EmplacementStock.objects.filter(
-                company=request.user.company, id=emplacement_id).first()
+            try:
+                emplacement = EmplacementStock.objects.filter(
+                    company=request.user.company,
+                    id=int(emplacement_id)).first()
+            except (TypeError, ValueError, OverflowError):
+                emplacement = None
             if emplacement is None:
                 return Response(
                     {'detail': 'Emplacement introuvable.'},
@@ -1652,8 +1666,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             result = rebuter_produit(
                 company=request.user.company, produit=produit,
                 quantite=quantite, motif=motif, user=request.user,
-                emplacement=emplacement,
-                reference_chantier=request.data.get('reference_chantier'))
+                emplacement=emplacement, reference_chantier=reference)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
