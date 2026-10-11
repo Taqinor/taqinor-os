@@ -6669,10 +6669,9 @@ def _resoudre_dossier_cible(routage, contexte):
     ]
     parent = None
     folder = None
-    for segment in segments:
-        folder, _created = Folder.objects.get_or_create(
-            company=routage.company, cabinet=routage.cabinet_cible,
-            parent=parent, nom=segment)
+    for segment in segments:  # ENF28 : un homonyme manuel → le plus ancien
+        f = dict(company=routage.company, cabinet=routage.cabinet_cible, parent=parent, nom=segment)
+        folder = Folder.objects.filter(**f).order_by('id').first() or Folder.objects.create(**f)
         parent = folder
     return folder
 
