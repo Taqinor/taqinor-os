@@ -11,6 +11,7 @@ ORIGINE_IMPORT = 'import'
 ORIGINE_API = 'api'
 ORIGINES = (ORIGINE_MANUEL, ORIGINE_IMPORT, ORIGINE_API)
 
+
 def registre_du_devis(devis):
     """Le registre RANGÉ sur ce devis, toujours un dict (jamais ``None``).
 
