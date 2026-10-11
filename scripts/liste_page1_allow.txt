@@ -224,10 +224,6 @@ frontend/src/pages/visites/VisiteHistoriquePanel.jsx::VisiteHistoriquePanel
 frontend/src/pages/visites/VisitesListPage.jsx::VisitesListPage
 # ADOC182 (2026-10-11) : lecture `.results` par helper local sans appel HTTP (`unpage`, `rows`) ;
 # sites constates au releve du jour, memes regles (fichier::fonction, decroissant).
-frontend/src/features/core/ExplorateurDonneesPage.jsx::ExplorateurDonneesPage
-frontend/src/features/ged/GedDocumentInsights.jsx::reloadAcl
-frontend/src/features/ged/advanced/ApprobationPage.jsx::ChampsSignatureEditor
-frontend/src/features/ged/advanced/ChecklistPage.jsx::submit
 frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog
 frontend/src/features/ged/advanced/ReglesDossierPage.jsx::JournalDialog
 frontend/src/features/uxviews/useFavoris.js::useFavoris
