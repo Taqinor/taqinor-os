@@ -527,7 +527,6 @@ API accepted schema-violating request|POST /api/django/stock/plans-chargement/
 API accepted schema-violating request|POST /api/django/stock/plans-echantillonnage/
 API accepted schema-violating request|POST /api/django/stock/portails-tiers/
 API accepted schema-violating request|POST /api/django/stock/unites-logistiques/import-asn/
-API accepted schema-violating request|POST /api/django/tiers/tiers/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/accepter/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/acquitter-derive/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/dupliquer-variante-gamme/
@@ -1274,8 +1273,6 @@ Response violates schema|GET /api/django/stock/modeles-bcf/{id}/
 Response violates schema|GET /api/django/stock/produits/
 Response violates schema|GET /api/django/stock/produits/{id}/
 Response violates schema|GET /api/django/stock/produits/{id}/prix-fournisseurs/
-Response violates schema|GET /api/django/tiers/tiers/
-Response violates schema|GET /api/django/tiers/tiers/{id}/
 Response violates schema|GET /api/django/uxviews/saved-views/toutes-company/
 Response violates schema|GET /api/django/ventes/devis/{id}/design-context/
 Response violates schema|GET /api/django/ventes/devis/{id}/economie-ci/
@@ -1340,7 +1337,6 @@ Response violates schema|PATCH /api/django/stock/factures-fournisseur/{id}/
 Response violates schema|PATCH /api/django/stock/modeles-bcf/{id}/
 Response violates schema|PATCH /api/django/stock/plans-echantillonnage/{id}/
 Response violates schema|PATCH /api/django/stock/produits/{id}/
-Response violates schema|PATCH /api/django/tiers/tiers/{id}/
 Response violates schema|PATCH /api/django/ventes/devis/{id}/
 Response violates schema|PATCH /api/django/ventes/factures/{id}/
 Response violates schema|POST /api/django/automation/approval-delegations/
@@ -1411,7 +1407,6 @@ Response violates schema|POST /api/django/stock/avoirs-fournisseur/
 Response violates schema|POST /api/django/stock/avoirs-fournisseur/{id}/valider/
 Response violates schema|POST /api/django/stock/factures-fournisseur/
 Response violates schema|POST /api/django/stock/modeles-bcf/
-Response violates schema|POST /api/django/tiers/tiers/
 Response violates schema|POST /api/django/ventes/devis/{id}/acquitter-derive/
 Response violates schema|POST /api/django/ventes/devis/{id}/dupliquer-variante/
 Response violates schema|POST /api/django/ventes/factures/
@@ -1436,7 +1431,6 @@ Response violates schema|PUT /api/django/sav/equipements/{id}/
 Response violates schema|PUT /api/django/sav/tickets/{id}/
 Response violates schema|PUT /api/django/stock/factures-fournisseur/{id}/
 Response violates schema|PUT /api/django/stock/modeles-bcf/{id}/
-Response violates schema|PUT /api/django/tiers/tiers/{id}/
 Response violates schema|PUT /api/django/ventes/devis/{id}/
 Response violates schema|PUT /api/django/ventes/factures/{id}/
 Server error|GET /api/django/core/sla/
