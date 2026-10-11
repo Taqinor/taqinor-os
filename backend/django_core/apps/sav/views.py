@@ -35,7 +35,7 @@ from .models import (
     TicketActiviteAFaire, TicketFollower,
     WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
 )
-from .services import add_months
+from .dateutils import add_months
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
