@@ -557,7 +557,7 @@ ignore_imports =
     core.tests.test_numbering -> apps.crm.models
     core.tests.test_numbering -> apps.ventes.models
     core.tests.test_numbering -> apps.ventes.utils.references
-    core.tests.test_company_scoped_viewset -> apps.crm.views
+    core.tests.test_company_scoped_viewset -> apps.crm.clients_views
     core.tests.test_company_scoped_viewset -> apps.sav.views
     core.tests.test_company_scoped_viewset -> apps.installations.views.transporteur
     core.tests.test_documents_viewset -> apps.records.views

@@ -91,7 +91,7 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/fiche_funnel.py::lead_signe_sans_devis_actif":
         "drapeau dérivé « signé fantôme » décidé par ACRM10 : filtre statut "
         "puis archivage ; la version remplacée n'y est pas une erreur",
-    "backend/django_core/apps/crm/views.py::ClientViewSet.segments":
+    "backend/django_core/apps/crm/clients_views.py::ClientViewSet.segments":
         "segment a_recontacter : une V1 acceptée il y a < 12 mois est un "
         "événement de signature, pas un CA ; la version courante est sans objet",
     "backend/django_core/apps/ventes/scheduled.py::_email_parti":

@@ -43,7 +43,8 @@ from apps.crm.tests_alea_garde_portee_actions import (
     _cle_explicite, _contenu,
 )
 from apps.crm.urls import router
-from apps.crm.views import ClientViewSet, LeadViewSet
+from apps.crm.clients_views import ClientViewSet
+from apps.crm.views import LeadViewSet
 from apps.roles.models import Role
 from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
 from authentication.models import Company
