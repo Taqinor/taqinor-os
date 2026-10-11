@@ -24,10 +24,6 @@ from .noyau import (
     _resolve_proposal_link, _texte_du_corps,
 )
 from .paiement_views import _deposit_success_payload
-from .. import openapi_shapes as SH
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 #: ADEV51 — le refus 409 du contrat ``proposal_accept.json``
@@ -94,7 +90,6 @@ def _refus_aucun_canal(err):
         status=status.HTTP_409_CONFLICT))
 
 
-@extend_schema(request=SH.ContactRequest, responses=SH.ContactResponses)
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -205,8 +200,6 @@ def proposal_contact_request(request, token):
     }))
 
 
-@extend_schema(request=None,
-               responses={200: SH.OtpEnvoye, 409: SH.OtpAucunCanal})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -327,9 +320,6 @@ def proposal_verify_otp_lecture(request, token):
     return _noindex(Response({'detail': 'Code vérifié.'}))
 
 
-@extend_schema(request=SH.AcceptRequest,
-               responses={200: SH.AcceptResponse, 403: SH.OtpRequis,
-                          409: SH.AcceptRefus})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -506,9 +496,6 @@ def _entreprise_relue(bloc):
             'ice': bloc.get('ice') or ''}
 
 
-@extend_schema(request=SH.ActivateOptionRequest,
-               responses={200: SH.ActivateOptionResponse,
-                          403: SH.OtpRequis})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])

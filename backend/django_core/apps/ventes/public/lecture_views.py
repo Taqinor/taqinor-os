@@ -13,7 +13,6 @@ import ipaddress
 import re
 
 from django.db.models import F
-from drf_spectacular.utils import extend_schema
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import (
@@ -24,7 +23,6 @@ from rest_framework.response import Response
 
 from core.throttling import ips_declarees_de_requete
 
-from .. import openapi_shapes as SH
 from ..models import ShareLink
 from .noyau import (
     PublicLinkRateThrottle, _noindex, _not_found, _resolve_proposal_link,
@@ -531,7 +529,6 @@ def _remonter_signal_lecture_au_lead(link, *, friction_section='', resume=''):
         pass
 
 
-@extend_schema(request=SH.EngagementRequest, responses={204: None})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])

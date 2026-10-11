@@ -8,8 +8,6 @@ sont AllowAny et doivent rester vus par les scanners (cliquet de throttle
 YRBAC9). Déplacement pur : corps octet-identiques (seule la profondeur des
 imports relatifs locaux change), prouvé par ``tests/golden/split_pv_paiement.json``.
 """
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import (
     authentication_classes, api_view, permission_classes, throttle_classes,
@@ -17,7 +15,6 @@ from rest_framework.decorators import (
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .. import openapi_shapes as SH
 from ..models import PaymentLink
 from .noyau import (
     PublicLinkRateThrottle, _noindex, _not_found, _refus_apercu_interne,
@@ -71,9 +68,6 @@ def _deposit_success_payload(devis, token):
     return payload
 
 
-@extend_schema(request=None,
-               responses={200: SH.VirementDeclareResponse,
-                          403: SH.DetailResponse})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -157,7 +151,6 @@ def _resolve_payment_link(token, *, require_valid=True):
     return link
 
 
-@extend_schema(responses=SH.PayPageResponse)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -204,7 +197,6 @@ def pay_page(request, token):
     }))
 
 
-@extend_schema(request=OpenApiTypes.OBJECT, responses=SH.PayWebhookResponse)
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
