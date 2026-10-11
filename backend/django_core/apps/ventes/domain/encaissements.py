@@ -843,8 +843,9 @@ def qr_svg_for_facture_pdf(facture):
            if active_link is not None else '')
     if not url:
         share = ShareLink.for_facture(facture)
+        # jamais relatif : jamais un chemin relatif dans un QR client
         url = _public_url(  # AFAC94
-            f'/api/django/public/document/{share.token}/')  # jamais relatif : jamais un chemin relatif dans un QR client
+            f'/api/django/public/document/{share.token}/')
 
     if not url:
         return None
