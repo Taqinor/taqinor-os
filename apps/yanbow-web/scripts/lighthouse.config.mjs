@@ -28,5 +28,10 @@ export const MOTIFS_POLICES = ['*.woff2', '*.woff', '*.ttf', '*.otf'];
  *   porte de lancement YBW12) tant que Reda ne l'ouvre pas ; cette fermeture
  *   est vérifiée par ses propres tests (YBW12) et par le contrôle de lancement
  *   (YBW85). La compter ici ferait échouer la porte pour une raison voulue.
+ * - `hreflang` : les liens alternates fr/en/x-default sont RELATIFS tant qu'aucun
+ *   domaine n'est choisi (YBWM10, `ORIGINE_CANONIQUE = null`, garde YBW12 : jamais
+ *   d'URL absolue vers un domaine non choisi) ; Lighthouse exige des URL absolues.
+ *   Décision Reda 10/10/2026 (D-YBW-HREFLANG) : ignoré jusqu'à YBWM10 — RETIRER cette
+ *   entrée dès que `ORIGINE_CANONIQUE` est posée (Layout.astro émet alors l'absolu).
  */
-export const AUDITS_IGNORES = ['is-crawlable'];
+export const AUDITS_IGNORES = ['is-crawlable', 'hreflang'];

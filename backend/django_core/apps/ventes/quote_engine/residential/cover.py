@@ -16,6 +16,20 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 """
 
 
+def libelle_fixe(d, cle, fr, **valeurs):
+    """APDF8 — libellé FIXE du gabarit résidentiel dans la langue du document.
+
+    ``fr`` est le texte historique DÉJÀ composé : un document français reste
+    octet pour octet celui d'hier. En / ar : la clé ``cle`` d'``i18n_labels``
+    (via ``theme.libelle_doc``, isolée en RTL pour l'arabe), dont les ``{…}``
+    reçoivent ``valeurs`` (date, nombre, marque déjà formatés)."""
+    from . import theme
+    if theme.langue_doc(d) == "fr":
+        return fr
+    valeur = theme.libelle_doc(d, cle, fr)
+    return valeur.format(**valeurs) if valeurs else valeur
+
+
 def build(ctx):
     from . import theme
     from .. import constants
@@ -142,8 +156,9 @@ def build(ctx):
     # engage plus que « 30 jours ») ; repli sur la durée si date illisible.
     _valid_until = (d.get("valid_until") or "").strip() or (
         theme.valid_until(date, validity_days) if validity_days else "")
-    validity_pill = (f"Valable jusqu'au {_valid_until}" if _valid_until
-                     else "")
+    validity_pill = (libelle_fixe(d, "res_valable_jusqu",
+                                  f"Valable jusqu'au {_valid_until}",
+                                  date=_valid_until) if _valid_until else "")
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
     # QX5 — n'imprime JAMAIS d'option fantôme : deux cartes seulement quand le
@@ -193,10 +208,12 @@ def build(ctx):
 
     cov_gap_note = ""
     if not masquer_eco and coverage_pct - pct_cut >= 10:
-        cov_gap_note = (
-            '<div class="c1-bigcut-note">Pourquoi pas −{cov} % ? Seuls les kWh '
-            'autoconsommés réduisent la facture (loi 82-21) — le surplus '
-            'injecté n\'est pas rémunéré.</div>').format(cov=coverage_pct)
+        cov_gap_note = '<div class="c1-bigcut-note">' + libelle_fixe(
+            d, "res_pourquoi_pas_cov", (
+                'Pourquoi pas −{cov} % ? Seuls les kWh '
+                'autoconsommés réduisent la facture (loi 82-21) — le surplus '
+                'injecté n\'est pas rémunéré.').format(cov=coverage_pct),
+            cov=coverage_pct) + '</div>'
 
     kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     # ── F1/L-2OPT (26/08/2026) — LE PRIX AU kWc D'UNE OPTION SE CALCULE SUR LE
@@ -329,8 +346,10 @@ def build(ctx):
     qr_inner = ""
     if qr_uri:
         qr_inner = (
-            '<div class="c1-qr-t">Consultez votre<br>proposition '
-            'interactive</div>'
+            '<div class="c1-qr-t">'
+            + libelle_fixe(d, "res_consultez_proposition",
+                           'Consultez votre<br>proposition interactive')
+            + '</div>'
             f'<img class="c1-qr-i" src="{qr_uri}" '
             'alt="QR — votre proposition en ligne">'
             f'<div class="c1-qr-u"><a href="{qr_href}">{qr_disp}</a></div>')
@@ -606,7 +625,9 @@ def build(ctx):
     def _opt_card(kicker, name, price, pkwc, roi_v, bull, eco=None,
                   reco=False, full=False, opt=None):
         cls = "c1-opt" + (" c1-reco" if reco else "") + (" c1-opt-full" if full else "")
-        pill = ('<span class="c1-reco-pill">Recommandé</span>' if reco else "")
+        pill = ('<span class="c1-reco-pill">'
+                + libelle_fixe(d, "res_recommande", "Recommandé") + '</span>'
+                if reco else "")
         # Z2 — économie annuelle et payback descendent du MÊME calcul que la
         # synthèse : sans ancrage réel, ils partent avec elle (le prix, lui,
         # est une donnée du devis et reste affiché).
@@ -658,7 +679,9 @@ def build(ctx):
             f'{roi_html}'
             f'{eco_html}'
             f'<ul>{bullets(bull)}</ul>'
-            f'<div class="c1-note">Détail &amp; équipement en page 2</div>'
+            '<div class="c1-note">'
+            + libelle_fixe(d, "res_detail_page2",
+                           "Détail &amp; équipement en page 2") + '</div>'
             f'</div>')
 
     # QJR210 — chaque carte NOMME son option (``opt``) : c'est par elle que le
@@ -682,12 +705,16 @@ def build(ctx):
     elif avec_ok:
         # Option unique AVEC batterie : une carte pleine largeur, pas de « Sans »
         # fabriquée (dépourvue d'onduleur).
-        opts_html = _opt_card("Votre installation", libelle_avec, total_avec,
+        opts_html = _opt_card(libelle_fixe(d, "res_votre_installation",
+                                           "Votre installation"),
+                              libelle_avec, total_avec,
                               pkwc_avec, roi_a, avec_bullets, eco=eco_a_ann,
                               full=True, opt="avec")
     else:
         # Option unique SANS batterie (réseau seul) : une carte pleine largeur.
-        opts_html = _opt_card("Votre installation", "Sans batterie", total_sans,
+        opts_html = _opt_card(libelle_fixe(d, "res_votre_installation",
+                                           "Votre installation"),
+                              "Sans batterie", total_sans,
                               pkwc_sans, roi_s, sans_bullets, eco=eco_s_ann,
                               full=True, opt="sans")
 
@@ -697,11 +724,13 @@ def build(ctx):
     # produit → la constante d'aujourd'hui (30 ans) ; sans panneau reconnu →
     # la mention est OMISE plutôt qu'inventée.
     _perf_ans = theme.performance_warranty_years(d)
-    perf_phrase = (f"performance garantie {_perf_ans}&nbsp;ans"
-                   if _perf_ans else "")
+    perf_phrase = (libelle_fixe(d, "res_perf_garantie",
+                                f"performance garantie {_perf_ans}&nbsp;ans",
+                                ans=_perf_ans) if _perf_ans else "")
     perf_sub = (f" —\n        {perf_phrase}." if perf_phrase else ".")
-    perf_trust = (f"Performance garantie {_perf_ans} ans &middot; "
-                  if _perf_ans else "")
+    perf_trust = (libelle_fixe(d, "res_perf_trust",
+                               f"Performance garantie {_perf_ans} ans &middot; ",
+                               ans=_perf_ans) if _perf_ans else "")
 
     # ── Z2 — couche économique de la page 1, rendue ou OMISE d'un seul bloc ──
     # Sans ancrage réel : l'accroche chiffrée, le bloc « −N % / avant-après »,
@@ -713,15 +742,21 @@ def build(ctx):
     if qr_inner:
         qr_solo_html = (
             '<div class="c1-qrbox"><div class="c1-qrbox-t">'
-            '<b>Consultez votre proposition interactive</b>'
-            f'<span>{qr_disp} — scannez le code</span></div>'
+            '<b>' + libelle_fixe(d, "res_consultez_proposition",
+                                 "Consultez votre proposition interactive")
+            + '</b>'
+            f'<span>{qr_disp} '
+            + libelle_fixe(d, "res_scannez_code", "— scannez le code")
+            + '</span></div>'
             f'<div class="c1-qrbox-q"><img src="{qr_uri}" '
             'alt="QR — votre proposition en ligne"></div></div>')
 
     if masquer_eco:
         hero_sub_html = (
-            f'<div class="c1-sub">Votre installation solaire'
-            f'{perf_sub}</div>')
+            '<div class="c1-sub">'
+            + libelle_fixe(d, "res_votre_installation_solaire",
+                           "Votre installation solaire")
+            + f'{perf_sub}</div>')
         hook_html = ""
         bill_html = ""
         kpi_eco_html = ""
@@ -730,8 +765,11 @@ def build(ctx):
         wrap_cls = " c1-wrap-sobre"
     else:
         hero_sub_html = (
-            f'<div class="c1-sub">Votre facture d\'électricité réduite '
-            f'd\'environ {pct_cut}&nbsp;%{perf_sub}</div>'
+            '<div class="c1-sub">'
+            + libelle_fixe(d, "res_facture_reduite",
+                           f'Votre facture d\'électricité réduite '
+                           f'd\'environ {pct_cut}&nbsp;%', pct=pct_cut)
+            + f'{perf_sub}</div>'
             + ancre("reduction_facture_pct", pct_cut, _eco_opt))
         hook_html = f"""
     <!-- MONEY HOOK ─────────────────────────────────────────────────────── -->
@@ -819,6 +857,8 @@ def build(ctx):
                      else "")
 
     # ── HTML ────────────────────────────────────────────────────────────────
+    # APDF8 — les libellés fixes de la couverture suivent la langue du
+    # document (``libelle_fixe`` : fr = littéral d'origine, octet pour octet).
     html = f"""{css}
 <div class="c1-root">
 
@@ -828,7 +868,7 @@ def build(ctx):
     <div class="c1-hero-top">
       <img class="c1-logo" src="data:image/png;base64,{logo_dark}" alt="{brand}">
       <div class="c1-hero-meta">
-        <div class="c1-ref-l">Réf. devis</div>
+        <div class="c1-ref-l">{libelle_fixe(d, 'res_ref_devis', 'Réf. devis')}</div>
         <div class="c1-ref-v">{ref}</div>
         <div class="c1-date">{date}</div>
         {marques_correction}
@@ -836,8 +876,8 @@ def build(ctx):
       </div>
     </div>
     <div class="c1-hero-body">
-      <div class="c1-kicker c1-hero-kicker">Proposition commerciale — Installation solaire</div>
-      <div class="c1-serif c1-hello">Bonjour {first_name},</div>
+      <div class="c1-kicker c1-hero-kicker">{libelle_fixe(d, 'res_kicker', 'Proposition commerciale — Installation solaire')}</div>
+      <div class="c1-serif c1-hello">{libelle_fixe(d, 'res_bonjour', 'Bonjour ' + format(first_name) + ',', nom=first_name)}</div>
       {hero_sub_html}
     </div>
   </div>
@@ -852,7 +892,7 @@ def build(ctx):
   <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
   <div class="c1-trust">
     <div class="c1-trust-line"></div>
-    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> &middot; {perf_trust}Suivi en temps réel</div>
+    <div class="c1-trust-txt"><b>{libelle_fixe(d, 'res_ingenieurs', 'Ingénieurs solaires')}</b> &middot; {perf_trust}{libelle_fixe(d, 'res_suivi_temps_reel', 'Suivi en temps réel')}</div>
     <div class="c1-trust-line"></div>
   </div>
 

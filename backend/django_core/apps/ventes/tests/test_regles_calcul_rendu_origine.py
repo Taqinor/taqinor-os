@@ -32,6 +32,7 @@ from django.test import TestCase
 from freezegun import freeze_time
 
 from apps.ventes.models import Devis, LigneDevis, ShareLink
+from apps.ventes.quote_engine import i18n_labels
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_produit,
     make_user,
@@ -137,10 +138,37 @@ def _lignes_variantees(devis, company, lignes):
 
 GOLDEN = Path(__file__).resolve().parent / 'golden' / 'regles_calcul_origine.json'
 #: Clés sans chiffre ajoutées après le merge-base, retirées des deux côtés.
+#: Lane APDF (APDF8/9/10/46, 10/10/2026) — 86 libellés de gabarit traduits
+#: (préfixes res_/op_/lg_/cgv_/tva_ + clauses_particulieres, aucun n'existait
+#: avant) : des TEXTES de ``libelles_document``, jamais un chiffre.
+_LIBELLES_APDF = tuple(
+    ('libelles_document', cle) for cle in i18n_labels.LIBELLES
+    if cle.startswith(('res_', 'op_', 'lg_', 'cgv_', 'tva_'))
+    or cle == 'clauses_particulieres')
 CLES_HORS_RENDU_ORIGINE = (
     ('entreprise', 'capital_social'), ('entreprise', 'forme_juridique'),
     ('regles_calcul_origine',),
-    ('libelles_document', 'agr_base_besoin_agronomique'))
+    ('libelles_document', 'agr_base_besoin_agronomique'),
+    # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
+    ('libelles_document', 'ci_cgv_suite'),
+    *_LIBELLES_APDF)
+_RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
+
+
+def _note_tva_d_origine(build, devis, opts, data):
+    """APDF10 — un document en/ar porte sa note de TVA TRADUITE ; le golden,
+    lui, a été pris quand elle restait en français. ``tva_note`` EXISTAIT
+    déjà : la retirer d'un seul côté ne peut pas égaler le golden (seules
+    des clés NOUVELLES se retirent ainsi). On compare donc la note française
+    du MÊME devis rendu sans langue, après avoir exigé que la traduction
+    porte exactement les mêmes nombres (taux) — aucun chiffre ne change."""
+    if data.get('langue_sortie') in (None, 'fr'):
+        return data
+    fr = build(devis, {k: v for k, v in opts.items() if k != 'langue_sortie'})
+    if _RE_NOMBRE.findall(data.get('tva_note') or '') != _RE_NOMBRE.findall(
+            fr.get('tva_note') or ''):
+        return data  # nombres différents : l'écart reste visible
+    return dict(data, tva_note=fr.get('tva_note'))
 
 
 def _empreinte(test, devis, data):
@@ -290,7 +318,9 @@ class RenduReglesOrigineTests(TestCase):
                     frais = Devis.objects.get(pk=devis.pk)
                     self.assertEqual(frais.regles_calcul, 1)
                     with rendu_sans_reseau():
-                        data = build_quote_data(frais, dict(opts))
+                        data = _note_tva_d_origine(
+                            build_quote_data, frais, opts,
+                            build_quote_data(frais, dict(opts)))
                     if _empreinte(self, frais, data) != golden.get(cle):
                         ecarts.append(cle)
                     transaction.set_rollback(True)

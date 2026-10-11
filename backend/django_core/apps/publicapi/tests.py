@@ -13,7 +13,7 @@ import re
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -1231,3 +1231,35 @@ class PublicWriteIdempotencyTests(TestCase):
         self.assertEqual(resp1.status_code, 201)
         self.assertEqual(resp2.status_code, 201)
         self.assertNotEqual(resp1.data['id'], resp2.data['id'])
+
+
+class EdiParqueTests(SimpleTestCase):
+    """AANA51 (D-AANA51 = parquer) — l'EDI X12 est sorti du code vivant.
+
+    Aucune route ``edi`` n'est servie (404), le sous-paquet ``edi`` et
+    ``edi_partners`` n'existent plus (restauration = archive, voir
+    ``docs/parked-modules.md`` §5.2) et le modèle ``PartenaireEdi`` a quitté
+    l'ÉTAT Django (la table, elle, est conservée)."""
+
+    def test_aucune_route_edi_servie(self):
+        from django.urls import Resolver404, resolve
+        for chemin in ('/api/public/v1/edi/', '/api/django/publicapi/edi/',
+                       '/api/public/v1/edi/810/', '/api/public/v1/edi/850/'):
+            try:
+                resolu = resolve(chemin)
+            except Resolver404:
+                continue
+            # Un motif fourre-tout (jeton, slug) peut capter le chemin : il ne
+            # doit alors mener à AUCUNE vue EDI.
+            cible = f"{resolu.func.__module__}.{getattr(resolu.func, '__name__', '')} {resolu.url_name or ''}"
+            self.assertNotIn('edi', cible.lower(), f'{chemin} → {cible}')
+
+    def test_modules_edi_absents(self):
+        import importlib.util
+        for nom in ('apps.publicapi.edi', 'apps.publicapi.edi_partners'):
+            self.assertIsNone(importlib.util.find_spec(nom), nom)
+
+    def test_partenaire_edi_hors_etat_django(self):
+        from django.apps import apps
+        with self.assertRaises(LookupError):
+            apps.get_model('publicapi', 'PartenaireEdi')

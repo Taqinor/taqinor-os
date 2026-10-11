@@ -16,3 +16,10 @@ test('création d\'avoir et échéance : frenchError, plus de detail ?? texte fi
   assert.doesNotMatch(src, /err\?\.response\?\.data\?\.detail \?\? "Création de l'avoir/)
   assert.doesNotMatch(src, /err\?\.response\?\.data\?\.detail \?\? 'Mise à jour de l’échéance/)
 })
+
+test("sondage du PDF : l'erreur est affichée une fois et la boucle continue (AFAC62)", () => {
+  const m = src.match(/const poll = async \(\) => \{[\s\S]*?\n      setTimeout\(poll, 2000\)/)
+  assert.ok(m, 'bloc poll introuvable')
+  assert.doesNotMatch(m[0], /catch \{/)
+  assert.match(m[0], /catch \(err\) \{[\s\S]*erreurSignalee[\s\S]*toast\.error\(frenchError\(err,[\s\S]*setTimeout\(poll, 2000\)/)
+})

@@ -43,6 +43,7 @@ const STORY = {
   metriques: {
     depense_mad: '900.00', nb_leads: 5, cpl_mad: '180.00', signatures: 1,
     cost_per_signature_mad: '900.00', frequency: '2.10',
+    cpl_source: 'leads Meta', cpl_odoo_source: 'leads Odoo', // AACQ104 — servies par le cockpit
     fatigue: { fired: true, severity: 'critique', message_fr: 'Fatigue confirmée' },
   },
   actions: [
@@ -123,6 +124,25 @@ describe('AdDetailScreen (PUB44)', () => {
     renderScreen()
     const metrics = await screen.findByTestId('ae-ad-detail-metrics')
     expect(within(metrics).getByText('300 MAD')).toBeInTheDocument()
+  })
+
+  it('AACQ104 — chaque CPL affiche sa source servie, jamais une source fabriquée', async () => {
+    mocks.fullStory.mockResolvedValue({ data: {
+      ...STORY, metriques: { ...STORY.metriques, leads_odoo: 4, cpl_odoo: '225.00' },
+    } })
+    const { unmount } = renderScreen()
+    await screen.findByTestId('ae-ad-detail-metrics')
+    expect(await screen.findByTestId('ae-ad-detail-cpl-source')).toHaveTextContent('leads Meta')
+    expect(screen.getByTestId('ae-ad-detail-cpl-odoo-source')).toHaveTextContent('leads Odoo')
+    unmount()
+    mocks.fullStory.mockResolvedValue({ data: {
+      ...STORY, metriques: { ...STORY.metriques, cpl_source: '', cpl_odoo: '225.00', cpl_odoo_source: '' },
+    } })
+    renderScreen()
+    const metrics = await screen.findByTestId('ae-ad-detail-metrics')
+    expect(await within(metrics).findByText('180 MAD')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-ad-detail-cpl-source')).toBeNull()
+    expect(screen.queryByTestId('ae-ad-detail-cpl-odoo-source')).toBeNull()
   })
 
   it('liste les actions passées', async () => {

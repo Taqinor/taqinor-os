@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ENG43 — Écran Règles & anomalies : catalogue de gabarits FR (picker, jamais
    un builder libre), dry-run VISUALISÉ (objets touchés + effet), flux
@@ -103,19 +104,10 @@ beforeEach(() => {
   mocks.history.mockResolvedValue({ data: { alerts: [
     { id: 1, niveau: 'alerte', message: 'Fréquence élevée', quand: '2026-07-12' },
   ] } })
-  // ADSDEEP43 — journal d'exécution enrichi (condition avec valeurs + delta).
-  mocks.journal.mockResolvedValue({ data: { results: [
-    { id: 1, template_key: 'surf_scale_budget',
-      label_fr: 'Surf-scaling — CPL en amélioration', enabled: true, dry_run: false,
-      last_evaluated_at: '2026-07-16T10:00:00Z', evaluated: true, fired: true,
-      findings: [
-        { target: 'as1', target_type: 'adset', fired: true, insufficient_data: false,
-          condition_fr: 'cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.',
-          action: { id: 5, kind: 'increase_pace', status: 'proposee',
-            reason_fr: 'Surf-scaling : montée de budget learning-safe.',
-            delta: { type: 'budget', current_mad: 100.0, new_mad: 115.0 } } },
-      ] },
-  ] } })
+  // ADSDEEP43 — journal d'exécution enrichi (condition avec valeurs + delta) ;
+  // AACQ99 (PACT13) — lu dans le contrat committé, plus tapé à la main.
+  mocks.journal.mockResolvedValue(
+    reponseContrat('adsengine', 'regles_journal', 'exemple_declenche'))
 })
 
 describe('RulesScreen (ENG43)', () => {
@@ -160,6 +152,39 @@ describe('RulesScreen (ENG43)', () => {
     const finding = screen.getByTestId('ae-rule-run-finding')
     expect(finding).toHaveTextContent('cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.')
     expect(screen.getByTestId('ae-rule-run-delta')).toHaveTextContent('100 → 115 MAD/j')
+  })
+
+  it('AACQ102 — la devise du seuil et le motif non applicable sont affichés', async () => {
+    // Gabarit tel que servi par `regles/catalogue/` (params éditables compris).
+    mocks.templates.mockResolvedValue({ data: [
+      { key: 'stop_loss_cpl', nom: 'Stop-loss — coût par lead au plafond', cadence: 'daily',
+        condition_fr: 'Stop-loss — coût par lead au plafond',
+        action_fr: 'Mise en pause proposée (approbation requise).',
+        editable_params: ['threshold_mad', 'window_days', 'min_samples'] },
+    ] })
+    const page = (regle) => ({ data: { count: 1, next: null, previous: null, results: [regle] } })
+    mocks.policies.mockResolvedValue(page(exempleContrat('adsengine', 'regle_policy', 'armee_sans_seuil')))
+    mocks.journal.mockResolvedValue(reponseContrat('adsengine', 'regles_journal'))
+    const { unmount } = renderScreen()
+    expect(await screen.findByTestId('ae-rule-threshold-currency-stop_loss_cpl'))
+      .toHaveTextContent('Seuil en MAD')
+    // Le motif SERVI du passage bloqué, tel quel (aucun motif composé à l'écran).
+    expect(await screen.findByTestId('ae-rule-run-finding')).toHaveTextContent(
+      exempleContrat('adsengine', 'regles_journal', 'constat_bloque').blocked_fr)
+    unmount()
+    mocks.policies.mockResolvedValue(page(exempleContrat('adsengine', 'regle_policy')))
+    renderScreen()
+    expect(await screen.findByTestId('ae-rule-threshold-currency-stop_loss_cpl'))
+      .toHaveTextContent('Seuil en USD')
+  })
+
+  it('AACQ102 — un gabarit sans seuil monétaire armé n\'affiche aucune devise', async () => {
+    mocks.policies.mockResolvedValue({ data: [
+      { id: 2, template_key: 'fatigue', enabled: true, dry_run: false, threshold_currency: '' },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(screen.getByTestId('ae-rule-state-fatigue')).toHaveTextContent('Armée ·'))
+    expect(screen.queryByTestId('ae-rule-threshold-currency-fatigue')).toBeNull()
   })
 
   describe('PUB23 — armer/désarmer une règle', () => {

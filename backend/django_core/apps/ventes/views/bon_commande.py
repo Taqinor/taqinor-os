@@ -59,34 +59,21 @@ def _reserver_stock_bc_actif(company):
 def _sortir_reliquat_bc(bc, user):
     """AFAC15 (C-AFAC-001) — sortie de stock de « Livrer » (toggle OFF).
 
-    Ne sort que le RELIQUAT du panier VENDU (``bc.reliquat_par_ligne``, déjà
-    ×N villas et borné à ``option_lines``) : les livraisons partielles ont
-    déjà posé leurs SORTIES. Ne sort RIEN si la vente est déjà sortie par la
-    facture directe (SORTIE sous la référence du devis,
-    ``reserver_stock_devis_facture``) — « une vente = une sortie ». Même
-    décompteur unique (AUD116) et même solde de réservation chantier
-    (ASTK135). À appeler dans la transaction (BC verrouillé) de l'appelant ;
-    lève ``StockInsuffisantError``."""
-    from types import SimpleNamespace
-
-    from apps.stock.services import sortie_exists_for_reference
+    ASTK244 — ne sort que le RELIQUAT du panier VENDU pas encore sorti
+    (``lignes_reliquat_vente``) : livraisons partielles, facture directe,
+    livraison directe chantier, F11 ou « Installé » déjà joués — « une vente
+    = une sortie ». Même décompteur unique (AUD116) et même solde de
+    réservation chantier (ASTK135). À appeler dans la transaction (BC
+    verrouillé) de l'appelant ; lève ``StockInsuffisantError``."""
     from ..domain.facturation_ops import (
-        decompter_stock_lignes, solder_reservations_chantier_vente,
+        decompter_stock_lignes, lignes_reliquat_vente,
+        solder_reservations_chantier_vente,
     )
-    from ..utils.options import option_lines
 
-    if sortie_exists_for_reference(bc.company, bc.devis.reference):
-        return {}
-    produits = {li.id: li.produit_id for li in option_lines(bc.devis)}
-    a_sortir = [
-        SimpleNamespace(compte_dans_totaux=True,
-                        produit_id=produits[r['ligne_devis_id']],
-                        quantite=r['reliquat'])
-        for r in bc.reliquat_par_ligne
-        if r['reliquat'] > 0 and produits.get(r['ligne_devis_id'])]
     sorties = {}
     decompter_stock_lignes(
-        lignes=a_sortir, company=bc.company, user=user,
+        lignes=lignes_reliquat_vente(bc.devis, bc.company),
+        company=bc.company, user=user,
         reference=bc.reference, note=f'Livraison BC {bc.reference}',
         multiplicateur=1, sorties=sorties)
     solder_reservations_chantier_vente(
@@ -384,6 +371,12 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             reliquats = {r['ligne_devis_id']: r for r in bc.reliquat_par_ligne}
+            # ASTK244 — ne SORT que ce que la vente n'a pas déjà sorti
+            # (facture directe, livraison directe, F11, « Installé ») : la
+            # livraison est enregistrée, sans second mouvement.
+            from ..domain.facturation_ops import lignes_reliquat_vente
+            reste = {li.produit_id: li.quantite for li in
+                     lignes_reliquat_vente(bc.devis, bc.company)}
             stock_reserve = {}
             validated = []
             for entry in lignes_payload:
@@ -414,15 +407,18 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 # mouvements (la validation et l'écriture partagent désormais
                 # la même transaction).
                 produit = verrouiller_produit(ligne_devis.produit_id)
-                qte_entiere = int(Decimal(quantite).quantize(
-                    Decimal('1'), rounding=ROUND_HALF_UP))
+                qte_entiere = min(reste.get(produit.id, 0), int(
+                    Decimal(quantite).quantize(
+                        Decimal('1'), rounding=ROUND_HALF_UP)))
+                reste[produit.id] = reste.get(produit.id, 0) - qte_entiere
                 qte_avant = produit.quantite_stock - stock_reserve.get(produit.id, 0)
                 qte_apres = qte_avant - qte_entiere
                 # AUD228 — la décision passe par le réglage société
                 # (`AchatsParametres.stock_negatif_autorise`, défaut False =
                 # comportement historique inchangé), jamais un blocage en dur.
                 try:
-                    check_negative_stock_guard(bc.company, qte_avant, qte_apres)
+                    check_negative_stock_guard(
+                        bc.company, qte_avant, qte_apres if qte_entiere else 0)
                 except ValueError:
                     return Response(
                         {'detail': (
@@ -447,6 +443,8 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 LigneLivraisonBC.objects.create(
                     livraison=livraison, ligne_devis=ligne_devis,
                     quantite_livree=quantite)
+                if qte_entiere <= 0:
+                    continue
                 record_stock_movement(
                     company=bc.company,
                     produit=produit,

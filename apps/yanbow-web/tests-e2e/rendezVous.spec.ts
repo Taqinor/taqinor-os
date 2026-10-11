@@ -37,7 +37,7 @@ async function remplir(page: Page): Promise<void> {
   await page.getByLabel('Téléphone (facultatif)').fill('+33 6 00 00 00 00');
   await page.getByLabel('Sujet du rendez-vous').selectOption('sur_mesure');
   await page.getByLabel('Message (facultatif)').fill('Bonjour, une démonstration ?');
-  await page.getByLabel("J'accepte").check();
+  await page.getByLabel(/J.accepte/).check();
 }
 
 test('formulaire → Worker → faux ERP : un lead, signé, conforme au contrat ; crawl propre après envoi', async ({ page }) => {

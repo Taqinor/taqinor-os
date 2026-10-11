@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: f485809b1f91fdd0ef15b9c34cc015bed08ddeebfdd3fb869bb4c0132dec91e3
-Plan fingerprint: b37754b86f410d033fb86c95e34385641b5e71e1ff2bd2046972f99651c81665
+Structure fingerprint: c68b50671f8f831c2665ec98b1b18590371881e0ff8b12b4567d01772a89a6d5
+Plan fingerprint: 473c5742416d536bb28ee7dc69757e35d5f3830db1ed1b0abf098baa661ff2c6
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1170)**
+**Done (1173)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1576,6 +1576,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
+- `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
+- `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `QJR500` — Contrat d'abord : un devis dit s'il est modifiable et révisable ; la ligne devis du…
 - `QJR501` — Contrat d'abord : la proposition publique dit qu'elle est remplacée et porte le texte…
 - `QJR502` — Contrat d'abord : aperçu WhatsApp multi-devis du lead, sans aucun effet
@@ -1747,8 +1749,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR668` — [DÉCIDÉ fondateur 01/10/2026 : brancher : gel à l'envoi, re-gel à chaque correction…
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
+- `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (129)**
+**Open — to build (126)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1794,7 +1797,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
-- `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
+- `AUD504` — [GATED: coût prestataire — décision fondateur]
 - `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
@@ -1843,15 +1846,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF22` — `# noqa` (2 435) et `eslint-disable` (432) à zéro
 - `ENF23` — Tests sautés (178) à zéro
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
-- `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
+- `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
-- `CALX199` — Trancher l'achat d'une source météo bancable
-- `CALX200` — Trancher le pas infra-horaire
-- `CALX373` — (DECISION) Trancher l'aller-retour avec un configurateur de fixation constructeur
-- `CALX374` — (COST) Trancher la photogrammétrie par drone comme source de relevé
-- `CALX375` — (DECISION) Trancher les intégrations partenaires de conception et de stockage
-- `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
+- `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX199` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX200` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX375` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
 - `CRXB3` — [GATED] Fin de `__all__`
@@ -1860,7 +1862,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CRXB6` — [GATED] Frontière sortante contractée
 - `CRXB7` — [GATED] Registres LeadsPage/ListView + tests de rendu
 - `CRXB8` — [GATED] LeadViewSet dégonflé
-- `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `PUB107` — [GATED: décision WhatsApp Cloud API (même porte qu'ADSENG34)] Boîte de réception…
 - `PUB108` — [GATED: décision WhatsApp Cloud API] Réponse instantanée + qualification WhatsApp Flows
 - `PUB109` — [GATED: décision WhatsApp Cloud API] Relances drip marketing WhatsApp
@@ -1877,7 +1878,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG4` — [GATED: founder content]
 - `QXG5` — [GATED: founder ops check, 10 minutes]
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
-- `VTAG1` — [GATED: décision fondateur]
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
 **Blocked — awaiting founder decision (8)**

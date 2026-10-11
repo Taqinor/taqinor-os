@@ -56,6 +56,13 @@ def fichiers_tests_frontend(racine: Path) -> list[Path]:
         if chemin.suffix in (".js", ".jsx", ".mjs", ".ts", ".tsx") and (
                 ".test." in chemin.name or "/test/" in chemin.as_posix()):
             sortie.append(chemin)
+    # ADEP101 : modules de frontend/scripts/ importes par un test (lisent des fixtures backend)
+    scripts = racine / "frontend" / "scripts"
+    if scripts.is_dir():
+        textes = [t.read_text(encoding="utf-8", errors="replace") for t in sortie]
+        for mod in sorted(scripts.glob("*.mjs")):
+            if any("scripts/" + mod.name in t for t in textes):
+                sortie.append(mod)
     return sorted(sortie)
 
 
@@ -95,6 +102,7 @@ def candidats(racine: Path, fichier: Path) -> set[str]:
             ajouter(rel)
         elif lit.startswith(_RACINES_EXTERNES) and " " not in lit:
             ajouter(lit)
+    dossiers: dict[str, list[str]] = {}  # variable = join(...) deja vue -> ses segments
     for appel in _APPEL_CHEMIN.finditer(texte):
         segs = []
         for m in _LITTERAL.finditer(appel.group(1)):
@@ -102,6 +110,12 @@ def candidats(racine: Path, fichier: Path) -> set[str]:
             if "${" in lit:
                 break
             segs.append(lit.strip("/"))
+        tete = re.match(r"\s*(\w+)\s*,", appel.group(1))
+        if tete and tete.group(1) in dossiers:  # join(DOSSIER, 'fichier') (ADEP101)
+            segs = dossiers[tete.group(1)] + segs
+        nom = re.search(r"(\w+)\s*=\s*$", texte[:appel.start()])
+        if nom:
+            dossiers[nom.group(1)] = segs
         if "backend" in segs:
             ajouter("/".join(segs[segs.index("backend"):]))
     return trouves

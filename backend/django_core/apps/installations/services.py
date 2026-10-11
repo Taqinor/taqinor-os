@@ -3150,7 +3150,7 @@ def appliquer_landed_cost_au_stock(dossier):
             continue
         n = definir_frais_annexes_ligne_bcf(
             dossier.company, bcf_id, produit_id,
-            ligne.get('quote_part_frais') or 0)
+            ligne.get('quote_part_frais') or 0, via_cout_debarque=True)
         lignes_maj += n
         detail.append({
             'produit_id': produit_id,

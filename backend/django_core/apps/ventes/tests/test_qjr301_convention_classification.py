@@ -23,7 +23,7 @@ Run :
 """
 from django.test import SimpleTestCase
 
-from apps.ventes.quote_engine import builder
+from apps.ventes.quote_engine import builder, lignes_classement
 from apps.ventes.quote_engine import generate_devis_premium as moteur
 from apps.ventes.utils.options import (
     _blob, _blob_marque, est_accessoire_huawei, retirer_accessoires_huawei,
@@ -84,9 +84,9 @@ class LeMotCleVitDansLeNomDuProduit(SimpleTestCase):
     def test_onduleur_nomme_seulement_par_le_produit(self):
         ligne = _Ligne('Équipement principal', 'Onduleur hybride Deye 8kW')
         item = _item('Équipement principal', 'Onduleur hybride Deye 8kW')
-        self.assertTrue(builder._is_inverter(_blob(ligne)))
+        self.assertTrue(lignes_classement._is_inverter(_blob(ligne)))
         self.assertTrue(
-            builder._is_inverter(builder._item_classement(item)),
+            lignes_classement._is_inverter(builder._item_classement(item)),
             'le panier PDF doit voir cet onduleur comme le noyau')
 
 

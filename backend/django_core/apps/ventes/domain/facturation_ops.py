@@ -277,6 +277,67 @@ def solder_reservations_chantier_vente(*, devis, company, sorties, reference,
         installation, sorties, reference, user=user)
 
 
+def _panier_vendu(devis):
+    """ASTK244 — ``{produit_id: quantité entière}`` du panier VENDU : mêmes
+    lignes (``option_lines``, ×N villas) et même arrondi HALF_UP que
+    ``decompter_stock_lignes``."""
+    from decimal import Decimal, ROUND_HALF_UP
+    from apps.ventes.multivilla import nombre_proprietes
+    from apps.ventes.utils.options import option_lines
+    vendu, n = {}, nombre_proprietes(devis)
+    for li in option_lines(devis):
+        if li.compte_dans_totaux and li.produit_id and li.quantite is not None:
+            vendu[li.produit_id] = vendu.get(li.produit_id, 0) + int(
+                (Decimal(li.quantite) * n).quantize(
+                    Decimal('1'), rounding=ROUND_HALF_UP))
+    return vendu
+
+
+def quantites_deja_sorties_pour_vente(devis, company):
+    """ASTK244 (C-ASTK-VER-001) — LA lecture « une vente = une sortie » :
+    ``{produit_id: quantité déjà SORTIE}`` pour cette vente, quels que soient
+    l'ordre et la référence des gestes. Σ des SORTIES sous la référence du
+    devis (facture), de son BC (« Livrer », ``livrer-partiel``) et de son
+    chantier (F11, « Installé ») — ou, si elle est plus grande, la part déjà
+    sortie du chantier (``quantite_deja_sortie_chantier`` : soldée par une
+    vente, dont la livraison directe, + F11) : le max ne compte jamais deux
+    fois une sortie qui a aussi soldé la réservation."""
+    from django.db.models import Sum
+    from apps.installations.selectors import installation_for_devis
+    from apps.installations.services import quantite_deja_sortie_chantier
+    from apps.stock.selectors import mouvements_par_reference
+    from apps.stock.services import mouvement_type_sortie
+    from apps.ventes.models import BonCommande
+    inst = installation_for_devis(devis, company=company)
+    refs = {devis.reference, getattr(inst, 'reference', None), *(
+        BonCommande.objects.filter(devis=devis)
+        .values_list('reference', flat=True))} - {None, ''}
+    sorti = {}
+    for ref in refs:
+        for row in (mouvements_par_reference(company, ref)
+                    .filter(type_mouvement=mouvement_type_sortie())
+                    .order_by().values('produit_id')
+                    .annotate(t=Sum('quantite'))):
+            sorti[row['produit_id']] = (
+                sorti.get(row['produit_id'], 0) + row['t'])
+    for pid in (_panier_vendu(devis) if inst is not None else ()):
+        sorti[pid] = max(sorti.get(pid, 0),
+                         quantite_deja_sortie_chantier(inst, pid))
+    return sorti
+
+
+def lignes_reliquat_vente(devis, company):
+    """ASTK244 — le RELIQUAT du panier vendu pas encore sorti, en lignes
+    ``SimpleNamespace`` pour ``decompter_stock_lignes`` (patron AFAC15) :
+    facture directe et « Livrer » ne sortent que lui."""
+    from types import SimpleNamespace
+    deja = quantites_deja_sorties_pour_vente(devis, company)
+    return [SimpleNamespace(compte_dans_totaux=True, produit_id=pid,
+                            quantite=qte - deja.get(pid, 0))
+            for pid, qte in _panier_vendu(devis).items()
+            if qte > deja.get(pid, 0)]
+
+
 def reserver_stock_devis_facture(*, devis, user, company):
     """U9 — réserve/consomme le stock matériel d'un devis facturé EN DIRECT.
 
@@ -289,38 +350,15 @@ def reserver_stock_devis_facture(*, devis, user, company):
     même garde de stock insuffisant), mais branchée sur la première facture
     d'échéancier.
 
-    Garde anti-double-comptage : on ne réserve qu'UNE fois par devis. On ne
-    fait RIEN si
-      * un mouvement SORTIE référence déjà ce devis (réservation déjà posée par
-        une tranche antérieure de l'échéancier), ou
-      * un bon de commande de ce devis a déjà été livré (stock déjà consommé par
-        le chemin BC).
-    Écriture du mouvement déléguée au service stock (jamais d'import direct des
-    models stock). À appeler dans la transaction de l'appelant.
-
-    Lève ``StockInsuffisantError`` si une ligne dépasse le disponible (la
-    transaction de l'appelant est alors annulée, comme côté BC).
+    ASTK244 — « une vente = une sortie » : ne sort que le RELIQUAT du panier
+    vendu pas encore sorti (``lignes_reliquat_vente``), quel que soit le geste
+    qui l'a déjà sorti (tranche antérieure, BC livré ou livré partiellement,
+    livraison directe chantier, F11, « Installé »). Écriture du mouvement
+    déléguée au service stock. À appeler dans la transaction de l'appelant.
     """
-    from apps.stock.services import sortie_exists_for_reference
-    from apps.ventes.models import BonCommande
-    from apps.ventes.utils.options import option_lines
-
     reference = devis.reference
-
-    # Déjà réservé pour ce devis (tranche antérieure de l'échéancier) → no-op.
-    if sortie_exists_for_reference(company, reference):
-        return False
-
-    # Un BC livré a déjà consommé le stock de ce devis → ne pas re-décompter.
-    if BonCommande.objects.filter(
-            devis=devis, statut=BonCommande.Statut.LIVRE).exists():
-        return False
-
-    # AUD116 — MÊME PANIER que la facture (`option_lines`) et que la
-    # nomenclature du chantier, MÊME décompteur que la livraison BC.
-    # ERR-QAC-MULTIVILLA-MATERIEL-XN — un devis ×N villas facturé ×N consomme
-    # le matériel de N villas (N=1 inchangé).
-    from apps.ventes.multivilla import nombre_proprietes
+    # AUD116 — MÊME PANIER que la facture (`option_lines`, ×N villas —
+    # ERR-QAC-MULTIVILLA-MATERIEL-XN) et MÊME décompteur que la livraison BC.
     # Fondateur 05/10/2026 — une facture n'est JAMAIS bloquée par le compteur
     # de stock ERP : le matériel est souvent déjà posé chez le client quand on
     # facture. La sortie est posée quand même (stock ERP sous zéro) et le
@@ -328,12 +366,11 @@ def reserver_stock_devis_facture(*, devis, user, company):
     manquants = []
     sorties = {}
     moved = decompter_stock_lignes(
-        lignes=option_lines(devis),
+        lignes=lignes_reliquat_vente(devis, company),
         company=company,
         user=user,
         reference=reference,
         note=f'Facturation directe — devis {reference}',
-        multiplicateur=nombre_proprietes(devis),
         manquants=manquants,
         sorties=sorties,
     )

@@ -115,3 +115,29 @@ class BorneHautePubliqueTest(SimpleTestCase):
         data = _publie({'simule': False, 'motif': ''})
         self.assertIsNone(data['complet'])
         self.assertEqual(data['mention_production'], '')
+
+    def test_incomplet_ratio_non_nul_masque(self):
+        """ACAL362 — tue le mutant « lire sans condition » : une simulation
+        incomplète portant un PR non nul ne le publie ni en API ni en webhook."""
+        for complete in (False, True):
+            with self.subTest(complete=complete):
+                pivot = _pivot_simule()
+                servi = copy.deepcopy(_servi(pivot))
+                posee = {'complete': complete, 'performance_ratio': 0.81,
+                         'p75_kwh': 9500.0, 'p90_kwh': 9000.0}
+                # Le même état forcé des deux côtés : le servi (API publique)
+                # et le résultat stocké lu par la charge du webhook.
+                servi['production']['total'].update(posee)
+                pivot.resultat['production']['total'].update(posee)
+                self.assertTrue(servi['simule'])
+                data = _publie(servi)
+                charge = charge_utile_simulation(pivot)
+                if complete:
+                    self.assertEqual(data['ratio_performance'], 0.81)
+                    self.assertEqual(data['p75_kwh'], 9500.0)
+                    self.assertEqual(data['p90_kwh'], 9000.0)
+                    self.assertEqual(charge['performance_ratio'], 0.81)
+                else:
+                    for cle in ('ratio_performance', 'p75_kwh', 'p90_kwh'):
+                        self.assertIsNone(data[cle], cle)
+                    self.assertIsNone(charge['performance_ratio'])

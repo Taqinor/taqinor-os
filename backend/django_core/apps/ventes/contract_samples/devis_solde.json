@@ -6,7 +6,8 @@
     "types": "toutes les valeurs du bloc sont des CHAÎNES (get_solde applique str()) : montants en texte décimal à 2 décimales ('12000.00'), compteurs en texte entier ('3'), porte_facturation en mot.",
     "porte_facturation": "NOUVELLE clé : 'libre' (aucune facture active : « Facturer » le devis entier est ouvert), 'tranche' (un échéancier est en cours : seule la tranche suivante peut être facturée), 'aucune' (tout est facturé, ou plus rien à facturer : aucune nouvelle facture possible).",
     "restant": "total_ttc − paye − avoirs (restant DÛ, pas restant à facturer) ; texte décimal.",
-    "additif": "porte_facturation est ajoutée ; aucune clé existante du bloc n'est retirée ni renommée."
+    "additif": "porte_facturation est ajoutée ; aucune clé existante du bloc n'est retirée ni renommée.",
+    "facturation_terminee": "AMET9 (C-AMET-002) — 'True' dès qu'une facture complète / de BC / consolidée existe OU que toutes les tranches sont facturées (= porte_facturation 'aucune'), sinon 'False'. TEXTE (str() de get_solde) : comparer à 'True' — la chaîne 'False' est vraie en JS. tranches_facturees reste '0' après une facture complète : ne plus en déduire « facturé »."
   },
   "exemple": {
     "id": 412,
@@ -19,7 +20,8 @@
       "restant": "84000.00",
       "tranches_total": "3",
       "tranches_facturees": "1",
-      "porte_facturation": "tranche"
+      "porte_facturation": "tranche",
+      "facturation_terminee": "False"
     }
   },
   "exemple_vide": {
@@ -33,7 +35,8 @@
       "restant": "54000.00",
       "tranches_total": "0",
       "tranches_facturees": "0",
-      "porte_facturation": "libre"
+      "porte_facturation": "libre",
+      "facturation_terminee": "False"
     }
   },
   "exemple_tout_facture": {
@@ -47,7 +50,8 @@
       "restant": "34000.00",
       "tranches_total": "0",
       "tranches_facturees": "1",
-      "porte_facturation": "aucune"
+      "porte_facturation": "aucune",
+      "facturation_terminee": "True"
     }
   }
 }

@@ -42,7 +42,7 @@ export interface Champ {
 }
 
 const UTM_FINALITE: Texte = {
-  fr: "Savoir quelle campagne ou quel lien vous a amené, seulement si l'adresse de la page en contient.",
+  fr: "Savoir quelle campagne ou quel lien vous a amené, seulement si l’adresse de la page en contient.",
   en: 'Know which campaign or link brought you here, only if the page address contains one.',
 };
 
@@ -66,7 +66,7 @@ export const CHAMPS = {
     saisi: false,
     donnee: { fr: 'Identifiant technique aléatoire de la demande', en: 'Random technical identifier of the request' },
     finalite: {
-      fr: "Éviter qu'une même demande soit enregistrée deux fois.",
+      fr: "Éviter qu’une même demande soit enregistrée deux fois.",
       en: 'Avoid recording the same request twice.',
     },
   },
@@ -138,7 +138,7 @@ export const CHAMPS = {
     saisi: true,
     donnee: { fr: 'Votre accord', en: 'Your consent' },
     finalite: {
-      fr: "Garder la preuve que vous avez accepté l'envoi de votre demande.",
+      fr: "Garder la preuve que vous avez accepté l’envoi de votre demande.",
       en: 'Keep proof that you agreed to send your request.',
     },
   },
@@ -179,7 +179,7 @@ export const POT_DE_MIEL = 'site_internet';
 
 /** Aide affichée sous le message (aucune donnée sensible). */
 export const AIDE_MESSAGE: Texte = {
-  fr: "N'indiquez aucune donnée sensible (santé, opinions, numéro d'identité…).",
+  fr: "N’indiquez aucune donnée sensible (santé, opinions, numéro d’identité…).",
   en: 'Do not include any sensitive data (health, opinions, identity number…).',
 };
 
@@ -193,9 +193,9 @@ export const MESSAGES_ERREUR: Record<Locale, Record<CodeErreur, string> & { cons
   fr: {
     obligatoire: 'Ce champ est obligatoire.',
     trop_long: 'Ce texte est trop long.',
-    format: "Cette adresse e-mail n'est pas complète (exemple : nom@entreprise.fr).",
+    format: "Cette adresse e-mail n’est pas complète (exemple : nom@entreprise.fr).",
     valeur: 'Choisissez une option de la liste.',
-    consentement: "Cochez la case pour accepter l'envoi de votre demande.",
+    consentement: "Cochez la case pour accepter l’envoi de votre demande.",
   },
   en: {
     obligatoire: 'This field is required.',

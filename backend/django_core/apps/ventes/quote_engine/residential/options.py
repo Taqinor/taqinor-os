@@ -11,6 +11,10 @@ Every class is prefixed `p2-` so it never clashes with pages 1/3.
 """
 from __future__ import annotations
 
+# APDF8 — libellés FIXES du détail (fr : littéral d'origine, octet pour
+# octet ; en/ar : ``i18n_labels``), la même fonction que la couverture.
+from .cover import libelle_fixe
+
 
 def _qty_par_designation(items):
     """{désignation: quantité TOTALE} — somme des lignes de même désignation."""
@@ -482,9 +486,11 @@ def build_pages(ctx) -> list:
     # devis normal ⇒ chaîne byte-identique à avant.
     if _divergent and _kwc_s and _kwc_a:
         spec_kwc = (f'{_num(_kwc_s)} · {_num(_kwc_a)}',
-                    "kWc installés (sans · avec)")
+                    libelle_fixe(d, "res_kwc_installes_sans_avec",
+                                 "kWc installés (sans · avec)"))
     elif d.get("puissance_kwc"):
-        spec_kwc = (_num(d["puissance_kwc"]), "kWc installés")
+        spec_kwc = (_num(d["puissance_kwc"]),
+                    libelle_fixe(d, "res_kwc_installes", "kWc installés"))
     else:
         spec_kwc = None
     _w_s, _w_a = d.get("watt_par_panneau_sans"), d.get("watt_par_panneau_avec")
@@ -518,9 +524,12 @@ def build_pages(ctx) -> list:
         spec_prod = (f'<span style="font-size:13pt;">{fmt(_pr_s)} · '
                      f'{fmt(_pr_a)}</span>',
                      '<span style="white-space:nowrap;">'
-                     'kWh / an produits (sans · avec)</span>')
+                     + libelle_fixe(d, "res_kwh_produits_sans_avec",
+                                    "kWh / an produits (sans · avec)")
+                     + '</span>')
     else:
-        spec_prod = (fmt(d["prod_kwh"]), "kWh / an produits")
+        spec_prod = (fmt(d["prod_kwh"]),
+                     libelle_fixe(d, "res_kwh_produits", "kWh / an produits"))
     # QJR17 (d) — une vignette sans donnée n'existe pas (``None`` ci-dessus).
     specs = [s for s in (spec_kwc, spec_pan, spec_prod) if s]
     spec_html = "".join(
@@ -546,17 +555,22 @@ def build_pages(ctx) -> list:
     # recommandation adaptée : sans batterie, « vos soirées passent sur
     # batterie » serait faux. Vieux dict ⇒ textes historiques.
     libelle_avec = d.get("libelle_avec") or "Avec batterie"
-    pourquoi_avec = (d.get("pourquoi_avec")
-                     or "Pourquoi nous la recommandons : vos soirées et les "
-                        "coupures passent sur batterie.")
+    pourquoi_avec = libelle_fixe(
+        d, "res_pourquoi_hybride" if d.get("pourquoi_avec")
+        else "res_pourquoi_avec",
+        (d.get("pourquoi_avec")
+         or "Pourquoi nous la recommandons : vos soirées et les "
+            "coupures passent sur batterie."))
     # AMOT33 — la phrase « Pourquoi nous la recommandons » et la pastille
     # suivent l'option RECOMMANDÉE par le serveur (``option_recommandee``) ;
     # aucune recommandation ⇒ ni phrase ni pastille.
     from ..figures import option_recommandee
     _reco = option_recommandee(d)
     pourquoi_sans = (d.get("pourquoi_sans")
-                     or "Pourquoi nous la recommandons : l'investissement le "
-                        "plus court à rembourser.")
+                     or libelle_fixe(
+                         d, "res_pourquoi_sans",
+                         "Pourquoi nous la recommandons : l'investissement le "
+                         "plus court à rembourser."))
     if deux_options:
         _why_sans = (f'<div class="p2-dwhy">{pourquoi_sans}</div>'
                      if _reco == "sans" else "")
@@ -618,8 +632,11 @@ def build_pages(ctx) -> list:
         # n'est plus « commun » aux deux options : il les COMPARE. Sans paire
         # (tout devis à deux options non divergent) le libellé historique est
         # rendu à l'identique.
-        equipement_lbl = ("Équipement des deux options" if paires
-                          else "Équipement commun aux deux options")
+        equipement_lbl = (
+            libelle_fixe(d, "res_equipement_deux",
+                         "Équipement des deux options") if paires
+            else libelle_fixe(d, "res_equipement_commun",
+                              "Équipement commun aux deux options"))
     else:
         # QX5 — une seule carte de totaux pour l'unique option réelle.
         _tot = d["totaux_avec"] if avec_ok else d["totaux_sans"]
@@ -629,7 +646,8 @@ def build_pages(ctx) -> list:
         totals_html = _totals_chain(_lbl, _acc, _tot, fmt_mad, C,
                                     option="avec" if avec_ok else "sans",
                                     L=L)
-        equipement_lbl = "Votre équipement"
+        equipement_lbl = libelle_fixe(d, "res_votre_equipement",
+                                      "Votre équipement")
 
     tva_note = d.get("tva_note", "")
 
@@ -1266,8 +1284,11 @@ def build_pages(ctx) -> list:
 
     # ── QRES17 — fragments réutilisables, composés en 1..N pages ─────────────
     head_html = (
-        '<div class="p2-kick">Votre installation</div>'
-        '<div class="p2-title">Le détail de votre projet</div>')
+        '<div class="p2-kick">'
+        + libelle_fixe(d, "res_votre_installation", "Votre installation")
+        + '</div><div class="p2-title">'
+        + libelle_fixe(d, "res_detail_projet", "Le détail de votre projet")
+        + '</div>')
     cont_head_html = (
         '<div class="p2-kick">Votre installation</div>'
         '<div class="p2-title">Équipement — suite</div>')

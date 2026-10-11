@@ -7,7 +7,7 @@
 export const fr = {
   titre: 'Logiciel sur mesure — YanBow',
   description: 'YanBow construit des logiciels sur mesure pour les entreprises : besoin, prototype, mise en service, exploitation.',
-  surtitre: 'Sur mesure',
+  surtitre: 'Sur-mesure',
   h1: 'Le logiciel dont votre entreprise a besoin',
   cta: 'Prendre rendez-vous',
   demarche: {

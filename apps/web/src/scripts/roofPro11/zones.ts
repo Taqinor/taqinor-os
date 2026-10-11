@@ -14,6 +14,7 @@ import { type AreaRecord, type GabaritZone } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
 import { geodesicAreaM2, isSimplePolygon, pointInPolygon, type LngLat } from '../../lib/roof';
 import { referenceContourRing } from './prefill'; // ACAL71 — le validateur de contour UNIQUE
+import { facteurDerateAnnuel } from './optimizer'; // ACAL356 — le dérate UNIQUE (ombrage × horizon)
 import { type Obstacle } from '../../lib/obstacles';
 import {
   centroideAnneau,
@@ -376,18 +377,15 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
    *  ou pose nulle (zone sans panneaux). */
   function liveActiveResult(): AreaResult | null {
     if (!ctx.closed || ctx.vertices.length < 3) return null;
-    if (ctx.roofType === 'pitched') {
-      const res = ctx.pitchedLiveResult;
-      if (!res || res.northFacing) return null;
-      const w = res.winner;
-      if (w.placedCount <= 0) return null;
-      return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh, savingsLow: w.savingsLow, savingsHigh: w.savingsHigh };
-    }
-    const res = ctx.liveResult;
-    if (!res) return null;
+    const res = ctx.roofType === 'pitched' ? ctx.pitchedLiveResult : ctx.liveResult;
+    if (!res || ('northFacing' in res && res.northFacing)) return null;
     const w = res.winner;
     if (w.placedCount <= 0) return null;
-    return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh, savingsLow: w.savingsLow, savingsHigh: w.savingsHigh };
+    // ACAL356 — le dérate ombrage × horizon de la carte ; économies recalculées du kWh dératé,
+    // plafonnées à la facture (1 ⇒ chiffres du solveur inchangés).
+    const f = facteurDerateAnnuel(ctx);
+    const eco = f < 1 ? annualSavingsMad(w.annualKwh * f, res.target) : { low: w.savingsLow, high: w.savingsHigh };
+    return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh * f, savingsLow: eco.low, savingsHigh: eco.high };
   }
 
   /** Écrit l'instantané du résultat vivant dans l'enregistrement de la zone active. */

@@ -152,6 +152,15 @@ describe('YBW41 — chaque capture enregistrée est réelle, dimensionnée et re
     expect(lireCaptures(fichier).captures).toHaveLength(1);
   });
 
+  it('un écran sans capture figure « à capturer » dans CAPTURE.md (jamais d’image inventée)', () => {
+    const guide = readFileSync(join(DOSSIER_SORTIE, '../../../scripts/CAPTURE.md'), 'utf8');
+    for (const e of ECRANS_PRODUIT) {
+      if (CAPTURES.some((c) => c.ecran === e.id)) continue;
+      const ligne = guide.split('\n').find((l) => l.includes(`\`${e.id}\``) && l.includes('à capturer'));
+      expect(ligne, `${e.id} sans capture ni mention « à capturer »`).toBeTruthy();
+    }
+  });
+
   it('une capture non revue n’est jamais publiable', () => {
     for (const e of ECRANS_PRODUIT) for (const c of capturesPubliables(e.id)) expect(c.revue.trim()).not.toBe('');
   });

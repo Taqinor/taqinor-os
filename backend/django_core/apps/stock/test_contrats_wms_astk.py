@@ -1026,8 +1026,22 @@ class ContratFournisseurJetonsTests(WmsBase):
             contrat['exemple_corps'], format='json')
         self.assertEqual(rep.status_code, 404)
         self.assertEqual(rep.json(), contrat['exemple_erreur_404'])
-        for cle in ('nouveau_astk180', 'nouveau_astk181'):
-            self.assertIn('NOUVEAU', contrat[cle]['nouveau'])
+        # ASTK253 — les 400 de valeur et le 409 SERVIS sont ÉGAUX au contrat.
+        from apps.stock.models import BonCommandeFournisseur
+        e400 = contrat['exemples_erreur_400']
+        for corps, attendu in (
+                ({'date_confirmee_fournisseur': '18/10'}, e400['exemple_date']),
+                ({**contrat['exemple_corps'],
+                  'numero_confirmation_fournisseur': 'N' * 101},
+                 e400['exemple_numero']),
+                ([], e400['exemple_corps_non_objet'])):
+            rep = self.anonyme.post(url, corps, format='json')
+            self.assertEqual((rep.status_code, rep.json()), (400, attendu))
+        BonCommandeFournisseur.objects.filter(pk=self.bcf.pk).update(
+            statut=BonCommandeFournisseur.Statut.RECU)
+        rep = self.anonyme.post(url, contrat['exemple_corps'], format='json')
+        self.assertEqual((rep.status_code, rep.json()),
+                         (409, contrat['exemple_erreur_409']))
 
 
 class ContratKitsStockTests(WmsBase):

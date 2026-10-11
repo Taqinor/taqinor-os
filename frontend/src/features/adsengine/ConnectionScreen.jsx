@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck, ShieldAlert, PlugZap, ExternalLink, CircleHelp, RefreshCw, Check, X, Bot, Power } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { normalizeWiringStatuses, formatMAD, erreurServeur } from './adsengine'
+import { normalizeWiringStatuses, formatMoney, erreurServeur } from './adsengine'
 import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizard'
 
 /* ============================================================================
@@ -117,9 +117,9 @@ const GUARD_FIELD_GROUPS = [
   {
     label: 'Plafonds & variation',
     fields: [
-      { key: 'max_daily_budget_mad', label: 'Plafond budget quotidien (MAD)', type: 'number',
+      { key: 'max_daily_budget_mad', label: 'Plafond budget quotidien ({devise})', type: 'number',
         help: "Seuil de garde-fou (pas un montant comptable) : le détecteur d'anomalie compare la dépense réelle des miroirs à ce plafond." },
-      { key: 'max_monthly_budget_mad', label: 'Plafond budget mensuel (MAD)', type: 'number',
+      { key: 'max_monthly_budget_mad', label: 'Plafond budget mensuel ({devise})', type: 'number',
         help: 'Optionnel — laissé vide, il est dérivé automatiquement du plafond quotidien × jours du mois.' },
       { key: 'weekly_change_pct_max', label: 'Variation hebdomadaire maximale (%)', type: 'number',
         help: "Variation de budget autorisée par semaine, dans les deux sens, avant qu'une approbation humaine devienne obligatoire." },
@@ -146,10 +146,10 @@ const GUARD_FIELD_GROUPS = [
     fields: [
       { key: 'pacing_band_pct', label: 'Bande de pacing (%)', type: 'number',
         help: "Écart toléré entre la dépense projetée et l'enveloppe mensuelle avant qu'une alerte de pacing se déclenche." },
-      { key: 'exploration_floor_mad', label: "Plancher d'exploration (MAD/jour)", type: 'number',
+      { key: 'exploration_floor_mad', label: "Plancher d'exploration ({devise}/jour)", type: 'number',
         help: "Dépense minimale garantie par jour pour un bras minoritaire du bandit — il n'est jamais totalement étouffé." },
       { key: 'exploration_floor_pct', label: "Plancher d'exploration (%)", type: 'number',
-        help: "Même plancher exprimé en % du budget — le PLUS ÉLEVÉ des deux (MAD ou %) s'applique effectivement." },
+        help: "Même plancher exprimé en % du budget — le PLUS ÉLEVÉ des deux ({devise} ou %) s'applique effectivement." },
     ],
   },
   {
@@ -167,6 +167,8 @@ const GUARD_FIELD_GROUPS = [
   },
 ]
 const GUARD_FIELDS = GUARD_FIELD_GROUPS.flatMap(g => g.fields)
+// AACQ101 - `{devise}` = devise du compte servie (`currency` de GET /connection/).
+const avecDevise = (texte, devise) => texte.replaceAll('{devise}', devise)
 
 // PACT112 — état vide de la policy créative (aucune ligne DB pour la société
 // encore) : listes vides, JAMAIS DEFAULT_POLICY_RULES — une policy affichée
@@ -411,6 +413,12 @@ export default function ConnectionScreen() {
   // PUB46 — {clé -> ok} dérivé du dernier `connection.health()` connu ; sert
   // à la fois au wizard (statut par étape) et à la remédiation par item.
   const healthByKey = Object.fromEntries(health.map(s => [s.key, s.ok]))
+  // AACQ101 - devise du compte (repli MAD) ; plafond enregistre dans une AUTRE
+  // devise (vide = MAD) = non applique, dit en clair.
+  const devise = status?.currency || 'MAD'
+  const deviseSaisie = guard.ceiling_currency || 'MAD'
+  const plafondAutreDevise = 'max_daily_budget_mad' in guard && deviseSaisie !== devise
+    ? deviseSaisie : ''
 
   return (
     <div className="page ae-connection">
@@ -673,17 +681,17 @@ export default function ConnectionScreen() {
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <input type="checkbox" data-testid={`ae-conn-guard-${f.key}`}
                       checked={Boolean(guard[f.key])} onChange={setGuardBool(f.key)} />
-                    <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>{f.label}</span>
+                    <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>{avecDevise(f.label, devise)}</span>
                   </span>
                 ) : (
                   <>
-                    <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>{f.label}</span>
+                    <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>{avecDevise(f.label, devise)}</span>
                     <input className="form-input" type="number" step="any" min="0"
                       data-testid={`ae-conn-guard-${f.key}`}
                       value={guard[f.key] ?? ''} onChange={setGuardField(f.key)} />
                   </>
                 )}
-                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{f.help}</span>
+                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{avecDevise(f.help, devise)}</span>
                 {/* AACQ71 — écart saisie/enregistré et erreur serveur, SOUS le champ. */}
                 {guardNotes[f.key] && (
                   <span data-testid={`ae-conn-guard-note-${f.key}`}
@@ -704,8 +712,14 @@ export default function ConnectionScreen() {
           </p>
         )}
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
-          Plafond quotidien actuel : {formatMAD(guard.max_daily_budget_mad)}.
+          Plafond quotidien actuel : {formatMoney(guard.max_daily_budget_mad, devise)}.
         </p>
+        {plafondAutreDevise && (
+          <p data-testid="ae-conn-guard-devise-alert" role="alert"
+            style={{ margin: 0, color: '#b45309', fontSize: '0.85rem' }}>
+            Plafond saisi en {plafondAutreDevise}, compte facturé en {devise} : non appliqué — ressaisissez-le.
+          </p>
+        )}
         <div>
           <button type="submit" className="btn btn-primary" data-testid="ae-conn-guard-save"
             disabled={guardLoadError}>

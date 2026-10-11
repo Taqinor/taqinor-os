@@ -1379,13 +1379,11 @@ const estIndustriel =
   import {
     EQUIPEMENT_KEYS,
     buildQuestionnairePostBody,
-    prefillApresEnvoi,
+    envoyerSectionQuestionnaire,
     isEmptyPostBody,
     isValidPhotoDataUrl,
     isPhotoSection,
-    parseQuestionnairePostResponse,
     progressLabel,
-    QUESTIONNAIRE_PROXY_PATH,
     type QuestionnaireSectionId,
   } from '../../lib/questionnaire';
   // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme, additive (voir
@@ -1908,31 +1906,15 @@ const estIndustriel =
       const body = buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);
       if (isEmptyPostBody(body)) return { ok: true, envoye: false };
 
-      try {
-        // Recalage orchestrateur 25/08 — POST navigateur via le proxy
-        // SAME-ORIGIN (patron /api/proposition-*) : jamais de cross-origin,
-        // aucun CORS à ouvrir côté backend. Le token voyage dans le corps.
-        const res = await fetch(QUESTIONNAIRE_PROXY_PATH, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({ token: init.token, ...body }),
-        });
-        let json: unknown = null;
-        try {
-          json = await res.json();
-        } catch {
-          json = null;
-        }
-        const result = parseQuestionnairePostResponse(res.status, json);
-        if (!result.ok) {
-          return { ok: false, envoye: false, detail: result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
-        }
-        // ALEA4 — ce qui vient d'être envoyé devient le « vu » du client.
-        init.prefill = prefillApresEnvoi(init.prefill, body.reponses);
-        return { ok: true, envoye: true };
-      } catch {
-        return { ok: false, envoye: false, detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' };
+      // Recalage orchestrateur 25/08 — POST navigateur via le proxy SAME-ORIGIN (patron
+      // /api/proposition-*), jamais de cross-origin. ALEA4/ALEA46 — ce qui vient d'être
+      // envoyé ne devient le « vu » du client qu'après une réponse acceptée (lib/questionnaire.ts).
+      const envoi = await envoyerSectionQuestionnaire(fetch, init.token, body, init.prefill);
+      init.prefill = envoi.prefill;
+      if (!envoi.result.ok) {
+        return { ok: false, envoye: false, detail: envoi.result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
       }
+      return { ok: true, envoye: true };
     }
 
     function advance() {

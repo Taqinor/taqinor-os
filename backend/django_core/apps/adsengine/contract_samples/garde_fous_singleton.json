@@ -1,0 +1,42 @@
+{
+  "endpoint": "GET /api/django/adsengine/guardrail/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AACQ99 (PACT10) — contrat des garde-fous vus comme un singleton, posé SEUL et EN PREMIER : produit par AACQ100 (`GuardrailSingletonView._payload` sert `ceiling_currency`), lu par l'écran Connexion (AACQ101). `PATCH /api/django/adsengine/guardrail/` (corps `corps_patch`) renvoie la MÊME forme. Clés de `_payload` copiées de la sortie réelle du serveur : les 2 alias historiques (`max_daily_budget_mad` ← `daily_budget_ceiling_mad`, `max_monthly_budget_mad` ← `monthly_budget_ceiling_mad`, null tant qu'aucun plafond mensuel n'est saisi), les 11 champs de `_DIRECT_FIELDS` sous leur nom modèle, `require_approval_above_mad` toujours null (aucun champ de stockage). `ceiling_currency` = code ISO-4217 de la devise du compte Meta dans laquelle les plafonds ont été SAISIS, posé par le serveur (jamais lu du corps) ; '' quand aucun plafond n'a été saisi (variante `sans_plafond_saisi`) — vide = sémantique MAD, non applicable sur un compte hors MAD (`guardrails.mad_threshold_blocked_reason`). Aucun taux de change n'est jamais appliqué. `exemple` = compte Meta en USD après le PATCH `corps_patch`.",
+  "corps_patch": {
+    "max_daily_budget_mad": 120
+  },
+  "sans_plafond_saisi": {
+    "max_daily_budget_mad": 100,
+    "max_monthly_budget_mad": null,
+    "weekly_change_pct_max": 20,
+    "anomaly_window_hours": 48,
+    "auto_rotate_creative": false,
+    "auto_rebalance_within_band": false,
+    "pacing_band_pct": 15,
+    "exploration_floor_mad": 20,
+    "exploration_floor_pct": 20,
+    "health_creative_weight_ctr": 60,
+    "health_creative_weight_freshness": 40,
+    "health_ops_weight_cpl": 60,
+    "health_ops_weight_delivery": 40,
+    "require_approval_above_mad": null,
+    "ceiling_currency": ""
+  },
+  "exemple": {
+    "max_daily_budget_mad": 120,
+    "max_monthly_budget_mad": null,
+    "weekly_change_pct_max": 20,
+    "anomaly_window_hours": 48,
+    "auto_rotate_creative": false,
+    "auto_rebalance_within_band": false,
+    "pacing_band_pct": 15,
+    "exploration_floor_mad": 20,
+    "exploration_floor_pct": 20,
+    "health_creative_weight_ctr": 60,
+    "health_creative_weight_freshness": 40,
+    "health_ops_weight_cpl": 60,
+    "health_ops_weight_delivery": 40,
+    "require_approval_above_mad": null,
+    "ceiling_currency": "USD"
+  }
+}

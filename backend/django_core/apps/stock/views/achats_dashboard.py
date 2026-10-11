@@ -12,6 +12,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from ..permissions import PeutVoirPrixAchat
 
 
 @extend_schema(parameters=[P('debut', DATE), P('fin', DATE)], responses=inline_serializer('TableauBordAchats', {
@@ -24,7 +25,7 @@ from authentication.permissions import IsResponsableOrAdmin
     'exceptions_3voies': drf_serializers.JSONField(),
 }))
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, PeutVoirPrixAchat])  # ERR-STK-PRIX-ACHAT-SUITE
 def tableau_bord_achats_view(request):
     """NTP2P17 — spend management : budget d'achats société, top
     fournisseurs par volume, délais demande→BCF→réception, taux

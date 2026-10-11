@@ -34,6 +34,8 @@
   },
   "routes": {
     "expeditions": {
+      "cles_masquees_sans_prix_achat": ["cout_reel"],
+      "cles_masquees_pourquoi": "ERR-STK-PRIX-ACHAT-SUITE (D-ASTK-2) — clés RETIRÉES de la réponse pour un rôle sans prix_achat_voir (PeutVoirPrixAchat) ; présentes sinon",
       "endpoint": "GET /api/django/stock/expeditions/?statut=<brouillon|etiquette|expedie|livre|annule>",
       "pourquoi": "NTWMS9 — expéditions transporteur (`ExpeditionTransporteurViewSet`, views/wms.py ; ExpeditionTransporteurSerializer serializers_wms.py). Lecture tout rôle, écriture Responsable/Admin. POST {unite_logistique, transporteur_provider?, destination?, cout_reel?} renvoie CET objet (201) ; numero_suivi/statut/date_expedition posés par le serveur ; la clé MinIO de l'étiquette n'est jamais exposée (`a_une_etiquette` booléen).",
       "exemple": {
@@ -92,6 +94,8 @@
       "content_type": "application/pdf"
     },
     "expeditions_generer_etiquette": {
+      "cles_masquees_sans_prix_achat": ["cout_reel"],
+      "cles_masquees_pourquoi": "ERR-STK-PRIX-ACHAT-SUITE (D-ASTK-2) — clés RETIRÉES de la réponse pour un rôle sans prix_achat_voir (PeutVoirPrixAchat) ; présentes sinon",
       "endpoint": "POST /api/django/stock/expeditions/<id>/generer-etiquette/",
       "pourquoi": "Numéro de suivi + étiquette (connecteur NoOp interne sans intégration). Idempotent. Renvoie l'expédition (mêmes clés que `expeditions.exemple_element`) ; ValueError du service → 400 {detail}.",
       "exemple": {

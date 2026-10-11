@@ -211,6 +211,8 @@
       "exemple": {}
     },
     "accords_rfa_fournisseur": {
+      "cles_masquees_sans_prix_achat": ["seuil_ca_achat", "montant_fixe"],
+      "cles_masquees_pourquoi": "ERR-STK-PRIX-ACHAT-SUITE (D-ASTK-2) — clés RETIRÉES de la réponse pour un rôle sans prix_achat_voir (PeutVoirPrixAchat) ; présentes sinon",
       "endpoint": "GET /api/django/stock/accords-rfa-fournisseur/?fournisseur=<id>&statut=<actif|clos>",
       "pourquoi": "NTDST5 — accords de remise arrière fournisseur (`AccordRFAFournisseurViewSet`, views/negoce.py:277 ; AccordRFAFournisseurSerializer :240). Montants d'ACHAT : lecture ET écriture responsable/admin, jamais tout rôle ; interne, jamais client-facing. Liste paginée. L'exemple met `seuil_ca_achat` à 0.00 et `taux_pct`/`montant_fixe` à null à dessein — aucun montant d'achat dans ce fichier ; un accord porte SOIT un taux soit un montant fixe. `avoir_genere` = id de l'avoir (null avant génération), jamais posé par PATCH. 400 (corps non-field-errors) réels : « Renseignez soit un taux (%), soit un montant fixe. », « Taux et montant fixe sont exclusifs : choisissez-en un. », « La fin de période doit suivre son début. ».",
       "exemple": {
@@ -273,6 +275,7 @@
       }
     },
     "accord_rfa_calcul": {
+      "refus_sans_prix_achat": "ERR-STK-PRIX-ACHAT-SUITE — 403 DÉCLARÉ (IsResponsableOrAdmin + PeutVoirPrixAchat) : CA d'achat et montant dû réservés à prix_achat_voir.",
       "endpoint": "GET /api/django/stock/accords-rfa-fournisseur/<id>/calcul/",
       "pourquoi": "NTDST5 — CA d'achat RÉCEPTIONNÉ sur la période, progression vers le seuil et montant dû (services_rfa.calculer_rfa_fournisseur ; responsable/admin ; LECTURE SEULE). Tous les montants sont du TEXTE décimal ; `montant_du` vaut 0 tant que le seuil n'est pas atteint (jamais de remise partielle). Valeurs de l'exemple à zéro à dessein (aucun montant d'achat dans ce fichier).",
       "exemple": {

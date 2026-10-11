@@ -33,14 +33,6 @@ import useInstalledApps from './useInstalledApps'
 // (sessionStorage, source UNIQUE dans `appPrefs.js` : ce fichier écrit, le Menu
 // d'accueil lit).
 import { writeResume, writeLastApp } from './appPrefs'
-// ODY30 — kill-switch build-time de la bascule de coquille (défaut ON). Sa
-// DÉFINITION vit dans un module sans import (`appsShellFlag.js`) parce que ses
-// deux lecteurs — ce fichier et `Layout.jsx` — sont liés par la chaîne
-// Layout → Sidebar → ActiveAppContext : le définir ici ou là créerait un cycle.
-import { APPS_SHELL_ENABLED } from './appsShellFlag'
-
-export { APPS_SHELL_ENABLED }
-
 // Menu d'accueil plein écran (ODY2, lane parallèle) — LA sortie canonique de
 // l'immersion. Constante partagée pour que Sidebar/Header pointent au même
 // endroit sans jamais re-coder le chemin en dur.
@@ -129,7 +121,7 @@ const ROUTE_INDEX = buildAppRouteIndex(moduleConfigs)
    volontairement minuscule et destinée à disparaître : quand la lane
    propriétaire des `module.config.jsx` déclarera ces items dans le `nav` de
    leur app, l'entrée correspondante se supprime ici sans autre changement.
-   Source UNIQUE : la Sidebar legacy ET le mode immersion lisent cette table. */
+   Source UNIQUE : la Sidebar et le mode immersion lisent cette table. */
 export const ORPHAN_NAV_ITEMS = {
   // VX83 — « Ma file » : la file de travail unique, route `/activites`
   // déclarée dans `features/crm/module.config.jsx` (`routes`), sans item de
@@ -224,8 +216,7 @@ export function _resetAnnonceForTests() {
 
 /**
  * useActiveApp — l'app active déduite de la route, ou `null` (coquille neutre)
- * hors de toute app, quand l'app n'est pas installée/autorisée, ou quand le
- * kill-switch ODY30 est OFF (chemin de secours legacy).
+ * hors de toute app ou quand l'app n'est pas installée/autorisée.
  *
  * Effet de bord (ODY29) : mémorise la route courante comme point de reprise de
  * l'app active. C'est ici, et nulle part ailleurs, parce que c'est le seul
@@ -244,7 +235,6 @@ export function useActiveApp() {
   const userId = useSelector((s) => s.auth.user?.id)
 
   const app = useMemo(() => {
-    if (!APPS_SHELL_ENABLED) return null
     const key = resolveAppKey(ROUTE_INDEX, pathname)
     if (!key) return null
     const trouvee = apps.find((a) => a.key === key)

@@ -132,7 +132,9 @@ export default function RulesScreen() {
     setLoading(true)
     adsengineApi.rules.templates()
       .then(r => setTemplates((Array.isArray(r.data) ? r.data : (r.data?.results || []))
-        .map(normalizeRuleTemplate)))
+        // AACQ102 — gabarit à seuil monétaire (`*_mad` éditable, catalogue servi).
+        .map(raw => ({ ...normalizeRuleTemplate(raw),
+          monetaire: (raw?.editable_params || []).some(k => String(k).endsWith('_mad')) }))))
       .catch(() => setTemplates([]))
     adsengineApi.anomalies.list()
       .then(r => {
@@ -298,6 +300,11 @@ export default function RulesScreen() {
                               : { background: '#f1f5f9', color: '#475569' }}>
                             {armed ? `Armée · ${cadenceLabel(t.cadence)}` : 'Désarmée'}
                           </span>
+                          {/* AACQ102 — devise de saisie du seuil, servie (vide = MAD). */}
+                          {armed && t.monetaire && (
+                            <span className="badge" data-testid={`ae-rule-threshold-currency-${t.key}`}
+                              style={{ background: '#f1f5f9', color: '#475569' }}>
+                              Seuil en {policy.threshold_currency || 'MAD'}</span>)}
                           <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
                             {armed ? (
                               <button type="button" className="btn btn-danger-outline ae-rule-disarm"
@@ -624,7 +631,8 @@ export default function RulesScreen() {
                                 style={{ background: '#f8fafc', borderRadius: 6, padding: '0.5rem 0.6rem' }}>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
                                   <strong style={{ fontSize: '0.85rem' }}>{f.target || '—'}</strong>
-                                  <span style={{ color: '#334155', fontSize: '0.85rem' }}>{f.condition_fr || '—'}</span>
+                                  {/* AACQ102 — passage bloqué : le motif SERVI (`blocked_fr`). */}
+                                  <span style={{ color: '#334155', fontSize: '0.85rem' }}>{f.blocked_fr || f.condition_fr || '—'}</span>
                                 </div>
                                 {f.action && (
                                   <div data-testid="ae-rule-run-delta"

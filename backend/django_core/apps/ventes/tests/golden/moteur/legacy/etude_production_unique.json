@@ -1,0 +1,26 @@
+{
+  "cas": "etude_production_unique",
+  "graphes_etude": [
+    {
+      "mode": "RGBA",
+      "sha256_pixels": "34da656d026cc12dfe5fdd3da5cfa83a699fa3fc55a4cdbf032d761a58fc7455",
+      "taille": [
+        1306,
+        406
+      ]
+    }
+  ],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 63254,
+  "ordre": 5,
+  "pages": 4,
+  "polices_masquees": 6,
+  "sha256": "52c1ac79f65b136967221116acb9f85a1e1f82ead18d1c70b613cd184ed0898a",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "7f91702a11683a5cb50e693dbb6b3eb7170be873097b53c61e9bdec524324821",
+    "ecf3de4ea7f60e1759e11b374764bf70eda90aa95fa825a7d8a5237ab4132808",
+    "99fe83ce439bfac78669c35f8970f41c2740a28b379601c6430665573a273ff1",
+    "eec6635d9dcfd6917f87f8dfa8ff1987cbbf9df4a125a16744641dcc81cd6639"
+  ]
+}

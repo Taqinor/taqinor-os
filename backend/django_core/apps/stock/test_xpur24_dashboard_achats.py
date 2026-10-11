@@ -60,7 +60,10 @@ class Xpur24Base(TestCase):
             permissions=['stock_modifier', 'stock_voir',
                          # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
                          'achats_commander', 'achats_receptionner',
-                         'achats_payer', 'catalogue_prix_modifier'])
+                         'achats_payer', 'catalogue_prix_modifier',
+                         # ERR-STK-PRIX-ACHAT-3-ROUTES : l'analyse d'achats
+                         # sert des montants d'achat → prix_achat_voir.
+                         'prix_achat_voir'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur X24')

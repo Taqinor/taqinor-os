@@ -56,3 +56,28 @@ describe('ERR-QAH-PARAMETRES-EMAIL-ERREUR-HORS-CHAMP — Email', () => {
     expect(screen.getByText('Saisissez une adresse e-mail valide.')).toBeInTheDocument()
   })
 })
+
+describe('ERR-PAR-LOGO-APERCU-MINIO-CSP — mediaUrl (aperçu du logo)', () => {
+  const interne = 'http://minio:9000/erp-uploads/logos/x.png?X-Amz-Signature=abc&X-Amz-Expires=3600'
+
+  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  it("sans VITE_API_URL : jamais l'hôte Docker interne, query présignée intacte", async () => {
+    vi.stubEnv('VITE_API_URL', '')
+    vi.resetModules()
+    const { mediaUrl } = await import('./peConstants')
+    const out = new URL(mediaUrl(interne))
+    expect(out.hostname).not.toBe('minio')
+    expect(out.pathname).toBe('/erp-uploads/logos/x.png')
+    expect(out.search).toBe('?X-Amz-Signature=abc&X-Amz-Expires=3600')
+  })
+
+  it('avec VITE_API_URL : comportement inchangé (hôte API, port 9000)', async () => {
+    vi.stubEnv('VITE_API_URL', 'http://api.local:8000')
+    vi.resetModules()
+    const { mediaUrl } = await import('./peConstants')
+    expect(mediaUrl(interne)).toBe(
+      'http://api.local:9000/erp-uploads/logos/x.png?X-Amz-Signature=abc&X-Amz-Expires=3600',
+    )
+  })
+})

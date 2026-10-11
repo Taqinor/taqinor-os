@@ -608,7 +608,7 @@ merge per wave, pipelining, model routing, review, retro) EXCEPT:
   atomic leases as refs `refs/plan-claims/*` on origin, 6 h TTL). Owner id = `<hostname>/<branch>`.
   Before dispatching a lane: `claim file:<plan file> app:<each app its Files: touch>` (all or
   nothing) — REFUSED → skip that lane, take another; `renew` your claims at every loop fire;
-  `release` them right after the wave's merge. `plan_claims.py list` at every refill. Sessions not
+  `release` them right after the wave's merge — NEVER at fold time (D-CLAIMS-MERGE, 10/10/2026 : 7 tâches reconstruites sur l'autre PC parce que les coches ne vivaient que sur la branche non mergée). `plan_claims.py list` at every refill. Sessions not
   using claims (older runs): a plan file touched by an open PR or a live `dev-*` branch
   (`git diff --name-only origin/main...origin/<branch>`) belongs to them → drop it from the pool,
   and drop any lane whose `Files:` or app migrations overlap that diff (file-level, not app-level).

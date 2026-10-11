@@ -33,8 +33,9 @@ def build_ctx(data: dict) -> dict:
         "fmt_mad": montants.fmt_centimes,
         "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
                   "sans": theme.FONT_SANS},
-        "logo_dark": theme.logo_dark_b64(),
-        "logo_color": theme.logo_color_b64(),
+        # APDF4 — logo de la société (neutre sans logo, TAQINOR sans profil).
+        "logo_dark": theme.logo_imprime_b64(data),
+        "logo_color": theme.logo_imprime_b64(data, sombre=False),
         "ident": ident,
         "theme": theme,
     }
@@ -164,7 +165,7 @@ def bande_legale(d: dict, ident: dict) -> str:
     fois pour le résidentiel (``residential/trust``, sortie identique octet
     pour octet) et les pages de confiance commerciale et industrielle.
 
-    La composition (profil société d'un tenant, sinon repli fondateur) vit
-    dans ``residential.theme.bande_legale``, à côté des autres replis de
-    marque du moteur (SCA29)."""
+    La composition vit dans ``residential.theme.bande_legale`` ; ses mentions
+    viennent de ``identite.mentions_legales`` (APDF3), la fonction que lit
+    aussi la ligne légale du moteur legacy."""
     return theme.bande_legale(d, ident)

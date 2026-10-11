@@ -1,0 +1,90 @@
+{
+  "endpoint": "GET /api/django/adsengine/regles/journal/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AACQ99 (PACT10) — contrat du journal d'exécution des règles (`RulePolicyViewSet.journal`, ADSDEEP43), posé SEUL et EN PREMIER pour l'écran Règles (AACQ102). Réponse `{results: [...]}`, une entrée par règle de la société ; `findings` = les entrées écrites par `rules_engine` dans `last_result.findings`. `detail` n'est servi que par la réponse 400 « Aucune société. » (null ici). `exemple` = le stop-loss armé SANS seuil saisi sur un compte Meta en USD (`threshold_currency` '', AACQ98) : chaque campagne surveillée donne un constat BLOQUÉ (`constat_bloque`) — `fired: false`, `insufficient_data: true`, `computed` réduit à la métrique (aucune comparaison faite), et `blocked_fr` = le texte exact de `guardrails.mad_threshold_blocked_reason` (aucun taux de change inventé). Un constat non bloqué n'a PAS de clé `blocked_fr` : l'écran l'affiche quand elle est présente, au lieu d'un « — ». Variante `exemple_declenche` : un surf-scaling déclenché — `computed` de `_eval_window_regression`, `condition_fr` de `_condition_fr`, `action` de `_action_summary` (delta budget courant → proposé) ; c'est elle que lit RulesScreen.test.jsx (PACT13 : plus de journal tapé à la main).",
+  "constat_bloque": {
+    "target": "120210000000001",
+    "target_type": "campaign",
+    "fired": false,
+    "insufficient_data": true,
+    "computed": {
+      "metric": "cpl"
+    },
+    "condition_fr": "120210000000001 : données insuffisantes (0 échantillon(s)) — non évaluable.",
+    "blocked_fr": "Seuil en MAD, compte facturé en USD : seuil non applicable — ressaisir le seuil dans la devise du compte (aucun taux inventé)."
+  },
+  "exemple_declenche": {
+    "detail": null,
+    "results": [
+      {
+        "id": 1,
+        "template_key": "surf_scale_budget",
+        "label_fr": "Surf-scaling — CPL en amélioration (candidat montée budget)",
+        "enabled": true,
+        "dry_run": false,
+        "last_evaluated_at": "2026-07-16T10:00:00Z",
+        "evaluated": true,
+        "fired": true,
+        "findings": [
+          {
+            "target": "as1",
+            "target_type": "adset",
+            "fired": true,
+            "insufficient_data": false,
+            "computed": {
+              "metric": "cpl",
+              "short": 1.0,
+              "long": 3.0,
+              "factor": 0.9,
+              "boundary": 2.7,
+              "direction": "down",
+              "short_days": 3,
+              "long_days": 7,
+              "samples": 7
+            },
+            "condition_fr": "cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.",
+            "action": {
+              "id": 5,
+              "kind": "increase_pace",
+              "status": "proposee",
+              "reason_fr": "Surf-scaling : montée de budget learning-safe.",
+              "delta": {
+                "type": "budget",
+                "current_mad": 100.0,
+                "new_mad": 115.0
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "exemple": {
+    "detail": null,
+    "results": [
+      {
+        "id": 13,
+        "template_key": "stop_loss_cpl",
+        "label_fr": "Stop-loss — coût par lead au plafond",
+        "enabled": true,
+        "dry_run": false,
+        "last_evaluated_at": "2026-10-10T10:00:00Z",
+        "evaluated": true,
+        "fired": false,
+        "findings": [
+          {
+            "target": "120210000000001",
+            "target_type": "campaign",
+            "fired": false,
+            "insufficient_data": true,
+            "computed": {
+              "metric": "cpl"
+            },
+            "condition_fr": "120210000000001 : données insuffisantes (0 échantillon(s)) — non évaluable.",
+            "blocked_fr": "Seuil en MAD, compte facturé en USD : seuil non applicable — ressaisir le seuil dans la devise du compte (aucun taux inventé)."
+          }
+        ]
+      }
+    ]
+  }
+}

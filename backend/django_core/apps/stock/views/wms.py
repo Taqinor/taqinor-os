@@ -1256,6 +1256,13 @@ def entrepot_pertes_view(request):
     fin = _date_param(request.query_params.get('fin'))
     rapport = rapport_pertes_entrepot(
         request.user.company, debut=debut, fin=fin)
+    # ERR-STK-PRIX-ACHAT-SUITE — valeurs au coût d'achat : prix_achat_voir ;
+    # sans lui, les quantités restent (l'écran Picking n'affiche qu'elles).
+    from ..permissions import PeutVoirPrixAchat
+    if not PeutVoirPrixAchat().has_permission(request, None):
+        rapport.pop('total_valeur', None)
+        for ligne in rapport.get('par_motif', []):
+            ligne.pop('valeur', None)
     rapport.update({
         'debut': debut.isoformat() if debut else None,
         'fin': fin.isoformat() if fin else None,

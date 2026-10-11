@@ -56,6 +56,13 @@ class DupliquerProduitCompletTests(TestCase):
             CHAMPS_DUPLICATION_EXCLUS - noms,
             'exclusions inconnues du modèle Produit')
 
+    def test_exclusions_ensemble_exact(self):
+        """ASTK252 — l'ensemble EXACT des exclusions est figé : en ajouter une
+        (ex. `tva`) cesserait de copier un champ métier en silence."""
+        self.assertEqual(CHAMPS_DUPLICATION_EXCLUS, frozenset({
+            'id', 'company', 'nom', 'sku', 'code_barres', 'quantite_stock',
+            'is_archived', 'date_creation', 'date_mise_a_jour', 'photo'}))
+
     def test_clone_copie_tous_les_champs(self):
         clone = self._dupliquer()  # relu depuis la base
         self.source.refresh_from_db()  # comparé à sa forme STOCKÉE

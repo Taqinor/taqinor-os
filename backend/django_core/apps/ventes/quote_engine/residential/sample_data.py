@@ -192,9 +192,17 @@ def build(variant: str = "deux") -> dict:
         "links": {"signer":
                   "https://taqinor.ma/proposition/"
                   "rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"},
+        # APDF3 / D-APDF-1 — le profil TAQINOR de la démonstration est
+        # RENSEIGNÉ par la donnée (forme, capital, RC, ICE, site) : sa bande
+        # légale est lue du profil, comme pour toute société, et garde la
+        # forme « SARLAU » + RC/ICE du fondateur.
         "entreprise": {"nom": "TAQINOR Solutions",
                        "email": "contact@taqinor.ma",
-                       "telephone": "+212 6 61 85 04 10"},
+                       "telephone": "+212 6 61 85 04 10",
+                       "forme_juridique": "SARLAU",
+                       "capital_social": "100\u202f000,00 MAD",
+                       "rc": "691213", "ice": "003799642000067",
+                       "site_web": "taqinor.ma"},
         "site_url": "taqinor.ma",
         "validity_days": 30,
     }

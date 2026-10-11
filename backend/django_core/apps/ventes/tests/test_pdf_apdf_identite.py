@@ -11,8 +11,32 @@ capture du HTML) ; aucune doublure du moteur.
 Test-du-test : remettre ``ENT_RIB_LINE = _ENT_DEFAULT_RIB_LINE`` quand rib
 et banque sont vides ⇒ ``test_legacy_etude_final_sans_rib_aucune_ligne``
 échoue.
+
+APDF3 — bande légale (``BandeLegaleTests``) : tout profil, quel que soit son
+nom, imprime SES mentions (``identite.mentions_legales``) sur les quatre
+formats du devis, avec l'ICE et le RC que la facture lit
+(``utils.pdf._company_context``). Rendu RÉEL (``rendre_pdf`` : PDF servi par
+/proposal, MinIO remplacé en mémoire). Test-du-test : remettre le test
+``"TAQINOR" not in ent_nom.upper()`` dans ``theme.bande_legale`` ⇒
+``test_nom_taqinor_profil_renseigne_lit_le_profil`` échoue.
+
+APDF4 — logo (``LogoTests``) : le logo téléversé de la société
+(``CompanyProfile.logo_key``, lu comme la facture) en page 1 de chaque format ;
+société identifiée sans logo → bandeau neutre ; aucun profil → TAQINOR.
+Seul le stockage est local (``utils.pdf._download``). Test-du-test : faire
+renvoyer à ``theme.logo_imprime_b64`` l'asset sans lire
+``entreprise['logo_uri']`` ⇒ ``test_logo_societe_tous_formats`` échoue.
+
+APDF5 — liens de site (``LiensSiteTests``) : une société identifiée SANS site
+n'imprime aucun lien taqinor.ma (réalisations, produits, garanties, pied) ;
+AVEC site, les siens ; le lien tokenisé de la proposition reste. Test-du-test :
+remettre ``or _DEFAULT_SITE`` au site de ``theme.company_identity`` (ou le
+repli « taqinor.ma » de ``renderer._augment``) ⇒
+``test_tenant_sans_site_aucun_lien_taqinor`` échoue.
 """
-from django.test import SimpleTestCase, TestCase
+from unittest import mock
+
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.parametres.models import CompanyProfile
 from apps.ventes.quote_engine import generate_devis_premium as G
@@ -21,6 +45,127 @@ from apps.ventes.quote_engine.residential import trust
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
 )
+
+#: Devis résidentiel servi par le gabarit PREMIUM (factures réelles, M1).
+LIGNES_RESIDENTIEL = [
+    ('Panneau Canadien Solar 710W', '14', '1272.73'),
+    ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
+    ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
+    ('Batterie Dyness 10 kWh', '1', '25000'),
+    ('Installation', '1', '4000'),
+]
+ETUDE_RESIDENTIEL = {
+    **DEUX_OPTIONS,
+    'factures_mensuelles_reelles': [
+        1200, 1200, 1300, 1400, 1600, 1800,
+        1900, 1900, 1700, 1500, 1300, 1200],
+}
+#: Les quatre formats du devis (``clean_pdf_options``).
+FORMATS = {
+    'defaut': {},
+    'devis_final': {'devis_final': True},
+    'include_etude': {'include_etude': True},
+    'onepage': {'pdf_mode': 'onepage'},
+}
+
+
+def utilisateur(company, reference):
+    """Un utilisateur PROPRE à ce devis : ``make_user`` pose un nom figé
+    (« test_qe_user ») — deux appels dans un même test violaient l'unicité
+    de ``username`` (IntegrityError dans l'image)."""
+    from django.contrib.auth import get_user_model
+    return get_user_model().objects.create_user(
+        username=f'apdf-{reference.lower()}', password='x',
+        role_legacy='responsable', company=company)
+
+
+def devis_residentiel(company, reference, user=None, client=None):
+    """Devis résidentiel premium ; ``user``/``client`` à passer quand le test
+    en a déjà créé dans la même société (``Client`` est unique par
+    (société, e-mail))."""
+    devis = make_devis(company, user or utilisateur(company, reference),
+                       client or make_client(company), LIGNES_RESIDENTIEL,
+                       reference=reference,
+                       etude_params=dict(ETUDE_RESIDENTIEL))
+    devis.mode_installation = 'residentiel'
+    devis.save(update_fields=['mode_installation'])
+    return devis
+
+
+def profil(company, **champs):
+    """Pose les champs du profil société (``CompanyProfile.get`` le crée)."""
+    p = CompanyProfile.get(company=company)
+    CompanyProfile.objects.filter(pk=p.pk).update(**champs)
+
+
+def rendre_pdf(devis, options=None):
+    """Octets du PDF RÉEL servi par /proposal : ``generate_premium_devis_pdf``
+    (registre des renderers, repli legacy), stockage MinIO remplacé en
+    mémoire, images MinIO du toit neutralisées. Aucune doublure du moteur."""
+    from apps.ventes.coherence.contexte import rendu_sans_reseau
+    from apps.ventes.quote_engine import builder
+    from apps.ventes.quote_engine.residential import renderer
+    renderer._PDF_CACHE.clear()
+    capture = {}
+    with rendu_sans_reseau(), \
+            mock.patch.object(builder, '_ensure_pdf_bucket', lambda: None), \
+            mock.patch('apps.ventes.utils.pdf._upload_pdf',
+                       lambda octets, cle: capture.update(pdf=octets)):
+        builder.generate_premium_devis_pdf(
+            devis.pk, builder.clean_pdf_options(options or {}),
+            persist=False)
+    return capture['pdf']
+
+
+def png_rouge(largeur=120, hauteur=60) -> bytes:
+    """Logo d'essai : PNG rouge uni."""
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new('RGB', (largeur, hauteur), (220, 20, 20)).save(buf, 'PNG')
+    return buf.getvalue()
+
+
+def images_page(octets, numero=0):
+    """Images (PIL, RGB) embarquées dans la page ``numero`` du PDF."""
+    import io
+    import fitz
+    from PIL import Image
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        out = []
+        for info in doc[numero].get_images(full=True):
+            brut = doc.extract_image(info[0])
+            out.append(Image.open(io.BytesIO(brut['image'])).convert('RGB'))
+        return out
+    finally:
+        doc.close()
+
+
+def taille_logo_taqinor():
+    """Dimensions de l'asset ``assets/logo.png`` (son empreinte)."""
+    from pathlib import Path
+    from PIL import Image
+    from apps.ventes.quote_engine import residential
+    chemin = (Path(residential.__file__).resolve().parent.parent
+              / 'assets' / 'logo.png')
+    with Image.open(chemin) as img:
+        return img.size
+
+
+def est_rouge(img) -> bool:
+    r, g, b = img.getpixel((img.width // 2, img.height // 2))
+    return r > 180 and g < 80 and b < 80
+
+
+def texte_pdf(octets) -> str:
+    """Texte extrait (PyMuPDF) de toutes les pages."""
+    import fitz
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        return '\n'.join(page.get_text() for page in doc)
+    finally:
+        doc.close()
 
 
 class RibTenantTests(TestCase):
@@ -90,3 +235,324 @@ class RegleUniqueTests(SimpleTestCase):
                 if any(ent.values()):
                     self.assertEqual(G.ENT_RIB_LINE, attendu)
         G._apply_entreprise(None)
+
+
+@tag('pdf')
+class BandeLegaleTests(TestCase):
+    """APDF3 (C-APDF-001, D-APDF-1) — la bande légale lit le profil."""
+
+    def setUp(self):
+        self.company = make_company(slug='apdf3-co', nom='APDF3')
+        profil(self.company, nom='TAQINOR Démo (complet)',
+               ice='002589631000045', rc='198453',
+               identifiant_fiscal='48291057', patente='35201478',
+               forme_juridique='SARL', capital_social='250 000,00 MAD',
+               email='demo@exemple.ma', telephone='', rib='', banque='')
+        self.devis = devis_residentiel(self.company, 'DEV-APDF3-1')
+
+    def test_nom_taqinor_profil_renseigne_lit_le_profil(self):
+        texte = texte_pdf(rendre_pdf(self.devis))
+        for attendu in ('002589631000045', '198453', 'au capital de'):
+            self.assertIn(attendu, texte)
+        for interdit in ('003799642000067', '691213', 'Reda Kasri',
+                         '61 85 04 10', 'Gérant'):
+            self.assertNotIn(interdit, texte)
+
+    def test_meme_ice_tous_formats_et_facture(self):
+        from apps.ventes.utils.pdf import _company_context
+        facture = _company_context(self.company)
+        self.assertEqual(facture['entreprise_ice'], '002589631000045')
+        self.assertEqual(facture['entreprise_rc'], '198453')
+        for nom, options in FORMATS.items():
+            with self.subTest(format=nom):
+                texte = texte_pdf(rendre_pdf(self.devis, options))
+                self.assertIn(facture['entreprise_ice'], texte)
+                self.assertIn(facture['entreprise_rc'], texte)
+                self.assertNotIn('003799642000067', texte)
+                self.assertNotIn('691213', texte)
+
+    def test_sans_profil_repli_historique(self):
+        from apps.ventes.quote_engine.residential import theme
+        bande = theme.bande_legale({'entreprise': {}}, {})
+        self.assertTrue(bande.startswith(identite.LEGALE_TAQINOR_PREMIUM))
+        self.assertIn('+212 6 61 85 04 10', bande)
+        G._apply_entreprise(None)
+        self.assertEqual(G.ENT_LEGAL_LINE, identite.LEGALE_TAQINOR_LEGACY)
+
+
+class MentionsLegalesTests(SimpleTestCase):
+    """APDF3 — LA fonction des deux moteurs (sans base ni rendu)."""
+
+    def tearDown(self):
+        G._apply_entreprise(None)
+
+    def test_profil_seul_forme_capital_sans_gerant(self):
+        ent = {'nom': 'TAQINOR Démo', 'forme_juridique': 'SARLAU',
+               'capital_social': '100 000,00 MAD', 'rc': '198453',
+               'ice': '002589631000045', 'identifiant_fiscal': '48291057',
+               'patente': '35201478'}
+        self.assertEqual(identite.mentions_legales(ent), [
+            '<b>TAQINOR Démo</b> SARLAU au capital de 100 000,00 MAD',
+            'RC 198453', 'ICE 002589631000045'])
+        self.assertEqual(identite.mentions_legales(
+            ent, gras=None, fiscales=True)[2:], [
+            'ICE 002589631000045', 'IF 48291057', 'Patente 35201478'])
+        self.assertIsNone(identite.mentions_legales({}))
+
+    def test_bande_et_ligne_legacy_meme_ice_meme_rc(self):
+        from apps.ventes.quote_engine.residential import theme
+        ent = {'nom': 'TAQINOR X', 'rc': '198453', 'ice': '0025'}
+        bande = theme.bande_legale({'entreprise': ent}, {})
+        G._apply_entreprise(ent)
+        for valeur in ('RC 198453', 'ICE 0025'):
+            self.assertIn(valeur, bande)
+            self.assertIn(valeur, G.ENT_LEGAL_LINE)
+        for ligne in (bande, G.ENT_LEGAL_LINE):
+            self.assertNotIn('691213', ligne)
+            self.assertNotIn('Reda Kasri', ligne)
+
+
+@tag('pdf')
+class LogoTests(TestCase):
+    """APDF4 (C-APDF-001) — logo de la société sur tous les formats."""
+
+    CLE = 'logos/apdf4.png'
+
+    def setUp(self):
+        self.company = make_company(slug='apdf4-co', nom='APDF4')
+        profil(self.company, nom='TAQINOR Démo (complet)',
+               ice='002589631000045', logo_key=self.CLE)
+        self.devis = devis_residentiel(self.company, 'DEV-APDF4-1')
+        brut = png_rouge()
+        patcher = mock.patch(
+            'apps.ventes.utils.pdf._download',
+            lambda bucket, cle: brut if cle == self.CLE else None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_logo_societe_tous_formats(self):
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, clean_pdf_options)
+        from apps.ventes.utils.pdf import _company_context
+        data = build_quote_data(self.devis, dict(
+            clean_pdf_options({}), _embed_roof_render=True))
+        self.assertEqual(data['entreprise']['logo_uri'],
+                         _company_context(self.company)['logo_uri'])
+        taille = taille_logo_taqinor()
+        for nom in ('defaut', 'include_etude', 'onepage'):
+            with self.subTest(format=nom):
+                images = images_page(rendre_pdf(self.devis, FORMATS[nom]))
+                self.assertTrue(any(est_rouge(i) for i in images), nom)
+                self.assertFalse(any(i.size == taille for i in images), nom)
+
+    def test_societe_sans_logo_pas_de_logo_taqinor(self):
+        autre = make_company(slug='apdf4-autre', nom='APDF4 autre')
+        profil(autre, nom='SOLAIRE EXEMPLE SARL', ice='001111111000011')
+        devis = devis_residentiel(autre, 'DEV-APDF4-2')
+        taille = taille_logo_taqinor()
+        for nom in ('defaut', 'include_etude', 'onepage'):
+            with self.subTest(format=nom):
+                images = images_page(rendre_pdf(devis, FORMATS[nom]))
+                self.assertFalse(any(i.size == taille for i in images), nom)
+
+
+class LogoRegleTests(SimpleTestCase):
+    """APDF4 — LA règle du logo, sans base ni rendu PDF."""
+
+    def tearDown(self):
+        G._apply_entreprise(None)
+
+    def test_aucun_profil_logo_taqinor(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme.logo_imprime_b64({}), theme.logo_dark_b64())
+        self.assertEqual(theme.logo_imprime_b64({}, sombre=False),
+                         theme.logo_color_b64())
+        G._apply_entreprise(None)
+        self.assertIsNone(G.ENT_LOGO_B64)
+
+    def test_profil_sans_logo_bandeau_neutre(self):
+        from apps.ventes.quote_engine.residential import theme
+        data = {'entreprise': {'nom': 'SOLAIRE EXEMPLE SARL'}}
+        self.assertEqual(theme.logo_imprime_b64(data),
+                         theme._PIXEL_TRANSPARENT_B64)
+        G._apply_entreprise(data['entreprise'])
+        self.assertNotIn(G._logo_dark_b64(), G.logo_html())
+
+    def test_logo_televerse_imprime_par_les_deux_moteurs(self):
+        import base64
+        import io
+        from PIL import Image
+        from apps.ventes.quote_engine.residential import theme
+        uri = 'data:image/png;base64,' + base64.b64encode(
+            png_rouge()).decode()
+        ent = {'nom': 'X', 'logo_uri': uri}
+        b64 = theme.logo_imprime_b64({'entreprise': ent})
+        img = Image.open(io.BytesIO(base64.b64decode(b64))).convert('RGB')
+        self.assertTrue(est_rouge(img))
+        G._apply_entreprise(ent)
+        self.assertIn(b64, G.logo_html())
+        self.assertIn(b64, G.logo_p1_dark())
+
+
+def texte_et_liens(octets):
+    """(texte, URI des annotations de lien) du PDF."""
+    import fitz
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        texte = '\n'.join(page.get_text() for page in doc)
+        uris = [lien.get('uri') or '' for page in doc
+                for lien in page.get_links()]
+        return texte, uris
+    finally:
+        doc.close()
+
+
+@tag('pdf')
+class LiensSiteTests(TestCase):
+    """APDF5 (C-APDF-001) — aucun lien vers le site d'une autre société."""
+
+    CHEMINS = ('taqinor.ma/realisations', 'taqinor.ma/produits',
+               'taqinor.ma/garanties')
+
+    def setUp(self):
+        from apps.ventes.models import ShareLink
+        self.company = make_company(slug='apdf5-co', nom='APDF5')
+        profil(self.company, nom='SOLAIRE EXEMPLE SARL',
+               ice='001111111000011', site_web='')
+        self.devis = devis_residentiel(self.company, 'DEV-APDF5-1')
+        # Lien de signature : devis ENVOYÉ dont le lien a été frappé (AMOT13).
+        type(self.devis).objects.filter(pk=self.devis.pk).update(
+            statut='envoye')
+        self.devis.refresh_from_db()
+        self.lien = ShareLink.for_devis(self.devis)
+
+    def test_tenant_sans_site_aucun_lien_taqinor(self):
+        texte, uris = texte_et_liens(rendre_pdf(self.devis))
+        for chemin in self.CHEMINS:
+            self.assertNotIn(chemin, texte)
+            self.assertFalse([u for u in uris if chemin in u], chemin)
+        # Hors lien de proposition, plus aucun « taqinor.ma » (pied compris).
+        self.assertNotIn('taqinor.ma', texte.replace(
+            'taqinor.ma/proposition', ''))
+        self.assertFalse([u for u in uris
+                          if 'taqinor.ma' in u and '/proposition/' not in u])
+
+    def test_tenant_avec_site_ses_liens(self):
+        profil(self.company, site_web='solaire-exemple.ma')
+        texte, uris = texte_et_liens(rendre_pdf(self.devis))
+        self.assertIn('solaire-exemple.ma', texte)
+        self.assertTrue([u for u in uris
+                         if 'solaire-exemple.ma/realisations' in u])
+        for chemin in self.CHEMINS:
+            self.assertFalse([u for u in uris if chemin in u], chemin)
+
+    def test_lien_proposition_conserve(self):
+        for site in ('', 'solaire-exemple.ma'):
+            with self.subTest(site=site):
+                profil(self.company, site_web=site)
+                _texte, uris = texte_et_liens(rendre_pdf(self.devis))
+                self.assertTrue([u for u in uris if '/proposition/' in u
+                                 and self.lien.token in u], uris)
+
+
+# APDF45 (C-APDF-001) — garde de la classe « identité d'une autre société ».
+#
+# Un profil « SOLAIRE EXEMPLE SARL » (ICE 001111111000011, sans RIB, sans site,
+# sans logo) et un devis par marché (résidentiel, commercial, industriel,
+# agricole) : chaque format servi par /proposal (défaut, une-page,
+# include_etude, devis_final, devis_final + include_etude) est RENDU pour de vrai
+# (``generate_premium_devis_pdf`` : registre des renderers et repli legacy,
+# MinIO remplacé en mémoire — ``test_pdf_apdf_identite.rendre_pdf``) puis lu par
+# PyMuPDF : aucun texte TAQINOR (RC, ICE, RIB Saham, gérant, liens du site) et
+# aucune image aux dimensions de l'asset ``assets/logo.png``. Couvre les
+# appelants d'APDF2 à APDF5. Le test liste les rendus effectués.
+#
+# Test-du-test : réintroduire un littéral « RIB 022 780 » dans un seul gabarit
+# ⇒ le cas (marché, format) correspondant échoue.
+
+#: Textes d'identité TAQINOR qui ne doivent JAMAIS sortir sous un autre nom.
+INTERDITS = (
+    '691213', '003799642000067', 'Saham', '022 780', '022 780',
+    '0002720029379418', 'Reda Kasri', 'taqinor.ma/realisations',
+    'taqinor.ma/produits', 'taqinor.ma/garanties',
+)
+
+#: Un devis par marché : (lignes, etude_params, mode_installation).
+MARCHES = {
+    'residentiel': (LIGNES_RESIDENTIEL, ETUDE_RESIDENTIEL, 'residentiel'),
+    'commercial': ([('Panneau mono 450W', '40', '1500'),
+                    ('Onduleur réseau 20 kW', '1', '30000')],
+                   None, 'commercial'),
+    'industriel': ([('Panneau mono 450W', '40', '1500'),
+                    ('Onduleur réseau 20 kW', '1', '30000')],
+                   None, 'industriel'),
+    'agricole': ([('Pompe immergée 5,5 CV', '1', '18000'),
+                  ('Panneau mono 550W', '12', '1100')],
+                 {'pompe_cv': '5.5', 'pompe_kw': 4.05,
+                  'type_pompe': 'immergee', 'alim': 'tri', 'hmt_m': '80',
+                  'champ_kwc': 5.68}, 'agricole'),
+}
+
+FORMATS_GARDE = {
+    'defaut': {},
+    'onepage': {'pdf_mode': 'onepage'},
+    'include_etude': {'include_etude': True},
+    'devis_final': {'devis_final': True},
+    'devis_final_etude': {'devis_final': True, 'include_etude': True},
+}
+
+
+def lire_pdf(octets):
+    """(texte de toutes les pages, tailles des images embarquées)."""
+    import io
+    import fitz
+    from PIL import Image
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        texte = '\n'.join(page.get_text() for page in doc)
+        tailles = []
+        for page in doc:
+            for info in page.get_images(full=True):
+                brut = doc.extract_image(info[0])
+                with Image.open(io.BytesIO(brut['image'])) as img:
+                    tailles.append(img.size)
+        return texte, tailles
+    finally:
+        doc.close()
+
+
+@tag('pdf')
+class GardeIdentiteTests(TestCase):
+
+    def setUp(self):
+        self.company = make_company(slug='apdf45-co', nom='APDF45')
+        profil(self.company, nom='SOLAIRE EXEMPLE SARL',
+               ice='001111111000011', rib='', banque='', site_web='',
+               logo_key='')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _devis(self, marche):
+        lignes, etude, mode = MARCHES[marche]
+        devis = make_devis(self.company, self.user, self.client_obj, lignes,
+                           reference=f'DEV-APDF45-{marche[:4].upper()}',
+                           etude_params=dict(etude) if etude else None)
+        devis.mode_installation = mode
+        devis.save(update_fields=['mode_installation'])
+        return devis
+
+    def test_aucune_identite_taqinor_marche_par_format(self):
+        taille_taqinor = taille_logo_taqinor()
+        rendus = []
+        for marche in MARCHES:
+            devis = self._devis(marche)
+            for nom, options in FORMATS_GARDE.items():
+                with self.subTest(marche=marche, format=nom):
+                    texte, tailles = lire_pdf(rendre_pdf(devis, options))
+                    rendus.append((marche, nom))
+                    self.assertTrue(texte.strip())
+                    for interdit in INTERDITS:
+                        self.assertNotIn(interdit, texte)
+                    self.assertNotIn(taille_taqinor, tailles)
+        # Le test LISTE les rendus effectués : 4 marchés × 5 formats.
+        self.assertEqual(len(rendus), len(MARCHES) * len(FORMATS_GARDE), rendus)

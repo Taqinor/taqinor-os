@@ -102,6 +102,19 @@ p {
   .entete-int {
     gap: var(--espace-6);
   }
+
+  /* YBW81 : le sélecteur de langue reste visible dès 40rem (le bouton RDV attend 64rem) */
+  .entete-actions {
+    display: flex;
+  }
+
+  .entete-actions .bouton-entete {
+    display: none;
+  }
+
+  .nav-mobile {
+    margin-inline-start: 0;
+  }
 }
 
 .entete-logo {
@@ -215,6 +228,8 @@ p {
   background-color: var(--fond-surface);
   border-block-end: 1px solid var(--trait);
   box-shadow: 0 1.5rem 2rem -1.5rem var(--ombre);
+  /* YBW81 : le panneau couvre le reste de l'écran, pas de second bouton orange dessous */
+  min-block-size: calc(100dvh - 100%);
 }
 
 .nav-mobile ul {
@@ -245,6 +260,10 @@ p {
   .nav-bureau,
   .entete-actions {
     display: flex;
+  }
+
+  .entete-actions .bouton-entete {
+    display: inline-flex;
   }
 
   .nav-mobile {
@@ -466,7 +485,7 @@ p {
   display: grid;
   place-content: center;
   gap: var(--espace-2);
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
   padding: var(--espace-6);
   text-align: center;
   color: var(--capture-texte);
@@ -652,6 +671,7 @@ p {
   font-size: clamp(2.25rem, 1.2rem + 2.8vw, 3.75rem);
   line-height: 1.02;
   letter-spacing: -0.03em;
+  text-wrap: pretty;
 }
 
 .bande-nuit .hero-intro {
@@ -661,9 +681,10 @@ p {
 .bande-nuit-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: var(--espace-4) var(--espace-6);
   margin-block-start: var(--espace-2);
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .bande-nuit-actions .bouton {
@@ -722,6 +743,11 @@ p {
     grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
     column-gap: clamp(2rem, 5vw, 4.5rem);
   }
+
+  /* YBW81 : sans capture, une seule colonne (pas de vide à droite) */
+  .module:not(:has(.capture)) {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ------------------------------------------------------------ prose (pages de texte) */
@@ -737,7 +763,7 @@ p {
   letter-spacing: -0.02em;
 }
 
-.prose p {
+.prose p:not(.surtitre) {
   font-size: var(--texte-lg);
   color: var(--texte-attenue);
 }

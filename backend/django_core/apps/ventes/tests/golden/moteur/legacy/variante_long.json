@@ -1,0 +1,16 @@
+{
+  "cas": "variante_long",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 57744,
+  "ordre": 2,
+  "pages": 3,
+  "polices_masquees": 6,
+  "sha256": "622718cb75f4a04609b66af550822afa6e7edd4635773d964e9ea5c4d0324d80",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "3d253d8652fd9fb0e5ef95bee6cb657ce00921684cf9a089c5090ce1137b8d82",
+    "433c5ac3b6cadf6995526166722138f1215294302a05a997a86ab908c1e8163b",
+    "99e5df9e5c1636322192a0493af800f432d97c04e278961ca9996d5cc4819eb6"
+  ]
+}

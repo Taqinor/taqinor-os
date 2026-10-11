@@ -27,7 +27,7 @@ describe('YBW28 — fixture complète', () => {
     expect(valeurs(doc, 'editeur')).toEqual(['Fixture Test Ltd', 'Angleterre et pays de Galles', 'TEST0001', '1 Test Street, Testville', 'GBTEST001']);
     expect(valeurs(doc, 'maroc')).toEqual([
       'Fixture Test',
-      "SARL d'associé unique",
+      "SARL d’associé unique",
       'CAPITAL-TEST',
       '2 rue du Test, Testville',
       'RC-TEST',

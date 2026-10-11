@@ -2417,7 +2417,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     matrixResult = null;
     pitchedYieldCache.clear();
     pitchedPvgisPerKwc = null;
-    shadingUi.reset(); // WJ19 — les ombres tracées appartiennent au tracé effacé
     if (optimumCard) optimumCard.hidden = true;
     neededPanels = 0;
     neededAuto = true;
@@ -2492,6 +2491,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  seule zone vide active. */
   function reset() {
     clearEditorState();
+    shadingUi.reset(); // WJ19/ACAL357 — les ombres et la matrice appartiennent au SITE : « Effacer » seul les vide
     oublierEpingleDeplacee(ctx); // ACAL193 — un site vierge n'a plus d'épingle déplacée
     // ACAL26 — « Effacer » repart d'un site vierge : la consommation du site (courbe,
     // appareils, provenance relue) part avec lui (`clearEditorState` ne la touche plus).

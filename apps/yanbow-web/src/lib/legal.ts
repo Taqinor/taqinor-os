@@ -86,7 +86,7 @@ export interface Legal {
 
 /** Mention obligatoire de forme pour la SARLAU (loi 5-96). */
 export const FORME_SARLAU: Record<Locale, string> = {
-  fr: "SARL d'associé unique",
+  fr: "SARL d’associé unique",
   en: "SARL d'associé unique (single-member limited liability company)",
 };
 

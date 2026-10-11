@@ -40,7 +40,9 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['ouverts']:
-            return [IsAnyRole()]
+            # ASTK246 — montants réglés : règle UNIQUE des règlements fournisseur.
+            from .paiement_fournisseur import PeutLirePaiementsFournisseur
+            return [PeutLirePaiementsFournisseur()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         # ASTK19 (D-ASTK-3) — verser/imputer un acompte = « payer ».

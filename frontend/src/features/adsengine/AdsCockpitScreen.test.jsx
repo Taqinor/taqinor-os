@@ -38,6 +38,7 @@ const ROWS = [
     learning_badge: { status: 'LEARNING', label: 'En apprentissage', tone: 'info' },
     thumbnail_ref: 'vid-123', thumbnail_kind: 'video',
     depense_mad: '900.00', conversations: 12, nb_leads: 5, cpl_mad: '180.00',
+    cpl_source: 'leads Meta', cpl_odoo_source: 'leads Odoo', // AACQ104 — servies par le cockpit
     signatures: 1, cost_per_signature_mad: '900.00', frequency: '2.10',
     fatigue: { fired: true, insufficient_data: false, severity: 'critique', message_fr: 'Fatigue confirmée' },
   },
@@ -46,6 +47,7 @@ const ROWS = [
     learning_badge: { status: 'SUCCESS', label: 'Optimisé', tone: 'success' },
     thumbnail_ref: 'img-hash-1', thumbnail_kind: 'image',
     depense_mad: '300.00', conversations: 20, nb_leads: 8, cpl_mad: '37.50',
+    cpl_source: 'leads Meta', cpl_odoo_source: 'leads Odoo', // AACQ104 — servies par le cockpit
     signatures: 2, cost_per_signature_mad: '150.00', frequency: '1.20',
     fatigue: { fired: false, insufficient_data: false, severity: 'avertissement', message_fr: '' },
   },
@@ -54,6 +56,7 @@ const ROWS = [
     learning_badge: { status: '', label: 'Inconnu', tone: 'neutral' },
     thumbnail_ref: null, thumbnail_kind: 'image',
     depense_mad: '50.00', conversations: 0, nb_leads: 0, cpl_mad: null,
+    cpl_source: 'leads Meta', cpl_odoo_source: 'leads Odoo', // AACQ104 — servies par le cockpit
     signatures: 0, cost_per_signature_mad: null, frequency: null,
     fatigue: { fired: false, insufficient_data: true, severity: 'info', message_fr: '' },
   },
@@ -225,6 +228,24 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       // étiqueté avec la devise du compte, jamais forcé en MAD.
       expect(row).toHaveTextContent('225 USD')
       expect(row).toHaveTextContent('4') // Leads (Odoo)
+    })
+
+    it('AACQ104 — chaque CPL affiche sa source servie', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: [
+        { ...ROWS[0], leads_odoo: 4, cpl_odoo: '225.00' },
+        { ...ROWS[1], cpl_mad: '60.00', cpl_source: undefined, cpl_odoo: '40.00', cpl_odoo_source: undefined },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      const [avec, sans] = screen.getAllByTestId('ae-cockpit-row')
+      expect(within(avec).getAllByTestId('ae-cockpit-cpl-source').map(s => s.textContent))
+        .toEqual(['(leads Meta)', '(leads Odoo)'])
+      expect(avec).toHaveTextContent('180 MAD (leads Meta)')
+      expect(avec).toHaveTextContent('225 MAD (leads Odoo)')
+      // Ligne sans source servie : la valeur seule, aucun libellé fabriqué.
+      expect(within(sans).queryByTestId('ae-cockpit-cpl-source')).toBeNull()
+      expect(within(sans).getByText('60 MAD')).toBeInTheDocument()
+      expect(within(sans).getByText('40 MAD')).toBeInTheDocument()
     })
 
     it('Leads (Odoo) / CPL (Odoo) absents -> tirets, jamais fabriqués', async () => {

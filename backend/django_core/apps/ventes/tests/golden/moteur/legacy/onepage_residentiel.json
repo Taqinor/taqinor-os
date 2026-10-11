@@ -1,0 +1,14 @@
+{
+  "cas": "onepage_residentiel",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 0,
+  "octets": 23273,
+  "ordre": 3,
+  "pages": 1,
+  "polices_masquees": 6,
+  "sha256": "1ea8f327ae8c5e5ffaf94dc34a145be47ee1de21070373c2c1632a683ea935fd",
+  "sha256_par_segment": [
+    "2357db846b0271a83f293d9deb831e98d4e0f9d51c12e6dc70dd16cf50ac4286",
+    "8caef61fe0370517f391dc15059cc908670746a8d6331461bfbe44d2c5812eb5"
+  ]
+}

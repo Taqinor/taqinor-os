@@ -1,35 +1,36 @@
 /**
- * Company page (YBW65) — SKELETON: same keys as the French one, empty strings.
- * No English before Reda approves the French (YBWM13); filled by YBW70.
+ * Company page (YBW65) — same keys as the French one, translated from the
+ * approved French (YBWM13, YBW70). No new statement. `{nom}`, `{partie}`,
+ * `{numero}`, `{forme}` are replaced from legal.ts.
  */
 import type { DictEn } from '../config';
 import type { fr } from './societe.fr';
 
 export const en: DictEn<typeof fr> = {
-  titre: '',
-  description: '',
-  surtitre: '',
-  h1: '',
+  titre: 'The company — YanBow',
+  description: 'YanBow builds business software for companies: SolarBow, MarketingBow and custom software development.',
+  surtitre: 'Company',
+  h1: 'Who we are',
   nom: {
-    surtitre: '',
-    titre: '',
+    surtitre: 'The name',
+    titre: 'Why YanBow',
   },
   entites: {
-    titre: '',
-    editeur: '',
-    maroc: '',
+    titre: 'The companies',
+    editeur: 'This site is published by {nom}, a company registered in {partie} under number {numero}.',
+    maroc: 'In Morocco, clients sign with {nom}, {forme}.',
   },
   origine: {
-    surtitre: '',
-    titre: '',
+    surtitre: 'Where SolarBow comes from',
+    titre: 'SolarBow',
   },
   offre: {
-    surtitre: '',
-    titre: '',
-    surMesure: '',
+    surtitre: 'What we do',
+    titre: 'Two products and custom software',
+    surMesure: 'Custom software',
   },
   appel: {
-    titre: '',
-    bouton: '',
+    titre: 'Let’s talk about your project',
+    bouton: 'Book a meeting',
   },
 };

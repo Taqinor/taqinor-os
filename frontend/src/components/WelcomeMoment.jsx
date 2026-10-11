@@ -34,14 +34,16 @@ function markSeen() {
 export default function WelcomeMoment() {
   // Ne s'affiche que pour un utilisateur connecté (première connexion réelle).
   const user = useSelector((s) => s.auth?.user)
+  // ADOC183 — attend la portée servie par /auth/me/ (stub `{ username }` à la connexion).
+  const porteeEnAttente = useSelector((s) => !!s.auth?.loading && s.auth?.user?.portee === undefined)
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
     // ADOC120 — jamais « Bienvenue chez Taqinor » à un compte PORTAIL : un client
     // verrait la marque ERP par défaut à la place de celle de son prestataire.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot welcome on first login
-    if (user && !isPortalUser(user) && !seenAlready()) setOpen(true)
-  }, [user])
+    if (user && !porteeEnAttente && !isPortalUser(user) && !seenAlready()) setOpen(true)
+  }, [user, porteeEnAttente])
 
   const dismiss = () => {
     markSeen()

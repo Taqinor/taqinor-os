@@ -505,7 +505,8 @@ function AnalyseTab({ canSave }) {
                     <span className="font-medium">Bon de commande correspondant ?</span>
                     {bcfSuggestions.map((s) => (
                       <div key={s.id} className="flex flex-wrap items-center justify-between gap-2">
-                        <span>{s.reference} — {s.montant_total} MAD{s.ecart != null ? ` (écart ${s.ecart} MAD)` : ''}</span>
+                        {/* ASTK240 — montants servis seulement avec `prix_achat_voir`. */}
+                        <span>{s.reference}{s.montant_total != null ? ` — ${s.montant_total} MAD` : ''}{s.ecart != null ? ` (écart ${s.ecart} MAD)` : ''}</span>
                         <Button
                           variant="outline" size="sm"
                           loading={bcfLiantId === s.id}

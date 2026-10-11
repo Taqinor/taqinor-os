@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { rankCreatives } from './adsengine'
+import { presetRange, previousRange } from './dateRange'
 
 /* ENG24 — Campagnes : liste + hiérarchie (ADSDEEP60) des miroirs, bouton
    sync-now, classement des créatifs par réponses WhatsApp / coût par asset
@@ -106,6 +107,37 @@ describe('CampaignsScreen (ENG24)', () => {
     })
     renderScreen()
     expect(await screen.findByText('Camp page 2 B')).toBeInTheDocument()
+  })
+
+  it('AACQ68 — le total et son delta somment toutes les pages des deux périodes', async () => {
+    // Frontière de l'API : la période précédente se reconnaît à son `debut`.
+    const precedente = previousRange(presetRange('7j')).debut
+    const servir = (pagesCourantes) => mocks.list.mockImplementation((params = {}) => {
+      const prev = params.debut === precedente
+      const pages = prev ? 2 : pagesCourantes
+      const p = params.page || 1
+      return Promise.resolve({ data: {
+        count: pages * 2, next: p < pages ? `p${p + 1}` : null,
+        results: [0, 1].map(i => ({ id: p * 10 + i, nom: `Camp ${prev ? 'P' : 'C'}${p}${i}`,
+          statut_display: 'Actif', depense_mad: prev ? 50 : 100 })),
+      } })
+    })
+    const comparer7j = async (total, deltaPct) => {
+      const { unmount } = renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-7j'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(
+        expect.objectContaining({ debut: presetRange('7j').debut })))
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      const bandeau = await screen.findByTestId('ae-camp-compare-summary')
+      await waitFor(() => expect(bandeau).toHaveTextContent(`Dépense totale période : ${total}`))
+      expect(bandeau).toHaveTextContent(`(${deltaPct} vs période précédente)`)
+      unmount()
+    }
+    servir(2)  // courante 2 pages × 2 × 100 = 400 ; précédente 2 × 2 × 50 = 200
+    await comparer7j('400 MAD', '+100 %')
+    servir(3)  // une 3ᵉ page courante : le total suit (600), delta contre 200
+    await comparer7j('600 MAD', '+200 %')
   })
 
   it('le bouton Synchroniser appelle syncNow puis recharge', async () => {

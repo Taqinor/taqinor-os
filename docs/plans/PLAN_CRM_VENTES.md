@@ -2,8 +2,8 @@
 
 > **CONTRAT DE PROPRIÉTÉ (non négociable — c'est lui qui garantit zéro conflit).**
 > Une session `work on the plan crm_ventes` ne touche QUE :
-> **backend :** apps/crm, apps/ventes (HORS quote_engine — RULE #4 reste opus+review), apps/marketing, nouvelles apps cpq/territoires/contacts.
-> **frontend :** frontend/src/pages|features de crm, ventes, marketing.
+> **backend :** apps/crm, apps/ventes (HORS quote_engine — RULE #4 reste opus+review), apps/marketing, apps/visites (VTAG1 — décision fondateur D-VTAG1 du 09/10/2026 : l'app Visites suit le domaine pré-vente), nouvelles apps cpq/territoires/contacts.
+> **frontend :** frontend/src/pages|features de crm, ventes, marketing, visites (+ frontend/src/api/visitesApi*).
 > Tout le reste est INTERDIT en écriture — une autre session peut le posséder.
 > Lire une app étrangère = via son `selectors.py`/string-FK uniquement (jamais
 > ses models/migrations). Une tâche qui EXIGE d'écrire hors périmètre →

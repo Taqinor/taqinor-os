@@ -75,6 +75,18 @@ def _refus_resynchro(devis):
     return SyncLayoutError(detail, revision_possible=v['revision_possible'])
 
 
+def _refuser_avant_ecriture(layout, *args, **kwargs):
+    """ACAL353 (C-ACAL-VER-001) — les refus du document AVANT la première
+    écriture : d'abord ceux que la création prononce déjà (surface pavée sans
+    ``moduleWc``, pan au module absent de ``modules[]`` — même primitive
+    ``refus_des_pans``, 409 nommé), puis le couple panneau/onduleur."""
+    from apps.ventes.domain.geometrie import pans_du_document, refus_des_pans
+    refus = refus_des_pans(pans_du_document(layout))
+    if refus:
+        raise SyncLayoutError(refus[0])
+    _refuser_couple_panneau_onduleur_impossible(*args, **kwargs)
+
+
 def _resynchroniser_instance_appelante(devis, verrou):
     """QJR20 (29/08/2026) — recale l'instance de l'APPELANT sur ce qui vient
     d'être écrit sous verrou.
@@ -460,9 +472,9 @@ def reconcilier(devis, intention):
         # déjà passé (re-poster un layout identique n'écrit rien, donc n'a rien
         # à refuser), et aucune ligne n'a encore bougé — un refus laisse la
         # transaction absolument intacte.
-        _refuser_couple_panneau_onduleur_impossible(
-            verrou, lignes, lignes_panneau, cible_panneaux, watt, gamme,
-            modeles=modeles)
+        _refuser_avant_ecriture(
+            layout, verrou, lignes, lignes_panneau, cible_panneaux, watt,
+            gamme, modeles=modeles)
 
         # ── Panneaux : porter le compte à la cible ──
         if modeles and not devis_variante and cible_panneaux > 0:
@@ -1222,7 +1234,8 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
 
     * modèle à fiche désignée : la (plus grosse) ligne LIBRE de CE produit
       reçoit l'écart ; absente, une ligne de la fiche est créée au prix
-      catalogue (une fiche non tarifée n'est jamais cotée : l'écart est DIT) ;
+      catalogue (ACAL354 : une fiche non tarifée ou introuvable est REFUSÉE
+      — ``SyncLayoutError``, message de la création — avant toute écriture) ;
     * modèle sans fiche : la ligne panneau restante la plus grosse, à défaut
       le panneau du catalogue au wattage du modèle ;
     * une ligne panneau d'un produit qu'AUCUN modèle ne désigne est ramenée à
@@ -1233,8 +1246,16 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
 
     ACAL100 — rend ``(lignes_modifiees, a_change, ecart_residuel)`` :
     ``ecart_residuel`` est vrai quand un écart a été NOMMÉ au lieu d'être
-    appliqué (quantité tapée, fiche non tarifée)."""
+    appliqué (quantité tapée, aucun panneau tarifé au wattage d'un modèle
+    sans fiche)."""
+    from apps.ventes.domain.etape_composer import refus_modeles_designes
     from apps.ventes.domain.geometrie import _produit_designe
+
+    refus = refus_modeles_designes(verrou.company, [
+        m for m in modeles if m.get('produit_id') and not any(
+            str(li.produit_id) == str(m['produit_id']) for li in lignes_panneau)])
+    if refus:
+        raise SyncLayoutError(refus[0])
 
     modifiees = 0
     change = False
@@ -1287,12 +1308,11 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
             _porter(lignes_m, cible, getattr(lignes_m[0].produit, 'nom', '')
                     or lignes_m[0].designation)
             continue
-        if produit is None:
+        if produit is None:  # fiche non servable : refusée plus haut (ACAL354)
             avertissements.append(
-                'Le module désigné par le calepinage (fiche #%s) n\'est pas '
-                'tarifé dans votre catalogue : sa ligne de %d panneau(x) n\'a '
-                'pas été créée — tarifez la fiche puis resynchronisez.'
-                % (produit_id or '?', cible))
+                'Aucun panneau tarifé de %s W dans votre catalogue : %d '
+                'panneau(x) du calepinage non chiffré(s).'
+                % (modele.get('watt') or '?', cible))
             residuel = residuel or cible > 0
             continue
         if cible > 0:
