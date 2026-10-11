@@ -92,7 +92,9 @@ ignore_imports =
 # just reached one hop further through the shim. Prune only this shim edge; a
 # DIRECT `apps.ventes.models -> apps.{stock,crm,sav,installations}.models`
 # import would still be caught.
-    apps.ventes.models -> apps.facturation.models
+# ENF20 — exception RETIRÉE : `facturation.models -> facturation.totaux` ne
+# rejoint plus `ventes.selectors` (feuille `apps.ventes.domain.noyau_totaux`),
+# donc le shim n'ouvre plus aucun chemin inter-domaines ; l'arête est jugée.
 # SOLMVP-sweep (2026-09-21) — l'exception NTCPQ25/29/49 (`apps.cpq.selectors ->
 # apps.stock.selectors` / `-> apps.ventes.selectors`) est retirée : `apps.cpq`
 # est sorti du MVP solaire (Groupe SOLMVP), `cpq/selectors.py` n'existe plus,
