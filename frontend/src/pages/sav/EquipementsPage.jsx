@@ -1,7 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   `resolveScanTarget` est un helper PUR importé par EquipementsPage.test.jsx :
-   l'exporter est volontaire (même précédent que ProductionPage/buildProductionChartData).
-   La règle ne concerne que le confort de fast-refresh, jamais la correction. */
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
@@ -32,6 +28,7 @@ import {
   filterEquipements,
   sortEquipements,
   garantieLabel,
+  resolveScanTarget,
 } from '../../features/sav/equipement'
 import {
   TooltipProvider,
@@ -69,24 +66,6 @@ const GARANTIE_TONES = {
 export function GarantiePill({ eq }) {
   const etat = eq?.garantie_etat ?? 'non_renseignee'
   return <StatusPill tone={GARANTIE_TONES[etat] ?? 'neutral'} label={garantieLabel(eq)} />
-}
-
-// NTMOB15 — décision PURE post-résolution d'un code scanné (stock/produits/
-// resolve/, N20) : que faire de la réponse `{type, id, ...}` compte tenu du
-// parc déjà chargé (`items`, non filtré). Extraite du composant pour rester
-// testable sans monter toute la page (même patron que cockpitProfile/
-// mobileHomeAction ailleurs dans le repo).
-//   * `{action:'error', message}` — le code ne désigne pas un équipement.
-//   * `{action:'select', equipement}` — déjà chargé localement, ouverture directe.
-//   * `{action:'fetch', id}` — appelant doit charger la fiche complète
-//     (savApi.getEquipement) avant de l'ouvrir.
-export function resolveScanTarget(resolveData, items) {
-  if (!resolveData || resolveData.type !== 'equipement') {
-    return { action: 'error', message: 'Ce code ne correspond pas à un équipement.' }
-  }
-  const found = (items ?? []).find((it) => it.id === resolveData.id)
-  if (found) return { action: 'select', equipement: found }
-  return { action: 'fetch', id: resolveData.id }
 }
 
 // L611/L11 — message d'erreur FR lisible mappé au champ (jamais de JSON brut).

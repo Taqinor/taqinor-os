@@ -102,3 +102,21 @@ export function sortEquipements(items, key, dir) {
   })
   return arr
 }
+
+// NTMOB15 — décision PURE post-résolution d'un code scanné (stock/produits/
+// resolve/, N20) : que faire de la réponse `{type, id, ...}` compte tenu du
+// parc déjà chargé (`items`, non filtré). Extraite du composant pour rester
+// testable sans monter toute la page (même patron que cockpitProfile/
+// mobileHomeAction ailleurs dans le repo).
+//   * `{action:'error', message}` — le code ne désigne pas un équipement.
+//   * `{action:'select', equipement}` — déjà chargé localement, ouverture directe.
+//   * `{action:'fetch', id}` — appelant doit charger la fiche complète
+//     (savApi.getEquipement) avant de l'ouvrir.
+export function resolveScanTarget(resolveData, items) {
+  if (!resolveData || resolveData.type !== 'equipement') {
+    return { action: 'error', message: 'Ce code ne correspond pas à un équipement.' }
+  }
+  const found = (items ?? []).find((it) => it.id === resolveData.id)
+  if (found) return { action: 'select', equipement: found }
+  return { action: 'fetch', id: resolveData.id }
+}

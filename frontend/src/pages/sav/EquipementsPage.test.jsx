@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { GarantiePill, resolveScanTarget } from './EquipementsPage.jsx'
+import { GarantiePill } from './EquipementsPage.jsx'
+import { resolveScanTarget } from '../../features/sav/equipement'
 import { GARANTIE_ETATS, garantieLabel } from '../../features/sav/equipement'
 
 /* J144 — refonte SAV : le parc d'équipements passe à StatusPill + DataTable.

@@ -165,7 +165,7 @@ export default function DashboardSharePage() {
     }
   }
 
-  const columns = useMemo(() => [
+  const columns = [
     {
       id: 'dashboard', header: 'Dashboard',
       accessor: (r) => dashboardTitle(r.dashboard),
@@ -198,8 +198,7 @@ export default function DashboardSharePage() {
         ) : null
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- callbacks recréés par rendu
-  ], [dashboardTitle])
+  ]
 
   return (
     <div className="page">
