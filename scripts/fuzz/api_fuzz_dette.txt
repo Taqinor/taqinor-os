@@ -394,7 +394,6 @@ API accepted schema-violating request|PATCH /api/django/crm/plans-activite/{id}/
 API accepted schema-violating request|PATCH /api/django/crm/playbooks/{id}/
 API accepted schema-violating request|PATCH /api/django/crm/tags/{id}/
 API accepted schema-violating request|PATCH /api/django/custom-fields/objects/{id}/
-API accepted schema-violating request|PATCH /api/django/entites/entites/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/exigences-dossier/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/roles-signataire/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/tags/{id}/
@@ -464,9 +463,6 @@ API accepted schema-violating request|POST /api/django/crm/tags/
 API accepted schema-violating request|POST /api/django/crm/vues-enregistrees/reorder/
 API accepted schema-violating request|POST /api/django/custom-fields/definitions/reorder/
 API accepted schema-violating request|POST /api/django/custom-fields/objects/
-API accepted schema-violating request|POST /api/django/entites/entites/
-API accepted schema-violating request|POST /api/django/entites/entites/importer/
-API accepted schema-violating request|POST /api/django/entites/entites/{id}/noter/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/annuler/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/envoyer-email/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/exclure-relance/
@@ -559,7 +555,6 @@ API accepted schema-violating request|PUT /api/django/crm/plans-activite/{id}/
 API accepted schema-violating request|PUT /api/django/crm/playbooks/{id}/
 API accepted schema-violating request|PUT /api/django/crm/tags/{id}/
 API accepted schema-violating request|PUT /api/django/custom-fields/objects/{id}/
-API accepted schema-violating request|PUT /api/django/entites/entites/{id}/
 API accepted schema-violating request|PUT /api/django/ged/cabinets/{id}/
 API accepted schema-violating request|PUT /api/django/ged/exigences-dossier/{id}/
 API accepted schema-violating request|PUT /api/django/ged/roles-signataire/{id}/
@@ -697,7 +692,6 @@ API rejected schema-compliant request|PATCH /api/django/auth/me/langue/
 API rejected schema-compliant request|PATCH /api/django/core/ui-boutons/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/vues/{id}/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
-API rejected schema-compliant request|PATCH /api/django/entites/entites/{id}/
 API rejected schema-compliant request|PATCH /api/django/facturation/factures-lignes/{id}/
 API rejected schema-compliant request|PATCH /api/django/identity/service-accounts/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/checklist-etapes/{id}/
@@ -840,7 +834,6 @@ API rejected schema-compliant request|POST /api/django/crm/vues-enregistrees/
 API rejected schema-compliant request|POST /api/django/custom-fields/definitions/
 API rejected schema-compliant request|POST /api/django/custom-fields/permissions-role/
 API rejected schema-compliant request|POST /api/django/entites/entites/
-API rejected schema-compliant request|POST /api/django/entites/entites/importer/
 API rejected schema-compliant request|POST /api/django/facturation/factures-lignes/
 API rejected schema-compliant request|POST /api/django/facturation/factures/bulk/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
@@ -1224,8 +1217,6 @@ Response violates schema|GET /api/django/crm/objectifs/attainment/
 Response violates schema|GET /api/django/crm/partenaires/
 Response violates schema|GET /api/django/crm/partenaires/{id}/
 Response violates schema|GET /api/django/crm/plans-compte/{id}/historique/
-Response violates schema|GET /api/django/entites/entites/mes-entites/
-Response violates schema|GET /api/django/entites/entites/{id}/historique/
 Response violates schema|GET /api/django/facturation/factures/{id}/arrondi-caisse/
 Response violates schema|GET /api/django/facturation/factures/{id}/emails/
 Response violates schema|GET /api/django/facturation/factures/{id}/historique/

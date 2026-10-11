@@ -31,3 +31,13 @@ def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
     if mini is not None and n < mini:
         raise serializers.ValidationError({nom: ['Valeur hors plage.']})
     return n if maxi is None else min(n, maxi)
+
+
+class BooleenStrict(serializers.BooleanField):
+    """``BooleanField`` qui n'accepte que de vrais booléens JSON (``0``/``1``
+    ou ``"true"`` étaient convertis en silence)."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, bool):
+            self.fail('invalid', input=data)
+        return data

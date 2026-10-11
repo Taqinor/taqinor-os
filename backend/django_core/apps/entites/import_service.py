@@ -31,7 +31,7 @@ from .models import Entite
 
 
 def _parse_csv(file_bytes, filename):
-    text = file_bytes.decode('utf-8-sig') if isinstance(file_bytes, bytes) else file_bytes
+    text = file_bytes.decode('utf-8-sig', errors='replace') if isinstance(file_bytes, bytes) else file_bytes
     reader = csv.DictReader(io.StringIO(text))
     rows = []
     for i, raw in enumerate(reader, start=2):  # ligne 1 = en-têtes

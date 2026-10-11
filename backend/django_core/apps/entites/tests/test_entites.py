@@ -143,6 +143,49 @@ class EntiteApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(any(a['field_label'] == 'Nom' for a in resp.data))
 
+    def test_enf11_actif_non_booleen_refuse(self):
+        """ENF11 — `actif: 0` n'est plus converti en booléen (400)."""
+        base = '/api/django/entites/entites/'
+        r = self.client_api.post(
+            base, {'nom': 'A', 'code': 'A', 'actif': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        e = creer_entite(self.company, nom='B', code='B')
+        r = self.client_api.patch(
+            f'{base}{e.id}/', {'actif': 'oui'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.client_api.patch(f'{base}{e.id}/', {'actif': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_enf11_cycle_de_parent_409(self):
+        """ENF11 — un rattachement en boucle est un conflit d'état (409)."""
+        a = creer_entite(self.company, nom='A', code='A')
+        b = creer_entite(self.company, nom='B', code='B', parent=a)
+        base = '/api/django/entites/entites/'
+        r = self.client_api.patch(f'{base}{a.id}/', {'parent': a.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.client_api.patch(f'{base}{a.id}/', {'parent': b.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
+    def test_enf11_noter_corps_non_texte_400(self):
+        e = creer_entite(self.company, nom='N', code='N')
+        url = f'/api/django/entites/entites/{e.id}/noter/'
+        self.assertEqual(
+            self.client_api.post(url, {'body': {}}, format='json').status_code, 400)
+        self.assertEqual(
+            self.client_api.post(url, {'body': 'RAS'}, format='json').status_code, 200)
+
+    def test_enf11_importer_booleen_illisible_400_et_fichier_binaire_200(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = '/api/django/entites/entites/importer/'
+        csv_ok = SimpleUploadedFile("e.csv", b"code,nom\nZ,Zed\n")
+        r = self.client_api.post(
+            url, {'fichier': csv_ok, 'ecraser': '{}'}, format='multipart')
+        self.assertEqual(r.status_code, 400, r.content)
+        binaire = SimpleUploadedFile("e.csv", bytes([0xf8, 0x80, 0x81, 0x20]))
+        r = self.client_api.post(url, {'fichier': binaire}, format='multipart')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.data['erreurs'])
+
 
 class EntiteImportTests(TestCase):
     """NTADM43 — import CSV 2 passes (holding→filiale→agence)."""
