@@ -28,13 +28,14 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
-from rest_framework import serializers, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
@@ -899,7 +900,7 @@ def _erreur_service(exc):
     return {'detail': exc.message}
 
 
-class AbonnementMonitoringViewSet(TenantMixin, viewsets.ModelViewSet):
+class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
     """ASAV100 (D-ASAV-4 option (b), ASAV93) — abonnements de supervision.
 
     Responsable/admin seulement (lecture comme écriture) ; société forcée côté
@@ -909,6 +910,12 @@ class AbonnementMonitoringViewSet(TenantMixin, viewsets.ModelViewSet):
     système lié. Contrat : ``contract_samples/abonnements_monitoring.json``."""
     queryset = AbonnementMonitoring.objects.all()
     serializer_class = AbonnementMonitoringSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['periodicite', 'statut', 'motif_resiliation']
+    ordering_fields = [
+        'prochaine_echeance', 'date_debut', 'date_creation', 'montant',
+        'statut', 'id']
+    ordering = ['prochaine_echeance', 'id']
     parser_classes = [JSONParser]
     permission_classes = [IsResponsableOrAdmin]
     http_method_names = ['get', 'post', 'head', 'options']
@@ -957,7 +964,7 @@ class AbonnementMonitoringViewSet(TenantMixin, viewsets.ModelViewSet):
 
 @extend_schema_view(list=extend_schema(
     parameters=_FILTRE_INSTALLATION))
-class SlaDisponibiliteViewSet(TenantMixin, viewsets.ModelViewSet):
+class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
     """ASAV101 (D-ASAV-4 option (b), ASAV93) — SLA de disponibilité par
     système : saisie du taux garanti (aucun défaut) et action ``ecart`` qui
     compare l'indice de suivi mesuré au taux garanti
@@ -966,6 +973,11 @@ class SlaDisponibiliteViewSet(TenantMixin, viewsets.ModelViewSet):
     ``contract_samples/sla_disponibilite.json``."""
     queryset = SlaDisponibilite.objects.select_related('installation').all()
     serializer_class = SlaDisponibiliteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['note']
+    ordering_fields = [
+        'updated_at', 'created_at', 'disponibilite_garantie_pct', 'id']
+    ordering = ['-updated_at']
     parser_classes = [JSONParser]
 
     def get_permissions(self):
@@ -1010,7 +1022,7 @@ class SlaDisponibiliteViewSet(TenantMixin, viewsets.ModelViewSet):
             sla.installation, window_days=window))
 
 
-class CertificatCarboneViewSet(TenantMixin, viewsets.ModelViewSet):
+class CertificatCarboneViewSet(CompanyScopedModelViewSet):
     """ASAV102 (D-ASAV-4 option (b), ASAV93) — registre des certificats
     carbone (NTNRG27) : liste + émission. Responsable/admin seulement ;
     société forcée côté serveur. Les tCO₂ sont CALCULÉES par le serveur
@@ -1019,6 +1031,12 @@ class CertificatCarboneViewSet(TenantMixin, viewsets.ModelViewSet):
     ``contract_samples/certificats_carbone.json``."""
     queryset = CertificatCarbone.objects.all()
     serializer_class = CertificatCarboneSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference']
+    ordering_fields = [
+        'created_at', 'periode_debut', 'periode_fin', 'tco2_evitees',
+        'reference', 'id']
+    ordering = ['-created_at']
     parser_classes = [JSONParser]
     http_method_names = ['get', 'post', 'head', 'options']
 

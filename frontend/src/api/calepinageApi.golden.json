@@ -355,20 +355,6 @@
       "verbe": "post"
     }
   ],
-  "calepinages.enregistrerLayoutCalepinage": [
-    {
-      "config": {
-        "headers": {
-          "If-Match": {
-            "k": 1
-          }
-        }
-      },
-      "data": 3,
-      "url": "/calepinage/calepinages/7/layout/",
-      "verbe": "post"
-    }
-  ],
   "calepinages.enregistrerLayoutCalepinageConditionnel": [
     {
       "config": {

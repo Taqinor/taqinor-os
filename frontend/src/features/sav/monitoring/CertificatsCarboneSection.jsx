@@ -3,38 +3,27 @@
 // serveur depuis la production mesurée (jamais saisies), la référence est
 // posée par le serveur, un doublon exact est refusé (anti-double-comptage).
 // Contrat : `apps/monitoring/contract_samples/certificats_carbone.json`.
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Leaf } from 'lucide-react'
 import monitoringApi from '../../../api/monitoringApi'
-import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { getApiError } from '../../../lib/apiError'
 import { formatDate, formatNumber } from '../../../lib/format'
-import { Card, Button, Input, EmptyState, Skeleton, toast } from '../../../ui'
+import { Card, Button, Input, toast } from '../../../ui'
 import SystemPicker from '../../../pages/monitoring/SystemPicker'
+import ListeOuVide from './ListeOuVide'
+import { libelleSysteme, useListeServeur } from './partage'
 
 const FORM_VIDE = { systeme: '', periode_debut: '', periode_fin: '' }
 
-const lireTout = () => fetchAllPages(
-  (page) => monitoringApi.getCertificatsCarbone({ page, page_size: 200 }).then((r) => r.data),
-).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
-
 export default function CertificatsCarboneSection({ systems, loadingSystems }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { rows, loading, load } = useListeServeur(monitoringApi.getCertificatsCarbone)
   const [form, setForm] = useState(FORM_VIDE)
   const [busy, setBusy] = useState(false)
   const [erreur, setErreur] = useState(null)
 
-  const load = () => {
-    setLoading(true)
-    lireTout().then(setRows).catch(() => setRows([])).finally(() => setLoading(false))
-  }
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [])
-
   const cible = (c) => (c.installation_id
-    ? (systems.find((s) => s.installation === c.installation_id)?.label ?? `Système #${c.installation_id}`)
-    : `Client #${c.client_id} (consolidé)`)
+    ? libelleSysteme(systems, c.installation_id)
+    :`Client #${c.client_id} (consolidé)`)
 
   const emettre = async () => {
     const systeme = systems.find((s) => String(s.id) === form.systeme)
@@ -79,12 +68,8 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
       </div>
       {erreur && <p role="alert" className="text-sm text-destructive">{erreur}</p>}
 
-      {loading ? (
-        <Skeleton className="h-9 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState icon={Leaf} title="Aucun certificat émis"
-                    description="Le registre des certificats carbone est vide." />
-      ) : (
+      <ListeOuVide loading={loading} rows={rows} icon={Leaf} title="Aucun certificat émis"
+                   description="Le registre des certificats carbone est vide.">
         <ul className="flex flex-col gap-2">
           {rows.map((c) => (
             <li key={c.id} className="rounded-lg border border-border bg-card p-3">
@@ -99,7 +84,7 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
             </li>
           ))}
         </ul>
-      )}
+      </ListeOuVide>
     </Card>
   )
 }
