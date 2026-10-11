@@ -145,6 +145,24 @@ export function dismissOnboarding(companyId) {
   } catch { /* stockage indisponible : sans effet */ }
 }
 
+// Les deux lectures de comptes (produits, utilisateurs) de l'onboarding — UN
+// seul exemplaire, partagé par le hook ci-dessous et l'onglet « Prise en main ».
+// Une lecture en échec (ou /users/ non lisible) donne `null` : l'étape reste
+// « à faire », jamais d'erreur.
+export function lireComptesOnboarding(peutLireUsers) {
+  return Promise.allSettled([
+    stockApi.getProduits({ page_size: 1 }),
+    peutLireUsers
+      ? api.get('/users/')
+      : Promise.reject(new Error('users non lisibles')),
+  ]).then(([prod, users]) => ({
+    produitCount: prod.status === 'fulfilled'
+      ? countFromListResponse(prod.value.data) : null,
+    userCount: users.status === 'fulfilled'
+      ? countFromListResponse(users.value.data) : null,
+  }))
+}
+
 // Hook partagé : charge les comptes produits/utilisateurs (mêmes lectures que
 // l'onglet « Prise en main ») et renvoie les étapes dérivées + agrégats. Le
 // profil entreprise vient du store (déjà chargé par la coquille/Paramètres).
@@ -160,17 +178,10 @@ export function useOnboardingSteps() {
 
   useEffect(() => {
     let alive = true
-    Promise.allSettled([
-      stockApi.getProduits({ page_size: 1 }),
-      peutLireUsers
-        ? api.get('/users/')
-        : Promise.reject(new Error('users non lisibles')),
-    ]).then(([prod, users]) => {
+    lireComptesOnboarding(peutLireUsers).then((comptes) => {
       if (!alive) return
-      setProduitCount(prod.status === 'fulfilled'
-        ? countFromListResponse(prod.value.data) : null)
-      setUserCount(users.status === 'fulfilled'
-        ? countFromListResponse(users.value.data) : null)
+      setProduitCount(comptes.produitCount)
+      setUserCount(comptes.userCount)
     }).finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [peutLireUsers])

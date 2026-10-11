@@ -5,7 +5,8 @@ import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { formatNumber } from '../../lib/format'
 import { Badge, Button, Card, EmptyState, Spinner } from '../../ui'
-import { telechargerBlob } from './exportImage'
+import { telechargerBlob } from './exportImage'
+import { motifDuRefusBlob } from './motifRefusBlob'
 
 /* ============================================================================
    CALX342 — COMPARER DE 1 À 5 CALEPINAGES, sur leur propre route de liste.
@@ -83,16 +84,7 @@ const libelleColonne = (colonne) => (colonne.unite && !RATIOS.includes(colonne.c
    arrive donc lui aussi en Blob — son JSON (`{ids: motif}`) est relu pour
    afficher la phrase du serveur, jamais une phrase reformulée ici. */
 async function motifDuRefusClasseur(erreur) {
-  const donnees = erreur?.response?.data
-  try {
-    const texte = typeof donnees?.text === 'function' ? await donnees.text() : donnees
-    const objet = typeof texte === 'string' ? JSON.parse(texte) : texte
-    const premier = objet && typeof objet === 'object' ? Object.values(objet)[0] : null
-    if (premier) return String(premier)
-  } catch {
-    // Le corps n'est pas un refus JSON : on ne devine pas ce qu'il disait.
-  }
-  return 'Le classeur n’a pas pu être produit par le serveur.'
+  return motifDuRefusBlob(erreur, 'Le classeur n’a pas pu être produit par le serveur.')
 }
 
 function EnTeteCalepinage({ ligne, onRetirer }) {

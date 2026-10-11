@@ -1,5 +1,7 @@
 // ENF22 — helpers extraits de SchemaUnifilairePanel.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
 import { telechargerBlob } from './exportImage'
+import { motifDuRefusBlob } from './motifRefusBlob'
+import { svgTexteEnPng } from './documents/deposerImage'
 
 /* ============================================================================
    CAL195 — LE SCHÉMA UNIFILAIRE, DANS LE MODULE.
@@ -60,39 +62,11 @@ export function nomFichierSchema(referenceCalepinage, extension) {
  * affichable — jamais une exception qui casserait l'écran.
  */
 export function exporterSchemaPng(svgTexte, nomFichier, { telecharger = telechargerBlob } = {}) {
-  return new Promise((resolve, reject) => {
-    let url
-    try {
-      url = URL.createObjectURL(new Blob([svgTexte], { type: 'image/svg+xml;charset=utf-8' }))
-    } catch (err) {
-      reject(err)
-      return
-    }
-    const img = new Image()
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas')
-        canvas.width = img.width || 1
-        canvas.height = img.height || 1
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('Contexte de dessin 2D indisponible sur ce navigateur.')
-        ctx.drawImage(img, 0, 0)
-        canvas.toBlob((blobPng) => {
-          URL.revokeObjectURL(url)
-          if (!blobPng) { reject(new Error('Rendu PNG indisponible sur ce navigateur.')); return }
-          telecharger(blobPng, nomFichier)
-          resolve({ ok: true, nom: nomFichier })
-        }, 'image/png')
-      } catch (err) {
-        URL.revokeObjectURL(url)
-        reject(err)
-      }
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('Le schéma n’a pas pu être rastérisé sur ce navigateur.'))
-    }
-    img.src = url
+  // Le rastériseur est UN seul exemplaire (documents/deposerImage.js) : ici on
+  // télécharge le Blob obtenu au lieu de l'envoyer au serveur.
+  return svgTexteEnPng(svgTexte).then((blobPng) => {
+    telecharger(blobPng, nomFichier)
+    return { ok: true, nom: nomFichier }
   })
 }
 
@@ -111,17 +85,7 @@ export function exporterSchemaSvg(svgTexte, nomFichier, { telecharger = telechar
  * générique, plutôt qu'un motif métier inventé.
  */
 export async function motifDuRefusDxf(erreur) {
-  const donnees = erreur?.response?.data
-  try {
-    const texte = typeof donnees?.text === 'function' ? await donnees.text() : donnees
-    const objet = typeof texte === 'string' ? JSON.parse(texte) : texte
-    const premier = objet && typeof objet === 'object' ? Object.values(objet)[0] : null
-    if (premier) return String(premier)
-  } catch {
-    // Le corps n'est pas un refus JSON : on ne devine pas ce qu'il disait.
-    return 'Le DXF n’a pas pu être produit par le serveur.'
-  }
-  return 'Le DXF n’a pas pu être produit par le serveur.'
+  return motifDuRefusBlob(erreur, 'Le DXF n’a pas pu être produit par le serveur.')
 }
 
 /**
