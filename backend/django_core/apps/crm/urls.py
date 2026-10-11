@@ -1,14 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    ConcurrentPerteViewSet, LeadViewSet,
-    assignable_users, equipes_statistiques,
-    LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    ObjectifCommercialViewSet,
-    PlanActiviteViewSet,
+    LeadViewSet,
+    assignable_users,
+    LeadTagViewSet, MotifPerteViewSet, CanalViewSet,
     SavedViewViewSet,
     SiteProfileViewSet,
-    EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
+    WebsiteLeadPayloadViewSet,
 )
 # SPL74 — cadence de relance (cockpit des relances + modèles de message).
 from .cadence_views import MessageTemplateViewSet, RelanceEtapeViewSet
@@ -26,8 +24,10 @@ from .public_lead_ref_views import lead_ref_lookup
 from .public_affiner_views import lead_affiner_pro
 # VT12 — la SEULE surface visite restée côté CRM : la texture de toit du lead.
 from .views_visite import lead_photo_toit
-# NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks.
-from .views import (
+# NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks (SPL80 : clients_views).
+from .clients_views import (
+    ConcurrentPerteViewSet, EquipeCommercialeViewSet, ObjectifCommercialViewSet,
+    ParrainageViewSet, PlanActiviteViewSet, equipes_statistiques,
     ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
     PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
     forecast_historique_view, forecast_rollup_view, lead_playbook_view,

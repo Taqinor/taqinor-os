@@ -28,14 +28,11 @@ from .models import (
     Apporteur, Client, DealEnregistre, EquipeCommerciale, ForecastEntry, Lead,
     ObjectifCommercial, PlanCompte, RevueCompte, SalleVente,
 )
-from .serializers import (
-    EquipeCommercialeSerializer,
-    ForecastEntrySerializer, LeadSerializer, ObjectifCommercialSerializer,
-    PlanCompteSerializer, RevueCompteSerializer,
-    _CompanyScopedUniqueValidator,
-)
+from .serializers import LeadSerializer, _CompanyScopedUniqueValidator
 from .serializers_clients import (
-    ClientSerializer, DealEnregistreSerializer, SalleVenteSerializer,
+    ClientSerializer, DealEnregistreSerializer, EquipeCommercialeSerializer,
+    ForecastEntrySerializer, ObjectifCommercialSerializer, PlanCompteSerializer,
+    RevueCompteSerializer, SalleVenteSerializer,
 )
 
 User = get_user_model()

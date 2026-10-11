@@ -27,7 +27,7 @@ from apps.crm import leads_doublons
 from apps.crm import leads_score
 from apps.crm.management.commands import import_odoo_leads as odoo
 from apps.crm.models import Lead, Playbook
-from apps.crm.serializers import PlaybookSerializer
+from apps.crm.serializers_clients import PlaybookSerializer
 from apps.crm.leads_doublons import normalize_phone
 from authentication.models import Company
 

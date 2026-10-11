@@ -9,7 +9,7 @@
 # variantes, CPQ, contacts) N'Y SONT PAS : elles sont validées dans le code.
 #
 # Format : chemin::Serializer.champ  (une ligne par champ)
-backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.activity_type
+backend/django_core/apps/crm/serializers_clients.py::EtapePlanActiviteSerializer.activity_type
 backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.facture
 backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.paiement
 backend/django_core/apps/ventes/serializers_facturation.py::AvoirSerializer.client
@@ -58,8 +58,8 @@ backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer
 backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer.utilisateur_cible
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.decided_by
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.requested_by
-backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.assigne_par_defaut
-backend/django_core/apps/crm/serializers.py::ForecastSnapshotSerializer.owner
+backend/django_core/apps/crm/serializers_clients.py::EtapePlanActiviteSerializer.assigne_par_defaut
+backend/django_core/apps/crm/serializers_clients.py::ForecastSnapshotSerializer.owner
 backend/django_core/apps/crm/serializers.py::SavedViewSerializer.user
 backend/django_core/apps/ged/serializers.py::CertificatDestructionSerializer.detruit_par
 backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.created_by
@@ -83,9 +83,9 @@ backend/django_core/apps/adsengine/serializers.py::AdSetMirrorSerializer.campaig
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.rule
 backend/django_core/apps/automation/serializers.py::AutomationRuleVersionSerializer.rule
 backend/django_core/apps/automation/serializers.py::AutomationRunSerializer.rule
-backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.plan
-backend/django_core/apps/crm/serializers.py::LeadPlaybookProgressSerializer.lead
-backend/django_core/apps/crm/serializers.py::PlaybookEtapeSerializer.playbook
+backend/django_core/apps/crm/serializers_clients.py::EtapePlanActiviteSerializer.plan
+backend/django_core/apps/crm/serializers_clients.py::LeadPlaybookProgressSerializer.lead
+backend/django_core/apps/crm/serializers_clients.py::PlaybookEtapeSerializer.playbook
 backend/django_core/apps/crm/serializers_clients.py::SalleVenteItemSerializer.salle
 backend/django_core/apps/crm/serializers_clients.py::VisiteExterneSerializer.lead
 backend/django_core/apps/crm/serializers.py::WebsiteLeadPayloadSerializer.lead

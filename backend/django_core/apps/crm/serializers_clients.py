@@ -1,5 +1,7 @@
 """SPL76 — sérialiseurs du sous-parcours clients (salle de vente,
-apporteurs, deals, défis, T-TRACE, partenaires), déplacés de
+apporteurs, deals, défis, T-TRACE, partenaires ; SPL78 client ; SPL80
+parrainage, objectifs, concurrents, plans d'activité, équipes, forecast,
+plans de compte, playbooks), déplacés de
 ``serializers.py`` à l'identique (move only). Dépendance à sens unique : ce
 module importe ``.serializers``, jamais l'inverse.
 """
@@ -8,11 +10,15 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
+    ConcurrentPerte, EquipeCommerciale, EtapePlanActivite, ForecastEntry,
+    ForecastSnapshot, LeadPlaybookProgress, ObjectifCommercial, Parrainage,
+    PlanActivite, PlanCompte, Playbook, PlaybookEtape, PlaybookTache, RevueCompte,
     AppareilEquipe, Apporteur, Client, DealEnregistre, Defi, Partenaire, SalleVente,
     SalleVenteItem, VisiteExterne,
 )
 from .serializers import (
-    _CompanyScopedRelationsMixin, _CurrentCompanyDefault, _LeadEnPorteeMixin,
+    _ClientEnPorteeMixin, _CompanyScopedRelationsMixin, _CurrentCompanyDefault,
+    _LeadEnPorteeMixin, _scope_unique_validators,
 )
 
 
@@ -429,3 +435,367 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
             if f.statut != 'annulee':
                 total += f.montant_paye
         return str(total)
+
+
+class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
+                           serializers.ModelSerializer):
+    """N98 — parrainage. Société posée côté serveur ; parrain/filleul vérifiés
+    appartenir à la même société (multi-tenant) ET à la portée du rôle
+    (ACRM52)."""
+    champs_lead_portee = ('filleul_lead',)
+    champs_client_portee = ('parrain', 'filleul_client')
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    parrain_nom = serializers.CharField(
+        source='parrain.nom', read_only=True, default=None,
+        allow_null=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    # DC14 — nom du filleul à afficher : le FK lié prime sur le texte libre
+    # (``filleul_nom`` peut diverger du client/lead réellement référencé).
+    filleul_display_nom = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Parrainage
+        fields = [
+            'id', 'company', 'parrain', 'parrain_nom', 'filleul_lead',
+            'filleul_client', 'filleul_nom', 'filleul_display_nom',
+            'statut', 'statut_display',
+            'recompense', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def _same_company(self, obj):
+        req = self.context.get('request')
+        return not (obj and req and obj.company_id != req.user.company_id)
+
+    def validate_parrain(self, value):
+        if not self._same_company(value):
+            raise serializers.ValidationError('Client inconnu.')
+        return value
+
+    def validate_filleul_client(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Client inconnu.')
+        return value
+
+    def validate_filleul_lead(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Lead inconnu.')
+        return value
+
+
+class ObjectifCommercialSerializer(_CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
+    """Sérialise un objectif commercial + champs lecture optionnels."""
+
+    # CRX13 — le porteur de l'objectif doit être un utilisateur de la société.
+    scoped_relations = ('owner',)
+
+    owner_nom = serializers.SerializerMethodField()
+    metric_display = serializers.SerializerMethodField()
+    period_type_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ObjectifCommercial
+        fields = [
+            'id', 'company', 'owner', 'owner_nom',
+            'metric', 'metric_display',
+            'period_type', 'period_type_display',
+            'period_year', 'period_month', 'period_quarter',
+            'cible', 'notes',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'company', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_owner_nom(self, obj):
+        return getattr(obj.owner, 'username', None)
+
+    @extend_schema_field(serializers.CharField())
+    def get_metric_display(self, obj):
+        return obj.get_metric_display()
+
+    @extend_schema_field(serializers.CharField())
+    def get_period_type_display(self, obj):
+        return obj.get_period_type_display()
+
+    def validate(self, attrs):
+        pt = attrs.get('period_type', getattr(self.instance, 'period_type', None))
+        if pt == 'month' and not attrs.get(
+                'period_month', getattr(self.instance, 'period_month', None)):
+            raise serializers.ValidationError(
+                {'period_month': 'Requis pour un objectif mensuel.'}
+            )
+        if pt == 'quarter' and not attrs.get(
+                'period_quarter', getattr(self.instance, 'period_quarter', None)):
+            raise serializers.ValidationError(
+                {'period_quarter': 'Requis pour un objectif trimestriel.'}
+            )
+        month = attrs.get('period_month', getattr(self.instance, 'period_month', None))
+        if month is not None and not (1 <= month <= 12):
+            raise serializers.ValidationError(
+                {'period_month': 'Doit être entre 1 et 12.'}
+            )
+        quarter = attrs.get('period_quarter', getattr(self.instance, 'period_quarter', None))
+        if quarter is not None and not (1 <= quarter <= 4):
+            raise serializers.ValidationError(
+                {'period_quarter': 'Doit être entre 1 et 4.'}
+            )
+        return attrs
+
+
+class ObjectifAttainmentSerializer(serializers.Serializer):
+    """Lecture seule — objectif + réalisé + taux d'atteinte."""
+    id = serializers.IntegerField()
+    metric = serializers.CharField()
+    metric_display = serializers.CharField()
+    period_type = serializers.CharField()
+    period_year = serializers.IntegerField()
+    period_month = serializers.IntegerField(allow_null=True)
+    period_quarter = serializers.IntegerField(allow_null=True)
+    cible = serializers.DecimalField(max_digits=14, decimal_places=2)
+    owner = serializers.IntegerField(allow_null=True)
+    owner_nom = serializers.CharField(allow_null=True)
+    realise = serializers.DecimalField(max_digits=14, decimal_places=2)
+    taux = serializers.FloatField()
+    period_start = serializers.DateField()
+    period_end = serializers.DateField()
+
+
+class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
+    """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
+
+    La société est posée côté serveur (HiddenField depuis l'utilisateur courant
+    — multi-tenant, jamais lue du corps de requête) ; ``saisi_par`` est forcé
+    dans ``perform_create``. Le lead doit appartenir à la même société
+    (validate_lead). ``lead_nom`` est en lecture seule pour l'UI.
+    """
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
+    saisi_par_nom = serializers.SerializerMethodField()
+    lead_nom = serializers.CharField(
+        source='lead.nom', read_only=True, default=None,
+        allow_null=True)
+
+    class Meta:
+        model = ConcurrentPerte
+        fields = [
+            'id', 'company', 'lead', 'lead_nom',
+            'concurrent_nom', 'concurrent_prix', 'devise', 'motif', 'notes',
+            'saisi_par', 'saisi_par_nom', 'saisi_le', 'date_modification',
+        ]
+        read_only_fields = [
+            'saisi_par', 'saisi_le', 'date_modification',
+        ]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_saisi_par_nom(self, obj):
+        return getattr(obj.saisi_par, 'username', None)
+
+    def validate_lead(self, value):
+        req = self.context.get('request')
+        if req and value.company_id != getattr(req.user, 'company_id', None):
+            raise serializers.ValidationError('Lead inconnu.')
+        return value
+
+    def validate_concurrent_prix(self, value):
+        # Prix optionnel mais jamais négatif (garde Decimal explicite en plus du
+        # validateur modèle, pour un message clair côté API).
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le prix du concurrent ne peut pas être négatif.')
+        return value
+
+    def validate_concurrent_nom(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Le nom du concurrent est obligatoire.')
+        return value
+
+
+class EtapePlanActiviteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EtapePlanActivite
+        fields = [
+            'id', 'plan', 'ordre', 'activity_type', 'delai_jours',
+            'resume_defaut', 'assigne_par_defaut',
+        ]
+
+
+class PlanActiviteSerializer(serializers.ModelSerializer):
+    etapes = EtapePlanActiviteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanActivite
+        fields = ['id', 'company', 'nom', 'actif', 'date_creation', 'etapes']
+        read_only_fields = ['company', 'date_creation']
+
+
+class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
+                                  serializers.ModelSerializer):
+    # CRX13 — responsable ET membres (M2M) : le ``ManyRelatedField`` délègue à
+    # son ``child_relation``, promu lui aussi.
+    scoped_relations = ('responsable', 'membres')
+
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None,
+        allow_null=True)
+    nb_membres = serializers.IntegerField(source='membres.count', read_only=True)
+
+    class Meta:
+        model = EquipeCommerciale
+        fields = [
+            'id', 'company', 'nom', 'responsable', 'responsable_nom',
+            'membres', 'nb_membres', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['company', 'date_creation']
+
+
+class ForecastEntrySerializer(_LeadEnPorteeMixin,
+                              _CompanyScopedRelationsMixin,
+                              serializers.ModelSerializer):
+    # CRX13 — ``lead`` est un OneToOne : DRF lui greffe automatiquement un
+    # ``UniqueValidator`` sur TOUTES les sociétés. Le champ est re-scopé ET son
+    # validateur d'unicité aussi, sinon « déjà utilisé » sur un lead voisin
+    # resterait un oracle d'existence.
+    scoped_relations = ('lead',)
+
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    montant_effectif = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    owner_id = serializers.IntegerField(source='lead.owner_id', read_only=True)
+
+    class Meta:
+        model = ForecastEntry
+        fields = [
+            'id', 'lead', 'categorie', 'categorie_display', 'montant_prevu',
+            'montant_effectif', 'owner_id', 'commentaire',
+            'mis_a_jour_par', 'mis_a_jour_le',
+        ]
+        read_only_fields = ['mis_a_jour_par', 'mis_a_jour_le']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        _scope_unique_validators(fields.get('lead'))
+        return fields
+
+
+class ForecastSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ForecastSnapshot
+        fields = [
+            'id', 'semaine_iso', 'categorie', 'montant_total', 'nb_leads',
+            'owner', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class RevueCompteSerializer(_CompanyScopedRelationsMixin,
+                            serializers.ModelSerializer):
+    # CRX13 — ``plan`` est la SEULE frontière société de ce modèle (RevueCompte
+    # n'a pas de ``company`` propre) : sans re-scope, une revue pouvait être
+    # accrochée au plan de compte d'une autre société.
+    scoped_relations = ('plan',)
+
+    class Meta:
+        model = RevueCompte
+        fields = [
+            'id', 'plan', 'date_revue', 'participants', 'decisions',
+            'prochaine_action', 'prochaine_action_date', 'created_by',
+            'created_at',
+        ]
+        read_only_fields = ['created_by', 'created_at']
+
+
+class PlanCompteSerializer(_ClientEnPorteeMixin,
+                           _CompanyScopedRelationsMixin,
+                           serializers.ModelSerializer):
+    # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
+    scoped_relations = ('client',)
+
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    revues = RevueCompteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanCompte
+        fields = [
+            'id', 'client', 'objectifs_strategiques', 'potentiel_estime',
+            'concurrents_presents', 'swot_forces', 'swot_faiblesses',
+            'swot_opportunites', 'swot_menaces', 'prochaine_revue', 'statut',
+            'statut_display', 'created_by', 'mis_a_jour_par', 'revues',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'mis_a_jour_par', 'date_creation', 'date_modification',
+        ]
+
+
+class PlaybookTacheSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaybookTache
+        fields = ['id', 'etape', 'libelle', 'obligatoire', 'ordre']
+
+
+class PlaybookEtapeSerializer(serializers.ModelSerializer):
+    stage_display = serializers.SerializerMethodField()
+    taches = PlaybookTacheSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlaybookEtape
+        fields = ['id', 'playbook', 'stage', 'stage_display', 'ordre', 'taches']
+
+    @extend_schema_field(serializers.CharField())
+    def get_stage_display(self, obj):
+        from . import stages
+        return stages.STAGE_LABELS.get(obj.stage, obj.stage)
+
+
+class PlaybookSerializer(serializers.ModelSerializer):
+    etapes = PlaybookEtapeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Playbook
+        # CRX35 — 'bloquant' retiré : le champ n'existe plus (rien ne le lisait).
+        fields = ['id', 'nom', 'actif', 'condition', 'etapes', 'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
+    tache_libelle = serializers.CharField(source='tache.libelle', read_only=True)
+    tache_obligatoire = serializers.BooleanField(
+        source='tache.obligatoire', read_only=True)
+    etape_stage = serializers.CharField(source='tache.etape.stage', read_only=True)
+    fait_par_nom = serializers.CharField(
+        source='fait_par.username', read_only=True, default=None,
+        allow_null=True)
+    # AGR526 (contrat `lead_playbook.json`, AGR507) — la clé du TEXTE que la
+    # tâche propose (`dossier_fda` / `dossier_8221`), ou null.
+    cle_message = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LeadPlaybookProgress
+        fields = [
+            'id', 'lead', 'tache', 'tache_libelle', 'tache_obligatoire',
+            'etape_stage', 'fait', 'fait_par', 'fait_par_nom', 'fait_le',
+            'created_at', 'cle_message',
+        ]
+        read_only_fields = ['fait_par', 'fait_le', 'created_at']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_cle_message(self, obj):
+        """AGR526 — la ``cle_message`` de l'entrée ``PLAYBOOKS_SEGMENT_CAD125``
+        dont le ``nom`` est celui du playbook de la tâche, SEULEMENT si
+        ``cle_message_segment(lead)`` la confirme ; ``None`` sinon."""
+        from .cadence_messages import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
+        playbook = getattr(getattr(obj.tache, 'etape', None), 'playbook', None)
+        nom = getattr(playbook, 'nom', None)
+        entree = next((e for e in PLAYBOOKS_SEGMENT_CAD125 if e['nom'] == nom),
+                      None)
+        if entree is None:
+            return None
+        cle = entree['cle_message']
+        return cle if cle_message_segment(obj.lead) == cle else None

@@ -2,7 +2,8 @@
 salle de vente, partenaires, apporteurs, deals enregistrés, défis et T-TRACE
 (VisiteExterne, AppareilEquipe), déplacés de ``views.py`` à l'identique
 (move only) ; SPL78 — ClientViewSet et les actions clients de LeadViewSet
-(``LeadClientsActionsMixin``).
+(``LeadClientsActionsMixin``) ; SPL80 — parrainage, objectifs, concurrents,
+plans d'activité, équipes, forecast, plans de compte et playbooks.
 
 Règle d'import : ce module n'importe JAMAIS ``views.py`` (``READ_ACTIONS`` et
 ``_PorteeEnfantsMixin`` viennent du module neutre ``actions_crud``).
@@ -13,7 +14,7 @@ import uuid
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import filters, mixins, serializers, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
@@ -21,15 +22,24 @@ from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .actions_crud import READ_ACTIONS, WRITE_ACTIONS, _PorteeEnfantsMixin
+from apps.records.views import ChatterViewSetMixin
 from .models import (
-    AppareilEquipe, Apporteur, Client, DealEnregistre, Defi, Lead, Partenaire,
-    SalleVente, SalleVenteItem, VisiteExterne,
+    AppareilEquipe, Apporteur, Client, ConcurrentPerte, DealEnregistre, Defi,
+    EquipeCommerciale, ForecastEntry, ForecastSnapshot, Lead,
+    LeadPlaybookProgress, ObjectifCommercial, Parrainage, Partenaire,
+    PlanActivite, PlanCompte, Playbook, PlaybookEtape, PlaybookTache,
+    RevueCompte, SalleVente, SalleVenteItem, VisiteExterne,
 )
 from .serializers import LeadActivitySerializer, masquer_pii_dict
 from .serializers_clients import (
     AppareilEquipeSerializer, ClientSerializer, PartenaireSerializer,
     SalleVenteSerializer, SalleVenteItemSerializer, ApporteurSerializer,
     DealEnregistreSerializer, DefiSerializer, VisiteExterneSerializer,
+    ConcurrentPerteSerializer, ParrainageSerializer, ObjectifCommercialSerializer,
+    ObjectifAttainmentSerializer, PlanActiviteSerializer, EquipeCommercialeSerializer,
+    ForecastEntrySerializer, ForecastSnapshotSerializer, PlanCompteSerializer,
+    RevueCompteSerializer, PlaybookSerializer, PlaybookEtapeSerializer,
+    PlaybookTacheSerializer, LeadPlaybookProgressSerializer,
 )
 from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
 from . import activity
@@ -1206,3 +1216,673 @@ class LeadClientsActionsMixin:
                 'nb_chantiers': c.installations.count() if hasattr(c, 'installations') else 0,
             }, request.user))
         return Response(result)
+
+
+@extend_schema(responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def equipes_statistiques(request):
+    """ZSAL3 — Tableau de bord « Mes équipes » : pipeline ouvert/pondéré,
+    activités en retard, CA signé du mois vs cible, par équipe commerciale
+    active de la société courante."""
+    user = request.user
+    if not user.company_id:
+        if not user.is_superuser:
+            return Response({'equipes': []})
+        return Response({'equipes': []})
+    from .selectors import stats_equipe
+    return Response({'equipes': stats_equipe(user.company)})
+
+
+class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
+    """N98 — parrainages. Lecture tout rôle, écriture responsable/admin.
+
+    À la création, la récompense est pré-remplie depuis Paramètres
+    (referral_reward) quand elle n'est pas fournie. ?stats=1 ajoute un petit
+    tableau de bord (totaux par statut + récompenses)."""
+    # ACRM9 — lectures bornées à la portée (leads : filleul_lead ;
+
+    # clients : parrain, filleul_client).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    portee_leads = ('filleul_lead',)
+
+    portee_clients = ('parrain', 'filleul_client')
+    queryset = Parrainage.objects.select_related(
+        'parrain', 'filleul_lead', 'filleul_client').all()
+    serializer_class = ParrainageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['stats']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        extra = {'created_by': self.request.user}
+        if serializer.validated_data.get('recompense') in (None, ''):
+            try:
+                from apps.parametres.models import CompanyProfile
+                prof = CompanyProfile.get(company)
+                if prof and prof.referral_reward is not None:
+                    extra['recompense'] = prof.referral_reward
+            except Exception:
+                pass
+        serializer.save(**extra)
+
+    @extend_schema(responses=sd.OBJ)
+    @action(detail=False, methods=['get'], url_path='stats',
+            permission_classes=[IsAnyRole])
+    def stats(self, request):
+        """Tableau de bord parrainage : compte par statut + récompenses."""
+        from decimal import Decimal
+        qs = self.get_queryset()
+        total = qs.count()
+        par_statut = {}
+        rec_total = Decimal('0')
+        rec_versee = Decimal('0')
+        for p in qs:
+            par_statut[p.statut] = par_statut.get(p.statut, 0) + 1
+            if p.recompense:
+                rec_total += p.recompense
+                if p.statut == Parrainage.Statut.RECOMPENSE_VERSEE:
+                    rec_versee += p.recompense
+        return Response({
+            'total': total,
+            'par_statut': par_statut,
+            'recompenses_total': str(rec_total),
+            'recompenses_versees': str(rec_versee),
+        })
+
+
+class PlanActiviteViewSet(CompanyScopedModelViewSet):
+    """Plans d'activité (checklists de tâches commerciales) : lecture tout
+    rôle, écriture responsable/admin. Société forcée côté serveur."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    queryset = PlanActivite.objects.prefetch_related(
+        'etapes', 'etapes__activity_type').all()
+    serializer_class = PlanActiviteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
+    """ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM). Lecture
+    tout rôle (le dashboard « Mes équipes » y référence des noms), écriture
+    ADMIN. Société forcée côté serveur (TenantMixin).
+
+    ACRM26 (C-ACRM-021) — l'écriture (création, modification dont
+    ``responsable``, suppression) passe au palier ADMIN : une équipe pilote
+    une PORTÉE (le rollup du forecast, les cartes « Mes équipes ») — un
+    Commercial pouvait se nommer responsable d'une équipe et lire son
+    pipeline."""
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    queryset = EquipeCommerciale.objects.prefetch_related('membres').all()
+    serializer_class = EquipeCommercialeSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+
+@extend_schema_view(list=extend_schema(parameters=[sd.param('metric'), sd.param('year', OpenApiTypes.INT), sd.param('period_type'), sd.param('owner', description='Identifiant ou « null ».')]))
+class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
+    """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
+
+    Routes :
+      GET/POST  /crm/objectifs/
+      GET/PATCH /crm/objectifs/{id}/
+      DELETE    /crm/objectifs/{id}/
+      GET       /crm/objectifs/attainment/?year=&metric=&period_type=&owner=
+      GET       /crm/objectifs/{id}/attainment/
+    """
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    queryset = ObjectifCommercial.objects.all()
+    serializer_class = ObjectifCommercialSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('owner')
+        # Filtres optionnels.
+        metric = self.request.query_params.get('metric')
+        if metric:
+            qs = qs.filter(metric=metric)
+        year = self.request.query_params.get('year')
+        if year:
+            qs = qs.filter(period_year=year)
+        period_type = self.request.query_params.get('period_type')
+        if period_type:
+            qs = qs.filter(period_type=period_type)
+        owner = self.request.query_params.get('owner')
+        if owner == 'null':
+            qs = qs.filter(owner__isnull=True)
+        elif owner:
+            qs = qs.filter(owner_id=owner)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['attainment', 'attainment_list']:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    @extend_schema(responses=ObjectifAttainmentSerializer)
+    @action(detail=True, methods=['get'], url_path='attainment',
+            permission_classes=[IsAnyRole])
+    def attainment(self, request, pk=None):
+        """Réalisé vs cible pour un objectif unique."""
+        from .selectors import compute_attainment
+        obj = self.get_object()
+        data = compute_attainment(obj)
+        payload = {
+            'id': obj.pk,
+            'metric': obj.metric,
+            'metric_display': obj.get_metric_display(),
+            'period_type': obj.period_type,
+            'period_year': obj.period_year,
+            'period_month': obj.period_month,
+            'period_quarter': obj.period_quarter,
+            'cible': obj.cible,
+            'owner': obj.owner_id,
+            'owner_nom': getattr(obj.owner, 'username', None),
+            **data,
+        }
+        s = ObjectifAttainmentSerializer(payload)
+        return Response(s.data)
+
+    # YAPIC6 — sans cette annotation le schéma documente un OBJET unique alors
+    # que l'action renvoie une LISTE (drf-spectacular déduit le détail depuis
+    # le serializer). Annotation de schéma uniquement : aucun effet runtime.
+    @extend_schema(
+        parameters=[
+            sd.param('metric'), sd.param('year', OpenApiTypes.INT),
+            sd.param('period_type'),
+            sd.param('owner', description='Identifiant ou « null ».'),
+        ],
+        responses=ObjectifAttainmentSerializer(many=True),
+    )
+    @action(detail=False, methods=['get'], url_path='attainment',
+            permission_classes=[IsAnyRole])
+    def attainment_list(self, request):
+        """Réalisé vs cible pour tous les objectifs du filtre courant."""
+        from .selectors import compute_attainment
+        qs = self.get_queryset()
+        result = []
+        for obj in qs:
+            data = compute_attainment(obj)
+            result.append({
+                'id': obj.pk,
+                'metric': obj.metric,
+                'metric_display': obj.get_metric_display(),
+                'period_type': obj.period_type,
+                'period_year': obj.period_year,
+                'period_month': obj.period_month,
+                'period_quarter': obj.period_quarter,
+                'cible': obj.cible,
+                'owner': obj.owner_id,
+                'owner_nom': getattr(obj.owner, 'username', None),
+                **data,
+            })
+        s = ObjectifAttainmentSerializer(result, many=True)
+        return Response(s.data)
+
+
+@extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD]))
+class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
+    """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
+
+    Intelligence concurrentielle : sur un lead PERDU (drapeau ``Lead.perdu`` —
+    « Perdu » est un lost-flag, pas une étape STAGES.py), on capture qui nous a
+    battu et à quel prix.
+
+    Routes :
+      GET/POST  /crm/concurrents-perte/        (filtre ?lead=<id>)
+      GET/PATCH /crm/concurrents-perte/{id}/
+      DELETE    /crm/concurrents-perte/{id}/
+
+    Lecture tout rôle, écriture responsable/admin. Toujours scopé par société
+    (TenantMixin) : la société et ``saisi_par`` sont posés côté serveur depuis
+    l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
+    """
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+
+    # clients : —).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    portee_leads = ('lead',)
+
+    portee_clients = ()
+    serializer_class = ConcurrentPerteSerializer
+    queryset = ConcurrentPerte.objects.select_related(
+        'lead', 'company', 'saisi_par').all()
+    filterset_fields = ['lead']
+    ordering_fields = ['saisi_le', 'concurrent_prix']
+    ordering = ['-saisi_le']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        lead_id = self.request.query_params.get('lead')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    def perform_create(self, serializer):
+        """Société et saisi_par toujours posés côté serveur ; trace chatter."""
+        obj = serializer.save(
+            company=self.request.user.company,
+            saisi_par=self.request.user,
+        )
+        # Trace l'info dans le chatter du lead (best-effort, ne casse jamais
+        # la création si le log échoue).
+        try:
+            from . import activity
+            prix = ''
+            if obj.concurrent_prix is not None:
+                prix = f' à {obj.concurrent_prix} {obj.devise or ""}'.rstrip()
+            activity.log_note(
+                obj.lead, self.request.user,
+                f"Concurrent gagnant saisi : {obj.concurrent_nom}{prix}.",
+            )
+        except Exception:
+            pass
+
+
+@extend_schema_view(list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'), sd.param('periode', description='AAAA-MM')]))
+class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+
+    """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
+
+    Routes :
+      GET/POST  /crm/forecast-entries/?owner=&categorie=&periode=
+      GET/PATCH /crm/forecast-entries/{id}/
+    La réponse liste inclut ``totaux_par_categorie`` (somme des montants
+    effectifs des lignes filtrées, par catégorie)."""
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+
+    # clients : —).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    portee_leads = ('lead',)
+
+    portee_clients = ()
+    queryset = ForecastEntry.objects.select_related('lead', 'lead__owner')
+    serializer_class = ForecastEntrySerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        owner = self.request.query_params.get('owner')
+        if owner:
+            qs = qs.filter(lead__owner_id=owner)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        periode = self.request.query_params.get('periode')  # 'YYYY-MM'
+        if periode and '-' in periode:
+            year, month = periode.split('-', 1)
+            try:
+                qs = qs.filter(
+                    lead__date_cloture_prevue__year=int(year),
+                    lead__date_cloture_prevue__month=int(month))
+            except ValueError:
+                pass
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            mis_a_jour_par=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(mis_a_jour_par=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        from decimal import Decimal
+        response = super().list(request, *args, **kwargs)
+        totaux = {}
+        for entry in self.filter_queryset(self.get_queryset()):
+            totaux[entry.categorie] = (
+                totaux.get(entry.categorie, Decimal('0'))
+                + (entry.montant_effectif or Decimal('0')))
+        if isinstance(response.data, dict) and 'results' in response.data:
+            response.data['totaux_par_categorie'] = totaux
+        else:
+            response.data = {
+                'results': response.data, 'totaux_par_categorie': totaux}
+        return response
+
+
+@extend_schema(parameters=[sd.param('periode', description='AAAA-MM'), sd.param('equipe', OpenApiTypes.INT)], responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def forecast_rollup_view(request):
+    """NTCRM5 — Roll-up hiérarchique du forecast : ``?periode=YYYY-MM&
+    equipe=<id>``. Un Responsable/manager (non Admin) ne voit QUE les équipes
+    qu'il dirige (``EquipeCommerciale.responsable``) ; un Admin/Directeur voit
+    tout. ``?equipe=<id>`` restreint la réponse à cette équipe précise."""
+    user = request.user
+    if not user.company_id:
+        return Response({'equipes': [], 'total_societe': {}})
+    periode = None
+    periode_param = request.query_params.get('periode')
+    if periode_param and '-' in periode_param:
+        year, month = periode_param.split('-', 1)
+        try:
+            periode = {
+                'period_type': 'month', 'period_year': int(year),
+                'period_month': int(month),
+            }
+        except ValueError:
+            periode = None
+    manager = None if getattr(user, 'is_admin_role', False) else user
+    from .selectors import forecast_rollup
+    data = forecast_rollup(user.company, periode=periode, manager=manager)
+    equipe_id = request.query_params.get('equipe')
+    if equipe_id:
+        try:
+            equipe_id = int(equipe_id)
+        except ValueError:
+            equipe_id = None
+        data = {
+            **data,
+            'equipes': [e for e in data['equipes'] if e['equipe_id'] == equipe_id],
+        }
+    return Response(data)
+
+
+@extend_schema(parameters=[sd.P_OWNER, sd.param('semaines', OpenApiTypes.INT)], responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def forecast_historique_view(request):
+    """NTCRM6 — Série de snapshots hebdomadaires : ``?owner=&semaines=12``.
+    ``owner`` vide = snapshots SOCIÉTÉ (owner=None) ; sinon un commercial
+    donné. Renvoie la série ordonnée chronologiquement pour un graphe
+    d'évolution (glissement visible)."""
+    user = request.user
+    if not user.company_id:
+        return Response({'series': []})
+    owner = request.query_params.get('owner')
+    try:
+        semaines = int(request.query_params.get('semaines') or 12)
+    except ValueError:
+        semaines = 12
+    qs = ForecastSnapshot.objects.filter(company=user.company)
+    qs = qs.filter(owner_id=owner) if owner else qs.filter(owner__isnull=True)
+    qs = qs.order_by('-semaine_iso')[:max(1, semaines)]
+    data = list(reversed(ForecastSnapshotSerializer(qs, many=True).data))
+    return Response({'series': data})
+
+
+@extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
+class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
+
+    """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
+    ``records.Activity`` — création + changements de champ suivis journalisés
+    via ``records.services`` (le « mail.thread » maison), jamais un modèle
+    ``*Activity`` local. Le mixin ``ChatterViewSetMixin`` ajoute en plus les
+    actions génériques ``chatter/historique`` (GET) et ``chatter/noter`` (POST)."""
+    # ACRM9 — lectures bornées à la portée (leads : — ;
+
+    # clients : client).
+
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    portee_leads = ()
+
+    portee_clients = ('client',)
+    queryset = PlanCompte.objects.select_related('client')
+    serializer_class = PlanCompteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['historique']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        instance = serializer.save(
+            company=self.request.user.company, created_by=self.request.user,
+            mis_a_jour_par=self.request.user)
+        log_activity(
+            instance, Activity.Kind.CREATION, user=self.request.user,
+            body=f'Plan de compte créé pour {instance.client}.')
+
+    def perform_update(self, serializer):
+        from apps.records.services import log_field_change
+        old = PlanCompte.objects.get(pk=serializer.instance.pk)
+        instance = serializer.save(mis_a_jour_par=self.request.user)
+        tracked = [
+            'objectifs_strategiques', 'potentiel_estime', 'concurrents_presents',
+            'prochaine_revue', 'statut',
+        ]
+        for field in tracked:
+            old_val, new_val = getattr(old, field), getattr(instance, field)
+            if old_val != new_val:
+                log_field_change(
+                    instance, field,
+                    str(old_val) if old_val is not None else '',
+                    str(new_val) if new_val is not None else '',
+                    user=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+        plan = self.get_object()
+        qs = chatter_qs(plan, company=request.user.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
+
+
+class RevueCompteViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    queryset = RevueCompte.objects.select_related('plan')
+    serializer_class = RevueCompteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        # RevueCompte n'a PAS de champ `company` propre (scopée via son plan
+        # de compte parent) : `TenantMixin.get_queryset()` (appelé par
+        # `super()`) filtre sur `company=user.company`, ce qui lève un
+        # FieldError (500) sur ce modèle — on construit donc le queryset
+        # directement, jamais via `super().get_queryset()`.
+        qs = RevueCompte.objects.select_related('plan')
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(plan__company=user.company)
+        if user.is_superuser:
+            return qs
+        return qs.none()
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+class PlaybookViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    queryset = Playbook.objects.prefetch_related('etapes__taches')
+    serializer_class = PlaybookSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class _PlaybookEnfantViewSetMixin:
+    """CRX14 — socle des deux enfants de playbook (étapes, tâches).
+
+    ``PlaybookEtape`` et ``PlaybookTache`` N'ONT PAS de champ ``company`` : la
+    frontière société passe par le playbook parent. Le ``get_queryset`` de
+    ``TenantMixin`` (``qs.filter(company=…)``) levait donc un ``FieldError``
+    AVANT d'atteindre le re-scope ``playbook__company`` écrit juste après —
+    autrement dit ce re-scope était MORT et toute lecture/écriture d'un objet
+    existant (list, retrieve, update, destroy) répondait 500. On remplace
+    entièrement le filtrage par le chemin parent, en gardant la sémantique de
+    ``TenantMixin`` pour les trois acteurs : utilisateur d'une société →
+    scopé ; superuser SANS société (acteur plateforme) → tout ; ni l'un ni
+    l'autre → rien.
+
+    ``perform_create``/``perform_update`` valident en plus le PARENT désigné
+    par le corps : sans cela, un id de playbook (ou d'étape) d'une autre
+    société suffisait à y greffer — ou à y déplacer — une étape.
+    """
+
+    #: Chemin ORM du parent portant la société (ex. ``playbook__company_id``).
+    company_path = ''
+    #: Nom du champ de relation parent dans le corps de la requête.
+    parent_field = ''
+
+    def base_queryset(self):
+        raise NotImplementedError
+
+    def get_queryset(self):
+        qs = self.base_queryset()
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(**{self.company_path: user.company_id})
+        if user.is_superuser:
+            return qs
+        return qs.none()
+
+    def parent_company_id(self, parent):
+        raise NotImplementedError
+
+    def _valider_parent(self, serializer):
+        company_id = getattr(self.request.user, 'company_id', None)
+        if not company_id:
+            return
+        parent = serializer.validated_data.get(self.parent_field)
+        if parent is None:
+            # Absent d'un PATCH partiel : le parent existant a déjà été scopé
+            # par ``get_queryset``, rien à revalider.
+            if serializer.partial:
+                return
+            raise DRFValidationError(
+                {self.parent_field: 'Ce champ est obligatoire.'})
+        if self.parent_company_id(parent) != company_id:
+            raise DRFValidationError(
+                {self.parent_field: 'Élément hors de votre société.'})
+
+    def perform_create(self, serializer):
+        self._valider_parent(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._valider_parent(serializer)
+        serializer.save()
+
+
+class PlaybookEtapeViewSet(_PlaybookEnfantViewSetMixin,
+                           CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    queryset = PlaybookEtape.objects.select_related('playbook').prefetch_related('taches')
+    serializer_class = PlaybookEtapeSerializer
+    company_path = 'playbook__company_id'
+    parent_field = 'playbook'
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def base_queryset(self):
+        return PlaybookEtape.objects.select_related(
+            'playbook').prefetch_related('taches')
+
+    def parent_company_id(self, parent):
+        return parent.company_id
+
+
+class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
+                           CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    queryset = PlaybookTache.objects.select_related('etape__playbook')
+    serializer_class = PlaybookTacheSerializer
+    company_path = 'etape__playbook__company_id'
+    parent_field = 'etape'
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def base_queryset(self):
+        return PlaybookTache.objects.select_related('etape__playbook')
+
+    def parent_company_id(self, parent):
+        return parent.playbook.company_id
+
+
+class _LeadPlaybookPermission(IsAnyRole):
+    """ACRM8 — lire la progression : tout rôle interne ; cocher une tâche
+    (POST) est une écriture commerciale : ``crm_modifier``."""
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return True
+        return HasPermissionOrLegacy('crm_modifier')().has_permission(
+            request, view)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([_LeadPlaybookPermission])
+def lead_playbook_view(request, lead_id):
+    """NTCRM12 — ``GET`` : progression playbook du lead (toutes les tâches
+    générées pour son étape courante ou une étape antérieure). ``POST``
+    ``{'tache': <id>, 'fait': true}`` : coche/décoche UNE tâche, pose
+    l'acteur+la date côté serveur (jamais silencieux).
+
+    ACRM8/ACRM9 — le lead est résolu dans la PORTÉE de l'appelant : hors
+    portée = absent (404)."""
+    from .selectors import leads_en_portee
+    lead = leads_en_portee(request.user).filter(pk=lead_id).first()
+    if lead is None:
+        return Response({'detail': 'Lead introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        # AGR526 — `tache__etape__playbook` : la clé de texte (`cle_message`)
+        # se lit sur le NOM du playbook, sans requête par ligne.
+        progress = lead.playbook_progress.select_related(
+            'tache', 'tache__etape', 'tache__etape__playbook', 'lead',
+            'fait_par').all()
+        return Response(LeadPlaybookProgressSerializer(progress, many=True).data)
+
+    tache_id = request.data.get('tache')
+    fait = bool(request.data.get('fait', True))
+    progress = LeadPlaybookProgress.objects.filter(
+        lead=lead, tache_id=tache_id).first()
+    if progress is None:
+        return Response(
+            {'detail': 'Tâche de playbook introuvable pour ce lead.'},
+            status=status.HTTP_404_NOT_FOUND)
+    from django.utils import timezone as _tz
+    progress.fait = fait
+    progress.fait_par = request.user if fait else None
+    progress.fait_le = _tz.now() if fait else None
+    progress.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    return Response(LeadPlaybookProgressSerializer(progress).data)
