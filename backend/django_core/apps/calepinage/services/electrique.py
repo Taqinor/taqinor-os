@@ -1357,6 +1357,21 @@ def entree_electrique_servie(calepinage, stockee):
             'fiche_complete': not manquants,
             'champs_manquants': manquants,
         }
+    # ACAL359 — le module RÉELLEMENT posé sur chaque pan (relu à chaque GET,
+    # jamais persisté) ; mêmes règles que l'alerte d'ACAL358.
+    from .chaines import modules_par_pan
+
+    document = getattr(calepinage, 'roof_layout', None)
+    module = materiel.get('module') or {}
+    defaut = {'produit_id': module.get('produit_id'),
+              'designation': module.get('designation'),
+              'pmax_wc': _nombre((resolu.get('module') or {}).get('pmax_wc')),
+              'fiche_complete': module.get('fiche_complete')}
+    materiel['modules_par_pan'] = modules_par_pan(
+        document, defaut,
+        _fiches_modules_du_document(getattr(calepinage, 'company', None),
+                                    document, resolu),
+        lambda specs: _champs_manquants('module', specs))
     return {
         'calepinage': getattr(calepinage, 'pk', None),
         'entree': entree,

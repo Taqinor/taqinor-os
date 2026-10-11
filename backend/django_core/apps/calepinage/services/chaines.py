@@ -773,6 +773,48 @@ def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
     return resultat, (), tuple(messages)
 
 
+def modules_par_pan(layout, defaut, fiches, manquants):
+    """ACAL359 — le module RÉELLEMENT posé sur chaque pan, et sa fiche.
+
+    ``defaut`` = ``{'produit_id', 'designation', 'pmax_wc', 'fiche_complete'}``
+    du module par défaut (``None`` : aucun désigné) ; ``fiches`` = ceux de
+    ``_fiches_modules_du_document`` ; ``manquants(specs)`` = les champs de
+    fiche module manquants. Un pan sans fiche résolue est dit tel (module
+    saisi ou produit introuvable) — même règle qu'``_alertes_pans_sans_fiche``.
+    """
+    defaut = defaut or {}
+    libelles = {str(m.get('id')): m.get('libelle') or m.get('designation')
+                for m in (layout or {}).get('modules') or []
+                if isinstance(m, dict)}
+    lignes = []
+    for pan in _pans_poses(layout):
+        module = pan.module
+        pid = module.produit_id if module else None
+        fiche = (fiches or {}).get(pid)
+        saisi = (pid in (None, '') and module is not None
+                 and module.pmax_wc is not None
+                 and defaut.get('pmax_wc') is not None
+                 and module.pmax_wc != defaut['pmax_wc'])
+        if saisi or not (pid in (None, '') or isinstance(fiche, dict)
+                         or str(pid) == str(defaut.get('produit_id'))):
+            produit, nom, resolue, complete = pid or None, (libelles.get(
+                str(module.module_id)) or ''), False, False
+        elif isinstance(fiche, dict):
+            produit, nom, resolue = pid, fiche.get('designation') or '', True
+            complete = not manquants(fiche.get('specs') or {})
+        else:
+            produit, nom = defaut.get('produit_id'), defaut.get(
+                'designation') or ''
+            resolue = produit is not None
+            complete = bool(defaut.get('fiche_complete')) and resolue
+        lignes.append({
+            'pan': pan.label,
+            'module_id': module.module_id if module else None,
+            'designation': nom, 'produit_id': produit,
+            'fiche_resolue': resolue, 'fiche_complete': complete})
+    return lignes
+
+
 def _alertes_pans_sans_fiche(pans, layout, module_specs, module_designation,
                              produits_sans_fiche):
     """ACAL358 — un pan dont le module n'a PAS de fiche résolue est nommé.
