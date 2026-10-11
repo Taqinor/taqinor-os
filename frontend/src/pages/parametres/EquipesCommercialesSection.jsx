@@ -2,7 +2,8 @@
 // dashboard « Mes équipes » (pipeline/CA agrégés par équipe). Autonome : gère
 // son propre chargement, la liste des membres assignables lui est passée par
 // le parent (déjà chargée pour le reste de l'onglet Leads).
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import useEquipesAdmin from './useEquipesAdmin'
 import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import EquipesAdminPanel from './EquipesAdminPanel'
 import crmApi from '../../api/crmApi'
@@ -11,11 +12,7 @@ import { useConfirmDialog } from '../../ui/confirm'
 export default function EquipesCommercialesSection({ assignables = [] }) {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
   const { confirmDelete: confirmerSuppression } = useConfirmDialog()
-  const [equipes, setEquipes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [newNom, setNewNom] = useState('')
-  const [busyId, setBusyId] = useState(null)
+  const { equipes, setEquipes, loading, setLoading, error, setError, newNom, setNewNom, busyId, setBusyId } = useEquipesAdmin()
 
   const load = () => {
     setLoading(true)
@@ -25,7 +22,7 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [])
 
   const addEquipe = async () => {

@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CalendarClock, FileWarning } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { Button, Card, CardContent, Spinner } from '../../ui'
+import { Button, Card, CardContent } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
+import { PageChargement } from './EtatsSection'
 
 /* ============================================================================
    NTP2P30 — Wizard de clôture de fin de mois achats. Purement AGRÉGATEUR en
@@ -27,15 +28,7 @@ export default function ClotureAchatsWizardPage() {
     return () => { active = false }
   }, [])
 
-  if (loading) {
-    return (
-      <div className="page">
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-          <Spinner /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <PageChargement />
 
   if (!data) return null
 

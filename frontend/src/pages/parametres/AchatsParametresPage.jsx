@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import useFormulaireReglages from './useFormulaireReglages'
 import { Link } from 'react-router-dom'
 import { CalendarCheck2, ShieldCheck } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { Button, Card, CardContent, Input, Label, Spinner, Switch } from '../../ui'
+import { Button, Card, CardContent, Input, Label, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
 import ReglesApprobationAchatSection from './ReglesApprobationAchatSection'
 import { frErrDetail as frErr } from '../../lib/frErr'
+import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
 
 /* ============================================================================
    WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
@@ -37,10 +39,9 @@ const emptyForm = {
 }
 
 export default function AchatsParametresPage() {
-  const [id, setId] = useState(null)
-  const [form, setForm] = useState(emptyForm)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const {
+    id, setId, form, setForm, loading, setLoading, saving, setSaving, setField,
+  } = useFormulaireReglages(emptyForm)
 
   useEffect(() => {
     let active = true
@@ -64,9 +65,8 @@ export default function AchatsParametresPage() {
       .catch(() => toast.error('Chargement des paramètres achats impossible.'))
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement (setters du hook stables)
   }, [])
-
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   const submit = (e) => {
     e.preventDefault()
@@ -88,24 +88,18 @@ export default function AchatsParametresPage() {
       .finally(() => setSaving(false))
   }
 
-  if (loading) {
-    return (
-      <div className="page">
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-          <Spinner /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <PageChargement />
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Achats</h1>
-        <div className="page-subtitle">
+    <PageReglages titre="Achats"
+      sousTitre={
+        <>
           Réglages achats/fournisseurs de la société — conformité, RAS-TVA et
           tolérances de rapprochement.
-        </div>
+        </>
+      }
+      actions={(
+        <>
         {/* NTP2P30 — wizard de clôture de fin de mois (agrégateur lecture
             seule : factures en exception, demandes anciennes, documents
             expirés). */}
@@ -114,9 +108,10 @@ export default function AchatsParametresPage() {
             <CalendarCheck2 /> Clôture de fin de mois
           </Link>
         </Button>
-      </div>
+        </>
+      )}>
 
-      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      <FormulaireReglages onSubmit={submit} saving={saving} disabled={!id}>
         <Card>
           <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -240,17 +235,12 @@ export default function AchatsParametresPage() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end">
-          <Button type="submit" loading={saving} disabled={!id}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
-        </div>
-      </form>
+      </FormulaireReglages>
 
       {/* NTP2P32 — CRUD des règles d'approbation d'achat (seuil/chantier/nb
           approbateurs), écran autonome (ses propres appels API, jamais
           rattaché au formulaire AchatsParametres ci-dessus). */}
       <ReglesApprobationAchatSection />
-    </div>
+    </PageReglages>
   )
 }

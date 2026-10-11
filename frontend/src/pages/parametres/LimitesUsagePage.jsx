@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import useLectureSeule from './useLectureSeule'
+import { EtatPageLecture } from './EtatsSection'
 import { Gauge } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
-import { Badge, Card, CardContent, Progress, Spinner } from '../../ui'
+import { Badge, Card, CardContent, Progress } from '../../ui'
 
 /* ============================================================================
    NTOBS8 — Paramètres → Fiabilité → Limites & usage. Écran LECTURE SEULE :
@@ -54,25 +55,12 @@ function RessourceCard({ ressource }) {
 }
 
 export default function LimitesUsagePage() {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [erreur, setErreur] = useState('')
+  const { data, loading, erreur } = useLectureSeule(
+    () => parametresApi.getUsageLimites(),
+    null, {},
+    'Impossible de charger les limites et usages.')
 
-  useEffect(() => {
-    let active = true
-    parametresApi.getUsageLimites()
-      .then((r) => { if (active) setData(r.data ?? {}) })
-      .catch(() => { if (active) setErreur('Impossible de charger les limites et usages.') })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [])
-
-  if (loading) {
-    return <div className="flex items-center justify-center py-16"><Spinner /></div>
-  }
-  if (erreur) {
-    return <div className="p-6 text-sm text-destructive">{erreur}</div>
-  }
+  if (loading || erreur) return <EtatPageLecture loading={loading} erreur={erreur} />
 
   const ressources = data?.ressources ?? []
 

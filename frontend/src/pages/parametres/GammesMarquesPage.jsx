@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import useFormulaireReglages from './useFormulaireReglages'
 import { Layers, Tags } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { PRODUCT_CATEGORIES } from '../../features/ventes/solar'
-import { Button, Card, CardContent, Input, Label, Spinner, Switch } from '../../ui'
+import { Card, CardContent, Input, Label, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
+import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
 
 /* ============================================================================
    PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
@@ -51,10 +53,9 @@ function normalizeMarques(marques) {
 }
 
 export default function GammesMarquesPage() {
-  const [id, setId] = useState(null)
-  const [form, setForm] = useState(emptyForm)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const {
+    id, setId, form, setForm, loading, setLoading, saving, setSaving, setField,
+  } = useFormulaireReglages(emptyForm)
 
   useEffect(() => {
     let active = true
@@ -73,9 +74,8 @@ export default function GammesMarquesPage() {
       .catch(() => toast.error('Chargement des réglages « Gammes & marques » impossible.'))
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement (setters du hook stables)
   }, [])
-
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   const setMarque = (slot, role, value) => setForm((f) => ({
     ...f,
@@ -105,27 +105,18 @@ export default function GammesMarquesPage() {
       .finally(() => setSaving(false))
   }
 
-  if (loading) {
-    return (
-      <div className="page">
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-          <Spinner /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <PageChargement />
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Gammes &amp; marques</h1>
-        <div className="page-subtitle">
+    <PageReglages titre="Gammes &amp; marques"
+      sousTitre={
+        <>
           Offre à une ou deux gammes, libellés affichés, et marque préférée par
           gamme et par rôle de composition automatique du devis.
-        </div>
-      </div>
+        </>
+      }>
 
-      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      <FormulaireReglages onSubmit={submit} saving={saving}>
         <Card>
           <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -226,12 +217,7 @@ export default function GammesMarquesPage() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end">
-          <Button type="submit" loading={saving}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
-        </div>
-      </form>
-    </div>
+      </FormulaireReglages>
+    </PageReglages>
   )
 }

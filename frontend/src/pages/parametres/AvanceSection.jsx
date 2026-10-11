@@ -13,7 +13,8 @@ import {
 } from '../../ui'
 import reportingApi from '../../api/reportingApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
-import { SectionTitle, Field } from './peComponents'
+import { SectionTitle, Field, CarteSection, SelectTypeChamp } from './peComponents'
+import { BoutonActifInactif, BoutonSupprimerLigne } from './EtatsSection'
 import { CHAMP_ECART_RECETTE, erreurDuChamp } from './peConstants'
 import {
   CHAMPS_SEUILS_8221, REGLAGES_CI_NOMBRES, REGLAGES_CI_BOOLEENS,
@@ -262,8 +263,7 @@ export default function AvanceSection({
       {/* FG22 — Politique de sécurité (mot de passe & verrouillage), par
           société. Tous les défauts sont inertes : rien ne change tant que
           vous ne durcissez pas la politique. */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Sécurité — mots de passe & verrouillage" icon={<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>}/>
           <p className="mb-3.5 text-[11.5px] text-muted-foreground">
             Règles appliquées aux mots de passe et aux connexions de votre
@@ -304,12 +304,10 @@ export default function AvanceSection({
               Exiger un mélange majuscule / minuscule / chiffre / caractère spécial
             </label>
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* Logique de devis (avancé) — paramètres implicites du simulateur (D5) */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Logique de devis (avancé)" icon={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></>}/>
           <p className="mb-3.5 text-[11.5px] text-muted-foreground">
             Paramètres implicites du générateur de devis, rendus modifiables.
@@ -348,8 +346,7 @@ export default function AvanceSection({
             production par région restent un raffinement futur (modèle de
             calcul à valider avec le founder).
           </p>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* Chantiers — Types d'intervention */}
       <Card>
@@ -424,12 +421,8 @@ export default function AvanceSection({
                       onClick={() => toggleEtapeCapture(et)}>
                 Série
               </Button>
-              <Button type="button" size="sm"
-                      variant={et.actif ? 'success' : 'secondary'}
-                      title={et.actif ? 'Désactiver' : 'Activer'}
-                      onClick={() => toggleEtapeActif(et)}>
-                {et.actif ? 'Actif' : 'Inactif'}
-              </Button>
+              <BoutonActifInactif actif={et.actif}
+                                  onClick={() => toggleEtapeActif(et)} />
               {et.protege
                 ? <Badge tone="info">système</Badge>
                 : (
@@ -506,19 +499,8 @@ export default function AvanceSection({
                   <Input className="min-w-[140px] flex-[1_1_140px]"
                          placeholder="Libellé du champ" value={cfEdit?.libelle ?? ''}
                          onChange={e => setCfEdit(c => ({ ...c, libelle: e.target.value }))} />
-                  <div className="w-[120px]">
-                    <Select value={cfEdit?.type}
-                            onValueChange={v => setCfEdit(c => ({ ...c, type: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="text">Texte</SelectItem>
-                        <SelectItem value="number">Nombre</SelectItem>
-                        <SelectItem value="date">Date</SelectItem>
-                        <SelectItem value="choice">Choix</SelectItem>
-                        <SelectItem value="boolean">Oui/Non</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <SelectTypeChamp value={cfEdit?.type}
+                                   onValueChange={v => setCfEdit(c => ({ ...c, type: v }))} />
                   {cfEdit?.type === 'choice' && (
                     <Input className="min-w-[160px] flex-[1_1_160px]"
                            placeholder="Options (a, b, c)" value={cfEdit?.options ?? ''}
@@ -581,30 +563,16 @@ export default function AvanceSection({
                             onClick={() => openCfEdit(d)}>
                   <Pencil className="size-4" aria-hidden="true" />
                 </IconButton>
-                <IconButton size="md" variant="outline" label="Supprimer le champ"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => delCf(d)}>
-                  <Trash2 className="size-4" aria-hidden="true" />
-                </IconButton>
+                <BoutonSupprimerLigne size="md" label="Supprimer le champ"
+                                      onClick={() => delCf(d)} />
               </div>
             )
           ))}
           <div className="flex flex-wrap items-center gap-1.5">
             <Input className="min-w-[140px] flex-[1_1_140px]" placeholder="Libellé du champ"
                    value={newCf.libelle} onChange={e => setNewCf(c => ({ ...c, libelle: e.target.value }))} />
-            <div className="w-[120px]">
-              <Select value={newCf.type}
-                      onValueChange={v => setNewCf(c => ({ ...c, type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text">Texte</SelectItem>
-                  <SelectItem value="number">Nombre</SelectItem>
-                  <SelectItem value="date">Date</SelectItem>
-                  <SelectItem value="choice">Choix</SelectItem>
-                  <SelectItem value="boolean">Oui/Non</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <SelectTypeChamp value={newCf.type}
+                             onValueChange={v => setNewCf(c => ({ ...c, type: v }))} />
             {newCf.type === 'choice' && (
               <Input className="min-w-[160px] flex-[1_1_160px]" placeholder="Options (a, b, c)"
                      value={newCf.options} onChange={e => setNewCf(c => ({ ...c, options: e.target.value }))} />

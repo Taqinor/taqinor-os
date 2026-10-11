@@ -15,12 +15,10 @@ import {
   toast,
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
-import { SectionTitle } from './peComponents'
+import { SectionTitle, CarteSection } from './peComponents'
 import { EtatChargementSection, ActionsLigneParam } from './EtatsSection'
+import { slugifyCle as slugify, permuterOrdre } from './listeOrdonnee'
 
-const slugify = (s) => s.trim().toLowerCase()
-  .normalize('NFD').replace(/[̀-ͯ]/g, '')
-  .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
 
 export default function SecuriteTerrainSection() {
   const [slots, setSlots] = useState([])
@@ -64,18 +62,11 @@ export default function SecuriteTerrainSection() {
   const toggleActif = async (s) => {
     try { await installationsApi.saveConsigneSecurite(s.id, { actif: !s.actif }); load() } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
-  const move = async (idx, dir) => {
-    const j = idx + dir
-    if (j < 0 || j >= slots.length) return
-    const a = slots[idx]; const b = slots[j]
-    try {
-      await Promise.all([
-        installationsApi.saveConsigneSecurite(a.id, { ordre: b.ordre }),
-        installationsApi.saveConsigneSecurite(b.id, { ordre: a.ordre }),
-      ])
-      load()
-    } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
-  }
+  const move = (idx, dir) => permuterOrdre({
+    slots, idx, dir, recharger: load,
+    sauver: (id, patch) => installationsApi.saveConsigneSecurite(id, patch),
+    erreur: (e) => toast.error(apiErrorMessage(e, 'Modification impossible.')),
+  })
   const del = (s) => setPendingDelete(s)
 
   const confirmDelete = async () => {
@@ -106,8 +97,7 @@ export default function SecuriteTerrainSection() {
   return (
     <div className="flex flex-col gap-4">
       {/* ── F18 — Consignes de sécurité ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Consignes de sécurité"
             icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>} />
           <p className="mb-3.5 text-[11.5px] text-muted-foreground">
@@ -139,12 +129,10 @@ export default function SecuriteTerrainSection() {
               <Plus className="size-4" aria-hidden="true" /> Ajouter
             </Button>
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* ── F12 — Seuil de dépassement de consommation ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Revue des dépassements (F12)"
             icon={<><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></>} />
           <p className="mb-3 text-[11.5px] text-muted-foreground">
@@ -156,12 +144,10 @@ export default function SecuriteTerrainSection() {
               onBlur={(e) => saveProfile({ overage_seuil_pct: e.target.value })} />
             <span className="text-sm text-muted-foreground">%</span>
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* ── F9/F14/F20 — Fournisseurs des interfaces swappables ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Services optionnels (OCR / transcription / IA photo)"
             icon={<><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/></>} />
           <p className="mb-3 text-[11.5px] text-muted-foreground">
@@ -190,8 +176,7 @@ export default function SecuriteTerrainSection() {
                 onBlur={(e) => saveProfile({ photo_qa_provider: e.target.value })} />
             </label>
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       <ConfirmDialog
         open={!!pendingDelete}

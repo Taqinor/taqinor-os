@@ -20,7 +20,7 @@ import {
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { SectionTitle } from './peComponents'
-import { EtatChargementSection } from './EtatsSection'
+import { EtatChargementSection, BoutonActifInactif } from './EtatsSection'
 
 // Types d'installation qui peuvent auto-sélectionner un modèle (miroir des
 // choix serveur Installation.TypeInstallation). « __none__ » = repli « Défaut ».
@@ -258,12 +258,8 @@ export default function ChecklistSection() {
                     disabled={ei === (t.etapes ?? []).length - 1} onClick={() => moveEtape(t, ei, 1)}>
                     <ChevronDown className="size-4" aria-hidden="true" />
                   </IconButton>
-                  <Button type="button" size="sm"
-                    variant={et.actif ? 'success' : 'secondary'}
-                    title={et.actif ? 'Désactiver' : 'Activer'}
-                    onClick={() => toggleEtapeActif(et)}>
-                    {et.actif ? 'Actif' : 'Inactif'}
-                  </Button>
+                  <BoutonActifInactif actif={et.actif}
+                    onClick={() => toggleEtapeActif(et)} />
                   {et.protege ? (
                     <Badge tone="info">système</Badge>
                   ) : (

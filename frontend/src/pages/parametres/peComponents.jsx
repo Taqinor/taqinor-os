@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Trash2, Pencil, Plus, X, ImageOff, UploadCloud } from 'lucide-react'
 import {
   Card, CardContent, Label, Input, Button, IconButton, Spinner, EmptyState,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { ACCEPTED, MAX_MB, mediaUrl } from './peConstants'
 import { useConfirmDialog } from '../../ui/confirm'
@@ -20,6 +21,46 @@ export function Ic({ size = 16, color = 'currentColor', sw = 1.8, children }) {
       style={{ flexShrink: 0, display: 'block' }}>
       {children}
     </svg>
+  )
+}
+
+// ── Carte de section ──────────────────────────────────────────────────────────
+// Carte + contenu au gabarit des sections Paramètres (`pt-4 sm:pt-5`), jamais
+// recopié section par section ; `className` remplace le gabarit du contenu.
+export function CarteSection({ className = 'pt-4 sm:pt-5', children, ...rest }) {
+  return (
+    <Card>
+      <CardContent className={className} {...rest}>
+        {children}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Carte « Chargement… » d'une section en cours de lecture. */
+export function ChargementCarte() {
+  return (
+    <CarteSection>
+      <Spinner /> <span className="text-xs text-muted-foreground">Chargement…</span>
+    </CarteSection>
+  )
+}
+
+// ── Type d'un champ personnalisé ──────────────────────────────────────────────
+export function SelectTypeChamp({ value, onValueChange }) {
+  return (
+    <div className="w-[120px]">
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="text">Texte</SelectItem>
+          <SelectItem value="number">Nombre</SelectItem>
+          <SelectItem value="date">Date</SelectItem>
+          <SelectItem value="choice">Choix</SelectItem>
+          <SelectItem value="boolean">Oui/Non</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
   )
 }
 
