@@ -207,7 +207,7 @@ class AllowlistTests(unittest.TestCase):
             'les écarts motivés (ACRM48) ont été vidés : la garde '
             'échouerait sur des actions dont le repli est plus strict.')
         self.assertIn(
-            'backend/django_core/apps/crm/clients_views.py::DefiViewSet.export_xlsx',
+            'backend/django_core/apps/crm/clients_views.py::SalleVenteViewSet.analytics',
             allow)
 
     def test_le_patron_d_or_reel_est_detecte_sans_allowlist(self):

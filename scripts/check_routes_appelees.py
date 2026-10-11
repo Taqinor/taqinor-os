@@ -75,8 +75,6 @@ A_CORRIGER: dict[str, str] = {
     "crm/deals-enregistres/<>/approuver": _ACRM2_III,
     "crm/deals-enregistres/<>/rejeter": _ACRM2_III,
     "crm/deals-enregistres/a-payer": _ACRM2_III,
-    "crm/defis/<>/export-xlsx": _ACRM2_IV,
-    "crm/points-contact/attribution": _ACRM2_IV,
     "crm/clients/<>/dupliquer": _SANS_ECRAN,
     "crm/clients/<>/engagement": _SANS_ECRAN,
     "crm/forecast/historique": _SANS_ECRAN,

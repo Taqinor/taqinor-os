@@ -87,8 +87,6 @@ NON_APPLICABLES_LEAD = {
 SONDES_CLIENT = {
     'export_xlsx': [('post', 'clients/export-xlsx/', {'ids': ['{C1}']})],
     'search': [('get', 'clients/search/', _RECHERCHE)],
-    'segments': [('get', 'clients/segments/', {'segment': s})
-                 for s in ('top', 'sans_devis', 'a_recontacter', 'dormants')],
     'dormants': [('get', 'clients/dormants/', {})],
     'engagement_bulk': [('get', 'clients/engagement-bulk/', {})],
     'mon_portefeuille': [('get', 'clients/mon-portefeuille/', {})],

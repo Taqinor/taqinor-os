@@ -37,22 +37,6 @@
  },
  {
   "actions_map": {
-   "get": "export_xlsx"
-  },
-  "motif": "^defis/(?P<pk>[^/.]+)/export-xlsx/$",
-  "nom": "crm-defi-export-xlsx",
-  "vue": "DefiViewSet"
- },
- {
-  "actions_map": {
-   "get": "export_xlsx"
-  },
-  "motif": "^defis/(?P<pk>[^/.]+)/export-xlsx\\.(?P<format>[a-z0-9]+)/?$",
-  "nom": "crm-defi-export-xlsx",
-  "vue": "DefiViewSet"
- },
- {
-  "actions_map": {
    "delete": "destroy",
    "get": "retrieve",
    "patch": "partial_update",

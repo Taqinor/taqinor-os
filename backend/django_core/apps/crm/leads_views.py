@@ -73,7 +73,7 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     ordering = ['ordre', 'date_contact', 'id']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS or self.action == 'attribution':
+        if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -120,38 +120,6 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             )
         except Exception:
             pass
-
-    @extend_schema(parameters=[sd.P_LEAD_REQ], responses=sd.OBJ)
-    @action(detail=False, methods=['get'], url_path='attribution',
-            permission_classes=[IsAnyRole])
-    def attribution(self, request):
-        """Résumé d'attribution multi-touch d'un lead : timeline ordonnée +
-        first-touch vs last-touch. Requiert ``?lead=<id>`` (borné société)."""
-        from .selectors import lead_touchpoints_attribution
-        lead_id = request.query_params.get('lead')
-        if not lead_id:
-            return Response(
-                {'detail': 'Paramètre ?lead=<id> requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        # ACRM8 — lead résolu dans la PORTÉE (hors portée = absent : 404).
-        from .selectors import leads_en_portee
-        lead = (leads_en_portee(request.user).filter(pk=lead_id).first()
-                if str(lead_id).isdigit() else None)
-        if lead is None:
-            return Response(
-                {'detail': 'Lead inconnu.'},
-                status=status.HTTP_404_NOT_FOUND)
-        summary = lead_touchpoints_attribution(
-            lead, company=request.user.company)
-        return Response({
-            'lead_id': summary['lead_id'],
-            'count': summary['count'],
-            'first_touch': summary['first_touch'],
-            'last_touch': summary['last_touch'],
-            'cout_total': summary['cout_total'],
-            'timeline': PointContactSerializer(
-                summary['timeline'], many=True).data,
-        })
 
 
 class LeadIntakeActionsMixin:

@@ -271,17 +271,6 @@ class DefiViewSet(CompanyScopedModelViewSet):
         defi = self.get_object()
         return Response(classement_defi(defi))
 
-    @extend_schema(responses=sd.EXPORT_XLSX)
-    @action(detail=True, methods=['get'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole])
-    def export_xlsx(self, request, pk=None):
-        """NTCRM28 — Export .xlsx du classement, même contenu que
-        ``classement/`` (rang/nom/score), pour partage en réunion commerciale."""
-        from .exports import export_defi_classement_xlsx
-        from .selectors import classement_defi
-        defi = self.get_object()
-        return export_defi_classement_xlsx(defi, classement_defi(defi))
-
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('appareil_id'), sd.P_LEAD, sd.param('point')]))
 class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
@@ -672,7 +661,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         elif self.action == 'destroy':
             return [IsAdminRole()]
         # ACRM21 (C-ACRM-014) — les autres @action (consolidation,
-        # data-export, anonymize, segments) sont gardées par CE QUE LEUR
+        # data-export, anonymize) sont gardées par CE QUE LEUR
         # DÉCORATEUR DÉCLARE (patron ``declared_action_permissions``) : le
         # repli brut ``IsAdminRole`` refusait au Commercial le bloc « CA
         # groupe » (déclaré ``IsAnyRole``) et l'export RGPD (déclaré
@@ -913,93 +902,6 @@ class ClientViewSet(CompanyScopedModelViewSet):
                            "réassignez ses devis d'abord."},
                 status=status.HTTP_409_CONFLICT,
             )
-
-    # FG32 — Segmentation clients ────────────────────────────────────────────
-    # ACRM21 — déclaration EXPLICITE (admin) : c'est la garde qui
-    # s'appliquait déjà par le repli ; elle est désormais lue sur l'@action.
-    @extend_schema(parameters=[sd.param('segment', enum=['top', 'sans_devis', 'a_recontacter', 'dormants'])], responses=sd.OBJ)
-    @action(detail=False, methods=['get'], url_path='segments',
-            permission_classes=[IsAdminRole])
-    def segments(self, request):
-        """Segmentation client : top clients, sans devis récent, à recontacter.
-
-        ?segment= top | sans_devis | a_recontacter | dormants
-        Calculs basés sur les totaux facturés et dates de devis existants.
-        """
-        from django.utils import timezone
-        import datetime
-        segment = request.query_params.get('segment', 'top')
-        qs = self.get_queryset()
-        now = timezone.now()
-        cutoff_12m = now - datetime.timedelta(days=365)
-        cutoff_18m = now - datetime.timedelta(days=548)
-
-        result = []
-
-        if segment == 'top':
-            # Top 20 clients par valeur facturée TTC (toutes factures non annulées)
-            from decimal import Decimal
-            scored = []
-            for c in qs:
-                total = sum(
-                    f.total_ttc for f in c.factures.all() if f.statut != 'annulee'
-                ) or Decimal('0')
-                scored.append((float(total), c))
-            scored.sort(key=lambda x: x[0], reverse=True)
-            result = [
-                {
-                    'id': c.id, 'nom': str(c),
-                    'total_facture_ttc': round(t, 2),
-                    'segment': 'top',
-                }
-                for t, c in scored[:20]
-            ]
-
-        elif segment == 'sans_devis':
-            # Clients sans devis depuis plus de 12 mois (ou jamais)
-            for c in qs:
-                last = c.devis.order_by('-date_creation').first()
-                if last is None or last.date_creation < cutoff_12m:
-                    result.append({
-                        'id': c.id, 'nom': str(c),
-                        'last_devis': last.date_creation.isoformat() if last else None,
-                        'segment': 'sans_devis',
-                    })
-
-        elif segment == 'a_recontacter':
-            # Clients avec au moins un devis mais aucun signé dans les 12 derniers mois
-            for c in qs:
-                if not c.devis.exists():
-                    continue
-                signed_recent = c.devis.filter(
-                    statut='accepte', date_creation__gte=cutoff_12m
-                ).exists()
-                if not signed_recent:
-                    result.append({
-                        'id': c.id, 'nom': str(c),
-                        'nb_devis': c.devis.count(),
-                        'segment': 'a_recontacter',
-                    })
-
-        elif segment == 'dormants':
-            # Clients sans aucune activité (devis/facture) depuis 18 mois
-            for c in qs:
-                last_devis = c.devis.order_by('-date_creation').first()
-                last_facture = c.factures.order_by('-date_emission').first()
-                last_date = None
-                if last_devis:
-                    last_date = last_devis.date_creation
-                if last_facture and (last_date is None or
-                                     last_facture.date_emission > last_date):
-                    last_date = last_facture.date_emission
-                if last_date is None or last_date < cutoff_18m:
-                    result.append({
-                        'id': c.id, 'nom': str(c),
-                        'last_activity': last_date.isoformat() if last_date else None,
-                        'segment': 'dormants',
-                    })
-
-        return Response({'segment': segment, 'count': len(result), 'results': result})
 
     @extend_schema(parameters=[sd.param('seuil', OpenApiTypes.INT)], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='dormants',
