@@ -3890,7 +3890,10 @@ def seed_lignes_assemblage(ordre):
     création), quantités gonflées du taux de perte attendu (XMFG11). Idempotent :
     n'écrase jamais des lignes déjà présentes (même partiellement personnalisées)."""
     from .models import OrdreAssemblageLigne
-    if ordre.lignes.exists():
+    # ACHT100 — seules les lignes issues du kit verrouillent l'idempotence :
+    # une ligne ajoutée à la main ne doit pas empêcher la re-génération.
+    if ordre.lignes.filter(
+            origine=OrdreAssemblageLigne.Origine.KIT).exists():
         return list(ordre.lignes.all())
     lignes = [
         OrdreAssemblageLigne(
@@ -4029,8 +4032,10 @@ def recreer_nomenclature_ordre_assemblage(ordre, user=None):
     réservations composant sont re-semées (les non consommées des composants
     disparus sont libérées). La clôture consomme donc toujours la
     nomenclature du kit produit × la quantité produite."""
-    from .models import ReservationAssemblage
-    ordre.lignes.all().delete()
+    from .models import OrdreAssemblageLigne, ReservationAssemblage
+    # ACHT100 — seules les lignes issues du kit sont régénérées : les lignes
+    # ajoutées à la main (origine « ajout ») sont conservées telles quelles.
+    ordre.lignes.filter(origine=OrdreAssemblageLigne.Origine.KIT).delete()
     (ReservationAssemblage.objects
      .filter(ordre=ordre, active=True, consomme=False)
      .update(active=False))
