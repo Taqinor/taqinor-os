@@ -108,8 +108,14 @@ class InvestissementCanoniqueTests(TestCase):
         from apps.ventes.utils.options import option_totaux
         for n, (rg, taux, rl, prix) in enumerate(_tirages()):
             devis = self._devis(300 + n, rg, taux, rl, prix)
+            # Le contrat ``etude_ci_preview.json`` résout la TVA du LEAD à
+            # « oui » — et le lead prime sur la saisie (resoudre_tva_recuperable)
+            # ⇒ base HT, ``flux_ttc`` absent. Le lead déclare donc « non » ici.
+            apercu = _apercu('mt')
+            apercu['entrees_resolues']['tva_recuperable'] = {
+                'valeur': 'non', 'provenance': None}
             devis.etude_params = {
-                'etude_ci': _apercu('mt'),
+                'etude_ci': apercu,
                 'saisies_economie_ci': {'tva_recuperable': 'non'}}
             bloc = economie_ci_pour_devis(devis, self.company)
             self.assertEqual(bloc['statut'], 'calcule', n)
