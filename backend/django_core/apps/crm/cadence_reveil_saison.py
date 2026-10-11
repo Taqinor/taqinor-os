@@ -154,12 +154,23 @@ def poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
     if not dans_la_fenetre_saison(jour):
         return None
 
-    return RelanceEtape.objects.create(
-        company=lead.company, lead=lead, cadence='reveil',
-        ordre=REVEIL_SAISON_ORDRE, due_at=echeance, due_date=jour,
-        canal=CanalRelance.WHATSAPP, libelle=REVEIL_SAISON_LIBELLE,
-        template_cle=REVEIL_SAISON_CLE, cadence_depart=local,
-        statut=RelanceEtape.Statut.A_FAIRE)
+    from django.db import IntegrityError, transaction
+
+    try:
+        with transaction.atomic():
+            return RelanceEtape.objects.create(
+                company=lead.company, lead=lead, cadence='reveil',
+                ordre=REVEIL_SAISON_ORDRE, due_at=echeance, due_date=jour,
+                canal=CanalRelance.WHATSAPP, libelle=REVEIL_SAISON_LIBELLE,
+                template_cle=REVEIL_SAISON_CLE, cadence_depart=local,
+                statut=RelanceEtape.Statut.A_FAIRE)
+    except IntegrityError:
+        # ACRM55 (jumeau des barreaux) — ce barreau de réveil est DÉJÀ ouvert
+        # (contrainte `crm_relance_une_ouverte_par_barreau`, course entre
+        # deux passages) : on relit l'existant, jamais une 500 ni un doublon.
+        return RelanceEtape.objects.filter(
+            lead=lead, cadence='reveil', ordre=REVEIL_SAISON_ORDRE, cle='',
+            devis__isnull=True, statut=RelanceEtape.Statut.A_FAIRE).first()
 
 
 def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
