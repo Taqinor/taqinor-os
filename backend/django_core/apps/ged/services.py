@@ -5098,22 +5098,20 @@ def matcher_depot_demandes(document):
                 statut=DEMANDE_DOC_EN_ATTENTE)
         .select_related('exigence')
         .order_by('created_at', 'id'))
-    # ADOC12 — le dépôt solde la demande de SA PROPRE pièce : celle dont le
-    # libellé (ou celui de son exigence) figure dans le nom du document. À
-    # défaut, seule une demande UNIQUE en attente est soldée (jamais la plus
-    # ancienne d'une autre pièce).
-    nom = (document.nom or '').casefold()
+    # ADOC12/ADOC177 — le dépôt ne solde que la demande de SA PROPRE pièce :
+    # tous les mots du libellé (ou de son exigence) sont des mots entiers du
+    # nom, sans accents ni casse. Jamais de sous-chaîne ni de repli.
+    from django.utils.text import slugify
+    mots_nom = set(slugify(document.nom or '').split('-'))
     demande = None
     for candidate in en_attente:
         libelles = [candidate.libelle or '']
         if candidate.exigence_id:
             libelles.append(candidate.exigence.libelle or '')
-        if any(lib.strip() and lib.strip().casefold() in nom
+        if any(slugify(lib) and set(slugify(lib).split('-')) <= mots_nom
                for lib in libelles):
             demande = candidate
             break
-    if demande is None and len(en_attente) == 1:
-        demande = en_attente[0]
     if demande is None:
         return None
     demande.statut = DEMANDE_DOC_SOLDEE
