@@ -94,8 +94,9 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
          intégralement réglée à l'acte : le hold protège l'encours, il n'a
          aucune raison de refuser du cash immédiat ;
       4. workflow de revue XFAC18 (valideur ≠ créateur, anomalies) ;
-      5. dérivation de l'échéance depuis les conditions client (XFAC23), sans
-         jamais écraser une échéance saisie ;
+      5. pose la date d'émission du jour (AFAC14) et dérive l'échéance depuis
+         les conditions client (XFAC23), sans écraser une échéance saisie
+         postérieure à l'émission ;
       6. attribue le numéro légal à une référence provisoire (ATOT27),
          pose ``EMISE`` + ``save()`` ;
       7. émet ``facture_emise`` EXACTEMENT une fois.
@@ -139,6 +140,16 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         anomalies = anomalies_emission_facture(facture)
         facture.revue_statut = Facture.RevueStatut.VALIDEE
 
+    if statut == Facture.Statut.BROUILLON:
+        # AFAC14 — la date d'émission est le jour du passage à ÉMISE (date
+        # locale Casablanca), jamais la création du brouillon ; une échéance
+        # antérieure à cette date est re-dérivée, une échéance saisie
+        # postérieure est conservée. Une facture déjà émise n'est pas re-datée.
+        from django.utils import timezone
+        facture.date_emission = timezone.localdate()
+        if facture.date_echeance and (
+                facture.date_echeance < facture.date_emission):
+            facture.date_echeance = None
     if not facture.date_echeance:
         derivee = calculer_date_echeance(
             client=facture.client, date_emission=facture.date_emission)

@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 # AUD105/AUD106/AUD107 — la chaîne d'argent des documents client vit dans
 # un module SANS modèle, pour que ``apps.ventes.models`` (NoteDebit)
@@ -115,7 +116,10 @@ class Facture(TotauxDocumentMixin, models.Model):
         choices=Statut.choices,
         default=Statut.BROUILLON,
     )
-    date_emission = models.DateField(auto_now_add=True)
+    # AFAC14 — posée à la CRÉATION (date locale) puis RE-posée au passage à
+    # ÉMISE par ``emettre_facture`` : la date d'émission est le jour de
+    # l'émission, jamais celui du brouillon (ex-``auto_now_add``).
+    date_emission = models.DateField(default=timezone.localdate)
     date_echeance = models.DateField(null=True, blank=True)
     taux_tva = models.DecimalField(
         max_digits=5, decimal_places=2, default=20.00
