@@ -125,6 +125,17 @@ SCHEMA = {
                                         '`etude_horaire`, '
                                         '`profils_comparatifs`.',
                                         moteur=True),
+    # AGNR6 (D-AGNR-1 option (a), contrat ``factures_client.json``) — les
+    # DEUX factures tapées à l'écran ``{hiver_mad, ete_mad, ete_differente}``.
+    # Le moteur en dérive LUI-MÊME les marches (``horaire/conso.
+    # serie_mad_mensuelle``, source ``facture_hiver_ete``) : jamais une série
+    # fabriquée sous ``factures_mensuelles_reelles``, réservée aux 12 mois TAPÉS.
+    'factures_hiver_ete': _cle((dict,), ECRAN, ENTREE,
+                               'Deux factures hiver / été tapées à l’écran, '
+                               'prioritaires sur celles du lead. MOTEUR : '
+                               '`etude_horaire.profil_conso_du_devis` (bloc '
+                               'horaire ET `domain/entrees.py`).',
+                               moteur=True),
     'conso_kwh_mensuelles': _cle((list,), ECRAN, ENTREE,
                                  'MOTEUR : `domain/entrees.py`, '
                                  '`dimensionnement`, `offres_tailles`.',
@@ -459,6 +470,31 @@ def entrees_du_moteur(cles=None):
     if cles is None:
         return du_moteur
     return du_moteur & set(cles)
+
+
+def factures_hiver_ete_saisies(etude_params):
+    """AGNR6 (D-AGNR-1 option (a)) — les deux factures TAPÉES à l'écran
+    (``factures_hiver_ete``, contrat ``factures_client.json``) sous la forme
+    des factures du lead (``crm.selectors.lead_bills_for_devis`` :
+    ``facture_hiver``, ``facture_ete``, ``ete_differente``), ou ``None`` sans
+    facture d'hiver exploitable (> 0) — le moteur lit alors celles du lead.
+
+    PURE, sans base. Aucune série n'est fabriquée ici : le moteur dérive
+    lui-même les marches (``horaire/conso.serie_mad_mensuelle``). Lue par
+    ``etude_horaire.profil_conso_du_devis`` et
+    ``etude_horaire.controle_kwh_declare_du_devis``.
+    """
+    saisies = (etude_params or {}).get('factures_hiver_ete')
+    if not isinstance(saisies, dict):
+        return None
+    try:
+        hiver = float(saisies.get('hiver_mad') or 0)
+    except (TypeError, ValueError):
+        return None
+    if not hiver > 0:
+        return None
+    return {'facture_hiver': hiver, 'facture_ete': saisies.get('ete_mad'),
+            'ete_differente': bool(saisies.get('ete_differente'))}
 
 
 def valider(etude_params):

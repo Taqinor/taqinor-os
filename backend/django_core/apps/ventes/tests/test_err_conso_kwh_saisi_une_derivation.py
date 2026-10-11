@@ -9,26 +9,47 @@ DEV-202609-0082 : bloc chiffré sur 46 kWh/mois (économie ÷600), dimensionneme
 sur 109 880 kWh/an de factures, et l'empreinte ne voyait jamais le kWh : un
 kWh effacé ne périmait aucun bloc.
 
+AGNR6 (C-AGNR-001, D-AGNR-1 option (a)) — les DEUX factures tapées à l'écran
+(``factures_hiver_ete``, contrat AGNR5 ``factures_client.json``) entrent par
+cette même résolution, prioritaires sur celles du lead : marches, jamais une
+rampe « réelle ».
+
 Lancer :
     docker compose exec django_core python manage.py test \\
         apps.ventes.tests.test_err_conso_kwh_saisi_une_derivation -v 2
 """
+import json
 from decimal import Decimal
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead
 from apps.ventes.domain import entrees as E
+from apps.ventes.domain import etude_schema as S
 from apps.ventes.domain.entrees import (
     empreinte_entrees, entrees_depuis_devis, entrees_depuis_lead,
 )
-from apps.ventes.etude_horaire import profil_conso_du_devis
+from apps.ventes.etude_horaire import (
+    controle_kwh_declare_du_devis, profil_conso_du_devis,
+)
 from apps.ventes.models import Devis
+
+from .test_cj2b_economies_publiques import _CJ2bBase
 
 User = get_user_model()
 
 FACTURES_12 = [15000] * 12   # 180 000 MAD/an, comme DEV-202609-0082
+
+#: AGNR6 — corps et sorties du contrat partagé AGNR5, jamais recopiés.
+CONTRAT_FACTURES = json.loads(
+    (Path(__file__).resolve().parent.parent / 'contract_samples'
+     / 'factures_client.json').read_text(encoding='utf-8'))
+DEUX_FACTURES = CONTRAT_FACTURES['corps_deux_factures']
+SORTIE_DEUX = CONTRAT_FACTURES['sorties_moteur']['facture_hiver_ete']
 
 
 class UneSeuleDerivationTests(TestCase):
@@ -81,3 +102,93 @@ class UneSeuleDerivationTests(TestCase):
 
     def test_version_moteur_bumpee_perime_les_anciens_blocs(self):
         self.assertNotEqual(E.VERSION_MOTEUR_ENTREES, 'qjr43-1')
+
+
+class FacturesHiverEteEcranTests(_CJ2bBase):
+    """AGNR6 — ``PATCH etude-params {factures_hiver_ete}`` (corps du contrat
+    AGNR5) : le moteur calcule sur les MARCHES hiver/été, source
+    ``facture_hiver_ete`` ; la taille et l'étude lisent la même série.
+
+    Test-du-test : ne plus lire ``factures_hiver_ete`` dans
+    ``profil_conso_du_devis`` ⇒ le devis sans lead retombe sans conso
+    (``absente``) et ``test_devis_sans_lead_calcule_sur_les_marches`` échoue ;
+    sans la déclaration au schéma, le PATCH répond 400 (clé inconnue)."""
+
+    def _patch(self, devis, corps):
+        from authentication.models import CustomUser
+        from testkit.factories import UserFactory
+        user = UserFactory(company=devis.company,
+                           role_legacy=CustomUser.ROLE_RESPONSABLE)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        resp = api.patch(f'/api/django/ventes/devis/{devis.id}/etude-params/',
+                         corps, format='json')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        devis.refresh_from_db()
+
+    def assertMarches(self, serie):
+        self.assertEqual([round(v) for v in serie],
+                         SORTIE_DEUX['serie_kwh_mensuelle'])
+        self.assertEqual(round(sum(serie)), SORTIE_DEUX['conso_annuelle_kwh'])
+
+    def test_la_cle_est_une_entree_ecran_du_moteur(self):
+        regle = S.SCHEMA['factures_hiver_ete']
+        self.assertEqual((regle['proprietaire'], regle['nature']),
+                         (S.ECRAN, S.ENTREE))
+        self.assertIn('factures_hiver_ete', S.entrees_du_moteur())
+        self.assertEqual(S.valider(CONTRAT_FACTURES['exemple']['etude_params']),
+                         [])
+
+    def test_devis_sans_lead_calcule_sur_les_marches(self):
+        devis, _lien = self._devis('agnr6-sans-lead', scenario='Sans batterie',
+                                   avec_batterie=False, avec_lead=False)
+        self._patch(devis, DEUX_FACTURES)
+        self.assertEqual(devis.etude_params['factures_hiver_ete'],
+                         DEUX_FACTURES['factures_hiver_ete'])
+        self.assertNotIn('factures_mensuelles_reelles', devis.etude_params)
+        conso, source, detail = profil_conso_du_devis(devis)
+        self.assertEqual(source, SORTIE_DEUX['source'])
+        self.assertEqual(detail.get('methode'), SORTIE_DEUX['methode'])
+        self.assertMarches(conso)
+        # La TAILLE lit la MÊME série que l'étude (V_VA p2).
+        entrees = entrees_depuis_devis(devis)
+        self.assertEqual(entrees.source_conso, SORTIE_DEUX['source'])
+        self.assertEqual(list(entrees.conso_kwh_mensuelles), list(conso))
+
+    def test_lead_ete_different_les_factures_tapees_priment(self):
+        devis, lien = self._devis('agnr6-lead', scenario='Sans batterie',
+                                  avec_batterie=False)
+        Lead.objects.filter(pk=devis.lead_id).update(
+            facture_ete=Decimal('2600'), ete_differente=True)
+        self._patch(devis, DEUX_FACTURES)
+        bloc = devis.etude_params.get('etude_horaire')
+        self.assertIsNotNone(bloc, 'aucun bloc horaire persisté')
+        self.assertEqual(bloc['source_consommation'], SORTIE_DEUX['source'])
+        self.assertMarches([m['consommation_kwh'] for m in
+                            sorted(bloc['mois'], key=lambda m: m['mois'])])
+        # La page publique sert les mêmes marches, aucun second calcul.
+        self.assertEqual(self._payload(lien)['monthly_consumption'],
+                         SORTIE_DEUX['serie_kwh_mensuelle'])
+        # Rouvrir puis ré-enregistrer sans toucher : rien ne bouge.
+        avant = Devis.objects.get(pk=devis.pk).etude_params
+        self._patch(devis, DEUX_FACTURES)
+        self.assertEqual(Devis.objects.get(pk=devis.pk).etude_params, avant)
+
+    def test_douze_mois_tapes_restent_la_source(self):
+        devis, _lien = self._devis('agnr6-douze', scenario='Sans batterie',
+                                   avec_batterie=False, avec_lead=False)
+        self._patch(devis, dict(DEUX_FACTURES,
+                                **CONTRAT_FACTURES['corps_douze_mois_tapes']))
+        _conso, source, _detail = profil_conso_du_devis(devis)
+        self.assertEqual(source, 'factures_mensuelles_reelles')
+
+    def test_la_garde_kwh_confronte_les_factures_tapees(self):
+        devis, _lien = self._devis('agnr6-garde', scenario='Sans batterie',
+                                   avec_batterie=False)
+        Lead.objects.filter(pk=devis.lead_id).update(
+            facture_hiver=None, conso_mensuelle_kwh=Decimal('46'))
+        self._patch(devis, DEUX_FACTURES)
+        garde = controle_kwh_declare_du_devis(devis)
+        self.assertIsNotNone(garde)
+        self.assertFalse(garde['coherent'])
