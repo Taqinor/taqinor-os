@@ -393,7 +393,6 @@ API accepted schema-violating request|PATCH /api/django/crm/message-templates/{i
 API accepted schema-violating request|PATCH /api/django/crm/plans-activite/{id}/
 API accepted schema-violating request|PATCH /api/django/crm/playbooks/{id}/
 API accepted schema-violating request|PATCH /api/django/crm/tags/{id}/
-API accepted schema-violating request|PATCH /api/django/custom-fields/objects/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/exigences-dossier/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/roles-signataire/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/tags/{id}/
@@ -461,8 +460,6 @@ API accepted schema-violating request|POST /api/django/crm/plans-activite/
 API accepted schema-violating request|POST /api/django/crm/playbooks/
 API accepted schema-violating request|POST /api/django/crm/tags/
 API accepted schema-violating request|POST /api/django/crm/vues-enregistrees/reorder/
-API accepted schema-violating request|POST /api/django/custom-fields/definitions/reorder/
-API accepted schema-violating request|POST /api/django/custom-fields/objects/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/annuler/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/envoyer-email/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/exclure-relance/
@@ -554,7 +551,6 @@ API accepted schema-violating request|PUT /api/django/crm/motifs-perte/{id}/
 API accepted schema-violating request|PUT /api/django/crm/plans-activite/{id}/
 API accepted schema-violating request|PUT /api/django/crm/playbooks/{id}/
 API accepted schema-violating request|PUT /api/django/crm/tags/{id}/
-API accepted schema-violating request|PUT /api/django/custom-fields/objects/{id}/
 API accepted schema-violating request|PUT /api/django/ged/cabinets/{id}/
 API accepted schema-violating request|PUT /api/django/ged/exigences-dossier/{id}/
 API accepted schema-violating request|PUT /api/django/ged/roles-signataire/{id}/
