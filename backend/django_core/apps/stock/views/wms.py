@@ -1160,9 +1160,14 @@ class PortailTiersTokenViewSet(CompanyScopedModelViewSet):
                         cree_par=self.request.user)
 
 
-def _date_param(valeur, nom='date'):
+#: NTWMS18 — description OpenAPI d'une date de période tolérante.
+_DATE_TOLEREE = 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'
+
+
+def _date_param(valeur, nom='date', *, ignorer_illisible=False):
     """Convertit ``YYYY-MM-DD`` en date ; ``None`` si absente ; 400 nommant
-    ``nom`` si illisible (ENF11 : plus d'entrée invalide ignorée)."""
+    ``nom`` si illisible (ENF11 : plus d'entrée invalide ignorée) — sauf
+    ``ignorer_illisible`` (tolérance DÉCLARÉE de NTWMS18 : ``None``)."""
     import datetime
     from rest_framework.exceptions import ValidationError
 
@@ -1172,6 +1177,8 @@ def _date_param(valeur, nom='date'):
     try:
         return datetime.date.fromisoformat(valeur)
     except ValueError:
+        if ignorer_illisible:
+            return None
         raise ValidationError({nom: ['Date AAAA-MM-JJ attendue.']})
 
 
@@ -1309,7 +1316,7 @@ def entrepot_pertes_view(request):
     return Response(rapport)
 
 
-@extend_schema(parameters=[P('debut', DATE), P('fin', DATE)], responses={
+@extend_schema(parameters=[P('debut', STR, False, _DATE_TOLEREE), P('fin', STR, False, _DATE_TOLEREE)], responses={
     200: inline_serializer('StockEntrepotProductivite', {
         'debut': serializers.CharField(allow_null=True),
         'fin': serializers.CharField(allow_null=True),
@@ -1327,8 +1334,12 @@ def entrepot_productivite_view(request):
     """
     from ..selectors import productivite_operateur
 
-    debut = _date_param(request.query_params.get('debut'), 'debut')
-    fin = _date_param(request.query_params.get('fin'), 'fin')
+    # NTWMS18 — une date illisible est IGNORÉE (période ouverte), jamais un
+    # 400 : tolérance déclarée dans l'OpenAPI (``_DATE_TOLEREE``).
+    debut = _date_param(request.query_params.get('debut'), 'debut',
+                        ignorer_illisible=True)
+    fin = _date_param(request.query_params.get('fin'), 'fin',
+                      ignorer_illisible=True)
     return Response({
         'debut': debut.isoformat() if debut else None,
         'fin': fin.isoformat() if fin else None,

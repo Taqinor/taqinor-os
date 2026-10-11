@@ -6,7 +6,7 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
-from ..openapi_helpers import PTOKEN, BINARY, DATE, INT, LISTE, OBJET, P, STR, XLSX, corps
+from ..openapi_helpers import PTOKEN, BINARY, INT, LISTE, OBJET, P, STR, XLSX, corps
 from ..serializers import PortailFournisseurTokenSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
@@ -481,8 +481,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'progression': stock_selectors.progression_onboarding(dossier),
         })
 
-    @extend_schema(parameters=[P('debut', DATE), P('fin', DATE), P('export', STR, False, 'xlsx pour télécharger',
-                                                                   ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
+    @extend_schema(parameters=[
+        P('debut', STR, False, 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'),
+        P('fin', STR, False, 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'),
+        P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='export-conformite')
     def export_conformite(self, request):
         """NTP2P19 — audit achats : conformité par fournisseur actif.
@@ -507,8 +509,9 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             try:
                 return _d.fromisoformat(valeur)
             except ValueError:
-                raise serializers.ValidationError(
-                    {param: ['Date AAAA-MM-JJ attendue.']})
+                # NTP2P19 — date illisible IGNORÉE (l'export ne casse jamais),
+                # tolérance déclarée dans l'OpenAPI ci-dessus.
+                return None
 
         debut, fin = _date('debut'), _date('fin')
         lignes = stock_selectors.conformite_fournisseurs(
