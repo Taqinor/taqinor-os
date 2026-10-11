@@ -71,6 +71,12 @@ class PremierContactEtabliTests(TestCase):
             owner=self.acteur, telephone='0600000051')
 
     def _touche(self, *, ordre=1, canal=RelanceEtape.Canal.APPEL):
+        # ACRM55 — une seule touche OUVERTE par barreau : la touche que le
+        # moteur a déjà fait naître à ce rang (après un saut) cède la place
+        # à celle, maîtrisée, du test.
+        RelanceEtape.objects.filter(
+            lead=self.lead, cadence='contact', ordre=ordre,
+            statut=RelanceEtape.Statut.A_FAIRE).delete()
         return RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='contact',
             ordre=ordre, canal=canal, libelle=f'Touche {ordre}',

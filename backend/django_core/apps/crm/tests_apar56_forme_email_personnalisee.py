@@ -41,6 +41,11 @@ class FormeEmailPersonnaliseeTests(TestCase):
             owner=self.user)
 
     def _etape(self, canal):
+        # ACRM55 — une seule touche OUVERTE par barreau : la touche du canal
+        # précédent (déjà rendue) libère le barreau J9.
+        RelanceEtape.objects.filter(
+            lead=self.lead, cadence='apres_devis', ordre=9,
+            statut=RelanceEtape.Statut.A_FAIRE).delete()
         return RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
             ordre=9, due_date=datetime.date(2026, 10, 20), canal=canal,
