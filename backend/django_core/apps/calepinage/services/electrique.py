@@ -1359,19 +1359,13 @@ def entree_electrique_servie(calepinage, stockee):
         }
     # ACAL359 — le module RÉELLEMENT posé sur chaque pan (relu à chaque GET,
     # jamais persisté) ; mêmes règles que l'alerte d'ACAL358.
-    from .chaines import modules_par_pan
+    from .modules_pans import modules_par_pan_servis
 
-    document = getattr(calepinage, 'roof_layout', None)
-    module = materiel.get('module') or {}
-    defaut = {'produit_id': module.get('produit_id'),
-              'designation': module.get('designation'),
-              'pmax_wc': _nombre((resolu.get('module') or {}).get('pmax_wc')),
-              'fiche_complete': module.get('fiche_complete')}
-    materiel['modules_par_pan'] = modules_par_pan(
-        document, defaut,
-        _fiches_modules_du_document(getattr(calepinage, 'company', None),
-                                    document, resolu),
-        lambda specs: _champs_manquants('module', specs))
+    materiel['modules_par_pan'] = modules_par_pan_servis(
+        calepinage, materiel, resolu, _fiches_modules_du_document(
+            getattr(calepinage, 'company', None),
+            getattr(calepinage, 'roof_layout', None), resolu),
+        lambda specs: _champs_manquants('module', specs), _nombre)
     return {
         'calepinage': getattr(calepinage, 'pk', None),
         'entree': entree,
@@ -1428,22 +1422,6 @@ def _options_entree(entree):
     return options
 
 
-def _produits_des_pans(document, materiel):
-    """ACAL264/358 — les ``produit_id`` posés qui DIFFÈRENT du défaut."""
-    from apps.ventes.services import pans_du_document
-
-    defaut = ((materiel or {}).get('produits') or {}).get('module')
-    produits = []
-    for pan in pans_du_document(document):
-        produit_id = pan.get('produit_id')
-        if (produit_id in (None, '') or int(pan.get('modules') or 0) <= 0
-                or str(produit_id) == str(defaut)
-                or produit_id in produits):
-            continue
-        produits.append(produit_id)
-    return produits
-
-
 def _fiches_modules_du_document(company, document, materiel):
     """ACAL264 — ``{produit_id: {'specs', 'designation'}}`` des modules POSÉS
     sur les pans du document qui DIFFÈRENT du module par défaut.
@@ -1455,7 +1433,9 @@ def _fiches_modules_du_document(company, document, materiel):
     """
     if company is None or not isinstance(document, dict):
         return {}
-    produits = _produits_des_pans(document, materiel)
+    from .modules_pans import produits_des_pans
+
+    produits = produits_des_pans(document, materiel)
     if not produits:
         return {}
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
@@ -1497,16 +1477,13 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     # par le sélecteur du stock (bornée société). Posée dans ``materiel``
     # seulement quand un pan porte un AUTRE produit que le module par
     # défaut : l'empreinte de simulation d'un champ mono-module ne bouge pas.
+    from .modules_pans import produits_sans_fiche
+
     company = getattr(calepinage, 'company', None)
     fiches = (materiel.get('fiches_modules')
               if 'fiches_modules' in materiel else _fiches_modules_du_document(
                   company, document, materiel))
-    # ACAL358 — un produit désigné sans fiche résolue (introuvable ou d'une
-    # autre société) : son pan est chaîné avec le défaut, et l'alerte le dit.
-    sans_fiche = (tuple(p for p in _produits_des_pans(document, materiel)
-                        if p not in (fiches or {}))
-                  if company is not None and isinstance(document, dict)
-                  else ())
+    sans_fiche = produits_sans_fiche(company, document, materiel, fiches)
     if fiches:
         materiel = {**materiel, 'fiches_modules': fiches}
     # ACAL164 — la fiche module (``noct_c``) fait du chaud TMY une
