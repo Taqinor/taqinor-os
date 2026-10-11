@@ -353,7 +353,9 @@ def enregistrer_section(calepinage, cle, valeur, *, base_empreinte,
         raise LayoutRefuse(
             "Clé non autorisée : seules horizonProfile, poseSurfaces, "
             "underlay et zones s'écrivent par section.", champ='cle')
-    if not isinstance(base_empreinte, str) or not base_empreinte:
+    # ACAL360 — ``''`` est le jeton d'un document encore vide (comme
+    # ``If-Match: ""`` d'ACAL316) ; seul un jeton absent / non texte est refusé.
+    if not isinstance(base_empreinte, str):
         raise LayoutRefuse(
             "Jeton manquant : envoyez base_empreinte, l'empreinte du "
             "document ouvert.", champ='base_empreinte')

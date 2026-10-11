@@ -200,6 +200,32 @@ class LayoutSectionApiTest(BaseApiCalepinage):
                                format='json', HTTP_IF_MATCH='""')
         self.assertEqual(perime.status_code, 409, perime.data)
 
+    def test_section_sur_document_vide_jeton_vide(self):
+        # ACAL360 (C-ACAL-VER-003) — calepinage neuf : ``GET layout/`` sert
+        # ``empreinte_document: null`` ; la section s'écrit avec ``''``.
+        neuf = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL360')
+        url = f'{url_detail(neuf.pk)}layout/'
+        self.assertIsNone(self.api.get(url).data['empreinte_document'])
+        corps = {'cle': 'horizonProfile', 'valeur': HORIZON,
+                 'base_empreinte': ''}
+        premier = self.api.post(f'{url}section/', corps, format='json')
+        self.assertEqual(premier.status_code, 200, premier.data)
+        relu = self.api.get(url).data
+        self.assertEqual(relu['roof_layout']['horizonProfile'], HORIZON)
+        self.assertTrue(premier.data['empreinte_document'])
+        self.assertEqual(relu['empreinte_document'],
+                         premier.data['empreinte_document'])
+        # Le document n'est plus vide : le même jeton vide est périmé.
+        second = self.api.post(f'{url}section/', corps, format='json')
+        self.assertEqual(second.status_code, 409, second.data)
+        # Jeton absent ou null : toujours 400.
+        for absent in ({'cle': 'horizonProfile', 'valeur': HORIZON},
+                       {**corps, 'base_empreinte': None}):
+            refus = self.api.post(f'{url}section/', absent, format='json')
+            self.assertEqual(refus.status_code, 400, refus.data)
+            self.assertIn('base_empreinte', refus.data)
+
     def test_verrou_reste_409_roof_layout(self):
         client = Client.objects.create(company=self.company, nom='Verrou 22')
         devis = Devis.objects.create(
