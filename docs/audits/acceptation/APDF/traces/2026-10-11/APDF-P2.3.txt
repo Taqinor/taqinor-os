@@ -1,0 +1,6 @@
+APDF11 — /proposal?langue=ar du résidentiel 3 p. : mise en page en miroir (titre « مرحبًا Karim، » à droite, badges et cartes inversés,
+pied inversé), vue rendue contrôlée ; 3 pages comme en fr.
+APDF47 — `ls /app/apps/ventes/quote_engine/assets/fonts/` dans le conteneur django_core : aucun fichier NotoSansArabic ; aucun gabarit ne
+référence NotoSansArabic ; le PDF arabe embarque Noto-Sans-Arabic / Noto-Kufi-Arabic (polices système) et les glyphes arabes sont lisibles.
+Hors de cet enregistrement (écart, ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR) : APDF8, APDF9, APDF46 — libellés de gabarit français restants en en/ar.
+Hors de cet enregistrement (écart, ERR-APDF-CI-PIED-TAQINOR-MA) : APDF45 — pied « taqinor.ma » des C&I d'une autre société.

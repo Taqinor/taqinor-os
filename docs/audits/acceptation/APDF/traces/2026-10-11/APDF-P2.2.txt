@@ -1,0 +1,12 @@
+Devis de test créés par l'API (copie des lignes réseau de DEV-202609-0005) : DEV-202610-0003 commercial, DEV-202610-0004 industriel.
+APDF10 — industriel /proposal?langue=en : bloc « General terms of the quote / Offer valid until … / Down payment on order: 50% / 40% on
+delivery of the equipment / 10% after commissioning / VAT: … » en anglais (puces par défaut, aucune surcharge société).
+APDF12 — Paramètres › Modèles de documents (document-templates/update/) : cgv_par_mode.industriel = {titre « CONDITIONS INDUSTRIE
+TESTAPDF12 », puces avec {echeancier}/{retenue}} ⇒ PDF industriel p.4 : titre « CONDITIONS INDUSTRIE TESTAPDF12 » + puces substituées (fr et en).
+APDF13 — cgv_bullets société « TESTAPDF13 … {acompte} … {solde} » ⇒ résidentiel 3 p. : les deux puces en page 3 (marqueurs substitués) ;
+une-page : idem.
+APDF14 — DEV-202609-0003 envoyé (share-link envoi=true, statut brouillon → envoye) avec les puces TESTAPDF13 ; puis cgv_bullets changées en
+« TESTAPDF14 MODIFIE APRES ENVOI » ⇒ PDF du devis envoyé : texte extrait IDENTIQUE au caractère près (diff vide) ; le brouillon
+DEV-202609-0005 imprime, lui, le nouveau texte. Textes de document restaurés (cgv_bullets null, cgv_par_mode {}).
+Note : un /proposal en 500 a été vu sur un devis de test SANS lignes (refus de sécurité « aucune option ne contient d'onduleur ») —
+donnée de test invalide supprimée, hors de ces étapes.
