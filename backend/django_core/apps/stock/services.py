@@ -530,18 +530,15 @@ def credit_emplacement_destination(company, produit, emplacement, quantite):
     quantité reste dérivée : total − somme des non-principaux) — appeler
     cette fonction pour lui est un no-op volontaire (comportement historique
     déjà correct sans rien faire)."""
-    from django.db import transaction
     from .models import StockEmplacement
     if emplacement is None or emplacement.is_principal or quantite <= 0:
         return
-    # ENF15 — ligne verrouillée : deux réceptions concurrentes vers le même
-    # emplacement s'additionnent au lieu de s'écraser.
-    with transaction.atomic():
-        se, _created = StockEmplacement.objects.select_for_update().get_or_create(
-            company=company, produit=produit, emplacement=emplacement,
-            defaults={'quantite': 0})
-        se.quantite = (se.quantite or 0) + quantite
-        se.save(update_fields=['quantite'])
+    se, _created = StockEmplacement.objects.get_or_create(
+        company=company, produit=produit, emplacement=emplacement,
+        defaults={'quantite': 0})
+    # ENF15 — incrément atomique (deux réceptions concurrentes s'additionnent).
+    StockEmplacement.objects.filter(pk=se.pk).update(
+        quantite=models.F('quantite') + quantite)
 
 
 def affecter_livraison_directe_chantier(
@@ -3544,7 +3541,6 @@ def generer_bcf_reappro(company, user, fournisseur_id):
     pour un produit encore absent) au lieu d'ouvrir un second brouillon —
     deux appels successifs n'ouvrent donc qu'UN seul brouillon par
     fournisseur."""
-    from django.db.models import F
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur, Fournisseur
 
@@ -3589,8 +3585,7 @@ def generer_bcf_reappro(company, user, fournisseur_id):
         for produit, qte, prix in lignes_produits:
             existante = lignes_par_produit.get(produit.id)
             if existante is not None:
-                # ENF15 — incrément atomique (deux réappros concurrentes).
-                existante.quantite = F('quantite') + qte
+                existante.quantite = models.F('quantite') + qte  # ENF15 — atomique
                 existante.save(update_fields=['quantite'])
             else:
                 LigneBonCommandeFournisseur.objects.create(
@@ -4890,7 +4885,6 @@ def remplacer_composant_masse(company, *, produit_ancien_id,
     'nb_total'}. Lève ValueError sur produit inconnu / identique."""
     from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
     from django.db import transaction
-    from django.db.models import F
     from .models import Produit, KitComposant
 
     if str(produit_ancien_id) == str(produit_nouveau_id):
@@ -4967,8 +4961,7 @@ def remplacer_composant_masse(company, *, produit_ancien_id,
             nouvelle_qte = _nouvelle_quantite(c.quantite)
             if existant is not None:
                 # Fusion : le kit contient déjà le produit nouveau.
-                # ENF15 — incrément atomique (jamais lire puis réécrire).
-                existant.quantite = F('quantite') + nouvelle_qte
+                existant.quantite = models.F('quantite') + nouvelle_qte  # ENF15
                 existant.save(update_fields=['quantite'])
                 c.delete()
             else:
@@ -6209,43 +6202,9 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
     sous zéro — plafonné à ``min(montant demandé, disponible avoir, solde
     facture)``). Crée une ``ImputationAvoirFournisseur``. Lève ValueError si
     fournisseurs différents, avoir non validé, ou rien à imputer."""
-    from django.db import transaction
-    from .models import AvoirFournisseur, ImputationAvoirFournisseur
-
-    avoir_appelant = avoir
-    with transaction.atomic():
-        # ENF15 — l'avoir est RELU sous verrou : deux imputations
-        # concurrentes ne consomment plus deux fois le même disponible.
-        avoir = AvoirFournisseur.objects.select_for_update().get(
-            pk=avoir_appelant.pk)
-        if avoir.fournisseur_id != facture.fournisseur_id:
-            raise ValueError(
-                "L'avoir et la facture doivent appartenir au même fournisseur.")
-        if avoir.statut not in (
-                AvoirFournisseur.Statut.VALIDE, AvoirFournisseur.Statut.IMPUTE):
-            raise ValueError('Seul un avoir validé peut être imputé.')
-
-        disponible = avoir.montant_disponible
-        solde_facture = facture.solde_du
-        plafond = min(disponible, solde_facture)
-        montant_impute = Decimal(str(montant)) if montant is not None else plafond
-        montant_impute = min(montant_impute, plafond)
-        if montant_impute <= 0:
-            raise ValueError("Rien à imputer (avoir épuisé ou facture soldée).")
-
-        imputation = ImputationAvoirFournisseur.objects.create(
-            company=avoir.company, avoir=avoir, facture=facture,
-            montant=montant_impute)
-        avoir.montant_impute = (avoir.montant_impute or Decimal('0')) + montant_impute
-        avoir.statut = (AvoirFournisseur.Statut.IMPUTE
-                        if avoir.montant_disponible <= 0
-                        else AvoirFournisseur.Statut.VALIDE)
-        avoir.save(update_fields=['montant_impute', 'statut'])
-        # ASTK102 — le statut de la facture suit son solde (avoir = règlement).
-        recompute_facture_fournisseur_statut(facture)
-    avoir_appelant.montant_impute = avoir.montant_impute
-    avoir_appelant.statut = avoir.statut
-    return imputation
+    # ENF15 — avoir relu sous verrou, dans une transaction (services_verrous).
+    from .services_verrous import imputer_avoir_sous_verrou
+    return imputer_avoir_sous_verrou(avoir, facture, montant)
 
 
 # ── XPUR10 — tolérances 3 voies & file d'exceptions ─────────────────────────
@@ -6403,26 +6362,9 @@ def resoudre_exception_facture(facture, *, user, commentaire=''):
     """XPUR10 — résout (Responsable/Admin) une facture en exception : passe
     `statut_controle` à 'resolue', trace l'acteur/l'horodatage, débloque le
     paiement. Lève ValueError si la facture n'est pas en exception."""
-    from django.db import transaction
-    from django.utils import timezone
-    from .models import FactureFournisseur
-    champs = ['statut_controle', 'resolu_par', 'resolu_le', 'motif_ecart']
-    # ENF15 — statut relu SOUS VERROU : deux résolutions concurrentes ne
-    # passent plus toutes les deux, et le motif n'est plus écrasé.
-    with transaction.atomic():
-        verrou = FactureFournisseur.objects.select_for_update().get(
-            pk=facture.pk)
-        if verrou.statut_controle != FactureFournisseur.StatutControle.EXCEPTION:
-            raise ValueError("Cette facture n'est pas en exception.")
-        verrou.statut_controle = FactureFournisseur.StatutControle.RESOLUE
-        verrou.resolu_par = user
-        verrou.resolu_le = timezone.now()
-        if commentaire:
-            verrou.motif_ecart = (
-                (verrou.motif_ecart or '') + f'\nRésolution : {commentaire}')
-        verrou.save(update_fields=champs)
-    facture.refresh_from_db(fields=champs)
-    return facture
+    # ENF15 — statut relu sous verrou, dans une transaction (services_verrous).
+    from .services_verrous import resoudre_exception_sous_verrou
+    return resoudre_exception_sous_verrou(facture, user, commentaire)
 
 
 def factures_en_exception(company):
