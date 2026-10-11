@@ -791,6 +791,10 @@ LIBELLES = {
     'ci_cgv_titre': {'fr': 'Conditions générales du devis',
                      'en': 'General terms of the quote',
                      'ar': 'الشروط العامة للعرض'},
+    # AMOT36 / APDF13 — puces CGV tronquées : la suite est DÉCLARÉE.
+    'ci_cgv_suite': {'fr': 'Suite des conditions : proposition en ligne',
+                     'en': 'Terms continued in the online proposal',
+                     'ar': 'تتمة الشروط في العرض عبر الإنترنت'},
     'ci_pour_la_societe': {'fr': 'pour la société', 'en': 'for the company',
                            'ar': 'عن الشركة'},
     'ci_signataire': {'fr': 'Nom et qualité du signataire',

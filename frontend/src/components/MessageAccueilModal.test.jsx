@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -19,6 +19,8 @@ vi.mock('../api/notificationsApi', () => ({
 // AMENDEMENT FONDATEUR — le composant est monté HORS de l'arbre du routeur
 // (voir son commentaire) : les chemins internes naviguent via `router.
 // navigate()`, jamais <Link> (pas de contexte React Router disponible ici).
+const { getMe } = vi.hoisted(() => ({ getMe: vi.fn() }))
+vi.mock('../api/axios', () => ({ default: { get: getMe, post: vi.fn() } }))
 vi.mock('../router', () => ({ default: { navigate } }))
 
 import MessageAccueilModal from './MessageAccueilModal'
@@ -200,5 +202,38 @@ describe('MSGACC1 — MessageAccueilModal', () => {
     const carte = corps.parentElement
     expect(carte.className).toContain('max-h-[85vh]')
     expect(screen.getByRole('button', { name: 'Compris' })).toBeInTheDocument()
+  })
+})
+
+// ADOC183 — transition de connexion SANS rechargement : le stub `{ username }` posé
+// par Login.jsx n'a pas de `portee` ; la décision attend la réponse de /auth/me/.
+describe('ADOC183 — transition de connexion', () => {
+  const rendreAvecVraiReducer = async () => {
+    const { default: authReducer, setCredentials, fetchMe } = await import('../features/auth/store/authSlice')
+    const store = configureStore({ reducer: { auth: authReducer } })
+    render(
+      <Provider store={store}>
+        <MessageAccueilModal />
+      </Provider>,
+    )
+    await act(async () => {
+      store.dispatch(setCredentials({ user: { username: 'client-294' } }))
+      store.dispatch(fetchMe())
+    })
+    return store
+  }
+
+  it('transition de connexion portail : aucun appel', async () => {
+    getMe.mockResolvedValue({ data: { username: 'client-294', portee: 'portail_client' } })
+    await rendreAvecVraiReducer()
+    await act(async () => { await Promise.resolve() })
+    expect(messagesAccueilALire).not.toHaveBeenCalled()
+  })
+
+  it('transition de connexion ERP : le message d\'accueil part après /auth/me/', async () => {
+    messagesAccueilALire.mockResolvedValue({ data: { messages: [] } })
+    getMe.mockResolvedValue({ data: { username: 'demo_admin', portee: 'interne' } })
+    await rendreAvecVraiReducer()
+    await waitFor(() => expect(messagesAccueilALire).toHaveBeenCalledTimes(1))
   })
 })

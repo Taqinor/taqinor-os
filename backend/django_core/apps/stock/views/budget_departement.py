@@ -22,10 +22,13 @@ from ..openapi_helpers import BOOL, INT, NUM, OBJET, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
+from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..models import BudgetDepartement, EngagementBudget
 
 
-class BudgetDepartementSerializer(serializers.ModelSerializer):
+class BudgetDepartementSerializer(MasqueMontantsAchatMixin,
+                                  serializers.ModelSerializer):
+    champs_montants_achat = ('montant_alloue',)  # ERR-STK-PRIX-ACHAT-SUITE
     periodicite_display = serializers.CharField(
         source='get_periodicite_display', read_only=True, default=None)
 
@@ -60,7 +63,9 @@ class BudgetDepartementSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class EngagementBudgetSerializer(serializers.ModelSerializer):
+class EngagementBudgetSerializer(MasqueMontantsAchatMixin,
+                                 serializers.ModelSerializer):
+    champs_montants_achat = ('montant',)  # ERR-STK-PRIX-ACHAT-SUITE
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
 
@@ -87,7 +92,10 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'consommation', 'disponible'):
+        if self.action == 'consommation':
+            # ERR-STK-PRIX-ACHAT-SUITE — engagé/réalisé/restant : montants seuls.
+            return [IsAnyRole(), PeutVoirPrixAchat()]
+        if self.action in ('list', 'retrieve', 'disponible'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -138,7 +146,6 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
         verdict['montant_demande'] = montant
         # ERR-STK-PRIX-ACHAT-3-ROUTES (D-ASTK-2) — sans `prix_achat_voir`, le
         # demandeur garde le VERDICT (contrôle actif, suffisant) sans montant.
-        from ..permissions import PeutVoirPrixAchat
         if not PeutVoirPrixAchat().has_permission(request, self):
             verdict = {cle: verdict[cle] for cle in (
                 'controle_actif', 'suffisant', 'budget_id')}

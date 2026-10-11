@@ -58,3 +58,20 @@ class PeutVoirPrixAchat(BasePermission):
         if getattr(user, 'portee', 'interne') != 'interne':
             return False
         return bool(getattr(user, 'can_view_buy_prices', False))
+
+
+class MasqueMontantsAchatMixin:
+    """ERR-STK-PRIX-ACHAT-SUITE (D-ASTK-2) — retire ``champs_montants_achat``
+    de la RÉPONSE quand ``PeutVoirPrixAchat`` refuse l'utilisateur de la
+    requête ; l'écriture reste ouverte (aucune donnée perdue en silence).
+    Sans requête en contexte (usage service) : réponse inchangée."""
+
+    champs_montants_achat = ()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        requete = self.context.get('request')
+        if requete is not None and not PeutVoirPrixAchat().has_permission(requete, None):
+            for champ in self.champs_montants_achat:
+                data.pop(champ, None)
+        return data

@@ -232,6 +232,8 @@
       }
     },
     "incidents_qualite_fournisseur": {
+      "cles_masquees_sans_prix_achat": ["cout_impact_mad"],
+      "cles_masquees_pourquoi": "ERR-STK-PRIX-ACHAT-SUITE (D-ASTK-2) — clés RETIRÉES de la réponse pour un rôle sans prix_achat_voir (PeutVoirPrixAchat) ; présentes sinon",
       "endpoint": "GET /api/django/stock/incidents-qualite-fournisseur/?fournisseur=<id>&produit=<id>&gravite=<mineure|majeure|critique>&resolu=<true|false>",
       "pourquoi": "NTSCM9 — incidents qualité (IncidentQualiteFournisseurSerializer, views/fournisseur_scm.py). Lecture ET écriture Responsable/Admin (le coût d'impact est INTERNE : `cout_impact_mad` n'apparaît jamais pour un autre rôle car la route lui est fermée), suppression Admin. `type_incident` ∈ non_conforme|endommage|erreur_reference|…|autre ; `declare_par` posé côté serveur ; `resolu_par` + `date_resolution` posés PAR LE SERVEUR à la bascule `resolu=true` (utilisateur connecté, date serveur — valeurs du client ignorées, ERR-ASTK226).",
       "exemple": {

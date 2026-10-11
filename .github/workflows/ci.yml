@@ -304,8 +304,11 @@ jobs:
             # (fichiers hors frontend/ ouverts par un test frontend) + docs lu par une
             # garde de backend-lint-fast : l'edition seule du fichier lu doit declencher
             # le job qui le lit.
-            grep -qE '^backend/django_core/apps/(adsengine/(urls|views)|crm/platform|ventes/domain/etude_schema|parametres/serializers_tariff|sav/serializers|records/storage|stock/serializers)\.py$|^docs/engine/field-tests\.md$' <<< "$changed" && frontend=true || true
+            grep -qE '^backend/django_core/apps/(adsengine/(urls|views)|crm/platform|ventes/domain/etude_schema|parametres/serializers_tariff|sav/serializers|records/storage|stock/serializers|calepinage/views/documents)\.py$|^docs/engine/field-tests\.md$' <<< "$changed" && frontend=true || true
             grep -qE '^docs/(get-or-create-audit|db-invariants-gap)\.md$' <<< "$changed" && backend=true || true
+            # ADEP101 — corpus de parite des calculs devis : lu par frontend/scripts/solar_*corpus.mjs
+            # (importes par solar.corpus.test.jsx / solar.calculs.corpus.test.mjs).
+            grep -qE '^backend/django_core/apps/ventes/tests/fixtures/solar_(corpus|calculs_)' <<< "$changed" && frontend=true || true
             # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
             # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
             # `backend == true` et lisent leur BASELINE ici

@@ -19,6 +19,7 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
+from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..openapi_helpers import INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -326,8 +327,11 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
 # NTDST5 — Remises arrière (RFA) fournisseurs
 # ═══════════════════════════════════════════════════════════════════════════
 
-class AccordRFAFournisseurSerializer(CompanyScopedRelationsMixin,
+class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
+                                     CompanyScopedRelationsMixin,
                                      serializers.ModelSerializer):
+    # ERR-STK-PRIX-ACHAT-SUITE — seuil de CA d'achat et montant fixe.
+    champs_montants_achat = ('seuil_ca_achat', 'montant_fixe')
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     avoir_deja_genere = serializers.BooleanField(read_only=True)
@@ -393,7 +397,10 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action == 'generer_avoir':
             # ASTK19 (D-ASTK-3) — émettre l'avoir RFA = « payer ».
             return [HasPermissionOrLegacy('achats_payer')()]
-        if self.action in READ_ACTIONS + WRITE_ACTIONS + ['calcul']:
+        if self.action == 'calcul':
+            # ERR-STK-PRIX-ACHAT-SUITE — CA d'achat et montant dû : prix_achat_voir.
+            return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
+        if self.action in READ_ACTIONS + WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 

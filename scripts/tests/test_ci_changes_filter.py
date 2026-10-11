@@ -351,6 +351,12 @@ class CouplagesInterSurfacesTest(unittest.TestCase):
         r = _resolve(self.rules, ["backend/django_core/apps/crm/contract_samples/x.json"])
         self.assertTrue(r["frontend"] and r["backend"], r)
 
+    def test_corpus_parite_calculs_declenche_frontend(self):
+        base = "backend/django_core/apps/ventes/tests/fixtures/"
+        for nom in ("solar_corpus_expected.json", "solar_calculs_corpus.json"):
+            with self.subTest(nom=nom):
+                self.assertTrue(_resolve(self.rules, [base + nom])["frontend"])
+
     def test_baseline_docs_declenche_backend(self):
         for doc in ("on-delete-financial-audit.md", "openapi-schema.yml",
                     "money-fields-audit.md", "currency-audit.md"):

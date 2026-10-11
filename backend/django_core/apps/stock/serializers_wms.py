@@ -13,6 +13,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.serializers import CompanyScopedRelationsMixin
+from .permissions import MasqueMontantsAchatMixin
 
 from .models_wms import (
     AlerteRappel, BlocageQualite, ExpeditionTransporteur, LignePicking,
@@ -206,7 +207,8 @@ class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
-class ExpeditionTransporteurSerializer(CompanyScopedRelationsMixin,
+class ExpeditionTransporteurSerializer(MasqueMontantsAchatMixin,
+                                       CompanyScopedRelationsMixin,
                                        serializers.ModelSerializer):
     """NTWMS9 — expédition d'une unité logistique par un transporteur.
 
@@ -217,6 +219,7 @@ class ExpeditionTransporteurSerializer(CompanyScopedRelationsMixin,
     Le numéro de suivi et la clé d'étiquette sont POSÉS PAR LE SERVEUR (via le
     connecteur) : jamais acceptés du client."""
 
+    champs_montants_achat = ('cout_reel',)  # ERR-STK-PRIX-ACHAT-SUITE
     sscc = serializers.CharField(
         source='unite_logistique.sscc', read_only=True, default='')
     transporteur_nom = serializers.CharField(
