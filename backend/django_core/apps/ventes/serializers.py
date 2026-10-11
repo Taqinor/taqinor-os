@@ -14,6 +14,9 @@ from .models import (
     ParametresGammes,  # PVMRQ
     PlanCommission,  # WIR281/XSAL6
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _fallback_taux_tva(company, designation):
@@ -49,6 +52,7 @@ def _fallback_taux_tva(company, designation):
         from apps.parametres.models_taxes import TauxTVA
         referentiel = TauxTVA.default_taux(company)
     except Exception:
+        logger.warning("serializers._fallback_taux_tva : erreur ignorée (mode dégradé)", exc_info=True)
         referentiel = None
     if referentiel is not None:
         return referentiel
@@ -805,6 +809,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
             # « A / B » viennent du repli léger déjà calculé par display_totals
             # (chaîne canonique, mêmes prédicats). Le ROI, lui, exige le moteur
             # → None, jamais un chiffre approximé.
+            logger.warning("serializers.DevisSerializer.get_comparaison_options : erreur ignorée (mode dégradé)", exc_info=True)
             repli = d.get('comparaison_repli')
             if not repli:
                 return None
@@ -838,6 +843,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         try:
             return obj.signature is not None
         except Exception:
+            logger.warning("serializers.DevisSerializer.get_est_signe : erreur ignorée (mode dégradé)", exc_info=True)
             return False
 
     @extend_schema_field(serializers.DictField(allow_null=True))
@@ -846,6 +852,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         try:
             sig = obj.signature
         except Exception:
+            logger.warning("serializers.DevisSerializer.get_signature_info : erreur ignorée (mode dégradé)", exc_info=True)
             return None
         if sig is None:
             return None

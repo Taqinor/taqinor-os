@@ -433,10 +433,6 @@ backend/django_core/apps/ventes/quote_engine/residential/theme.py::_png_b64
 backend/django_core/apps/ventes/quote_engine/residential/theme.py::qr_data_uri
 backend/django_core/apps/ventes/quote_engine/residential/theme.py::valid_until
 backend/django_core/apps/ventes/quote_engine/residential/theme.py::warranties_for
-backend/django_core/apps/ventes/serializers.py::DevisSerializer.get_comparaison_options
-backend/django_core/apps/ventes/serializers.py::DevisSerializer.get_est_signe
-backend/django_core/apps/ventes/serializers.py::DevisSerializer.get_signature_info
-backend/django_core/apps/ventes/serializers.py::_fallback_taux_tva
 backend/django_core/apps/visites/selectors.py::_visite_devis
 backend/django_core/apps/visites/services.py::_notifier_commercial_visite
 backend/django_core/apps/visites/services.py::emettre_visite_planifiee
