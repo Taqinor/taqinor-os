@@ -226,6 +226,26 @@ class LayoutSectionApiTest(BaseApiCalepinage):
             self.assertEqual(refus.status_code, 400, refus.data)
             self.assertIn('base_empreinte', refus.data)
 
+    def test_section_allee_technique_garde_les_autres_cles(self):
+        # ACAL364 (C-ACAL-VER-013) — l'allée s'écrit par section : l'horizon
+        # écrit entre-temps par un autre onglet reste intact.
+        base = self._lire()['empreinte_document']
+        horizon = self._section('horizonProfile', HORIZON, base)
+        self.assertEqual(horizon.status_code, 200, horizon.data)
+        allee = {'largeurM': 0.9, 'source': 'saisie'}
+        reponse = self._section('alleeTechnique', allee,
+                                horizon.data['empreinte_document'])
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        relu = self._lire()['roof_layout']
+        self.assertEqual(relu['alleeTechnique'], allee)
+        self.assertEqual(relu['horizonProfile'], HORIZON)
+        self.assertEqual(relu['zones'], D0['zones'])
+        # Jeton périmé (celui d'avant l'horizon) : 409, rien d'écrit.
+        perime = self._section('alleeTechnique', {'largeurM': 1.5,
+                                                  'source': 'saisie'}, base)
+        self.assertEqual(perime.status_code, 409, perime.data)
+        self.assertEqual(self._lire()['roof_layout']['alleeTechnique'], allee)
+
     def test_verrou_reste_409_roof_layout(self):
         client = Client.objects.create(company=self.company, nom='Verrou 22')
         devis = Devis.objects.create(

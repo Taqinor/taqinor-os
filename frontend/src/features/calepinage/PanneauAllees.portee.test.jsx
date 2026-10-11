@@ -16,11 +16,15 @@ const getParametres = vi.fn()
 const updateParametres = vi.fn()
 const calculer = vi.fn()
 const enregistrerLayout = vi.fn()
+const enregistrerSection = vi.fn()
 vi.mock('../../api/calepinageApi', () => ({
   default: {
     parametres: { get: (...a) => getParametres(...a), update: (...a) => updateParametres(...a) },
     moteur: { calculer: (...a) => calculer(...a) },
-    calepinages: { enregistrerLayoutCalepinage: (...a) => enregistrerLayout(...a) },
+    calepinages: {
+      enregistrerLayoutCalepinage: (...a) => enregistrerLayout(...a),
+      enregistrerSectionLayout: (...a) => enregistrerSection(...a),
+    },
   },
 }))
 
@@ -52,20 +56,24 @@ async function suggerer(props) {
 }
 
 describe('ACAL258 — la suggestion s’enregistre dans le document, pas dans la société', () => {
-  it('la suggestion s’enregistre dans le document, pas dans la société', async () => {
+  it('l’allée s’écrit par la section alleeTechnique, jamais par le document entier', async () => {
     const b = builder()
-    enregistrerLayout.mockResolvedValue({ data: { inchange: false, version: 3 } })
-    await suggerer({ builderApi: b, documentVivant: { empreinte: 'EMPREINTE-VIVANTE' } })
+    enregistrerSection.mockResolvedValue({ data: { empreinte_document: 'APRES' } })
+    await suggerer({ builderApi: b, documentVivant: { empreinte: 'EMPREINTE-VIVANTE', appliquerSection: vi.fn() } })
 
     fireEvent.click(screen.getByTestId('cal-allees-enregistrer-calepinage'))
 
-    await waitFor(() => expect(enregistrerLayout).toHaveBeenCalledTimes(1))
-    // Le corps POSTÉ porte l'allée de CE calepinage, avec sa source…
-    const [id, corps, jeton] = enregistrerLayout.mock.calls[0]
+    await waitFor(() => expect(enregistrerSection).toHaveBeenCalledTimes(1))
+    // ACAL364 — la SECTION `alleeTechnique` est postée, jamais le document entier…
+    const [id, corps] = enregistrerSection.mock.calls[0]
     expect(id).toBe(9)
-    // ACAL316 — If-Match obligatoire : le jeton du document vivant de l'atelier.
-    expect(jeton).toBe('EMPREINTE-VIVANTE')
-    expect(corps.alleeTechnique).toEqual({ largeurM: ALLEE, source: 'suggestion_moteur' })
+    // … sous le jeton du document vivant de l'atelier.
+    expect(corps).toEqual({
+      cle: 'alleeTechnique',
+      valeur: { largeurM: ALLEE, source: 'suggestion_moteur' },
+      base_empreinte: 'EMPREINTE-VIVANTE',
+    })
+    expect(enregistrerLayout).not.toHaveBeenCalled()
     // …et la société n'est JAMAIS écrite.
     expect(updateParametres).not.toHaveBeenCalled()
     expect(await screen.findByTestId('cal-allees-message-calepinage'))
@@ -75,8 +83,8 @@ describe('ACAL258 — la suggestion s’enregistre dans le document, pas dans la
 
   it('une allée tapée à la main porte la source « saisie »', async () => {
     const b = builder()
-    enregistrerLayout.mockResolvedValue({ data: {} })
-    await suggerer({ builderApi: b })
+    enregistrerSection.mockResolvedValue({ data: {} })
+    await suggerer({ builderApi: b, documentVivant: { empreinte: 'E' } })
 
     fireEvent.change(document.getElementById('cal-allees-largeur-calepinage'), { target: { value: '0.9' } })
     fireEvent.click(screen.getByTestId('cal-allees-enregistrer-calepinage'))
@@ -86,8 +94,8 @@ describe('ACAL258 — la suggestion s’enregistre dans le document, pas dans la
 
   it('un refus 409 du serveur s’affiche, mot pour mot', async () => {
     const b = builder()
-    enregistrerLayout.mockRejectedValue({ response: { status: 409, data: { roof_layout: ['Le devis lié est accepté.'] } } })
-    await suggerer({ builderApi: b })
+    enregistrerSection.mockRejectedValue({ response: { status: 409, data: { roof_layout: ['Le devis lié est accepté.'] } } })
+    await suggerer({ builderApi: b, documentVivant: { empreinte: 'E' } })
 
     fireEvent.click(screen.getByTestId('cal-allees-enregistrer-calepinage'))
 
@@ -101,6 +109,7 @@ describe('ACAL258 — la suggestion s’enregistre dans le document, pas dans la
 
     expect(await screen.findByTestId('cal-allees-message-calepinage')).toHaveTextContent('pas prêt')
     expect(enregistrerLayout).not.toHaveBeenCalled()
+    expect(enregistrerSection).not.toHaveBeenCalled()
     expect(updateParametres).not.toHaveBeenCalled()
   })
 })

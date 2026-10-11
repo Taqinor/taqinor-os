@@ -122,7 +122,10 @@ export async function ecrireSection({
     return { ok: true, empreinte: apres }
   } catch (e) {
     const conflit = e?.response?.status === 409
-    const detail = e?.response?.data?.detail
-    return { ok: false, conflit, motif: typeof detail === 'string' ? detail : '' }
+    const donnees = e?.response?.data
+    // `detail` (jeton périmé) ou le refus métier du verrou (`roof_layout`).
+    const refus = donnees?.detail ?? (Array.isArray(donnees?.roof_layout)
+      ? donnees.roof_layout[0] : donnees?.roof_layout)
+    return { ok: false, conflit, motif: typeof refus === 'string' ? refus : '' }
   }
 }
