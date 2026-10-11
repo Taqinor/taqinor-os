@@ -123,6 +123,10 @@ class SchemaPdfEndpointTest(TestCase):
                 "/api/django/ventes/devis/%s/schema-unifilaire/?format=pdf"
                 % devis.id)
         self.assertEqual(resp.status_code, 404)
+        # ENF11 — l'erreur sort en JSON (pas les noms de clés en
+        # ``application/pdf``), comme le contrat le déclare.
+        self.assertIn("application/json", resp["Content-Type"])
+        self.assertIn("detail", resp.json())
 
     def test_pdf_ne_contient_aucun_prix(self):
         devis = self._make_devis(self.company)

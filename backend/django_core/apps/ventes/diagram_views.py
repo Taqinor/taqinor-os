@@ -57,7 +57,17 @@ class PdfRenderer(BaseRenderer):
     render_style = 'binary'
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
-        return data
+        # ENF11 — une ERREUR (404 devis inconnu, 401/403…) arrive ici comme un
+        # dict : la rendre « telle quelle » donnait les NOMS de clés en
+        # ``application/pdf`` (``detailerror``). Les erreurs sortent en JSON,
+        # avec leur vrai Content-Type — celui que le contrat déclare.
+        if isinstance(data, (bytes, bytearray)):
+            return data
+        from rest_framework.renderers import JSONRenderer
+        reponse = (renderer_context or {}).get('response')
+        if reponse is not None:
+            reponse['Content-Type'] = 'application/json'
+        return JSONRenderer().render(data, 'application/json', renderer_context)
 
 
 #: Les renderers PAR DÉFAUT du projet + le PDF — la négociation existante

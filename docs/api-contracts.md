@@ -500,20 +500,14 @@
     created:inconnu, erreurs:inconnu
 - frontend/src/api/ventesApi.js :: annulerNoteDebit -> /api/django/ventes/notes-debit/<>/annuler
     avoir:inconnu, cree:inconnu, detail:inconnu, note_debit:inconnu
-- frontend/src/api/ventesApi.js :: arrondiCaisseFacture -> /api/django/ventes/factures/<>/arrondi-caisse
-    applicable:inconnu, ecart:texte, montant_arrondi:texte, montant_du:texte, pas:texte
 - frontend/src/api/ventesApi.js :: contacterSuperieur -> /api/django/ventes/devis/<>/contacter-superieur
     detail:texte, recipients:liste
 - frontend/src/api/ventesApi.js :: deletePreset -> /api/django/ventes/presets/<>
     detail:texte
-- frontend/src/api/ventesApi.js :: dgiConformiteFacture -> /api/django/ventes/factures/<>/dgi-conformite
-    conforme:booleen, detail:texte, problemes:inconnu
 - frontend/src/api/ventesApi.js :: dupliquerVarianteGamme -> /api/django/ventes/devis/<>/dupliquer-variante-gamme
     detail:texte, gamme:inconnu, gammes:liste, source:inconnu
 - frontend/src/api/ventesApi.js :: envoyerEmailDevis -> /api/django/ventes/devis/<>/envoyer-email
     detail:inconnu, devis_statut:inconnu, email_statut:inconnu, log_id:inconnu, proposal_path:inconnu, statut:texte
-- frontend/src/api/ventesApi.js :: envoyerEmailFacture -> /api/django/ventes/factures/<>/envoyer-email
-    detail:texte, email_log_id:inconnu, to_email:inconnu
 - frontend/src/api/ventesApi.js :: etatPdfDevis -> /api/django/ventes/devis/<>/etat-pdf
     date:inconnu, devis:inconnu, erreur:inconnu, fichier_pdf:inconnu, statut:inconnu
 - frontend/src/api/ventesApi.js :: etudeCiPreview -> /api/django/ventes/etude-ci/preview
@@ -524,8 +518,6 @@
     credit_hold:booleen, detail:inconnu, facture_id:inconnu, facture_reference:inconnu, montant_du:texte, montant_paye:texte, paiements:liste, sale_warning:booleen, statut:inconnu, total_ttc:texte
 - frontend/src/api/ventesApi.js :: genererPdfDevis -> /api/django/ventes/devis/<>/generer-pdf
     detail:texte, task_id:inconnu
-- frontend/src/api/ventesApi.js :: genererPdfFacture -> /api/django/ventes/factures/<>/generer-pdf
-    detail:texte, task_id:inconnu
 - frontend/src/api/ventesApi.js :: getCashFlowForecast -> /api/django/ventes/insights/cash-flow
     buckets:inconnu, mode:texte, rows:inconnu, total_en_cours:inconnu
 - frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
@@ -534,14 +526,10 @@
     friction:inconnu, sections:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site
     client:inconnu, detail:texte, profil:inconnu
-- frontend/src/api/ventesApi.js :: getRelanceApercu -> /api/django/ventes/factures/<>/relance-apercu
-    deja_tous_envoyes:inconnu, email_client:inconnu, facture_id:inconnu, facture_reference:inconnu, jours_retard:inconnu, message:inconnu, montant_du:inconnu, niveau_suivant:inconnu, niveaux:liste, peut_envoyer_email:booleen, relances_envoyees:nombre, sujet:inconnu
 - frontend/src/api/ventesApi.js :: getSimulationStatus -> /api/django/ventes/devis/<>/simulation-status/<>
     detail:texte, simulation:inconnu, status:texte
 - frontend/src/api/ventesApi.js :: getVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
-- frontend/src/api/ventesApi.js :: lienPaiementFacture -> /api/django/ventes/factures/<>/lien-paiement
-    detail:inconnu, expires_at:texte, montant:texte, montant_a_payer:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
 - frontend/src/api/ventesApi.js :: partagePdfDevis -> /api/django/ventes/devis/<>/pdf-partage
     devis_statut:inconnu
 - frontend/src/api/ventesApi.js :: patchEtudeParams -> /api/django/ventes/devis/<>/etude-params
@@ -562,8 +550,6 @@
     requested:booleen, requested_at:inconnu, seen:booleen, seen_by:inconnu
 - frontend/src/api/ventesApi.js :: whatsappDevis -> /api/django/ventes/devis/<>/whatsapp
     detail:texte, devis_statut:inconnu, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
-- frontend/src/api/ventesApi.js :: whatsappFacture -> /api/django/ventes/factures/<>/whatsapp
-    detail:texte, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
     detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
 - frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee

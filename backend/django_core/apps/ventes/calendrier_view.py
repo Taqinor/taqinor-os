@@ -93,8 +93,9 @@ def _alerte(date_echeance, today, seuil_jours):
         OpenApiParameter('statut', str, required=False,
                          enum=['expire', 'imminent', 'a_venir',
                                'sans_echeance'])],
-    responses={200: SH.CalendrierReglementaireResponse,
-               400: SH.DetailResponse})
+    # ENF11 — le 400 sert ``{<paramètre>: message}`` : pas de forme ``detail``
+    # déclarée ici, l'enveloppe ``ErreurApi`` (crochet core) la porte.
+    responses={200: SH.CalendrierReglementaireResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def calendrier_reglementaire(request):

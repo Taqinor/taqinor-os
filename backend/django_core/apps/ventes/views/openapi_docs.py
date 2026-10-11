@@ -802,9 +802,12 @@ EnvoyerEmailFactureResponse = _ser('FactureEnvoyerEmailResponse', {
     'email_log_id': s.IntegerField(),
     'to_email': s.CharField(allow_blank=True, allow_null=True),
 })
+#: 400 de l'envoi : échec d'envoi (``detail`` + ``email_log_id``) OU corps
+#: invalide (erreurs par champ de l'enveloppe commune) — d'où des clés toutes
+#: facultatives, les autres clés (champs, ``error``) restant admises.
 ErreurEnvoiEmail = _ser('FactureErreurEnvoiEmail', {
-    'detail': s.CharField(),
-    'email_log_id': s.IntegerField(),
+    'detail': s.CharField(required=False),
+    'email_log_id': s.IntegerField(required=False),
 })
 
 LigneAvoirCorrective = _ser('FactureLigneAvoirCorrective', {

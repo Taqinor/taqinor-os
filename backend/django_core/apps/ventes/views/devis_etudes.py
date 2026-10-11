@@ -148,7 +148,9 @@ class DevisEtudesActionsMixin:
                                           'scenario', 'recommended_option',
                                           'etude.jour_reference'],
                                     desc='Chemin à régénérer.')],
-                   responses=D.OverridesResponse)
+                   # ENF11 — DELETE rend le registre (200), pas un 204 : sans
+                   # le code explicite, drf-spectacular déclare 204 « vide ».
+                   responses={200: D.OverridesResponse})
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path='overrides',
             permission_classes=[IsResponsableOrAdmin])
