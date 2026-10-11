@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, CheckCircle2, XCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, StatusPill, MultiSelect, Tag, toast,
+  Button, Label, Input, StatusPill, MultiSelect, Tag, toast,
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
-import { errMessage, toutesLesPages } from './shared.js'
+import {
+  errMessage, toutesLesPages, unpage, useChargementGed, actionAvecToast, actionsActivation,
+} from './shared.js'
+import { ChampCabinet } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
@@ -21,11 +22,6 @@ import DialogueFormulaire from './DialogueFormulaire.jsx'
    réglage pour une source donnée, le comportement reste strictement
    inchangé (no-op).
    ========================================================================== */
-
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
 
 function Segments({ dossierCible }) {
   const segments = (dossierCible || '').split('/').filter(Boolean)
@@ -46,34 +42,19 @@ export default function RoutagesPage() {
   const [routages, setRoutages] = useState([])
   const [cabinets, setCabinets] = useState([])
   const [tags, setTags] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [r, c, t] = await Promise.all([
-        // ADOC31 — toutes les pages, jamais la seule première.
-        toutesLesPages(gedApi.getRoutagesDocumentaires),
-        toutesLesPages(gedApi.getCabinets),
-        toutesLesPages(gedApi.getTags),
-      ])
-      setRoutages(unpage(r.data))
-      setCabinets(unpage(c.data))
-      setTags(unpage(t.data))
-    } catch (err) {
-      setError(errMessage(err, 'Impossible de charger les routages.'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
-    load()
-  }, [])
+  const { loading, error, load } = useChargementGed(async () => {
+    const [r, c, t] = await Promise.all([
+      // ADOC31 — toutes les pages, jamais la seule première.
+      toutesLesPages(gedApi.getRoutagesDocumentaires),
+      toutesLesPages(gedApi.getCabinets),
+      toutesLesPages(gedApi.getTags),
+    ])
+    setRoutages(unpage(r.data))
+    setCabinets(unpage(c.data))
+    setTags(unpage(t.data))
+  }, 'Impossible de charger les routages.')
 
   const columns = useMemo(() => [
     { id: 'source', header: 'Source', accessor: (r) => r.source, width: 160 },
@@ -89,26 +70,14 @@ export default function RoutagesPage() {
     },
   ], [])
 
-  const toggleActif = async (r) => {
-    try {
-      await gedApi.updateRoutageDocumentaire(r.id, { actif: !r.actif })
-      toast.success(r.actif ? 'Routage désactivé.' : 'Routage activé.')
-      load()
-    } catch (err) { toast.error(errMessage(err)) }
-  }
+  const toggleActif = (r) => actionAvecToast(
+    () => gedApi.updateRoutageDocumentaire(r.id, { actif: !r.actif }),
+    r.actif ? 'Routage désactivé.' : 'Routage activé.', load)
 
-  const rowActions = (r) => [
-    r.actif
-      ? { id: 'desactiver', label: 'Désactiver', icon: XCircle, onClick: () => toggleActif(r) }
-      : { id: 'activer', label: 'Activer', icon: CheckCircle2, onClick: () => toggleActif(r) },
-    {
-      id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: async () => {
-        try { await gedApi.deleteRoutageDocumentaire(r.id); toast.success('Routage supprimé.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
-      },
-    },
-  ]
+  const supprimer = (r) => actionAvecToast(
+    () => gedApi.deleteRoutageDocumentaire(r.id), 'Routage supprimé.', load)
+
+  const rowActions = (r) => actionsActivation(r, toggleActif, supprimer)
 
   return (
     <>
@@ -170,15 +139,8 @@ function CreateRoutageDialog({ cabinets, tags, onClose, onDone }) {
         <Input aria-label="Source" placeholder="Ex. paie_bulletin, rh_document, sav_piece_jointe"
           value={source} onChange={(e) => setSource(e.target.value)} />
       </div>
-      <div>
-        <Label>Cabinet cible</Label>
-        <Select value={cabinetId} onValueChange={setCabinetId}>
-          <SelectTrigger aria-label="Choisir un cabinet cible"><SelectValue placeholder="Choisir un cabinet…" /></SelectTrigger>
-          <SelectContent>
-            {cabinets.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+      <ChampCabinet label="Cabinet cible" ariaLabel="Choisir un cabinet cible"
+        cabinets={cabinets} cabinetId={cabinetId} setCabinetId={setCabinetId} />
       <div>
         <Label>Dossier cible</Label>
         <Input aria-label="Dossier cible" placeholder="Ex. Paie/{{ annee }}"

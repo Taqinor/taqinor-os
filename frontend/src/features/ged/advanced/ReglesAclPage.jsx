@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, CheckCircle2, XCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
+  Button, Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, StatusPill, toast,
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import rolesApi from '../../../api/rolesApi'
-import { errMessage, toutesLesPages } from './shared.js'
+import {
+  errMessage, toutesLesPages, unpage, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+} from './shared.js'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
 
@@ -39,60 +40,28 @@ const NIVEAUX = [
   { value: 'gestion', label: 'Gestion' },
 ]
 
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
-
-function operateurLabel(op) {
-  return OPERATEURS.find((o) => o.value === op)?.label || op
-}
-
 function niveauLabel(niveau) {
   return NIVEAUX.find((n) => n.value === niveau)?.label || niveau
-}
-
-function resumeCondition(conditionGroup) {
-  const leaf = conditionGroup?.conditions?.[0]
-  if (!leaf?.field) return '—'
-  if (leaf.operator === 'exists') return `${leaf.field} existe`
-  const val = Array.isArray(leaf.value) ? leaf.value.join(', ') : leaf.value
-  return `${leaf.field} ${operateurLabel(leaf.operator)} ${val ?? ''}`.trim()
 }
 
 export default function ReglesAclPage() {
   const [regles, setRegles] = useState([])
   const [roles, setRoles] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [r, ro] = await Promise.all([
-        // ADOC31 — toutes les pages, jamais la seule première.
-        toutesLesPages(gedApi.getReglesAclMetadonnee),
-        rolesApi.getRoles(),
-      ])
-      setRegles(unpage(r.data))
-      setRoles(unpage(ro.data))
-    } catch (err) {
-      setError(errMessage(err, 'Impossible de charger les règles ACL.'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
-    load()
-  }, [])
+  const { loading, error, load } = useChargementGed(async () => {
+    const [r, ro] = await Promise.all([
+      // ADOC31 — toutes les pages, jamais la seule première.
+      toutesLesPages(gedApi.getReglesAclMetadonnee),
+      rolesApi.getRoles(),
+    ])
+    setRegles(unpage(r.data))
+    setRoles(unpage(ro.data))
+  }, 'Impossible de charger les règles ACL.')
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Règle', accessor: (r) => r.nom },
-    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group) },
+    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group, OPERATEURS) },
     { id: 'role', header: 'Rôle cible', accessor: (r) => r.role_nom, width: 160 },
     {
       id: 'niveau', header: 'Niveau', width: 110,
@@ -106,26 +75,14 @@ export default function ReglesAclPage() {
     },
   ], [])
 
-  const toggleActif = async (r) => {
-    try {
-      await gedApi.updateRegleAclMetadonnee(r.id, { actif: !r.actif })
-      toast.success(r.actif ? 'Règle désactivée.' : 'Règle activée.')
-      load()
-    } catch (err) { toast.error(errMessage(err)) }
-  }
+  const toggleActif = (r) => actionAvecToast(
+    () => gedApi.updateRegleAclMetadonnee(r.id, { actif: !r.actif }),
+    r.actif ? 'Règle désactivée.' : 'Règle activée.', load)
 
-  const rowActions = (r) => [
-    r.actif
-      ? { id: 'desactiver', label: 'Désactiver', icon: XCircle, onClick: () => toggleActif(r) }
-      : { id: 'activer', label: 'Activer', icon: CheckCircle2, onClick: () => toggleActif(r) },
-    {
-      id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: async () => {
-        try { await gedApi.deleteRegleAclMetadonnee(r.id); toast.success('Règle supprimée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
-      },
-    },
-  ]
+  const supprimer = (r) => actionAvecToast(
+    () => gedApi.deleteRegleAclMetadonnee(r.id), 'Règle supprimée.', load)
+
+  const rowActions = (r) => actionsActivation(r, toggleActif, supprimer)
 
   return (
     <>

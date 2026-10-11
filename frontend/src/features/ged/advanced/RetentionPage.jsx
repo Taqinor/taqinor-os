@@ -13,7 +13,7 @@ import {
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { ActionEcheance, errMessage, formatOctets, toutesLesPages } from './shared.js'
-import { ChampDocument } from './ChampsGed.jsx'
+import { ChampDocument, PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import DecisionDialogue from './DecisionDialogue.jsx'
 
@@ -698,9 +698,7 @@ function CertificatsDialog({ demande, onClose }) {
             </li>
           ))}
         </ul>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )

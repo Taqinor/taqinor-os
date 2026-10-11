@@ -3,12 +3,13 @@ import { Plus, Trash2, FileText } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, toast,
+  Label, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  toast,
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { errMessage, toutesLesPages } from './shared.js'
+import { ChampDescription, PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
@@ -174,10 +175,7 @@ function CreateCoffreDialog({ clients, users, onClose, onDone }) {
         <Label>Nom</Label>
         <Input aria-label="Nom du coffre" value={nom} onChange={(e) => setNom(e.target.value)} />
       </div>
-      <div>
-        <Label>Description (optionnelle)</Label>
-        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-      </div>
+      <ChampDescription description={description} setDescription={setDescription} />
       <div>
         <Label>Propriétaire</Label>
         <Select value={type} onValueChange={(v) => { setType(v); setProprietaireId(''); setClientId('') }}>
@@ -243,9 +241,7 @@ function CoffreDocumentsDialog({ coffre, onClose }) {
             {documents.map((d) => <li key={d.id} className="text-sm">{d.nom}</li>)}
           </ul>
         )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )

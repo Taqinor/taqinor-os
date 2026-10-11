@@ -5,15 +5,15 @@ import {
 import { ListShell } from '../../../ui/module'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent,
-  Badge, EmptyState, Spinner, StatusPill, toast,
+  Label, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Checkbox, Tabs, TabsList, TabsTrigger, TabsContent, Badge, EmptyState,
+  Spinner, StatusPill, toast,
 } from '../../../ui'
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { errMessage, toutesLesPages } from './shared.js'
-import { ChampDocument } from './ChampsGed.jsx'
+import { ChampDocument, ChampDescription, ChampCabinet } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
@@ -351,10 +351,7 @@ function ExigenceDialog({ cabinets, folders, onClose, onDone }) {
         <Label>Pièce requise</Label>
         <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Ex. Attestation CNSS" />
       </div>
-      <div>
-        <Label>Description (optionnelle)</Label>
-        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-      </div>
+      <ChampDescription description={description} setDescription={setDescription} />
       <div>
         <Label>Portée</Label>
         <Select value={scope} onValueChange={setScope}>
@@ -366,15 +363,7 @@ function ExigenceDialog({ cabinets, folders, onClose, onDone }) {
         </Select>
       </div>
       {scope === 'cabinet' ? (
-        <div>
-          <Label>Cabinet</Label>
-          <Select value={cabinetId} onValueChange={setCabinetId}>
-            <SelectTrigger><SelectValue placeholder="Choisir un cabinet…" /></SelectTrigger>
-            <SelectContent>
-              {cabinets.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        <ChampCabinet cabinets={cabinets} cabinetId={cabinetId} setCabinetId={setCabinetId} />
       ) : (
         <div>
           <Label>Dossier</Label>

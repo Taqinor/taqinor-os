@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, History, CheckCircle2, XCircle } from 'lucide-react'
+import { Plus, Trash2, History } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, StatusPill, toast,
+  Button, Dialog, DialogContent, DialogHeader, DialogTitle, Label, Input,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, StatusPill,
+  toast,
 } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { errMessage, toutesLesPages } from './shared.js'
+import {
+  errMessage, toutesLesPages, unpage, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+} from './shared.js'
+import { PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
 
@@ -45,25 +48,8 @@ const TYPES_ACTION = [
   { value: 'demander_signature', label: 'Demander une signature' },
 ]
 
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
-
-function operateurLabel(op) {
-  return OPERATEURS.find((o) => o.value === op)?.label || op
-}
-
 function actionLabel(type) {
   return TYPES_ACTION.find((t) => t.value === type)?.label || type
-}
-
-function resumeCondition(conditionGroup) {
-  const leaf = conditionGroup?.conditions?.[0]
-  if (!leaf?.field) return '—'
-  if (leaf.operator === 'exists') return `${leaf.field} existe`
-  const val = Array.isArray(leaf.value) ? leaf.value.join(', ') : leaf.value
-  return `${leaf.field} ${operateurLabel(leaf.operator)} ${val ?? ''}`.trim()
 }
 
 export default function ReglesDossierPage() {
@@ -71,42 +57,27 @@ export default function ReglesDossierPage() {
   const [dossiers, setDossiers] = useState([])
   const [tags, setTags] = useState([])
   const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [journalFor, setJournalFor] = useState(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [r, d, t, u] = await Promise.all([
-        // ADOC31 — toutes les pages, jamais la seule première.
-        toutesLesPages(gedApi.getReglesDossier),
-        toutesLesPages(gedApi.getDossiers),
-        toutesLesPages(gedApi.getTags),
-        gedApi.getUsers(),
-      ])
-      setRegles(unpage(r.data))
-      setDossiers(unpage(d.data))
-      setTags(unpage(t.data))
-      setUsers(unpage(u.data))
-    } catch (err) {
-      setError(errMessage(err, 'Impossible de charger les règles de dossier.'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
-    load()
-  }, [])
+  const { loading, error, load } = useChargementGed(async () => {
+    const [r, d, t, u] = await Promise.all([
+      // ADOC31 — toutes les pages, jamais la seule première.
+      toutesLesPages(gedApi.getReglesDossier),
+      toutesLesPages(gedApi.getDossiers),
+      toutesLesPages(gedApi.getTags),
+      gedApi.getUsers(),
+    ])
+    setRegles(unpage(r.data))
+    setDossiers(unpage(d.data))
+    setTags(unpage(t.data))
+    setUsers(unpage(u.data))
+  }, 'Impossible de charger les règles de dossier.')
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Règle', accessor: (r) => r.nom },
     { id: 'folder', header: 'Dossier', accessor: (r) => r.folder_nom, width: 160 },
-    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group) },
+    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group, OPERATEURS) },
     {
       id: 'actions_count', header: 'Actions', width: 90, align: 'right',
       accessor: (r) => r.actions?.length ?? 0,
@@ -119,26 +90,16 @@ export default function ReglesDossierPage() {
     },
   ], [])
 
-  const toggleActif = async (r) => {
-    try {
-      await gedApi.updateRegleDossier(r.id, { actif: !r.actif })
-      toast.success(r.actif ? 'Règle désactivée.' : 'Règle activée.')
-      load()
-    } catch (err) { toast.error(errMessage(err)) }
-  }
+  const toggleActif = (r) => actionAvecToast(
+    () => gedApi.updateRegleDossier(r.id, { actif: !r.actif }),
+    r.actif ? 'Règle désactivée.' : 'Règle activée.', load)
+
+  const supprimer = (r) => actionAvecToast(
+    () => gedApi.deleteRegleDossier(r.id), 'Règle supprimée.', load)
 
   const rowActions = (r) => [
     { id: 'journal', label: 'Journal d’exécution', icon: History, onClick: () => setJournalFor(r) },
-    r.actif
-      ? { id: 'desactiver', label: 'Désactiver', icon: XCircle, onClick: () => toggleActif(r) }
-      : { id: 'activer', label: 'Activer', icon: CheckCircle2, onClick: () => toggleActif(r) },
-    {
-      id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: async () => {
-        try { await gedApi.deleteRegleDossier(r.id); toast.success('Règle supprimée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
-      },
-    },
+    ...actionsActivation(r, toggleActif, supprimer),
   ]
 
   return (
@@ -358,9 +319,7 @@ function JournalDialog({ regle, onClose }) {
             ))}
           </ul>
         )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )

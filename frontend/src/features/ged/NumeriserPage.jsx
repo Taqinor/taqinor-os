@@ -15,7 +15,7 @@ import {
 import gedApi from '../../api/gedApi'
 import { rows, toutesLesPages, errText } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
-import { PageHeader } from '../../ui/PageHeader'
+import EnteteGed from './EnteteGed'
 import {
   Card, CardContent, Button, EmptyState, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Input, Textarea, toast, FloatingActionButton,
@@ -155,10 +155,7 @@ export default function NumeriserPage() {
 
   return (
     <div className="page">
-      {/* APX32 (e) — 4ᵉ idiome d'en-tête du repo (`<h1>` nu + `<p>` en taille
-          arbitraire) : l'en-tête UNIQUE de l'app (VX28). */}
-      <PageHeader
-        className="mb-4"
+      <EnteteGed
         icon={Camera}
         title="Numériser"
         subtitle="Prenez des photos successives à la caméra du téléphone — elles seront assemblées en un seul PDF et classées dans le dossier choisi."

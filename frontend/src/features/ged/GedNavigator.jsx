@@ -21,7 +21,7 @@ import {
 import gedApi from '../../api/gedApi'
 import { rows, toutesLesPages, errText } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
-import { PageHeader } from '../../ui/PageHeader'
+import EnteteGed from './EnteteGed'
 import { formatDate } from '../../lib/format'
 import { downloadBlobInGesture, filenameFromResponse } from '../../utils/downloadBlob'
 import {
@@ -353,10 +353,7 @@ export default function GedNavigator() {
 
   return (
     <div className="page">
-      {/* APX32 (e) — 4ᵉ idiome d'en-tête du repo (`<h1>` nu + `<p>` en taille
-          arbitraire) : l'en-tête UNIQUE de l'app (VX28). */}
-      <PageHeader
-        className="mb-4"
+      <EnteteGed
         icon={Folder}
         title="Documents (GED)"
         subtitle="Arborescence documentaire — créez une armoire et un dossier, puis téléversez vos documents."

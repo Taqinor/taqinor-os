@@ -3,5 +3,4 @@
 # La citation @fichier:ligne est vérifiée par scripts/check_liste_page1.py (la ligne doit porter
 # `pagination_class = None`, une tranche `[:N]` ou `@api_view`). Entrée MORTE (site plus signalé) = rouge.
 frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog  ged/coffres/<id>/documents/  @action(pagination_class=None), liste complète @backend/django_core/apps/ged/views.py:378
-frontend/src/features/ged/advanced/ReglesDossierPage.jsx::JournalDialog  ged/regles-dossier/<id>/executions/  pagination_class=None et plafonné aux 20 dernières (qs[:20]) @backend/django_core/apps/ged/views.py:4142
 frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor  parametres/messages/  vue @api_view (liste Response(out) complète, un modèle par clé) @backend/django_core/apps/parametres/views_messages.py:112
