@@ -25,7 +25,8 @@ Groupe CIQ (docs/PLAN.md) et le Groupe CIW (docs/WEB_PLAN.md).
   constante) : tarifs MT ONEE confirmés, TVA électricité 20 % depuis 2026 ; 82-21 + décret 2.25.100 : déclaration
   < 11 kW, accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW ; plafond 20 % EN VIGUEUR (loi art. 12, ANRE
   04/26), rachat 18/21 cDH HT en MT/HT/THT seulement, sans déduction des frais réseau. QXG6 (b) (bande prix/kWc)
-  reste au fondateur.
+  tranché le 11/10/2026 = **D-CIQ-26 (a)** : la bande 6 000-9 000 DH/kWc HT reste un repère INTERNE du générateur
+  (flag « estimation à vérifier fondateur »), jamais imprimée sur un PDF client, remplacée par les offres réelles si Reda les fournit.
 - **D-CIQ-5** Visite AVANT le devis final si site MT, ou si tension / puissance souscrite / toit (TGBT) restent
   inconnus après l'appel ; un BT aux faits connus reçoit son devis directement ; un devis indicatif reste possible,
   marqué « estimation sous réserve de visite ».
