@@ -27,7 +27,8 @@ APPS_DIR = ROOT / "backend" / "django_core" / "apps"
 APPS_VISEES = ("crm", "automation")
 
 #: Noms dont la simple presence dans le corps de la fonction vaut « garde ».
-GARDES_RECONNUES = {"peut_contacter", "_lead_relancable", "motif_de_refus"}
+GARDES_RECONNUES = {"peut_contacter", "_lead_relancable", "motif_de_refus",
+                    "_motif_de_refus"}
 
 #: ``fichier::fonction::genre`` -> raison. Site non garde TOLERE, motive.
 #: Les raisons « A CORRIGER » sont de la dette reelle a traiter dans la session
@@ -49,7 +50,7 @@ LISTE_BLANCHE: dict[str, str] = {
         "A CORRIGER (session crm) : touche de signal posee sans garde de contact a la pose",
     "backend/django_core/apps/crm/cadence_filet.py::_poser_etape_visite::touche":
         "A CORRIGER (session crm) : touche de visite posee sans garde de contact a la pose",
-    "backend/django_core/apps/crm/cadence_signaux.py::poser_touche_rappel_demande::touche":
+    "backend/django_core/apps/crm/cadence_signaux.py::_poser_touche_rappel_demande::touche":
         "A CORRIGER (session crm) : touche de rappel demande posee sans garde de contact a la pose",
     "backend/django_core/apps/crm/cadence_reponses.py::_poser_etape_passation::touche":
         "A CORRIGER (session crm) : touche de passation posee sans garde de contact a la pose",
