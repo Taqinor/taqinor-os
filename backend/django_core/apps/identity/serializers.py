@@ -4,10 +4,16 @@ import ipaddress
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import IdentityProvider, IpAllowRule, NetworkPolicy, TrustedDevice
 
 
-class IpAllowRuleSerializer(serializers.ModelSerializer):
+class IpAllowRuleSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
+    # ENF15 : la politique référencée naît bornée à la société de l'appelant.
+    same_company_fields = ('policy',)
+
     class Meta:
         model = IpAllowRule
         fields = ['id', 'policy', 'cidr', 'label', 'created_at']
