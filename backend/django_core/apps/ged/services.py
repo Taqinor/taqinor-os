@@ -6301,7 +6301,10 @@ def executer_demande_disposition(demande, *, user):
                 continue  # protégé entre-temps — exclusion silencieuse.
             # ADOC22 — archivé légalement entre-temps : ni détruit ni
             # ré-archivé ; compté « ignoré », la demande ne reste plus bloquée.
-            if _document_archive_legalement(document):
+            # ADOC179 — idem pour un « archiver » sur un document en corbeille.
+            if _document_archive_legalement(document) or (
+                    demande.action == DISPOSITION_ACTION_ARCHIVER
+                    and document.supprime_le is not None):
                 ignores += 1
                 continue
             if demande.action == DISPOSITION_ACTION_ARCHIVER:
@@ -6343,7 +6346,7 @@ def executer_demande_disposition(demande, *, user):
         champs = ['statut', 'executee_le', 'updated_at']
         if ignores:
             note = (f'{ignores} document(s) ignoré(s) : archivé(s) '
-                    f'légalement.')
+                    f'légalement ou en corbeille.')
             demande.commentaire = (
                 f'{demande.commentaire}\n{note}'.strip()
                 if demande.commentaire else note)
