@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
 import portailApi from '../../../api/portailApi'
-import { Card, EmptyState, Spinner } from '../../../ui'
+import { Card } from '../../../ui'
+import { useTableauDeBordExterne } from '../useTableauDeBordExterne'
+import EtatTableauDeBordExterne from '../EtatTableauDeBordExterne'
 import { formatMAD } from '../../../lib/format'
 
 /* ============================================================================
@@ -15,35 +16,9 @@ import { formatMAD } from '../../../lib/format'
    ========================================================================== */
 
 export default function PortailFournisseurAccueil() {
-  const [resume, setResume] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [erreur, setErreur] = useState(false)
-
-  useEffect(() => {
-    let annule = false
-    portailApi.fournisseur.tableauDeBord()
-      .then((r) => { if (!annule) setResume(r.data) })
-      .catch(() => { if (!annule) setErreur(true) })
-      .finally(() => { if (!annule) setLoading(false) })
-    return () => { annule = true }
-  }, [])
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner /> Chargement de votre tableau de bord…
-      </div>
-    )
-  }
-
-  if (erreur || !resume) {
-    return (
-      <EmptyState
-        title="Tableau de bord indisponible"
-        description="Vos données n’ont pas pu être chargées. Réessayez plus tard."
-      />
-    )
-  }
+  const etat = useTableauDeBordExterne(portailApi.fournisseur.tableauDeBord)
+  const { resume } = etat
+  if (etat.loading || etat.erreur || !resume) return <EtatTableauDeBordExterne {...etat} />
 
   const cartes = [
     { cle: 'bcf_a_confirmer', label: 'Commandes à confirmer',

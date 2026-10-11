@@ -774,7 +774,6 @@ a61955ffec60|frontend/src/features/calepinage/ModeTerrain.jsx,frontend/src/featu
 a65d22dd4e48|apps/web/src/pages/pourquoi-taqinor.astro,apps/web/src/pages/realisations/index.astro
 a684493b1035|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
 a6951343488c|frontend/src/features/ventes/devisEnvoyerWhatsappStatut.test.jsx,frontend/src/pages/ventes/DevisList.test.jsx,frontend/src/pages/ventes/DevisListConceptionElectrique.test.jsx,frontend/src/pages/ventes/DevisListPdfCalepinage.test.jsx,frontend/src/pages/ventes/FactureList.golden.test.jsx,frontend/src/pages/ventes/FactureList.test.jsx,frontend/src/pages/ventes/RoofViewerPage.test.jsx
-a69e392839b9|frontend/src/features/portail/client/PortailClientLivraisons.jsx,frontend/src/features/portail/partenaire/PortailPartenaireCommissions.jsx
 a6dc26efe1b9|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro
 a6e4742c2a51|frontend/src/features/pwa/CameraCapture.jsx,frontend/src/features/pwa/useBarcodeScanner.js
 a6f4cc618c11|frontend/src/features/adsengine/AdDetailScreen.jsx,frontend/src/features/adsengine/AdsCockpitScreen.jsx,frontend/src/features/adsengine/CampaignsScreen.jsx
@@ -856,7 +855,6 @@ b9b8ff6e4b14|frontend/src/pages/sav/EquipementsPage.jsx,frontend/src/pages/sav/T
 b9c9afa6f925|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
 ba40bbe3cee2|frontend/src/pages/sav/TicketDetailFacturation.test.jsx,frontend/src/pages/sav/TicketDetailPiecesInstructions.test.jsx,frontend/src/pages/sav/TicketDetailPlanifier.test.jsx,frontend/src/pages/sav/TicketDetailResolvedBy.test.jsx,frontend/src/pages/sav/TicketDetailSplitView.test.jsx,frontend/src/pages/sav/WIR117Picker.test.jsx
 ba5e387374c0|frontend/src/pages/installations/InstallationDetail.jsx,frontend/src/pages/sav/EquipementsPage.jsx
-ba8800512d0d|frontend/src/features/portail/fournisseur/PortailFournisseurBcf.jsx,frontend/src/features/portail/partenaire/PortailPartenaireLeads.jsx
 bb739021e242|apps/web/src/scripts/roofPro11/mapDraw.ts,apps/web/src/scripts/roofPro11/obstaclesUi.ts
 bb7e9f253fa8|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 bbebef7b1b10|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
@@ -995,7 +993,6 @@ d5cf4ec62a43|apps/web/src/scripts/roofPro11/clavier.test.ts,apps/web/src/scripts
 d62cdabc11d4|apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
 d6801692b261|frontend/src/features/ged/advanced/ReglesAclPage.jsx,frontend/src/features/ged/advanced/ReglesDossierPage.jsx
 d699f5edee5f|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
-d69c80f5ad85|frontend/src/features/portail/fournisseur/PortailFournisseurAccueil.jsx,frontend/src/features/portail/partenaire/PortailPartenaireAccueil.jsx
 d6b6558aaea9|apps/web/src/pages/ar/guides/loi-82-21-expliquee.astro,apps/web/src/pages/en/guides/loi-82-21-expliquee.astro
 d6c4eeff365c|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 d6d8ed1c0206|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro

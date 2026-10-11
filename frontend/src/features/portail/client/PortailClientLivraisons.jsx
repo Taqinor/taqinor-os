@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Truck } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
+import EnteteCarteStatut from '../EnteteCarteStatut'
 import {
-  Badge, Button, Card, EmptyState, Spinner,
+  Button, Card, EmptyState, Spinner,
 } from '../../../ui'
 import { formatDate, formatDateTime } from '../../../lib/format'
 
@@ -159,20 +160,15 @@ export default function PortailClientLivraisons() {
         <ul className="flex flex-col gap-3">
           {rows.map((l) => (
             <Card key={l.id} className="flex flex-col gap-3 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium">{l.reference}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {l.date_prevue
-                      ? `Prévue le ${formatDate(l.date_prevue)}`
-                      : 'Date prévue non communiquée'}
-                    {l.numero_suivi ? ` — suivi ${l.numero_suivi}` : ''}
-                  </p>
-                </div>
-                <Badge tone={TON_STATUT[l.statut] || 'neutral'}>
-                  {l.statut_display}
-                </Badge>
-              </div>
+              <EnteteCarteStatut ton={TON_STATUT[l.statut]} libelle={l.statut_display}>
+                <p className="font-medium">{l.reference}</p>
+                <p className="text-xs text-muted-foreground">
+                  {l.date_prevue
+                    ? `Prévue le ${formatDate(l.date_prevue)}`
+                    : 'Date prévue non communiquée'}
+                  {l.numero_suivi ? ` — suivi ${l.numero_suivi}` : ''}
+                </p>
+              </EnteteCarteStatut>
 
               {l.articles?.length > 0 && (
                 <ul className="flex flex-col gap-1 text-sm">

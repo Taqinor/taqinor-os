@@ -64,8 +64,6 @@ frontend/src/features/portail/client/PortailClientFactures.jsx::charger
 frontend/src/features/portail/client/PortailClientLivraisons.jsx::charger
 frontend/src/features/portail/client/PortailClientSav.jsx::charger
 frontend/src/features/portail/client/PortailClientSav.jsx::voirFil
-frontend/src/features/portail/fournisseur/PortailFournisseurBcf.jsx::charger
-frontend/src/features/portail/partenaire/PortailPartenaireLeads.jsx::charger
 frontend/src/features/uxviews/useServerSavedViews.js::useServerSavedViews
 frontend/src/pages/Journal.jsx::run
 frontend/src/pages/Rapports.jsx::MesRapports
