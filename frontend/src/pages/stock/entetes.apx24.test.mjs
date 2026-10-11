@@ -15,7 +15,7 @@ const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
 // le liseré d'accent Inventaire et `headingAs="h1"`) au lieu de recopier ces
 // trois props : même rendu, source unique.
 const ENTETE = read('EnteteStock.jsx')
-const usesEntete = (src) => /import \{ EnteteStock \} from '\.\/EnteteStock'/.test(src) && /<EnteteStock/.test(src)
+const usesEntete = (src) => /import \{[^}]*EnteteStock[^}]*\} from '\.\/EnteteStock'/.test(src) && /<EnteteStock/.test(src)
 
 // Les 15 écrans balayés (les autres fichiers du dossier sont des composants,
 // pas des pages : tableau, formulaire, sélecteur…).
