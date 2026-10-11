@@ -147,8 +147,6 @@ Error|roof_load_check|unable to guess serializer. This is graceful fallback hand
 Error|schema_unifilaire_devis|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|schema_unifilaire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|suivi_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|tableau_de_bord_fournisseur|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|tableau_de_bord_partenaire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|theme_portail_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|upload_signature|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Warning|<global>|encountered multiple names for the same choice set (MetricEnum). This may be unwanted even though the generated schema i
