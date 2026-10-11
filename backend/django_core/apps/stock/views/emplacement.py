@@ -34,7 +34,6 @@ from ..serializers import (  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsAdminRole,
-    IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
 
@@ -59,7 +58,8 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['etiquettes_kanban']:
+        if self.action in READ_ACTIONS + [
+                'etiquettes_kanban', 'van_stock_a_reapprovisionner']:
             # XSTK20 — impression de cartes kanban : lecture seule, même
             # garde que les autres impressions d'étiquettes N20
             # (`get_permissions` prime sur le `permission_classes` de
@@ -153,7 +153,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=serializers.IntegerField(), emplacement_id=serializers.IntegerField()), responses={200: TransfertStockSerializer, 201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='van-stock/creer-transfert',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def van_stock_creer_transfert(self, request):
         """NTFSM19 — crée (ou renvoie, sans dupliquer) la demande de transfert
         dépôt principal → camionnette qui comble l'écart sous seuil pour

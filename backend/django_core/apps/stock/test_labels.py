@@ -116,6 +116,17 @@ class LabelsApiBase(TestCase):
 
 
 class TestEtiquettesAction(LabelsApiBase):
+    def test_tout_role_authentifie_peut_imprimer_ses_etiquettes(self):
+        # ENF15 — `etiquettes` déclare IsAnyRole : get_permissions ne doit pas
+        # la rabattre sur IsAdminRole (nom + SKU + jeton, aucun prix).
+        commercial = User.objects.create_user(
+            username='lbl_commercial', password='x', role_legacy='commercial',
+            company=self.company)
+        res = auth(commercial).get(
+            f'/api/django/stock/produits/etiquettes/?ids={self.p1.id}'
+            f'&sortie=html')
+        self.assertEqual(res.status_code, 200)
+
     def test_html_output_lists_selected(self):
         res = self.api.get(
             f'/api/django/stock/produits/etiquettes/?ids={self.p1.id}'

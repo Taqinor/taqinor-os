@@ -325,6 +325,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
                 'casiers', 'plan_picking',
+                # ENF15 — déclarées `IsAnyRole` sur l'@action, mais jamais
+                # atteintes (repli IsAdminRole) : lecture seule, aucun prix
+                # (étiquettes = nom + SKU + jeton ; ventilation = quantités).
+                'etiquettes', 'emplacements',
                 'classe_abc', 'tracabilite',
                 # PVCOMPAT — `compatibilites` est LECTURE SEULE et ne rend
                 # AUCUN prix (que des grandeurs électriques et des verdicts) :
@@ -963,7 +967,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=False, methods=['get'], url_path='a-reapprovisionner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def a_reapprovisionner(self, request):
         """FG54 — Liste des produits dont le stock est <= seuil_alerte,
         avec fournisseur le moins cher et quantité suggérée. INTERNE."""
@@ -972,7 +976,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(request=corps('ProduitGenererBcfReapproCorps', fournisseur_id=serializers.IntegerField(required=False, allow_null=True)), responses={201: OBJET})
     @action(detail=False, methods=['post'], url_path='generer-bcf-reappro',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def generer_bcf_reappro(self, request):
         """FG54 — Génère un BCF BROUILLON pour tous les produits sous seuil.
         Réutilise create_with_reference('BCF'). INTERNE."""

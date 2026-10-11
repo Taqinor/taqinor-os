@@ -172,6 +172,19 @@ class TestEmplacementApi(EmplacementBase):
         total = sum(b['quantite'] for b in r.json())
         self.assertEqual(total, 10)
 
+    def test_lectures_declarees_any_role_ouvertes_a_un_commercial(self):
+        # ENF15 — `emplacements` (produit) et `van-stock/a-reapprovisionner`
+        # déclarent IsAnyRole : plus de repli IsAdminRole.
+        commercial = User.objects.create_user(
+            username='emp_commercial', password='x', role_legacy='commercial',
+            company=self.company)
+        api = auth(commercial)
+        r = api.get(
+            f'/api/django/stock/produits/{self.produit.id}/emplacements/')
+        self.assertEqual(r.status_code, 200)
+        r = api.get('/api/django/stock/emplacements/van-stock/a-reapprovisionner/')
+        self.assertEqual(r.status_code, 200)
+
     def test_transfert_endpoint(self):
         ensure_emplacements(self.company)
         principal = EmplacementStock.objects.get(
