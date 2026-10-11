@@ -246,18 +246,30 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='approuver',
             permission_classes=[IsResponsableOrAdmin])
     def approuver(self, request, pk=None):
+        # ACRM57 — table de transitions + full_clean + chatter : le service.
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .services import approuver_deal
         deal = self.get_object()
-        deal.statut = DealEnregistre.Statut.APPROUVE
-        deal.save(update_fields=['statut'])
+        try:
+            approuver_deal(deal, user=request.user)
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.message_dict) from exc
         return Response(DealEnregistreSerializer(deal).data)
 
     @extend_schema(request=None, responses=DealEnregistreSerializer)
     @action(detail=True, methods=['post'], url_path='rejeter',
             permission_classes=[IsResponsableOrAdmin])
     def rejeter(self, request, pk=None):
+        # ACRM57 — un deal « à payer » (ou déjà tranché) ne se rejette plus.
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .services import rejeter_deal
         deal = self.get_object()
-        deal.statut = DealEnregistre.Statut.REJETE
-        deal.save(update_fields=['statut'])
+        try:
+            rejeter_deal(deal, user=request.user)
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.message_dict) from exc
         return Response(DealEnregistreSerializer(deal).data)
 
     @extend_schema(responses=DealEnregistreSerializer(many=True))
