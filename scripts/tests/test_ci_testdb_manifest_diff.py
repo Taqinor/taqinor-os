@@ -296,3 +296,28 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CleTestdbMainTests(unittest.TestCase):
+    """`scripts/ci_testdb_main_key.py` — la cle de repli vers le dump de main.
+
+    Le format et l'ordre des fichiers suivent `hashFiles` du runner (migrations
+    triees puis requirements.txt) ; l'algorithme a ete verifie sur deux cles
+    imprimees par la CI (e380f019a -> 4f10169d..., main -> fa530dd5...), qu'un
+    test ne peut rejouer sans ces arbres : ici on fige la forme et la stabilite.
+    """
+
+    def test_cle_de_head_a_la_forme_attendue_et_est_stable(self):
+        import re
+        from scripts import ci_testdb_main_key as m
+        cle = m.cle_testdb('HEAD')
+        self.assertRegex(cle, r'^testdb-v1-[0-9a-f]{64}$')
+        self.assertEqual(cle, m.cle_testdb('HEAD'))
+
+    def test_fichiers_retenus_migrations_triees_puis_requirements(self):
+        from scripts import ci_testdb_main_key as m
+        fichiers = m.fichiers_retenus('HEAD')
+        self.assertEqual(fichiers[-1], 'backend/django_core/requirements.txt')
+        migrations = fichiers[:-1]
+        self.assertTrue(migrations and all('/migrations/' in f and f.endswith('.py') for f in migrations))
+        self.assertEqual(migrations, sorted(migrations))
