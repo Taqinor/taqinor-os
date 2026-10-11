@@ -87,7 +87,9 @@ class RatchetTests(unittest.TestCase):
         cls.baseline = cos.load_baseline()
 
     def test_committed_baseline_is_present_and_well_formed(self):
-        self.assertGreater(len(self.baseline), 100)
+        # ENF11 (11/10/2026) : cliquet EXACT, la base ne porte plus que les avertissements
+        # encore produits (239 -> 88) ; le plancher historique de 100 n'a plus de sens.
+        self.assertGreater(len(self.baseline), 0)
         for entry in self.baseline:
             self.assertEqual(entry.count("|") >= 2, True, entry)
             self.assertIn(entry.split("|", 1)[0], ("Warning", "Error"), entry)
