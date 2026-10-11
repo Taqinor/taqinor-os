@@ -12,12 +12,12 @@ import { MemoryRouter } from 'react-router-dom'
    ========================================================================== */
 
 const layout = vi.fn()
-vi.mock('../../../api/calepinageApi', () => ({
+vi.mock('../../api/calepinageApi', () => ({
   default: { calepinages: { layout: (...a) => layout(...a) } },
 }))
 
-const { default: CourseSoleil } = await import('../CourseSoleil')
-const { azimutHauteur, obstructionsDesObstacles, centroideDuContour } = await import('../obstructionMath')
+const { default: CourseSoleil } = await import('./CourseSoleil')
+const { azimutHauteur, obstructionsDesObstacles, centroideDuContour } = await import('./obstructionMath')
 
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })
@@ -288,7 +288,7 @@ describe('ACAL74 — la hauteur du bâtiment du pan, lue dans le document', () =
 
 describe('CAL96 — l’écran est ATTEIGNABLE', () => {
   it('le module déclare la route `/calepinage/:id/course-soleil` avec ses rôles', async () => {
-    const { default: config } = await import('../module.config.jsx')
+    const { default: config } = await import('./module.config.jsx')
     const route = config.routes.find((r) => r.path === '/calepinage/:id/course-soleil')
     expect(route, 'route course-soleil absente du module').toBeTruthy()
     expect(Array.isArray(route.roles) && route.roles.length > 0).toBe(true)
