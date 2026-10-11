@@ -2,8 +2,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
-    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
-    ProductionWarranty,
+    AbonnementMonitoring, CleaningEvent, MonitoringConfig, MonitoringSettings,
+    ProductionReading, ProductionWarranty,
 )
 from .providers import available_providers
 
@@ -139,3 +139,30 @@ class MonitoringSettingsSerializer(serializers.ModelSerializer):
             'date_modification',
         ]
         read_only_fields = ['date_modification']
+
+
+class AbonnementMonitoringSerializer(serializers.ModelSerializer):
+    """ASAV100 — abonnement de supervision. ``client_id`` est résolu côté
+    serveur depuis le système (lecture seule) ; statut, motif et échéance ne
+    bougent que par les services (création, résiliation)."""
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    installation_id = serializers.IntegerField(min_value=1)
+    # Aucun chiffre inventé : le montant est obligatoire à la saisie.
+    montant = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=True)
+
+    class Meta:
+        model = AbonnementMonitoring
+        fields = [
+            'id', 'client_id', 'installation_id', 'periodicite',
+            'periodicite_display', 'montant', 'statut', 'statut_display',
+            'date_debut', 'prochaine_echeance', 'motif_resiliation',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'client_id', 'statut', 'prochaine_echeance', 'motif_resiliation',
+            'date_creation',
+        ]

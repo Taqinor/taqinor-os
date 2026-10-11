@@ -1267,6 +1267,10 @@
 - frontend/src/api/monitoringApi.js :: addReading -> /api/django/monitoring/readings  [ProductionReadingSerializer]
     champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
     source ∈ {auto, import, manual}
+- frontend/src/api/monitoringApi.js :: creerAbonnement -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
+    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
+    periodicite ∈ {annuel, mensuel}
+    statut ∈ {actif, resilie, suspendu}
 - frontend/src/api/monitoringApi.js :: deleteCleaning -> /api/django/monitoring/cleanings/<>  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: deleteReading -> /api/django/monitoring/readings/<>  [ProductionReadingSerializer]
@@ -1274,6 +1278,10 @@
     source ∈ {auto, import, manual}
 - frontend/src/api/monitoringApi.js :: deleteWarranty -> /api/django/monitoring/warranties/<>  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
+- frontend/src/api/monitoringApi.js :: getAbonnements -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
+    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
+    periodicite ∈ {annuel, mensuel}
+    statut ∈ {actif, resilie, suspendu}
 - frontend/src/api/monitoringApi.js :: getCleanings -> /api/django/monitoring/cleanings  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: getConfigForInstallation -> /api/django/monitoring/configs  [MonitoringConfigSerializer]

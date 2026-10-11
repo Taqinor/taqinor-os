@@ -19,17 +19,12 @@
     {
       "id": "abonnement_creation",
       "libelle": "Création de l'abonnement monitoring du client",
-      "manquante": true,
-      "raison": "Le modèle `AbonnementMonitoring` existe (table conservée de l'ancienne app compta) mais aucune vue, aucun service ni aucune tâche du code vivant ne crée un abonnement.",
-      "attendu": "Un service `creer_abonnement_monitoring` (ASAV, tâche de câblage) appelé depuis le parc SAV.",
-      "declencheur": {"manquant": true},
-      "fonction_entree": {"manquant": true},
+      "declencheur": {"type": "http", "source": "apps/monitoring/views.py::AbonnementMonitoringViewSet.perform_create"},
+      "fonction_entree": "apps/monitoring/services.py::creer_abonnement_monitoring",
       "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Abonnement actif/suspendu/résilié, périodicité, prochaine échéance."},
       "regles_aval": [
-        {"regle": "La résiliation coupe la supervision automatique du système lié (abonné déjà en place, voir l'étape résiliation).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
-      ],
-      "preuves_absence": [
-        {"motif": "AbonnementMonitoring\\b", "racine": "apps", "fichiers_autorises": ["apps/monitoring/models.py"]}
+        {"regle": "La prochaine échéance est posée à une période après la date de début (mensuel +1 mois, annuel +12 mois) ; le client est résolu depuis le système (ASAV100).", "source": "apps/monitoring/services.py::prochaine_echeance_abonnement"},
+        {"regle": "La résiliation coupe la supervision automatique du système lié (voir l'étape résiliation).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
       ]
     },
     {
@@ -119,17 +114,11 @@
     {
       "id": "resiliation",
       "libelle": "Résiliation de l'abonnement et arrêt de la supervision",
-      "manquante": true,
-      "raison": "L'abonné `abonnement_monitoring_resilie` coupe la supervision, mais aucun émetteur du code vivant n'envoie ce signal : `resilier_abonnement_monitoring` vivait dans l'app compta sortie du périmètre.",
-      "attendu": "Un service de résiliation côté monitoring/sav qui émet `abonnement_monitoring_resilie` (tâche ASAV).",
-      "declencheur": {"manquant": true},
-      "fonction_entree": {"manquant": true},
+      "declencheur": {"type": "http", "source": "apps/monitoring/views.py::AbonnementMonitoringViewSet.resilier"},
+      "fonction_entree": "apps/monitoring/services.py::resilier_abonnement_monitoring",
       "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Statut résilié et motif de résiliation."},
       "regles_aval": [
-        {"regle": "À la résiliation, la supervision automatique du système lié est coupée.", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
-      ],
-      "preuves_absence": [
-        {"motif": "abonnement_monitoring_resilie\\.send|def resilier_abonnement_monitoring", "racine": "apps", "fichiers_autorises": []}
+        {"regle": "À la résiliation, la supervision automatique du système lié est coupée (abonné de `abonnement_monitoring_resilie`, émis par le service ASAV100).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
       ]
     }
   ]

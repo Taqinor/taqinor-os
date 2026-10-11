@@ -78,6 +78,13 @@ const monitoringApi = {
   // Envoi du rapport O&M par e-mail (PDF joint). body { period, recipient? }.
   emailOmReport: (configId, data) =>
     api.post(`/monitoring/configs/${configId}/email-om-report/`, data),
+
+  // ── ASAV100 — abonnements de supervision (écran SAV/monitoring) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/abonnements_monitoring.json
+  getAbonnements: (params) => api.get('/monitoring/abonnements/', { params }),
+  creerAbonnement: (data) => api.post('/monitoring/abonnements/', data),
+  resilierAbonnement: (id, motif) =>
+    api.post(`/monitoring/abonnements/${id}/resilier/`, { motif }),
 }
 
 export default monitoringApi

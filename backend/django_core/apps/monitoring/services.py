@@ -577,3 +577,93 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
 
     return create_with_reference(
         CertificatCarbone, PREFIXE_REFERENCE_CERTIFICAT_CO2, company, _creer)
+
+
+# ── ASAV100 — Abonnements de supervision (D-ASAV-4 option (b), ASAV93) ──────
+# Rend utilisable ``AbonnementMonitoring`` (table conservée de l'ancienne app
+# compta) : création depuis l'écran SAV/monitoring et résiliation qui émet
+# ``abonnement_monitoring_resilie`` — l'abonné ``receivers.
+# _arreter_supervision_a_la_resiliation`` coupe la supervision du système lié.
+# Aucun chiffre inventé : le montant est SAISI (jamais un défaut à 0).
+
+
+class AbonnementMonitoringError(ValueError):
+    """Création/résiliation d'abonnement refusée ; ``champ`` nomme le champ
+    fautif (``None`` = erreur globale)."""
+
+    def __init__(self, message, champ=None):
+        super().__init__(message)
+        self.message = message
+        self.champ = champ
+
+
+def _ajouter_mois(jour, nb_mois):
+    """``jour`` + ``nb_mois`` mois, borné au dernier jour du mois cible."""
+    import calendar
+
+    mois_total = jour.month - 1 + nb_mois
+    annee = jour.year + mois_total // 12
+    mois = mois_total % 12 + 1
+    return jour.replace(
+        year=annee, month=mois,
+        day=min(jour.day, calendar.monthrange(annee, mois)[1]))
+
+
+def prochaine_echeance_abonnement(depuis, periodicite):
+    """Mensuel → +1 mois ; annuel → +12 mois (même règle que FG244)."""
+    from .models import AbonnementMonitoring
+
+    pas = 12 if periodicite == AbonnementMonitoring.Periodicite.ANNUEL else 1
+    return _ajouter_mois(depuis, pas)
+
+
+def creer_abonnement_monitoring(company, *, installation_id, periodicite,
+                                montant, date_debut=None, user=None):
+    """ASAV100 — crée un abonnement ACTIF pour un système de la société.
+
+    Le client est résolu côté serveur depuis le système (jamais lu du corps) ;
+    un système inconnu, d'une autre société ou sans client est refusé. Le
+    montant doit être saisi (> 0)."""
+    from apps.installations import selectors as installations_selectors
+
+    from .models import AbonnementMonitoring
+
+    client_id = installations_selectors.chantier_client_id(
+        company, installation_id)
+    if client_id is None:
+        raise AbonnementMonitoringError(
+            'Système inconnu ou sans client.', champ='installation_id')
+    if montant is None or Decimal(str(montant)) <= 0:
+        raise AbonnementMonitoringError(
+            'Saisir le montant par période.', champ='montant')
+    debut = date_debut or timezone.localdate()
+    return AbonnementMonitoring.objects.create(
+        company=company, client_id=client_id, installation_id=installation_id,
+        periodicite=periodicite, montant=montant,
+        statut=AbonnementMonitoring.Statut.ACTIF, date_debut=debut,
+        prochaine_echeance=prochaine_echeance_abonnement(debut, periodicite))
+
+
+def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
+    """ASAV100 — résilie un abonnement (motif obligatoire) et émet
+    ``abonnement_monitoring_resilie`` : l'abonné monitoring coupe la
+    supervision automatique du système lié. Un abonnement déjà résilié est
+    refusé (jamais deux émissions pour la même résiliation)."""
+    from core.events import abonnement_monitoring_resilie
+
+    from .models import AbonnementMonitoring
+
+    motif = (motif or '').strip()
+    if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
+        raise AbonnementMonitoringError('Abonnement déjà résilié.')
+    if not motif:
+        raise AbonnementMonitoringError(
+            'Indiquez le motif de résiliation.', champ='motif')
+    with transaction.atomic():
+        abonnement.statut = AbonnementMonitoring.Statut.RESILIE
+        abonnement.motif_resiliation = motif[:255]
+        abonnement.save(update_fields=['statut', 'motif_resiliation'])
+        abonnement_monitoring_resilie.send(
+            sender=AbonnementMonitoring, abonnement=abonnement, motif=motif,
+            company=abonnement.company)
+    return abonnement
