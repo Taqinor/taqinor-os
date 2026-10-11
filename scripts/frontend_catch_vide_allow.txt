@@ -13,7 +13,6 @@ frontend/src/features/auth/store/authSlice.js::auth/logoutUser  1
 frontend/src/features/calepinage/CalepinageNouveau.jsx::creer  1
 frontend/src/features/calepinage/ComparaisonProjets.jsx::motifDuRefusClasseur  1
 frontend/src/features/calepinage/FicheCalepinage.jsx::enregistrerChampsPerso  1
-frontend/src/features/calepinage/SchemaUnifilairePanel.jsx::motifDuRefusDxf  1
 frontend/src/features/calepinage/Vue2DPlan.jsx::onChange  1
 frontend/src/features/calepinage/atelier/useAtelierBoot.js::boot  2
 frontend/src/features/calepinage/atelier/useAtelierBoot.js::poserFondDuDocument  2

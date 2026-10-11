@@ -119,6 +119,7 @@ export async function motifDuRefusDxf(erreur) {
     if (premier) return String(premier)
   } catch {
     // Le corps n'est pas un refus JSON : on ne devine pas ce qu'il disait.
+    return 'Le DXF n’a pas pu être produit par le serveur.'
   }
   return 'Le DXF n’a pas pu être produit par le serveur.'
 }
