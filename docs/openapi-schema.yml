@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7570, components: 3016}
+counts: {paths: 4836, operations: 7600, components: 3031}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2221,6 +2221,13 @@ operations:
 - get /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_retrieve
 - patch /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_partial_update
 - put /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_update
+- get /api/django/monitoring/abonnements/ -> django_monitoring_abonnements_list
+- post /api/django/monitoring/abonnements/ -> django_monitoring_abonnements_create
+- get /api/django/monitoring/abonnements/{id}/ -> django_monitoring_abonnements_retrieve
+- post /api/django/monitoring/abonnements/{id}/resilier/ -> django_monitoring_abonnements_resilier_create
+- get /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_list
+- post /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_create
+- get /api/django/monitoring/certificats-carbone/{id}/ -> django_monitoring_certificats_carbone_retrieve
 - get /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_list
 - post /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_create
 - delete /api/django/monitoring/cleanings/{id}/ -> django_monitoring_cleanings_destroy
@@ -2246,6 +2253,7 @@ operations:
 - post /api/django/monitoring/configs/{id}/import-releves/ -> django_monitoring_configs_import_releves_create
 - get /api/django/monitoring/configs/{id}/om-metrics/ -> django_monitoring_configs_om_metrics_retrieve
 - get /api/django/monitoring/configs/{id}/om-report/ -> django_monitoring_configs_om_report_retrieve
+- get /api/django/monitoring/configs/{id}/pertes/ -> django_monitoring_configs_pertes_retrieve
 - get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/ -> django_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/django/monitoring/configs/{id}/soiling/ -> django_monitoring_configs_soiling_retrieve
 - post /api/django/monitoring/configs/{id}/sync-now/ -> django_monitoring_configs_sync_now_create
@@ -2261,6 +2269,13 @@ operations:
 - get /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_retrieve
 - patch /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_partial_update
 - put /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_update
+- get /api/django/monitoring/sla-disponibilite/ -> django_monitoring_sla_disponibilite_list
+- post /api/django/monitoring/sla-disponibilite/ -> django_monitoring_sla_disponibilite_create
+- delete /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_destroy
+- get /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_retrieve
+- patch /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_partial_update
+- put /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_update
+- get /api/django/monitoring/sla-disponibilite/{id}/ecart/ -> django_monitoring_sla_disponibilite_ecart_retrieve
 - get /api/django/monitoring/warranties/ -> django_monitoring_warranties_list
 - post /api/django/monitoring/warranties/ -> django_monitoring_warranties_create
 - delete /api/django/monitoring/warranties/{id}/ -> django_monitoring_warranties_destroy
@@ -6045,6 +6060,13 @@ operations:
 - get /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_retrieve
 - patch /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_partial_update
 - put /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_update
+- get /api/v1/monitoring/abonnements/ -> v1_monitoring_abonnements_list
+- post /api/v1/monitoring/abonnements/ -> v1_monitoring_abonnements_create
+- get /api/v1/monitoring/abonnements/{id}/ -> v1_monitoring_abonnements_retrieve
+- post /api/v1/monitoring/abonnements/{id}/resilier/ -> v1_monitoring_abonnements_resilier_create
+- get /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_list
+- post /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_create
+- get /api/v1/monitoring/certificats-carbone/{id}/ -> v1_monitoring_certificats_carbone_retrieve
 - get /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_list
 - post /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_create
 - delete /api/v1/monitoring/cleanings/{id}/ -> v1_monitoring_cleanings_destroy
@@ -6070,6 +6092,7 @@ operations:
 - post /api/v1/monitoring/configs/{id}/import-releves/ -> v1_monitoring_configs_import_releves_create
 - get /api/v1/monitoring/configs/{id}/om-metrics/ -> v1_monitoring_configs_om_metrics_retrieve
 - get /api/v1/monitoring/configs/{id}/om-report/ -> v1_monitoring_configs_om_report_retrieve
+- get /api/v1/monitoring/configs/{id}/pertes/ -> v1_monitoring_configs_pertes_retrieve
 - get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/ -> v1_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/v1/monitoring/configs/{id}/soiling/ -> v1_monitoring_configs_soiling_retrieve
 - post /api/v1/monitoring/configs/{id}/sync-now/ -> v1_monitoring_configs_sync_now_create
@@ -6085,6 +6108,13 @@ operations:
 - get /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_retrieve
 - patch /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_partial_update
 - put /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_update
+- get /api/v1/monitoring/sla-disponibilite/ -> v1_monitoring_sla_disponibilite_list
+- post /api/v1/monitoring/sla-disponibilite/ -> v1_monitoring_sla_disponibilite_create
+- delete /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_destroy
+- get /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_retrieve
+- patch /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_partial_update
+- put /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_update
+- get /api/v1/monitoring/sla-disponibilite/{id}/ecart/ -> v1_monitoring_sla_disponibilite_ecart_retrieve
 - get /api/v1/monitoring/warranties/ -> v1_monitoring_warranties_list
 - post /api/v1/monitoring/warranties/ -> v1_monitoring_warranties_create
 - delete /api/v1/monitoring/warranties/{id}/ -> v1_monitoring_warranties_destroy
@@ -7999,6 +8029,8 @@ query_params:
   get /api/django/installations/tournee-livraison/: depart_lat depart_lng jour
   get /api/django/installations/transporteurs/: active ordering page page_size search type_transporteur
   get /api/django/installations/types-intervention/: ordering page page_size search
+  get /api/django/monitoring/abonnements/: ordering page page_size search
+  get /api/django/monitoring/certificats-carbone/: ordering page page_size search
   get /api/django/monitoring/cleanings/: installation ordering page page_size search
   get /api/django/monitoring/configs/: installation ordering page page_size search
   get /api/django/monitoring/configs/attestation-carbone-client-pdf/: client since until
@@ -8012,10 +8044,13 @@ query_params:
   get /api/django/monitoring/configs/{id}/history/: export months
   get /api/django/monitoring/configs/{id}/om-metrics/: window_days
   get /api/django/monitoring/configs/{id}/om-report/: format period
+  get /api/django/monitoring/configs/{id}/pertes/: window_days
   get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/django/monitoring/configs/{id}/soiling/: window_days
   get /api/django/monitoring/readings/: installation ordering page page_size search
   get /api/django/monitoring/settings/: ordering search
+  get /api/django/monitoring/sla-disponibilite/: installation ordering page page_size search
+  get /api/django/monitoring/sla-disponibilite/{id}/ecart/: window_days
   get /api/django/monitoring/warranties/: installation ordering page page_size search
   get /api/django/monitoring/warranties/{id}/curve/: drift_threshold_pct years
   get /api/django/monitoring/warranties/{id}/status/: year
@@ -8753,6 +8788,8 @@ query_params:
   get /api/v1/installations/tournee-livraison/: depart_lat depart_lng jour
   get /api/v1/installations/transporteurs/: active ordering page page_size search type_transporteur
   get /api/v1/installations/types-intervention/: ordering page page_size search
+  get /api/v1/monitoring/abonnements/: ordering page page_size search
+  get /api/v1/monitoring/certificats-carbone/: ordering page page_size search
   get /api/v1/monitoring/cleanings/: installation ordering page page_size search
   get /api/v1/monitoring/configs/: installation ordering page page_size search
   get /api/v1/monitoring/configs/attestation-carbone-client-pdf/: client since until
@@ -8766,10 +8803,13 @@ query_params:
   get /api/v1/monitoring/configs/{id}/history/: export months
   get /api/v1/monitoring/configs/{id}/om-metrics/: window_days
   get /api/v1/monitoring/configs/{id}/om-report/: format period
+  get /api/v1/monitoring/configs/{id}/pertes/: window_days
   get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/v1/monitoring/configs/{id}/soiling/: window_days
   get /api/v1/monitoring/readings/: installation ordering page page_size search
   get /api/v1/monitoring/settings/: ordering search
+  get /api/v1/monitoring/sla-disponibilite/: installation ordering page page_size search
+  get /api/v1/monitoring/sla-disponibilite/{id}/ecart/: window_days
   get /api/v1/monitoring/warranties/: installation ordering page page_size search
   get /api/v1/monitoring/warranties/{id}/curve/: drift_threshold_pct years
   get /api/v1/monitoring/warranties/{id}/status/: year
@@ -9085,6 +9125,10 @@ query_params:
   get /api/v1/visites/visites/: lead mine ordering page page_size search
 components:
 - AbandonMotifEnum
+- AbonnementMonitoring
+- AbonnementMonitoringPeriodiciteEnum
+- AbonnementMonitoringRequest
+- AbonnementMonitoringStatutEnum
 - AcceptationDevisPortail
 - AccepterInvitationPortailRequestRequest
 - AccepterInvitationPortailResponse
@@ -9399,6 +9443,8 @@ components:
 - CategorieTicketRequest
 - CauseDefaillance
 - CauseDefaillanceRequest
+- CertificatCarbone
+- CertificatCarboneRequest
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -10328,6 +10374,7 @@ components:
 - MonEquipePortailInviterRoleEnum
 - MonEquipePortailLigne
 - MonEquipePortailLigneRequest
+- MonitoringAbonnementResilierRequest
 - MonitoringConfig
 - MonitoringConfigRequest
 - MonitoringEmailOmReportReponse
@@ -10336,9 +10383,11 @@ components:
 - MonitoringImportReleves
 - MonitoringImportRelevesCsvRequest
 - MonitoringImportRelevesFichierRequest
+- MonitoringPertesCategorisees
 - MonitoringProvider
 - MonitoringSettings
 - MonitoringSettingsRequest
+- MonitoringSlaDisponibiliteEcart
 - MonitoringSyncNow
 - MotifEnum
 - MotifPerte
@@ -10401,7 +10450,6 @@ components:
 - OrdreAssemblage
 - OrdreAssemblageActivity
 - OrdreAssemblageLigne
-- OrdreAssemblageLigneOrigineEnum
 - OrdreAssemblageLigneRequest
 - OrdreAssemblageRequest
 - OrdreDemontage
@@ -10411,6 +10459,7 @@ components:
 - OrdreDemontageStatutEnum
 - OrdresDepuisDevisRequeteRequest
 - OrientationEnum
+- Origine7a0Enum
 - OuiNonEnum
 - OutboxEvent
 - OutboxEventStatutEnum
@@ -10420,6 +10469,7 @@ components:
 - OutillageStatutEnum
 - OutillageSuppressionRefusee
 - OwnershipEnum
+- PaginatedAbonnementMonitoringList
 - PaginatedAcceptationDevisPortailList
 - PaginatedAccessReviewCampaignList
 - PaginatedAccordRFAFournisseurList
@@ -10481,6 +10531,7 @@ components:
 - PaginatedCategorieStockageList
 - PaginatedCategorieTicketList
 - PaginatedCauseDefaillanceList
+- PaginatedCertificatCarboneList
 - PaginatedChampSignatureList
 - PaginatedChecklistEtapeModeleList
 - PaginatedChecklistTemplateList
@@ -10770,6 +10821,7 @@ components:
 - PaginatedShotListSlotList
 - PaginatedSignataireDemandeList
 - PaginatedSiteProfileList
+- PaginatedSlaDisponibiliteList
 - PaginatedSodRuleList
 - PaginatedStageModeleList
 - PaginatedStatutConfigList
@@ -11125,6 +11177,7 @@ components:
 - PatchedSeuilReapproCasierRequest
 - PatchedShotListSlotRequest
 - PatchedSiteProfileRequest
+- PatchedSlaDisponibiliteRequest
 - PatchedSodRuleRequest
 - PatchedSousTraitantRequest
 - PatchedStageModeleRequest
@@ -11725,6 +11778,8 @@ components:
 - SlaCreditDu
 - SlaCreditStatutRequeteRequest
 - SlaCreditStatutRequeteStatutEnum
+- SlaDisponibilite
+- SlaDisponibiliteRequest
 - SlaSnapshot
 - SodRule
 - SodRuleRequest
