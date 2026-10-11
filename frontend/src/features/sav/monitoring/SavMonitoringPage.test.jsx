@@ -8,12 +8,14 @@ import userEvent from '@testing-library/user-event'
 import ABONNEMENTS from '../../../../../backend/django_core/apps/monitoring/contract_samples/abonnements_monitoring.json'
 import SLA from '../../../../../backend/django_core/apps/monitoring/contract_samples/sla_disponibilite.json'
 import CERTIFICATS from '../../../../../backend/django_core/apps/monitoring/contract_samples/certificats_carbone.json'
+import PERTES from '../../../../../backend/django_core/apps/monitoring/contract_samples/pertes_categorisees.json'
 
 const vide = { count: 0, next: null, previous: null, results: [] }
 
 const serveur = vi.hoisted(() => ({
   abonnements: null, creations: [], resiliations: [], slas: null, slaSaves: [], ecarts: [],
   certificats: { count: 0, next: null, previous: null, results: [] }, emissions: [],
+  pertes: [],
 }))
 
 vi.mock('../../../api/monitoringApi', () => ({
@@ -24,6 +26,10 @@ vi.mock('../../../api/monitoringApi', () => ({
     getAbonnements: vi.fn(() => Promise.resolve({ data: serveur.abonnements })),
     getSlasDisponibilite: vi.fn(() => Promise.resolve({ data: serveur.slas })),
     getCertificatsCarbone: vi.fn(() => Promise.resolve({ data: serveur.certificats })),
+    getPertesCategorisees: vi.fn((configId, params) => {
+      serveur.pertes.push({ configId, params })
+      return Promise.resolve({ data: PERTES.exemple })
+    }),
     emettreCertificatCarbone: vi.fn((data) => {
       serveur.emissions.push(data)
       serveur.certificats = CERTIFICATS.exemple
@@ -66,6 +72,7 @@ afterEach(() => {
   serveur.slaSaves.length = 0
   serveur.ecarts.length = 0
   serveur.emissions.length = 0
+  serveur.pertes.length = 0
   serveur.certificats = vide
 })
 
@@ -154,5 +161,22 @@ describe('SavMonitoringPage — ASAV102 registre des certificats carbone', () =>
     expect(ligne).toHaveTextContent(CERTIFICATS.exemple.results[0].reference)
     expect(ligne).toHaveTextContent('CHT-87 — Alami')
     expect(ligne).toHaveTextContent(/3,402/)
+  }, 60000)
+})
+describe('SavMonitoringPage — ASAV103 pertes catégorisées', () => {
+  it('affiche les pertes servies par catégorie, « non mesurable » pour une catégorie null', async () => {
+    serveur.abonnements = vide
+    serveur.slas = vide
+    render(<SavMonitoringPage />)
+
+    const section = await screen.findByRole('region', { name: 'Pertes catégorisées' })
+    // Un seul système supervisé : sélectionné d'office → la route est appelée.
+    await waitFor(() => expect(serveur.pertes.length).toBeGreaterThan(0))
+    expect(serveur.pertes.at(-1)).toEqual({ configId: '5', params: { window_days: '365' } })
+    await waitFor(() => expect(section).toHaveTextContent('Salissure'))
+    expect(section).toHaveTextContent(/4,20 %/)
+    expect(section).toHaveTextContent(/2,74 %/)
+    expect(section).toHaveTextContent('non mesurable')
+    expect(PERTES.exemple.ombrage_pct).toBeNull()
   }, 60000)
 })

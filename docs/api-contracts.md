@@ -268,6 +268,8 @@
     fleet_pr_pct:inconnu, open_alerts:inconnu, systems:inconnu, systems_active:inconnu, total_kwc:inconnu, total_production_kwh:inconnu, window_days:inconnu
 - frontend/src/api/monitoringApi.js :: getOmMetrics -> /api/django/monitoring/configs/<>/om-metrics
     availability_pct:inconnu, degradation_pct_per_year:inconnu, expected_kwh:inconnu, installation:inconnu, monthly_pr:inconnu, pr_pct:inconnu, production_kwh:inconnu, soiling_suspected:inconnu, window_days:inconnu
+- frontend/src/api/monitoringApi.js :: getPertesCategorisees -> /api/django/monitoring/configs/<>/pertes
+    curtailment_pct:inconnu, installation:inconnu, ombrage_pct:inconnu, panne_pct:inconnu, soiling_pct:inconnu, window_days:inconnu
 - frontend/src/api/monitoringApi.js :: getSlaEcart -> /api/django/monitoring/sla-disponibilite/<>/ecart
     disponibilite_garantie_pct:inconnu, disponibilite_mesuree_pct:inconnu, ecart_pct:inconnu, has_sla:booleen, installation:inconnu, jours_indisponibilite_excedentaire:inconnu, libelle_indicateur:inconnu, penalite_mad:inconnu, sous_garantie:inconnu, window_days:inconnu
 - frontend/src/api/monitoringApi.js :: getSoiling -> /api/django/monitoring/configs/<>/soiling

@@ -562,6 +562,30 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             soiling_assessment(config.installation, window_days=window))
 
+    @extend_schema(parameters=[_WINDOW], responses=inline_serializer(
+        'MonitoringPertesCategorisees', {
+            'installation': serializers.IntegerField(),
+            'window_days': serializers.IntegerField(),
+            'soiling_pct': serializers.FloatField(allow_null=True),
+            'ombrage_pct': serializers.FloatField(allow_null=True),
+            'panne_pct': serializers.FloatField(allow_null=True),
+            'curtailment_pct': serializers.FloatField(allow_null=True),
+        }))
+    @action(detail=True, methods=['get'], url_path='pertes',
+            permission_classes=[IsResponsableOrAdmin])
+    def pertes(self, request, pk=None):
+        """ASAV103 (D-ASAV-4 option (b)) — pertes de production PAR
+        CATÉGORIE (salissure, ombrage, panne, écrêtement — NTNRG32) de ce
+        système. Responsable/admin ; 404 hors société. Une catégorie sans
+        donnée vaut ``null`` (jamais un faux 0). ?window_days=365 (défaut).
+        Contrat : ``contract_samples/pertes_categorisees.json``."""
+        from .analytics import pertes_categorisees
+        config = self.get_object()
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
+        return Response(
+            pertes_categorisees(config.installation, window_days=window))
+
     @extend_schema(
         parameters=[
             OpenApiParameter('period', OpenApiTypes.STR, required=False),

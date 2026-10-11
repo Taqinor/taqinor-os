@@ -4,12 +4,14 @@
 // endpoint gardé côté serveur). Une section par fonction :
 //   * ASAV100 — abonnements de supervision (création, résiliation) ;
 //   * ASAV101 — SLA de disponibilité (taux garanti saisi, écart, pénalité) ;
-//   * ASAV102 — registre des certificats carbone (émission mesurée).
+//   * ASAV102 — registre des certificats carbone (émission mesurée) ;
+//   * ASAV103 — pertes de production catégorisées d'un système.
 import { TooltipProvider } from '../../../ui'
 import useSupervisedSystems from '../../../pages/monitoring/useSupervisedSystems'
 import AbonnementsSection from './AbonnementsSection'
 import SlaDisponibiliteSection from './SlaDisponibiliteSection'
 import CertificatsCarboneSection from './CertificatsCarboneSection'
+import PertesCategoriseesSection from './PertesCategoriseesSection'
 
 export default function SavMonitoringPage() {
   const { systems, loading } = useSupervisedSystems()
@@ -25,6 +27,7 @@ export default function SavMonitoringPage() {
         <AbonnementsSection systems={systems} loadingSystems={loading} />
         <SlaDisponibiliteSection systems={systems} loadingSystems={loading} />
         <CertificatsCarboneSection systems={systems} loadingSystems={loading} />
+        <PertesCategoriseesSection systems={systems} loadingSystems={loading} />
       </div>
     </TooltipProvider>
   )
