@@ -125,7 +125,7 @@ def routes_sans_appelant(routes, appels) -> list[tuple]:
     """
     crm = routes_crm(routes)
     appels = list(appels)
-    directs = {r: any(cac.compatible(a, r) for a in appels) for r in crm}
+    directs = {r: any(cac.compatible(a, r, strict=True) for a in appels) for r in crm}
     manquantes = []
     for r in crm:
         if len(r) > 3 and r[3] in SANS_ECRAN_PAR_CONSTRUCTION:
