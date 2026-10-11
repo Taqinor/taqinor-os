@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -24,4 +26,4 @@ class PortailConfig(AppConfig):
         # orchestration cross-app vit dans `receivers.py` (jamais dans
         # `models.py` : un modèle n'orchestre pas d'écriture cross-app, et
         # l'import y cassait le contrat CI `portail-models-decoupled`).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
