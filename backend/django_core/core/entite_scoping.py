@@ -26,6 +26,7 @@ d'ORM, jamais un import de ``apps.roles``/``apps.entites``).
 """
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.relations import PrimaryKeyRelatedField
 
 __all__ = [
     'entite_id_demandee',
@@ -124,7 +125,15 @@ def _assert_entite_de_la_societe(user, entite_id):
     except LookupError:  # app entités absente : rien à rattacher
         return
     if not Entite.objects.filter(pk=entite_id, company_id=company_id).exists():
-        raise ValidationError({'entite': ['Entité introuvable.']})
+        # ENF17 — UNE seule réponse : celle du champ ``entite`` borné à la
+        # société (ACAL298, ``SameCompanyFKSerializerMixin``), c.-à-d. l'erreur
+        # « objet inexistant » de DRF, code ``does_not_exist``. Ce filet de vue
+        # répond AVANT le sérialiseur ; avec un texte propre (code ``invalid``)
+        # il faisait de l'entité étrangère deux réponses selon la couche.
+        gabarit = PrimaryKeyRelatedField.default_error_messages['does_not_exist']
+        raise ValidationError(
+            {'entite': [str(gabarit).format(pk_value=entite_id)]},
+            code='does_not_exist')
 
 
 def assert_entite_assignable(user, entite_id):

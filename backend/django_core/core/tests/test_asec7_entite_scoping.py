@@ -40,9 +40,14 @@ class EntiteScopingTests(TestCase):
         with self.assertRaises(ValidationError) as ctx:
             assert_entite_assignable(self.libre, self.e_b.id)
         self.assertIn('entite', ctx.exception.detail)
+        # ENF17 — la réponse du champ borné (ACAL298) : « objet inexistant ».
+        self.assertEqual(ctx.exception.detail['entite'][0].code,
+                         'does_not_exist')
         # Id inexistant : même réponse (aucun oracle d'existence).
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ValidationError) as absent:
             assert_entite_assignable(self.libre, 999999999)
+        self.assertEqual(absent.exception.detail['entite'][0].code,
+                         'does_not_exist')
 
     def test_perimetre_restreint_inchange(self):
         with self.assertRaises(PermissionDenied):
