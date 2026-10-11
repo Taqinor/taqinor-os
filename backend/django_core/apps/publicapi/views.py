@@ -137,9 +137,21 @@ class OcrToCrmSerializer(drf_serializers.Serializer):
     mode = drf_serializers.ChoiceField(choices=['lead', 'devis'], required=False)
     fields = drf_serializers.DictField(required=False)
 
+    def validate_fields(self, value):
+        # Le service CRM lit `fournisseur` / `client` comme du texte : un
+        # autre type levait AttributeError (500) — 400 qui nomme la clé.
+        for cle in ('fournisseur', 'client'):
+            if not isinstance(value.get(cle) or '', str):
+                raise drf_serializers.ValidationError(
+                    f'« {cle} » : texte attendu.')
+        return value
+
 
 class RotationCleSerializer(drf_serializers.Serializer):
-    grace_jours = drf_serializers.IntegerField(required=False, min_value=0)
+    # ENF11 — bornes déclarées ET appliquées (un jour négatif ou démesuré
+    # était accepté puis ramené à 1, ou levait OverflowError).
+    grace_jours = drf_serializers.IntegerField(
+        required=False, min_value=0, max_value=3650)
 
 
 class ServiceAccountCreerSerializer(drf_serializers.Serializer):
@@ -178,16 +190,10 @@ class OcrToCrmView(APIView):
         from apps.ventes.services import create_draft_devis_from_ocr
 
         company = request.user.company
-        mode = (request.data.get('mode') or 'lead').strip().lower()
-        fields = request.data.get('fields') or {}
-        if not isinstance(fields, dict):
-            return Response(
-                {'detail': "Le champ « fields » doit être un objet."},
-                status=status.HTTP_400_BAD_REQUEST)
-        if mode not in ('lead', 'devis'):
-            return Response(
-                {'detail': "Mode invalide (attendu « lead » ou « devis »)."},
-                status=status.HTTP_400_BAD_REQUEST)
+        corps = OcrToCrmSerializer(data=request.data)
+        corps.is_valid(raise_exception=True)
+        mode = corps.validated_data.get('mode', 'lead')
+        fields = corps.validated_data.get('fields') or {}
 
         try:
             lead = create_draft_lead_from_ocr(
@@ -421,11 +427,9 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         (`grace_jours`, défaut 7). L'ancienne continue de fonctionner (avec
         l'en-tête `Deprecation`) jusqu'à l'échéance, puis seule la nouvelle."""
         instance = self.get_object()
-        grace_jours = request.data.get('grace_jours')
-        try:
-            grace_jours = int(grace_jours) if grace_jours is not None else 7
-        except (TypeError, ValueError):
-            grace_jours = 7
+        corps = RotationCleSerializer(data=request.data)
+        corps.is_valid(raise_exception=True)
+        grace_jours = corps.validated_data.get('grace_jours', 7)
         new_instance, raw_key = instance.rotate(
             grace_jours=grace_jours, created_by=request.user)
         data = ApiKeySerializer(new_instance).data

@@ -47,7 +47,7 @@ class ApiKeySerializer(SameCompanyFKSerializerMixin,
 
 class ApiKeyCreateSerializer(serializers.Serializer):
     """Entrée de création : libellé + scopes. Renvoie la clé en clair UNE fois."""
-    label = serializers.CharField(max_length=120)
+    label = ChaineStricte(max_length=120)  # ENF11 — 0 / null refusés (400)
     scopes = serializers.ListField(
         child=serializers.ChoiceField(choices=ALL_SCOPES),
         allow_empty=True, default=list)
