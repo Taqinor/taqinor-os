@@ -2094,8 +2094,8 @@ class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
         if not _peut_voir_montants_achat(_user_du_contexte(self)):
             for nom in CHAMPS_MONTANTS_FACTURE_FOURNISSEUR:
                 fields.pop(nom, None)
-        requete = self.context.get('request')
-        if requete is not None and not PeutLirePaiementsFournisseur().has_permission(requete, None):
+        if self.context.get('request') is not None and not \
+                PeutLirePaiementsFournisseur().has_permission(self.context['request'], None):
             fields.pop('paiements', None)
         return fields
 
