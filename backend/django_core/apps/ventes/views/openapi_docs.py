@@ -136,7 +136,7 @@ FactureAnnulerRequest = _ser('FactureAnnulerRequest', {
         'action': s.ChoiceField(choices=['transferer', 'rembourser'],
                                 required=False),
         'facture_cible': s.IntegerField(required=False),
-    }),
+    }, required=False),
 })
 ExclureRelanceRequest = _ser('FactureExclureRelanceRequest', {
     'exclu': s.BooleanField(required=False),
@@ -772,6 +772,9 @@ class FactureCreeeDepuisBc(FactureSerializer):
     warnings = s.ListField(child=s.CharField(), required=False)
 
 
+MarquerPayeeRequest = _ser('FactureMarquerPayeeRequest', {
+    'motif': s.RegexField(_NON_BLANC),
+})
 AbandonnerSoldeRequest = _ser('FactureAbandonnerSoldeRequest', {
     'motif': s.ChoiceField(choices=_MOTIFS_ABANDON),
 })
@@ -859,10 +862,12 @@ ConsoliderRequest = _ser('FactureConsoliderRequest', {
     'devis_ids': s.ListField(child=s.IntegerField(), min_length=2),
 })
 EncaissementGroupeRequest = _ser('FactureEncaissementGroupeRequest', {
-    'client': s.IntegerField(),
-    'montant': s.DecimalField(max_digits=12, decimal_places=2,
-                              min_value=Decimal('0.01')),
-    'factures': s.ListField(child=s.IntegerField(), min_length=1),
+    'client': s.IntegerField(min_value=1),
+    # Montant STRICTEMENT positif, 2 décimales : le motif exclut "" et "0",
+    # que le décimal générique du schéma laisserait passer.
+    'montant': s.RegexField(
+        r'^(?:[1-9][0-9]{0,9}(?:\.[0-9]{1,2})?|0\.(?:0[1-9]|[1-9][0-9]?))$'),
+    'factures': s.ListField(child=s.IntegerField(min_value=1), min_length=1),
     'mode': s.ChoiceField(
         choices=['especes', 'virement', 'cheque', 'carte', 'prelevement',
                  'autre'], required=False),

@@ -460,14 +460,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if facture.statut != Facture.Statut.BROUILLON:
             return Response(
                 {'detail': 'Seule une facture brouillon peut être émise.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         if not facture.lignes.exists():
             return Response(
                 {'detail': (
                     'La facture doit contenir au moins une ligne.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AUD101 — l'émission (workflow de revue XFAC18, verrou de période,
         # blocage crédit XFAC28, dérivation d'échéance XFAC23, pose du statut
@@ -519,7 +519,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'Seule une facture émise (sans paiement ni avoir) peut '
                         'être remise en brouillon.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             if facture.paiements.exists():
                 return Response(
@@ -527,14 +527,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'Impossible : cette facture a déjà au moins un '
                         'paiement enregistré.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
                 return Response(
                     {'detail': (
                         'Impossible : cette facture a un avoir actif.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             argent = decrire_argent_rattache(argent_rattache(facture))
             if argent:
@@ -544,7 +544,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         f'est rattaché à cette facture ({argent}). Corrigez '
                         'par un avoir ou une note de débit.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             from apps.parametres.models import CompanyProfile
             profile = CompanyProfile.get(company=facture.company)
@@ -555,7 +555,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         "pour cette société — corrigez par un avoir puis une "
                         "nouvelle facture."
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             ancien = facture.statut
             facture.statut = Facture.Statut.BROUILLON
@@ -565,7 +565,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
         return Response(FactureSerializer(facture).data)
 
-    @extend_schema(request=None, responses=FactureSerializer)
+    @extend_schema(request=D.MarquerPayeeRequest, responses=FactureSerializer)
     @action(detail=True, methods=['post'], url_path='marquer-payee',
             permission_classes=[IsAdminRole])
     def marquer_payee(self, request, pk=None):
@@ -601,14 +601,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'Seule une facture émise ou en retard '
                     'peut être marquée payée.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AFAC9 — LA porte unique (acompte CAD122 avant J+7).
         from ..domain.encaissements import motif_non_encaissable
         motif_refus = motif_non_encaissable(facture)
         if motif_refus:
             return Response({'detail': motif_refus},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         motif = ((request.data or {}).get('motif') or '').strip()
         if not motif:
             return Response(
@@ -637,7 +637,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     f'l\'encaissement.'
                 ),
                  'action_attendue': 'abandonner-solde'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AUD102 (P1) — la bascule passe par LE service unique. ``force`` : un
         # passage MANUEL « marquer payée » est un geste responsable/admin
@@ -1047,9 +1047,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         responsable/admin.
         """
         facture = self.get_object()
-        motif = (request.data or {}).get('motif')
+        corps = request.data if isinstance(request.data, dict) else {}
+        motif = corps.get('motif')
         motifs_valides = dict(Facture.MotifAbandon.choices)
-        if motif not in motifs_valides:
+        if not isinstance(motif, str) or motif not in motifs_valides:
             return Response(
                 {'detail': (
                     'Motif obligatoire (irrecouvrable / geste_commercial / '
@@ -1061,7 +1062,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail':
                  'Impossible d\'abandonner le solde d\'une facture annulée.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         with transaction.atomic():
             locked = Facture.objects.select_for_update().get(pk=facture.pk)
@@ -1069,7 +1070,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 return Response(
                     {'detail': 'Cette facture n\'a aucun résiduel à '
                                'abandonner.'},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             from ..services import abandonner_solde_facture
             from ..domain.encaissements import FactureNonEncaissable
@@ -1079,7 +1080,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )
             except FactureNonEncaissable as exc:
                 return Response({'detail': exc.motif},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
             locked.refresh_from_db()
         return Response(
             {**FactureSerializer(locked).data, 'montant_abandonne': montant},
@@ -1882,7 +1883,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     def exclure_relance(self, request, pk=None):
         """Bascule l'exclusion de la facture des listes d'impayés."""
         facture = self.get_object()
-        facture.exclu_relances = bool(request.data.get('exclu', True))
+        corps = request.data if isinstance(request.data, dict) else {}
+        exclu = corps.get('exclu', True)
+        if not isinstance(exclu, bool):
+            raise ValidationError({'exclu': ['Booléen attendu.']})
+        facture.exclu_relances = exclu
         facture.save(update_fields=['exclu_relances'])
         return Response(FactureSerializer(facture).data)
 
@@ -2069,7 +2074,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         acceptés du MÊME client. Body : ``{devis_ids: [...]}``."""
         from ..services import consolider_factures
 
-        devis_ids = request.data.get('devis_ids') or []
+        corps = request.data
+        devis_ids = (corps.get('devis_ids') if isinstance(corps, dict)
+                     else None) or []
         try:
             devis_ids = [int(x) for x in devis_ids]
         except (TypeError, ValueError):
@@ -2114,7 +2121,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if client is None:
             return Response(
                 {'detail': 'Client introuvable.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         try:
             montant = Decimal(str(request.data.get('montant')))
         except (InvalidOperation, TypeError, ValueError):
@@ -2168,7 +2175,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Une ou plusieurs factures sont introuvables '
                            'pour cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         autres_clients = [f for f in factures if f.client_id != client.id]
         if autres_clients:
             return Response(
@@ -2235,24 +2242,16 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # Borner aux factures de la société (scoping multi-tenant). AFAC55
         # (C-AFAC-048) — ET à la portée du rôle (`get_queryset` : créées par
         # soi / l'équipe) : un id invisible répond « Introuvable. ».
-        # ENF11 — seuls les ids entiers interrogent la base (un id texte
-        # levait ValueError → 500) ; les autres sont rendus « ID invalide. ».
-        ids_valides = []
-        for brut in ids:
-            try:
-                ids_valides.append(int(brut))
-            except (ValueError, TypeError):
-                continue
-        factures_qs = self.get_queryset().filter(id__in=ids_valides)
-        factures_by_id = {f.id: f for f in factures_qs}
+        # ENF11 — le schéma déclare des ids ENTIERS : tout autre élément
+        # (texte, objet, booléen) est refusé en 400 avant toute lecture.
+        if any(type(brut) is not int for brut in ids):
+            return Response({'detail': "ids : liste d'entiers attendue."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        factures_by_id = {f.id: f for f in self.get_queryset().filter(
+            id__in=[i for i in ids if abs(i) < 2 ** 31])}
 
         results = {}
-        for fid in ids:
-            try:
-                fid_int = int(fid)
-            except (ValueError, TypeError):
-                results[str(fid)] = {'ok': False, 'detail': 'ID invalide.'}
-                continue
+        for fid_int in ids:
             facture = factures_by_id.get(fid_int)
             if facture is None:
                 results[fid_int] = {'ok': False, 'detail': 'Introuvable.'}

@@ -3,6 +3,7 @@ notes de débit, relances, remises, mandats) — déplacés tels quels de
 `serializers.py` par SPL148 (move only, sans ré-export)."""
 from decimal import Decimal
 
+from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -13,6 +14,7 @@ from .models import (
     MandatPaiement, RetenueSubie,
 )
 from .serializers import _fallback_taux_tva
+from core.champs_stricts import DecimalStricte
 from core.mixins import SameCompanyFKSerializerMixin
 from .domain.bornes import montant_saisi, pourcentage_saisi
 
@@ -719,6 +721,13 @@ class RelancerFactureSerializer(serializers.Serializer):
 
 
 class FollowupLevelSerializer(serializers.ModelSerializer):
+    # ENF11 — taux et frais sont des décimaux transportés en CHAÎNE (le
+    # schéma le déclare) : un nombre JSON est refusé en 400, plus converti.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.DecimalField: DecimalStricte,
+    }
+
     class Meta:
         from .models import FollowupLevel
         model = FollowupLevel

@@ -124,13 +124,13 @@ class XFAC24FactureImmuableTests(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/factures-lignes/{self.ligne.id}/',
             {'quantite': '5'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_flag_on_ligne_facture_delete_refused(self):
         self._activate()
         r = self.api.delete(
             f'/api/django/ventes/factures-lignes/{self.ligne.id}/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertTrue(
             LigneFacture.objects.filter(pk=self.ligne.pk).exists())
 

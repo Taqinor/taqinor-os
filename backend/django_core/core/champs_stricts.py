@@ -33,6 +33,22 @@ def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
     return n if maxi is None else min(n, maxi)
 
 
+class DecimalStricte(serializers.DecimalField):
+    """Décimal transporté en CHAÎNE (comme le schéma le déclare) : un nombre
+    ou un booléen JSON est refusé en 400 ; ``""`` vaut « non renseigné » quand
+    le champ accepte ``null``."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+    def validate_empty_values(self, data):
+        if data == '' and self.allow_null:
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
 class BooleenStrict(serializers.BooleanField):
     """``BooleanField`` qui n'accepte que de vrais booléens JSON (``0``/``1``
     ou ``"true"`` étaient convertis en silence)."""

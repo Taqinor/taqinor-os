@@ -147,7 +147,7 @@ class TestEncaissementGroupe(TestCase):
              'mode': 'virement', 'date': str(timezone.now().date()),
              'factures': [self.f1.id, 999999]},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
         self.assertEqual(Paiement.objects.filter(facture=self.f1).count(), 0)
 
     def test_explicit_repartition(self):

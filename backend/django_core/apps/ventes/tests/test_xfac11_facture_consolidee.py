@@ -142,6 +142,15 @@ class XFAC11FactureConsolideeTests(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_corps_non_objet_ou_ids_illisibles_repondent_400(self):
+        # ENF11 — un corps liste/null levait AttributeError (500) ; des ids
+        # non entiers répondent 400 « devis_ids invalide ».
+        url = '/api/django/ventes/factures/consolider/'
+        for corps in ([None, None], None, {'devis_ids': [{}, {}]},
+                      {'devis_ids': 'abc'}, {'devis_ids': 7}):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+
     def test_non_accepted_devis_rejected(self):
         d1 = self._accepted_devis('0009', 1, 1)
         d2 = Devis.objects.create(

@@ -167,6 +167,19 @@ class TestRecouvrement(TestCase):
         ids = [r['id'] for r in resp.data]
         self.assertNotIn(self.facture.id, ids)
 
+    def test_exclure_relance_booleen_strict(self):
+        # ENF11 — `exclu` non booléen (objet, 0, texte) ou corps non objet :
+        # 400 qui nomme le champ, la facture n'est pas touchée.
+        url = f'/api/django/ventes/factures/{self.facture.id}/exclure-relance/'
+        for mauvais in ({'exclu': {}}, {'exclu': 0}, {'exclu': 'oui'}):
+            resp = self.api.post(url, mauvais, format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+            self.assertIn('exclu', resp.data)
+        # Corps liste : pas de 500 — l'exclusion par défaut s'applique.
+        self.assertEqual(self.api.post(url, [None], format='json').status_code, 200)
+        self.facture.refresh_from_db()
+        self.assertTrue(self.facture.exclu_relances)
+
     def test_paid_facture_not_in_relances(self):
         # Une facture payée ne doit pas figurer dans les impayés.
         from apps.ventes.models import Paiement
@@ -200,6 +213,22 @@ class TestSeedDefaultsNiveaux(TestCase):
             FollowupLevel.objects.filter(company=self.company)
             .values_list('delai_jours', flat=True))
         self.assertEqual(delais, [7, 15, 30])
+
+    def test_niveau_decimaux_strictement_en_chaine(self):
+        # ENF11 — taux/frais sont déclarés en chaîne : un nombre JSON est
+        # refusé en 400 (plus converti en silence), la chaîne reste acceptée.
+        url = '/api/django/ventes/niveaux-relance/'
+        base = {'nom': 'N', 'delai_jours': 7, 'ordre': 1}
+        for champ in ('frais_fixes', 'taux_interet_annuel'):
+            resp = self.api.post(url, {**base, champ: 5}, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.data))
+            self.assertIn(champ, resp.data)
+        resp = self.api.post(
+            url, {**base, 'frais_fixes': '12.50', 'taux_interet_annuel': ''},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['frais_fixes'], '12.50')
+        self.assertIsNone(resp.data['taux_interet_annuel'])
 
     def test_seed_idempotent_when_levels_exist(self):
         FollowupLevel.objects.create(

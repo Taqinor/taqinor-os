@@ -86,7 +86,7 @@ class TestRemettreBrouillon(TestCase):
         self.assertEqual(r0.status_code, 201, r0.data)
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/remettre-brouillon/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         facture.refresh_from_db()
         self.assertNotEqual(facture.statut, Facture.Statut.BROUILLON)
 
@@ -97,7 +97,7 @@ class TestRemettreBrouillon(TestCase):
         profile.save(update_fields=['factures_immuables'])
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/remettre-brouillon/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_remettre_brouillon_avoir_actif_refuse(self):
         facture = self._facture(4)
@@ -110,7 +110,7 @@ class TestRemettreBrouillon(TestCase):
         self.assertEqual(r0.status_code, 201, r0.data)
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/remettre-brouillon/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_remettre_brouillon_non_emise_refuse(self):
         facture = self._facture(5)
@@ -118,7 +118,7 @@ class TestRemettreBrouillon(TestCase):
         facture.save(update_fields=['statut'])
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/remettre-brouillon/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_cross_company_404(self):
         other = make_company(slug='zfac1-co2', nom='ZFAC1 Co2')

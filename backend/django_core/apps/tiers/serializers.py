@@ -8,7 +8,7 @@ from django.db import models
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict, ChaineStricte
+from core.champs_stricts import BooleenStrict, ChaineStricte, DecimalStricte
 
 from .models import Tiers
 
@@ -32,21 +32,6 @@ class EmailTiersExtension(OpenApiSerializerFieldExtension):
         return {'anyOf': [
             {'type': 'string', 'format': 'email', 'maxLength': 254},
             {'type': 'string', 'maxLength': 0}]}
-
-
-class DecimalStricte(serializers.DecimalField):
-    """Décimal transporté en CHAÎNE (comme le schéma le déclare) : un nombre
-    ou un booléen JSON est refusé en 400 ; ``""`` vaut « non renseigné »."""
-
-    def to_internal_value(self, data):
-        if not isinstance(data, str):
-            self.fail('invalid')
-        return super().to_internal_value(data)
-
-    def validate_empty_values(self, data):
-        if data == '' and self.allow_null:
-            return (True, None)
-        return super().validate_empty_values(data)
 
 
 class TiersSerializer(serializers.ModelSerializer):

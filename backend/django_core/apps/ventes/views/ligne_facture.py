@@ -100,14 +100,11 @@ class LigneFactureViewSet(CompanyScopedModelViewSet):
         `remettre-brouillon`). Facture brouillon → comportement inchangé."""
         if facture is None or facture.statut == facture.Statut.BROUILLON:
             return
-        from rest_framework.exceptions import ValidationError
-        raise ValidationError({
-            'detail': (
-                "Montant figé après émission : impossible de modifier les "
-                "lignes d'une facture émise. Corrigez par un avoir (ou "
-                "remettez la facture en brouillon)."
-            ),
-        })
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(
+            "Montant figé après émission : impossible de modifier les "
+            "lignes d'une facture émise. Corrigez par un avoir (ou "
+            "remettez la facture en brouillon).")
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)

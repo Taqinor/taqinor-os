@@ -84,18 +84,28 @@ class TestFactureBulk(TestCase):
         r = self.api.post(self._url(), {'action': 'emettre'}, format='json')
         self.assertEqual(r.status_code, 400)
 
-    def test_ids_non_entiers_ne_font_pas_planter(self):
-        # ENF11 — un id texte / structuré levait ValueError (filter) ou
-        # TypeError (clé de dict non hachable) → 500 : « ID invalide. ».
+    def test_ids_non_entiers_refuses_en_400(self):
+        # ENF11 — le schéma déclare des ids entiers : un id texte / structuré
+        # / booléen est refusé AVANT toute lecture (jamais 500, jamais un
+        # 200 qui masque l'entrée invalide) ; aucune facture n'est touchée.
+        f = self._facture()
+        for mauvais in ('abc', [1], {'a': 1}, True, None):
+            r = self.api.post(
+                self._url(),
+                {'action': 'emettre', 'ids': [mauvais, f.id]},
+                format='json')
+            self.assertEqual(r.status_code, 400, (mauvais, r.data))
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.BROUILLON)
+
+    def test_id_hors_plage_est_introuvable(self):
         f = self._facture()
         r = self.api.post(
-            self._url(),
-            {'action': 'emettre', 'ids': ['abc', [1], {'a': 1}, f.id]},
+            self._url(), {'action': 'emettre', 'ids': [10 ** 30, f.id]},
             format='json')
         self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data[10 ** 30]['ok'])
         self.assertTrue(r.data[f.id]['ok'])
-        self.assertFalse(r.data['abc']['ok'])
-        self.assertEqual(r.data['abc']['detail'], 'ID invalide.')
 
     # ── Emettre ───────────────────────────────────────────────────────────────
 
