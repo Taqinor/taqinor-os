@@ -26,6 +26,22 @@ from rest_framework.generics import GenericAPIView
 from .models import OfflineOperation
 from .serializers import (
     OfflineOperationSerializer, ResolutionConflitSerializer)
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers
+from rest_framework.parsers import JSONParser
+
+
+class OperationHorsLigneSerializer(serializers.Serializer):
+    client_op_id = serializers.CharField()
+    op_type = serializers.CharField()
+    payload = serializers.DictField(required=False)
+    queued_at = serializers.CharField(required=False, allow_blank=True)
+
+
+class LotHorsLigneSerializer(serializers.Serializer):
+    ops = OperationHorsLigneSerializer(
+        many=True, max_length=services.MAX_BATCH)
 
 
 class OfflineSyncBatchView(GenericAPIView):
@@ -40,11 +56,19 @@ class OfflineSyncBatchView(GenericAPIView):
     # Forme DÉCLARÉE (pas devinée) : sans cela drf-spectacular tombe en
     # « unable to guess serializer » et publie un schéma muet.
     serializer_class = OfflineOperationSerializer
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         return OfflineOperation.objects.filter(
             company=self.request.user.company)
 
+    @extend_schema(request=LotHorsLigneSerializer, responses=inline_serializer(
+        'LotHorsLigneResume', {
+            'applied': serializers.IntegerField(),
+            'replayed': serializers.IntegerField(),
+            'errors': serializers.IntegerField(),
+            'conflicts': serializers.IntegerField(),
+            'results': serializers.ListField(child=serializers.DictField())}))
     def post(self, request):
         company = getattr(request.user, 'company', None)
         if company is None:
@@ -59,12 +83,16 @@ class OfflineSyncBatchView(GenericAPIView):
         return Response(resume, status=status.HTTP_200_OK)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+    OpenApiParameter('module', OpenApiTypes.STR, required=False)]))
 class OfflineOperationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Journal des opérations hors-ligne de la société (lecture seule)."""
 
     queryset = OfflineOperation.objects.select_related('user').all()
     serializer_class = OfflineOperationSerializer
     permission_classes = [IsAnyRole]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -76,6 +104,10 @@ class OfflineOperationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(module=module)
         return qs
 
+    @extend_schema(request=ResolutionConflitSerializer, responses=inline_serializer(
+        'ResolutionConflitReponse', {
+            'resultat': serializers.JSONField(),
+            'operation': OfflineOperationSerializer()}))
     @action(detail=True, methods=['post'], url_path='resoudre',
             permission_classes=[IsResponsableOrAdmin],
             serializer_class=ResolutionConflitSerializer)

@@ -18,6 +18,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ReceptionNonFacturee
 from ..serializers import ReceptionNonFactureeSerializer
+from . import _openapi as oa
 
 
 def _check_tenant(serializer, company, field):
@@ -27,7 +28,8 @@ def _check_tenant(serializer, company, field):
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
 
-class ReceptionNonFactureeViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('bon_commande'), p1=oa.qs('lettre'))
+class ReceptionNonFactureeViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG317 — provisions GR/IR. Lecture & écriture responsable/admin (montants
     INTERNES). Société + `created_by` posés serveur ; reception/bon_commande
     validés tenant. Filtrable par `lettre`, `bon_commande`. Lettrage via
@@ -63,6 +65,7 @@ class ReceptionNonFactureeViewSet(CompanyScopedModelViewSet):
         self._check_all_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=oa.body('LettrerGrIrRequete', facture=oa.i(True)))
     @action(detail=True, methods=['post'])
     def lettrer(self, request, pk=None):
         """FG317 — solde la provision à l'arrivée de la facture : pose

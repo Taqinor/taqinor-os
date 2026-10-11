@@ -3,7 +3,7 @@
 LE CONSTAT
 ----------
 ``services/pertes.py`` déclare ``salissure`` comme le SEUL poste
-``mensuel: True`` du catalogue, et ``moyenne_mensuelle`` réduit aussitôt les
+``mensuel: True`` du catalogue, et ``_moyenne_mensuelle`` réduit aussitôt les
 douze valeurs à une moyenne annuelle avant de les sommer. La saisonnalité
 saisie — un toit marocain se salit en été et se rince en novembre — est donc
 perdue AVANT tout calcul.

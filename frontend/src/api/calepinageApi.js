@@ -257,6 +257,10 @@ const calepinageApi = {
     // `documents()` ci-dessus : MÊME geste que `telechargerSortie`
     // (`endpoint` vient TOUJOURS de l'entrée servie, jamais reconstruit),
     // nommé à part — un document du lot 6 n'est pas une sortie technique.
+    // `params` (`{langue}`) n'accompagne que les pièces multilingues de
+    // LANGUES_PAR_DOCUMENT (services/documents) — leurs routes, pour la garde
+    // check_frontend_query_params.py :
+    // chemins-requete: /calepinage/calepinages/{id}/rapport-etude.pdf/ /calepinage/calepinages/{id}/rapport-ombrage.pdf/ /calepinage/calepinages/{id}/diagramme-pertes.svg/
     telechargerDocument: (endpoint, params) =>
       api.get(endpoint, { responseType: 'blob', params }),
 
@@ -288,6 +292,7 @@ const calepinageApi = {
     remettreDocument: (id, corps) => api.post(`${pivot(id)}remettre-document/`, corps), // ACAL
     // ACAL223 — une pièce de méthode POST (dossier de fin de chantier) : l'`endpoint` vient
     // TOUJOURS de l'entrée servie ; `params` (ex. `{langue}`) voyagent en query.
+    // chemins-requete: /calepinage/calepinages/{id}/dossier-fin-chantier/
     declencherDocument: (endpoint, params) => api.post(endpoint, null, { params }), // ACAL
     // ACAL223 — l'aperçu HTML EXACT d'une pièce (`apercu-document?code=&langue=`), texte brut.
     apercuDocument: (id, code, params) => api.get(`${pivot(id)}apercu-document/`, // ACAL

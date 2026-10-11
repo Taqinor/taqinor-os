@@ -17,7 +17,7 @@ from django.utils import timezone
 from authentication.models import Company
 
 from apps.crm.models import Appointment, BookingLink, Lead, LeadActivity
-from apps.crm.services import reserver_creneau_public
+from apps.crm.visites_rdv import reserver_creneau_public
 from apps.notifications.models import Notification
 from apps.roles.models import Role
 from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS

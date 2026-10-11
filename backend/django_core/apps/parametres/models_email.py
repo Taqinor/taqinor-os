@@ -202,7 +202,7 @@ class EmailTemplate(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='email_templates',
     )
     cle = models.CharField(max_length=40, choices=Cle.choices)

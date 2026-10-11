@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.crm.services import completer_client_depuis_acceptation
+from apps.crm.clients_identite import completer_client_depuis_acceptation
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')

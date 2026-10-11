@@ -14,7 +14,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -115,7 +115,17 @@ def _valider_sous_notes(brut):
 _PUBLIC_FIELDS = ('reference', 'statut', 'date_modification')
 
 
+@extend_schema(responses=inline_serializer('SavPublicTicketStatut', {
+    'reference': drf_serializers.CharField(),
+    'statut': drf_serializers.CharField(),
+    'date_modification': drf_serializers.DateTimeField(),
+    'statut_display': drf_serializers.CharField(),
+    'annule': drf_serializers.BooleanField(),
+    'fusionne_dans_reference': drf_serializers.CharField(allow_null=True),
+    'csat_detaille_actif': drf_serializers.BooleanField(),
+}))
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])
 def ticket_public_status(request, token):
@@ -164,7 +174,20 @@ def ticket_public_status(request, token):
 _CLOTURE_STATUTS = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
 
 
+@extend_schema(
+    request=inline_serializer('SavPublicSatisfactionRequete', {
+        'note': drf_serializers.IntegerField(min_value=1, max_value=5),
+        'commentaire': drf_serializers.CharField(
+            required=False, allow_blank=True),
+        'sous_notes': drf_serializers.DictField(required=False),
+    }),
+    responses={201: inline_serializer('SavPublicSatisfactionReponse', {
+        'note': drf_serializers.IntegerField(),
+        'commentaire': drf_serializers.CharField(allow_blank=True),
+        'sous_notes': drf_serializers.DictField(allow_null=True),
+    })})
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])
 def ticket_public_satisfaction(request, token):
@@ -243,7 +266,25 @@ def ticket_public_satisfaction(request, token):
 
 # ── XSAV19 — Page publique « Signaler un problème » via QR équipement ────────
 
+_SignalerReponse = inline_serializer('SavPublicSignalerReponse', {
+    'reference': drf_serializers.CharField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+})
+
+
+@extend_schema(
+    request=inline_serializer('SavPublicSignalerRequete', {
+        'description': drf_serializers.CharField(),
+        'telephone': drf_serializers.CharField(required=False),
+        'site_web': drf_serializers.CharField(required=False),
+        'photo': drf_serializers.ImageField(required=False),
+    }),
+    responses={
+        200: _SignalerReponse,
+        201: _SignalerReponse,
+    })
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])
 def equipement_public_signaler(request, token):
@@ -373,16 +414,13 @@ def equipement_public_signaler(request, token):
 
 # Noms de composants OpenAPI CONSERVÉS tels quels (snapshot PACT6 stable) :
 # la route reste déclarée mais est dépréciée et répond 410.
-@extend_schema(request=inline_serializer('PortailTicketRequete', {
-    'sujet': drf_serializers.CharField(),
-    'description': drf_serializers.CharField(required=False),
-    'chantier': drf_serializers.IntegerField(required=False),
-}), responses=inline_serializer('PortailCreerTicketReponse', {
-    'reference': drf_serializers.CharField(required=False),
-    'numero_suivi': drf_serializers.CharField(required=False),
-    'suivi_token': drf_serializers.CharField(required=False),
-    'detail': drf_serializers.CharField(required=False),
-}), deprecated=True)
+@extend_schema(request=None, responses={
+    410: inline_serializer('PortailCreerTicketReponse', {
+        'reference': drf_serializers.CharField(required=False),
+        'numero_suivi': drf_serializers.CharField(required=False),
+        'suivi_token': drf_serializers.CharField(required=False),
+        'detail': drf_serializers.CharField(required=False),
+    })}, deprecated=True)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])

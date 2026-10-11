@@ -23,6 +23,8 @@ queryset du viewset, donc un calepinage d'une autre société est INTROUVABLE
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -34,6 +36,12 @@ from ..services.approbation import (
 __all__ = ['approbation']
 
 
+@extend_schema(
+    methods=['POST'],
+    request=inline_serializer('CalepinageApprobationRequete', {
+        'decision': drf_serializers.CharField(),
+        'motif': drf_serializers.CharField(required=False, allow_blank=True),
+    }))
 @action(detail=True, methods=['get', 'post'], url_path='approbation',
         permission_classes=[PeutLireOuApprouverCalepinage])
 def approbation(self, request, pk=None):

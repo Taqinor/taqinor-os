@@ -44,7 +44,7 @@ from html import escape
 
 from . import nombre_tel_que_servi
 
-__all__ = ['CSS_SECTION', 'MENTION_CASCADE_ABSENTE', 'energie_livree',
+__all__ = ['CSS_SECTION', 'MENTION_CASCADE_ABSENTE',
            'html_de_section']
 
 #: La feuille de la section, RAMASSÉE par l'assembleur dans le ``<head>`` —
@@ -99,7 +99,7 @@ def _etapes(cascade):
     return [e for e in cascade.get('etapes') or () if isinstance(e, dict)]
 
 
-def energie_livree(cascade):
+def _energie_livree(cascade):
     """Le dernier ``kwh_apres`` CONNU de la cascade, tel que servi, ou ``None``.
 
     Une LECTURE : la règle 1 du contrat (une étape omise laisse la série
@@ -155,7 +155,7 @@ def _table_cascade(contexte, cascade, langue):
                 nombre_tel_que_servi(cascade.get('total_pct'), langue),
                 nombre_tel_que_servi(incidente, langue),
                 escape(_libelle(contexte, 'irradiance_incidente')),
-                nombre_tel_que_servi(energie_livree(cascade), langue),
+                nombre_tel_que_servi(_energie_livree(cascade), langue),
                 escape(_libelle(contexte, 'energie_livree'))))
     blocs = ['<table class="pertes-cascade"><tr>%s</tr>%s%s</table>'
              % (entete, lignes, total)]

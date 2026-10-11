@@ -35,7 +35,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.lestage import (
     PARAMETRES,
-    feuille_de_lestage,
+    _feuille_de_lestage,
     masse_et_lestage,
 )
 
@@ -196,8 +196,8 @@ class SansPoidsDeFicheTest(SimpleTestCase):
         section = {cle: {'valeur': 'rase campagne' if cle == 'categorie_terrain'
                          else 1, 'source': source}
                    for cle in PARAMETRES if cle != 'coefficient_frottement'}
-        feuille = feuille_de_lestage(section, surface_module_m2=2.0,
-                                     masse_module_kg=22.0, societe='Essai')
+        feuille = _feuille_de_lestage(section, surface_module_m2=2.0,
+                                      masse_module_kg=22.0, societe='Essai')
         lignes = {ligne['code']: ligne for ligne in feuille['lignes']}
         glissement = lignes['lest_anti_glissement']
         self.assertIsNone(glissement['valeur'],

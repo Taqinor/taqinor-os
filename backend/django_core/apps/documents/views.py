@@ -15,6 +15,8 @@ from apps.installations.models import Installation
 from core.selectors import get_company_object
 
 from . import builders
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 # ADOC69 — champs propriétaires de la portée d'un chantier : la MÊME liste que
 # le viewset chantier (installations/views/installation.py, get_queryset). Un
@@ -100,6 +102,9 @@ def _pdf_response(pdf_bytes, filename):
     return resp
 
 
+_PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
+
+
 class _BaseDocumentView(APIView):
     permission_classes = [IsAnyRole]
 
@@ -108,6 +113,7 @@ class PVReceptionView(_BaseDocumentView):
     """N21 — PV de réception des travaux (ADOC70 : figé en GED une fois
     signé, servi tel quel ensuite)."""
 
+    @extend_schema(responses=_PDF)
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
         refus = _refus_etat(chantier)
@@ -120,6 +126,7 @@ class PVReceptionView(_BaseDocumentView):
 class BonLivraisonView(_BaseDocumentView):
     """N22 — Bon de livraison (ADOC70 : figé en GED une fois signé)."""
 
+    @extend_schema(responses=_PDF)
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
         refus = _refus_etat(chantier)
@@ -132,6 +139,7 @@ class BonLivraisonView(_BaseDocumentView):
 class DossierRemiseView(_BaseDocumentView):
     """N23 — Dossier de remise (handover pack)."""
 
+    @extend_schema(responses=_PDF)
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
         refus = _refus_etat(chantier)
@@ -149,6 +157,14 @@ class AttestationView(_BaseDocumentView):
     refusé (``IsAnyRole``)."""
     permission_classes = [IsAnyRole, IsResponsableOrAdmin]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('type', OpenApiTypes.STR, required=False,
+                             enum=list(builders.ATTESTATION_TYPES)),
+            OpenApiParameter('regenerer', OpenApiTypes.STR, required=False,
+                             enum=['1', 'true', 'oui', '0', 'false']),
+        ],
+        responses=_PDF)
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
         attestation_type = request.query_params.get('type', 'installation')

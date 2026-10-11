@@ -24,12 +24,12 @@ class Colis(models.Model):
         EXPEDIE = 'expedie', 'Expédié'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_colis')
     reference = models.CharField(max_length=50)
     installation = models.ForeignKey(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: Colis est le détail de Installation — n'existe pas sans lui
         related_name='colis')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.PREPARATION)
@@ -67,7 +67,7 @@ class ColisLigne(models.Model):
     """FG322 — article emballé dans un colis (SKU + quantité + contrôle OK)."""
 
     colis = models.ForeignKey(
-        Colis, on_delete=models.CASCADE, related_name='lignes')
+        Colis, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de Colis — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,

@@ -29,9 +29,9 @@ from django.utils import timezone
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import stages, cadence_plan
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import demarrer_cadence_contact
+from apps.crm.cadence_plan import demarrer_cadence_contact
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 
@@ -117,9 +117,9 @@ class LeRefusPROPOSELaSuiteTests(_Base):
         """La garde reste PURE (aucune écriture) mais son motif dit la
         suite : c'est lui que le dry-run de la reprise affiche."""
         lead = self._lead(stage=stages.CONTACTED)
-        code, motif = services._garde_cadence_contact(lead)
+        code, motif = cadence_plan._garde_cadence_contact(lead)
         self.assertEqual(code, 'deja_contacte')
-        self.assertIn(services.SUITE_DEJA_CONTACTE, motif)
+        self.assertIn(cadence_plan.SUITE_DEJA_CONTACTE, motif)
         self.assertFalse(self._notes(lead))
 
     def test_la_touche_3_du_protocole_existe_bien(self):

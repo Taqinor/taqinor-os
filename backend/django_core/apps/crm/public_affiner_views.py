@@ -23,7 +23,7 @@ RÈGLES (toutes reprises de la relève ``lead-ref``, rien de réinventé) :
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -94,6 +94,7 @@ def _eligible(lead):
                  '. 404 opaque constant pour tout échec — anti-énumération.'),
 )
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLeadAffinerThrottle])
 def lead_affiner_pro(request, idempotency_key):

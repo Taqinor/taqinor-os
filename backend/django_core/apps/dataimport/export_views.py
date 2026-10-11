@@ -22,6 +22,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
 
+from .schema_fields import champ_choix
 from .exporters import (
     DEFAULT_FORMAT, FORMATS, backup_filename, build_backup_zip,
     export_bytes, filename_for,
@@ -29,6 +30,13 @@ from .exporters import (
 from .export_registry import (
     DEFAULT_OBJECTS, REGISTRY, available_objects,
 )
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
+
+
+_FICHIERS_EXPORT = {
+    (200, FORMATS[k][1]): OpenApiTypes.BINARY for k in FORMATS}
 
 
 def _company_of(user):
@@ -57,6 +65,10 @@ def _clean_format(raw):
     return fmt if fmt in FORMATS else DEFAULT_FORMAT
 
 
+@extend_schema(responses=inline_serializer('ExportObjetsListe', {
+    'objects': serializers.ListField(child=serializers.DictField()),
+    'formats': serializers.ListField(child=serializers.DictField()),
+    'default_format': serializers.CharField()}))
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def export_objects_list(request):
@@ -68,6 +80,11 @@ def export_objects_list(request):
     })
 
 
+@extend_schema(
+    request=inline_serializer('ExportObjetRequete', {
+        'object': champ_choix(REGISTRY),
+        'format': champ_choix(FORMATS, required=False)}),
+    responses=_FICHIERS_EXPORT)
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
 def export_object(request):
@@ -90,6 +107,12 @@ def export_object(request):
     return resp
 
 
+@extend_schema(
+    request=inline_serializer('SauvegardeRequete', {
+        'objects': serializers.ListField(
+            child=champ_choix(REGISTRY), required=False),
+        'format': champ_choix(FORMATS, required=False)}),
+    responses={(200, 'application/zip'): OpenApiTypes.BINARY})
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
 def sauvegarde(request):

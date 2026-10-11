@@ -90,7 +90,7 @@ def fingerprint_source(source):
     arbre = ast.fix_missing_locations(_Normaliseur().visit(arbre))
     texte = ast.dump(arbre, include_attributes=False)
     texte += '|params=' + ','.join(_parametres(arbre))
-    return hashlib.sha1(texte.encode('utf-8')).hexdigest()
+    return hashlib.sha1(texte.encode('utf-8'), usedforsecurity=False).hexdigest()
 
 
 def fingerprint(objet):

@@ -28,6 +28,9 @@ from authentication.permissions import IsAdminRole
 from .models import AuditLog
 from .selectors import reconstruct_as_of
 from .serializers import AuditLogSerializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema_view
+from rest_framework import serializers as drf_serializers
 
 CASABLANCA = ZoneInfo('Africa/Casablanca')
 
@@ -42,6 +45,19 @@ class CanViewActivityLog(BasePermission):
             user and user.is_authenticated
             and getattr(user, 'can_view_activity_log', False)
         )
+
+
+FILTRES_AUDIT = [
+    OpenApiParameter('user', OpenApiTypes.STR, required=False),
+    OpenApiParameter('action', OpenApiTypes.STR, required=False),
+    OpenApiParameter('module', OpenApiTypes.STR, required=False),
+    OpenApiParameter('model', OpenApiTypes.STR, required=False),
+    OpenApiParameter('object_id', OpenApiTypes.STR, required=False),
+    OpenApiParameter('from', OpenApiTypes.STR, required=False),
+    OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    OpenApiParameter('search', OpenApiTypes.STR, required=False),
+]
+LIMITE = OpenApiParameter('limit', OpenApiTypes.INT, required=False)
 
 
 def _company_qs(request):
@@ -128,6 +144,21 @@ def _period_bounds(period, anchor):
     return start, end, 'hour', keys
 
 
+_VIEWS_STATS_REPONSE = inline_serializer('ViewsStatsReponse', {
+    'period': drf_serializers.JSONField(allow_null=True),
+    'date': drf_serializers.JSONField(allow_null=True),
+    'granularity': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'buckets': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=FILTRES_AUDIT + [
+        OpenApiParameter('period', OpenApiTypes.STR, required=False),
+        OpenApiParameter('date', OpenApiTypes.STR, required=False),
+    ],
+    responses=_VIEWS_STATS_REPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def stats(request):
@@ -197,6 +228,14 @@ def _apply_filters_no_range(qs, params):
     return qs
 
 
+_VIEWS_META_REPONSE = inline_serializer('ViewsMetaReponse', {
+    'users': drf_serializers.JSONField(allow_null=True),
+    'actions': drf_serializers.JSONField(allow_null=True),
+    'modules': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(responses=_VIEWS_META_REPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def meta(request):
@@ -231,6 +270,7 @@ def meta(request):
     })
 
 
+@extend_schema_view(list=extend_schema(parameters=FILTRES_AUDIT))
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """Liste paginée filtrable du Journal d'activité (plus récent d'abord)."""
     serializer_class = AuditLogSerializer
@@ -255,6 +295,11 @@ SECURITY_ACTIONS = [
 ]
 
 
+@extend_schema(
+    parameters=FILTRES_AUDIT + [LIMITE],
+    responses=inline_serializer('AuditSecurityEvents', {
+        'count': serializers.IntegerField(),
+        'results': AuditLogSerializer(many=True)}))
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def security_events(request):
@@ -290,7 +335,8 @@ PORTAL_ACCESS_EVENTS_RESPONSE = inline_serializer('AuditPortalAccessEvents', {
 })
 
 
-@extend_schema(responses=PORTAL_ACCESS_EVENTS_RESPONSE)
+@extend_schema(parameters=FILTRES_AUDIT + [LIMITE],
+               responses=PORTAL_ACCESS_EVENTS_RESPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def portal_access_events(request):
@@ -316,6 +362,11 @@ def portal_access_events(request):
 # sans recevoir la visibilité sur TOUTE la boîte. Cet endpoint ajoute la 2e
 # borne de confiance — l'historique d'UN objet précis, autorisé au propriétaire
 # de l'objet même sans la permission Journal.
+@extend_schema(
+    parameters=[LIMITE],
+    responses=inline_serializer('AuditObjectHistory', {
+        'count': serializers.IntegerField(),
+        'results': AuditLogSerializer(many=True)}))
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def object_history(request, content_type, object_id):
@@ -381,6 +432,18 @@ def object_history(request, content_type, object_id):
 # ``objets/<app_label>.<model>/<id>/as-of/?date=`` (content type désigné par
 # ``app_label.model`` dans l'URL, ex. ``crm.client``). Company-scopée : sans
 # société sur l'utilisateur (ni superuser), renvoie 404 plutôt qu'une fuite.
+_VIEWS_OBJECT_AS_OF_REPONSE = inline_serializer('ViewsObjectAsOfReponse', {
+    'content_type': drf_serializers.JSONField(allow_null=True),
+    'object_id': drf_serializers.JSONField(allow_null=True),
+    'as_of': drf_serializers.JSONField(allow_null=True),
+    'fields': drf_serializers.JSONField(allow_null=True),
+    'covered_changes': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[OpenApiParameter('date', OpenApiTypes.STR, required=False)],
+    responses=_VIEWS_OBJECT_AS_OF_REPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def object_as_of(request, content_type, object_id):
@@ -420,6 +483,16 @@ def object_as_of(request, content_type, object_id):
 # ``journal_activite_voir`` et EXCLUT délibérément l'admin légacy sans rôle fin
 # — or l'export est explicitement réservé au Directeur (cf. NTSEC19 accessreview,
 # même palier IsAdminRole).
+@extend_schema(
+    parameters=[OpenApiParameter('from', OpenApiTypes.STR, required=False),
+                OpenApiParameter('to', OpenApiTypes.STR, required=False),
+                OpenApiParameter(
+                    'user', OpenApiTypes.INT, required=False, many=True,
+                    description="Identifiant(s) d'utilisateur à retenir."),
+                OpenApiParameter(
+                    'search', OpenApiTypes.STR, required=False,
+                    description='Recherche texte (cible, détail, acteur).')],
+    responses={(200, 'text/csv'): OpenApiTypes.STR})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def security_events_export(request):
@@ -427,7 +500,6 @@ def security_events_export(request):
 
     Filtres : ``?from=``/``?to=`` (ISO). Company-scopé strict via le sélecteur
     fondation ``selectors.security_events`` ; jamais d'autre société."""
-    import csv
 
     from django.http import HttpResponse
 
@@ -442,11 +514,24 @@ def security_events_export(request):
     since = parse_datetime(request.query_params.get('from', '') or '')
     until = parse_datetime(request.query_params.get('to', '') or '')
     qs = _security_events(company, since=since, until=until)
+    # Mêmes filtres user/search que l'onglet « Sécurité » (company déjà fixée).
+    users = (request.query_params.getlist('user')
+             or request.query_params.getlist('user[]'))
+    if users:
+        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+    search = (request.query_params.get('search') or '').strip()
+    if search:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(object_repr__icontains=search)
+            | Q(detail__icontains=search)
+            | Q(actor_username__icontains=search))
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = (
         'attachment; filename="security_events.csv"')
-    writer = csv.writer(response)
+    from apps.records.xlsx import EcrivainCsvNeutralise
+    writer = EcrivainCsvNeutralise(response)
     writer.writerow(['timestamp', 'action', 'utilisateur', 'ip', 'detail'])
     for entry in qs.iterator():
         writer.writerow([

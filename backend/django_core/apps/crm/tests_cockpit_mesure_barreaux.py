@@ -22,7 +22,7 @@ from django.test import TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CADENCE_DE_LA_CLE, CLE_DEBRIEF, CLE_DEVIS, CLE_PLANIFIER)
@@ -57,7 +57,7 @@ def _formes(etape_table):
             defaut = barreau_par_defaut(gabarit, cle)
             cadence = ('apres_devis' if gabarit == Cadence.VISITE
                        else 'generique')
-            canal = services._canal_configure(defaut)
+            canal = cadence_reperes._canal_configure(defaut)
             yield cadence, canal, 'Libellé renommé', cle
             yield cadence, canal, defaut['libelle'], ''
             for libelle in reconnaissance.get('libelles', ()):
@@ -136,11 +136,11 @@ class TauxDeJointTests(_Base):
         # une étape « planifier » d'ordre 92 — toutes sur le canal appel.
         self._close(ordre=1, cadence='generique', cle=CLE_DEVIS,
                     libelle='Préparer et envoyer le devis')
-        self._close(ordre=services.VISITE_ORDRE_DEBRIEF,
-                    cadence=services.VISITE_CADENCE, cle=CLE_DEBRIEF,
+        self._close(ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
+                    cadence=cadence_reperes.VISITE_CADENCE, cle=CLE_DEBRIEF,
                     libelle='Débrief visite')
-        self._close(ordre=services.VISITE_ORDRE_FILET,
-                    cadence=services.VISITE_CADENCE, cle=CLE_PLANIFIER,
+        self._close(ordre=cadence_reperes.VISITE_ORDRE_FILET,
+                    cadence=cadence_reperes.VISITE_CADENCE, cle=CLE_PLANIFIER,
                     libelle='Planifier la visite')
         lignes = taux_joint_par_creneau(self.company)
         self.assertEqual(
@@ -167,8 +167,8 @@ class SignaturesParTouchesTests(_Base):
         self._close(ordre=2, jours=5)
         self._close(ordre=1, cadence='generique', cle=CLE_DEVIS,
                     libelle='Préparer et envoyer le devis', jours=4)
-        self._close(ordre=services.VISITE_ORDRE_DEBRIEF,
-                    cadence=services.VISITE_CADENCE, cle=CLE_DEBRIEF,
+        self._close(ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
+                    cadence=cadence_reperes.VISITE_CADENCE, cle=CLE_DEBRIEF,
                     libelle='Débrief visite', jours=3)
         LeadActivity.objects.create(
             company=self.company, lead=self.lead, user=self.acteur,

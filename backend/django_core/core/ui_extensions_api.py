@@ -7,7 +7,12 @@ TOUTE la société (écran d'administration : gérer aussi les éléments inacti
 réservés à un autre palier). Écriture réservée à l'administration.
 """
 from django.db.models import Q
-from rest_framework import serializers
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
+from rest_framework import serializers
+from rest_framework.parsers import JSONParser
 from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -70,10 +75,17 @@ class UiActionBoutonSerializer(CompanyScopedRelationsMixin, serializers.ModelSer
         read_only_fields = ['created_at', 'updated_at']
 
 
+_CIBLE = OpenApiParameter(
+    'cible', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    description='Cible (fiche), ex. crm.lead : éléments applicables.')
+
+
+@extend_schema_view(list=extend_schema(parameters=[_CIBLE]))
 class UiActionBoutonViewSet(CompanyScopedModelViewSet):
     """NTEXT20 — boutons custom posés sur une fiche."""
     serializer_class = UiActionBoutonSerializer
     queryset = UiActionBouton.objects.all()
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -97,6 +109,16 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    @extend_schema(
+        request=inline_serializer('UiBoutonDeclencherRequest', {
+            'target_model': serializers.CharField(),
+            'target_id': serializers.IntegerField(),
+        }),
+        responses=inline_serializer('UiBoutonDeclencherReponse', {
+            'ok': serializers.BooleanField(),
+            'message': serializers.CharField(
+                allow_blank=True, allow_null=True),
+        }))
     @action(detail=True, methods=['post'])
     def declencher(self, request, pk=None):
         """Déclenche l'action liée sur un enregistrement précis.
@@ -156,6 +178,15 @@ class UiOngletCustomSerializer(CompanyScopedRelationsMixin, serializers.ModelSer
         return value
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[
+        _CIBLE,
+        OpenApiParameter(
+            'target_id', OpenApiTypes.STR, OpenApiParameter.QUERY,
+            required=False,
+            description='Fiche visée : évalue les conditions des onglets.'),
+    ],
+    responses=UiOngletCustomSerializer(many=True)))
 class UiOngletCustomViewSet(CompanyScopedModelViewSet):
     """NTEXT21 — onglets custom posés sur une fiche.
 
@@ -167,6 +198,9 @@ class UiOngletCustomViewSet(CompanyScopedModelViewSet):
     liés — ``ui_extensions.resoudre_contenu_onglet``)."""
     serializer_class = UiOngletCustomSerializer
     queryset = UiOngletCustom.objects.all()
+    # La liste est un tableau à plat (jamais paginé).
+    pagination_class = None
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_queryset(self):
         qs = super().get_queryset()

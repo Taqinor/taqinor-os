@@ -112,13 +112,13 @@ class ComptePortailClient(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='comptes_portail',
         verbose_name='Société',
     )
     client = models.ForeignKey(
         'crm.Client',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: compte portail du client — sans objet sans lui
         related_name='comptes_portail',
         verbose_name='Client',
     )
@@ -167,7 +167,7 @@ class AcceptationDevisPortail(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='acceptations_devis_portail',
         verbose_name='Société',
     )
@@ -248,7 +248,7 @@ class PaiementFacturePortail(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='paiements_facture_portail',
         verbose_name='Société',
     )
@@ -332,7 +332,7 @@ class DocumentClientPortail(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='documents_client_portail',
         verbose_name='Société',
     )
@@ -416,7 +416,7 @@ class JalonChantierPortail(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='jalons_chantier_portail',
         verbose_name='Société',
     )
@@ -487,7 +487,7 @@ class DemandeTicketPortail(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='demandes_ticket_portail',
         verbose_name='Société',
     )

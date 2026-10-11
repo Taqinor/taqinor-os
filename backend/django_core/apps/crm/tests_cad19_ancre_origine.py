@@ -37,7 +37,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires
 from apps.crm.models import Lead
-from apps.crm.services import calculer_echeances_cadence
+from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_realisations import Realisation
 

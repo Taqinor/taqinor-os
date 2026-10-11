@@ -23,9 +23,14 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    ANNULATION_TOUCHE_HEURES, AnnulationToucheRefusee, FILET_JOINT_LIBELLE,
-    annuler_touche_relance, initialiser_plan_relance, marquer_etape_relance)
+from apps.crm.cadence_touche import (
+    ANNULATION_TOUCHE_HEURES,
+    AnnulationToucheRefusee,
+    annuler_touche_relance,
+    marquer_etape_relance,
+)
+from apps.crm.cadence_plan import initialiser_plan_relance
+from apps.crm.cadence_reperes import FILET_JOINT_LIBELLE
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

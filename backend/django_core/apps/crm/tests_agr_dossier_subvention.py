@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm import activity, services
+from apps.crm import activity, cadence_filet
 from apps.crm.models import Client, Lead, RelanceEtape
 
 User = get_user_model()
@@ -44,14 +44,14 @@ class RegleDuContrat(SimpleTestCase):
         self.assertIn('dossier_subvention_le', activity.TRACKED_FIELDS)
 
     def test_trois_mois_apres_le_10_10_c_est_le_10_01(self):
-        libelle = services.libelle_rappel_subvention(
+        libelle = cadence_filet.libelle_rappel_subvention(
             datetime.date(2026, 10, 10))
         self.assertIn('Approbation préalable du 10/10', libelle)
         self.assertIn('avant le 10/01', libelle)
         self.assertIn('Guide FDA 2024, p.22-23', libelle)
 
     def test_fin_de_mois_ramenee(self):
-        self.assertEqual(services._ajouter_mois(datetime.date(2026, 11, 30), 3),
+        self.assertEqual(cadence_filet._ajouter_mois(datetime.date(2026, 11, 30), 3),
                          datetime.date(2027, 2, 28))
 
 
@@ -98,7 +98,7 @@ class DossierSubventionApi(TestCase):
         # Rejouer (geste identique, ou appel direct) ne double rien.
         self.assertEqual(self._patch(corps).status_code, 200)
         self.lead.refresh_from_db()
-        services.poser_rappel_subvention(self.lead)
+        cadence_filet.poser_rappel_subvention(self.lead)
         self.assertEqual(etapes.count(), 1)
 
     def test_enregistrer_rouvrir_enregistrer_sans_toucher_est_identique(self):

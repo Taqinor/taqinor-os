@@ -1,15 +1,33 @@
-name: dependency audit (CVE, advisory)
+name: dependency audit (CVE)
 
-# NTPLT54 — audit CVE HEBDOMADAIRE des dépendances, ADVISORY (non-required, ne
-# bloque aucune merge). `pip-audit` sur requirements.txt + `npm audit` sur le
-# frontend (prod only). Une issue GitHub récapitulative n'est OUVERTE que si une
-# vulnérabilité HIGH/CRITICAL est présente — pas de bruit quand tout est propre.
-# La protection de branche reste intacte (ce job n'est jamais requis).
-
+# NTPLT54 — audit CVE des dépendances : `pip-audit` sur requirements.txt +
+# `npm audit` sur le frontend (dépendances de prod).
+#
+# ENF12 (règle fondateur 09/10/2026, docs/claude-memory/enforce-all-checks.md) :
+# job BLOQUANT — plus de `continue-on-error`, plus de `|| true`.
+# Seuil : toute vulnérabilité HIGH ou CRITICAL fait échouer le job.
+#   * backend : pip-audit ne donne pas la sévérité → scripts/check_cve_severite.py
+#     la lit sur OSV (avis GHSA) ; sévérité introuvable = bloquante.
+#   * frontend : `npm audit --omit dev --audit-level=high` (natif).
+# Mesure du 09/10/2026 : 5 HIGH backend (Django 5.1.15, cryptography 46.0.7 ×3,
+# langchain-core 0.3.86) + 1 HIGH frontend (axios 1.19.0) — corrigées par
+# montée de version (Django 5.2.18, cryptography 50, langchain-text-splitters
+# 1.1.3, axios 1.20). Restent 2 MODERATE (djangorestframework 3.15.2, corrigé
+# en 3.17.2) : listées, non bloquantes à ce seuil.
+#
+# Déclencheurs : hebdomadaire (nouvelles CVE publiées sur un arbre inchangé),
+# toute PR qui modifie un manifeste de dépendances, lancement manuel.
 on:
   workflow_dispatch: {}
   schedule:
     - cron: '0 6 * * 1'   # lundi 06:00 UTC, hebdomadaire
+  pull_request:
+    paths:
+      - 'backend/django_core/requirements.txt'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - 'scripts/check_cve_severite.py'
+      - '.github/workflows/dependency-audit.yml'
 
 permissions:
   contents: read
@@ -18,6 +36,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -28,61 +47,50 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
 
-      # pip-audit : n'échoue pas le job (advisory) ; on capture le rapport.
+      # pip-audit rend 1 dès qu'il trouve UNE vulnérabilité (même LOW) : ce
+      # code est attendu, la décision revient à la garde de sévérité qui suit.
+      # Tout AUTRE code (résolution impossible, réseau) fait échouer l'étape.
       - name: pip-audit (backend)
-        id: pip
-        continue-on-error: true
         run: |
-          pip-audit -r backend/django_core/requirements.txt \
-            --desc --format markdown --output pip-audit.md || true
-          # Compte les lignes signalant une sévérité HIGH/CRITICAL.
-          HIGH=$(grep -ciE 'high|critical' pip-audit.md 2>/dev/null || echo 0)
-          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+          set +e
+          pip-audit -r backend/django_core/requirements.txt -f json -o pip-audit.json
+          rc=$?
+          set -e
+          if [ "$rc" -gt 1 ]; then
+            echo "pip-audit en erreur (code $rc)"; exit "$rc"
+          fi
+
+      - name: Garde HIGH/CRITICAL (backend)
+        run: python scripts/check_cve_severite.py pip-audit.json | tee pip-audit-gate.txt
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # npm audit --omit dev en JSON ; on n'échoue jamais le job.
-      - name: npm audit (frontend, prod deps)
-        id: npm
-        continue-on-error: true
+      - name: npm audit (frontend, prod deps, HIGH/CRITICAL bloquant)
         working-directory: frontend
-        run: |
-          npm audit --omit dev --json > ../npm-audit.json || true
-          HIGH=$(node -e "try{const a=require('../npm-audit.json').metadata.vulnerabilities;console.log((a.high||0)+(a.critical||0))}catch(e){console.log(0)}")
-          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
-
-      - name: Assemble report
-        id: report
-        run: |
-          {
-            echo "## Audit CVE hebdomadaire (NTPLT54)";
-            echo "";
-            echo "### Backend (pip-audit)";
-            cat pip-audit.md 2>/dev/null || echo "(aucun rapport)";
-            echo "";
-            echo "### Frontend (npm audit --omit dev)";
-            echo '```json'; cat npm-audit.json 2>/dev/null | head -c 4000 || echo '{}'; echo '```';
-          } > audit-report.md
-          TOTAL=$(( ${{ steps.pip.outputs.high || 0 }} + ${{ steps.npm.outputs.high || 0 }} ))
-          echo "total_high=$TOTAL" >> "$GITHUB_OUTPUT"
+        run: npm audit --omit dev --audit-level=high | tee ../npm-audit.txt
 
       - name: Upload audit report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dependency-audit-report
-          path: audit-report.md
+          path: |
+            pip-audit.json
+            pip-audit-gate.txt
+            npm-audit.txt
 
-      # Ouvre une issue SEULEMENT si au moins une HIGH/CRITICAL est présente.
-      - name: Open issue on new HIGH/CRITICAL
-        if: steps.report.outputs.total_high != '0'
+      # Échec du passage HEBDOMADAIRE : une issue récapitulative (pas de doublon).
+      - name: Open issue on HIGH/CRITICAL (hebdomadaire)
+        if: failure() && github.event_name == 'schedule'
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const body = fs.readFileSync('audit-report.md', 'utf8');
-            const title = `[dependency-audit] ${{ steps.report.outputs.total_high }} vulnérabilité(s) HIGH/CRITICAL`;
+            const lire = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch (e) { return '(absent)'; } };
+            const body = `## Audit CVE hebdomadaire (NTPLT54 / ENF12)\n\n### Backend\n\`\`\`\n${lire('pip-audit-gate.txt')}\n\`\`\`\n\n### Frontend\n\`\`\`\n${lire('npm-audit.txt').slice(0, 4000)}\n\`\`\``;
+            const title = '[dependency-audit] vulnérabilité(s) HIGH/CRITICAL';
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner, repo: context.repo.repo,
               state: 'open', labels: 'dependency-audit',

@@ -16,11 +16,12 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import SerieEntrepot, Installation
 from ..serializers import SerieEntrepotSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class SerieEntrepotViewSet(CompanyScopedModelViewSet):
+class SerieEntrepotViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG323 — n° de série en entrepôt. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `produit`, `statut`, `numero_serie`,
     `bin`, `emplacement`."""
@@ -88,6 +89,7 @@ class SerieEntrepotViewSet(CompanyScopedModelViewSet):
         self._check_unique_serial(serializer, instance=serializer.instance)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=oa.body('ReserverSerieRequete', installation=oa.i()))
     @action(detail=True, methods=['post'])
     def reserver(self, request, pk=None):
         """FG323 — réserve la pièce pour un chantier (→ réservé). Body optionnel
@@ -108,6 +110,7 @@ class SerieEntrepotViewSet(CompanyScopedModelViewSet):
             'statut', 'installation', 'date_modification'])
         return Response(self.get_serializer(serie).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def sortir(self, request, pk=None):
         """FG323 — sort la pièce de l'entrepôt (→ sorti)."""

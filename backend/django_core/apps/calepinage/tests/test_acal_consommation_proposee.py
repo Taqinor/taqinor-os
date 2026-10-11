@@ -27,7 +27,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.consommation import (
-    MOIS_ETE, apercu_courbe_csv, interpoler_factures,
+    MOIS_ETE, apercu_courbe_csv, _interpoler_factures,
 )
 from apps.calepinage.services.courbe_charge import construire_courbe_charge
 from apps.parametres.models_tariff import TariffSettings
@@ -85,7 +85,7 @@ class ProposerTest(_Base):
         self.assertEqual(reponse.status_code, 200, reponse.content[:300])
         reglages = TariffSettings.get(company=self.company)
         attendu = 0.0
-        for montant in interpoler_factures(650.0, 900.0):
+        for montant in _interpoler_factures(650.0, 900.0):
             kwh = kwh_depuis_facture(reglages, montant,
                                      classe='residentiel')['kwh']
             attendu += float(kwh)

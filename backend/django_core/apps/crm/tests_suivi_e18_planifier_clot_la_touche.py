@@ -28,7 +28,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_signaux
+from apps.crm import cadence_filet
+from apps.crm import cadence_reperes
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS, CLE_PLANIFIER, q_etape)
 from apps.crm.models import Lead, RelanceEtape
@@ -108,7 +110,7 @@ class LaTouchEstCloseTests(_Base):
 
         appel.refresh_from_db()
         self.assertEqual(appel.statut, FAIT)
-        self.assertEqual(appel.outcome, services.OUTCOME_VISITE_ACCEPTEE)
+        self.assertEqual(appel.outcome, cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertEqual(appel.note, 'RDV pris lundi')
         # Le rendez-vous est calé : aucune étape « planifier la visite ».
         self.assertFalse(self._ouvertes(q_etape(CLE_PLANIFIER)).exists())
@@ -140,7 +142,7 @@ class LaTouchEstCloseTests(_Base):
 class LaTouchDejaAnnuleeResteAnnuleeTests(_Base):
 
     def test_l_etape_planifier_reste_annulee_et_la_note_part_au_chatter(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         resp = self._planifier(etape=planifier.pk, note_etape='Calé au tél.')
         self.assertEqual(resp.status_code, 201, resp.data)
@@ -150,7 +152,7 @@ class LaTouchDejaAnnuleeResteAnnuleeTests(_Base):
             body__contains='Calé au tél.').exists())
 
     def test_l_etape_devis_mise_en_attente_reste_annulee(self):
-        devis = services.poser_etape_preparer_devis(
+        devis = cadence_signaux.poser_etape_preparer_devis(
             self.lead, origine='test', user=self.acteur)
         self.assertTrue(devis is not None and devis.cle == CLE_DEVIS)
         resp = self._planifier(etape=devis.pk, note_etape='Visite d’abord')

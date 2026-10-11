@@ -98,9 +98,14 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         return [PeutGererCalepinage()]
 
-    @extend_schema(responses={200: inline_serializer(
-        'CalepinageGabaritsDossiers',
-        {'gabarits': serializers.ListField(child=serializers.DictField())})})
+    # Schéma brut (dict) : un sérialiseur serait enveloppé en tableau par
+    # drf-spectacular sur l'action ``list`` alors que la réponse est un objet.
+    @extend_schema(responses={200: {
+        'type': 'object',
+        'properties': {'gabarits': {
+            'type': 'array', 'items': {'type': 'object'}}},
+        'required': ['gabarits'],
+    }})
     def list(self, request, *args, **kwargs):
         gabarits = self.filter_queryset(self.get_queryset())
         return Response({'gabarits': [gabarit_publie(g) for g in gabarits]})

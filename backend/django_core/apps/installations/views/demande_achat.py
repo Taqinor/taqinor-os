@@ -43,6 +43,7 @@ from ..serializers import (
     DemandeAchatSerializer, DemandeAchatLigneSerializer,
     EtapeApprobationAchatSerializer, RegleApprobationAchatSerializer,
 )
+from . import _openapi as oa
 
 # SCA36 — 'chatter_historique' est une lecture (patron flotte : le
 # get_permissions maison prime sur les permission_classes d'@action du mixin).
@@ -118,7 +119,7 @@ def _notifier_demandeur_decision(da, approuvee):
         pass
 
 
-class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
+class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
     """FG310 — réquisitions d'achat. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     serveur ; chantier/programme/fournisseur_suggere validés tenant. Filtrable
@@ -190,6 +191,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             _exiger_brouillon(serializer.instance)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def soumettre(self, request, pk=None):
         """FG310 — soumet la demande pour approbation (brouillon → soumise).
@@ -230,6 +232,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         services.lancer_workflow_approbation_achat(da, regle=regle)
         return Response(self.get_serializer(da).data)
 
+    @oa.extend_schema(responses=EtapeApprobationAchatSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='etapes-approbation')
     def etapes_approbation(self, request, pk=None):
         """NTP2P2 — plan d'approbation de la demande (étapes séquentielles)."""
@@ -238,6 +241,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             'approbateur', 'regle').order_by('niveau', 'id')
         return Response(EtapeApprobationAchatSerializer(etapes, many=True).data)
 
+    @oa.extend_schema(request=oa.body('DecisionEtapeAchatRequete', etape=oa.i(), commentaire=oa.s()))
     @action(detail=True, methods=['post'], url_path='approuver-etape')
     def approuver_etape(self, request, pk=None):
         """NTP2P2 — approuve l'étape courante du plan d'approbation. Quand la
@@ -245,6 +249,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         from .. import services
         return self._decider_etape(request, services.approuver_etape_achat)
 
+    @oa.extend_schema(request=oa.body('DecisionEtapeAchatRequete', etape=oa.i(), commentaire=oa.s()))
     @action(detail=True, methods=['post'], url_path='rejeter-etape')
     def rejeter_etape(self, request, pk=None):
         """NTP2P2 — rejette l'étape courante : la demande bascule ``refusee``
@@ -284,6 +289,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 da, approuvee=da.statut == DemandeAchat.Statut.APPROUVEE)
         return Response(self.get_serializer(da).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def approuver(self, request, pk=None):
         """FG310 — approuve la demande (soumise → approuvée), prérequis avant
@@ -322,6 +328,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         _notifier_demandeur_decision(da, approuvee=True)
         return Response(self.get_serializer(da).data)
 
+    @oa.extend_schema(request=oa.body('RefusDemandeAchatRequete', motif_refus=oa.s()))
     @action(detail=True, methods=['post'])
     def refuser(self, request, pk=None):
         """FG310 — refuse la demande (soumise → refusée) avec un motif."""
@@ -355,6 +362,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def marquer_commandee(self, request, pk=None):
         """FG310 — marque la demande comme commandée (approuvée → commandée),
@@ -376,6 +384,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(da).data)
 
+    @oa.extend_schema(request=oa.body('GenererBcfRequete', fournisseur=oa.i()))
     @action(detail=True, methods=['post'], url_path='generer-bcf')
     def generer_bcf(self, request, pk=None):
         """YPROC5 — convertit les lignes de la DA APPROUVÉE en BCF brouillon
@@ -447,7 +456,8 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)
 
-    @action(detail=True, methods=['post'], url_path='importer-lignes-csv')
+    @oa.extend_schema(request=oa.body('ImporterLignesCsvRequete', fichier=oa.serializers.FileField()), responses={(200, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()), (201, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst())})
+    @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='importer-lignes-csv')
     def importer_lignes_csv(self, request, pk=None):
         """NTP2P40 — Import CSV en masse de ``DemandeAchatLigne``.
 
@@ -545,7 +555,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         }, status=status.HTTP_201_CREATED if creees else status.HTTP_200_OK)
 
 
-class RegleApprobationAchatViewSet(CompanyScopedModelViewSet):
+class RegleApprobationAchatViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """NTP2P2 — CRUD des règles d'approbation d'achat (seuil de montant +
     périmètre chantier/programme optionnel). Lecture tout rôle, écriture
     responsable/admin. Société posée serveur ; chantier/programme validés
@@ -588,7 +598,8 @@ class RegleApprobationAchatViewSet(CompanyScopedModelViewSet):
         super().perform_update(serializer)
 
 
-class DemandeAchatLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('demande'))
+class DemandeAchatLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG310 — lignes de demande d'achat. La ligne n'a pas de `company` propre :
     le scope société passe par la demande parente (`demande__company`).
     Filtrable par `demande`. Lecture tout rôle, écriture responsable/admin."""

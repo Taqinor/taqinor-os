@@ -21,7 +21,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_filet
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, CLE_PLANIFIER, q_etape
 from apps.crm.models import Lead, RelanceEtape
@@ -41,9 +42,9 @@ class PromesseTests(SimpleTestCase):
 
     def test_sans_reponse_annonce_planifier_demain(self):
         etape = RelanceEtape(cadence='apres_devis',
-                             ordre=services.VISITE_ORDRE_FILET,
+                             ordre=cadence_reperes.VISITE_ORDRE_FILET,
                              canal=RelanceEtape.Canal.APPEL,
-                             libelle=services.VISITE_FILET_LIBELLE,
+                             libelle=cadence_reperes.VISITE_FILET_LIBELLE,
                              statut=A_FAIRE)
         etape.lead = Lead(nom='témoin', stage=stages.CONTACTED)
         promesses = st.promesses_touche(etape, ordres=frozenset(),
@@ -73,7 +74,7 @@ class PlanifierSansReponseTests(TestCase):
             company=self.company, nom=f'Prospect E12 {n}',
             stage=stages.CONTACTED, owner=self.acteur,
             telephone=f'+21266112{n:04d}')
-        self.planifier = services.poser_filet_visite_a_planifier(
+        self.planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
 
     def _sans_reponse(self, etape):

@@ -37,6 +37,8 @@ from ..services import (  # noqa: F401
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
 from .. import field_sync  # noqa: F401
+from . import _openapi as oa
+from ..serializers import PhotoAnnotationSerializer  # noqa: E402
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -142,7 +144,8 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class InterventionViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('annulee'), p1=oa.qs('priorite'), p2=oa.qs('statut'), p3=oa.qs('type_intervention'), p4=oa.qs('export'), p5=oa.qd('date_from'), p6=oa.qd('date_to'), p7=oa.qi('installation'), p8=oa.qi('ticket'), p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'))
+class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
@@ -206,6 +209,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
+        # Jour exact (« Ma journée » équipe) ; valeur invalide ignorée.
+        from django.utils.dateparse import parse_date
+        try:
+            jour_prevu = parse_date(params.get('date_prevue') or '')
+        except ValueError:
+            jour_prevu = None
+        if jour_prevu:
+            qs = qs.filter(date_prevue=jour_prevu)
         # YSERV6 — une intervention annulée (chantier annulé) sort des vues
         # kanban/calendrier/charge (list) par défaut ; `?annulee=true` la
         # réaffiche (audit/historique). Ne s'applique jamais aux actions
@@ -555,6 +566,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv.date_realisee = timezone.localdate()
             interv.save(update_fields=['date_realisee'])
 
+    @oa.extend_schema(responses=InterventionActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
@@ -563,6 +575,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             InterventionActivitySerializer(
                 interv.activites.all(), many=True).data)
 
+    @oa.extend_schema(request=oa.body('NoterRequete', body=oa.s(True)), responses={201: InterventionActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -581,6 +594,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(InterventionPreparationSerializer(
             prep, context={'request': self.request}).data)
 
+    @oa.extend_schema(responses=InterventionPreparationSerializer)
     @action(detail=True, methods=['get'], url_path='preparation',
             permission_classes=[IsAnyRole])
     def preparation(self, request, pk=None):
@@ -589,6 +603,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         puis renvoyée avec le pourcentage de complétion."""
         return self._prep_response(self.get_object())
 
+    @oa.extend_schema(request=oa.body('ChoisirKitRequete', kit=oa.i(True)), responses=InterventionPreparationSerializer)
     @action(detail=True, methods=['post'], url_path='choisir-kit',
             permission_classes=[IsResponsableOrAdmin])
     def choisir_kit(self, request, pk=None):
@@ -616,6 +631,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         field_services._sync_outils(prep)
         return self._prep_response(interv)
 
+    @oa.extend_schema(request=oa.body('CocherMaterielRequete', ligne=oa.i(True), charge=oa.b()), responses=InterventionPreparationSerializer)
     @action(detail=True, methods=['post'], url_path='cocher-materiel',
             permission_classes=[IsResponsableOrAdmin])
     def cocher_materiel(self, request, pk=None):
@@ -636,6 +652,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             prep.save(update_fields=['tout_charge'])
         return self._prep_response(interv)
 
+    @oa.extend_schema(request=oa.body('CocherOutilRequete', ligne=oa.i(True), coche=oa.b()), responses=InterventionPreparationSerializer)
     @action(detail=True, methods=['post'], url_path='cocher-outil',
             permission_classes=[IsResponsableOrAdmin])
     def cocher_outil(self, request, pk=None):
@@ -660,6 +677,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             prep.save(update_fields=['tout_charge'])
         return self._prep_response(interv)
 
+    @oa.extend_schema(request=None, responses=InterventionPreparationSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer-charge',
             permission_classes=[IsResponsableOrAdmin])
     def confirmer_charge(self, request, pk=None):
@@ -677,6 +695,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             "Préparation confirmée — « Tout est chargé ».")
         return self._prep_response(interv)
 
+    @oa.extend_schema(request=oa.body('CommanderManquesRequete', fournisseur=oa.i()), responses={201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='commander-manques',
             permission_classes=[IsResponsableOrAdmin])
     def commander_manques(self, request, pk=None):
@@ -709,6 +728,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data, status=status.HTTP_201_CREATED)
 
     # ── F6 — Trajet & check-in GPS sur site ─────────────────────────────────
+    @oa.extend_schema(request=oa.body('PositionRequete', lat=oa.f(null=True), lng=oa.f(null=True)), responses=InterventionSerializer)
     @action(detail=True, methods=['post'], url_path='depart-depot',
             permission_classes=[IsResponsableOrAdmin])
     def depart_depot(self, request, pk=None):
@@ -724,6 +744,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='lien-client',
             permission_classes=[IsResponsableOrAdmin])
     def lien_client(self, request, pk=None):
@@ -749,6 +770,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             'url': request.build_absolute_uri(path),
         })
 
+    @oa.extend_schema(request=oa.body('PositionRequete', lat=oa.f(null=True), lng=oa.f(null=True)), responses=InterventionSerializer)
     @action(detail=True, methods=['post'], url_path='checkin',
             permission_classes=[IsResponsableOrAdmin])
     def checkin(self, request, pk=None):
@@ -768,6 +790,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
+    @oa.extend_schema(request=None, responses=InterventionSerializer)
     @action(detail=True, methods=['post'], url_path='retour',
             permission_classes=[IsResponsableOrAdmin])
     def retour(self, request, pk=None):
@@ -781,6 +804,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv, context={'request': request}).data)
 
     # ── F7/F8 — Photos guidées par shot list ────────────────────────────────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='photos',
             permission_classes=[IsAnyRole])
     def photos(self, request, pk=None):
@@ -830,7 +854,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 for s in manquants],
         })
 
-    @action(detail=True, methods=['post'], url_path='ajouter-photo',
+    @oa.extend_schema(request=oa.body('AjouterPhotoRequete', file=oa.serializers.FileField(), slot=oa.s(), phase=oa.s()), responses={201: oa.OBJ})
+    @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-photo',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_photo(self, request, pk=None):
         """F7 — téléverse une photo, tagguée à un créneau de shot list, via le
@@ -909,6 +934,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             corps += f" — motif : {motif}"
         intervention_activity.log_note(interv, user, f"{corps} — par {nom}")
 
+    @oa.extend_schema(request=oa.body('SupprimerPhotoRequete', photo=oa.i(True)), responses={204: None})
     @action(detail=True, methods=['post'], url_path='supprimer-photo',
             permission_classes=[IsResponsableOrAdmin])
     def supprimer_photo(self, request, pk=None):
@@ -941,13 +967,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv.serials.all(), many=True,
             context={'request': self.request}).data)
 
+    @oa.extend_schema(responses=ComponentSerialSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='serials',
             permission_classes=[IsAnyRole])
     def serials(self, request, pk=None):
         """F9 — liste des n° de série relevés sur l'intervention."""
         return self._serials_response(self.get_object())
 
-    @action(detail=True, methods=['post'], url_path='ajouter-serial',
+    @oa.extend_schema(request=oa.body('AjouterSerialRequete', client_op_id=oa.s(), produit=oa.i(null=True), numero_serie=oa.s(), designation=oa.s(), slot=oa.s(), file=oa.serializers.FileField(required=False)), responses={200: ComponentSerialSerializer, 201: ComponentSerialSerializer})
+    @action(parser_classes=oa.JSON_AND_UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-serial',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_serial(self, request, pk=None):
         """F9 — relève un n° de série de composant. Optionnellement une photo de
@@ -1047,6 +1075,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             data['replayed'] = False
         return Response(data, status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(request=oa.body('ModifierSerialRequete', serial=oa.i(True), numero_serie=oa.s(), designation=oa.s()), responses=ComponentSerialSerializer)
     @action(detail=True, methods=['post'], url_path='modifier-serial',
             permission_classes=[IsResponsableOrAdmin])
     def modifier_serial(self, request, pk=None):
@@ -1080,6 +1109,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(ComponentSerialSerializer(
             serial, context={'request': request}).data)
 
+    @oa.extend_schema(request=oa.body('SupprimerSerialRequete', serial=oa.i(True)), responses={204: None})
     @action(detail=True, methods=['post'], url_path='supprimer-serial',
             permission_classes=[IsResponsableOrAdmin])
     def supprimer_serial(self, request, pk=None):
@@ -1101,6 +1131,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F10 — annotation d'une photo (dessin + légende) ─────────────────────
+    @oa.extend_schema(request=oa.body('AnnoterPhotoRequete', photo=oa.i(True), drawing=oa.obj(null=True), caption=oa.s(), probleme=oa.b()), responses=PhotoAnnotationSerializer)
     @action(detail=True, methods=['post'], url_path='annoter-photo',
             permission_classes=[IsResponsableOrAdmin])
     def annoter_photo(self, request, pk=None):
@@ -1140,6 +1171,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(MaterielConsommationSerializer(
             cons, context={'request': self.request}).data)
 
+    @oa.extend_schema(responses=MaterielConsommationSerializer)
     @action(detail=True, methods=['get'], url_path='consommation',
             permission_classes=[IsAnyRole])
     def consommation(self, request, pk=None):
@@ -1147,6 +1179,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         utilisé, lignes hors-nomenclature, variances + dépassements (F12)."""
         return self._consommation_response(self.get_object())
 
+    @oa.extend_schema(request=oa.body('AjouterLigneConsommationRequete', designation=oa.s(), produit=oa.i(null=True), quantite_utilisee=oa.dec(), justification=oa.s()), responses={201: ConsommationLigneSerializer})
     @action(detail=True, methods=['post'], url_path='ajouter-ligne-consommation',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_ligne_consommation(self, request, pk=None):
@@ -1183,6 +1216,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(ConsommationLigneSerializer(ligne).data,
                         status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(request=oa.body('ModifierLigneConsommationRequete', ligne=oa.i(True), quantite_utilisee=oa.dec(), justification=oa.s(), justification_memo=oa.i(null=True)), responses=ConsommationLigneSerializer)
     @action(detail=True, methods=['post'],
             url_path='modifier-ligne-consommation',
             permission_classes=[IsResponsableOrAdmin])
@@ -1222,6 +1256,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             ligne.save(update_fields=fields + ['date_modification'])
         return Response(ConsommationLigneSerializer(ligne).data)
 
+    @oa.extend_schema(request=oa.body('SupprimerLigneConsommationRequete', ligne=oa.i(True)), responses={204: None})
     @action(detail=True, methods=['post'],
             url_path='supprimer-ligne-consommation',
             permission_classes=[IsResponsableOrAdmin])
@@ -1248,6 +1283,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv, f"Ligne de consommation {designation} supprimée", motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @oa.extend_schema(request=None, responses=MaterielConsommationSerializer)
     @action(detail=True, methods=['post'], url_path='valider-consommation',
             permission_classes=[IsResponsableOrAdmin])
     def valider_consommation(self, request, pk=None):
@@ -1285,6 +1321,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return self._consommation_response(interv)
 
     # ── XFSM22 — durée & pièces suggérées par l'historique ──────────────────
+    @oa.extend_schema(parameters=[oa.qs('type_intervention', required=True), oa.qi('technicien'), oa.qs('type_installation')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='suggestions-creation',
             permission_classes=[IsAnyRole])
     def suggestions_creation(self, request):
@@ -1314,6 +1351,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             type_installation=request.query_params.get('type_installation'))
         return Response({'duree': duree, 'pieces': pieces})
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='overage-review',
             permission_classes=[IsAnyRole])
     def overage_review(self, request):
@@ -1337,6 +1375,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         })
 
     # ── F13/F14 — mémos vocaux (+ transcription swappable no-op) ─────────────
+    @oa.extend_schema(responses=VoiceMemoSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='memos',
             permission_classes=[IsAnyRole])
     def memos(self, request, pk=None):
@@ -1346,7 +1385,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv.voice_memos.all(), many=True,
             context={'request': request}).data)
 
-    @action(detail=True, methods=['post'], url_path='ajouter-memo',
+    @oa.extend_schema(request=oa.body('AjouterMemoRequete', file=oa.serializers.FileField(), cible=oa.s()), responses={201: VoiceMemoSerializer})
+    @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-memo',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_memo(self, request, pk=None):
         """F13 — enregistre un mémo vocal (multipart `file`, audio) stocké via le
@@ -1383,6 +1423,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             memo, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(request=oa.body('ModifierMemoRequete', memo=oa.i(True), transcript=oa.s()), responses=VoiceMemoSerializer)
     @action(detail=True, methods=['post'], url_path='modifier-memo',
             permission_classes=[IsResponsableOrAdmin])
     def modifier_memo(self, request, pk=None):
@@ -1400,6 +1441,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(VoiceMemoSerializer(
             memo, context={'request': request}).data)
 
+    @oa.extend_schema(request=oa.body('SupprimerMemoRequete', memo=oa.i(True)), responses={204: None})
     @action(detail=True, methods=['post'], url_path='supprimer-memo',
             permission_classes=[IsResponsableOrAdmin])
     def supprimer_memo(self, request, pk=None):
@@ -1422,6 +1464,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F15 — temps d'équipe ─────────────────────────────────────────────────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='crew-time',
             permission_classes=[IsAnyRole])
     def crew_time(self, request, pk=None):
@@ -1432,6 +1475,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     # ── ZFSM1 — gabarit de fiche d'intervention (relevé matérialisé) ─────────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='fiche',
             permission_classes=[IsAnyRole])
     def fiche(self, request, pk=None):
@@ -1445,6 +1489,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(FicheInterventionReleveSerializer(
             releve, context={'request': request}).data)
 
+    @oa.extend_schema(request=oa.body('RenseignerFicheRequete', valeur_id=oa.i(True), valeur=oa.s()), responses=FicheInterventionReleveSerializer)
     @action(detail=True, methods=['post'], url_path='renseigner-fiche',
             permission_classes=[IsResponsableOrAdmin])
     def renseigner_fiche(self, request, pk=None):
@@ -1467,6 +1512,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             releve, context={'request': request}).data)
 
     # ── F16 — réserves (punch-list) ──────────────────────────────────────────
+    @oa.extend_schema(responses=ReserveSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='reserves',
             permission_classes=[IsAnyRole])
     def reserves(self, request, pk=None):
@@ -1476,6 +1522,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv.reserves.all(), many=True,
             context={'request': request}).data)
 
+    @oa.extend_schema(request=oa.body('AjouterReserveRequete', client_op_id=oa.s(), description=oa.s(True), assignee=oa.i(null=True), photo=oa.i(null=True), memo=oa.i(null=True), creer_suivi=oa.b(), creer_ticket=oa.b()), responses={200: ReserveSerializer, 201: ReserveSerializer})
     @action(detail=True, methods=['post'], url_path='ajouter-reserve',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_reserve(self, request, pk=None):
@@ -1570,6 +1617,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             created_by=user)
 
     # ── XFSM13 — re-vérification IEC 62446-2 vs baseline de recette ─────────
+    @oa.extend_schema(request=oa.body('EnregistrerReverificationRequete', seuil_alerte_pct=oa.f()), responses={201: ReverificationMesureSerializer})
     @action(detail=True, methods=['post'], url_path='enregistrer-reverification',
             permission_classes=[IsResponsableOrAdmin])
     def enregistrer_reverification_view(self, request, pk=None):
@@ -1590,6 +1638,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             ReverificationMesureSerializer(reverif).data,
             status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(responses=ReverificationMesureSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='reverifications',
             permission_classes=[IsAnyRole])
     def reverifications(self, request, pk=None):
@@ -1600,6 +1649,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             intervention_id=interv.id).order_by('-date_creation')
         return Response(ReverificationMesureSerializer(qs, many=True).data)
 
+    @oa.extend_schema(request=oa.body('ModifierReserveRequete', reserve=oa.i(True), description=oa.s(), assignee=oa.i(null=True)), responses=ReserveSerializer)
     @action(detail=True, methods=['post'], url_path='modifier-reserve',
             permission_classes=[IsResponsableOrAdmin])
     def modifier_reserve(self, request, pk=None):
@@ -1623,6 +1673,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(ReserveSerializer(
             reserve, context={'request': request}).data)
 
+    @oa.extend_schema(request=oa.body('ResoudreReserveRequete', reserve=oa.i(True), statut=oa.s(), resolution=oa.s()), responses=ReserveSerializer)
     @action(detail=True, methods=['post'], url_path='resoudre-reserve',
             permission_classes=[IsResponsableOrAdmin])
     def resoudre_reserve(self, request, pk=None):
@@ -1643,6 +1694,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             reserve, context={'request': request}).data)
 
     # ── XFSM18 — réserve → devis de réparation ──────────────────────────────
+    @oa.extend_schema(request=oa.body('GenererDevisReserveRequete', reserve=oa.i(True)), responses={200: oa.OBJ, 201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='generer-devis-reserve',
             permission_classes=[IsResponsableOrAdmin])
     def generer_devis_reserve(self, request, pk=None):
@@ -1675,6 +1727,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
     # ── F17 — réconciliation du retour d'outillage ──────────────────────────
+    @oa.extend_schema(request=None, responses=oa.OBJ)
     @action(detail=True, methods=['get', 'post'], url_path='tool-return',
             permission_classes=[IsAnyRole])
     def tool_return(self, request, pk=None):
@@ -1757,6 +1810,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 for oid, iid in conflicts.items()]})
         return Response(rows)
 
+    @oa.extend_schema(request=oa.body('CocherToolReturnRequete', ligne=oa.i(True), rendu=oa.b(), emplacement=oa.i(null=True)), responses=ToolReturnSerializer)
     @action(detail=True, methods=['post'], url_path='cocher-tool-return',
             permission_classes=[IsResponsableOrAdmin])
     def cocher_tool_return(self, request, pk=None):
@@ -1780,6 +1834,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         tr.save(update_fields=fields)
         return Response(ToolReturnSerializer(tr).data)
 
+    @oa.extend_schema(request=None, responses=oa.OBJ)
     @action(detail=True, methods=['post'], url_path='confirmer-tool-return',
             permission_classes=[IsResponsableOrAdmin])
     def confirmer_tool_return(self, request, pk=None):
@@ -1831,6 +1886,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         })
 
     # ── F18 — consignes de sécurité (sign-off) ──────────────────────────────
+    @oa.extend_schema(responses=SafetySignoffSerializer)
     @action(detail=True, methods=['get'], url_path='safety',
             permission_classes=[IsAnyRole])
     def safety(self, request, pk=None):
@@ -1839,6 +1895,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         signoff = field_capture.ensure_safety_signoff(interv)
         return Response(SafetySignoffSerializer(signoff).data)
 
+    @oa.extend_schema(request=oa.body('CocherSafetyRequete', cle=oa.s(True), coche=oa.b()), responses=SafetySignoffSerializer)
     @action(detail=True, methods=['post'], url_path='cocher-safety',
             permission_classes=[IsResponsableOrAdmin])
     def cocher_safety(self, request, pk=None):
@@ -1857,6 +1914,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         item.save(update_fields=['coche', 'coche_par', 'coche_le'])
         return Response(SafetySignoffSerializer(signoff).data)
 
+    @oa.extend_schema(request=None, responses=SafetySignoffSerializer)
     @action(detail=True, methods=['post'], url_path='signer-safety',
             permission_classes=[IsResponsableOrAdmin])
     def signer_safety(self, request, pk=None):
@@ -1872,6 +1930,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(SafetySignoffSerializer(signoff).data)
 
     # ── F19 — compte-rendu d'intervention PDF (client-facing) ───────────────
+    @oa.extend_schema(responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='compte-rendu',
             permission_classes=[IsAnyRole])
     def compte_rendu(self, request, pk=None):
@@ -1890,6 +1949,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return resp
 
     # ── ZFSM2 — lien public tokenisé du compte-rendu signé ──────────────────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='lien-rapport',
             permission_classes=[IsResponsableOrAdmin])
     def lien_rapport(self, request, pk=None):
@@ -1911,6 +1971,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         })
 
     # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='generer-facture',
             permission_classes=[IsResponsableOrAdmin])
     def generer_facture(self, request, pk=None):
@@ -1941,6 +2002,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         }, status=status.HTTP_200_OK if deja_existant else status.HTTP_201_CREATED)
 
     # ── ZFSM5 — devis d'upsell créé sur place depuis l'intervention ─────────
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='generer-devis',
             permission_classes=[IsResponsableOrAdmin])
     def generer_devis(self, request, pk=None):
@@ -1968,6 +2030,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         }, status=status.HTTP_200_OK if deja_existant else status.HTTP_201_CREATED)
 
     # ── F23 — code court / QR de l'intervention ──────────────────────────────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='code',
             permission_classes=[IsAnyRole])
     def code(self, request, pk=None):
@@ -1984,6 +2047,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         })
 
     # ── F20 — contrôle qualité IA des photos (interface vision swappable) ────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='photo-qa',
             permission_classes=[IsAnyRole])
     def photo_qa(self, request, pk=None):
@@ -2007,6 +2071,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         })
 
     # ── FG78 — confirmation RDV + reschedule tracking ───────────────────────
+    @oa.extend_schema(request=oa.body('ConfirmerRdvRequete', confirme=oa.b(), date_prevue=oa.s(null=True), motif=oa.s(null=True)), responses=InterventionSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer-rdv',
             permission_classes=[IsResponsableOrAdmin])
     def confirmer_rdv(self, request, pk=None):
@@ -2043,6 +2108,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv, context={'request': request}).data)
 
     # ── FG68 — calendrier dispatch techniciens ───────────────────────────────
+    @oa.extend_schema(parameters=[oa.qd('date_from'), oa.qd('date_to')], responses=oa.LIST)
     @action(detail=False, methods=['get'], url_path='calendrier',
             permission_classes=[IsAnyRole])
     def calendrier(self, request):
@@ -2112,6 +2178,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(result)
 
     # ── FG69 — signature client sur compte-rendu ─────────────────────────────
+    @oa.extend_schema(request=oa.body('SignerInterventionRequete', signature_client=oa.s(True), signataire_nom=oa.s(), motif_override_signature=oa.s(), motif_override=oa.s()), responses=InterventionSerializer)
     @action(detail=True, methods=['post'], url_path='signer-client',
             permission_classes=[IsAnyRole])
     def signer_client(self, request, pk=None):
@@ -2146,6 +2213,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             interv, context={'request': request}).data)
 
     # ── FG73 — tournée journalière du technicien (ordre géographique) ─────────
+    @oa.extend_schema(parameters=[oa.qd('date')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='ma-tournee',
             permission_classes=[IsAnyRole])
     def ma_tournee(self, request):
@@ -2215,6 +2283,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response({'date': jour, 'stops': stops})
 
     # ── FG299 — plan de charge des équipes (capacité vs affecté) ─────────────
+    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qf('heures_par_jour')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='plan-de-charge',
             permission_classes=[IsAnyRole])
     def plan_de_charge(self, request):
@@ -2256,6 +2325,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG300 — détection de conflits d'affectation (double-booking) ─────────
+    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='conflits-affectation',
             permission_classes=[IsAnyRole])
     def conflits_affectation(self, request):
@@ -2292,6 +2362,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG301 — nivellement de charge (resource levelling) ───────────────────
+    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qf('heures_par_jour')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='nivellement-charge',
             permission_classes=[IsAnyRole])
     def nivellement_charge(self, request):
@@ -2335,6 +2406,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     # ── XFSM5 — KPI taux d'arrivée à l'heure (fenêtres de RDV promises) ──────
+    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qi('technicien')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='taux-ponctualite',
             permission_classes=[IsAnyRole])
     def taux_ponctualite(self, request):
@@ -2359,6 +2431,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     # ── XFSM2 — Assistant de planification (meilleur créneau + technicien) ──
+    @oa.extend_schema(request=oa.body('SuggererCreneauRequete', chantier=oa.i(True), type_intervention=oa.s(), duree_jours=oa.i(), date_cible=oa.d(null=True)), responses=oa.OBJ)
     @action(detail=False, methods=['post'], url_path='suggerer-creneau',
             permission_classes=[IsAnyRole])
     def suggerer_creneau(self, request):
@@ -2389,6 +2462,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     # ── XFSM3 — Replanification en masse d'une journée ──────────────────────
+    @oa.extend_schema(parameters=[oa.qb('simuler')], request=oa.body('ReplanifierEnMasseRequete', jour=oa.d(True), technicien=oa.i(null=True), intervention_ids=oa.ints(), simuler=oa.b(), motif=oa.s()), responses=oa.OBJ)
     @action(detail=False, methods=['post'], url_path='replanifier-en-masse',
             permission_classes=[IsResponsableOrAdmin])
     def replanifier_en_masse(self, request):
@@ -2429,6 +2503,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────
+    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qi('capacite_jour')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='planning-camionnettes',
             permission_classes=[IsAnyRole])
     def planning_camionnettes(self, request):

@@ -10,8 +10,9 @@ Lancer (jamais contre la prod) ::
     locust -f load/locustfile.py --host http://localhost
 
 Variables d'environnement :
-  * ``LOCUST_USER`` / ``LOCUST_PASSWORD`` — identifiants d'un compte de charge
-    dédié (jamais un compte réel) ;
+  * ``LOCUST_USER`` / ``LOCUST_PASSWORD`` — NOM D'UTILISATEUR (pas l'e-mail :
+    la connexion résout le compte par username) et mot de passe d'un compte de
+    charge dédié (jamais un compte réel ; ``scripts/load/creer_compte_charge.py``) ;
   * ``LOCUST_HOST`` — surchargé par ``--host`` si fourni.
 
 Locust est une dépendance DEV uniquement (``requirements-dev.txt``) — jamais
@@ -36,7 +37,7 @@ except ImportError:  # pragma: no cover - locust est une dép dev optionnelle
         abstract = True
 
 
-USER = os.environ.get("LOCUST_USER", "charge@taqinor.local")
+USER = os.environ.get("LOCUST_USER", "charge")
 PASSWORD = os.environ.get("LOCUST_PASSWORD", "charge-password")
 
 
@@ -45,13 +46,28 @@ class ErpUser(HttpUser):
 
     wait_time = between(1, 4)
 
+    client_id = None
+
     def on_start(self):
-        """Connexion : pose le cookie JWT réutilisé par les requêtes suivantes."""
+        """Connexion : pose le cookie JWT réutilisé par les requêtes suivantes.
+
+        ENF12 — la route était ``/api/django/auth/login/`` (404 : TOUTES les
+        requêtes mesurées étaient des 401, masquées). La connexion est
+        ``/api/django/token/`` (cookie httpOnly ``access_token``). Un client
+        propre à l'utilisateur virtuel porte ensuite les devis créés.
+        """
         self.client.post(
-            "/api/django/auth/login/",
+            "/api/django/token/",
             json={"username": USER, "password": PASSWORD},
             name="auth:login",
         )
+        resp = self.client.post(
+            "/api/django/crm/clients/",
+            json={"nom": f"Charge {random.randint(1, 10**9)}"},
+            name="crm:clients:create",
+        )
+        if resp.status_code == 201:
+            self.client_id = resp.json().get("id")
 
     @task(6)
     def liste_leads(self):
@@ -75,9 +91,11 @@ class ErpUser(HttpUser):
     @task(2)
     def creation_devis(self):
         """Création d'un devis minimal (chemin d'écriture)."""
+        # ENF12 — ``client_nom`` est en lecture seule : l'ancien corps rendait
+        # 400 à chaque appel. Un devis se crée sur un client (id) + TVA.
         self.client.post(
             "/api/django/ventes/devis/",
-            json={"client_nom": "Charge", "lignes": []},
+            json={"client": self.client_id, "taux_tva": "20"},
             name="ventes:devis:create",
         )
 

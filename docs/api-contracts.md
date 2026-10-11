@@ -158,16 +158,12 @@
     archive_le:inconnu, controles:liste, document:inconnu, hash_integrite_au_depot:inconnu, motif:inconnu
 - frontend/src/api/gedApi.js :: genererModele -> /api/django/ged/modeles-document/<>/generer
     created:inconnu, detail:texte, document:inconnu, document_nom:inconnu
-- frontend/src/api/gedApi.js :: getAnalytique -> /api/django/ged/analytique
-    approbations:inconnu, signatures:inconnu
 - frontend/src/api/gedApi.js :: getMesFavoris -> /api/django/ged/mes-favoris
     documents:inconnu, dossiers:inconnu
 - frontend/src/api/gedApi.js :: getMesRecents -> /api/django/ged/mes-recents
     consultes:inconnu, deposes:inconnu
 - frontend/src/api/gedApi.js :: getQuotaEtat -> /api/django/ged/quotas-stockage/etat
     depasse:inconnu, illimite:booleen, quota_octets:inconnu, restant_octets:inconnu, usage_octets:inconnu
-- frontend/src/api/gedApi.js :: getTableauBordSignatures -> /api/django/ged/demandes-signature/tableau-bord
-    colonnes:inconnu, total:inconnu
 - frontend/src/api/gedApi.js :: getVersionPages -> /api/django/ged/versions/<>/pages
     detail:inconnu, pages:inconnu
 - frontend/src/api/gedApi.js :: leverLegalHold -> /api/django/ged/legal-holds/<>/lever

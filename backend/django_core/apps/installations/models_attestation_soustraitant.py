@@ -35,14 +35,14 @@ class AttestationSousTraitant(models.Model):
         AUTRE = 'autre', 'Autre pièce'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_attestations_sous_traitant')
     # DC34 — le sous-traitant est un stock.Fournisseur(type='service') ; FK
     # CHAÎNE (jamais d'import de apps.stock.models). CASCADE : une pièce n'a pas
     # de sens sans son sous-traitant.
     sous_traitant = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.CASCADE,
+        'stock.Fournisseur', on_delete=models.CASCADE,  # on_delete: AttestationSousTraitant est le détail de Fournisseur — n'existe pas sans lui
         related_name='installations_attestations')
     # max_length=20 couvre le plus long code de Type ('rc_decennale' = 12).
     type_piece = models.CharField(

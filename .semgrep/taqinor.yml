@@ -1,6 +1,6 @@
 # NTPLT53 — règles Semgrep MAISON encodant les invariants du repo (patterns de
 # CODE). Complémentaire des gardes AST YDATA (qui vérifient la STRUCTURE des
-# modèles) : ici on attrape des motifs d'usage dangereux. Job CI advisory.
+# modèles) : ici on attrape des motifs d'usage dangereux. Job CI BLOQUANT (ENF12).
 rules:
   # ── Règle 1 : pas de SQL formaté ni objects.raw ────────────────────────────
   # Rule non-négociable #1 (Odoo JSON-2) + hygiène anti-injection : un raw()
@@ -39,6 +39,18 @@ rules:
           - pattern: request.data["company"]
           - pattern: $SER.validated_data.get("company", ...)
           - pattern: $SER.validated_data["company"]
+      # ENF12 — seule exception PAR CONSTRUCTION : la console ÉDITEUR
+      # (superutilisateur plateforme, hors tenant) désigne la société CIBLE —
+      # vue gardée par IsSuperuserConsole, ou branche gardée par
+      # ``request.user.is_superuser``. Un compte tenant n'y entre jamais.
+      - pattern-not-inside: |
+          class $V(...):
+            ...
+            permission_classes = [IsSuperuserConsole]
+            ...
+      - pattern-not-inside: |
+          if <... request.user.is_superuser ...>:
+            ...
 
   # ── Règle 3 : pas de count()+1 pour une référence ──────────────────────────
   # count()+1 a COLLISIONNÉ en production (les documents supprimés rétrécissent

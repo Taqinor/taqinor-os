@@ -27,7 +27,7 @@ CLES_CONTEXTE = ('devis', 'lead')
 #: ``contract_samples/etude_ci_preview.json`` (PACT7 : jamais un objet vide).
 EtudeCiPreviewResponse = inline_serializer('EtudeCiPreviewResponse', {
     'entrees_resolues': serializers.JSONField(),
-    'niveau_donnees': serializers.CharField(),
+    'niveau_donnees': serializers.CharField(allow_null=True),
     'sous_reserve_visite': serializers.JSONField(),
     'profil_charge': serializers.JSONField(),
     'production': serializers.JSONField(),

@@ -31,8 +31,8 @@ from __future__ import annotations
 from html import escape
 
 __all__ = [
-    'CODE_DOCUMENT', 'photos_du_calepinage', 'construire_document',
-    'html_de_document', 'html_du_document_asbuilt',
+    'CODE_DOCUMENT',
+    'html_du_document_asbuilt',
     'rendre_document_asbuilt',
 ]
 
@@ -47,7 +47,7 @@ LIBELLE_SOURCE_PREVU = {
 }
 
 
-def photos_du_calepinage(calepinage):
+def _photos_du_calepinage(calepinage):
     """Les photos de site (CAL52), LÉGENDÉES et DATÉES, dans l'ordre de prise
     de vue — ``[]`` pour un calepinage non enregistré ou sans photo.
 
@@ -77,9 +77,9 @@ def photos_du_calepinage(calepinage):
     return photos
 
 
-def construire_document(calepinage, *, ecarts=None, photos=None,
-                        svg_planche=None, identite=None, site=None,
-                        styles=None, provenance=None, etat=None):
+def _construire_document(calepinage, *, ecarts=None, photos=None,
+                         svg_planche=None, identite=None, site=None,
+                         styles=None, provenance=None, etat=None):
     """L'agrégat prêt à mettre en page — chaque lecture est REMPLAÇABLE par
     l'appelant (essai pur : fournir ``ecarts``/``photos``/``svg_planche``
     évite toute base)."""
@@ -96,7 +96,7 @@ def construire_document(calepinage, *, ecarts=None, photos=None,
 
         ecarts = ecarts_du_calepinage(calepinage, conception=conception)
     if photos is None:
-        photos = photos_du_calepinage(calepinage)
+        photos = _photos_du_calepinage(calepinage)
     if svg_planche is None:
         from ..planche import planche_svg_ou_vide
 
@@ -251,7 +251,7 @@ CSS_ASBUILT = (
 )
 
 
-def html_de_document(document):
+def _html_de_document(document):
     """Le document as-built en HTML AUTONOME habillé du gabarit société."""
     from .gabarit_document import document_html, page_de_garde_html
 
@@ -279,7 +279,7 @@ def html_du_document_asbuilt(calepinage, *, langue=None, **options):
     """L'UNIQUE mise en page du document — le PDF et l'aperçu (CALX323) la
     partagent. ``langue`` est accepté pour la forme commune : ce document
     n'est servi qu'en français."""
-    return html_de_document(construire_document(calepinage, **options))
+    return _html_de_document(_construire_document(calepinage, **options))
 
 
 def rendre_document_asbuilt(calepinage, *, company=None, **options):

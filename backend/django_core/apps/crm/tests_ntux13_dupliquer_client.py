@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.crm.services import dupliquer_client
+from apps.crm.clients_identite import dupliquer_client
 
 User = get_user_model()
 

@@ -33,6 +33,7 @@ from ..services import (  # noqa: F401
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -109,7 +110,8 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ChecklistEtapeModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('template'))
+class ChecklistEtapeModeleViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Étapes MODÈLE de la checklist d'exécution (Paramètres → Chantiers, N4).
     Lecture tout rôle, écriture admin. Une étape protégée garde sa clé ; la
     désactivation (actif=False) la retire des nouveaux chantiers sans toucher

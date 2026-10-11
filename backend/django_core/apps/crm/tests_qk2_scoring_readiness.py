@@ -183,7 +183,7 @@ class TestReadinessHotList(TestCase):
         """Deux leads identiques sauf la maturité : le mûr précède le tiède."""
         from rest_framework.test import APIClient
         from rest_framework_simplejwt.tokens import AccessToken
-        from apps.crm.services import recompute_lead_score
+        from apps.crm.leads_score import recompute_lead_score
 
         tiede = Lead.objects.create(
             company=self.company, nom='Tiède',
@@ -211,7 +211,7 @@ class TestReadinessHotList(TestCase):
 
     def test_recompute_persiste_les_signaux(self):
         """recompute_lead_score intègre les signaux QK2 dans le score stocké."""
-        from apps.crm.services import recompute_lead_score
+        from apps.crm.leads_score import recompute_lead_score
         lead = Lead.objects.create(
             company=self.company, nom='Persist',
             ownership='proprietaire', project_timeline='immediat')

@@ -22,6 +22,7 @@ DB-free, AST-only. Usage : ``python scripts/check_version_en_vigueur.py``.
 from __future__ import annotations
 
 import ast
+import json
 import sys
 from pathlib import Path
 
@@ -44,6 +45,21 @@ FICHIERS = [
     "backend/django_core/apps/crm/views.py",
     "backend/django_core/apps/ventes/scheduled.py",
 ]
+
+
+def _modules_scission_crm() -> list:
+    """SPL3-SPL26 : modules issus de la scission de crm/services.py (table du
+    golden SPL1) — une lecture déplacée reste dans le périmètre de la garde."""
+    golden = APPS / "crm" / "golden" / "services_split_ast.json"
+    if not golden.is_file():
+        return []
+    cibles = {v["cible"] for v in json.loads(
+        golden.read_text(encoding="utf-8"))["noms"].values()}
+    return [f"backend/django_core/apps/crm/{c}.py" for c in sorted(cibles)
+            if (APPS / "crm" / f"{c}.py").is_file()]
+
+
+FICHIERS += _modules_scission_crm()
 
 #: Statuts de devis dont la lecture exige la version en vigueur.
 STATUTS = {"accepte", "envoye"}
@@ -68,7 +84,7 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/fiche_selectors.py::leads_signes_sans_devis_accepte":
         "détecte un lead SIGNED dont AUCUN devis n'est accepté, toutes "
         "versions confondues (drapeau de cohérence, décidé par ACRM10)",
-    "backend/django_core/apps/crm/services.py::lead_signe_sans_devis_actif":
+    "backend/django_core/apps/crm/fiche_funnel.py::lead_signe_sans_devis_actif":
         "drapeau dérivé « signé fantôme » décidé par ACRM10 : filtre statut "
         "puis archivage ; la version remplacée n'y est pas une erreur",
     "backend/django_core/apps/crm/views.py::ClientViewSet.segments":

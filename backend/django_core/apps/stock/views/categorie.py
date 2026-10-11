@@ -1,6 +1,7 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -51,6 +52,8 @@ class CategorieViewSet(CompanyScopedModelViewSet):
     # YAPIC2 — whitelist explicite (jamais '__all__') : tri arbitraire par
     # colonne non indexée sinon possible.
     ordering_fields = ['nom', 'ordre', 'type_equipement']
+
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         # ERR-QAH-STOCK-CATEGORIES-COMPTE-ZERO — nombre de produits non

@@ -50,10 +50,10 @@ class JalonProjet(models.Model):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='jalons_projet')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='jalons')
+        Installation, on_delete=models.CASCADE, related_name='jalons')  # on_delete: étape/élément de Installation — n'existe pas sans lui
     # Phase type quand le jalon en est une ; vide pour un jalon ad hoc nommé
     # uniquement par `libelle`.
     phase = models.CharField(
@@ -129,7 +129,7 @@ class ModeleProjet(models.Model):
     `services.instantiate_modele_projet` (idempotente, additive)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='modeles_projet')
     nom = models.CharField(max_length=120)
     type_installation = models.CharField(
@@ -157,10 +157,10 @@ class ModeleProjetJalon(models.Model):
     pour pré-remplir `date_cible`."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='modele_projet_jalons')
     modele = models.ForeignKey(
-        ModeleProjet, on_delete=models.CASCADE, related_name='jalons')
+        ModeleProjet, on_delete=models.CASCADE, related_name='jalons')  # on_delete: étape/élément de ModeleProjet — n'existe pas sans lui
     phase = models.CharField(
         max_length=12, choices=JalonProjet.Phase.choices, blank=True, null=True)
     libelle = models.CharField(max_length=120)
@@ -186,10 +186,10 @@ class ModeleProjetBomLigne(models.Model):
     couplage cross-app reste lâche."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='modele_projet_bom_lignes')
     modele = models.ForeignKey(
-        ModeleProjet, on_delete=models.CASCADE, related_name='bom_lignes')
+        ModeleProjet, on_delete=models.CASCADE, related_name='bom_lignes')  # on_delete: ligne de ModeleProjet — n'existe pas sans son document parent
     # Référence catalogue par string-FK (jamais d'import des modèles stock).
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
@@ -216,10 +216,10 @@ class ReunionChantier(models.Model):
     serveur)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='reunions_chantier')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='reunions')
+        Installation, on_delete=models.CASCADE, related_name='reunions')  # on_delete: ReunionChantier est le détail de Installation — n'existe pas sans lui
     titre = models.CharField(max_length=200, blank=True, null=True)
     # Date/heure de la réunion (saisie) ; distincte de l'horodatage de création.
     date_reunion = models.DateTimeField(null=True, blank=True)

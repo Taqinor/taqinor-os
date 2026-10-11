@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from authentication.models import Company
 
-from apps.crm import activity, odoo_sync, services, tasks
+from apps.crm import activity, odoo_sync, tasks, leads_meta
 from apps.crm.models import Lead, LeadActivity
 
 
@@ -56,7 +56,7 @@ class VraieDateArriveeTests(TestCase):
         self.company = Company.objects.create(nom='Date', slug='date-co')
 
     def _creer(self, leadgen_id, created_time):
-        return services.create_lead_from_meta_lead_ads(
+        return leads_meta.create_lead_from_meta_lead_ads(
             company=self.company, leadgen_id=leadgen_id,
             field_data=_field_data(), created_time=created_time,
             origine='Meta Lead Ads (pull)')
@@ -104,7 +104,7 @@ class VraieDateArriveeTests(TestCase):
         self.assertEqual(again.date_creation, premiere)
 
     def test_sans_created_time_comportement_inchange(self):
-        lead = services.create_lead_from_meta_lead_ads(
+        lead = leads_meta.create_lead_from_meta_lead_ads(
             company=self.company, leadgen_id='6', field_data=_field_data())
         self.assertGreater(lead.date_creation,
                            timezone.now() - datetime.timedelta(minutes=5))

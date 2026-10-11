@@ -36,6 +36,11 @@ from ..services import (  # noqa: F401
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
+from . import _openapi as oa
+from apps.records.serializers import AttachmentSerializer  # noqa: E402
+from ..serializers_commissioning import (  # noqa: E402
+    CommissioningRecordSerializer, HandoverPackSerializer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -99,7 +104,8 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class InstallationViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('annule'), p1=oa.qs('art33'), p2=oa.qs('dossier_statut'), p3=oa.qs('mine'), p4=oa.qs('parc'), p5=oa.qs('regime'), p6=oa.qs('statut'), p7=oa.qs('type_installation'), p8=oa.qi('technicien'))
+class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Chantiers + historique « chatter ». Tout est scopé à la société du
     user ; l'acteur et la société sont posés côté serveur, jamais lus du corps.
     """
@@ -373,6 +379,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             except TransitionRefusee as exc:
                 raise ValidationError({'statut': exc.raisons})
 
+    @oa.extend_schema(request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.i(True)), responses={200: InstallationSerializer, 201: InstallationSerializer})
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
     def creer_depuis_devis(self, request):
@@ -401,6 +408,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
+    @oa.extend_schema(parameters=[oa.qf('kwc'), oa.qf('kw_ac'), oa.qs('niveau'), oa.qs('hors_reseau'), oa.qs('type_installation')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='regime-suggestion',
             permission_classes=[IsAnyRole])
     def regime_suggestion(self, request):
@@ -432,6 +440,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'seuil_anre_kwc': seuil_anre,
         })
 
+    @oa.extend_schema(responses=InstallationActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
@@ -439,6 +448,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(
             InstallationActivitySerializer(inst.activites.all(), many=True).data)
 
+    @oa.extend_schema(request=oa.body('NoterRequete', body=oa.s(True)), responses={201: InstallationActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -451,6 +461,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(InstallationActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(request=oa.body('MiseEnServiceRequete', date_mise_en_service=oa.d(), mes_pv_notes=oa.s(null=True), mes_production_test=oa.dec(null=True), mes_tension=oa.dec(null=True)), responses=InstallationSerializer)
     @action(detail=True, methods=['post'], url_path='mise-en-service',
             permission_classes=[IsResponsableOrAdmin])
     def mise_en_service(self, request, pk=None):
@@ -505,6 +516,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
+    @oa.extend_schema(request=oa.body('AnnulerChantierRequete', motif=oa.s(True)), responses=InstallationSerializer)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[IsResponsableOrAdmin])
     def annuler(self, request, pk=None):
@@ -563,6 +575,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
+    @oa.extend_schema(request=None, responses=InstallationSerializer)
     @action(detail=True, methods=['post'], url_path='reactiver',
             permission_classes=[IsResponsableOrAdmin])
     def reactiver(self, request, pk=None):
@@ -604,6 +617,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='checklist',
             permission_classes=[IsAnyRole])
     def checklist(self, request, pk=None):
@@ -619,6 +633,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'completion': round(100 * done / len(items)) if items else None,
         })
 
+    @oa.extend_schema(request=oa.body('CocherChecklistRequete', cle=oa.s(True), fait=oa.b(), equipements=oa.lst()), responses=oa.OBJ)
     @action(detail=True, methods=['post'], url_path='cocher-checklist',
             permission_classes=[IsResponsableOrAdmin])
     def cocher_checklist(self, request, pk=None):
@@ -686,7 +701,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'resultats_series': resultats_series,
         })
 
-    @action(detail=True, methods=['post'], url_path='series-lot',
+    @oa.extend_schema(request=oa.body('SeriesLotRequete', lignes=oa.lst(), texte=oa.s(), produit=oa.i(null=True), non_releves=oa.lst(), fichier=oa.serializers.FileField(required=False)), responses=oa.OBJ)
+    @action(parser_classes=oa.JSON_AND_UPLOAD_PARSERS, detail=True, methods=['post'], url_path='series-lot',
             permission_classes=[IsResponsableOrAdmin])
     def series_lot(self, request, pk=None):
         """CIQ633 — import en lot des numéros de série d'un chantier.
@@ -744,6 +760,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'manquantes': _gate_check_series(inst),
         })
 
+    @oa.extend_schema(request=oa.body('ChecklistPhotoRequete', attachment=oa.i(True), cle=oa.s(null=True), latitude=oa.f(null=True), longitude=oa.f(null=True), precision_m=oa.f(null=True)), responses={201: PhotoChecklistMetaSerializer})
     @action(detail=True, methods=['post'], url_path='checklist-photo',
             permission_classes=[IsResponsableOrAdmin])
     def checklist_photo(self, request, pk=None):
@@ -813,6 +830,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
     # Même patron que FG69 (Intervention.signer_client) : Data-URL PNG tracée
     # à l'écran (SignaturePad.jsx), complémentaire — ne remplace JAMAIS
     # l'e-signature légale loi 53-05 des contrats.
+    @oa.extend_schema(request=oa.body('SignerChantierRequete', signature_client=oa.s(True), signataire_nom=oa.s(), motif_override_signature=oa.s(), motif_override=oa.s(), signataire_fonction=oa.s(), signataire_societe=oa.s(), cosignataire_nom=oa.s(), cosignataire_fonction=oa.s(), cosignataire_organisme=oa.s()), responses=InstallationSerializer)
     @action(detail=True, methods=['post'], url_path='signer-client',
             permission_classes=[IsResponsableOrAdmin])
     def signer_client(self, request, pk=None):
@@ -902,6 +920,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='besoin-materiel',
             permission_classes=[IsAnyRole])
     def besoin_materiel(self, request, pk=None):
@@ -935,6 +954,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'nb_manques': sum(1 for it in items if it['manque'] > 0),
         })
 
+    @oa.extend_schema(request=oa.body('CommanderBesoinRequete', fournisseur=oa.i()), responses={201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='commander-besoin',
             permission_classes=[IsResponsableOrAdmin])
     def commander_besoin(self, request, pk=None):
@@ -968,6 +988,18 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         data['nb_lignes'] = nb
         return Response(data, status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(
+        parameters=[
+            oa.qf('nb_mois', desc='Durée de la période, en mois.'),
+            oa.qd('date_debut', desc='Début de période (AAAA-MM-JJ).'),
+            oa.qd('date_fin', desc='Fin de période (AAAA-MM-JJ).'),
+            oa.qf('production_annuelle_kwh',
+                  desc='Production annuelle saisie (kWh).'),
+            oa.qf('rendement', desc='Rendement spécifique (kWh/kWc/an).'),
+            oa.qf('tarif', desc='Tarif (MAD/kWh).'),
+            oa.qf('co2', desc='Facteur CO2 (kg/kWh).'),
+        ],
+        responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='rapport-energie',
             permission_classes=[IsAnyRole])
     def rapport_energie(self, request, pk=None):
@@ -999,6 +1031,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return resp
 
     # ── FG74 — Gantt multi-chantier (lecture seule) ──────────────────────────
+    @oa.extend_schema(responses=oa.LIST)
     @action(detail=False, methods=['get'], url_path='gantt',
             permission_classes=[IsAnyRole])
     def gantt(self, request):
@@ -1044,6 +1077,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
     # plutôt qu'un nouveau champ pour rester additif).
     _RELEVE_PHASES = ('releve', 'drone')
 
+    @oa.extend_schema(responses=AttachmentSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='releves',
             permission_classes=[IsAnyRole])
     def releves(self, request, pk=None):
@@ -1059,7 +1093,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         from apps.records.serializers import AttachmentSerializer
         return Response(AttachmentSerializer(qs, many=True).data)
 
-    @action(detail=True, methods=['post'], url_path='ajouter-releve',
+    @oa.extend_schema(request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(), phase=oa.s()), responses={201: AttachmentSerializer})
+    @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-releve',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_releve(self, request, pk=None):
         """FG75 — attache un relevé de toiture ou drone (photo/PDF) au chantier.
@@ -1097,6 +1132,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         from apps.records.serializers import AttachmentSerializer
         return Response(AttachmentSerializer(att).data, status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(request=oa.body('SupprimerReleveRequete', releve=oa.i(True)), responses={204: None})
     @action(detail=True, methods=['post'], url_path='supprimer-releve',
             permission_classes=[IsResponsableOrAdmin])
     def supprimer_releve(self, request, pk=None):
@@ -1121,6 +1157,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── FG79 — scaffold chaîne d'interventions standard ──────────────────────
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='creer-interventions-standard',
             permission_classes=[IsResponsableOrAdmin])
     def creer_interventions_standard(self, request, pk=None):
@@ -1174,6 +1211,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
     # ── FG70 — fiche de remise de garantie (handover summary / section PDF) ──
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='remise-garantie',
             permission_classes=[IsAnyRole])
     def remise_garantie(self, request, pk=None):
@@ -1215,6 +1253,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         })
 
     # ── FG71 — synthèse coût / marge par chantier (INTERNE, admin-only) ──────
+    @oa.extend_schema(parameters=[oa.qf('tarif_jour')], responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='cout',
             permission_classes=[IsAdminRole])
     def cout(self, request, pk=None):
@@ -1228,6 +1267,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         tarif = request.query_params.get('tarif_jour')
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
 
+    @oa.extend_schema(responses=oa.LIST)
     @action(detail=False, methods=['get'], url_path='a-facturer',
             permission_classes=[IsResponsableOrAdmin])
     def a_facturer(self, request):
@@ -1236,6 +1276,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         from ..services import chantiers_a_facturer
         return Response(chantiers_a_facturer(request.user.company))
 
+    @oa.extend_schema(request=None, responses=oa.OBJ)
     @action(detail=True, methods=['post'], url_path='reserver-stock',
             permission_classes=[IsResponsableOrAdmin])
     def reserver_stock(self, request, pk=None):
@@ -1259,6 +1300,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         })
 
     # ── CH2 — parcours d'étapes configurables + gates appliqués ─────────────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='etapes',
             permission_classes=[IsAnyRole])
     def etapes(self, request, pk=None):
@@ -1290,6 +1332,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         })
 
     # ── AGR608 — fiche de recette POMPAGE (chantier agricole) ───────────────
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})
     @action(detail=True, methods=['get', 'post'], url_path='recette-pompage',
             permission_classes=[IsAnyRole])
     def recette_pompage(self, request, pk=None):
@@ -1321,6 +1364,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(recette_pompage_envelope(inst, recette, ctx))
 
     # ── CH3 — fiche de recette IEC 62446-1 (mise en service structurée) ─────
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: CommissioningRecordSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='recette',
             permission_classes=[IsAnyRole])
     def recette(self, request, pk=None):
@@ -1342,6 +1386,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(CommissioningRecordSerializer(record).data)
 
     # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
+    @oa.extend_schema(request=oa.body('ReserveChantierRequete', description=oa.s(True), origine=oa.s(), bloquante=oa.b(), date_echeance=oa.d(null=True), responsable=oa.s()), responses={200: oa.LIST, 201: oa.OBJ})
     @action(detail=True, methods=['get', 'post'], url_path='reserves',
             permission_classes=[IsAnyRole])
     def reserves(self, request, pk=None):
@@ -1383,6 +1428,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(reserve_contrat(reserve),
                         status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(parameters=[oa.OpenApiParameter('rid', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('LeverReserveRequete', resolution=oa.s()), responses=oa.OBJ)
     @action(detail=True, methods=['post'],
             url_path=r'reserves/(?P<rid>\d+)/lever',
             permission_classes=[IsResponsableOrAdmin])
@@ -1403,6 +1449,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(reserve_contrat(reserve))
 
     # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──
+    @oa.extend_schema(request=None, responses=oa.OBJ)
     @action(detail=True, methods=['post'], url_path='reception-definitive',
             permission_classes=[IsResponsableOrAdmin])
     def reception_definitive(self, request, pk=None):
@@ -1423,6 +1470,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(reception_contrat(inst))
 
     # ── CH4 — pack de remise client (handover) ──────────────────────────────
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: HandoverPackSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pack-remise',
             permission_classes=[IsAnyRole])
     def pack_remise(self, request, pk=None):
@@ -1455,6 +1503,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'persiste': False,
         })
 
+    @oa.extend_schema(request=oa.body('AvancerEtapeRequete', etape=oa.s(True), motif_override_acompte=oa.s(), motif_derogation_8221=oa.s()), responses=InstallationSerializer)
     @action(detail=True, methods=['post'], url_path='avancer-etape',
             permission_classes=[IsResponsableOrAdmin])
     def avancer_etape(self, request, pk=None):
@@ -1527,6 +1576,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             InstallationSerializer(inst, context={'request': request}).data)
 
     # ── FG77 — contrôle de préparation avant pose (advisory) ────────────────
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='readiness',
             permission_classes=[IsAnyRole])
     def readiness(self, request, pk=None):

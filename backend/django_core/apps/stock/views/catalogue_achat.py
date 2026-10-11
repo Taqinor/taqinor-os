@@ -18,7 +18,8 @@ prix d'achat, lui, est la donnée utile au demandeur pour estimer sa réquisitio
 (``date_dernier_achat``), avec repli sur ``Produit.prix_achat``.
 """
 from django.db.models import Q
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema, extend_schema_field, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -26,6 +27,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole
 from core.mixins import TenantMixin
 
+from ..openapi_helpers import BOOL, INT, P, STR, corps
 from ..models import FavorisCatalogueAchat, Produit
 
 
@@ -35,11 +37,14 @@ class CatalogueAchatSerializer(serializers.ModelSerializer):
     Liste de champs volontairement FERMÉE (jamais ``prix_vente``, jamais
     ``tva``, jamais de champ dérivable en marge)."""
     categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True, default=None)
+        source='categorie.nom', read_only=True, default=None,
+        allow_null=True)
     fournisseur_prefere = serializers.IntegerField(
-        source='fournisseur_id', read_only=True, default=None)
+        source='fournisseur_id', read_only=True, default=None,
+        allow_null=True)
     fournisseur_prefere_nom = serializers.CharField(
-        source='fournisseur.nom', read_only=True, default=None)
+        source='fournisseur.nom', read_only=True, default=None,
+        allow_null=True)
     prix_achat_dernier = serializers.SerializerMethodField()
 
     class Meta:
@@ -62,7 +67,7 @@ class CatalogueAchatSerializer(serializers.ModelSerializer):
             fields.pop('prix_achat_dernier', None)
         return fields
 
-    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
+    @extend_schema_field(serializers.FloatField(allow_null=True))
     def get_prix_achat_dernier(self, obj):
         """Dernier prix d'achat connu : tarif fournisseur le plus récent,
         sinon le prix d'achat catalogue du produit."""
@@ -76,6 +81,7 @@ class CatalogueAchatSerializer(serializers.ModelSerializer):
         return obj.prix_achat
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('q', STR, False, 'Recherche nom/SKU/catégorie'), P('categorie', INT), P('fournisseur', INT), P('recent', BOOL, False, 'Derniers produits demandés')]))
 class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTP2P3 — catalogue d'achat en LECTURE SEULE, scopé société.
 
@@ -90,6 +96,8 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAnyRole]
     queryset = Produit.objects.select_related(
         'categorie', 'fournisseur').filter(is_archived=False)
+
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -122,6 +130,8 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     # Garde EXPLICITE sur l'action (ratchet `test_action_permissions`) :
     # même palier que le viewset, mais déclaré ici pour qu'une action ne
     # puisse jamais hériter d'un palier par accident.
+    @extend_schema(methods=['GET'], responses=corps('CatalogueAchatFavorisReponse', epingles=serializers.ListField(child=serializers.IntegerField()), recents=serializers.ListField(child=serializers.IntegerField()), produit_ids=serializers.ListField(child=serializers.IntegerField())))
+    @extend_schema(methods=['PUT'], request=corps('CatalogueAchatFavorisCorps', produit_ids=serializers.ListField(child=serializers.IntegerField())), responses=corps('CatalogueAchatFavorisReponsePut', epingles=serializers.ListField(child=serializers.IntegerField()), recents=serializers.ListField(child=serializers.IntegerField()), produit_ids=serializers.ListField(child=serializers.IntegerField())))
     @action(detail=False, methods=['get', 'put'],
             permission_classes=[IsAnyRole])
     def favoris(self, request):

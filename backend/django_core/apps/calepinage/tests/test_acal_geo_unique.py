@@ -103,7 +103,7 @@ class MemeConversionPartoutTest(SimpleTestCase):
                 'ventes._azimut_boussole_vers_aspect':
                     ventes_services._azimut_boussole_vers_aspect(azimut),
                 'pvgis_serie.azimut_pvgis': pvgis_serie.azimut_pvgis(azimut),
-                'horizon.profil_saisi': horizon.profil_saisi(
+                'horizon._profil_saisi': horizon._profil_saisi(
                     [{'azimut_face_deg': azimut, 'hauteur_deg': 1.0}]
                 )['points'][0]['azimut_pvgis_deg'],
             }
@@ -117,7 +117,7 @@ class MemeConversionPartoutTest(SimpleTestCase):
                 'core.geo': geo.aspect_vers_boussole(aspect),
                 'ventes._aspect_vers_azimut_boussole':
                     _aspect_vers_azimut_boussole(aspect),
-                'horizon.azimut_de_face': horizon.azimut_de_face(aspect),
+                'horizon._azimut_de_face': horizon._azimut_de_face(aspect),
             }
             with self.subTest(aspect=aspect):
                 self.assertEqual(len(set(valeurs.values())), 1, valeurs)

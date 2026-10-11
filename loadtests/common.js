@@ -20,7 +20,11 @@ export function login() {
   if (res.status !== 200) {
     return null;
   }
-  return res.json('access');
+  // ENF12 — /token/ ne renvoie plus le jeton dans le corps : il pose le cookie
+  // httpOnly `access_token`. Les VU k6 n'héritent pas du bocal à cookies de
+  // setup() : on relaie la valeur en en-tête Bearer (accepté sans cookie).
+  const cookie = (res.cookies.access_token || [])[0];
+  return cookie ? cookie.value : null;
 }
 
 export function authHeaders(token) {

@@ -2,6 +2,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import ContratMaintenance, PrestationContrat
 
 
@@ -20,7 +22,11 @@ class PrestationContratSerializer(serializers.ModelSerializer):
         read_only_fields = ['type', 'libelle']
 
 
-class ContratMaintenanceSerializer(serializers.ModelSerializer):
+class ContratMaintenanceSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ENF17 — client et chantier bornés à la société (les équipements le sont
+    # par ``validate_equipements``).
+    same_company_fields = ('client', 'installation')
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     prochaine_visite = serializers.SerializerMethodField()
     due = serializers.SerializerMethodField()
@@ -70,10 +76,12 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
         return {'devis_id': obj.origine_devis_id,
                 'ligne_om': obj.origine_ligne_om_id}
 
+    @extend_schema_field(serializers.DictField())
     def get_droits_restants(self, obj):
         from .selectors import droits_restants
         return droits_restants(obj)
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_equipements_detail(self, obj):
         return [
             {
@@ -121,12 +129,15 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                 raise ValidationError('Équipement inconnu.')
         return value
 
+    @extend_schema_field(serializers.CharField())
     def get_prochaine_visite(self, obj):
         return obj.prochaine_visite().isoformat()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_due(self, obj):
         return obj.is_due()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_renouvellement_du(self, obj):
         return obj.renouvellement_du()
 

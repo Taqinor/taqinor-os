@@ -20,9 +20,8 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import (
-    CANAL_VISITE, calculer_echeances_cadence, initialiser_plan_relance,
-)
+from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
+from apps.crm.cadence_reperes import CANAL_VISITE
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
     CADENCE_RELANCE_DEFAUT, CADENCES_DEFAUT, CadenceRelanceEtape,

@@ -115,9 +115,11 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
 
     from apps.crm import stages
     from apps.crm.models import Lead, RelanceEtape
-    from apps.crm.services import (
-        _garde_cadence_contact, demarrer_cadence_contact,
-        initialiser_plan_relance)
+    from apps.crm.cadence_plan import (
+        _garde_cadence_contact,
+        demarrer_cadence_contact,
+        initialiser_plan_relance,
+    )
 
     maintenant = now or timezone.now()
     rapport = {'apres_devis': _bloc(), 'contact': _bloc(),

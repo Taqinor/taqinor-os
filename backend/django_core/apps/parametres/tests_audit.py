@@ -1,11 +1,12 @@
 """Tests du journal d'audit des paramètres (N55) — qui change quoi, quand."""
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.parametres.models import SettingsAuditLog
+from apps.parametres.serializers_audit import SettingsAuditLogSerializer
 
 User = get_user_model()
 
@@ -82,3 +83,20 @@ class SettingsAuditTest(TestCase):
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
         r = api.get('/api/django/parametres/audit/')
         self.assertEqual(r.data['count'], 0)
+
+
+# ── ENF17 — la FK ``user`` du journal n'est pas inscriptible ───────────
+# Sérialiseur de SORTIE (aucune écriture API) : ``user`` en lecture seule,
+# un ``user`` fourni dans un corps est ignoré.
+
+class SettingsAuditLogUserLectureSeuleTests(SimpleTestCase):
+    def test_user_en_lecture_seule(self):
+        champ = SettingsAuditLogSerializer().fields['user']
+        self.assertTrue(champ.read_only)
+
+    def test_user_ignore_en_entree(self):
+        ser = SettingsAuditLogSerializer(
+            data={'section': 's', 'field': 'f', 'user': 99999999},
+            partial=True)
+        self.assertTrue(ser.is_valid(), ser.errors)
+        self.assertNotIn('user', ser.validated_data)

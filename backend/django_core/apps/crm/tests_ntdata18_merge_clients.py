@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.crm.models import Client, Lead
-from apps.crm.services import merge_clients
+from apps.crm.clients_identite import merge_clients
 from apps.installations.models_installation import Installation
 from apps.sav.models import Ticket
 from apps.ventes.models import Devis, Facture

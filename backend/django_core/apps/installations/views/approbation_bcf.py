@@ -28,11 +28,12 @@ from ..serializers import (
 )
 from .. import selectors
 from core.permissions import _user_has_or_legacy
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class SeuilApprobationBCFViewSet(CompanyScopedModelViewSet):
+class SeuilApprobationBCFViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG312 — seuil d'approbation BCF par société. Lecture responsable/admin,
     écriture Administrateur seulement (règle de gouvernance). Société posée
     serveur."""
@@ -45,7 +46,8 @@ class SeuilApprobationBCFViewSet(CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
 
-class ApprobationBCFViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+@oa.listing(p0=oa.qi('bcf'))
+class ApprobationBCFViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """FG312 — approbations de BCF (lecture) + action `approuver`. Lecture tout
     rôle ; l'approbation applique le palier requis par le montant. Société +
     approbateur posés serveur ; BCF validé tenant. Filtrable par `bcf`."""
@@ -68,6 +70,7 @@ class ApprobationBCFViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(bcf_id=bcf)
         return qs
 
+    @oa.extend_schema(request=oa.body('ApprobationBcfRequete', bcf=oa.i(True), note=oa.s()))
     @action(detail=False, methods=['post'])
     def approuver(self, request):
         """FG312 — approuve un BCF en appliquant le palier requis selon son

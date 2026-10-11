@@ -7,6 +7,8 @@ Agrégation LECTURE SEULE, scopée société, sans aucune écriture. Renvoie :
   - Encaissé vs facturé (mois en cours ou période paramétrée)
   - Pipeline par commercial (décompte + valeur totale des devis actifs)
 """
+from drf_spectacular.utils import extend_schema
+from .openapi_params import qstr
 from decimal import Decimal
 
 from django.db.models import Count, Q
@@ -91,6 +93,7 @@ def _cle_commercial(devis):
             (auteur.last_name or '').strip())
 
 
+@extend_schema(parameters=[qstr('start'), qstr('end'), qstr('month')])
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def dashboard_quote_to_cash(request):

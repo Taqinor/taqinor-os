@@ -15,6 +15,7 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from ..models import Equipe
 from ..serializers import EquipeSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -34,7 +35,8 @@ def _check_members_tenant(serializer, company):
         raise ValidationError({'chef': 'Chef inconnu.'})
 
 
-class EquipeViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('actif'))
+class EquipeViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """DC40 — équipes terrain (membres = utilisateurs). Lecture tout rôle,
     écriture responsable/admin. Société + `created_by` posés côté serveur ;
     membres/chef validés tenant. Filtrable par `actif`."""

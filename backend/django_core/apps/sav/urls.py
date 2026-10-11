@@ -1,5 +1,8 @@
 from django.urls import path, include
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework.routers import DefaultRouter
 from rest_framework.decorators import api_view, permission_classes
@@ -42,6 +45,20 @@ router.register(r'worksheet-modeles', WorksheetMaintenanceModeleViewSet)
 router.register(r'problemes', ProblemeViewSet)
 
 
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'months', OpenApiTypes.INT, required=False,
+        description='Fenêtre en mois (défaut 12).')],
+    responses=inline_serializer('SavPartsForecastLigne', {
+        'produit': drf_serializers.IntegerField(),
+        'nom': drf_serializers.CharField(),
+        'marque': drf_serializers.CharField(allow_blank=True),
+        'sku': drf_serializers.CharField(allow_blank=True),
+        'total_consomme': drf_serializers.FloatField(),
+        'mois_fenetre': drf_serializers.IntegerField(),
+        'consommation_mensuelle_moy': drf_serializers.FloatField(),
+        'qte_suggere_reappro': drf_serializers.FloatField(),
+    }, many=True))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def parts_forecast_view(request):
@@ -49,6 +66,18 @@ def parts_forecast_view(request):
     return sav_parts_forecast(request)
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('group_by', OpenApiTypes.STR, required=False,
+                         enum=['produit', 'fournisseur']),
+        OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
+    ],
+    responses=inline_serializer('SavParetoPannes', {
+        'group_by': drf_serializers.CharField(),
+        'results': drf_serializers.ListField(
+            child=drf_serializers.DictField()),
+    }))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def pareto_pannes_view(request):
@@ -56,6 +85,13 @@ def pareto_pannes_view(request):
     return sav_pareto_pannes(request)
 
 
+@extend_schema(
+    parameters=[OpenApiParameter('limit', OpenApiTypes.INT, required=False)],
+    responses=inline_serializer('SavFiabiliteParc', {
+        'results': drf_serializers.ListField(
+            child=drf_serializers.DictField()),
+        'couts_inclus': drf_serializers.BooleanField(),
+    }))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def fiabilite_insight_view(request):
@@ -63,6 +99,9 @@ def fiabilite_insight_view(request):
     return sav_fiabilite_insight(request)
 
 
+@extend_schema(responses=inline_serializer('SavResumeParEquipe', {
+    'results': drf_serializers.ListField(child=drf_serializers.DictField()),
+}))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def resume_par_equipe_view(request):
@@ -70,6 +109,7 @@ def resume_par_equipe_view(request):
     return sav_resume_par_equipe(request)
 
 
+@extend_schema(responses=inline_serializer('SavFileAction', {}))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def file_action_view(request):
@@ -77,28 +117,36 @@ def file_action_view(request):
     return sav_file_action(request)
 
 
-@extend_schema(responses=inline_serializer('SavFcrInsight', {
-    'date_debut': drf_serializers.DateField(allow_null=True),
-    'date_fin': drf_serializers.DateField(allow_null=True),
-    'nb_tickets_periode': drf_serializers.IntegerField(),
-    'nb_clotures': drf_serializers.IntegerField(),
-    'nb_non_clotures_exclus': drf_serializers.IntegerField(),
-    'nb_fcr': drf_serializers.IntegerField(),
-    'taux_fcr': drf_serializers.FloatField(allow_null=True),
-    'echanges_max': drf_serializers.IntegerField(),
-    'exclusions': inline_serializer('SavFcrExclusions', {
-        'reouverture': drf_serializers.IntegerField(),
-        'echanges_multiples': drf_serializers.IntegerField(),
-    }),
-    'tickets': inline_serializer('SavFcrTicket', {
-        'ticket_id': drf_serializers.IntegerField(),
-        'reference': drf_serializers.CharField(),
-        'fcr': drf_serializers.BooleanField(),
-        'motif': drf_serializers.CharField(),
-        'reopen_count': drf_serializers.IntegerField(),
-        'nb_echanges_client': drf_serializers.IntegerField(),
-    }, many=True),
-}))
+@extend_schema(parameters=[
+    OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
+    OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
+    OpenApiParameter('export', OpenApiTypes.STR, required=False,
+                     enum=['xlsx'],
+                     description="'xlsx' : export tableur de la liste."),
+], responses={
+    (200, 'application/json'): inline_serializer('SavFcrInsight', {
+        'date_debut': drf_serializers.DateField(allow_null=True),
+        'date_fin': drf_serializers.DateField(allow_null=True),
+        'nb_tickets_periode': drf_serializers.IntegerField(),
+        'nb_clotures': drf_serializers.IntegerField(),
+        'nb_non_clotures_exclus': drf_serializers.IntegerField(),
+        'nb_fcr': drf_serializers.IntegerField(),
+        'taux_fcr': drf_serializers.FloatField(allow_null=True),
+        'echanges_max': drf_serializers.IntegerField(),
+        'exclusions': inline_serializer('SavFcrExclusions', {
+            'reouverture': drf_serializers.IntegerField(),
+            'echanges_multiples': drf_serializers.IntegerField(),
+        }),
+        'tickets': inline_serializer('SavFcrTicket', {
+            'ticket_id': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(),
+            'fcr': drf_serializers.BooleanField(),
+            'motif': drf_serializers.CharField(),
+            'reopen_count': drf_serializers.IntegerField(),
+            'nb_echanges_client': drf_serializers.IntegerField(),
+        }, many=True),
+        }),
+    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def fcr_insight_view(request):
@@ -112,22 +160,30 @@ def fcr_insight_view(request):
     return sav_fcr_insight(request)
 
 
-@extend_schema(responses=inline_serializer('SavPerformanceAgentInsight', {
-    'date_debut': drf_serializers.DateField(allow_null=True),
-    'date_fin': drf_serializers.DateField(allow_null=True),
-    'nb_tickets_traites': drf_serializers.IntegerField(),
-    'agents': inline_serializer('SavPerformanceAgentLigne', {
-        'agent_id': drf_serializers.IntegerField(allow_null=True),
-        'agent_nom': drf_serializers.CharField(),
+@extend_schema(parameters=[
+    OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
+    OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
+    OpenApiParameter('export', OpenApiTypes.STR, required=False,
+                     enum=['xlsx'],
+                     description="'xlsx' : export tableur de la liste."),
+], responses={
+    (200, 'application/json'): inline_serializer('SavPerformanceAgentInsight', {
+        'date_debut': drf_serializers.DateField(allow_null=True),
+        'date_fin': drf_serializers.DateField(allow_null=True),
         'nb_tickets_traites': drf_serializers.IntegerField(),
-        'delai_resolution_moyen_jours': drf_serializers.FloatField(
-            allow_null=True),
-        'csat_moyen': drf_serializers.FloatField(allow_null=True),
-        'nb_csat': drf_serializers.IntegerField(),
-        'nb_tickets_avec_sla': drf_serializers.IntegerField(),
-        'taux_respect_sla': drf_serializers.FloatField(allow_null=True),
-    }, many=True),
-}))
+        'agents': inline_serializer('SavPerformanceAgentLigne', {
+            'agent_id': drf_serializers.IntegerField(allow_null=True),
+            'agent_nom': drf_serializers.CharField(),
+            'nb_tickets_traites': drf_serializers.IntegerField(),
+            'delai_resolution_moyen_jours': drf_serializers.FloatField(
+                allow_null=True),
+            'csat_moyen': drf_serializers.FloatField(allow_null=True),
+            'nb_csat': drf_serializers.IntegerField(),
+            'nb_tickets_avec_sla': drf_serializers.IntegerField(),
+            'taux_respect_sla': drf_serializers.FloatField(allow_null=True),
+        }, many=True),
+        }),
+    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def performance_agent_view(request):

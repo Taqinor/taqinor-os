@@ -30,10 +30,14 @@ from django.db import models
 from django.http import Http404, HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
 from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import (
+    api_view, authentication_classes, parser_classes, permission_classes,
+    throttle_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
@@ -251,9 +255,15 @@ def _emettre_export_reversibilite_declenche(run, user):
             'échouée (run %s)', getattr(run, 'pk', '?'), exc_info=True)
 
 
-@extend_schema(request=None, responses={202: ExportReversibiliteRunSerializer})
+@extend_schema(
+    request=inline_serializer('ExportReversibiliteRequete', {
+        'datasets': serializers.ListField(
+            child=serializers.CharField(), required=False),
+    }),
+    responses={202: ExportReversibiliteRunSerializer})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 @throttle_classes([ExportReversibiliteThrottle])
 def declencher_export_reversibilite(request):
     """POST /api/django/core/export-reversibilite/ — Directeur/Administrateur
@@ -292,8 +302,13 @@ class ExportReversibiliteHistoriqueView(generics.ListAPIView):
         )
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={
+    (200, 'application/zip'): OpenApiTypes.BINARY,
+    403: inline_serializer('ExportTelechargementRefuse', {
+        'detail': serializers.CharField()}),  # politique réseau (middleware)
+})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicExportThrottle])
 def telecharger_export_reversibilite(request, token):

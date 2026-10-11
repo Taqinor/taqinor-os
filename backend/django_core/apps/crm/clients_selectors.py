@@ -1487,7 +1487,7 @@ def client_ids_par_identifiant(company, identifiant):
     ``company`` — aucune lecture cross-société.
     """
     from .models import Client
-    from .services import normalize_email, normalize_phone
+    from .leads_doublons import normalize_email, normalize_phone
 
     if company is None or not (identifiant or '').strip():
         return []

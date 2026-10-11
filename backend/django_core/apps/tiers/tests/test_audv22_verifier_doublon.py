@@ -44,9 +44,12 @@ class VerifierDoublonEndpointTests(TenantAPITestCase):
         self.assertEqual(r.data['ice_matches'], [])
         self.assertEqual(r.data['email_matches'], [])
 
-    def test_sans_parametre_400(self):
+    def test_sans_parametre_aucune_correspondance(self):
+        # ENF10 — advisory, jamais bloquant : aucun paramètre => 200 vide.
         r = self.client_as().get(self.URL)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['ice_matches'], [])
+        self.assertEqual(r.data['email_matches'], [])
 
     def test_company_scoped(self):
         Tiers.objects.create(

@@ -16,9 +16,10 @@ JAMAIS la somme des deux — l'ancien ``devis.total_ttc`` servait le brut.
 import hashlib
 import hmac
 
+from .openapi_public import PUBLIC_DETAIL
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers, status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -191,10 +192,13 @@ def _item_payload(item):
 
 
 @extend_schema(methods=['GET'], request=None,
-               responses={200: _SALLE_VENTE_RESPONSE})
+               responses={200: _SALLE_VENTE_RESPONSE, 403: PUBLIC_DETAIL,
+                          404: PUBLIC_DETAIL, 410: PUBLIC_DETAIL})
 @extend_schema(methods=['POST'], request=_SALLE_VENTE_ACCES_REQUEST,
-               responses={200: _SALLE_VENTE_RESPONSE})
+               responses={200: _SALLE_VENTE_RESPONSE, 403: PUBLIC_DETAIL,
+                          404: PUBLIC_DETAIL, 410: PUBLIC_DETAIL})
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleVenteRateThrottle])
 def public_salle_vente(request, token):
@@ -216,9 +220,11 @@ def public_salle_vente(request, token):
     """
     salle = _resolve_salle(token)
     if salle is None:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Salle de vente introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
     if not salle.is_accessible:
-        return Response(status=status.HTTP_410_GONE)
+        return Response({'detail': 'Salle de vente expirée ou révoquée.'},
+                        status=status.HTTP_410_GONE)
     if salle.has_password:
         corps = request.data if hasattr(request.data, 'get') else {}
         mot_de_passe = corps.get('mot_de_passe') or ''
@@ -233,7 +239,7 @@ def public_salle_vente(request, token):
         salle=salle, ip_hash=_hash_ip(request, salle))
     try:
         # NTCRM27 — best-effort : ne doit jamais faire échouer la vue publique.
-        from .services import detecter_signal_interet_salle_vente
+        from .clients_pilotage import detecter_signal_interet_salle_vente
         detecter_signal_interet_salle_vente(salle)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         pass
@@ -270,8 +276,10 @@ class PublicApporteurRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
         }
 
 
-@extend_schema(responses={200: _APPORTEUR_DEALS_RESPONSE})
+@extend_schema(responses={200: _APPORTEUR_DEALS_RESPONSE,
+                          403: PUBLIC_DETAIL, 404: PUBLIC_DETAIL})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicApporteurRateThrottle])
 def public_apporteur_mes_deals(request, token):
@@ -284,7 +292,8 @@ def public_apporteur_mes_deals(request, token):
     apporteur = Apporteur.objects.filter(
         token_acces=token, actif=True).first()
     if apporteur is None:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
 
     deals = (apporteur.deals
              .select_related('lead')

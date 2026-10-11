@@ -20,6 +20,8 @@ Chaque échéance porte un statut d'alerte calculé par rapport à aujourd'hui :
 ``expire`` (passée), ``imminent`` (≤ seuil de jours), ``a_venir`` (au-delà). Ne
 change aucun statut de devis ; jamais de prix.
 """
+from drf_spectacular.utils import extend_schema
+from .openapi_params import qint, qstr
 from datetime import timedelta
 
 from django.utils import timezone
@@ -82,6 +84,7 @@ def _alerte(date_echeance, today, seuil_jours):
     return 'a_venir', delta
 
 
+@extend_schema(parameters=[qint('seuil'), qint('validite'), qstr('statut')])
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def calendrier_reglementaire(request):

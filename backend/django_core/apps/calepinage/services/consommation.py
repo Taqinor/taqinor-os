@@ -27,7 +27,7 @@ LES RÈGLES POSÉES ICI
    distributeur ; tant qu'elle n'est pas branchée, ``kwh`` vaut ``null`` avec
    sa raison, jamais un kWh dérivé d'un prix moyen supposé. CALX257 : elle est
    écrite dans le barème SOCIÉTÉ (``apps.parametres.tariff.
-   kwh_depuis_facture``) ; :func:`publier_kwh` ne fait que l'appeler et
+   kwh_depuis_facture``) ; :func:`_publier_kwh` ne fait que l'appeler et
    publier ``kwh`` avec son motif — cette règle reste vraie (D5).
 """
 from __future__ import annotations
@@ -36,9 +36,7 @@ import math
 
 __all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
            'PROVENANCES_APPAREIL', 'ProfilInvalide', 'SOURCES_MOIS', 'UNITES',
-           'apercu_courbe_csv', 'appliquer_ramadan', 'courbe_appareils',
-           'interpoler_factures', 'profil_depuis_lead',
-           'profil_depuis_layout', 'profil_mensuel', 'publier_kwh',
+           'apercu_courbe_csv', 'profil_depuis_layout',
            # ACAL310 — la consommation proposée par le serveur.
            'LeadIntrouvable', 'MOIS_ETE', 'SOURCES_PROPOSITION',
            'proposer_consommation']
@@ -57,7 +55,7 @@ MOIS_FACTURE_HIVER = 1
 MOIS_FACTURE_ETE = 7
 
 #: L'avertissement d'un profil dont les kWh ne sont pas convertis — retiré par
-#: :func:`publier_kwh` dès que le barème société a été consulté.
+#: :func:`_publier_kwh` dès que le barème société a été consulté.
 AVIS_KWH_NON_CONVERTIS = (
     'Les montants sont en MAD par mois. La conversion en kWh dépend du '
     'barème du distributeur : elle n\'est pas faite ici, et « kwh » reste '
@@ -73,7 +71,7 @@ class ProfilInvalide(ValueError):
         self.motif = message
 
 
-def interpoler_factures(hiver, ete):
+def _interpoler_factures(hiver, ete):
     """Les douze montants dérivés de (hiver, été) — PORT EXACT de l'écran devis.
 
     ``frontend/src/features/ventes/solar.js`` : sept valeurs de janvier à
@@ -108,8 +106,8 @@ def _montant(valeur, *, champ):
     return nombre
 
 
-def profil_mensuel(*, facture_hiver, facture_ete=None, ete_differente=False,
-                   saisies=None, conso_mensuelle_kwh=None):
+def _profil_mensuel(*, facture_hiver, facture_ete=None, ete_differente=False,
+                    saisies=None, conso_mensuelle_kwh=None):
     """Les douze mois du profil, chacun avec sa source.
 
     Args:
@@ -130,7 +128,7 @@ def profil_mensuel(*, facture_hiver, facture_ete=None, ete_differente=False,
             'Le lead est marqué « été différent » mais aucune facture d\'été '
             "n'est renseignée : les douze mois reprennent la facture d'hiver.")
 
-    montants = interpoler_factures(hiver, ete)
+    montants = _interpoler_factures(hiver, ete)
     saisies = {int(mois): valeur for mois, valeur in (saisies or {}).items()}
 
     lignes = []
@@ -186,7 +184,7 @@ def _lire_lead(company, lead_id):
     return get_company_lead(company, lead_id, avec_corbeille=True)
 
 
-def profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
+def _profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
     """Le profil pré-rempli depuis le lead d'un calepinage, ou VIDE.
 
     Args:
@@ -203,12 +201,12 @@ def profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
     lecteur = lire_lead or _lire_lead
     lead = lecteur(company, lead_id) if lead_id else None
     if lead is None:
-        profil = profil_mensuel(facture_hiver=None, saisies=saisies)
+        profil = _profil_mensuel(facture_hiver=None, saisies=saisies)
         profil['avertissements'].insert(0, (
             "Aucun lead n'est rattaché à ce calepinage (ou il appartient à "
             'une autre société) : le profil de consommation part vide.'))
         return profil
-    return profil_mensuel(
+    return _profil_mensuel(
         facture_hiver=getattr(lead, 'facture_hiver', None),
         facture_ete=getattr(lead, 'facture_ete', None),
         ete_differente=bool(getattr(lead, 'ete_differente', False)),
@@ -238,11 +236,11 @@ def _lire_reglages_tarif(company):
     return TariffSettings.get(company=company)
 
 
-def publier_kwh(profil, company, *, classe, lire_reglages=None):
+def _publier_kwh(profil, company, *, classe, lire_reglages=None):
     """Renseigne ``kwh`` de chaque mois par le barème SOCIÉTÉ, avec son motif.
 
     Args:
-        profil: un profil de :func:`profil_mensuel` / :func:`profil_depuis_lead`
+        profil: un profil de :func:`_profil_mensuel` / :func:`_profil_depuis_lead`
             (modifié EN PLACE et rendu).
         company: la société — posée côté serveur. ``None`` ⇒ aucun réglage
             n'est lu et chaque ``kwh`` reste ``None`` avec le motif.
@@ -339,7 +337,7 @@ def profil_depuis_layout(layout, *, saisies=None):
             (``'facture'``/``'courbe'``/``'appareils'``), ``saisons``,
             ``appareils``, ``source``.
         saisies: réservé pour la cohérence de signature avec
-            :func:`profil_depuis_lead` — la courbe de l'atelier EST déjà la
+            :func:`_profil_depuis_lead` — la courbe de l'atelier EST déjà la
             saisie du client, aucune correction manuelle n'est câblée ici
             (aucun comportement n'est inventé pour ce paramètre tant qu'un
             besoin réel ne le motive pas).
@@ -483,7 +481,7 @@ def _appareil_valide(appareil, *, rang, longueur):
     }
 
 
-def courbe_appareils(appareils, *, longueur=24, total_annuel_kwh=None):
+def _courbe_appareils(appareils, *, longueur=24, total_annuel_kwh=None):
     """La courbe journalière composée par la somme des appareils déclarés.
 
     Args:
@@ -620,7 +618,7 @@ def _tourner(courbe, decalage):
     return [courbe[(pas - decalage) % longueur] for pas in range(longueur)]
 
 
-def appliquer_ramadan(courbe24, *, jour, lat=None, lon=None):
+def _appliquer_ramadan(courbe24, *, jour, lat=None, lon=None):
     """La courbe 24 h du jour ``jour``, décalée si ce jour tombe en Ramadan.
 
     Args:
@@ -1053,8 +1051,8 @@ def _saisons_des_mois(kwh_par_mois):
 
 def _depuis_profil_mensuel(profil, company, classe):
     """``(courbe24, kwh_annuel, saisons, avertissements)`` depuis douze
-    factures, converties par le barème de la SOCIÉTÉ (:func:`publier_kwh`)."""
-    publier_kwh(profil, company, classe=classe)
+    factures, converties par le barème de la SOCIÉTÉ (:func:`_publier_kwh`)."""
+    _publier_kwh(profil, company, classe=classe)
     kwh = [ligne.get('kwh') for ligne in profil['mois']]
     avertissements = list(profil.get('avertissements') or [])
     if any(valeur is None for valeur in kwh):
@@ -1077,7 +1075,7 @@ def _depuis_factures(corps, company):
             "La facture d'hiver n'est pas finie : saisissez un montant en "
             'dirhams.', champ='factures.hiver_mad')
     try:
-        profil = profil_mensuel(
+        profil = _profil_mensuel(
             facture_hiver=factures.get('hiver_mad'),
             facture_ete=factures.get('ete_mad'),
             ete_differente=bool(factures.get('ete_differente')))
@@ -1094,8 +1092,8 @@ def _depuis_lead(corps, company, lead_id, lire_lead=None):
     lead = (lire_lead or _lire_lead)(company, lead_id) if lead_id else None
     if lead is None:
         raise LeadIntrouvable('Introuvable.')
-    profil = profil_depuis_lead(company, lead_id,
-                                lire_lead=lambda *_: lead)
+    profil = _profil_depuis_lead(company, lead_id,
+                                 lire_lead=lambda *_: lead)
     return _depuis_profil_mensuel(profil, company,
                                   _classe_saisie(corps, lead)) + ('facture',)
 
@@ -1105,7 +1103,7 @@ def _depuis_appareils(corps):
         ajouter_charges, courbe_climatisation, courbe_pac, courbe_vehicule,
     )
 
-    rendu = courbe_appareils(corps.get('appareils') or [])
+    rendu = _courbe_appareils(corps.get('appareils') or [])
     courbe = rendu.get('courbe')
     avertissements = list(rendu.get('avertissements') or [])
     if courbe is None:
@@ -1206,8 +1204,8 @@ def proposer_consommation(calepinage, corps, *, company, maintenant=None,
                 champ='ramadan.jour') from refus
         pin = ((getattr(calepinage, 'roof_layout', None) or {}).get('pin')
                or {})
-        decale = appliquer_ramadan(courbe24, jour=jour, lat=pin.get('lat'),
-                                   lon=pin.get('lng', pin.get('lon')))
+        decale = _appliquer_ramadan(courbe24, jour=jour, lat=pin.get('lat'),
+                                    lon=pin.get('lng', pin.get('lon')))
         courbe24 = [round(float(valeur), 4) for valeur in decale['courbe24']]
         avertissements.extend(decale.get('avertissements') or [])
         methode = 'courbe'

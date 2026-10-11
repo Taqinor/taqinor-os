@@ -5,7 +5,7 @@ et FORCE la société côté serveur à la création (``perform_create``) — ja
 lue du corps de requête. ``tiers`` étant une couche fondation, ce module
 n'importe AUCUNE app de domaine.
 """
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -18,6 +18,10 @@ from core.permissions import WriteScopedPermissionMixin
 from . import selectors
 from .models import Tiers
 from .serializers import TiersSerializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 
 
 class TiersViewSet(
@@ -32,6 +36,7 @@ class TiersViewSet(
     """
     queryset = Tiers.objects.all()
     serializer_class = TiersSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'nom', 'prenom', 'raison_sociale', 'email', 'telephone',
@@ -69,6 +74,10 @@ class TiersViewSet(
                             for libelle, nombre in references)]})
         super().perform_destroy(instance)
 
+    @extend_schema(responses=inline_serializer('TiersDoublons', {
+        'count': drf_serializers.IntegerField(),
+        'clusters': drf_serializers.ListField(
+            child=drf_serializers.JSONField())}))
     @action(detail=False, methods=['get'],
             permission_classes=[IsAdminRole])
     def doublons(self, request):
@@ -80,6 +89,24 @@ class TiersViewSet(
         clusters = selectors.find_duplicates(request.user.company)
         return Response({'count': len(clusters), 'clusters': clusters})
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('ice', OpenApiTypes.STR, required=False),
+            OpenApiParameter('email', OpenApiTypes.STR, required=False),
+        ],
+        responses=inline_serializer('TiersVerifierDoublon', {
+            'ice_matches': inline_serializer('TiersDoublonMatch', {
+                'id': drf_serializers.IntegerField(),
+                'nom': drf_serializers.CharField(),
+                'roles': drf_serializers.DictField(
+                    child=drf_serializers.BooleanField()),
+            }, many=True),
+            'email_matches': inline_serializer('TiersDoublonMatchEmail', {
+                'id': drf_serializers.IntegerField(),
+                'nom': drf_serializers.CharField(),
+                'roles': drf_serializers.DictField(
+                    child=drf_serializers.BooleanField()),
+            }, many=True)}))
     @action(detail=False, methods=['get'], url_path='verifier-doublon')
     def verifier_doublon(self, request):
         """AUDV22 (DRAFT165-123/124, ARC20) — recherche EXACTE anti-doublon
@@ -87,13 +114,9 @@ class TiersViewSet(
         (autocomplete). Appelée AVANT la création d'un Client/Fournisseur
         depuis le formulaire réel — jamais bloquant, un simple avertissement
         laissé à l'appelant. Company-scopé. Query params ``ice``/``email``
-        (au moins un requis)."""
+        (facultatifs : sans valeur, aucune correspondance — ENF10)."""
         ice = (request.query_params.get('ice') or '').strip()
         email = (request.query_params.get('email') or '').strip()
-        if not ice and not email:
-            return Response(
-                {'detail': 'Le paramètre ice ou email est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
 
         def _serialize(qs):
             return [

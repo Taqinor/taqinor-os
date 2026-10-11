@@ -20,7 +20,7 @@ from unittest import mock, skipUnless
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.pack_technique import (
-    SPEC_PIECES, PackRefuse, compter_pages, construire_pack, rendre_pieces,
+    SPEC_PIECES, PackRefuse, compter_pages, construire_pack, _rendre_pieces,
 )
 
 try:
@@ -71,16 +71,16 @@ class RenduDesPiecesTest(SimpleTestCase):
                        'note_calcul': lambda: pdf_de(2)}
 
     def test_les_pieces_obligatoires_sont_rendues_et_comptees(self):
-        pieces, _signalements = rendre_pieces(self.calepinage,
-                                              company='societe-essai',
-                                              rendus=self.rendus)
+        pieces, _signalements = _rendre_pieces(self.calepinage,
+                                               company='societe-essai',
+                                               rendus=self.rendus)
         self.assertEqual([(code, pages) for code, _l, _o, pages in pieces],
                          [('planche', 1), ('note_calcul', 2)])
 
     def test_une_piece_facultative_absente_est_signalee_jamais_sautee(self):
-        _pieces, signalements = rendre_pieces(self.calepinage,
-                                              company='societe-essai',
-                                              rendus=self.rendus)
+        _pieces, signalements = _rendre_pieces(self.calepinage,
+                                               company='societe-essai',
+                                               rendus=self.rendus)
         facultatives = [libelle for _c, libelle, obligatoire in SPEC_PIECES
                         if not obligatoire]
         self.assertTrue(facultatives)
@@ -94,17 +94,17 @@ class RenduDesPiecesTest(SimpleTestCase):
             raise ValueError('aucune conception enregistrée')
 
         with self.assertRaises(PackRefuse) as capture:
-            rendre_pieces(self.calepinage, company='societe-essai',
-                          rendus=dict(self.rendus, planche=casse))
+            _rendre_pieces(self.calepinage, company='societe-essai',
+                           rendus=dict(self.rendus, planche=casse))
         self.assertEqual(capture.exception.piece, 'planche')
         self.assertIn('aucune conception', str(capture.exception))
 
     def test_une_piece_obligatoire_vide_refuse_le_pack(self):
         # Un PDF vide dans un dossier remis est un défaut INVISIBLE.
         with self.assertRaises(PackRefuse) as capture:
-            rendre_pieces(self.calepinage, company='societe-essai',
-                          rendus=dict(self.rendus,
-                                      note_calcul=lambda: b''))
+            _rendre_pieces(self.calepinage, company='societe-essai',
+                           rendus=dict(self.rendus,
+                                       note_calcul=lambda: b''))
         self.assertEqual(capture.exception.piece, 'note_calcul')
 
 

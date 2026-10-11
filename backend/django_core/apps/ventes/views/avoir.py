@@ -1,3 +1,5 @@
+from drf_spectacular.utils import extend_schema_view, extend_schema
+from ..openapi_params import qint
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
@@ -49,6 +51,8 @@ from core.mixins import company_qs  # noqa: E402
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('facture')]))
 class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
     """Avoirs (notes de crédit) : lecture pour tout rôle ; PDF pour
     Responsable/Admin ; annulation Admin. Création via la facture
@@ -248,6 +252,8 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('facture')]))
 class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
     """ZFAC4 — notes de débit : lecture pour tout rôle ; PDF pour
     Responsable/Admin. Création via la facture (creer-note-debit), jamais

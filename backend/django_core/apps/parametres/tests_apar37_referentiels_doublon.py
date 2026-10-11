@@ -34,7 +34,7 @@ class ReferentielsDoublonTests(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
 
-    def test_condition_doublon_400(self):
+    def test_condition_doublon_409(self):
         ConditionPaiement.objects.get_or_create(
             company=self.company, delai_jours=30, fin_de_mois=False,
             escompte_pct=Decimal('0'), defaults={'libelle': '30 jours'})
@@ -42,14 +42,15 @@ class ReferentielsDoublonTests(TestCase):
         r = self.api.post(f'{BASE}conditions-paiement/', {
             'libelle': '30 jours (bis)', 'delai_jours': 30,
             'fin_de_mois': False, 'escompte_pct': '0'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('delai_jours', r.data)
-        self.assertIn('existe déjà', str(r.data['delai_jours']))
+        # ENF2 : doublon par société → 409 unique_conflict, champ nommé.
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('delai_jours', r.data['error']['fields'])
+        self.assertIn('existe', str(r.data['error']['fields']['delai_jours']))
         self.assertEqual(
             ConditionPaiement.objects.filter(company=self.company).count(),
             avant)
 
-    def test_code_doublon_400(self):
+    def test_code_doublon_409(self):
         for route, corps in (
                 ('taux-tva/', {'code': 'apar37', 'libelle': 'T', 'taux': '7'}),
                 ('unites-mesure/', {'code': 'apar37', 'libelle': 'U'})):
@@ -57,8 +58,12 @@ class ReferentielsDoublonTests(TestCase):
                 r1 = self.api.post(BASE + route, corps, format='json')
                 self.assertEqual(r1.status_code, 201, r1.data)
                 r2 = self.api.post(BASE + route, corps, format='json')
-                self.assertEqual(r2.status_code, 400, r2.data)
-                self.assertIn('code', r2.data)
+                # ENF2 (décision fondateur 09/10) : un doublon par société
+                # répond 409 `unique_conflict` (exigé par l'api-fuzz), le
+                # champ fautif toujours nommé dans l'enveloppe d'erreur.
+                self.assertEqual(r2.status_code, 409, r2.data)
+                self.assertEqual(r2.data['error']['code'], 'unique_conflict')
+                self.assertIn('code', str(r2.data['error'].get('fields')))
 
     def test_introspection_tout_referentiel_a_contrainte_est_garde(self):
         for nom in dir(sr):

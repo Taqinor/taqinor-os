@@ -91,7 +91,7 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "ListField",
    "nom": "specialites",
    "read_only": false,
    "required": false

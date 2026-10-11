@@ -28,7 +28,8 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from apps.crm import services, stages
+from apps.crm import stages, cadence_reperes
+from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CADENCE_DE_LA_CLE
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -104,8 +105,8 @@ def _representants(etape_table):
             defaut = barreau_par_defaut(gabarit, cle)
             visite = gabarit == Cadence.VISITE
             cadence = 'apres_devis' if visite else 'generique'
-            ordre = services.VISITE_ORDRE_FILET if visite else 1
-            canal = services._canal_configure(defaut)
+            ordre = cadence_reperes.VISITE_ORDRE_FILET if visite else 1
+            canal = cadence_reperes._canal_configure(defaut)
             # Posée DEPUIS la clé, sous un libellé RENOMMÉ par la société…
             yield _etape(cadence, ordre, canal, 'Libellé renommé', cle=cle,
                          devis=visite)
@@ -177,9 +178,9 @@ class TableEtMoteurTests(SimpleTestCase):
             for cle in st.cles_de_reponse(etape):
                 with self.subTest(type=etape_table['id'], canal=etape.canal,
                                   reponse=cle):
-                    if cle in services.REPONSES_TOUCHE:
+                    if cle in cadence_reponses.REPONSES_TOUCHE:
                         self.assertIsNone(
-                            services.refus_reponse_touche(etape, cle))
+                            cadence_reponses.refus_reponse_touche(etape, cle))
                     elif cle not in (st.CLE_SANS_ISSUE, st.CLE_SAUTER):
                         self.assertIn(cle, _ISSUES)
 
@@ -204,20 +205,20 @@ class RestrictionsParCleEtParCanalTests(SimpleTestCase):
 
     def test_une_reponse_bornee_a_une_cle_d_etape(self):
         spec = dict(_SPEC_TEST, cles=('decider_suite',))
-        with mock.patch.dict(services.REPONSES_TOUCHE, {'temoin': spec}):
+        with mock.patch.dict(cadence_reponses.REPONSES_TOUCHE, {'temoin': spec}):
             decider = _etape('generique', 1, 'appel', '', cle='decider_suite')
-            self.assertIsNone(services.refus_reponse_touche(decider, 'temoin'))
+            self.assertIsNone(cadence_reponses.refus_reponse_touche(decider, 'temoin'))
             devis = _etape('generique', 1, 'appel', '', cle='devis')
-            refus = services.refus_reponse_touche(devis, 'temoin')
+            refus = cadence_reponses.refus_reponse_touche(devis, 'temoin')
         self.assertIn('« Réponse témoin »', refus)
         self.assertIn('Décider la suite', refus)
 
     def test_une_reponse_bornee_a_des_canaux(self):
         spec = dict(_SPEC_TEST, canaux=('whatsapp', 'email'))
-        with mock.patch.dict(services.REPONSES_TOUCHE, {'temoin': spec}):
+        with mock.patch.dict(cadence_reponses.REPONSES_TOUCHE, {'temoin': spec}):
             message = _etape('contact', 1, 'whatsapp', 'Touche')
-            self.assertIsNone(services.refus_reponse_touche(message, 'temoin'))
+            self.assertIsNone(cadence_reponses.refus_reponse_touche(message, 'temoin'))
             appel = _etape('contact', 2, 'appel', 'Touche')
-            refus = services.refus_reponse_touche(appel, 'temoin')
+            refus = cadence_reponses.refus_reponse_touche(appel, 'temoin')
         self.assertIn('« Réponse témoin »', refus)
         self.assertIn('WhatsApp', refus)

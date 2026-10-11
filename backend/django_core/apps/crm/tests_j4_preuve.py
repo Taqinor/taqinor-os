@@ -21,7 +21,7 @@ from authentication.models import Company
 
 from apps.crm import horaires
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import message_pour_etape
+from apps.crm.cadence_messages import message_pour_etape
 from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS
 from apps.parametres.models_realisations import Realisation
 

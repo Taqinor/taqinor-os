@@ -32,7 +32,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.reprise_public import (
-    CHAMP_PORTEUR, CLE_LAYOUT, document_public_du_lead, latlng_vers_lnglat,
+    CHAMP_PORTEUR, CLE_LAYOUT, _document_public_du_lead, _latlng_vers_lnglat,
 )
 
 #: Le contour que le visiteur trace, tel que le lead le stocke : [lat, lng].
@@ -70,20 +70,20 @@ class LeDocumentPublicSansBase(SimpleTestCase):
     def test_le_document_transporte_garde_toutes_ses_zones(self):
         lead = LeadFactice(**{CHAMP_PORTEUR: {
             CLE_LAYOUT: _document_multi_zones()}})
-        document = document_public_du_lead(lead)
+        document = _document_public_du_lead(lead)
         self.assertEqual([z['id'] for z in document['zones']], ['z1', 'z2'])
 
     def test_le_contour_seul_donne_une_zone(self):
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG,
                            roof_point={'lat': 33.5, 'lng': -7.6})
-        document = document_public_du_lead(lead)
+        document = _document_public_du_lead(lead)
         self.assertEqual(len(document['zones']), 1)
         self.assertEqual(document['pin'], {'lat': 33.5, 'lng': -7.6})
 
     def test_l_ordre_des_axes_est_inverse_entre_lead_et_zone(self):
         """``roof_outline`` = [lat, lng] ; ``vertices`` = [lng, lat]."""
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG)
-        sommets = document_public_du_lead(lead)['zones'][0]['vertices']
+        sommets = _document_public_du_lead(lead)['zones'][0]['vertices']
         for (lng, lat), (lat_source, lng_source) in zip(sommets,
                                                         CONTOUR_LATLNG):
             self.assertEqual(lat, lat_source)
@@ -91,32 +91,32 @@ class LeDocumentPublicSansBase(SimpleTestCase):
 
     def test_l_outline_du_document_reste_en_lat_lng(self):
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG)
-        self.assertEqual(document_public_du_lead(lead)['outline'],
+        self.assertEqual(_document_public_du_lead(lead)['outline'],
                          [[lat, lng] for lat, lng in CONTOUR_LATLNG])
 
     def test_la_conversion_nommee_refuse_un_point_illisible(self):
-        self.assertEqual(latlng_vers_lnglat([[33.5, -7.6], ['x', 2]]), [])
-        self.assertEqual(latlng_vers_lnglat([[33.5]]), [])
-        self.assertEqual(latlng_vers_lnglat(None), [])
+        self.assertEqual(_latlng_vers_lnglat([[33.5, -7.6], ['x', 2]]), [])
+        self.assertEqual(_latlng_vers_lnglat([[33.5]]), [])
+        self.assertEqual(_latlng_vers_lnglat(None), [])
 
     def test_un_lead_sans_trace_ne_donne_aucun_document(self):
-        self.assertIsNone(document_public_du_lead(LeadFactice()))
-        self.assertIsNone(document_public_du_lead(None))
+        self.assertIsNone(_document_public_du_lead(LeadFactice()))
+        self.assertIsNone(_document_public_du_lead(None))
 
     def test_un_contour_a_deux_sommets_ne_donne_aucun_document(self):
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG[:2])
-        self.assertIsNone(document_public_du_lead(lead))
+        self.assertIsNone(_document_public_du_lead(lead))
 
     def test_un_document_transporte_sans_zone_retombe_sur_le_contour(self):
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG,
                            **{CHAMP_PORTEUR: {CLE_LAYOUT: {'zones': []}}})
-        document = document_public_du_lead(lead)
+        document = _document_public_du_lead(lead)
         self.assertEqual(len(document['zones']), 1)
 
     def test_aucun_chiffre_n_est_invente(self):
         """Ni puissance, ni cote de module, ni estimation."""
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG)
-        document = document_public_du_lead(lead)
+        document = _document_public_du_lead(lead)
         for cle in ('panelWatt', 'panelLengthM', 'panelWidthM', 'result',
                     'billKwh'):
             self.assertNotIn(cle, document)
@@ -125,13 +125,13 @@ class LeDocumentPublicSansBase(SimpleTestCase):
         document = _document_multi_zones()
         lead = LeadFactice(roof_point={'lat': 0.0, 'lng': 0.0},
                            **{CHAMP_PORTEUR: {CLE_LAYOUT: document}})
-        self.assertEqual(document_public_du_lead(lead)['pin'],
+        self.assertEqual(_document_public_du_lead(lead)['pin'],
                          {'lat': 33.5, 'lng': -7.6})
 
     def test_une_epingle_illisible_est_ignoree(self):
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG,
                            roof_point={'lat': 'nord', 'lng': -7.6})
-        self.assertNotIn('pin', document_public_du_lead(lead))
+        self.assertNotIn('pin', _document_public_du_lead(lead))
 
 
 class LeContratEtLeCodeParlentDeLaMemeCle(SimpleTestCase):
@@ -155,19 +155,19 @@ class LeContratEtLeCodeParlentDeLaMemeCle(SimpleTestCase):
             roof_outline=self.contrat['exemple']['roof_outline'],
             **{CHAMP_PORTEUR: {
                 CLE_LAYOUT: self.contrat['exemple'][CLE_LAYOUT]}})
-        self.assertEqual(len(document_public_du_lead(lead)['zones']), 2)
+        self.assertEqual(len(_document_public_du_lead(lead)['zones']), 2)
 
     def test_l_exemple_sans_trace_ne_rend_aucun_document(self):
         exemple = self.contrat['exemple_sans_trace']
         lead = LeadFactice(roof_point=exemple['roof_point'],
                            roof_outline=exemple['roof_outline'])
-        self.assertIsNone(document_public_du_lead(lead))
+        self.assertIsNone(_document_public_du_lead(lead))
 
     def test_l_exemple_de_repli_rend_une_zone(self):
         exemple = self.contrat['exemple_repli_contour_seul']
         lead = LeadFactice(roof_point=exemple['roof_point'],
                            roof_outline=exemple['roof_outline'])
-        self.assertEqual(len(document_public_du_lead(lead)['zones']), 1)
+        self.assertEqual(len(_document_public_du_lead(lead)['zones']), 1)
 
 
 class LeRecepteurEstBrancheSansBase(SimpleTestCase):

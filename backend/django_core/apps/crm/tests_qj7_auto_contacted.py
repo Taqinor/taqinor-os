@@ -18,7 +18,7 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import avancer_stage_new_vers_contacted
+from apps.crm.fiche_funnel import avancer_stage_new_vers_contacted
 
 # Clés canoniques importées depuis le module CRM (re-exports STAGES.py).
 from apps.crm.stages import NEW, STAGE_LABELS

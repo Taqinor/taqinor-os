@@ -25,6 +25,7 @@ société, inclut les archivés) plutôt que ``self.get_object()``.
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -51,6 +52,7 @@ def _cible(request, pk):
             .select_related('client', 'devis').first())
 
 
+@extend_schema(request=None)
 @action(detail=True, methods=['post'], url_path='archiver',
         permission_classes=[PeutGererCalepinage])
 def archiver(self, request, pk=None):
@@ -67,6 +69,7 @@ def archiver(self, request, pk=None):
     return Response({'calepinage': calepinage.pk, 'archive': True})
 
 
+@extend_schema(request=None)
 @action(detail=True, methods=['post'], url_path='restaurer-corbeille',
         permission_classes=[PeutGererCalepinage])
 def restaurer_corbeille(self, request, pk=None):

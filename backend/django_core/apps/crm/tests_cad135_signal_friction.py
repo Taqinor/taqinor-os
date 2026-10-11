@@ -23,7 +23,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import stages, cadence_signaux
 from apps.crm.models import Lead, LeadActivity
 from apps.parametres.models import CompanyProfile
 
@@ -46,7 +46,7 @@ class SignalLectureTests(TestCase):
         return list(LeadActivity.objects.filter(lead=self.lead))
 
     def test_friction_ecrit_une_ligne_au_chatter_du_lead(self):
-        services.notifier_signal_lecture(
+        cadence_signaux.notifier_signal_lecture(
             'DV-135', self.lead, friction_section='prix')
         notes = self._notes()
         self.assertEqual(len(notes), 1, notes)
@@ -56,7 +56,7 @@ class SignalLectureTests(TestCase):
 
     def test_friction_notifie_le_responsable(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_lecture(
+            cadence_signaux.notifier_signal_lecture(
                 'DV-135', self.lead, friction_section='prix')
         self.assertTrue(notifier.called)
         destinataires = notifier.call_args.args[0]
@@ -64,13 +64,13 @@ class SignalLectureTests(TestCase):
 
     def test_la_notification_porte_le_lien_pour_appeler(self):
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_lecture(
+            cadence_signaux.notifier_signal_lecture(
                 'DV-135', self.lead, friction_section='prix')
         corps = notifier.call_args.kwargs['body']
         self.assertIn('wa.me', corps)
 
     def test_lecture_en_detail_a_son_propre_libelle(self):
-        services.notifier_signal_lecture(
+        cadence_signaux.notifier_signal_lecture(
             'DV-135', self.lead, resume='prix (30s)')
         note = self._notes()[0]
         self.assertIn('en détail', note.body)
@@ -80,7 +80,7 @@ class SignalLectureTests(TestCase):
     def test_la_note_est_systeme_et_ne_fait_pas_avancer_le_funnel(self):
         """Règle du 07/09/2026 : le funnel ne bouge que sur une réponse."""
         avant = self.lead.stage
-        services.notifier_signal_lecture(
+        cadence_signaux.notifier_signal_lecture(
             'DV-135', self.lead, friction_section='étude')
         self.lead.refresh_from_db()
         self.assertIsNone(self._notes()[0].user)
@@ -97,21 +97,21 @@ class SignalLectureTests(TestCase):
         écriture quand `company_id` est absent.
         """
         orphelin = Lead(nom='Sans société')
-        services.notifier_signal_lecture('DV-135', orphelin,
-                                         friction_section='prix')
+        cadence_signaux.notifier_signal_lecture('DV-135', orphelin,
+                                                friction_section='prix')
         self.assertEqual(LeadActivity.objects.count(), 0)
 
     def test_une_notification_en_echec_laisse_la_note_ecrite(self):
         """Best-effort : le fait consigné survit à une cloche en panne."""
         with patch('apps.notifications.services.notify_many',
                    side_effect=RuntimeError('cloche indisponible')):
-            services.notifier_signal_lecture(
+            cadence_signaux.notifier_signal_lecture(
                 'DV-135', self.lead, friction_section='prix')
         self.assertEqual(len(self._notes()), 1)
 
     def test_aucun_type_devenement_neuf(self):
         """Le signal emprunte le chemin de « devis ouvert », pas un autre."""
         with patch('apps.notifications.services.notify_many') as notifier:
-            services.notifier_signal_lecture(
+            cadence_signaux.notifier_signal_lecture(
                 'DV-135', self.lead, friction_section='prix')
         self.assertEqual(notifier.call_args.args[1], 'devis_opened')

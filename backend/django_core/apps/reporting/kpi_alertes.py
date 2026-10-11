@@ -30,6 +30,7 @@ from core.mixins import TenantMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import KpiAlerte
+from rest_framework.parsers import JSONParser
 
 
 class KpiAlerteSerializer(SameCompanyFKSerializerMixin,
@@ -113,6 +114,7 @@ class KpiAlerteViewSet(TenantMixin, viewsets.ModelViewSet):
     """CRUD des alertes KPI, bornées à la société (réservé admin/responsable
     par cohérence avec les autres réglages de Paramètres)."""
     serializer_class = KpiAlerteSerializer
+    parser_classes = [JSONParser]
     permission_classes = [IsResponsableOrAdmin]
     queryset = KpiAlerte.objects.all()
 

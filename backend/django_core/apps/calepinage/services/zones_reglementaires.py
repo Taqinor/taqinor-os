@@ -97,7 +97,7 @@ CLES = ('libelle', 'nature', 'genre', 'largeur_m', 'cote', 'sommets',
 
 __all__ = ['SECTION', 'GENRES', 'COTES', 'CLES', 'FORMES_OBSTACLE',
            'FORMES_SANS_GENRE', 'COTES_PAR_FORME', 'SANS_GENRE_NI_FORME',
-           'normaliser_section_zones_types', 'appliquer_modele',
+           'normaliser_section_zones_types',
            'source_de_zone']
 
 
@@ -325,7 +325,7 @@ def normaliser_section_zones_types(valeur):
             for cle, brut in valeur.items()}
 
 
-def appliquer_modele(modele, *, cle='', repere='', sommets=None):
+def _appliquer_modele(modele, *, cle='', repere='', sommets=None):
     """UN gabarit -> une zone au format ``exclusionZones`` (CAL68).
 
     Args:

@@ -300,17 +300,16 @@ class HeuresTarifTest(unittest.TestCase):
                 self.assertEqual(refus.exception.champ, CHAMP_TOU_HEURES)
 
     def test_la_grille_de_reference_du_depot_n_est_jamais_un_repli(self):
-        with mock.patch.object(service, 'tranches_horaires',
-                               side_effect=AssertionError('repli interdit')):
-            with self.assertRaises(StrategieInvalide) as refus:
-                simuler_batterie(CONSO, SANS_SOLEIL, strategie='heures_tarif',
-                                 **PARC_TOU)
+        with self.assertRaises(StrategieInvalide) as refus:
+            simuler_batterie(CONSO, SANS_SOLEIL, strategie='heures_tarif',
+                             **PARC_TOU)
         self.assertEqual(refus.exception.champ, 'parametres.tou_heures')
         with open(service.__file__, encoding='utf-8') as source:
             texte = source.read()
         # Le module NOMME la constante pour dire qu'elle n'est jamais un
-        # repli ; il ne la lit que dans ``tranches_horaires`` (CAL152).
-        self.assertEqual(texte.count('import DEFAULT_HOUR_TRANCHES'), 1)
+        # repli, mais ne l'IMPORTE plus nulle part (ENF18 : le jumeau
+        # ``tranches_horaires`` qui la relisait est supprimé).
+        self.assertEqual(texte.count('import DEFAULT_HOUR_TRANCHES'), 0)
 
     def test_charge_reseau_en_creuse_decharge_en_pointe(self):
         trace = {}

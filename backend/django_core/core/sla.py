@@ -25,10 +25,15 @@ from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import generics, serializers, status
 from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import (
     SAFE_METHODS, BasePermission, IsAuthenticated,
 )
@@ -508,7 +513,11 @@ def _sla_pdf_html(snapshot, company):
 </body></html>"""
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'periode', {'type': 'string', 'pattern': r'^\d{4}-(0[1-9]|1[0-2])$'},
+        OpenApiParameter.PATH, description='Période AAAA-MM.')],
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sla_export_pdf(request, periode):
@@ -589,11 +598,12 @@ class SlaCreditsDusListView(generics.ListAPIView):
 
 @extend_schema(
     request=inline_serializer('SlaCreditStatutRequete', {
-        'statut': serializers.CharField(),
+        'statut': serializers.ChoiceField(choices=['emis', 'refuse']),
     }),
     responses=SlaSnapshotSerializer)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, FiabilitePermission])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def sla_credit_statut(request, pk):
     """POST /api/django/core/sla/credits/<pk>/statut/ — trace la décision
     humaine sur un crédit (``emis``/``refuse``). N'ÉMET JAMAIS d'avoir : cette

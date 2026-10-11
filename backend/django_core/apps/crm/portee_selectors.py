@@ -92,11 +92,11 @@ def cles_numeros_lead(lead):
     ``telephone`` ET son ``whatsapp`` (vides ignorés). Helper unique partagé
     par ``find_lead_id_by_phone`` et ``signed_lead_phone_keys`` — un lead
     joignable seulement sur WhatsApp est reconnu partout pareil."""
-    from . import services as crm_services
+    from . import leads_doublons
     keys = set()
     for numero in (getattr(lead, 'telephone', None),
                    getattr(lead, 'whatsapp', None)):
-        key = crm_services.normalize_phone(numero)
+        key = leads_doublons.normalize_phone(numero)
         if key:
             keys.add(key)
     return keys

@@ -46,7 +46,7 @@ import urllib.parse
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.horizon import (
-    lire_profil, profil_depuis_document, profil_saisi,
+    _lire_profil, profil_depuis_document, _profil_saisi,
     reechantillonner_pour_pvgis,
 )
 from apps.calepinage.services.pvgis_serie import (
@@ -66,7 +66,7 @@ def charger(nom):
 
 def profil_reel():
     """Le profil PVGIS réel de Casablanca, tel que ``lire_profil`` le rend."""
-    return lire_profil(charger('printhorizon_casablanca.json'))
+    return _lire_profil(charger('printhorizon_casablanca.json'))
 
 
 def profil_24_directions():
@@ -185,8 +185,8 @@ class TroisCasExclusifs(SimpleTestCase):
         })
 
     def test_un_profil_saisi_est_publie_comme_saisie(self):
-        releve = profil_saisi(profil_24_directions()['points'],
-                              note='relevé de test')
+        releve = _profil_saisi(profil_24_directions()['points'],
+                               note='relevé de test')
         resultat, envoyes = appeler(horizon=releve)
         self.assertIn('userhorizon', envoyes)
         self.assertEqual(resultat['meteo']['horizon']['origine'], 'saisie')

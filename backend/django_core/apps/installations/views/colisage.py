@@ -20,11 +20,13 @@ from apps.ventes.utils.references import create_with_reference
 
 from ..models import Colis, ColisLigne
 from ..serializers import ColisSerializer, ColisLigneSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class ColisViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('installation'), p1=oa.qs('statut'))
+class ColisViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG322 — colis de préparation. Lecture tout rôle, écriture
     responsable/admin. Référence/société/`created_by` posés serveur. Filtrable
     par `installation`, `statut`."""
@@ -73,6 +75,7 @@ class ColisViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def controler(self, request, pk=None):
         """FG322 — contrôle le colis (→ contrôlé, pose `controle_par`/date)."""
@@ -84,6 +87,7 @@ class ColisViewSet(CompanyScopedModelViewSet):
             'statut', 'controle_par', 'date_controle', 'date_modification'])
         return Response(self.get_serializer(colis).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def expedier(self, request, pk=None):
         """FG322 — expédie le colis (→ expédié)."""
@@ -92,6 +96,7 @@ class ColisViewSet(CompanyScopedModelViewSet):
         colis.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(colis).data)
 
+    @oa.extend_schema(parameters=[oa.qs('symbology')], responses=oa.HTML)
     @action(detail=True, methods=['get'])
     def etiquette(self, request, pk=None):
         """ZSTK5 — étiquette de colis (contenu + code-barres colis) : le
@@ -125,7 +130,8 @@ class ColisViewSet(CompanyScopedModelViewSet):
         return HR(html, content_type='text/html; charset=utf-8')
 
 
-class ColisLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('colis'))
+class ColisLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG322 — lignes de colis. Pas de `company` propre : scope via le colis
     parent. Filtrable par `colis`. Lecture tout rôle, écriture
     responsable/admin."""

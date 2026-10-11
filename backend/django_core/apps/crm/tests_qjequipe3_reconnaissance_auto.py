@@ -35,7 +35,7 @@ from rest_framework.test import APIClient
 from apps.notifications.models import Notification
 from authentication.models import Company
 
-from . import services, visites
+from . import visites, leads_notifications
 from .models import AppareilEquipe, Client as CrmClient, Lead, VisiteExterne
 
 User = get_user_model()
@@ -300,7 +300,7 @@ class TestLienNotificationDevisOuvert(TestCase):
         lead = Lead.objects.create(
             company=company, nom='Client QJEQ3', telephone='0612345678',
             owner=owner)
-        services.notify_devis_opened('DEV-QJEQ3-9', lead)
+        leads_notifications.notify_devis_opened('DEV-QJEQ3-9', lead)
         notif = Notification.objects.filter(
             recipient=owner, event_type='devis_opened').first()
         self.assertIsNotNone(notif)

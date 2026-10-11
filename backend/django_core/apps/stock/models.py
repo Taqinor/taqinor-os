@@ -49,7 +49,7 @@ class Categorie(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True,
         blank=True,
         related_name='categories',
@@ -120,7 +120,7 @@ class Fournisseur(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True,
         blank=True,
         related_name='fournisseurs',
@@ -284,10 +284,10 @@ class PortailFournisseurToken(models.Model):
     exposé côté client, isolation stricte au SEUL fournisseur porteur du
     jeton (jamais les documents d'un autre fournisseur, jamais de marge)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='portail_fournisseur_tokens')
     fournisseur = models.ForeignKey(
-        Fournisseur, on_delete=models.CASCADE,
+        Fournisseur, on_delete=models.CASCADE,  # on_delete: PortailFournisseurToken est le détail de Fournisseur — n'existe pas sans lui
         related_name='portail_tokens')
     token = models.CharField(
         max_length=64, unique=True, default=_default_portail_token,
@@ -321,7 +321,7 @@ class CategorieFournisseur(models.Model):
     """XPUR5 — référentiel léger de catégories fournisseur (type ``Marque``),
     filtrable dans la liste. Additif — aucune migration destructive."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='categories_fournisseur')
     nom = models.CharField(max_length=100)
     archived = models.BooleanField(default=False)
@@ -341,10 +341,10 @@ class ContactFournisseur(models.Model):
     fournisseur ; ``Fournisseur.contact_personne`` reste le contact
     principal, comportement historique inchangé)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='contacts_fournisseur')
     fournisseur = models.ForeignKey(
-        Fournisseur, on_delete=models.CASCADE, related_name='contacts')
+        Fournisseur, on_delete=models.CASCADE, related_name='contacts')  # on_delete: ContactFournisseur est le détail de Fournisseur — n'existe pas sans lui
     nom = models.CharField(max_length=255)
     fonction = models.CharField(max_length=120, blank=True, default='')
     email = models.EmailField(blank=True, null=True)
@@ -382,11 +382,11 @@ class SousTraitantProfile(models.Model):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='sous_traitant_profils')
     fournisseur = models.OneToOneField(
-        Fournisseur, on_delete=models.CASCADE,
+        Fournisseur, on_delete=models.CASCADE,  # on_delete: SousTraitantProfile est le détail de Fournisseur — n'existe pas sans lui
         related_name='profil_sous_traitant')
     # max_length=20 couvre le plus long code de Metier ('terrassement' = 12).
     metier = models.CharField(
@@ -426,7 +426,7 @@ class AchatsParametres(models.Model):
     Défauts = comportement actuel inchangé (tout OFF / tolérances à 0)."""
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='achats_parametres')
     # XPUR1 — quand actif, un PaiementFournisseur est refusé si le
     # fournisseur a un document de conformité OBLIGATOIRE manquant/expiré.
@@ -580,10 +580,10 @@ class ToleranceRapprochementCategorie(TenantModel):
     # SCA4 — héritage TenantModel ; ``company`` redéclarée UNIQUEMENT pour
     # préserver le related_name historique (PLAYBOOK du socle).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='tolerances_rapprochement_categorie')
     categorie = models.ForeignKey(
-        Categorie, on_delete=models.CASCADE,
+        Categorie, on_delete=models.CASCADE,  # on_delete: ToleranceRapprochementCategorie est le détail de Categorie — n'existe pas sans lui
         related_name='tolerances_rapprochement')
     tolerance_prix_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
@@ -624,11 +624,11 @@ class DocumentConformiteFournisseur(models.Model):
         AUTRE = 'autre', 'Autre pièce'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='documents_conformite_fournisseur')
     fournisseur = models.ForeignKey(
-        Fournisseur, on_delete=models.CASCADE,
+        Fournisseur, on_delete=models.CASCADE,  # on_delete: DocumentConformiteFournisseur est le détail de Fournisseur — n'existe pas sans lui
         related_name='documents_conformite')
     type_document = models.CharField(
         max_length=20, choices=Type.choices, default=Type.AUTRE)
@@ -674,7 +674,7 @@ class Marque(models.Model):
     texte libre (compat ascendante) ; cette liste sert de référentiel + ajout
     libre dans le formulaire produit. Additif — aucune migration destructive."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='marques')
     nom = models.CharField(max_length=100)
     archived = models.BooleanField(default=False)
@@ -691,7 +691,7 @@ class Marque(models.Model):
 class Produit(models.Model):
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True,
         blank=True,
         related_name='produits',
@@ -1180,10 +1180,10 @@ class ConditionnementProduit(models.Model):
     scan, XSTK3)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='conditionnements_produit')
     produit = models.ForeignKey(
-        Produit, on_delete=models.CASCADE, related_name='conditionnements')
+        Produit, on_delete=models.CASCADE, related_name='conditionnements')  # on_delete: ConditionnementProduit est le détail de Produit — n'existe pas sans lui
     nom = models.CharField(
         max_length=100,
         help_text='Ex. « Touret 100 m », « Carton 50 ».')
@@ -1226,7 +1226,7 @@ class LotEntrepot(models.Model):
     posée côté serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='lots_entrepot')
     produit = models.ForeignKey(
         Produit, on_delete=models.PROTECT, related_name='lots_entrepot')  # on_delete: PROTECT — registre de lots conservé pour l'historique/traçabilité (« jamais supprimé ») ; un CASCADE contredisait la docstring du modèle
@@ -1307,7 +1307,7 @@ class MouvementStock(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True,
         blank=True,
         related_name='mouvements_stock',
@@ -1402,7 +1402,7 @@ class EmplacementStock(models.Model):
         DE_TIERS = 'de_tiers', 'Stock d\'un tiers dans nos murs (dépôt-vente)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='emplacements_stock')
     nom = models.CharField(max_length=100)
     is_principal = models.BooleanField(
@@ -1444,12 +1444,12 @@ class StockEmplacement(models.Model):
     canonique et la ventilation ne puissent pas diverger.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='stocks_emplacement')
     produit = models.ForeignKey(
         Produit, on_delete=models.PROTECT, related_name='stocks_emplacement')  # on_delete: PROTECT — quantité réelle en stock par emplacement ; aligné sur MouvementStock/LigneInventaire/TransfertStock/RevalorisationStock déjà PROTECT
     emplacement = models.ForeignKey(
-        EmplacementStock, on_delete=models.CASCADE, related_name='stocks')
+        EmplacementStock, on_delete=models.CASCADE, related_name='stocks')  # on_delete: StockEmplacement est le détail de EmplacementStock — n'existe pas sans lui
     quantite = models.IntegerField(default=0)
 
     # ── FG62 — Seuils min/max par emplacement ────────────────────────────
@@ -1494,13 +1494,13 @@ class ProfilSaisonnier(models.Model):
     chevauchement calendaire n'est pas exprimable en CheckConstraint
     portable)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='profils_saisonniers')
     produit = models.ForeignKey(
-        Produit, on_delete=models.CASCADE, null=True, blank=True,
+        Produit, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: ProfilSaisonnier est le détail de Produit — n'existe pas sans lui
         related_name='profils_saisonniers')
     categorie = models.ForeignKey(
-        Categorie, on_delete=models.CASCADE, null=True, blank=True,
+        Categorie, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: ProfilSaisonnier est le détail de Categorie — n'existe pas sans lui
         related_name='profils_saisonniers')
     nom = models.CharField(
         max_length=100, blank=True, null=True,
@@ -1559,7 +1559,7 @@ class TransfertStock(models.Model):
     Ne modifie JAMAIS le total `Produit.quantite_stock` — seule la ventilation
     par emplacement change. Tracé complet (qui / quand)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='transferts_stock')
     produit = models.ForeignKey(
         Produit, on_delete=models.PROTECT, related_name='transferts')
@@ -1649,7 +1649,7 @@ class PalierPrixFournisseur(models.Model):
     ``PrixFournisseur`` sans palier garde le comportement historique
     (``prix_achat`` du tarif de base)."""
     prix_fournisseur = models.ForeignKey(
-        'achats.PrixFournisseur', on_delete=models.CASCADE,
+        'achats.PrixFournisseur', on_delete=models.CASCADE,  # on_delete: PalierPrixFournisseur est le détail de PrixFournisseur — n'existe pas sans lui
         related_name='paliers')
     qte_min = models.PositiveIntegerField()
     prix = models.DecimalField(max_digits=10, decimal_places=2)
@@ -1678,10 +1678,10 @@ class EcheanceFactureFournisseur(models.Model):
     comportement historique) ; le payment run (FG133) et la balance âgée
     (FG132) lisent les tranches quand elles existent."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='echeances_facture_fournisseur')
     facture = models.ForeignKey(
-        'achats.FactureFournisseur', on_delete=models.CASCADE,
+        'achats.FactureFournisseur', on_delete=models.CASCADE,  # on_delete: EcheanceFactureFournisseur est le détail de FactureFournisseur — n'existe pas sans lui
         related_name='echeances')
     pourcentage = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
@@ -1721,7 +1721,7 @@ class AcompteFournisseur(models.Model):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='acomptes_fournisseur')
     # AUD207 — PROTECT (était CASCADE) : un BCF portant un acompte réellement
     # versé ne doit jamais pouvoir l'effacer silencieusement à sa
@@ -1777,7 +1777,7 @@ class AvoirFournisseur(models.Model):
         IMPUTE = 'impute', 'Imputé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='avoirs_fournisseur')
     reference = models.CharField(max_length=50)
     fournisseur = models.ForeignKey(
@@ -1829,14 +1829,14 @@ class ImputationAvoirFournisseur(models.Model):
     ``FactureFournisseur`` (un avoir peut être réparti sur plusieurs
     factures). Additif, INTERNE."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='imputations_avoir_fournisseur')
     avoir = models.ForeignKey(
-        AvoirFournisseur, on_delete=models.CASCADE,
+        AvoirFournisseur, on_delete=models.PROTECT,
         related_name='imputations')
     facture = models.ForeignKey(
-        'achats.FactureFournisseur', on_delete=models.CASCADE,
+        'achats.FactureFournisseur', on_delete=models.PROTECT,
         related_name='avoirs_imputes')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
     date_creation = models.DateTimeField(auto_now_add=True)
@@ -1869,7 +1869,7 @@ class InventaireSession(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='inventaire_sessions')
     reference = models.CharField(max_length=50)
     statut = models.CharField(
@@ -1896,7 +1896,7 @@ class LigneInventaire(models.Model):
     (tirée du stock au moment de la création) et quantité comptée physiquement.
     L'écart est calculé lors de la validation de la session."""
     session = models.ForeignKey(
-        InventaireSession, on_delete=models.CASCADE, related_name='lignes')
+        InventaireSession, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de InventaireSession — n'existe pas sans son document parent
     produit = models.ForeignKey(
         Produit, on_delete=models.PROTECT,
         related_name='lignes_inventaire')
@@ -1929,7 +1929,7 @@ class InventaireAnnuel(models.Model):
     même exercice+société). INTERNE — jamais client-facing."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='inventaires_annuels')
     exercice = models.PositiveIntegerField(
         help_text='Année de l\'exercice comptable (ex. 2026).')
@@ -1972,7 +1972,7 @@ class RevalorisationStock(models.Model):
         VALIDEE = 'validee', 'Validée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='revalorisations_stock')
     produit = models.ForeignKey(
         Produit, on_delete=models.PROTECT,
@@ -2023,7 +2023,7 @@ class KitProduit(models.Model):
     Multi-tenant : ``company`` toujours forcée côté serveur. Additif."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='kits_produit')
     nom = models.CharField(max_length=255)
     sku = models.CharField(max_length=50, blank=True, null=True)
@@ -2053,7 +2053,7 @@ class KitComposant(models.Model):
     récursivement) au moment de l'explosion."""
 
     kit = models.ForeignKey(
-        KitProduit, on_delete=models.CASCADE, related_name='composants')
+        KitProduit, on_delete=models.CASCADE, related_name='composants')  # on_delete: KitComposant est le détail de KitProduit — n'existe pas sans lui
     produit = models.ForeignKey(
         Produit, on_delete=models.PROTECT, related_name='composants_kit',
         null=True, blank=True)
@@ -2101,10 +2101,10 @@ class RevisionKit(models.Model):
     révision à cette date. Jamais de prix d'achat dans le snapshot."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='revisions_kit_produit')
     kit = models.ForeignKey(
-        KitProduit, on_delete=models.CASCADE, related_name='revisions')
+        KitProduit, on_delete=models.CASCADE, related_name='revisions')  # on_delete: pièce justificative de KitProduit — suit son objet parent
     numero = models.PositiveIntegerField(default=1)
     composition = models.JSONField(
         default=list,

@@ -8,8 +8,11 @@ du viewset (``core/action_permission_scan``). Les imports function-locaux
 des corps restent dans les corps (les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi).
 """
+from ..openapi_params import qint
 from django.db import transaction
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
 from rest_framework import status
 from rest_framework import serializers
 from rest_framework.decorators import action
@@ -152,6 +155,7 @@ class DevisCycleActionsMixin:
             'champs_repris': [], 'corrige_apres_envoi': False,
             'avertissements': []})
 
+    @extend_schema(request=D.DupliquerVarianteRequest, responses={201: DevisSerializer(many=True)})
     @action(detail=True, methods=['post'], url_path='dupliquer-variante',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer_variante(self, request, pk=None):
@@ -271,6 +275,7 @@ class DevisCycleActionsMixin:
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(request=D.DupliquerVarianteGammeRequest, responses={201: D.GammeResponse})
     @action(detail=True, methods=['post'], url_path='dupliquer-variante-gamme',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer_variante_gamme(self, request, pk=None):
@@ -351,6 +356,7 @@ class DevisCycleActionsMixin:
 
     # api-only: TEMPORAIRE (QJR667) — aucun bouton « Dupliquer » du devis n'appelle
     # encore cette action ; retirer ce marqueur dès que l'écran la câble.
+    @extend_schema(request=None, responses={201: DevisSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer(self, request, pk=None):
@@ -369,6 +375,7 @@ class DevisCycleActionsMixin:
             DevisSerializer(copie, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=DevisSerializer)
     @action(detail=True, methods=['post'], url_path='approuver-remise',
             permission_classes=[IsAdminRole])
     def approuver_remise(self, request, pk=None):
@@ -403,6 +410,7 @@ class DevisCycleActionsMixin:
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(parameters=[qint('a'), qint('b')])
     @action(detail=True, methods=['get'],
             url_path='historique-configuration',
             permission_classes=[IsResponsableOrAdmin])

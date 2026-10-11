@@ -28,7 +28,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_filet
+from apps.crm import cadence_reperes
+from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS, CLE_DEVIS_MODIFIE, CLE_PLANIFIER,
     q_etape)
@@ -88,7 +90,7 @@ class _Base(TestCase):
         return self.lead.relance_etapes.get(q_etape(cle), statut=A_FAIRE)
 
     def _abandonner(self, etape, **corps):
-        corps['reponse'] = services.REPONSE_VISITE_ABANDONNEE
+        corps['reponse'] = cadence_reponses.REPONSE_VISITE_ABANDONNEE
         return self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/', corps,
             format='json')
@@ -127,7 +129,7 @@ class AnnuleLeRendezVousTests(_Base):
         self.assertIsNone(self.lead.visite_prevue_le)
         debrief.refresh_from_db()
         self.assertEqual(debrief.statut, ANNULEE)
-        self.assertEqual(debrief.note, services.NOTE_VISITE_ABANDONNEE)
+        self.assertEqual(debrief.note, cadence_reponses.NOTE_VISITE_ABANDONNEE)
         self.assertEqual(self.lead.activites.filter(
             body__startswith='Visite abandonnée à la demande du client',
             user__isnull=True).count(), 1)
@@ -166,7 +168,7 @@ class AnnuleLeRendezVousTests(_Base):
         self.assertFalse(self._ouvertes(q_etape(CLE_DEVIS)).exists())
 
     def test_depuis_planifier_la_visite(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         resp = self._abandonner(planifier)
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -178,9 +180,9 @@ class AnnuleLeRendezVousTests(_Base):
         self._planifier()
         modifie = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_DEBRIEF + 5,
+            ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF + 5,
             canal=RelanceEtape.Canal.APPEL, cle=CLE_DEVIS_MODIFIE,
-            libelle=services.VISITE_DEVIS_LIBELLE,
+            libelle=cadence_reperes.VISITE_DEVIS_LIBELLE,
             due_at=GEL + datetime.timedelta(days=1),
             due_date=(GEL + datetime.timedelta(days=1)).date())
         resp = self._abandonner(self._etape(CLE_CONFIRMATION))

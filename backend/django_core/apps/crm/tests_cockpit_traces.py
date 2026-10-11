@@ -33,7 +33,12 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_signaux
+from apps.crm import cadence_visite
+from apps.crm import cadence_touche
+from apps.crm import cadence_filet
+from apps.crm import cadence_plan
+from apps.crm import cadence_reperes
 from apps.crm.cadence_config import CLE_CONFIRMATION
 from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -105,7 +110,7 @@ class OrigineALaCreationTests(_Base):
         self.assertIsNone(etape.due_initial_at)
 
     def test_le_bulk_create_du_plan_pose_l_origine(self):
-        etapes = services.initialiser_plan_relance(
+        etapes = cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='contact', depart=GEL)
         self.assertTrue(etapes)
         for etape in etapes:
@@ -116,10 +121,10 @@ class OrigineALaCreationTests(_Base):
                 self.assertEqual(etape.nb_reports, 0)
 
     def test_la_touche_nee_d_une_issue_porte_son_origine(self):
-        services.initialiser_plan_relance(
+        cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='contact', depart=GEL)
         [ouverte] = self._ouvertes()
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             ouverte, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='non_joint')
         [nee] = self._ouvertes()
@@ -134,7 +139,7 @@ class ReportHumainTests(_Base):
         cible = self._touche(_a(1), ordre=2)
         suivante = self._touche(_a(2), ordre=3)
         origine = cible.due_at
-        services.reporter_prochaine_touche(
+        cadence_plan.reporter_prochaine_touche(
             self.lead, self.acteur, _a(5, 11), etape=cible)
         cible.refresh_from_db()
         suivante.refresh_from_db()
@@ -149,9 +154,9 @@ class ReportHumainTests(_Base):
     def test_deux_reports_comptent_deux(self):
         cible = self._touche(_a(1))
         origine = cible.due_at
-        services.reporter_prochaine_touche(
+        cadence_plan.reporter_prochaine_touche(
             self.lead, self.acteur, _a(2, 11), etape=cible)
-        services.reporter_prochaine_touche(
+        cadence_plan.reporter_prochaine_touche(
             self.lead, self.acteur, _a(6, 11), etape=cible)
         cible.refresh_from_db()
         self.assertEqual(cible.nb_reports, 2)
@@ -206,9 +211,9 @@ class ReportHumainTests(_Base):
 class DeplacementMoteurTests(_Base):
 
     def test_les_relances_decalees_autour_de_la_visite_ne_comptent_pas(self):
-        touche = self._touche(_a(1), cadence=services.VISITE_CADENCE,
+        touche = self._touche(_a(1), cadence=cadence_reperes.VISITE_CADENCE,
                               ordre=2, libelle='Relance proposition')
-        deplacee = services.suspendre_plan_jusqu_apres_visite(
+        deplacee = cadence_visite.suspendre_plan_jusqu_apres_visite(
             self.lead, self.acteur, _a(5).date())
         self.assertIsNotNone(deplacee)
         touche.refresh_from_db()
@@ -218,20 +223,20 @@ class DeplacementMoteurTests(_Base):
 
     def test_un_rappel_demande_par_le_client_ne_compte_pas(self):
         touche = self._touche(_a(2))
-        services.poser_touche_rappel_demande(self.lead, user=None)
+        cadence_signaux.poser_touche_rappel_demande(self.lead, user=None)
         touche.refresh_from_db()
         self.assertLess(touche.due_at, _a(2))
         self.assertEqual(touche.nb_reports, 0)
         self.assertEqual(touche.due_initial_at, touche.due_at)
 
     def test_le_recalage_d_un_geste_de_visite_ne_compte_pas(self):
-        premiere = services._poser_etape_visite(
+        premiere = cadence_filet._poser_etape_visite(
             self.lead, cle=CLE_CONFIRMATION,
-            ordre=services.VISITE_ORDRE_CONFIRMATION,
+            ordre=cadence_reperes.VISITE_ORDRE_CONFIRMATION,
             quand=_a(3).date())
-        recalee = services._poser_etape_visite(
+        recalee = cadence_filet._poser_etape_visite(
             self.lead, cle=CLE_CONFIRMATION,
-            ordre=services.VISITE_ORDRE_CONFIRMATION,
+            ordre=cadence_reperes.VISITE_ORDRE_CONFIRMATION,
             quand=_a(6).date())
         self.assertEqual(recalee.pk, premiere.pk)
         recalee.refresh_from_db()
@@ -242,7 +247,7 @@ class DeplacementMoteurTests(_Base):
         """« À rappeler le… » sur un barreau CONSOMME la touche : la date
         PLACE celle qui lui succède — un placement, jamais un report."""
         gabarits = CadenceRelanceEtape.cadence_pour(self.company, 'contact')
-        echeances = services.calculer_echeances_cadence(
+        echeances = cadence_plan.calculer_echeances_cadence(
             self.lead, 'contact', GEL, gabarits=gabarits)
         gabarit, echeance = next(
             (g, e) for g, e in echeances if g.ordre == 2)

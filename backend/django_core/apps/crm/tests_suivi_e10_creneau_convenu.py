@@ -26,7 +26,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_APPEL_APRES_REPONSE, CLE_MESSAGE_CRENEAU, CLE_RAPPEL_CONVENU, q_etape)
@@ -53,7 +53,7 @@ class PromesseTests(SimpleTestCase):
         etape = RelanceEtape(cadence='generique', ordre=1,
                              canal=RelanceEtape.Canal.WHATSAPP,
                              cle=CLE_MESSAGE_CRENEAU,
-                             libelle=services.FILET_MESSAGE_CRENEAU_LIBELLE,
+                             libelle=cadence_reperes.FILET_MESSAGE_CRENEAU_LIBELLE,
                              statut=A_FAIRE)
         etape.lead = Lead(nom='témoin', stage=stages.CONTACTED)
         promesses = st.promesses_touche(etape, ordres=frozenset(),
@@ -65,7 +65,7 @@ class PromesseTests(SimpleTestCase):
         etape = RelanceEtape(cadence='generique', ordre=1,
                              canal=RelanceEtape.Canal.APPEL,
                              cle=CLE_APPEL_APRES_REPONSE,
-                             libelle=services.FILET_APPEL_LIBELLE,
+                             libelle=cadence_reperes.FILET_APPEL_LIBELLE,
                              statut=A_FAIRE)
         etape.lead = Lead(nom='témoin', stage=stages.CONTACTED)
         promesses = st.promesses_touche(etape, ordres=frozenset(),
@@ -104,7 +104,7 @@ class _Base(TestCase):
 
     def _message_creneau(self):
         return self._filet(CLE_MESSAGE_CRENEAU,
-                           services.FILET_MESSAGE_CRENEAU_LIBELLE,
+                           cadence_reperes.FILET_MESSAGE_CRENEAU_LIBELLE,
                            RelanceEtape.Canal.WHATSAPP)
 
     def _rappel(self, etape, heure):
@@ -151,7 +151,7 @@ class TemoinFiletTests(_Base):
 
     def test_appel_apres_reponse_est_deplace(self):
         appel = self._filet(CLE_APPEL_APRES_REPONSE,
-                            services.FILET_APPEL_LIBELLE,
+                            cadence_reperes.FILET_APPEL_LIBELLE,
                             RelanceEtape.Canal.APPEL)
         resp = self._rappel(appel, '11:00')
         self.assertEqual(resp.status_code, 200, resp.data)

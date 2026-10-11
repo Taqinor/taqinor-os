@@ -20,7 +20,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.crm.services import resolve_client_for_lead
+from apps.crm.clients_identite import resolve_client_for_lead
 from apps.ventes.models import Devis
 from authentication.models import Company
 

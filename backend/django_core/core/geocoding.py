@@ -78,11 +78,12 @@ class NominatimGeocodingProvider(GeocodingProvider):
         except Exception:  # noqa: BLE001
             return None
         try:
+            delai = float(self.config.get('timeout', 10))
             resp = requests.get(
                 'https://nominatim.openstreetmap.org/search',
                 params={'q': address, 'format': 'json', 'limit': 1},
                 headers={'User-Agent': 'TaqinorOS/1.0 (geocoding)'},
-                timeout=float(self.config.get('timeout', 10)),
+                timeout=delai,
             )
             if not (200 <= resp.status_code < 300):
                 return None
@@ -120,10 +121,11 @@ class GenericKeyedGeocodingProvider(GeocodingProvider):
         except Exception:  # noqa: BLE001
             return None
         try:
+            delai = float(self.config.get('timeout', 10))
             resp = requests.get(
                 self.config['base_url'],
                 params={'q': address, 'key': self.secret},
-                timeout=float(self.config.get('timeout', 10)),
+                timeout=delai,
             )
             if not (200 <= resp.status_code < 300):
                 return None

@@ -18,8 +18,8 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.chaines import (
     concevoir_par_pan,
-    groupes_electriques,
-    pans_poses,
+    _groupes_electriques,
+    _pans_poses,
 )
 from apps.calepinage.services.electrique import temperatures_site
 
@@ -63,7 +63,7 @@ class LectureDuDocumentTest(SimpleTestCase):
         layout = {'zones': [{'label': 'A', 'neededPanels': 30,
                              'geometry': {'count': 12}}]}
 
-        pans = pans_poses(layout)
+        pans = _pans_poses(layout)
 
         self.assertEqual([(p.label, p.modules) for p in pans], [('A', 12)])
 
@@ -71,21 +71,21 @@ class LectureDuDocumentTest(SimpleTestCase):
         # ACAL61 — ``neededPanels`` n'est JAMAIS un compte posé (primitive
         # ``ventes.pans_du_document``) : B, non pavé, n'est pas chaîné non
         # plus ; seul C, posé, l'est.
-        pans = pans_poses({'zones': [{'label': 'A', 'geometry': {'count': 0}},
-                                     {'label': 'B', 'neededPanels': 4},
-                                     {'label': 'C', 'geometry': {'count': 4}}]})
+        pans = _pans_poses({'zones': [{'label': 'A', 'geometry': {'count': 0}},
+                                      {'label': 'B', 'neededPanels': 4},
+                                      {'label': 'C', 'geometry': {'count': 4}}]})
 
         self.assertEqual([p.label for p in pans], ['C'])
 
     def test_orientation_absente_reste_inconnue(self):
-        pans = pans_poses({'zones': [{'label': 'A',
+        pans = _pans_poses({'zones': [{'label': 'A',
                                       'geometry': {'count': 4}}]})
 
         self.assertIsNone(pans[0].azimut_deg)
         self.assertIsNone(pans[0].source_orientation)
 
     def test_un_groupe_par_pan(self):
-        groupes = groupes_electriques(_layout(12, 8, 6))
+        groupes = _groupes_electriques(_layout(12, 8, 6))
 
         self.assertEqual([g.nb_modules for g in groupes], [12, 8, 6])
 

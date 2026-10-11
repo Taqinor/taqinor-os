@@ -26,7 +26,7 @@ from apps.calepinage.models import (
     ParametresCalepinage,
 )
 from apps.calepinage.services.documents.manuel_proprietaire import (
-    gabarit_manuel_actif,
+    _gabarit_manuel_actif,
 )
 from apps.records.models import Activity
 from apps.roles.models import Role
@@ -129,12 +129,12 @@ class DepotTest(BaseGabarits):
                          'Dossier BT v2')
 
     def test_gabarit_manuel_debloque_le_manuel_proprietaire(self):
-        self.assertIsNone(gabarit_manuel_actif(self.company))
+        self.assertIsNone(_gabarit_manuel_actif(self.company))
         reponse = self._deposer(code='manuel', genre='manuel',
                                 intitule='Manuel du propriétaire',
                                 pieces_attendues=json.dumps([]))
         self.assertEqual(reponse.status_code, 201, reponse.data)
-        manuel = gabarit_manuel_actif(self.company)
+        manuel = _gabarit_manuel_actif(self.company)
         self.assertEqual(manuel.pk, reponse.data['gabarit']['id'])
         self.assertTrue(manuel.fichier_present)
 

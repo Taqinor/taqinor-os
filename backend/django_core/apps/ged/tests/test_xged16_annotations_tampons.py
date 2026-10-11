@@ -134,7 +134,7 @@ class AnnotationApiTests(XGed16Base):
         resp = api.post('/api/django/ged/annotations/', {
             'version': self.version.pk, 'type_annotation': 'note',
             'page': 0, 'x': 15, 'y': 25, 'contenu': 'Note test',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertTrue(
             AnnotationDocument.objects.filter(

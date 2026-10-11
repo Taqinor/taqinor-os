@@ -29,12 +29,9 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    PASSATION_LIBELLE,
-    PASSATION_TEMPLATE_CLE,
-    lead_notification_recipients,
-    reattribuer_lead,
-)
+from apps.crm.cadence_reperes import PASSATION_LIBELLE
+from apps.crm.cadence_reponses import PASSATION_TEMPLATE_CLE, reattribuer_lead
+from apps.crm.leads_socle import lead_notification_recipients
 from apps.crm.fiche_bulk import apply_bulk_action
 from apps.parametres.models import CompanyProfile
 

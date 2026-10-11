@@ -4,7 +4,7 @@ from .models import Entite
 
 
 class EntiteSerializer(serializers.ModelSerializer):
-    parent_nom = serializers.CharField(source='parent.nom', read_only=True)
+    parent_nom = serializers.CharField(source='parent.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = Entite

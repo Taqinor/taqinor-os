@@ -35,7 +35,7 @@ class SessionComptage(models.Model):
         TOUTES = 'toutes', 'Toutes'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_sessions_comptage')
     reference = models.CharField(max_length=50)
@@ -78,7 +78,7 @@ class ComptageLigne(models.Model):
     quantité comptée. L'écart est dérivé (comptée − théorique)."""
 
     session = models.ForeignKey(
-        SessionComptage, on_delete=models.CASCADE, related_name='lignes')
+        SessionComptage, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de SessionComptage — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,

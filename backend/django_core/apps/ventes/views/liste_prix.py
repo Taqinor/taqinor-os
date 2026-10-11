@@ -14,12 +14,16 @@ devis de tous les vendeurs) ; lecture ouverte à tout rôle authentifié de la
 société. `prix_achat` n'est JAMAIS lu ni exposé ici."""
 from decimal import Decimal, InvalidOperation
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
+from . import openapi_docs as D
 from ..models import ListePrix, LignePrixListe
 from ..serializers import (
     ListePrixSerializer, LignePrixListeSerializer, RegleListePrixSerializer,
@@ -36,6 +40,7 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
     # une fonction hors socle (non-ViewSet, hors baseline).
     queryset = ListePrix.objects.prefetch_related('lignes', 'regles').all()
     serializer_class = ListePrixSerializer
+    parser_classes = [JSONParser]  # ENF5/D2 : aucun envoi de fichier
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -112,6 +117,12 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         return Response(serializer.data, status=201)
 
 
+@extend_schema(parameters=[
+    OpenApiParameter('produit', OpenApiTypes.INT, required=True),
+    OpenApiParameter('client', OpenApiTypes.INT, required=False),
+    OpenApiParameter('quantite', OpenApiTypes.STR, required=False),
+    OpenApiParameter('panier', OpenApiTypes.STR, required=False),
+], responses=D.PrixApplicableResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def prix_applicable_view(request):

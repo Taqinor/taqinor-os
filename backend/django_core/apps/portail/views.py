@@ -15,9 +15,14 @@ rapport au CRUD de base.
 
 import logging
 
-from rest_framework import filters, status, viewsets
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -52,6 +57,19 @@ logger = logging.getLogger('portail.acces')
 class _PortailBaseViewSet(TenantMixin, viewsets.ModelViewSet):
     """Base : société scopée + accès Administrateur/Responsable uniquement."""
     permission_classes = [IsResponsableOrAdmin]
+    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload par défaut
+
+
+_OBJ = OpenApiTypes.OBJECT
+_TICKET_ID = inline_serializer('PortailTicketIdRequest', {
+    'ticket_id': serializers.IntegerField(),
+})
+_TICKET_ID_OPT = inline_serializer('PortailTicketIdOptionnelRequest', {
+    'ticket_id': serializers.IntegerField(required=False, allow_null=True),
+})
+_RAPPROCHER = inline_serializer('PortailRapprocherRequest', {
+    'reference': serializers.CharField(required=False, allow_blank=True, allow_null=True),
+})
 
 
 class ComptePortailClientViewSet(_PortailBaseViewSet):
@@ -121,6 +139,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         else:
             services.revoquer_acces_client(compte.company, compte.client_id)
 
+    @extend_schema(request=None, responses=_OBJ)
     @action(
         detail=True,
         methods=['post'],
@@ -176,6 +195,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
     # (4 derniers caractères) ; le lien complet ne s'obtient que par ces deux
     # actions, réservées à l'ADMINISTRATEUR et journalisées.
 
+    @extend_schema(request=None, responses=_OBJ)
     @action(
         detail=True,
         methods=['post'],
@@ -203,6 +223,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
             'detail': ("Lien d'accès révélé — cette demande est journalisée."),
         })
 
+    @extend_schema(request=None, responses=_OBJ)
     @action(
         detail=True,
         methods=['post'],
@@ -250,6 +271,10 @@ class AcceptationDevisPortailViewSet(_PortailBaseViewSet):
     http_method_names = ['get', 'head', 'options']
 
 
+@extend_schema_view(list=extend_schema(parameters=[OpenApiParameter(
+    'statut', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    enum=list(PaiementFacturePortail.Statut.values),
+    description='Ne garder que les paiements de ce statut.')]))
 class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
 
@@ -263,6 +288,9 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     serializer_class = PaiementFacturePortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'paye_le']
+    # ENF6 — lecture + action « rapprocher » : ni PUT/PATCH/DELETE ; le POST
+    # de collection répond 405 (exclu du schéma).
+    http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
         """AUD146 — Honore `?statut=` : la file « À rapprocher » était fausse.
@@ -286,6 +314,7 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
                     "posée par le client depuis son portail. Seule l'action "
                     "« rapprocher » est disponible."))
 
+    @extend_schema(exclude=True)
     def create(self, request, *args, **kwargs):
         self._refus_lecture_seule(request)
 
@@ -298,6 +327,7 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     def destroy(self, request, *args, **kwargs):
         self._refus_lecture_seule(request)
 
+    @extend_schema(request=_RAPPROCHER, responses=PaiementFacturePortailSerializer)
     @action(detail=True, methods=['post'])
     def rapprocher(self, request, pk=None):
         from apps.ventes.services import AcompteAvantDelaiLegal
@@ -323,7 +353,9 @@ class DocumentClientPortailViewSet(_PortailBaseViewSet):
     serializer_class = DocumentClientPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_depot']
+    parser_classes = [MultiPartParser, FormParser, JSONParser]  # dépôt d'un fichier (JSON sans fichier)
 
+    @extend_schema(request=None, responses=DocumentClientPortailSerializer)
     @action(detail=True, methods=['post'])
     def marquer_traite(self, request, pk=None):
         doc = self.get_object()
@@ -352,6 +384,7 @@ class JalonChantierPortailViewSet(_PortailBaseViewSet):
     ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
     http_method_names = ['get', 'patch', 'delete', 'post', 'head', 'options']
 
+    @extend_schema(exclude=True)
     def create(self, request, *args, **kwargs):
         raise MethodNotAllowed(
             request.method,
@@ -369,6 +402,7 @@ class JalonChantierPortailViewSet(_PortailBaseViewSet):
 
     # Garde explicite PAR action (même garde que la classe) : une @action
     # neuve ne doit pas monter la dette du scanner YRBAC4.
+    @extend_schema(request=None, responses=JalonChantierPortailSerializer)
     @action(detail=True, methods=['post'],
             permission_classes=[IsResponsableOrAdmin])
     def marquer_non_atteint(self, request, pk=None):
@@ -379,6 +413,7 @@ class JalonChantierPortailViewSet(_PortailBaseViewSet):
             jalon.save(update_fields=['atteint'])
         return Response(self.get_serializer(jalon).data)
 
+    @extend_schema(request=None, responses=JalonChantierPortailSerializer)
     @action(detail=True, methods=['post'])
     def marquer_atteint(self, request, pk=None):
         jalon = self.get_object()
@@ -428,6 +463,7 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
         return Response({'detail': self.TICKET_INCONNU},
                         status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(request=_TICKET_ID_OPT, responses=DemandeTicketPortailSerializer)
     @action(detail=True, methods=['post'])
     def prendre_en_charge(self, request, pk=None):
         demande = self.get_object()
@@ -444,6 +480,7 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
             demande.save(update_fields=['statut', 'ticket_id'])
         return Response(self.get_serializer(demande).data)
 
+    @extend_schema(request=_TICKET_ID, responses=DemandeTicketPortailSerializer)
     @action(detail=True, methods=['post'], url_path='lier-ticket',
             permission_classes=[IsResponsableOrAdmin])
     def lier_ticket(self, request, pk=None):

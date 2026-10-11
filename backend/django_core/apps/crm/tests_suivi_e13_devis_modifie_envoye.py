@@ -25,7 +25,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_plan
+from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS_MODIFIE
 from apps.crm.models import Client, Lead, RelanceEtape
@@ -47,10 +48,10 @@ class PromesseTests(SimpleTestCase):
 
     def test_fait_sans_issue_annonce_le_suivi_de_proposition(self):
         etape = RelanceEtape(cadence='apres_devis',
-                             ordre=services.VISITE_ORDRE_DEBRIEF,
+                             ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
                              canal=RelanceEtape.Canal.APPEL,
                              cle=CLE_DEVIS_MODIFIE,
-                             libelle=services.VISITE_DEVIS_LIBELLE,
+                             libelle=cadence_reperes.VISITE_DEVIS_LIBELLE,
                              statut=A_FAIRE)
         etape.lead = Lead(nom='témoin', stage=stages.QUOTE_SENT)
         promesses = st.promesses_touche(etape, ordres=frozenset(),
@@ -97,9 +98,9 @@ class DevisModifieEnvoyeTests(TestCase):
             cadence_depart=DEPART)
         self.modifie = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_DEBRIEF,
+            ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
             canal=RelanceEtape.Canal.APPEL, cle=CLE_DEVIS_MODIFIE,
-            libelle=services.VISITE_DEVIS_LIBELLE, devis=self.ancien,
+            libelle=cadence_reperes.VISITE_DEVIS_LIBELLE, devis=self.ancien,
             due_at=GEL, due_date=GEL.date())
 
     def _devis(self, statut, date_envoi=None):
@@ -124,7 +125,7 @@ class DevisModifieEnvoyeTests(TestCase):
     def _assert_relance_date_sur_la_plus_proche(self):
         """SUIVI I6 — ``Lead.relance_date`` = la date de la plus proche
         touche ouverte (jamais vide quand une touche l'est)."""
-        proche = services._prochaine_touche_a_faire(self.lead)
+        proche = cadence_plan._prochaine_touche_a_faire(self.lead)
         self.lead.refresh_from_db(fields=['relance_date'])
         self.assertIsNotNone(proche)
         self.assertEqual(self.lead.relance_date, proche.due_date)

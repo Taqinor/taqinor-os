@@ -10,7 +10,10 @@ progression est suivie via un compteur cache léger (clé
 indicateur transitoire et best-effort.
 """
 from django.core.cache import cache
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -108,7 +111,9 @@ class DemoWizardStatusView(APIView):
     """GET ?slug=... — barre de progression pollée par le frontend."""
     permission_classes = [IsSuperuserConsole]
 
-    @extend_schema(responses={200: _WIZARD_STATUT_RESPONSE})
+    @extend_schema(
+        parameters=[OpenApiParameter('slug', OpenApiTypes.STR, required=True)],
+        responses={200: _WIZARD_STATUT_RESPONSE})
     def get(self, request):
         slug = request.query_params.get('slug')
         if not slug:

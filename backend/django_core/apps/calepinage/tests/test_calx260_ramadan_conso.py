@@ -29,7 +29,7 @@ from datetime import date
 
 from apps.calepinage.services import consommation
 from apps.calepinage.services.consommation import (
-    ProfilInvalide, appliquer_ramadan,
+    ProfilInvalide, _appliquer_ramadan,
 )
 from apps.ventes import ramadan
 
@@ -47,25 +47,25 @@ class HorsRamadanTest(unittest.TestCase):
 
     def test_une_date_hors_plage_rend_la_meme_liste(self):
         courbe = courbe_type()
-        resultat = appliquer_ramadan(courbe, jour=JOUR_ORDINAIRE)
+        resultat = _appliquer_ramadan(courbe, jour=JOUR_ORDINAIRE)
         self.assertEqual(resultat['courbe24'], courbe)
         self.assertFalse(resultat['dans_ramadan'])
         self.assertIsNone(resultat['decalage_h'])
 
     def test_une_date_au_dela_de_la_table_rend_la_meme_liste(self):
         courbe = courbe_type()
-        resultat = appliquer_ramadan(courbe, jour=date(2040, 6, 1))
+        resultat = _appliquer_ramadan(courbe, jour=date(2040, 6, 1))
         self.assertEqual(resultat['courbe24'], courbe)
         self.assertTrue(resultat['avertissements'])
 
     def test_courbe_de_23_valeurs_refusee_en_la_nommant(self):
         with self.assertRaises(ProfilInvalide) as capture:
-            appliquer_ramadan([1.0] * 23, jour=JOUR_ORDINAIRE)
+            _appliquer_ramadan([1.0] * 23, jour=JOUR_ORDINAIRE)
         self.assertEqual(capture.exception.champ, 'courbe24')
 
     def test_jour_qui_nest_pas_une_date_refuse_en_le_nommant(self):
         with self.assertRaises(ProfilInvalide) as capture:
-            appliquer_ramadan(courbe_type(), jour='2026-03-01')
+            _appliquer_ramadan(courbe_type(), jour='2026-03-01')
         self.assertEqual(capture.exception.champ, 'jour')
 
 
@@ -73,7 +73,7 @@ class DansRamadanTest(unittest.TestCase):
 
     def test_une_date_dans_la_plage_decale_dune_heure(self):
         courbe = courbe_type()
-        resultat = appliquer_ramadan(courbe, jour=JOUR_RAMADAN_2026)
+        resultat = _appliquer_ramadan(courbe, jour=JOUR_RAMADAN_2026)
         self.assertTrue(resultat['dans_ramadan'])
         self.assertEqual(resultat['decalage_h'], 1)
         decalee = resultat['courbe24']
@@ -85,7 +85,7 @@ class DansRamadanTest(unittest.TestCase):
         alea = random.Random(260)
         for _ in range(200):
             courbe = [round(alea.uniform(0, 4), 3) for _ in range(24)]
-            resultat = appliquer_ramadan(courbe, jour=JOUR_RAMADAN_2026)
+            resultat = _appliquer_ramadan(courbe, jour=JOUR_RAMADAN_2026)
             self.assertAlmostEqual(sum(resultat['courbe24']), sum(courbe),
                                    delta=1e-6)
             self.assertEqual(sorted(resultat['courbe24']), sorted(courbe))
@@ -98,14 +98,14 @@ class DansRamadanTest(unittest.TestCase):
             ordinaire = plage['debut'] - (plage['fin'] - plage['debut'])
             attendu = (ramadan.decalage_maroc_h(ordinaire)
                        - ramadan.decalage_maroc_h(jour))
-            resultat = appliquer_ramadan(courbe_type(), jour=jour)
+            resultat = _appliquer_ramadan(courbe_type(), jour=jour)
             self.assertEqual(resultat['decalage_h'], attendu, plage['hijri'])
             if attendu == 0:
                 self.assertEqual(resultat['courbe24'], courbe_type())
 
     def test_part_du_mois_et_mention_du_fuseau_publiees(self):
-        resultat = appliquer_ramadan(courbe_type(), jour=JOUR_RAMADAN_2026,
-                                     lat=33.57, lon=-7.59)
+        resultat = _appliquer_ramadan(courbe_type(), jour=JOUR_RAMADAN_2026,
+                                      lat=33.57, lon=-7.59)
         parts = ramadan.part_ramadan_par_mois(JOUR_RAMADAN_2026)
         self.assertEqual(resultat['part_du_mois'], parts[2])   # mars
         self.assertEqual(resultat['hijri'], 1447)
@@ -125,7 +125,7 @@ MOTIFS_HEURE_ECRITE = (
 )
 
 #: Le code du Ramadan dans ``consommation.py``.
-FONCTIONS_RAMADAN = ('appliquer_ramadan', '_tourner')
+FONCTIONS_RAMADAN = ('_appliquer_ramadan', '_tourner')
 
 
 class GardeAucuneHeureEcriteTest(unittest.TestCase):

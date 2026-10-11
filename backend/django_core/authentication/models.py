@@ -1,3 +1,4 @@
+import uuid
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
 from django.utils.text import slugify
@@ -126,7 +127,7 @@ class Company(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             base = slugify(self.nom)
-            self.slug = base or f"company-{Company.objects.count() + 1}"
+            self.slug = base or f"company-{uuid.uuid4().hex[:8]}"
         # SCA18 — pont de synchro bool↔statut (réversible, sans perte).
         # ``actif`` (bool historique) et ``statut`` (granulaire) doivent toujours
         # s'accorder sur l'état OPÉRATIONNEL. Réconciliation :
@@ -209,7 +210,7 @@ class CustomUser(AbstractUser):
     avatar_key = models.CharField(max_length=500, blank=True, default='')
     company = models.ForeignKey(
         Company,
-        on_delete=models.SET_NULL,
+        on_delete=models.SET_NULL,  # on_delete: assigné informatif — l'enregistrement survit à la suppression de l'utilisateur
         null=True,
         blank=True,
         related_name='users',

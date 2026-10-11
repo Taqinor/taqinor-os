@@ -76,9 +76,29 @@ def installer_flush_cascade():
     TransactionTestCase._fixture_teardown = _fixture_teardown
 
 
+#: Modules que freezegun ne doit PAS parcourir : ``freeze_time.start()`` lit
+#: chaque attribut des modules chargés, ce qui déclenche les imports paresseux
+#: de langchain (``langchain_core.runnables.__getattr__``) ; l'import échoue
+#: en plein démarrage et laisse l'horloge FIGÉE pour les tests suivants du
+#: même processus (vu le 10/10/2026 : AMOT28 en erreur, puis un banc de
+#: perf qui mesure 0.000 s contre 0.000 s).
+FREEZEGUN_IGNORER = ('langchain', 'langchain_core', 'langchain_text_splitters',
+                     'langchain_community', 'langsmith')
+
+
+def configurer_freezegun():
+    """Étend la liste d'exclusion de freezegun (idempotent, sans freezegun = no-op)."""
+    try:
+        import freezegun
+    except ImportError:  # pragma: no cover — dépendance de dev
+        return
+    freezegun.configure(extend_ignore_list=list(FREEZEGUN_IGNORER))
+
+
 class TaqinorTestRunner(DiscoverRunner):
     """``DiscoverRunner`` + purge de fixtures compatible coquilles parquées."""
 
     def setup_test_environment(self, **kwargs):
         installer_flush_cascade()
+        configurer_freezegun()
         super().setup_test_environment(**kwargs)

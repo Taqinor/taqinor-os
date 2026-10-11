@@ -10,7 +10,7 @@ imports relatifs locaux change), prouvé par ``tests/golden/split_pv_paiement.js
 """
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -78,6 +78,7 @@ def _deposit_success_payload(devis, token):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_virement_declare(request, token):
@@ -153,6 +154,7 @@ def _resolve_payment_link(token, *, require_valid=True):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def pay_page(request, token):
@@ -198,6 +200,7 @@ def pay_page(request, token):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def pay_webhook(request, token):

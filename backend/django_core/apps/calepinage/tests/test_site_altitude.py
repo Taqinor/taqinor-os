@@ -63,8 +63,8 @@ class AltitudeTest(unittest.TestCase):
         self.assertEqual(capture.exception.champ, 'source_altitude')
 
     def test_altitude_pvgis_isolee(self):
-        self.assertEqual(site.altitude_pvgis(REPONSE_PVGIS), 56.0)
-        self.assertIsNone(site.altitude_pvgis({'inputs': {'location': None}}))
+        self.assertEqual(site._altitude_pvgis(REPONSE_PVGIS), 56.0)
+        self.assertIsNone(site._altitude_pvgis({'inputs': {'location': None}}))
 
 
 class FuseauTest(unittest.TestCase):
