@@ -1,0 +1,62 @@
+{
+  "sha": "cf66024bc105e4f8a191d188b7c9e14b7b626663",
+  "date": "2026-10-11",
+  "groupe": "AACQ",
+  "verdict": "PASS",
+  "couvre": [
+    "AACQ98",
+    "AACQ100",
+    "AACQ101",
+    "AACQ102"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P3.2",
+      "taches": [
+        "AACQ98",
+        "AACQ100"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AACQ/traces/2026-10-11/AACQ-P3.2.txt",
+      "notes": []
+    },
+    {
+      "id": "P3.2-ecrans",
+      "taches": [
+        "AACQ100",
+        "AACQ101",
+        "AACQ102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AACQ/traces/2026-10-11/AACQ-P3.2-ecrans.txt",
+      "notes": []
+    }
+  ]
+}
