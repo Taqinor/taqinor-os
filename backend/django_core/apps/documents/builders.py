@@ -628,7 +628,8 @@ def generate_bon_livraison(chantier):
     rendu FR par défaut passe par le gabarit HISTORIQUE, intégralement
     inchangé (`document_bon_livraison.html`) → byte-identique. Un client
     `langue_document='ar'` passe par le NOUVEAU gabarit dédié
-    (`document_bon_livraison_ar.html`, RTL, police système — APDF50) — jamais de traduction automatique, libellés fixes traduits.
+    (`document_bon_livraison_ar.html`, RTL, police système — APDF50) — jamais de traduction
+    automatique, libellés fixes traduits.
     """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
