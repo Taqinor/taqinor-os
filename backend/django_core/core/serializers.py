@@ -314,6 +314,18 @@ class WorkflowStepDefinitionAutonomeSerializer(WorkflowStepDefinitionSerializer)
         extra_kwargs = {'definition': {'required': True}}
 
 
+#: ERR-ENF11-FUZZ-CORE — règles NTWFL9 publiées sur le corps des écritures
+#: de ``workflow-definitions`` (``core.openapi_erreurs.EXTENSION_CORPS_RESSERRE``) :
+#: ``steps`` fourni = au moins une étape, et une étape déclarée MANUELLE
+#: désigne un rôle requis non blanc ; à la CRÉATION ``steps`` est requis.
+ETAPES_PUBLIEES = {'properties': {'steps': {'minItems': 1, 'items': {'anyOf': [
+    {'properties': {'type_approbation': {'enum': ['auto', 'role']}}},
+    {'required': ['role_requis'],
+     'properties': {'role_requis': {'type': 'string', 'pattern': r'\S'}}},
+]}}}}
+CREATION_PUBLIEE = {**ETAPES_PUBLIEES, 'required': ['steps']}
+
+
 class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
     ses étapes imbriquées.

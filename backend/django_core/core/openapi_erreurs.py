@@ -188,6 +188,22 @@ def _parametre_contenu_json(noeud):
     noeud['content'] = {'application/json': {'schema': schema}}
 
 
+#: ERR-ENF11-FUZZ-CORE — extension d'OPÉRATION (``extend_schema(extensions=
+#: {EXTENSION_CORPS_RESSERRE: <schéma>})``) : règle de validation d'une
+#: opération que son composant de requête, partagé, ne peut pas porter (ex.
+#: ``steps`` obligatoire à la CRÉATION d'une définition de workflow, facultatif
+#: à sa mise à jour). Le crochet la combine en ``allOf`` au corps publié de
+#: CETTE opération seulement — aucun composant ne change de nom ni de forme.
+EXTENSION_CORPS_RESSERRE = 'x-corps-resserre'
+
+
+def _corps_resserre(noeud):
+    regle = noeud.pop(EXTENSION_CORPS_RESSERRE, None)
+    corps = noeud.get('requestBody') if regle is not None else None
+    for media in (corps or {}).get('content', {}).values():
+        media['schema'] = {'allOf': [media['schema'], regle]}
+
+
 def _chaine_non_blanche(noeud):
     return (noeud.get('type') == 'string' and noeud.get('minLength', 0) >= 1
             and not any(cle in noeud for cle in ('pattern', 'format', 'enum')))
@@ -204,6 +220,7 @@ def aligner_motifs_sur_drf(result, generator=None, request=None,
         noeud = pile.pop()
         if isinstance(noeud, dict):
             _parametre_contenu_json(noeud)
+            _corps_resserre(noeud)
             if noeud.get('format') == 'decimal':
                 strict = motif_decimal_strict(noeud.get('pattern'))
                 if strict:

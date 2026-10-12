@@ -59,7 +59,7 @@ from . import trash as trash_infra
 from . import workflow_templates
 from .champs_stricts import ChaineStricte, EntierStrict
 from .mixins import TenantMixin
-from .openapi_erreurs import EXTENSION_CONTENU_JSON
+from .openapi_erreurs import EXTENSION_CONTENU_JSON, EXTENSION_CORPS_RESSERRE
 from .parametres_requete import choix_ou_400
 from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
@@ -108,7 +108,7 @@ from .serializers import (
     ScheduledJobSerializer,
     TenantThemeSerializer,
     TenantUsageSnapshotSerializer,
-    WorkflowDefinitionSerializer,
+    CREATION_PUBLIEE, ETAPES_PUBLIEES, WorkflowDefinitionSerializer,
     WorkflowStepDefinitionAutonomeSerializer,
     WorkflowStepDefinitionSerializer,
     WorkflowTemplateSerializer,
@@ -284,6 +284,12 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
         )
 
 
+@extend_schema_view(
+    create=extend_schema(extensions={
+        EXTENSION_CORPS_RESSERRE: CREATION_PUBLIEE}),
+    **{action: extend_schema(extensions={
+        EXTENSION_CORPS_RESSERRE: ETAPES_PUBLIEES})
+       for action in ('update', 'partial_update')})
 class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
     """WIR51 — CRUD serveur des définitions de workflow (FG366).
 
