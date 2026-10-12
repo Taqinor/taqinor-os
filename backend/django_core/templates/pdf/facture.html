@@ -524,6 +524,8 @@
     {% if entreprise_email %} — {{ entreprise_email }}{% endif %}
     {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
     <div class="footer-legal">
+      {# VNT39 — raison sociale, forme et capital (figés à l'émission). #}
+      {% if entreprise_mention_capital %}{{ entreprise_mention_capital }}<br />{% endif %}
       {# Identifiants légaux marocains (ICE obligatoire sur facture). #}
       {% if entreprise_ice %}ICE : {{ entreprise_ice }}{% endif %}
       {% if entreprise_if %} | IF : {{ entreprise_if }}{% endif %}

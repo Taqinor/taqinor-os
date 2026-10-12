@@ -177,7 +177,13 @@ CLES_IDENTITE_VENDEUR = (
     'entreprise_ice', 'entreprise_if', 'entreprise_rc', 'entreprise_patente',
     'entreprise_cnss', 'couleur_principale', 'rib', 'banque',
     'instructions_paiement', 'conditions_generales',
+    # VNT39 — forme juridique et capital (phrase de la bande légale).
+    'entreprise_forme_juridique', 'entreprise_capital_social',
 )
+
+#: VNT39 — clés qu'une facture ÉMISE ne lit JAMAIS du profil vivant : sans
+#: instantané (facture antérieure) ou instantané sans ces clés ⇒ vides.
+CLES_CAPITAL_FIGE = ('entreprise_forme_juridique', 'entreprise_capital_social')
 
 
 def identite_vendeur_courante(company):
@@ -238,7 +244,32 @@ def _identite_textes(profile):
         'banque': profile.banque,
         'instructions_paiement': getattr(profile, 'instructions_paiement', ''),
         'conditions_generales': getattr(profile, 'conditions_generales', ''),
+        'entreprise_forme_juridique': getattr(profile, 'forme_juridique', ''),
+        'entreprise_capital_social': getattr(profile, 'capital_social', ''),
     }
+
+
+def _mention_capital(context, facture):
+    """VNT39 — « <raison sociale> <forme> au capital de <capital> » (phrase
+    de ``quote_engine/identite.mentions_legales``, sans balise) en tête de
+    la bande légale. Facture ÉMISE : forme et capital lus de l'instantané
+    SEUL (absents ⇒ rien d'imprimé, jamais le capital du jour) ; brouillon :
+    profil vivant."""
+    from html import unescape
+
+    from apps.ventes.quote_engine.identite import mentions_legales
+    if facture.statut != 'brouillon':
+        figee = (facture.identite_vendeur
+                 if isinstance(facture.identite_vendeur, dict) else {})
+        for cle in CLES_CAPITAL_FIGE:
+            context[cle] = figee.get(cle) or ''
+    forme = (context.get('entreprise_forme_juridique') or '').strip()
+    capital = (context.get('entreprise_capital_social') or '').strip()
+    lignes = (mentions_legales(
+        {'nom': context.get('entreprise_nom') or '', 'forme_juridique': forme,
+         'capital_social': capital}, gras=None) if forme or capital else None)
+    context['entreprise_mention_capital'] = unescape(lignes[0]) if lignes else ''
+    return context
 
 
 def _company_context(company=None):
@@ -275,6 +306,9 @@ def _company_context(company=None):
         # Feature B — blocs paiement & conditions (rendus seulement si non-vides).
         'instructions_paiement': getattr(profile, 'instructions_paiement', ''),
         'conditions_generales': getattr(profile, 'conditions_generales', ''),
+        # VNT39 — forme juridique et capital (bande légale de la facture).
+        'entreprise_forme_juridique': getattr(profile, 'forme_juridique', ''),
+        'entreprise_capital_social': getattr(profile, 'capital_social', ''),
         'logo_uri':      None,
         'signature_uri': None,
     }
@@ -396,6 +430,7 @@ def generate_facture_pdf(facture_id):
     # (repli documenté : sans instantané, le profil vivant comme avant).
     _appliquer_identite_figee(
         context, getattr(facture, 'identite_vendeur', None))
+    _mention_capital(context, facture)
     context['facture'] = facture
     # AFAC56 — ICE/IF/RC du client imprimés selon la règle B2B du modèle.
     context['client_est_pro'] = Facture._client_est_pro(facture.client)
