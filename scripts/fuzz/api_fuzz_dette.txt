@@ -1634,3 +1634,11 @@ Server error|POST /api/django/ventes/factures/bulk/
 API accepted schema-violating request|PATCH /api/django/roles/{id}/
 API accepted schema-violating request|PATCH /api/django/crm/motifs-perte/{id}/
 API accepted schema-violating request|POST /api/django/crm/leads/placement-cadences/
+API accepted schema-violating request|GET /api/django/crm/leads/{id}/duplicates/
+API accepted schema-violating request|PATCH /api/django/crm/apporteurs/{id}/
+API accepted schema-violating request|PATCH /api/django/crm/defis/{id}/
+API accepted schema-violating request|POST /api/django/crm/apporteurs/
+API accepted schema-violating request|POST /api/django/crm/defis/
+API accepted schema-violating request|PUT /api/django/crm/apporteurs/{id}/
+API accepted schema-violating request|PUT /api/django/crm/defis/{id}/
+Response violates schema|POST /api/django/crm/points-contact/
