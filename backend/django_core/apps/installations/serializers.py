@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .serializers_stage import valider_unicite_societe
@@ -1421,7 +1422,7 @@ class DemandeAchatLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
         return attrs
 
 
-class DemandeAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DemandeAchatSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG310 — réquisition d'achat soumise à approbation. La référence, la
     société et `created_by` sont posés CÔTÉ SERVEUR ; `reference` est
     anti-collision (`DA-YYYYMM-NNNN`). Le `statut`, l'approbateur et la date de
@@ -1536,7 +1537,7 @@ class EtapeApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.
         read_only_fields = fields
 
 
-class SeuilApprobationBCFSerializer(serializers.ModelSerializer):
+class SeuilApprobationBCFSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """FG312 — seuil (MAD) par société : un BCF au-dessus du seuil exige un
     Administrateur. La société est posée CÔTÉ SERVEUR."""
 
@@ -1666,8 +1667,7 @@ class AppelCommandeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSer
         return value
 
 
-class DossierImportSerializer(SameCompanyFKSerializerMixin,
-                              serializers.ModelSerializer):
+class DossierImportSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG315 — dossier d'import / dédouanement d'un conteneur. La référence et la
     société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
     (`IMP-YYYYMM-NNNN`). Le `statut_douane` avance via l'action `avancer`."""

@@ -6,6 +6,7 @@ OpenAPI déclare invalide (constat api-fuzz « accepted schema-violating
 request »). ``ChaineStricte`` répond 400 tant que la valeur n'est pas déjà une
 chaîne ; le comportement d'une requête valide est inchangé.
 """
+from django.db import models
 from rest_framework import serializers
 
 
@@ -57,3 +58,18 @@ class BooleenStrict(serializers.BooleanField):
         if not isinstance(data, bool):
             self.fail('invalid', input=data)
         return data
+
+
+class ChampsStrictsMixin:
+    """Mixin de ``ModelSerializer`` : les champs de modèle texte, booléens et
+    décimaux sont générés en version STRICTE (un ``0`` pour un booléen ou un
+    nombre JSON pour un décimal-chaîne → 400, comme le schéma le déclare).
+    À placer AVANT ``serializers.ModelSerializer`` dans les bases."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+        models.DecimalField: DecimalStricte,
+    }

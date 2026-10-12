@@ -1,6 +1,8 @@
 from django.utils import timezone
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
+
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
     MonitoringSettings, ProductionReading, ProductionWarranty,
@@ -132,7 +134,7 @@ class ProductionWarrantySerializer(serializers.ModelSerializer):
         return value
 
 
-class MonitoringSettingsSerializer(serializers.ModelSerializer):
+class MonitoringSettingsSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     class Meta:
         model = MonitoringSettings
         fields = [
