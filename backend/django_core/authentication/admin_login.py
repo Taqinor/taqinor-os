@@ -14,6 +14,7 @@ ni ``UserSession`` tracée, et tout ``is_staff`` y entrait. Ce module fournit :
 Aucune seconde implémentation : vérification TOTP, compteur et verrou sont
 ceux de l'API. Posés sur ``admin.site`` depuis ``authentication/admin.py``.
 """
+import logging
 import uuid
 
 from django import forms
@@ -21,6 +22,8 @@ from django.contrib.admin.forms import AdminAuthenticationForm
 from django.core.exceptions import ValidationError
 
 from .password_policy import is_locked, register_failed_login, reset_failed_login
+
+logger = logging.getLogger(__name__)
 
 
 def _compte(username):
@@ -86,6 +89,7 @@ class AdminLoginForm(AdminAuthenticationForm):
         try:
             return ip_de_requete(request)
         except Exception:  # noqa: BLE001
+            logger.debug("admin_login : IP client illisible", exc_info=True)
             return None
 
     def confirm_login_allowed(self, user):
@@ -113,7 +117,7 @@ class AdminLoginForm(AdminAuthenticationForm):
                 ip_address=_client_ip(request) if request is not None else None,
             )
         except Exception:  # noqa: BLE001 — la traçabilité ne bloque jamais
-            pass
+            logger.warning("admin_login : UserSession de connexion admin non tracée", exc_info=True)
 
 
 def admin_has_permission(request):
