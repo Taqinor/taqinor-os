@@ -98,3 +98,21 @@ class CoherenceArgentTests(_Base):
         self.assertEqual(len(out), 1)
         self.assertAlmostEqual(out[0].valeurs['net_facture'], 14400.0,
                                places=2)
+
+    def test_vnt87_deux_brouillons_ne_depassent_rien(self):
+        """VNT87 — acompte automatique (7 200) + complète (12 000) en
+        BROUILLON : PRÉVU, jamais FACTURÉ ⇒ aucune violation ; le contexte
+        ne rend que les émises."""
+        devis = self.devis()  # 10 000 HT / 12 000 TTC
+        self._facture('7200', devis=devis,
+                      type_facture=Facture.TypeFacture.ACOMPTE)
+        self._facture('12000', devis=devis)
+        ctx = _Ctx(self.company)
+        self.assertEqual(ctx.factures_actives_du_devis(devis.pk), [])
+        self.assertEqual(
+            self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS', devis, ctx), [])
+        emise = self._facture('12000', devis=devis,
+                              statut=Facture.Statut.EMISE)
+        self.assertEqual(
+            [f.pk for f in _Ctx(self.company).factures_actives_du_devis(
+                devis.pk)], [emise.pk])

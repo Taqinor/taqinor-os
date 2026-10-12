@@ -139,15 +139,18 @@ class TestReglesDocuments(_Base):
         self.assertEqual(self.run_rule('DOC_TOTAUX_FACTURE', f), [])
 
     def test_facturation_depasse_devis(self):
+        # VNT87 — seules les ÉMISES sont facturées (un brouillon est prévu).
         devis = self.devis()
         self.facture(devis=devis, montant_ht=Decimal('10000'),
-                     montant_tva=Decimal('2000'), montant_ttc=Decimal('12000'))
+                     montant_tva=Decimal('2000'), montant_ttc=Decimal('12000'),
+                     statut=Facture.Statut.EMISE)
         self.assertEqual(
             self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS', devis, _Ctx(
                 self.company)), [])
         f2 = self.facture(devis=devis, montant_ht=Decimal('5000'),
                           montant_tva=Decimal('1000'),
-                          montant_ttc=Decimal('6000'))
+                          montant_ttc=Decimal('6000'),
+                          statut=Facture.Statut.EMISE)
         out = self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS', devis,
                             _Ctx(self.company))
         self.assertEqual(len(out), 1)
