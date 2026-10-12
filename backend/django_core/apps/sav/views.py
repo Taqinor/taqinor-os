@@ -1,3 +1,4 @@
+import re
 from datetime import date as _date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -36,9 +37,10 @@ from .models import (
     WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
 )
 from .dateutils import add_months
+from .query_params import entier_param
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
-    EquipementSerializer, TicketSerializer, TicketActivitySerializer,
+    DowntimeEntreeSerializer, EquipementSerializer, TicketSerializer, TicketActivitySerializer,
     PieceConsommeeSerializer, PieceRetireeSerializer, PretEquipementSerializer,
     EXPIRING_SOON_DAYS,
     SavSlaSettingsSerializer,
@@ -169,13 +171,14 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, self.request.user, ['created_by'])
         params = self.request.query_params
-        produit = params.get('produit')
+        # ENF11 — filtres d'identifiants validés (400, jamais 500).
+        produit = entier_param(self.request, 'produit')
         marque = params.get('marque')
-        installation = params.get('installation')
-        client = params.get('client')
+        installation = entier_param(self.request, 'installation')
+        client = entier_param(self.request, 'client')
         statut = params.get('statut')
         garantie = params.get('garantie')
-        categorie = params.get('categorie')
+        categorie = entier_param(self.request, 'categorie')
         if produit:
             qs = qs.filter(produit_id=produit)
         if marque:
@@ -382,7 +385,8 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('ids', OpenApiTypes.STR, required=False,
+            OpenApiParameter('ids', {'type': 'string', 'pattern': r'^[0-9]+(,[0-9]+)*$'},
+                             required=False,
                              description='Identifiants séparés par des virgules.'),
             OpenApiParameter('public', OpenApiTypes.STR, required=False,
                              enum=['0', '1', 'true', 'false'],
@@ -405,10 +409,9 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         qs = self.get_queryset()
         ids_param = request.query_params.get('ids', '')
         if ids_param:
-            try:
-                ids = [int(i) for i in ids_param.split(',') if i.strip()]
-            except ValueError:
+            if not re.fullmatch(r'[0-9]+(,[0-9]+)*', ids_param):
                 return Response({'detail': 'ids invalides.'}, status=400)
+            ids = [int(i) for i in ids_param.split(',')]
             qs = qs.filter(pk__in=ids)
         qs = qs[:200]
 
@@ -462,7 +465,8 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter(
-            'jours', OpenApiTypes.INT, required=False,
+            'jours', {'type': 'integer', 'minimum': 0, 'maximum': 36500},
+            required=False,
             description="Seuil « expire bientôt » en jours.")],
         responses=_RegistreGaranties)
     @action(detail=False, methods=['get'], url_path='registre-garanties',
@@ -478,11 +482,10 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         installation, client, statut, garantie). Le seuil « expire bientôt »
         est paramétrable via ?jours=N (défaut EXPIRING_SOON_DAYS)."""
         from .selectors import warranty_registry
-        try:
-            jours = int(request.query_params.get('jours', EXPIRING_SOON_DAYS))
-        except (TypeError, ValueError):
-            jours = EXPIRING_SOON_DAYS
-        jours = max(0, jours)
+        # ENF11 — seuil borné comme le schéma (0..36500 j) : une valeur
+        # démesurée faisait déborder `timedelta` (500).
+        jours = entier_param(
+            request, 'jours', EXPIRING_SOON_DAYS, mini=0, maxi=36500)
         data = warranty_registry(self.get_queryset(), expiring_soon_days=jours)
         return Response(data)
 
@@ -538,7 +541,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             'motif': _CharF(required=False, allow_blank=True),
         }),
         responses={201: EquipementDowntimeSerializer})
-    @action(detail=True, methods=['get', 'post'], url_path='downtime',
+    @action(detail=True, methods=['get', 'post'], url_path='downtime', pagination_class=None,
             permission_classes=[IsAdminRole])
     def downtime(self, request, pk=None):
         """XSAV16 — Journal d'immobilisation de cet équipement.
@@ -555,17 +558,12 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
         from .services import DowntimeOverlapError, ouvrir_downtime
 
-        debut_raw = request.data.get('debut')
-        if debut_raw:
-            from django.utils.dateparse import parse_datetime
-            debut = parse_datetime(debut_raw)
-            if debut is None:
-                return Response({'detail': 'Date invalide.'}, status=400)
-        else:
-            debut = timezone.now()
-
+        # ENF11 — corps validé (date mal formée / id non entier : 400, jamais 500).
+        entree = DowntimeEntreeSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        debut = entree.validated_data.get('debut') or timezone.now()
         ticket = None
-        ticket_id = request.data.get('ticket')
+        ticket_id = entree.validated_data.get('ticket')
         if ticket_id:
             ticket = Ticket.objects.filter(
                 id=ticket_id, company=equipement.company_id).first()
@@ -576,7 +574,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             dt = ouvrir_downtime(
                 company=equipement.company, equipement=equipement,
                 debut=debut, ticket=ticket,
-                motif=(request.data.get('motif') or '').strip(),
+                motif=(entree.validated_data.get('motif') or '').strip(),
                 created_by=request.user)
         except DowntimeOverlapError as exc:
             return Response({'detail': str(exc)}, status=400)
@@ -657,7 +655,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             'ticket_genere': _sch('SavReleveTicketGenere', {
                 'id': drf_serializers.IntegerField(),
                 'reference': _CharF()}, null=True)}, extra=True)})
-    @action(detail=True, methods=['get', 'post'], url_path='releves-compteur',
+    @action(detail=True, methods=['get', 'post'], url_path='releves-compteur', pagination_class=None,
             permission_classes=[IsAdminRole])
     def releves_compteur(self, request, pk=None):
         """XSAV17 — Relevés compteur (heures/kWh) de cet équipement.
@@ -1379,7 +1377,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         })
 
     @extend_schema(responses=TicketActivitySerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='historique',
+    @action(detail=True, methods=['get'], url_path='historique', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def historique(self, request, pk=None):
         ticket = self.get_object()
@@ -1427,7 +1425,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         methods=['POST'], request=TicketActiviteAFaireSerializer,
         responses={201: TicketActiviteAFaireSerializer})
-    @action(detail=True, methods=['get', 'post'], url_path='activites',
+    @action(detail=True, methods=['get', 'post'], url_path='activites', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def activites(self, request, pk=None):
         """ZSAV3 — Activités planifiées à échéance du ticket. GET liste
@@ -1800,7 +1798,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         'corps': _CharF(allow_blank=True, allow_null=True),
         'date_reception': drf_serializers.DateTimeField(allow_null=True),
     }, many=True))
-    @action(detail=True, methods=['get'], url_path='emails',
+    @action(detail=True, methods=['get'], url_path='emails', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def emails(self, request, pk=None):
         """NTSRV1 — Fil e-mail complet du ticket (entrants + sortants),
@@ -1816,7 +1814,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'date_reception': ligne.date_reception,
         } for ligne in lignes])
 
-    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def rapport_pdf(self, request, pk=None):
@@ -1830,7 +1828,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="rapport-intervention-{ticket.reference}.pdf"')
         return resp
 
-    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='fiche-pdf',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def fiche_pdf(self, request, pk=None):
@@ -1860,7 +1858,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'decrement': drf_serializers.BooleanField(required=False),
         }),
         responses={201: PieceConsommeeSerializer})
-    @action(detail=True, methods=['get', 'post'], url_path='pieces',
+    @action(detail=True, methods=['get', 'post'], url_path='pieces', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def pieces(self, request, pk=None):
         """N46 — pièces consommées sur le ticket. GET liste, POST ajoute.
@@ -1979,7 +1977,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'produit_neuf': drf_serializers.IntegerField(required=False),
         }),
         responses={201: PieceRetireeSerializer})
-    @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees',
+    @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def pieces_retirees(self, request, pk=None):
         """XMFG10 — pièces RETIRÉES du ticket (onduleur remplacé, pompe HS…).
@@ -2248,7 +2246,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'numero_serie': _CharF(required=False, allow_blank=True),
         }),
         responses={201: PretEquipementSerializer})
-    @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
+    @action(detail=True, methods=['get', 'post'], url_path='prets-equipement', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def prets_equipement(self, request, pk=None):
         """XSAV27 — prêt/échange anticipé d'équipement (loaner). GET liste,
@@ -2397,7 +2395,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         }),
         responses=TicketChecklistItemSerializer)
     @action(detail=True, methods=['get', 'post', 'patch'],
-            url_path='checklist',
+            url_path='checklist', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def checklist(self, request, pk=None):
         """FG82 — Checklist de visite de maintenance sur le ticket.
@@ -3903,7 +3901,8 @@ def sav_parts_forecast(request):
     from django.db.models import Sum
 
     company = request.user.company
-    months = int(request.query_params.get('months', 12))
+    # ENF11 — fenêtre bornée comme le schéma (1..1200 mois) : 400, jamais 500.
+    months = entier_param(request, 'months', 12, mini=1, maxi=1200)
     since = timezone.localdate() - timedelta(days=months * 30)
 
     qs = (PieceConsommee.objects

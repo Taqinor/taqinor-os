@@ -385,7 +385,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         parameters=[OpenApiParameter(
             'date', OpenApiTypes.DATE, required=False,
             description='Date de la visite (défaut : dernière visite).')],
-        responses={200: OpenApiTypes.BINARY})
+        responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[IsResponsableOrAdmin])
     def rapport_pdf(self, request, pk=None):
