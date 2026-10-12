@@ -1,9 +1,10 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin, TexteLie  # ENF11
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .serializers_stage import ChampsStrictsMixin, TexteLie, valider_unicite_societe  # ENF11 : core.champs_stricts
+from .serializers_stage import valider_unicite_societe
 
 from .models import (
     Equipe,
@@ -2187,8 +2188,7 @@ class MaterielConsigneSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixi
                                  serializers.ModelSerializer):
     """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE
     SERVEUR ; le statut et la trace de retour avancent via l'action `retourner`.
-    `caution_totale` est derivee (INTERNE). Champs stricts (api-fuzz r12 : un
-    `note` entier = 400) ; `fournisseur_nom` toujours servi, même sur un PATCH."""
+    `caution_totale` est derivee (INTERNE). Champs stricts ; `fournisseur_nom` servi meme sur PATCH (fuzz r12)."""
     # ENF17 — FK cross-app inscriptibles bornées à la société (id
     # d'une autre société = id absent, 400).
     same_company_fields = ('fournisseur',)
