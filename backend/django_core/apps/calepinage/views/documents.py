@@ -40,7 +40,7 @@ from rest_framework.renderers import JSONRenderer
 
 # ── CALX297 — le rapport d'étude (PDF) ──────────────────────────────────────
 @extend_schema(
-    responses={200: OpenApiTypes.BINARY},
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
@@ -87,7 +87,7 @@ CalepinageViewSet.rapport_etude_pdf = rapport_etude_pdf
 
 # ── CALX308 — le diagramme de pertes (SVG dessiné par le serveur) ──────────
 @extend_schema(
-    responses={200: OpenApiTypes.BINARY},
+    responses={(200, 'image/svg+xml'): OpenApiTypes.BINARY},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description='Langue des libellés (fr, en ; ar retombe sur fr).')],
@@ -195,7 +195,7 @@ CalepinageViewSet.documents = documents
 
 # ── CALX323 — l'aperçu HTML d'un document, AVANT le PDF ─────────────────────
 @extend_schema(
-    responses={200: OpenApiTypes.STR},
+    responses={(200, 'text/html'): OpenApiTypes.STR},
     parameters=[
         OpenApiParameter(
             name='code', type=OpenApiTypes.STR, required=True,
@@ -263,7 +263,7 @@ def _refus_plan_cablage(refus):
                      str(refus)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'plan-cablage\.pdf',
         url_name='plan-cablage-pdf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_pdf(self, request, pk=None):
@@ -293,7 +293,7 @@ def plan_cablage_pdf(self, request, pk=None):
 CalepinageViewSet.plan_cablage_pdf = plan_cablage_pdf
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'image/vnd.dxf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'plan-cablage\.dxf',
         url_name='plan-cablage-dxf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_dxf(self, request, pk=None):
@@ -451,7 +451,7 @@ CalepinageViewSet.image_document = image_document
 
 # ── CALX317 — le rapport d'ombrage AUTONOME (matrice, horizon, carte) ──────
 @extend_schema(
-    responses={200: OpenApiTypes.BINARY},
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
@@ -495,7 +495,7 @@ CalepinageViewSet.rapport_ombrage_pdf = rapport_ombrage_pdf
 # ── CALX316 — le manuel du propriétaire, depuis le gabarit société ─────────
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'manuel-proprietaire\.pdf',
         url_name='manuel-proprietaire-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -528,7 +528,7 @@ CalepinageViewSet.manuel_proprietaire_pdf = manuel_proprietaire_pdf
 
 
 # ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'document-asbuilt\.pdf',
         url_name='document-asbuilt-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -557,7 +557,7 @@ CalepinageViewSet.document_asbuilt_pdf = document_asbuilt_pdf
 
 
 # ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'presentation-compacte\.pdf',
         url_name='presentation-compacte-pdf',
         permission_classes=[PeutVoirCalepinage])

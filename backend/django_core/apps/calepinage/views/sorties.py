@@ -33,6 +33,8 @@ CE QUI EST GARANTI, ET PAR QUI
 """
 from __future__ import annotations
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -189,6 +191,7 @@ class SortiesMixin:
         """CAL175 — l'INVENTAIRE des sorties disponibles de ce calepinage."""
         return Response(inventaire_des_sorties(self.get_object()))
 
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'planche\.pdf',
             url_name='planche-pdf', permission_classes=[PeutVoirCalepinage])
     def planche_pdf(self, request, pk=None):
@@ -208,6 +211,7 @@ class SortiesMixin:
             octets, mime=MIME_PDF,
             nom_fichier=nom_de_fichier(calepinage, 'pdf'))
 
+    @extend_schema(responses={(200, MIME_SVG): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'planche\.svg',
             url_name='planche-svg', permission_classes=[PeutVoirCalepinage])
     def planche_svg(self, request, pk=None):
@@ -254,6 +258,7 @@ class SortiesMixin:
             octets, mime=MIME_PDF,
             nom_fichier=nom_de_fichier(calepinage, '%s.pdf' % contenu))
 
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'plan-pose\.pdf',
             url_name='plan-pose-pdf', permission_classes=[PeutVoirCalepinage])
     def plan_pose_pdf(self, request, pk=None):
@@ -264,6 +269,7 @@ class SortiesMixin:
 
         return self._plan(CONTENU_POSE)
 
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'plan-toiture\.pdf',
             url_name='plan-toiture-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -273,6 +279,7 @@ class SortiesMixin:
 
         return self._plan(CONTENU_TOITURE)
 
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'plan-masse\.pdf',
             url_name='plan-masse-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -283,6 +290,7 @@ class SortiesMixin:
         return self._plan(CONTENU_MASSE)
 
     # ── CAL176/CAL177 — la note de calcul ──────────────────────────────────
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'note-calcul\.pdf',
             url_name='note-calcul-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -303,6 +311,7 @@ class SortiesMixin:
             nom_fichier=nom_de_fichier(calepinage, 'note.pdf'))
 
     # ── CAL178/CAL179 — les exports réutilisables ──────────────────────────
+    @extend_schema(responses={(200, MIME_DXF): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'export\.dxf',
             url_name='export-dxf', permission_classes=[PeutVoirCalepinage])
     def export_dxf(self, request, pk=None):
@@ -321,12 +330,14 @@ class SortiesMixin:
             octets, mime=MIME_DXF,
             nom_fichier=nom_de_fichier(calepinage, 'dxf'))
 
+    @extend_schema(responses={(200, MIME_XLSX): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'export\.xlsx',
             url_name='export-xlsx', permission_classes=[PeutVoirCalepinage])
     def export_xlsx(self, request, pk=None):
         """CAL179 — modules, chaînes et nomenclature. AUCUN prix."""
         return self._tableur('xlsx')
 
+    @extend_schema(responses={(200, 'text/csv'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path=r'export\.csv',
             url_name='export-csv', permission_classes=[PeutVoirCalepinage])
     def export_csv(self, request, pk=None):
