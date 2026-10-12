@@ -1379,8 +1379,7 @@ class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
         return value
 
 
-class RetourFournisseurSerializer(RemplaceLignesRetourMixin,
-                                  SameCompanyFKSerializerMixin,
+class RetourFournisseurSerializer(RemplaceLignesRetourMixin, SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):
     # ASTK2 — fournisseur/BCF bornés à la société (création ET modification).
     same_company_fields = ('fournisseur', 'bon_commande')
