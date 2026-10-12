@@ -1718,3 +1718,5 @@ Server error|POST /api/django/reporting/approbations-en-attente/decider/
 Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
 # VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
 API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
+# VNT lot M1, tour 3 (12/10/2026) : PATCH factures/{id} — le harnais fuzz envoie entite: 0 (aucune Entite pour la societe fuzz, prepare_fuzz_env.py) ; limite du harnais, pas de la vue.
+API rejected schema-compliant request|PATCH /api/django/ventes/factures/{id}/
