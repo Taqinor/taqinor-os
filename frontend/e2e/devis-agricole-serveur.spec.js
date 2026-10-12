@@ -15,7 +15,7 @@
 // rouvert montre les chiffres de `etude_params`.
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
-import { choisirMarche } from './helpers'
+import { choisirMarche, cliquerCreerDevis, retirerLignesPrixARenseigner } from './helpers'
 
 const API = '/api/django'
 const DERIVEES_CLIENT_INTERDITES = ['pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h',
@@ -62,10 +62,11 @@ async function renseignerBesoinEtHauteur(page) {
 }
 
 async function enregistrer(page) {
+  // CAD177 — AGNR31 : les lignes « prix à renseigner » bloquent la création.
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const devis = await (await creation).json()
+  const devis = await (await cliquerCreerDevis(page, creation)).json()
   await expect(page.getByText('Devis enregistré')).toBeVisible({ timeout: 45_000 })
   const id = devis.id ?? devis.devis?.id
   expect(id, 'identifiant du devis créé').toBeTruthy()
