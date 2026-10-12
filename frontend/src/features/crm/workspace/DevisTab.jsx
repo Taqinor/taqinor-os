@@ -11,7 +11,6 @@ import {
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
-import FacturerVenteDialog from '../../ventes/vente/FacturerVenteDialog'
 import PanneauVente from '../../ventes/vente/PanneauVente'
 import installationsApi from '../../../api/installationsApi'
 import stockApi from '../../../api/stockApi'
@@ -81,16 +80,6 @@ export const DEVIS_MINI_TRACK = [
   { key: 'facture', label: 'Facturé' },
   { key: 'chantier', label: 'Chantier' },
 ]
-
-/* ATOT31 — la porte de facturation encore ouverte est DITE par le serveur
-   (`solde.porte_facturation`, contrat ventes/contract_samples/devis_solde.json) :
-   'libre' (rien de facturé), 'tranche' (échéancier en cours), 'aucune' (tout
-   est facturé). Jamais redérivée des montants. Bloc absent → 'libre' (rien
-   n'est affirmé de plus que ce que l'écran savait avant). */
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
-export function porteFacturation(devis) {
-  return devis?.solde?.porte_facturation ?? 'libre'
-}
 
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
 export function devisTrackCurrent(d) {
@@ -536,20 +525,6 @@ export default function DevisTab({
     } finally {
       setLinkBusy(null)
     }
-  }
-
-  const [facturerTarget, setFacturerTarget] = useState(null)
-  const genererFacture = (d) => {
-    setBusyAction(`f-${d.id}`)
-    setActionMsg(null)
-    ventesApi.genererFacture(d.id)
-      .then((res) => {
-        const f = res.data
-        setActionMsg(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
-        onAction?.('refresh')
-      })
-      .catch((err) => setActionMsg(errorMessageFrom(err, 'Génération de facture impossible.')))
-      .finally(() => setBusyAction(null))
   }
 
   const creerChantier = (d) => {
@@ -1009,27 +984,8 @@ export default function DevisTab({
                     current={devisTrackCurrent(d)}
                   />
                   {/* VNT74 — panneau de vente (lecture de `d.vente`, GET détail). */}
-                  <PanneauVente devis={d} />
+                  <PanneauVente devis={d} onAction={onAction} />
                   <div className="lw-context-devis-actions">
-                    {porteFacturation(d) === 'libre' && (
-                      <Button
-                        type="button" size="sm"
-                        onClick={() => setFacturerTarget(d)}
-                      >
-                        🧾 Facturer (facture complète)
-                      </Button>
-                    )}
-                    {porteFacturation(d) !== 'aucune' && (
-                      <Button
-                        type="button" size="sm" variant="outline"
-                        disabled={busyAction === `f-${d.id}`}
-                        onClick={() => genererFacture(d)}
-                      >
-                        {busyAction === `f-${d.id}` ? '…'
-                          : porteFacturation(d) === 'tranche' ? '🧾 Générer la facture'
-                            : '🧾 Facturer par tranches (acompte…)'}
-                      </Button>
-                    )}
                     {d.chantier ? (
                       // CHT21(b) — span inerte devenu cliquable : deep-link
                       // réel vers la fiche chantier (patron ?id= déjà lu par
@@ -1115,11 +1071,6 @@ export default function DevisTab({
           </div>
         </DialogContent>
       </Dialog>
-      <FacturerVenteDialog
-        devis={facturerTarget}
-        onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
-        onDone={() => onAction?.('refresh')}
-      />
     </div>
   )
 }
