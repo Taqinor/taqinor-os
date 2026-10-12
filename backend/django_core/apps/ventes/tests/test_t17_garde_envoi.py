@@ -158,3 +158,40 @@ class TestT17GardeEnvoi(TestCase):
             mark_devis_sent(devis=d, user=self.resp)
         d.refresh_from_db()
         self.assertEqual(d.statut, 'brouillon')
+
+    # ── VNT57 (D-ADEV-2, ADEV12) — accepter un BROUILLON = même gel ────────
+    def _accepter(self, d, user):
+        with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            return self._api(user).post(
+                self._url(d, 'accepter/'),
+                {'nom': 'Alaoui', 'option': 'sans_batterie'}, format='json')
+
+    def test_vnt57_brouillon_accepte_par_responsable_400_approbation(self):
+        d = self._devis()
+        r = self._accepter(d, self.resp)
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.json()['code'], 'approbation_requise')
+        d.refresh_from_db()
+        self.assertEqual(d.statut, 'brouillon')
+        self.assertIsNone(d.date_envoi)
+        self.assertFalse(d.remise_approuvee)
+
+    def test_vnt57_brouillon_accepte_par_admin_gele_et_consigne(self):
+        d = self._devis()
+        r = self._accepter(d, self.admin)
+        self.assertEqual(r.status_code, 200, r.content)
+        d.refresh_from_db()
+        self.assertEqual(d.statut, 'accepte')
+        self.assertTrue(d.remise_approuvee)
+        self.assertEqual(d.remise_approuvee_par, self.admin)
+        self.assertIsNotNone(d.date_envoi)
+        self.assertTrue(any(
+            isinstance(c, dict) and c.get('type') == 'doc_texts_geles'
+            for c in (d.clauses_appliquees or [])))
+
+    def test_vnt57_envoi_inchange_date_envoi_posee(self):
+        d = self._devis(remise='5')
+        mark_devis_sent(devis=d, user=self.resp)
+        d.refresh_from_db()
+        self.assertEqual(d.statut, 'envoye')
+        self.assertIsNotNone(d.date_envoi)

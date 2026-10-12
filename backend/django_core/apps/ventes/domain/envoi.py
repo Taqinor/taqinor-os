@@ -249,6 +249,33 @@ def figer_clauses_devis(devis):
     return True
 
 
+def geler_document_engage(devis, user, *, erreur=None):
+    """VNT57 (D-ADEV-2, ADEV12) — LA règle de gel d'un document qui ENGAGE
+    (brouillon → envoyé par ``mark_devis_sent``, brouillon → accepté par
+    ``accept_devis``) : approbation T17 (``exiger_approbation_remise`` — un
+    admin approuve implicitement, sinon ``RemiseNonApprouvee``), ``date_envoi``
+    posée, marge interne figée (QX23be), clauses/CGV gelées (QJR668), barème
+    des forfaits gelé (ADEV30). Ne touche jamais au statut (règle #4).
+
+    ``erreur`` : classe levée à la place de ``RemiseNonApprouvee`` (message,
+    ``code='approbation_requise'``) — ``accept_devis`` passe ``AcceptError``
+    (400 aux trois portes)."""
+    from django.utils import timezone
+    from apps.ventes.domain.tarification import (
+        RemiseNonApprouvee, exiger_approbation_remise)
+    try:
+        exiger_approbation_remise(devis, user)
+    except RemiseNonApprouvee as exc:
+        if erreur is None:
+            raise
+        raise erreur(exc.message, code='approbation_requise') from exc
+    devis.date_envoi = timezone.now()
+    devis.save(update_fields=['date_envoi'])
+    refresh_marge_snapshot(devis)
+    figer_clauses_devis(devis)
+    figer_baremes_forfaits(devis)
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -272,7 +299,6 @@ def mark_devis_sent(*, devis, user=None):
     Returns the (possibly unchanged) Devis. Tenant scoping is the caller's
     responsibility — the devis is always passed already company-resolved.
     """
-    from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from core.events import devis_sent
@@ -294,20 +320,13 @@ def mark_devis_sent(*, devis, user=None):
 
     # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
     # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
-    # Lève ``RemiseNonApprouvee`` — le devis reste brouillon.
-    from apps.ventes.domain.tarification import exiger_approbation_remise
-    exiger_approbation_remise(devis, user)
+    # VNT57 — approbation + gels en UNE règle (``geler_document_engage``),
+    # AVANT la bascule : ``RemiseNonApprouvee`` laisse le devis brouillon.
+    geler_document_engage(devis, user)
 
     ancien = devis.statut
     devis.statut = Devis.Statut.ENVOYE
-    devis.date_envoi = timezone.now()
-    devis.save(update_fields=['statut', 'date_envoi'])
-    # QX23be — fige la marge interne au moment de l'envoi (manager-only).
-    refresh_marge_snapshot(devis)
-    # QJR668 — fige les clauses/CGV de l'affaire au moment de l'envoi.
-    figer_clauses_devis(devis)
-    # ADEV30 — fige le barème des forfaits au panneau (D-ASTK-1).
-    figer_baremes_forfaits(devis)
+    devis.save(update_fields=['statut'])
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)

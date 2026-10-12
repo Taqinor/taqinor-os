@@ -131,6 +131,9 @@ def _garde_blocages_acceptation(devis, *, user, override_credit=False,
             chatter_target=devis)
     except SaleWarningError as exc:
         raise AcceptationBloquee('sale_warning', exc.motif) from exc
+    if devis.statut == devis.Statut.BROUILLON:  # VNT57 — le gel de l'envoi
+        from apps.ventes.domain.envoi import geler_document_engage
+        geler_document_engage(devis, user, erreur=AcceptError)
 
 
 #: ADEV11 — message du 409 ``brouillon`` (contrat ``proposal_accept.json``,
