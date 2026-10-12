@@ -222,11 +222,39 @@ def _champs_tranche(devis, tranche, user, libelle):
 
 
 def creer_brouillon_tranche(devis, tranche, user, libelle=None):
-    """Crée le BROUILLON « BROUILLON-<id> » de ``tranche`` (jamais émis)."""
+    """Crée le BROUILLON « BROUILLON-<id> » de ``tranche`` (jamais émis).
+
+    VNT27 — l'INSERT vit dans un savepoint : deux requêtes qui ont lu le
+    même plan heurtent ``uq_facture_tranche_vivante`` (devis, clé) ; la
+    seconde rend 409 ``tranche_deja_creee``, jamais un 500."""
+    from django.db import IntegrityError
+
     from apps.ventes.utils.company_settings import create_provisoire
     champs = _champs_tranche(devis, tranche, user, libelle)
-    return create_provisoire(
-        lambda ref: _inserer_facture(reference=ref, **champs))
+    try:
+        with transaction.atomic():
+            return create_provisoire(
+                lambda ref: _inserer_facture(reference=ref, **champs))
+    except IntegrityError:
+        raise _conflit('tranche_deja_creee',
+                       'Cette tranche est déjà facturée.')
+
+
+def verrouiller_vente(devis):
+    """VNT27 — verrou ordonné (pk croissant, ``of=('self',)``) sur la
+    RACINE de la chaîne ET la version facturée : ``reviser_devis`` verrouille
+    la version, ``accept_devis`` la racine — un geste concurrent attend ici
+    au lieu de passer entre la lecture de ``is_active`` et l'INSERT. Rend
+    les devis verrouillés (relus en base), triés par pk. À appeler dans une
+    transaction."""
+    from django.db.models import Q
+
+    from apps.ventes.models import Devis
+    from apps.ventes.vente_facturation import chaine_vente
+    racine = chaine_vente(devis)[0]
+    return list(Devis.objects.select_for_update(of=('self',))
+                .filter(company_id=devis.company_id)
+                .filter(Q(pk=racine.pk) | Q(pk=devis.pk)).order_by('pk'))
 
 
 def _facturer_tranche(devis, plan, nature, *, user, montant, cle_attendue,
@@ -249,6 +277,8 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
         raise FacturationVenteRefusee(
             'Nature inconnue : acompte, intermediaire, solde ou complete.')
     with transaction.atomic():
+        # VNT27 — tout se relit SOUS le verrou (is_active, statut, plan).
+        devis = next(d for d in verrouiller_vente(devis) if d.pk == devis.pk)
         _exiger_vente_en_jeu(devis)
         plan = plan_facturation(devis)
         montant = _montant_demande(plan['prix_convenu_ttc'], montant_ttc,

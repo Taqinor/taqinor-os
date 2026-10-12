@@ -349,3 +349,48 @@ class FacturerVenteTrancheVNT26(_BaseVente):
         refus = self._refus(devis, nature='solde')
         self.assertEqual(refus.status, 400)
         self.assertEqual(refus.corps['code'], 'rien_a_facturer')
+
+
+class FacturerVenteVerrouVNT27(_BaseVente):
+    """VNT27 — verrou ordonné racine + version facturée ; la contrainte
+    ``uq_facture_tranche_vivante`` (IntegrityError) devient 409
+    ``tranche_deja_creee`` : jamais deux brouillons de la même tranche."""
+
+    def test_double_clic_un_seul_brouillon(self):
+        devis = self._388('DEV-VNT27-DBL')
+        self._acompte_14700(devis)
+        self._facturer(devis, nature='intermediaire', cle_attendue='materiel')
+        refus = self._refus(devis, nature='intermediaire',
+                            cle_attendue='materiel')
+        self.assertEqual(refus.status, 409)
+        self.assertEqual(refus.corps['code'], 'tranche_deja_creee')
+        self.assertEqual(Facture.objects.filter(
+            devis=devis, cle_tranche='materiel').count(), 1)
+
+    def test_course_sur_l_insert_rend_409(self):
+        from apps.ventes.domain.facturation_vente import (
+            FacturationVenteRefusee, creer_brouillon_tranche)
+        from apps.ventes.vente_facturation import plan_facturation
+        devis = self._388('DEV-VNT27-RACE')
+        self._acompte_14700(devis)
+        tranche = plan_facturation(devis)['prochaine']
+        creer_brouillon_tranche(devis, tranche, self.user)
+        # Le second INSERT de la même clé (course entre deux requêtes qui ont
+        # lu le même plan) heurte la contrainte : 409, jamais un 500.
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            creer_brouillon_tranche(devis, tranche, self.user)
+        self.assertEqual(ctx.exception.status, 409)
+        self.assertEqual(ctx.exception.corps['code'], 'tranche_deja_creee')
+        self.assertEqual(Facture.objects.filter(
+            devis=devis, cle_tranche='materiel').count(), 1)
+
+    def test_le_verrou_porte_sur_la_racine_et_la_version(self):
+        from apps.ventes.domain.facturation_vente import verrouiller_vente
+        v1 = self._388('DEV-VNT27-V1')
+        v2 = self._388('DEV-VNT27-V2')
+        Devis.objects.filter(pk=v1.pk).update(
+            is_active=False, superseded_by=v2)
+        Devis.objects.filter(pk=v2.pk).update(version_parent=v1)
+        v2.refresh_from_db()
+        verrous = verrouiller_vente(v2)
+        self.assertEqual([d.pk for d in verrous], [v1.pk, v2.pk])
