@@ -1705,3 +1705,13 @@ Server error|POST /api/django/core/data-explorer/run/
 Server error|POST /api/django/ventes/devis/{id}/replace-lines/
 Server error|POST /api/django/ventes/devis/from-layout/
 Server error|POST /api/django/ventes/factures/{id}/retour-client/
+# VNT lot M1 (12/10/2026, PR #982) : constats pre-existants hors du diff (reporting/*, dupliquer-variante), tirage aleatoire.
+API accepted schema-violating request|PATCH /api/django/reporting/kpi-alertes/{id}/
+API accepted schema-violating request|POST /api/django/reporting/kpi-alertes/
+API accepted schema-violating request|POST /api/django/ventes/devis/{id}/dupliquer-variante/
+API accepted schema-violating request|PUT /api/django/reporting/kpi-alertes/{id}/
+API rejected schema-compliant request|POST /api/django/reporting/rapport-definitions/
+API rejected schema-compliant request|POST /api/django/reporting/saved-reports/
+Response violates schema|PATCH /api/django/reporting/kpi-alertes/{id}/
+Server error|POST /api/django/reporting/approbations-en-attente/decider/
+Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
