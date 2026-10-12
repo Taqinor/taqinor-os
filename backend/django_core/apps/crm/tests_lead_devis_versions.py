@@ -23,6 +23,15 @@ from authentication.models import Company
 
 User = get_user_model()
 
+# VNT69 — clés EXACTES d'une ligne ``Lead.devis[]`` (avant == après la sortie
+# de ``get_devis`` hors de serializers.py).
+CLES_LIGNE_DEVIS = {
+    'id', 'reference', 'statut', 'total_ttc', 'date_creation',
+    'option_acceptee', 'chantier', 'share_link', 'lecture', 'modifiable',
+    'raison_non_modifiable', 'revision_possible', 'is_active', 'version',
+    'superseded_by', 'corrige_le',
+}
+
 
 class TestLeadDevisVersions(TestCase):
     def setUp(self):
@@ -69,3 +78,20 @@ class TestLeadDevisVersions(TestCase):
         self.assertTrue(ligne['is_active'])
         self.assertEqual(ligne['version'], 2)
         self.assertIsNone(ligne['superseded_by'])
+
+    # VNT69 — ``get_devis`` sorti de serializers.py vers ``lead_devis_payload`` :
+    # aucune clé ne change, la ligne servie == la sortie directe du module.
+    def test_ligne_servie_porte_exactement_les_cles_epinglees(self):
+        d = self._devis('DEV-VNT69-1', version=1)
+        self.assertEqual(set(self._lignes()[d.id]), CLES_LIGNE_DEVIS)
+
+    def test_module_payload_rend_les_memes_lignes_que_l_api(self):
+        from apps.crm.lead_devis_payload import lignes_devis_du_lead
+        v2 = self._devis('DEV-VNT69-B2', version=2)
+        self._devis('DEV-VNT69-B1', version=1, is_active=False,
+                    superseded_by=v2)
+        servies = self.api.get(
+            f'/api/django/crm/leads/{self.lead.id}/').json()['devis']
+        directes = lignes_devis_du_lead(
+            Lead.objects.prefetch_related('devis').get(pk=self.lead.pk), {})
+        self.assertEqual(servies, directes)
