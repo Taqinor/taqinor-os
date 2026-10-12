@@ -249,3 +249,26 @@ class TestDevisAcceptation(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
         devis.refresh_from_db()
         self.assertNotEqual(devis.statut, 'accepte')
+
+    def test_vnt54_deuxieme_vente_sur_le_lead_refusee_par_le_service(self):
+        """VNT54 — ``accept_devis`` refuse une 2e vente en vigueur sur le lead
+        (chaîne neuve 389 à côté de 388) : ``AcceptError`` 409
+        ``vente_active_existante`` + ``vente_active``, rien écrit."""
+        from apps.ventes.domain.negociation import VenteActiveExistante
+        from apps.ventes.services import AcceptError, accept_devis
+        lead = Lead.objects.create(company=self.company, nom='Lead VNT54')
+        v388 = self._devis(num=54, statut=Devis.Statut.ACCEPTE)
+        d389 = self._devis(num=55)
+        Devis.objects.filter(pk__in=[v388.pk, d389.pk]).update(lead=lead)
+        d389.refresh_from_db()
+        with self.assertRaises(AcceptError) as ctx:
+            accept_devis(devis=d389, user=self.user, nom='X',
+                         option='sans_batterie')
+        exc = ctx.exception
+        self.assertIsInstance(exc, VenteActiveExistante)
+        self.assertTrue(exc.conflict)
+        self.assertEqual(exc.code, 'vente_active_existante')
+        self.assertEqual(exc.vente_active,
+                         {'id': v388.pk, 'reference': v388.reference})
+        d389.refresh_from_db()
+        self.assertEqual(d389.statut, Devis.Statut.ENVOYE)

@@ -161,3 +161,80 @@ class GardesTroisPortesTests(TestCase):
                 devis.refresh_from_db()
                 self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
         self.assertEqual(len(self.evenements), 3)
+
+
+@override_settings(CACHES={'default': {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+class VenteActiveParLeadTests(TestCase):
+    """VNT54 — une SEULE vente en vigueur par lead : accepter un devis d'une
+    AUTRE chaîne (389 à côté de 388) est refusé par les trois portes (409
+    ``vente_active_existante``, rien écrit) ; une V2 de révision de la vente
+    s'accepte ; un lead sans vente accepte."""
+
+    setUp_portes = GardesTroisPortesTests.setUp
+    _interne = GardesTroisPortesTests._interne
+    _public = GardesTroisPortesTests._public
+    _portail = GardesTroisPortesTests._portail
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.setUp_portes()
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            avertissement_bloquant=False)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead 1594')
+        self.v388 = self._devis(statut=Devis.Statut.ACCEPTE)
+
+    def _devis(self, statut=Devis.Statut.ENVOYE, **extra):
+        self.n += 1
+        return Devis.objects.create(
+            company=self.company, reference=f'DEV-VNT54-{self.n:03d}',
+            client=self.client_obj, statut=statut, lead=self.lead,
+            taux_tva=Decimal('20'), created_by=self.admin, **extra)
+
+    def _assert_409_rien_ecrit(self, reponse, devis):
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertEqual(reponse.json()['code'], 'vente_active_existante')
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertFalse(DevisSignature.objects.filter(devis=devis).exists())
+        self.assertEqual(self.evenements, [])
+        return reponse.json()
+
+    def test_interne_409_nomme_la_vente(self):
+        d389 = self._devis()
+        corps = self._assert_409_rien_ecrit(self._interne(d389), d389)
+        self.assertEqual(corps['vente_active'],
+                         {'id': self.v388.pk, 'reference': self.v388.reference})
+        self.assertIn('Prix négocié', corps['detail'])
+        self.assertIn(self.v388.reference, corps['detail'])
+
+    def test_public_409_message_neutre(self):
+        d389 = self._devis()
+        corps = self._assert_409_rien_ecrit(self._public(d389), d389)
+        self.assertEqual(
+            corps, CONTRAT['reponses_409']['vente_active_existante'])
+
+    def test_portail_409(self):
+        d389 = self._devis()
+        reponse = self._portail(d389)
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertNotIn(self.v388.reference, reponse.content.decode('utf-8'))
+        d389.refresh_from_db()
+        self.assertEqual(d389.statut, Devis.Statut.ENVOYE)
+
+    def test_variante_de_la_vente_409(self):
+        variante = self._devis(version_parent=self.v388)
+        self._assert_409_rien_ecrit(self._interne(variante), variante)
+
+    def test_v2_de_revision_acceptee(self):
+        from apps.ventes.domain.revision import reviser_devis
+        v2 = reviser_devis(self.v388, user=self.admin)
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
+        reponse = self._interne(v2)
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+
+    def test_lead_sans_vente_accepte(self):
+        Devis.objects.filter(pk=self.v388.pk).update(
+            statut=Devis.Statut.REFUSE)
+        d389 = self._devis()
+        self.assertEqual(self._interne(d389).status_code, 200)

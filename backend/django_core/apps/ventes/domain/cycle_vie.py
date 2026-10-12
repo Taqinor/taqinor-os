@@ -1429,6 +1429,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
                 conflict=True)
+        # VNT54 — une seule vente en vigueur par lead (hors chaîne de révision).
+        from apps.ventes.domain.negociation import garde_vente_unique
+        garde_vente_unique(devis, user=user)
 
         # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
         # bloquant : UNE garde, ici, pour les trois portes (vue interne,

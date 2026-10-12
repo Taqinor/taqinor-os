@@ -642,6 +642,9 @@ class DevisCycleActionsMixin:
             corps = {'detail': exc.message}
             if exc.code:
                 corps['code'] = exc.code
+            # VNT54 — 409 ``vente_active_existante`` : la vente qui bloque.
+            if getattr(exc, 'vente_active', None):
+                corps['vente_active'] = exc.vente_active
             return Response(
                 corps,
                 status=(status.HTTP_409_CONFLICT if exc.conflict
