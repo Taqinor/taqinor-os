@@ -242,7 +242,7 @@ class FolderViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if folder_id in (None, '', 'null'):
             return None
         return (Folder.objects.filter(company=self.request.user.company)
-                .filter(pk=_pk(folder_id)).first())
+                .filter(pk=_pk(folder_id, 'folder')).first())
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -556,7 +556,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'tag': 'Tag requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         tag = DocumentTag.objects.filter(
-            company=request.user.company, pk=_pk(tag_id)).first()
+            company=request.user.company, pk=_pk(tag_id, 'tag')).first()
         if tag is None:
             return Response({'tag': 'Tag inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -720,7 +720,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=_pk(folder_id)).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None or not selectors.folder_lisible(folder, request.user):
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -816,7 +816,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=_pk(folder_id)).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -883,7 +883,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=_pk(folder_id)).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -941,7 +941,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=_pk(folder_id)).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -998,7 +998,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=_pk(folder_id)).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1267,7 +1267,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         new_folder = (Folder.objects
                       .filter(company=request.user.company)
-                      .filter(pk=_pk(raw_folder)).first())
+                      .filter(pk=_pk(raw_folder, 'folder')).first())
         if new_folder is None or not selectors.folder_lisible(
                 new_folder, request.user):
             return Response(
@@ -1398,7 +1398,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         source_version = (DocumentVersion.objects
                           .filter(company=request.user.company,
                                   document=document,
-                                  pk=_pk(version_id))
+                                  pk=_pk(version_id, 'version'))
                           .first())
         if source_version is None:
             return Response(
@@ -1762,7 +1762,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             from django.contrib.auth import get_user_model
             approbateur = (get_user_model().objects
                            .filter(company=request.user.company,
-                                   pk=_pk(raw_approbateur))
+                                   pk=_pk(raw_approbateur, 'approbateur'))
                            .first())
             if approbateur is None:
                 return Response(
@@ -1913,7 +1913,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         version = (selectors.latest_version(document) if not version_id else
                    DocumentVersion.objects.filter(
                        company=request.user.company, document=document,
-                       pk=_pk(version_id)).first())
+                       pk=_pk(version_id, 'version')).first())
         if version is None:
             return Response(
                 {'detail': 'Aucune version disponible pour le caviardage.'},
@@ -1943,7 +1943,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         version = (selectors.latest_version(document) if not version_id else
                    DocumentVersion.objects.filter(
                        company=request.user.company, document=document,
-                       pk=_pk(version_id)).first())
+                       pk=_pk(version_id, 'version')).first())
         if version is None:
             return Response(
                 {'detail': 'Aucune version disponible pour la scission.'},
@@ -1997,7 +1997,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         cible_id = request.data.get('cible')
         if cible_id:
             cible = selectors.documents_visible_to_user(
-                request.user).filter(pk=_pk(cible_id)).first()
+                request.user).filter(pk=_pk(cible_id, 'cible')).first()
             if cible is None:
                 return Response(
                     {'cible': 'Document cible inconnu.'},
@@ -2128,7 +2128,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if raw_assigne:
             from django.contrib.auth import get_user_model
             assigne_a = get_user_model().objects.filter(
-                company=request.user.company, pk=_pk(raw_assigne)).first()
+                company=request.user.company, pk=_pk(raw_assigne, 'assigne_a')).first()
         try:
             planif = services.planifier_document(
                 document, libelle=libelle, echeance=echeance,
@@ -2534,7 +2534,7 @@ class DocumentLienViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         # ASEC38 — document VISIBLE de l'appelant (ACL coffre + GED19) et
         # écriture ACL exigée : lier modifie le document.
         document = selectors.documents_visible_to_user(
-            request.user).filter(pk=_pk(doc_id)).first()
+            request.user).filter(pk=_pk(doc_id, 'document')).first()
         if document is None:
             return Response({'document': 'Document inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -3042,7 +3042,7 @@ class LegalHoldViewSet(CorpsObjetMixin, TenantMixin,
                 {'document': 'Le document à geler est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=_pk(document_id)).first())
+                    .filter(pk=_pk(document_id, 'document')).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3276,7 +3276,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
                 {'signataire': 'Le nom et l\'email du signataire sont requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=_pk(document_id)).first())
+                    .filter(pk=_pk(document_id, 'document')).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3414,7 +3414,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
             return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
         valide = entree.validated_data
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=_pk(document_id)).first())
+                    .filter(pk=_pk(document_id, 'document')).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3941,7 +3941,7 @@ class DemandeDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet
                 {'folder': 'Le dossier est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         folder = Folder.objects.filter(
-            company=request.user.company, pk=_pk(folder_id)).first()
+            company=request.user.company, pk=_pk(folder_id, 'folder')).first()
         if folder is None:
             return Response(
                 {'folder': 'Dossier inconnu.'}, status=status.HTTP_404_NOT_FOUND)
@@ -4070,7 +4070,7 @@ class AnnotationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
                             status=status.HTTP_400_BAD_REQUEST)
         # ADOC3 — version d'un document VISIBLE de l'appelant, sinon 404.
         version = DocumentVersion.objects.filter(
-            company=request.user.company, pk=_pk(version_id),
+            company=request.user.company, pk=_pk(version_id, 'version'),
             document_id__in=selectors.document_ids_visibles(request.user),
         ).first()
         if version is None:
@@ -4492,7 +4492,7 @@ class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
                 {'modele': 'Le modèle de document est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         modele = ModeleDocument.objects.filter(
-            company=request.user.company, pk=_pk(modele_id)).first()
+            company=request.user.company, pk=_pk(modele_id, 'modele')).first()
         if modele is None:
             return Response(
                 {'modele': 'Modèle inconnu.'}, status=status.HTTP_404_NOT_FOUND)
