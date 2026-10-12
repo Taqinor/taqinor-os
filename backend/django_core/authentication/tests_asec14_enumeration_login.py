@@ -97,3 +97,10 @@ class EnumerationLoginTests(TestCase):
         self.assertEqual(r.status_code, 403, r.data)
         self.assertTrue(r.data.get('sso_required'))
         self.assertNotIn('access_token', r.cookies)
+
+    def test_username_non_texte_400_pas_500(self):
+        # api-fuzz (PR #983) : `{"username": [null, null]}` faisait `.strip()`
+        # sur une liste → 500 ; la vue rend désormais la validation (400).
+        r = self._login([None, None], '0')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertNotIn('access_token', r.cookies)

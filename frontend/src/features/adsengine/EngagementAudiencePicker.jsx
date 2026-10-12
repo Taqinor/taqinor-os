@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Users, Sparkles } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ADSDEEP59 — Picker « Audiences d'engagement » (composeur d'adset).
@@ -27,13 +29,14 @@ export default function EngagementAudiencePicker({
   const [estimating, setEstimating] = useState(false)
   const [creating, setCreating] = useState(false)
   const [message, setMessage] = useState('')
+  const [loadErrors, setLoadErrors] = useState([])
 
   const load = useCallback(() => {
     setLoading(true)
     adsengineApi.audiences
       .engagementPresets()
       .then((r) => setPresets(Array.isArray(r.data?.presets) ? r.data.presets : []))
-      .catch(() => setPresets([]))
+      .catch(() => { setPresets([]); setLoadErrors(markLoadError("les audiences d'engagement")) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -50,7 +53,7 @@ export default function EngagementAudiencePicker({
     adsengineApi.audiences
       .deliveryEstimate({ targeting_spec: targetingSpec })
       .then((r) => setEstimate(r.data?.estimate || null))
-      .catch(() => setEstimate(null))
+      .catch(() => { setEstimate(null); setLoadErrors(markLoadError("l'estimation de diffusion")) })
       .finally(() => setEstimating(false))
   }, [targetingSpec])
 
@@ -79,6 +82,7 @@ export default function EngagementAudiencePicker({
   return (
     <div data-testid="ae-engagement-picker">
       <h4><Users size={16} aria-hidden /> Audiences d&apos;engagement</h4>
+      <LoadErrorNotice errors={loadErrors} />
       <p data-testid="ae-engagement-note">
         Sans donnée client : dérivées des interactions Meta (formulaire, Page,
         Instagram).

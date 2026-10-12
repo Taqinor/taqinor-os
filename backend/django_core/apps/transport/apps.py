@@ -26,7 +26,10 @@ class TransportConfig(AppConfig):
         'icone': 'truck',
         'depends': [],
         'installable': True,
-        'description': "Ordres de transport (enlèvement/livraison/inter-site/import/export), étapes, comparateur d'affrètement, preuve de livraison, coûts de fret réels, litiges transporteur et émissions CO2 estimées.",
+        'description': (
+            "Ordres de transport (enlèvement/livraison/inter-site/import/export), étapes, comparateur d'affrètement, "
+            "preuve de livraison, coûts de fret réels, litiges transporteur et émissions CO2 estimées."
+        ),
         'categorie': 'Stock',
         'parked': True,
     }

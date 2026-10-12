@@ -30,8 +30,11 @@ DEUX RÈGLES QUI NE SE NÉGOCIENT PAS
 from __future__ import annotations
 
 import datetime
+import logging
 
 from . import services
+
+logger = logging.getLogger(__name__)
 
 
 def champ_temps(cle_dataset):
@@ -217,6 +220,7 @@ def _nb_lignes_agregees(company, user, definition):
             {'filters': dict(definition.filtres or {}),
              'aggregates': [{'alias': 'nb', 'fn': 'count', 'field': 'id'}]})
     except Exception:  # noqa: BLE001 — le lignage ne doit jamais lever
+        logger.debug("semantic : comptage du lignage indisponible", exc_info=True)
         return None
     if not lignes:
         return None
