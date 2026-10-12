@@ -142,6 +142,88 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             resp = self.api.get(DEVIS_URL)
         self.assertEqual(resp.status_code, 200)
 
+    def _seed_ventes(self, count, start=0):
+        """VNT68 — page ENRICHIE : ventes acceptées avec facture de BC, avec
+        facture CONSOLIDÉE, chaîne révisée (V1 acceptée → V2 envoyée), et un
+        brouillon — chaque genre présent dès la page de 10."""
+        from apps.ventes.models import BonCommande
+        from apps.ventes.models_facturation import FactureSource
+
+        def _devis(ref, statut, **extra):
+            devis = Devis.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                created_by=self.user, taux_tva=Decimal('20'), statut=statut,
+                **extra)
+            produit = Produit.objects.create(
+                company=self.company, nom='Panneau', sku=f'V68-{ref}',
+                prix_vente=Decimal('1000'), prix_achat=Decimal('1'),
+                quantite_stock=100)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation='Panneau',
+                quantite=Decimal('10'), prix_unitaire=Decimal('1000'),
+                remise=Decimal('0'))
+            return devis
+
+        def _facture(ref, **extra):
+            return Facture.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                statut=Facture.Statut.EMISE, montant_ht=Decimal('100'),
+                montant_tva=Decimal('20'), montant_ttc=Decimal('120'),
+                created_by=self.user, **extra)
+
+        for i in range(start, start + count):
+            genre = i % 4
+            ref = f'DEV-{MONTH}-V{i:04d}'
+            if genre == 3:
+                _devis(ref, Devis.Statut.BROUILLON)
+                continue
+            devis = _devis(ref, Devis.Statut.ACCEPTE)
+            if genre == 0:
+                bc = BonCommande.objects.create(
+                    company=self.company, reference=f'BC-V68-{i:04d}',
+                    devis=devis, client=self.client_obj,
+                    statut=BonCommande.Statut.EN_ATTENTE)
+                _facture(f'FAC-{MONTH}-B{i:04d}', bon_commande=bc)
+            elif genre == 1:
+                conso = _facture(f'FAC-{MONTH}-C{i:04d}')
+                FactureSource.objects.create(
+                    company=self.company, facture=conso, devis=devis,
+                    sous_total_ht=Decimal('50'))
+            else:
+                v2 = _devis(f'DEV-{MONTH}-W{i:04d}', Devis.Statut.ENVOYE,
+                            version=2, version_parent=devis)
+                Devis.objects.filter(pk=devis.pk).update(
+                    superseded_by=v2, is_active=False)
+
+    def test_vnt68_vente_servie_par_lot_budget_constant(self):
+        """VNT68 — ``vente`` servie sur chaque ligne de liste ; ``solde``
+        garde les clés de son contrat (chaînes) ; le nombre de requêtes ne
+        grandit pas avec la page (ventes acceptées, BC, consolidée, chaînes
+        révisées)."""
+        self._seed_ventes(10)
+        resp_10, ctx_10 = self._get_liste()
+        lignes_10 = self._lignes(resp_10)
+        self._seed_ventes(15, start=10)
+        resp_25, ctx_25 = self._get_liste()
+        lignes_25 = self._lignes(resp_25)
+        self.assertGreater(len(lignes_25), len(lignes_10))
+        self.assertEqual(
+            len(ctx_10.captured_queries), len(ctx_25.captured_queries),
+            'VNT68 — `vente`/`solde` en liste : N+1 (lot de page absent ?)')
+        self.assertEqual(_ecritures(ctx_25), [])
+        for ligne in lignes_25:
+            self.assertIn('vente', ligne)
+            self.assertIn('prix_convenu_ttc', ligne['vente'])
+            self.assertNotIn('plan', ligne['solde'])
+            self.assertTrue(all(isinstance(v, str)
+                                for v in ligne['solde'].values()))
+        # Même ``vente`` en liste qu'au détail (le lot ne change aucun chiffre).
+        for ligne in lignes_25[:8]:
+            detail = self.api.get('%s%s/' % (DEVIS_URL, ligne['id']))
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(ligne['vente'], detail.data['vente'])
+            self.assertEqual(ligne['solde'], detail.data['solde'])
+
     def test_carte_ab_en_liste(self):
         """La carte A/B reste servie EN LISTE, mêmes valeurs qu'au détail."""
         self._seed_devis(6)

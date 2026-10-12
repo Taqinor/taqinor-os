@@ -438,6 +438,22 @@ class TiersPayeurValidationMixin:
                 'plafond': value.get('plafond')}
 
 
+class _DevisListSerializer(serializers.ListSerializer):
+    """VNT68 — une PAGE de devis : ``vente`` (``etat_vente_map``) et ``solde``
+    sont lus sous UN lot de page (``vente_facturation.lot_de_vente``) —
+    chaînes de révision et factures de BC / consolidées lues une fois, nombre
+    de requêtes constant quelle que soit la taille de la page."""
+
+    def to_representation(self, data):
+        from .vente_facturation import etat_vente_map, lot_de_vente
+        rows = list(data.all() if hasattr(data, 'all') else data)
+        request = self.context.get('request')
+        with lot_de_vente(rows):
+            self._vente_map = etat_vente_map(
+                rows, getattr(request, 'user', None))
+            return super().to_representation(rows)
+
+
 class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
                       EcheancierValidationMixin, serializers.ModelSerializer):
     # ENF17 — client / lead / entité / approbateur d'une AUTRE société = id
@@ -602,6 +618,20 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         from .utils.echeancier import solde_devis
         s = solde_devis(obj)
         return {k: str(v) for k, v in s.items()}
+
+    # VNT68 — l'état de la vente dit par le serveur (contrat
+    # ``vente_etat.json``), clé SŒUR de ``solde`` (inchangé : 9 chaînes).
+    # En liste : la carte de page du ``_DevisListSerializer`` (un lot).
+    vente = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DictField())
+    def get_vente(self, obj):
+        carte = getattr(self.parent, '_vente_map', None)
+        if carte is not None and obj.pk in carte:
+            return carte[obj.pk]
+        from .vente_facturation import etat_vente
+        request = self.context.get('request')
+        return etat_vente(obj, getattr(request, 'user', None))
 
     # Expiration calculée À LA VOLÉE (T7) — jamais persistée, ne touche pas le
     # lead. `is_expired` = en attente + date de validité dépassée.
@@ -960,6 +990,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
     class Meta:
         model = Devis
         fields = '__all__'
+        list_serializer_class = _DevisListSerializer  # VNT68 — lot de page
         # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
         # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
         # du corps de requête (même régime interne que prix_achat, qui n'est

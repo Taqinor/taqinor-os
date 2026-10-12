@@ -28,6 +28,8 @@ Règles d'argent (décisions D-VNT, arbitrages du 12/10/2026) :
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 from decimal import Decimal, ROUND_HALF_UP
 
 ZERO = Decimal('0')
@@ -60,6 +62,9 @@ def chaine_vente(devis) -> list:
         return [devis]
     if devis.superseded_by_id is None and devis.version_parent_id is None:
         return [devis]
+    lot = _LOT.get()
+    if lot is not None and devis.pk in lot['chaines']:
+        return lot['chaines'][devis.pk]  # VNT68 — chaîne lue par page
     company_id = devis.company_id
     tete, vus = devis, {devis.pk}
     while tete.superseded_by_id and tete.superseded_by_id not in vus:
@@ -83,6 +88,152 @@ def _ids_chaine(devis) -> list:
     return [d.pk for d in chaine_vente(devis) if d.pk is not None]
 
 
+# ── VNT68 — LE LOT DE PAGE : chaînes et factures lues UNE fois par liste ─────
+#
+# Une liste de devis (``DevisSerializer`` many) lit ``solde`` et ``vente`` de
+# chaque ligne : sans lot, une ligne révisée relit sa chaîne et ses factures,
+# une ligne acceptée cherche ses factures de BC / consolidées — un N+1 qui
+# grandit avec la page. ``lot_de_vente(rows)`` les lit en un nombre CONSTANT
+# de requêtes (profondeur des chaînes, jamais nombre de lignes) ; les deux
+# lecteurs ci-dessus le consultent. Hors lot : comportement d'hier, à l'octet.
+
+_LOT = contextvars.ContextVar('vente_facturation_lot', default=None)
+_PREFETCH_LOT = (
+    'paiements', 'avoirs', 'avoirs__lignes', 'lignes',
+    'affectations_paiement__paiement', 'notes_debit', 'notes_debit__lignes',
+    'retenues_subies', 'retenues_subies__paiement')
+
+
+def _graphe_revisions(rows, societes):
+    """``{pk: devis}`` de toutes les versions reliées par ``superseded_by``
+    aux lignes révisées/variantes (objets des lignes conservés)."""
+    from django.db.models import Q
+    from apps.ventes.models import Devis
+    connus = {d.pk: d for d in rows}
+    frontiere = {d.pk for d in rows
+                 if d.superseded_by_id or d.version_parent_id}
+    vus, nouveaux_objets = set(frontiere), []
+    while frontiere:
+        avant = {connus[p].superseded_by_id for p in frontiere
+                 if connus[p].superseded_by_id}
+        lus = list(Devis.objects.filter(company_id__in=societes)
+                   .filter(Q(pk__in=avant) | Q(superseded_by_id__in=frontiere))
+                   .exclude(pk__in=list(connus)))
+        for d in lus:
+            connus[d.pk] = d
+        nouveaux_objets.extend(lus)
+        suivants = {d.pk for d in lus} | {
+            p for p, d in connus.items() if p not in vus
+            and (p in avant or d.superseded_by_id in frontiere)}
+        frontiere = suivants - vus
+        vus |= frontiere
+    if nouveaux_objets:
+        from django.db.models import prefetch_related_objects
+        prefetch_related_objects(nouveaux_objets, 'lignes', 'lignes__produit')
+    return connus
+
+
+def _chaines_du_lot(rows, connus):
+    """``{pk: chaîne}`` (ancienne → tête) des lignes révisées — mêmes règles
+    que :func:`chaine_vente` (tête au bout de ``superseded_by``, puis les
+    versions remplacées du plus proche au plus ancien)."""
+    remplaces = {}
+    for d in connus.values():
+        if d.superseded_by_id:
+            remplaces.setdefault(d.superseded_by_id, []).append(d.pk)
+    chaines = {}
+    for d in rows:
+        if not (d.superseded_by_id or d.version_parent_id):
+            continue
+        tete, vus = d, {d.pk}
+        while (tete.superseded_by_id in connus
+               and tete.superseded_by_id not in vus):
+            tete = connus[tete.superseded_by_id]
+            vus.add(tete.pk)
+        ordre, frontiere, lus = [], [tete.pk], {tete.pk}
+        while frontiere:
+            suivants = sorted(i for p in frontiere
+                              for i in remplaces.get(p, ()) if i not in lus)
+            lus.update(suivants)
+            ordre.extend(suivants)
+            frontiere = suivants
+        chaine = [connus[i] for i in reversed(ordre)] + [tete]
+        for v in chaine:  # toute version de la chaîne lit la MÊME chaîne
+            chaines.setdefault(v.pk, chaine)
+    return chaines
+
+
+def _preparer_lot(rows):
+    from apps.ventes.models import Facture
+    from apps.ventes.models_facturation import FactureSource
+    rows = [d for d in rows if getattr(d, 'pk', None) is not None]
+    societes = {d.company_id for d in rows}
+    connus = _graphe_revisions(rows, societes)
+    chaines = _chaines_du_lot(rows, connus)
+    ids_multi = {d.pk for ch in chaines.values() if len(ch) > 1 for d in ch}
+    directes = {i: [] for i in ids_multi}
+    if ids_multi:
+        for f in (Facture.objects.filter(company_id__in=societes,
+                                         devis_id__in=ids_multi)
+                  .prefetch_related(*_PREFETCH_LOT)):
+            directes[f.devis_id].append(f)
+    acceptes = set()
+    for ligne in rows:
+        chaine = chaines.get(ligne.pk, [ligne])
+        if any(v.statut == 'accepte' for v in chaine):
+            acceptes.update(v.pk for v in chaine)
+    bc, sources, autres = {}, [], []
+    if acceptes:
+        bc = dict(Facture.objects.filter(
+            company_id__in=societes, bon_commande__devis_id__in=acceptes)
+            .values_list('pk', 'bon_commande__devis_id'))
+        sources = list(FactureSource.objects.filter(
+            devis_id__in=acceptes).values_list(
+                'facture_id', 'devis_id', 'sous_total_ht'))
+        fids = set(bc) | {s[0] for s in sources}
+        if fids:
+            autres = list(Facture.objects.filter(
+                company_id__in=societes, pk__in=fids)
+                .prefetch_related(*_PREFETCH_LOT))
+    return {'chaines': chaines, 'directes': directes, 'autres': autres,
+            'bc_devis': bc, 'sources': sources, 'acceptes': acceptes}
+
+
+def _parts_du_lot(lot, ids, parts, inclure_annulees):
+    """Les factures de BC / consolidées de la vente ``ids`` lues dans le lot
+    (mêmes règles que la requête de :func:`_factures_et_parts`)."""
+    ids = set(ids)
+    sous_totaux = {}
+    for fid, devis_id, st in lot['sources']:
+        if devis_id in ids:
+            sous_totaux[fid] = sous_totaux.get(fid, ZERO) + _d(st)
+    for f in lot['autres']:
+        if f.pk in parts or (not inclure_annulees
+                             and f.statut == STATUT_ANNULEE):
+            continue
+        if lot['bc_devis'].get(f.pk) not in ids and f.pk not in sous_totaux:
+            continue
+        ratio = Decimal('1')
+        if f.devis_id not in ids and f.pk in sous_totaux:
+            ht = _d(f.total_ht)
+            ratio = (sous_totaux[f.pk] / ht) if ht > 0 else ZERO
+        parts[f.pk] = (f, ratio)
+
+
+@contextlib.contextmanager
+def lot_de_vente(rows):
+    """VNT68 — active le lot de page pendant le rendu d'une liste ; un lot
+    déjà actif est réutilisé (aucune double lecture)."""
+    if _LOT.get() is not None:
+        yield
+        return
+    jeton = _LOT.set(_preparer_lot(list(rows)))
+    try:
+        yield
+    finally:
+        _LOT.reset(jeton)
+
+
 # ── Les factures de la vente (LA définition) ─────────────────────────────────
 
 _PREFETCH_FACTURE = ('paiements', 'avoirs', 'avoirs__lignes', 'lignes',
@@ -100,9 +251,12 @@ def _factures_et_parts(devis, *, inclure_annulees=False) -> list:
         return []
     ids = _ids_chaine(devis)
     company_id = devis.company_id
+    lot = _LOT.get()
     if ids == [devis.pk]:
         # Chemin des listes (YOPSB13) : la relation PRÉCHARGÉE du devis.
         directes = list(devis.factures.all())
+    elif lot is not None and all(i in lot['directes'] for i in ids):
+        directes = [f for i in ids for f in lot['directes'][i]]  # VNT68
     else:
         directes = list(Facture.objects.filter(
             company_id=company_id, devis_id__in=ids)
@@ -117,7 +271,10 @@ def _factures_et_parts(devis, *, inclure_annulees=False) -> list:
     # facture directe ÉMISE — le seul cas où une consolidée émise peut
     # exister (la facture de BC porte aussi ``devis``, AUD112 ; un brouillon
     # ne ferme aucune porte, VNT20).
-    if accepte and not any(f.statut in STATUTS_EMIS for f in directes):
+    if (accepte and not any(f.statut in STATUTS_EMIS for f in directes)
+            and lot is not None and set(ids) <= lot['acceptes']):
+        _parts_du_lot(lot, ids, parts, inclure_annulees)  # VNT68
+    elif accepte and not any(f.statut in STATUTS_EMIS for f in directes):
         autres = (Facture.objects.filter(company_id=company_id)
                   .filter(Q(bon_commande__devis_id__in=ids)
                           | Q(sources__devis_id__in=ids))
@@ -645,5 +802,8 @@ def etat_vente(devis, user=None) -> dict:
 
 def etat_vente_map(rows, user=None) -> dict:
     """``{devis.pk: etat_vente(devis, user)}`` pour une liste de devis (la
-    ligne devis du lead, la fiche) ; jamais servi sur une liste paginée."""
-    return {d.pk: etat_vente(d, user) for d in rows}
+    ligne devis du lead, la fiche, la page de ``ventes/devis/`` — VNT68) :
+    lu sous :func:`lot_de_vente`, nombre de requêtes CONSTANT par page."""
+    rows = list(rows)
+    with lot_de_vente(rows):
+        return {d.pk: etat_vente(d, user) for d in rows}

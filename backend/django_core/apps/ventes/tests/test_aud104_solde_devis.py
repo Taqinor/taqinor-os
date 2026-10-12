@@ -256,3 +256,39 @@ class TestSoldeProjeteDuPlanVNT19(_BaseSolde):
         self.assertEqual(solde['porte_facturation'], 'libre')
         self.assertEqual(solde['reste_a_facturer'], '49000.00')
         self.assertEqual(solde['restant'], '49000.00')
+
+
+class TestSoldeInchangeVenteSoeurVNT68(_BaseSolde):
+    """VNT68 — ``vente`` est servie À CÔTÉ de ``solde`` par
+    ``DevisSerializer`` (liste et détail) ; ``solde`` garde EXACTEMENT les clés
+    du contrat ``devis_solde.json`` (la tâche disait « 9 » : le contrat en
+    porte 12 depuis VNT19 — on lit le contrat, jamais un nombre recopié),
+    toutes des chaînes (``DictField(child=CharField())``) — jamais un plan ni
+    une liste dedans."""
+
+    def test_solde_cles_du_contrat_et_vente_soeur(self):
+        import json
+        from pathlib import Path
+        from rest_framework.test import APIClient
+        cles = set(json.loads(
+            (Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'devis_solde.json').read_text(encoding='utf-8'))
+            ['exemple_vide']['solde'])
+        devis, _facture = self._devis_avec_facture()
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        for url in ('/api/django/ventes/devis/%s/' % devis.pk,
+                    '/api/django/ventes/devis/'):
+            with self.subTest(url=url):
+                r = api.get(url)
+                self.assertEqual(r.status_code, 200, r.content)
+                data = r.data
+                if 'results' in data or isinstance(data, list):
+                    lignes = data.get('results', data) if isinstance(
+                        data, dict) else data
+                    data = next(x for x in lignes if x['id'] == devis.pk)
+                self.assertEqual(set(data['solde']), cles)
+                self.assertTrue(all(isinstance(v, str)
+                                    for v in data['solde'].values()))
+                self.assertEqual(data['vente']['prix_convenu_ttc'],
+                                 data['solde']['total_ttc'])
