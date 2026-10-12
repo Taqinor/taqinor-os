@@ -14,7 +14,11 @@ après la V2, ``da`` = quantité portée par la DA. Seuls les produits dont la
 nomenclature a CHANGÉ et que la DA porte sont listés ; une V2 sans écart
 (rejeu identique) ne touche donc rien — pas de doublon de drapeau.
 """
+import logging
+
 from .models_demande_achat import DemandeAchat
+
+logger = logging.getLogger(__name__)
 
 
 def _diff_pour_da(demande, anciennes, nouvelles):
@@ -86,11 +90,13 @@ def _avertir(chantier, references, user):
                 notify(responsable, EventType.DA_DECIDEE, titre,
                        body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning('AMET14 : notification « achats à revoir » '
+                               'non envoyée', exc_info=True)
 
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('AMET14 : notification « achats à revoir » '
+                       'non planifiée', exc_info=True)
 
 
 def figer_bom_revisee(chantier, devis, figer, quantites):

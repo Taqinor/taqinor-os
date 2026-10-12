@@ -1297,7 +1297,7 @@ def _cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
         return cle_gabarit
     try:
         from apps.parametres.models_messages import CLE_IDENTITE_PAR_CANAL
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except ImportError:
         return cle_gabarit
 
     ouverture = getattr(lead, 'date_creation', None)

@@ -502,7 +502,7 @@ class LeadIntakeActionsMixin:
                     continue
                 try:
                     valeurs[cle] = valeurs.get(cle, 0) + float(d.total_ttc)
-                except Exception:
+                except (TypeError, ValueError):
                     pass
         result = []
         for grp in groupes:
