@@ -311,3 +311,42 @@ class TrancheParCleTests(TestCase):
         facture.refresh_from_db()
         self.assertEqual(facture.objet_vente, {'lignes': []})
         self.assertEqual(facture.garanties, [{'libelle': 'Panneaux'}])
+
+    def test_vnt17_tranches_a_venir_388_apres_acompte_15000(self):
+        """VNT17 — ``next_tranche`` = 1er élément de ``tranches_a_venir``
+        (adaptateur de ``plan_facturation``). Panier réel du 388, échéancier
+        société 30/60/10, acompte 15 000 émis ⇒ Livraison du matériel
+        29 400,00 puis Solde 4 600,00 (D-VNT-6)."""
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            VENT_ACOMPTE_15000, creer_devis_388, facture_tranche)
+        from apps.ventes.utils.echeancier import next_tranche, tranches_a_venir
+        from apps.ventes.utils.options import option_totaux
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT17-{_nxt()}')
+        tot = option_totaux(devis)
+        self.assertEqual(
+            [(Decimal(str(b['base_ht'])), Decimal(str(b['montant'])))
+             for b in tot['tva_par_taux']],
+            [(Decimal('8640.00'), Decimal('864.00')),
+             (Decimal('32913.33'), Decimal('6582.67'))])
+        facture_tranche(devis, f'FAC-VNT17-{_nxt()}', 'acompte', '15000.00',
+                        '12720.41', '2279.59', ventilation=VENT_ACOMPTE_15000)
+        a_venir = tranches_a_venir(devis)
+        self.assertEqual(
+            [(t['libelle'], t['montant_ttc'], t['ht'], t['tva'])
+             for t in a_venir],
+            [('Livraison du matériel', Decimal('29400.00'),
+              Decimal('24932.00'), Decimal('4468.00')),
+             ('Solde', Decimal('4600.00'), Decimal('3900.92'),
+              Decimal('699.08'))])
+        self.assertEqual(a_venir[0]['ventilation_tva'], [
+            {'taux': '10', 'base_ht': '5184.00', 'montant': '518.40'},
+            {'taux': '20', 'base_ht': '19748.00', 'montant': '3949.60'}])
+        self.assertEqual(a_venir[1]['ventilation_tva'], [
+            {'taux': '10', 'base_ht': '811.10', 'montant': '81.11'},
+            {'taux': '20', 'base_ht': '3089.82', 'montant': '617.97'}])
+        nt = next_tranche(devis)
+        self.assertEqual((nt['cle'], nt['ttc'], nt['ht'], nt['tva']),
+                         ('materiel', Decimal('29400.00'),
+                          Decimal('24932.00'), Decimal('4468.00')))
+        self.assertFalse(nt['is_last'])

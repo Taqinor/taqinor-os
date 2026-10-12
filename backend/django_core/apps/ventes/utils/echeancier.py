@@ -829,124 +829,62 @@ def cles_tranches(tranches) -> list:
 def next_tranche(devis, lignes=None, option=None):
     """Décrit la prochaine tranche à facturer, ou None si l'échéancier est complet.
 
-    Retourne un dict : key, label, type, pourcentage, ht, tva, ttc, is_last.
+    Retourne un dict : key, cle, label, type, pourcentage, ht, tva, ttc,
+    is_last (+ ``delai_reglement_jours`` / ``payeur`` quand le jalon les
+    déclare).
 
-    NPLUS1 (27/08/2026) — ``lignes`` (optionnel) est propagé tel quel à
-    ``option_totaux`` : un appelant qui a déjà les lignes en main (chemin
-    d'acceptation) évite une requête de plus. Absent ⇒ comportement d'hier.
+    VNT17 (Groupe VNT) — ADAPTATEUR de ``vente_facturation.plan_facturation``
+    : plus aucun calcul ici. La prochaine tranche est la première tranche
+    « à faire » du plan (cibles cumulatives bornées sur le prix convenu, toute
+    la chaîne de versions, brouillon = prévu, seuls les avoirs de CORRECTION
+    remis — ATOT36), la dernière à faire valant le RESTE exact.
+    :func:`tranches_a_venir` en rend toutes les tranches à venir, celle-ci en
+    tête : une seule formule pour la facture, la page publique, le mail
+    d'acceptation et le PDF.
 
-    PREVIEW-V3-FIX (16/09/2026) — ``option`` (optionnel) est propagé tel quel
-    à ``option_totaux`` : la page publique doit annoncer l'acompte de l'option
-    que le client est en train de COCHER, pas seulement celui de l'option
-    effective. Un seul arrondi existe donc toujours — celui d'ici — au lieu
-    d'une seconde règle recopiée côté vue (le défaut C1 de l'audit : la page
-    devinait l'option et pouvait afficher l'acompte de l'AUTRE). ``None``
-    (tous les appelants historiques) ⇒ ``option_effective``, inchangé.
-
-    QJR21 — une tranche qui DÉCLARE un montant vaut ce montant TTC ; son
-    ``pourcentage`` est alors DÉRIVÉ (montant ÷ total TTC), jamais la valeur
-    brute lue comme un pourcentage. Une tranche en pourcentage (tout
-    l'existant) est calculée exactement comme hier.
+    ``lignes`` (NPLUS1) et ``option`` (PREVIEW-V3-FIX) sont propagés tels
+    quels à ``option_totaux`` : l'acompte annoncé est celui de l'option que
+    le client coche ; absents ⇒ option effective, comportement d'hier.
     """
-    tranches = tranches_normalisees(devis)
-    existantes = list(factures_actives(devis))
-    # ATOT5 — la tranche suivante est la PREMIÈRE CLÉ non couverte par une
-    # facture active de même clé (plus jamais ``tranches[len(existantes)]`` :
-    # annuler l'acompte puis régénérer refacturait le matériel). Une facture
-    # sans clé (historique) occupe, dans l'ordre, la première clé libre.
-    cles = cles_tranches(tranches)
-    couvertes = {f.cle_tranche for f in existantes if f.cle_tranche}
-    sans_cle = sum(1 for f in existantes if not f.cle_tranche)
-    libres = [i for i, c in enumerate(cles) if c not in couvertes][sans_cle:]
-    if not libres:
+    a_venir = tranches_a_venir(devis, lignes=lignes, option=option)
+    if not a_venir:
         return None
-    index = libres[0]
-
-    tranche = tranches[index]
-    key, valeur, unite = tranche['key'], tranche['valeur'], tranche['unite']
-    # Le type suit la position déclarée (CIQ212) ; le RESTE exact va à la
-    # dernière tranche RESTANTE (Σ factures − avoirs = total du devis).
-    is_last_position = index == len(tranches) - 1
-    is_last = len(libres) == 1
-
-    # A3 — l'option acceptée est autoritative : on facture UNIQUEMENT les lignes
-    # de l'option retenue (batterie exclue/incluse selon le choix), au centime.
-    # Sans vraie deuxième option, ce sont les totaux complets — inchangé.
-    # QJR24/D9 — avant acceptation, ce sont les totaux du TOTAL AFFICHÉ
-    # (option recommandée / AVEC), jamais la somme des deux options.
-    from apps.ventes.utils.options import option_totaux
-    opt = option_totaux(devis, option=option, lignes=lignes)
-    total_ht = Decimal(str(opt['ht']))
-    total_tva = Decimal(str(opt['tva']))
-    total_ttc = Decimal(str(opt['ttc']))
-
-    pourcentage = Decimal(str(valeur))
-    if is_last:
-        # Le solde = reste exact pour que la somme égale le total du devis.
-        # ATOT36 (D-ATOT5, décision fondateur 10/10/2026) — seuls les avoirs
-        # de CORRECTION actifs sont REMIS au solde (une correction rectifie
-        # une erreur de facturation : tout le devis reste dû) ; un geste
-        # commercial ou un retour réduit le dû de sa facture et n'est jamais
-        # re-facturé. Un reste nul ou négatif = échéancier soldé (None), jamais une
-        # facture <= 0 (contrainte ck_facture_montants_positifs -> 500).
-        avoirs = avoirs_correction(existantes)
-        zero = Decimal('0')
-        deja_ht = (sum((Decimal(str(f.total_ht)) for f in existantes), zero)
-                   - sum((Decimal(str(a.total_ht)) for a in avoirs), zero))
-        deja_tva = (sum((Decimal(str(f.total_tva)) for f in existantes), zero)
-                    - sum((Decimal(str(a.total_tva)) for a in avoirs), zero))
-        deja_ttc = (sum((Decimal(str(f.total_ttc)) for f in existantes), zero)
-                    - sum((Decimal(str(a.total_ttc)) for a in avoirs), zero))
-        ht = _q(total_ht - deja_ht)
-        tva = _q(total_tva - deja_tva)
-        ttc = _q(total_ttc - deja_ttc)
-        if ttc <= 0:
-            return None
-        if unite == UNITE_MONTANT:
-            # Un montant déclaré n'est PAS un pourcentage : la dernière tranche
-            # vaut le reste, on n'en publie donc que le poids réel.
-            pourcentage = _q(ttc / total_ttc * 100) if total_ttc > 0 \
-                else Decimal('0')
-    elif unite == UNITE_MONTANT:
-        # QJR21 — montant TTC déclaré : HT/TVA suivent au prorata pour que la
-        # somme des tranches égale toujours le total, au centime.
-        montant = Decimal(str(valeur))
-        frac = montant / total_ttc if total_ttc > 0 else Decimal('0')
-        ht = _q(total_ht * frac)
-        ttc = _q(montant) if total_ttc > 0 else Decimal('0.00')
-        # ERR-QAH-VENTES-ACOMPTE-TTC-CENTIME — la TVA est le COMPLÉMENT
-        # (TTC − HT), jamais un troisième arrondi séparé : le document
-        # s'additionne toujours au centime (HT + TVA = TTC).
-        tva = ttc - ht
-        pourcentage = _q(frac * 100)
-    else:
-        frac = Decimal(str(valeur)) / Decimal('100')
-        ht = _q(total_ht * frac)
-        ttc = _q(total_ttc * frac)
-        # ERR-QAH-VENTES-ACOMPTE-TTC-CENTIME — FAC-202606-0003 (acompte 30 %,
-        # taux mixte 17,15 %) : trois arrondis séparés donnaient HT + TVA =
-        # TTC − 0,01. Le TTC annoncé (acompte des conditions/e-mails) reste
-        # celui d'hier ; la TVA en devient le complément exact.
-        tva = ttc - ht
-
+    tr = a_venir[0]
+    pourcentage = tr['pourcentage']
+    if tr['unite'] != UNITE_MONTANT:
+        # Une tranche en pourcentage publie son % déclaré (comportement
+        # d'hier ; VNT18 passe à la part réelle).
+        pourcentage = Decimal(str(tr['valeur']))
     sortie = {
-        'key': key,
-        'cle': cles[index],
-        'label': tranche['libelle'],
-        'type': _tranche_type(key, is_last_position),
+        'key': tr['key'],
+        'cle': tr['cle'],
+        'label': tr['libelle'],
+        'type': tr['type'],
         'pourcentage': pourcentage,
-        'ht': ht,
-        'tva': tva,
-        'ttc': ttc,
-        'is_last': is_last,
+        'ht': tr['ht'],
+        'tva': tr['tva'],
+        'ttc': tr['montant_ttc'],
+        'is_last': tr['is_last'],
     }
     # CIQ212 — délai de règlement DÉCLARÉ sur le jalon (clé absente sinon).
-    if tranche.get('delai_reglement_jours') is not None:
-        sortie['delai_reglement_jours'] = tranche['delai_reglement_jours']
+    if tr.get('delai_reglement_jours') is not None:
+        sortie['delai_reglement_jours'] = tr['delai_reglement_jours']
     # CIQ213 — tranche réglée par un TIERS (organisme financeur).
-    if tranche.get('payeur') == 'tiers':
+    if tr.get('payeur') == 'tiers':
         sortie['payeur'] = 'tiers'
     return sortie
+
+
+def tranches_a_venir(devis, lignes=None, option=None) -> list:
+    """VNT17 — les tranches « à faire » (montant > 0) du plan de facturation,
+    dans l'ordre : ``[{cle, key, libelle, montant_ttc, ht, tva,
+    ventilation_tva, pourcentage, ...}]``. :func:`next_tranche` en est le
+    premier élément ; le PDF (« Prochaines échéances », VNT41) et
+    ``etat_vente.prochaines_echeances`` les lisent ici."""
+    from apps.ventes.vente_facturation import plan_facturation
+    plan = plan_facturation(devis, option=option, lignes=lignes)
+    return [t for t in plan['tranches']
+            if t['statut'] == 'a_faire' and t['montant_ttc'] > 0]
 
 
 def creer_facture_tranche(devis, user, company, create_with_reference):
