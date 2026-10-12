@@ -139,7 +139,7 @@ def _upload_image(request, field, prefix):
     )
 
 
-@extend_schema(request=None, responses=CompanyProfileSerializer)
+@extend_schema(request=None, responses={200: CompanyProfileSerializer})
 @api_view(['DELETE'])
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
@@ -150,7 +150,7 @@ def delete_logo(request):
     return _delete_image(request, field='logo_key')
 
 
-@extend_schema(request=None, responses=CompanyProfileSerializer)
+@extend_schema(request=None, responses={200: CompanyProfileSerializer})
 @api_view(['DELETE'])
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable

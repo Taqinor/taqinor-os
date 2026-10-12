@@ -1,12 +1,13 @@
 """N94 — sérialiseur des surcharges de traduction (``TranslationOverride``)."""
 from rest_framework import serializers
+from core.strict_fields import TypageStrictMixin
 
 from .models_translations import TranslationOverride
 
 VALID_LOCALES = {c for c, _ in TranslationOverride.Locale.choices}
 
 
-class TranslationOverrideSerializer(serializers.ModelSerializer):
+class TranslationOverrideSerializer(TypageStrictMixin, serializers.ModelSerializer):
     class Meta:
         model = TranslationOverride
         fields = [

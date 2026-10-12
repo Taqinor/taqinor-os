@@ -2,10 +2,10 @@ from datetime import timedelta
 
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
-from django.db import models
 from django.utils import timezone
 
 from core.mixins import SameCompanyFKSerializerMixin
+from core.strict_fields import TypageStrictMixin
 
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
@@ -17,44 +17,6 @@ from .models import (
     EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
     WorksheetMaintenanceModele, TicketWorksheet, Probleme,
 )
-
-
-# ── ENF11 — champs au typage STRICT ──────────────────────────────────────────
-# DRF coerce par défaut (12 -> « 12 », "oui" -> True, "5" -> 5) : une requête
-# que le schéma OpenAPI déclare invalide était acceptée. Ces champs refusent
-# tout type JSON autre que celui publié.
-class ChaineStricte(serializers.CharField):
-    def to_internal_value(self, data):
-        if not isinstance(data, str):
-            self.fail('invalid')
-        return super().to_internal_value(data)
-
-
-class BooleenStrict(serializers.BooleanField):
-    def to_internal_value(self, data):
-        if not isinstance(data, bool):
-            self.fail('invalid', input=data)
-        return data
-
-
-class EntierStrict(serializers.IntegerField):
-    def to_internal_value(self, data):
-        if isinstance(data, bool) or not isinstance(data, int):
-            self.fail('invalid')
-        return super().to_internal_value(data)
-
-
-class TypageStrictMixin:
-    """À poser sur un ``ModelSerializer`` : champs modèle texte / booléen /
-    entier générés en version stricte (voir ci-dessus)."""
-
-    serializer_field_mapping = {
-        **serializers.ModelSerializer.serializer_field_mapping,
-        models.CharField: ChaineStricte,
-        models.BooleanField: BooleenStrict,
-        models.IntegerField: EntierStrict,
-        models.PositiveIntegerField: EntierStrict,
-    }
 
 
 # Fenêtre « garantie expirant bientôt » (jours).

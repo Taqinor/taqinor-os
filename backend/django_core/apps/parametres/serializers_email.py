@@ -2,6 +2,7 @@
 import re
 
 from rest_framework import serializers
+from core.strict_fields import TypageStrictMixin
 
 from .models_email import (
     EMAIL_TEMPLATE_PLACEHOLDERS, EmailTemplate, erreur_de_rendu,
@@ -26,7 +27,7 @@ def _unknown_placeholders(text, cle):
     return seen
 
 
-class EmailTemplateSerializer(serializers.ModelSerializer):
+class EmailTemplateSerializer(TypageStrictMixin, serializers.ModelSerializer):
     class Meta:
         model = EmailTemplate
         fields = ['id', 'cle', 'sujet', 'corps']

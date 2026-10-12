@@ -135,10 +135,12 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     logo_url = serializers.SerializerMethodField()
     signature_url = serializers.SerializerMethodField()
     responsable_defaut_leads_nom = serializers.CharField(
-        source='responsable_defaut_leads.username', read_only=True
+        source='responsable_defaut_leads.username', read_only=True,
+        allow_null=True, default=None
     )
     default_installer_nom = serializers.CharField(
-        source='default_installer.username', read_only=True
+        source='default_installer.username', read_only=True,
+        allow_null=True, default=None
     )
     # SCA46 — consentement au benchmarking anonymisé agrégé. Le champ VIT sur
     # ``authentication.Company`` (le consentement est une donnée du tenant, pas

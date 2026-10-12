@@ -29,6 +29,7 @@ from authentication.permissions import (
 from .models import SettingsAuditLog
 from .models_statuses import StatutConfig
 from .serializers_statuses import StatutConfigSerializer
+from .requetes_strictes import StatutsBulkRequestSerializer, valider_corps
 from .statuses_defaults import VALID_DOMAINES, default_statuses
 from .views_common import SettingsAuditedMixin
 
@@ -48,15 +49,6 @@ _STATUTS_EFFECTIFS = inline_serializer('StatutsEffectifs', {
     'domaine': serializers.CharField(),
     'results': inline_serializer(
         'StatutEffectif', _LIGNE_STATUT_CHAMPS, many=True),
-})
-_STATUTS_BULK_REQUEST = inline_serializer('StatutsBulkRequest', {
-    'domaine': serializers.ChoiceField(choices=_DOMAINE_ENUM),
-    'statuts': inline_serializer('StatutsBulkLigne', {
-        'cle': serializers.CharField(),
-        'libelle': serializers.CharField(required=False, allow_null=True),
-        'ordre': serializers.IntegerField(required=False, allow_null=True),
-        'actif': serializers.BooleanField(required=False),
-    }, many=True, required=False),
 })
 
 
@@ -157,7 +149,7 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
             'results': effective_statuses(company, domaine),
         })
 
-    @extend_schema(request=_STATUTS_BULK_REQUEST,
+    @extend_schema(request=StatutsBulkRequestSerializer,
                    responses=_STATUTS_EFFECTIFS)
     @action(detail=False, methods=['put'])
     def bulk(self, request):
@@ -167,11 +159,8 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
         "actif"}, ...]}``. Seules les clés canoniques connues sont acceptées ;
         `company` est forcée côté serveur. Renvoie la liste effective à jour.
         """
-        domaine = request.data.get('domaine')
-        if domaine not in VALID_DOMAINES:
-            return Response(
-                {'detail': 'Domaine inconnu.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 — corps validé contre le schéma publié (types stricts).
+        domaine = valider_corps(StatutsBulkRequestSerializer, request)['domaine']
         company = request.user.company if request.user.company_id else None
         if company is None:
             return Response(

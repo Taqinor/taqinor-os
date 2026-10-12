@@ -8,6 +8,7 @@ existante ne peut pas migrer.
 """
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from core.strict_fields import TypageStrictMixin
 
 from .models_payment_terms import ConditionPaiement
 from .models_relance import CadenceRelanceEtape
@@ -75,7 +76,7 @@ class UniciteSocieteMixin:
         return attrs
 
 
-class TauxTVASerializer(UniciteSocieteMixin, serializers.ModelSerializer):
+class TauxTVASerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
     message_doublon = 'Un taux avec ce code existe déjà.'  # APAR37
 
     class Meta:
@@ -99,7 +100,7 @@ class TauxTVASerializer(UniciteSocieteMixin, serializers.ModelSerializer):
         return attrs
 
 
-class ConditionPaiementSerializer(UniciteSocieteMixin, serializers.ModelSerializer):
+class ConditionPaiementSerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
     message_doublon = 'Cette condition existe déjà.'  # APAR37
 
     class Meta:
@@ -116,7 +117,7 @@ class ConditionPaiementSerializer(UniciteSocieteMixin, serializers.ModelSerializ
         return value
 
 
-class UniteMesureSerializer(UniciteSocieteMixin, serializers.ModelSerializer):
+class UniteMesureSerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
     message_doublon = 'Une unité avec ce code existe déjà.'  # APAR37
 
     class Meta:
@@ -141,7 +142,7 @@ class UniteMesureSerializer(UniciteSocieteMixin, serializers.ModelSerializer):
         return attrs
 
 
-class CadenceRelanceEtapeSerializer(UniciteSocieteMixin, serializers.ModelSerializer):
+class CadenceRelanceEtapeSerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
     """RELANCE FOUNDATION — gabarit de cadence de relance (Paramètres → CRM).
 
     Purement un ordonnancement de rappels internes (délai + canal + libellé),
