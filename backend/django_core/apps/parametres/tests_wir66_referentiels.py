@@ -85,7 +85,7 @@ class ReferentielsTest(TestCase):
         row = TauxTVA.objects.create(company=self.company, code='a',
                                      libelle='A', taux=Decimal('20'))
         r = self.api.patch(f'{TVA}{row.id}/', {'code': 'b'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 — refus d'état
 
     def test_scoping_hides_other_company(self):
         other = _company(slug='ref-other', nom='Other')

@@ -67,7 +67,8 @@ class FG25ApprovalPolicyTest(TestCase):
         r = self.api.post('/api/django/parametres/approbations/', {
             'action_type': 'contract', 'approver_tier': 'admin',
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        # ENF11 — doublon par société = conflit d'état : 409, champ nommé.
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_write_requires_admin_tier(self):
         viewer = User.objects.create_user(

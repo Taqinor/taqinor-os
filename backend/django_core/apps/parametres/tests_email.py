@@ -166,7 +166,7 @@ class EmailTemplateApiTest(TestCase):
         obj_id = r.data['id']
         r2 = self.api.patch(f'{BASE}{obj_id}/', {
             'cle': 'facture'}, format='json')
-        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(r2.status_code, 409)  # ENF11 — refus d'état
 
 
 class EmailTemplateHelperTest(TestCase):
