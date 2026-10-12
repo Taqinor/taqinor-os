@@ -1,0 +1,10 @@
+Jeu de test (shell local) : produit « Onduleur TEST AFAC90 » 1 000 HT TVA 20 %, ticket SAV facturable SAV-TEST-AFAC90-1 + pièce,
+intervention sans ticket (chantier CHT-TEST-AFAC90-2), ticket SAV-TEST-AFAC90-3 + intervention rattachée (CHT-TEST-AFAC90-4).
+AFAC90 — POST /sav/tickets/67/facturer/ (bouton « Facturer ») ⇒ 201 BROUILLON-289, 1 000 / 200 / 1 200, aucun numéro FAC ; émission
+⇒ FAC-202610-0006 (suivant de la série). POST /installations/interventions/134/generer-facture/ ⇒ 201 BROUILLON-290 1 000/200/1 200 ;
+émission ⇒ FAC-202610-0007.
+AFAC91 — double clic sur « Générer la facture » de l'intervention 134 : 201 puis 200 deja_existant=true, même facture 290 ; la liste
+des factures du client n'en porte qu'une.
+AFAC92 — ticket 68 facturé (201 BROUILLON-291, 1 200 TTC) puis POST generer-facture de l'intervention 135 rattachée ⇒ 400
+« Intervention rattachée à un ticket SAV : facturez depuis le ticket. », aucune seconde facture (relue dans la liste).
+Gestes joués par les routes que les boutons appellent (API), pas par clic dans l'écran SAV/intervention (propriétaires installations/sav).

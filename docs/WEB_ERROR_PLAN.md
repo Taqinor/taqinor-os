@@ -82,6 +82,8 @@ _(none yet)_
 
 ---
 
+- [ ] ERR-WEB-SVG-HEIGHT-AUTO — [apps/web/proposition] **La page publique d'un devis résidentiel avec étude horaire journalise 15 erreurs console « Error: <svg> attribute height: Expected length, "auto" »** : relevé à l'acceptation en direct d'AGNR6 (site local, astro dev branché sur l'ERP local, 12/10/2026, devis DEV-202610-0036) : les SVG des courbes sont émis avec `height="auto"`, valeur invalide pour l'attribut SVG `height`. Sources : `apps/web/src/lib/proposalCurve.ts:849` (`daily-curve`), `apps/web/src/lib/proposalChart.ts:328`, `apps/web/src/lib/batterySim.ts:666`. Attendu : ne plus poser `height="auto"` (laisser `viewBox` + `width="100%"` et dimensionner par CSS `height:auto`), aucun `console.error` à l'affichage de la page. Test rouge d'abord : test du gabarit SVG — aucune sortie ne contient `height="auto"`. Preuve en direct : ouvrir /proposition/<jeton> d'un devis résidentiel à étude horaire ⇒ 0 erreur console. Files: `apps/web/src/lib/proposalCurve.ts`, `apps/web/src/lib/proposalChart.ts`, `apps/web/src/lib/batterySim.ts`.
+
 ## GATED — needs founder decision before fixing (agent does NOT auto-build)
 
 Move any task here with a `[BLOCKED: <reason>]` tag when fixing it would require a
