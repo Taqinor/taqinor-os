@@ -10,6 +10,6 @@ frontend/src/pages/admin/SecuriteIdentitePage.jsx::load  identity/break-glass/  
 frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadEnRetard  stock/bons-commande-fournisseur/en-retard/  @action(pagination_class=None), liste complète des BCF en retard @backend/django_core/apps/stock/views/bon_commande_fournisseur.py:641
 
 frontend/src/pages/ia/AgentActions.jsx::load  agent/logs/  vue APIView, journal plafonné aux 200 plus récents (réponse {count, results}) @backend/django_core/apps/agent/views.py:132
-frontend/src/pages/ventes/DevisList.jsx::chargerVariantes  ventes/devis/<id>/variantes/  @action(pagination_class=None), liste complète des variantes du devis @backend/django_core/apps/ventes/views/devis_cycle.py:338
+frontend/src/pages/ventes/DevisList.jsx::chargerVariantes  ventes/devis/<id>/variantes/  @action(pagination_class=None), liste complète des variantes du devis @backend/django_core/apps/ventes/views/devis_cycle.py:340
 frontend/src/pages/ventes/DevisPresetPanel.jsx::ApplySection  ventes/presets/  ViewSet pagination_class=None, list() renvoie une liste brute @backend/django_core/apps/ventes/views/preset.py:33
 frontend/src/pages/Journal.jsx::run  audit/security/  vue @api_view à plafond explicite ?limit= (défaut 100, max 500), réponse {count, results} volontairement bornée @backend/django_core/apps/audit/views.py:306
