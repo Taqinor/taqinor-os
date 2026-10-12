@@ -26,8 +26,10 @@ import httpx
 # ADSENG2 l'a extraite dans ``api_version`` (plain-constant, sans dépendance)
 # pour que l'émetteur CAPI côté ventes partage EXACTEMENT la même version — plus
 # jamais deux littéraux divergents. Ré-exportée ici pour les importeurs existants.
-from .api_version import GRAPH_BASE_URL
-from .api_version import GRAPH_VERSION as GRAPH_VERSION  # ré-export explicite (tests adseng2)
+from . import api_version as _api_version
+
+GRAPH_BASE_URL = _api_version.GRAPH_BASE_URL
+GRAPH_VERSION = _api_version.GRAPH_VERSION  # ré-export (tests adseng2)
 import logging
 
 logger = logging.getLogger(__name__)
