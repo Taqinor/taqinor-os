@@ -315,9 +315,14 @@ def _check_tache_links_same_projet(serializer, instance=None):
 _PARENT_PARAM = {'oneOf': [
     {'type': 'integer', 'minimum': 1},
     {'type': 'string', 'enum': ['', 'null', 'none']}]}
+# api-fuzz r12 (« rejected schema-compliant request ») — `projet`/`assigne` sont
+# lus avec ``mini=1`` (0 et négatifs → 400) : le schéma le dit au lieu
+# d'annoncer tout entier.
+_ID_PARAM = {'type': 'integer', 'minimum': 1}
 
 
-@oa.listing(p0=oa.qi('assigne'), p1=oa.q('parent', _PARENT_PARAM), p2=oa.qi('projet'), p3=oa.qs('statut'))
+@oa.listing(p0=oa.q('assigne', _ID_PARAM), p1=oa.q('parent', _PARENT_PARAM), p2=oa.q('projet', _ID_PARAM),
+            p3=oa.qs('statut'))
 class ProjetTacheViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG292 — tâches & sous-tâches de programme avec dépendances. Lecture tout
     rôle, écriture responsable/admin. Société posée côté serveur. Le programme,
