@@ -162,3 +162,25 @@ class StatutConfigTest(TestCase):
         r2 = self.api.patch(f'{BASE}{obj_id}/', {
             'cle': 'planifie'}, format='json')
         self.assertEqual(r2.status_code, 409)  # ENF11 — refus d'état
+
+
+class StatutConfigEnf11Test(TestCase):
+    """ENF11 (api-fuzz) — ``?domaine=`` tenu, ``ordre`` borné au lot."""
+
+    def setUp(self):
+        self.company = _company('stat-enf11', 'Stat ENF11')
+        admin = User.objects.create_user(
+            username='stat_enf11', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = _auth(admin)
+
+    def test_domaine_hors_enumeration_refuse_sur_la_liste(self):
+        self.assertEqual(self.api.get(BASE, {'domaine': 'leads'}).status_code,
+                         400)
+        self.assertEqual(self.api.get(BASE, {'domaine': 'sav'}).status_code,
+                         200)
+
+    def test_bulk_ordre_demesure_refuse(self):
+        r = self.api.put(BASE + 'bulk/', {'domaine': 'sav', 'statuts': [
+            {'cle': 'nouveau', 'ordre': 10 ** 30}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)

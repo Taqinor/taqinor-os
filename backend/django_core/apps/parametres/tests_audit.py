@@ -100,3 +100,25 @@ class SettingsAuditLogUserLectureSeuleTests(SimpleTestCase):
             partial=True)
         self.assertTrue(ser.is_valid(), ser.errors)
         self.assertNotIn('user', ser.validated_data)
+
+
+class AuditBornesEnf11Test(TestCase):
+    """ENF11 (api-fuzz) — bornes de ``limit``/``offset``/``user`` tenues."""
+
+    def setUp(self):
+        self.company = _company('audit-enf11', 'Audit ENF11')
+        admin = User.objects.create_user(
+            username='audit_enf11', password='pw', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+
+    def test_bornes_hors_plage_refusees(self):
+        url = '/api/django/parametres/audit/'
+        for params in ({'limit': 0}, {'offset': -1},
+                       {'offset': 10 ** 30}, {'user': 10 ** 30}):
+            with self.subTest(params=params):
+                self.assertEqual(self.api.get(url, params).status_code, 400)
+        self.assertEqual(
+            self.api.get(url, {'limit': 1, 'offset': 0}).status_code, 200)
