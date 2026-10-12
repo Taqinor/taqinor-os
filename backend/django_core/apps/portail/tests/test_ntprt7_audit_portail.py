@@ -77,7 +77,8 @@ class AccepterDevisAuditTests(TestCase):
     def test_acceptation_devis_journalisee_via_portail(self):
         res = self.api.post(
             f'/api/django/portail/mes-devis/{self.devis.id}/accepter/',
-            {'nom': 'Client NTPRT7', 'consent_esign': True}, format='json')
+            {'nom': 'Client NTPRT7', 'consent_esign': True,
+             'accepte_conditions': True}, format='json')
         self.assertEqual(res.status_code, 200, res.data)
 
         entry = AuditLog.objects.filter(

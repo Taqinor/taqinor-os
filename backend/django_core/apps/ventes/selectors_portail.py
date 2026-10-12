@@ -6,6 +6,9 @@ Les autres apps continuent de lire ces fonctions par la FAÇADE
 ``apps.ventes.selectors`` (ré-export en fin de fichier) ; ce module est PLAT :
 aucun import de ``.selectors`` en tête (cycle).
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ── NTPRT10/NTPRT11 — Lectures self-service du PORTAIL CLIENT ───────────────
@@ -35,11 +38,16 @@ def devis_envoyes_du_client(company_id, client_id):
         statut=Devis.Statut.ENVOYE))
 
 
-def devis_du_client_portail(company, client_id, *, limit=200):
+def devis_du_client_portail(company, client_id, *, limit=200,
+                            avec_conditions=True):
     """NTPRT10 — Devis visibles par le client ``client_id`` sur son portail.
 
     Les BROUILLONS internes sont EXCLUS : un devis non envoyé n'a jamais été
     montré au client, l'exposer serait une fuite de travail en cours.
+
+    APDF35 — ``avec_conditions`` : chaque ligne porte ``conditions_titre`` et
+    ``conditions`` (:func:`_conditions_portail`) ; la recherche et l'export,
+    qui ne les affichent pas, passent ``False`` (aucun rendu moteur).
     """
     from .domain.cycle_vie import exige_identite_entreprise
     from .models import Devis
@@ -74,7 +82,35 @@ def devis_du_client_portail(company, client_id, *, limit=200):
         # ``accept_devis`` relit : un devis à deux options s'accepte au
         # portail avec l'option choisie (``options[].cle``), jamais sans.
         **_options_portail(d),
+        # APDF35 (contrat ``mes_devis_liste.json``, APDF1) — les conditions
+        # générales que le client accepte, lues par LA fonction de la page
+        # publique /proposition.
+        **(_conditions_portail(d) if avec_conditions else {}),
     } for d in qs]
+
+
+def _conditions_portail(devis):
+    """APDF35 (C-APDF-005) — ``conditions_titre`` (texte) et ``conditions``
+    (liste de puces ou ``None``) de CE devis, par les deux fonctions de la
+    page publique (``public.payload_conditions._conditions_publiques`` et
+    ``_conditions_titre_publique``, APDF19) sur la même donnée moteur
+    (``build_quote_data``, mode « full ») : portail = page publique = PDF.
+    Lecture seule (règle #4). Rendu impossible ⇒ titre par défaut du moteur
+    et ``conditions`` null — jamais une copie locale du texte."""
+    from .public.payload_conditions import (
+        _conditions_publiques, _conditions_titre_publique,
+    )
+    try:
+        from .quote_engine.builder import build_quote_data
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+    except Exception:  # noqa: BLE001 — best-effort, la liste reste servie
+        logger.warning("selectors_portail._conditions_portail : rendu moteur "
+                       "impossible pour le devis %s (mode dégradé)",
+                       devis.pk, exc_info=True)
+        return {'conditions_titre': _conditions_titre_publique(None),
+                'conditions': None}
+    return {'conditions_titre': _conditions_titre_publique(data),
+            'conditions': _conditions_publiques(data, devis)}
 
 
 def _options_portail(devis):

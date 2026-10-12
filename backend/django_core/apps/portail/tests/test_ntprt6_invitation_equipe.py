@@ -227,7 +227,8 @@ class EndpointDevisEtTicketGatingTests(TestCase):
         self.api.force_authenticate(user=self.lecteur)
         res = self.api.post(
             f'/api/django/portail/mes-devis/{self.devis.id}/accepter/',
-            {'nom': 'Lecteur', 'consent_esign': True}, format='json')
+            {'nom': 'Lecteur', 'consent_esign': True,
+             'accepte_conditions': True}, format='json')
         self.assertEqual(res.status_code, 403)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
@@ -236,7 +237,8 @@ class EndpointDevisEtTicketGatingTests(TestCase):
         self.api.force_authenticate(user=self.admin)
         res = self.api.post(
             f'/api/django/portail/mes-devis/{self.devis.id}/accepter/',
-            {'nom': 'Admin', 'consent_esign': True}, format='json')
+            {'nom': 'Admin', 'consent_esign': True,
+             'accepte_conditions': True}, format='json')
         self.assertEqual(res.status_code, 200, res.data)
 
     def test_lecture_refuse_l_ouverture_de_ticket(self):

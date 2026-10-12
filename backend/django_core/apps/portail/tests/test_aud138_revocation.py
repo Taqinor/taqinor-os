@@ -99,7 +99,8 @@ class RevocationAccesPortailTests(TestCase):
             self.api.get('/api/django/portail/mes-factures/').status_code, 403)
         res = self.api.post(
             f'/api/django/portail/mes-devis/{self.devis.id}/accepter/',
-            {'nom': 'Client Alpha', 'consent_esign': True}, format='json')
+            {'nom': 'Client Alpha', 'consent_esign': True,
+             'accepte_conditions': True}, format='json')
         self.assertEqual(res.status_code, 403)
 
     def test_le_jeton_jwt_deja_distribue_ne_passe_plus(self):

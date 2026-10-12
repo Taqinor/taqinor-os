@@ -104,7 +104,8 @@ class GardesTroisPortesTests(TestCase):
         return api.post(
             f'/api/django/portail/mes-devis/{devis.id}/accepter/',
             {'nom': 'Client', 'option': 'sans_batterie',
-             'consent_esign': True}, format='json')
+             'consent_esign': True,
+             'accepte_conditions': True}, format='json')
 
     def _assert_rien_ecrit(self, devis):
         devis.refresh_from_db()

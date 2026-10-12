@@ -86,7 +86,8 @@ class UniciteAcceptationPortailTests(TestCase):
     def test_double_clic_ne_produit_quune_seule_preuve(self):
         """Chemin nominal (séquentiel) : déjà vert avant AUD145, conservé comme
         garde de non-régression du rattrapage ``IntegrityError``."""
-        charge = {'nom': 'Client Alpha', 'consent_esign': True}
+        charge = {'nom': 'Client Alpha', 'consent_esign': True,
+                  'accepte_conditions': True}
         premier = self.api.post(self.url, charge, format='json')
         second = self.api.post(self.url, charge, format='json')
 
@@ -115,13 +116,15 @@ class UniciteAcceptationPortailTests(TestCase):
             1)
 
     def test_lhorodatage_de_la_premiere_signature_est_conserve(self):
-        charge = {'nom': 'Client Alpha', 'consent_esign': True}
+        charge = {'nom': 'Client Alpha', 'consent_esign': True,
+                  'accepte_conditions': True}
         self.api.post(self.url, charge, format='json')
         preuve = AcceptationDevisPortail.objects.get(
             company=self.company, devis=self.devis)
         premier_horodatage = preuve.signe_le
 
-        self.api.post(self.url, {'nom': 'Autre Nom', 'consent_esign': True},
+        self.api.post(self.url, {'nom': 'Autre Nom', 'consent_esign': True,
+                                 'accepte_conditions': True},
                       format='json')
 
         preuve.refresh_from_db()

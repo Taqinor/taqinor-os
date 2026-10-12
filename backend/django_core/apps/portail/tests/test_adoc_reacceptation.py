@@ -77,7 +77,8 @@ class ReacceptationPortailTests(TestCase):
         self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
 
         res = self.api.post(
-            self.url, {'nom': 'Client', 'consent_esign': True},
+            self.url, {'nom': 'Client', 'consent_esign': True,
+                       'accepte_conditions': True},
             format='json')
 
         self.assertEqual(res.status_code, 409, res.content)
@@ -89,7 +90,8 @@ class ReacceptationPortailTests(TestCase):
         self.assertEqual(self.devis.accepte_par_nom, 'Commercial')
 
     def test_double_envoi_portail_idempotent(self):
-        payload = {'nom': 'Sami', 'consent_esign': True}
+        payload = {'nom': 'Sami', 'consent_esign': True,
+                   'accepte_conditions': True}
         premier = self.api.post(self.url, payload, format='json')
         self.assertEqual(premier.status_code, 200, premier.content)
         preuve = AcceptationDevisPortail.objects.get(devis_id=self.devis.id)
@@ -97,7 +99,8 @@ class ReacceptationPortailTests(TestCase):
         nb_audits = self._audits_portail().count()
 
         second = self.api.post(
-            self.url, {'nom': 'Autre nom', 'consent_esign': True},
+            self.url, {'nom': 'Autre nom', 'consent_esign': True,
+                       'accepte_conditions': True},
             format='json')
         self.assertEqual(second.status_code, 200, second.content)
         preuve.refresh_from_db()

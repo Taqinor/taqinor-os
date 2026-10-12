@@ -347,7 +347,8 @@ def exporter_mes_donnees(request):
         return [{cle: _json_safe(v) for cle, v in ligne.items()}
                 for ligne in lignes]
 
-    devis = _serialise(devis_du_client_portail(company, client_id))
+    devis = _serialise(devis_du_client_portail(
+        company, client_id, avec_conditions=False))
     factures = _serialise(factures_du_client_portail(company, client_id))
     tickets = [{
         'id': d.id,
@@ -474,7 +475,8 @@ def recherche_portail_client(request):
     if q:
         aiguille = q.lower()
 
-        devis = [d for d in devis_du_client_portail(company, client_id)
+        devis = [d for d in devis_du_client_portail(
+                     company, client_id, avec_conditions=False)
                  if aiguille in (d.get('reference') or '').lower()]
         groupes.append({
             'type': 'devis', 'label': 'Devis',
@@ -594,6 +596,15 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                 'reference': devis.reference,
                 'statut': devis.statut,
             })
+
+        # APDF35 (C-APDF-005) — accepter, c'est accepter les conditions
+        # générales servies dans la liste (``conditions``) : case EXPLICITE,
+        # jamais vraie par défaut (la page publique coche la même case).
+        if request.data.get('accepte_conditions') not in _VRAI:
+            return Response(
+                {'detail': 'Acceptez les conditions générales pour signer.',
+                 'champ': 'accepte_conditions'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         # CIQ321 (D-CIQ-11, contrat ``acceptation_entreprise.json``) — devis
         # commercial / industriel : raison sociale, qualité du signataire et
