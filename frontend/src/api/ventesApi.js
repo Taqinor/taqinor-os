@@ -108,6 +108,11 @@ const ventesApi = {
   // UN appel atomique. Contrat : apps/ventes/contract_samples/devis_facturer_complet.json.
   facturerComplet: (devisId, { paiements = [] } = {}) =>
     api.post(`/ventes/devis/${devisId}/facturer-complet/`, { paiements }),
+  // VNT45 (D-VNT-3) — « Facturer la vente » : aperçu (plan, prochaine tranche,
+  // acompte proposé, état de la vente) puis création de la facture d'une nature
+  // donnée. Contrat : apps/ventes/contract_samples/devis_facturer.json.
+  apercuFacturerVente: (devisId) => api.get(`/ventes/devis/${devisId}/facturer/`),
+  facturerVente: (devisId, body) => api.post(`/ventes/devis/${devisId}/facturer/`, body),
   // ADOC131 (D-ADOC-4) — « Révoquer le lien client » : coupe immédiatement le
   // lien public (proposition ET suivi, même jeton). → { revoques, revoque_le }.
   revoquerLienPublic: (devisId) =>
