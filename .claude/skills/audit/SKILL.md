@@ -67,6 +67,15 @@ graine = SHA) ; vérificateurs frais opus / high : texte ↔ commit(s) ↔ test 
 sondes rejouées, verdict ok / partiel / non-fait / faux / régression / déjà-présent + cause ; UNE critique Fable seulement si
 des S1 subsistent. Écarts confirmés = tâches v3 sous `### <G> — ÉCARTS vérifie <date> · format v3` dans le fichier du
 PROPRIÉTAIRE (numérotation du groupe continuée ; jamais `ERROR_PLAN.md`). PR docs-only.
+**Mécanique des tâches ÉCART (mesuré 11/10 : 4 cycles CI rouges évitables).** Avant de pousser, lancer EN LOCAL les trois
+gardes rapides `check_ownership.py` + `check_ancres_taches.py` + `check_taches_cablage.py` (pas seulement `stage-names`, lent
+et sujet à blocage local). (a) Une tâche écart dont les `Files:` touchent PLUSIEURS propriétaires (`check_ownership.py
+--owner-of`) va dans `docs/plans/PLAN_AUDIT_TRANSVERSE.md` avec `(@atomique: a, b)` si c'est un correctif en UN commit —
+jamais dans le plan d'un seul propriétaire. (b) Ancre = `chemin/complet.ext::symbole` (fonction/classe réels), JAMAIS
+`:ligne` ni `(l.N)` nus ; un dict/variable de module n'est pas une ancre résolvable → le citer en texte. (c) Chaque `n/a`
+porte « n/a — raison » (jamais nu). (d) Les 14 clauses v3 sont toutes présentes (dont « Assertions existantes »). Le record
+`<date>-<mot>-verifie.md` prend le `mot` du `declencheur` tel quel, ACCENTS COMPRIS (`sécurité`, `générateur`) sinon
+`audit_registre` ne le matche pas ; une 2ᵉ contre-visite le même jour REMPLACE le fichier canonique (git garde la 1ʳᵉ).
 
 ## 6. Interdits
 Jamais de constat S1-S2 sans sonde exécutée sur les critères à sonde ; jamais l'auteur comme vérificateur ; jamais plus de
