@@ -18,6 +18,7 @@ import SyncStatusBanner from './SyncStatusBanner'
 // FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
 import UpdateBanner from './UpdateBanner'
 import { COCKPIT_VIEWS, applyCockpitView, loadSavedCockpitView, saveCockpitView } from './cockpitViews'
+import { fatigueTone } from './fatigueTone'
 
 // PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
 // testable isolément ; une ligne sans dépense compte pour 0 (jamais NaN).
@@ -191,15 +192,6 @@ function AdRetentionCurve({ adMetaId, kind }) {
       </p>
     </div>
   )
-}
-
-function fatigueTone(fatigue) {
-  if (!fatigue) return { bg: '#f1f5f9', color: '#64748b', label: 'Inconnu' }
-  if (fatigue.insufficient_data) return { bg: '#f1f5f9', color: '#64748b', label: 'Historique insuffisant' }
-  if (!fatigue.fired) return { bg: '#dcfce7', color: '#166534', label: 'Pas de fatigue' }
-  return fatigue.severity === 'critique'
-    ? { bg: '#fee2e2', color: '#991b1b', label: 'Fatigue confirmée' }
-    : { bg: '#ffedd5', color: '#9a3412', label: 'Fatigue possible' }
 }
 
 // PUB43 — dernière vue enregistrée (localStorage), lue UNE FOIS au montage —
