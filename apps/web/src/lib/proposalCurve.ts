@@ -846,7 +846,7 @@ export function renderYearCurve(
   const desc = descByLang[lang];
 
   const svg =
-    `<svg class="daily-curve" viewBox="0 0 ${box.width} ${box.height}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" role="img" xmlns="http://www.w3.org/2000/svg">` +
+    `<svg class="daily-curve" viewBox="0 0 ${box.width} ${box.height}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" xmlns="http://www.w3.org/2000/svg">` +
     `<title>${esc(titleByLang[lang])}</title><desc>${esc(desc)}</desc>` +
     `<defs><linearGradient id="solarFill" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0%" stop-color="var(--color-brass-400, #e8b54a)" stop-opacity="0.42"/>` +
