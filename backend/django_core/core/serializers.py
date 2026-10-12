@@ -42,8 +42,11 @@ scopé, exactement comme le fait ``TenantMixin`` pour les listes.
 ``core`` reste FONDATION : aucun import d'app métier ici.
 """
 from django.core.exceptions import FieldDoesNotExist
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
+
+from .champs_stricts import BooleenStrict
+from .parseurs import ObjetJSON
 
 from .models import (
     ApiUsagePlan,
@@ -514,6 +517,10 @@ class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializ
     imposée côté serveur (TenantMixin) et ``owner`` est positionné à
     l'utilisateur courant à la création (voir la vue).
     """
+    # ERR-ENF11-FUZZ-CORE — objet JSON publié et exigé (``null`` était
+    # conforme au schéma ``{}`` puis refusé par le champ de modèle non nul).
+    layout = ObjetJSON(required=False)
+
     class Meta:
         model = Dashboard
         fields = [
@@ -680,6 +687,8 @@ class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
     expose les placeholders détectés dans le corps (aide à l'éditeur).
     """
     variables = serializers.SerializerMethodField()
+    # ERR-ENF11-FUZZ-CORE — booléen JSON strict (``actif: 0`` était accepté).
+    actif = BooleenStrict(required=False)
 
     class Meta:
         model = BrandedTemplate
@@ -695,6 +704,11 @@ class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
         return variables_utilisees(f'{obj.sujet}\n{obj.corps}')
 
 
+# ERR-ENF11-FUZZ-CORE — composant OpenAPI distinct : le nom par défaut
+# « ConsentRecord » entrait en collision avec ``apps.adsengine`` (PUB75) et le
+# schéma publiait SES champs (client_nom…) pour ``core/consent-records/`` :
+# un corps conforme y était refusé (subject_identifier/purpose requis).
+@extend_schema_serializer(component_name='ConsentementTraitement')
 class ConsentRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG394 — entrée du registre de consentement.
 
@@ -757,6 +771,8 @@ class RegistreTraitementSerializer(CompanyScopedRelationsMixin, serializers.Mode
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
     """
+    actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
+
     class Meta:
         model = RegistreTraitement
         fields = [
@@ -795,6 +811,8 @@ class ApiUsagePlanSerializer(CompanyScopedRelationsMixin, serializers.ModelSeria
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
     """
+    actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
+
     class Meta:
         model = ApiUsagePlan
         fields = [

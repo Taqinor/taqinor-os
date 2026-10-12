@@ -15,6 +15,8 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole
 
+from .parseurs import corps_valide
+
 __all__ = ['RegleOperateursView', 'RegleValiderView']
 
 
@@ -32,6 +34,14 @@ class RegleOperateursView(APIView):
         return Response({'operateurs': catalogue_operateurs()})
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer DÉCLARÉ : un corps non
+# objet (``[null, null]``) répondait 200 {ok: false} au lieu de 400.
+_REQUETE_VALIDER = inline_serializer('RegleValiderRequete', {
+    # Absent ou nul : le serveur répond 200 {ok: false} (dry-run).
+    'conditions': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 class RegleValiderView(APIView):
     """NTEXT29 — dry-run de validation d'un arbre de conditions.
 
@@ -45,10 +55,7 @@ class RegleValiderView(APIView):
     permission_classes = [IsAnyRole]
 
     @extend_schema(
-        request=inline_serializer('RegleValiderRequete', {
-            # Absent : le serveur répond 200 {ok: false} (dry-run).
-            'conditions': drf_serializers.JSONField(required=False),
-        }),
+        request=_REQUETE_VALIDER,
         responses=inline_serializer('RegleValiderReponse', {
             'ok': drf_serializers.BooleanField(),
             'erreurs': drf_serializers.JSONField(),
@@ -56,8 +63,7 @@ class RegleValiderView(APIView):
     def post(self, request):
         from core.rules import validate_condition_group
 
-        donnees = request.data if isinstance(request.data, dict) else {}
-        conditions = donnees.get('conditions')
+        conditions = corps_valide(request, _REQUETE_VALIDER).get('conditions')
         if conditions is None:
             return Response(
                 {'ok': False, 'erreurs': ["L'arbre « conditions » est requis."]})

@@ -230,3 +230,17 @@ def installer() -> None:
 
     initial._enfp_parametres_requete = True
     APIView.initial = initial
+
+
+def choix_ou_400(request, nom, choix):
+    """ERR-ENF11-FUZZ-CORE — valeur d'un paramètre de requête à énumération
+    PUBLIÉE (``enum=`` au schéma). Absent → ``None`` ; hors liste → 400
+    ``validation_error`` nommant le paramètre (``?export=AAA`` rendait le CSV
+    par défaut en 200 : donnée invalide acceptée en silence)."""
+    from rest_framework.exceptions import ValidationError
+
+    valeur = request.query_params.get(nom)
+    if valeur is not None and valeur not in choix:
+        raise ValidationError({nom: [
+            f"Valeur « {valeur} » invalide : attendu {', '.join(choix)}."]})
+    return valeur

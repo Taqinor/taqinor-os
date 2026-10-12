@@ -45,24 +45,6 @@ class ConfirmationActionSerializer(drf_serializers.Serializer):
     preuve = drf_serializers.CharField(required=False)
 
 
-def _choix_catalogue(valeurs):
-    """ChoiceField du catalogue FERMÉ, documenté en ``allOf: [{enum}]``.
-
-    ERR-ENF11-FUZZ-AGENT — le schéma déclarait ``trigger_type``/``action_type``
-    en chaîne libre : api-fuzz envoyait ``action_type: "0"`` (conforme) et
-    recevait 400 « Action inconnue du catalogue ». L'énumération est enveloppée
-    dans ``allOf`` pour ne pas entrer en collision avec ``TriggerTypeEnum`` /
-    ``AutomationRuleActionTypeEnum`` (catalogue complet, parqués compris) :
-    ``postprocess_schema_enums`` renommerait sinon ces composants partagés.
-    """
-    from drf_spectacular.drainage import set_override
-
-    champ = drf_serializers.ChoiceField(choices=list(valeurs))
-    set_override(champ, 'field', {
-        'type': 'string', 'allOf': [{'enum': list(valeurs)}]})
-    return champ
-
-
 class BrouillonAutomationSerializer(drf_serializers.Serializer):
     # ``nom`` : au moins un caractère non blanc (le service refuse un nom vide
     # après ``strip``), 255 au plus (``AutomationRule.nom``).
@@ -76,11 +58,15 @@ class BrouillonAutomationSerializer(drf_serializers.Serializer):
         # Catalogue FERMÉ lu via le selector d'automation (jamais ses modèles),
         # à l'exécution : même source que ``create_draft_rule_from_agent``.
         from apps.automation.selectors import closed_rule_catalogue
+        from core.parseurs import ChoixDocumente
 
         champs = super().get_fields()
         catalogue = closed_rule_catalogue()
-        champs['trigger_type'] = _choix_catalogue(catalogue['trigger_types'])
-        champs['action_type'] = _choix_catalogue(catalogue['action_types'])
+        # ERR-ENF11-FUZZ-AGENT — énum EN LIGNE (``core.parseurs.
+        # ChoixDocumente``) : action_type « 0 » était conforme au schéma puis
+        # refusé ; un composant d'énum partagé renommerait TriggerTypeEnum.
+        champs['trigger_type'] = ChoixDocumente(catalogue['trigger_types'])
+        champs['action_type'] = ChoixDocumente(catalogue['action_types'])
         return champs
 
 

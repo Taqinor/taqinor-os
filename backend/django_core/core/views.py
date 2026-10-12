@@ -56,6 +56,8 @@ from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
+from .parametres_requete import choix_ou_400
+from .parseurs import ChoixDocumente, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
 from .permissions import PeutExecuterEditionMasse, declared_action_permissions
 from .models import (
@@ -126,6 +128,14 @@ _PERIODE_TYPE = {
     'type': 'string', 'pattern': r'^\d{4}-(0[1-9]|1[0-2])$'}
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré
+# (``corps_valide`` : ``task`` non texte = 400, 500 avant) ; une tâche hors
+# planification est une ressource introuvable : 404 documenté.
+_RUN_JOB = inline_serializer('ScheduledJobRunRequest', {
+    'task': drf_serializers.CharField(),
+})
+
+
 class ScheduledJobViewSet(viewsets.ViewSet):
     """Jobs Celery Beat (infra globale, admin uniquement).
 
@@ -141,9 +151,7 @@ class ScheduledJobViewSet(viewsets.ViewSet):
         return Response(ScheduledJobSerializer(data, many=True).data)
 
     @extend_schema(
-        request=inline_serializer('ScheduledJobRunRequest', {
-            'task': drf_serializers.CharField(),
-        }),
+        request=_RUN_JOB,
         responses={202: inline_serializer('ScheduledJobRunReponse', {
             'task': drf_serializers.CharField(),
             'task_id': drf_serializers.CharField(),
@@ -157,18 +165,13 @@ class ScheduledJobViewSet(viewsets.ViewSet):
         réellement planifiées sont autorisées (liste blanche). Broker
         injoignable → 503 (jamais 500).
         """
-        task_name = (request.data or {}).get('task')
-        if not task_name:
-            return Response(
-                {'detail': "Champ « task » requis."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        task_name = corps_valide(request, _RUN_JOB)['task']
         try:
             task_id = jobs_infra.run_job(task_name)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_404_NOT_FOUND,
             )
         except RuntimeError as exc:
             # Broker indisponible / erreur de transport : on dégrade en 503.
@@ -188,6 +191,15 @@ _WORKFLOW_INSTALLE = inline_serializer('WorkflowInstalle', {
     'definition_id': drf_serializers.IntegerField(),
     'created': drf_serializers.BooleanField(),
     'nb_etapes': drf_serializers.IntegerField(),
+})
+
+
+# ERR-ENF11-FUZZ-CORE — ``code`` publié comme l'énum du catalogue (statique,
+# sans base) : un code inconnu était conforme au schéma puis refusé ; un corps
+# non objet levait AttributeError (500). Validé par ``corps_valide``.
+_INSTALLER_WORKFLOW = inline_serializer('WorkflowInstallerRequest', {
+    'code': ChoixDocumente(
+        [m['code'] for m in workflow_templates.liste_modeles_workflow()]),
 })
 
 
@@ -223,9 +235,7 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
         return Response(WorkflowTemplateSerializer(data, many=True).data)
 
     @extend_schema(
-        request=inline_serializer('WorkflowInstallerRequest', {
-            'code': drf_serializers.CharField(),
-        }),
+        request=_INSTALLER_WORKFLOW,
         responses={
             (200, 'application/json'): _WORKFLOW_INSTALLE,
             (201, 'application/json'): _WORKFLOW_INSTALLE,
@@ -239,12 +249,7 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
         Idempotent : réinstaller un modèle déjà présent ne crée aucun doublon
         et renvoie 200 (au lieu de 201).
         """
-        code = (request.data or {}).get('code')
-        if not code:
-            return Response(
-                {'detail': "Champ « code » requis."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        code = corps_valide(request, _INSTALLER_WORKFLOW)['code']
         company = getattr(request.user, 'company', None)
         if company is None:
             return Response(
@@ -393,15 +398,22 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
         return ctx
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré (un corps
+# tableau levait AttributeError, 500) ; ``min_length=1`` publie ``minItems``
+# (``allow_empty`` seul ne l'exprimait pas : ``[]`` conforme puis refusé).
+_APPROBATION_GROUPEE = inline_serializer(
+    name='ApprobationGroupeeRequest',
+    fields={
+        'step_ids': drf_serializers.ListField(
+            child=drf_serializers.IntegerField(), min_length=1),
+        'commentaire': drf_serializers.CharField(
+            required=False, allow_blank=True),
+    },
+)
+
+
 @extend_schema(
-    request=inline_serializer(
-        name='ApprobationGroupeeRequest',
-        fields={
-            'step_ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField(), allow_empty=False),
-            'commentaire': drf_serializers.CharField(required=False),
-        },
-    ),
+    request=_APPROBATION_GROUPEE,
     responses={200: inline_serializer(
         name='ApprobationGroupeeResponse',
         fields={
@@ -436,19 +448,8 @@ def approuver_etapes_en_masse(request):
             {'detail': "Utilisateur sans société."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    demandes = (request.data or {}).get('step_ids') or []
-    try:
-        voulus = {int(v) for v in demandes}
-    except (TypeError, ValueError):
-        return Response(
-            {'detail': "Le champ « step_ids » doit être une liste d'entiers."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if not voulus:
-        return Response(
-            {'detail': "Champ « step_ids » requis (au moins une étape)."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    donnees = corps_valide(request, _APPROBATION_GROUPEE)
+    voulus = set(donnees['step_ids'])
     en_attente = workflow_engine.pending_steps_for_company(company)
     steps = [s for s in en_attente if s.pk in voulus]
     introuvables = sorted(voulus - {s.pk for s in steps})
@@ -457,7 +458,7 @@ def approuver_etapes_en_masse(request):
             {'detail': "Aucune étape en attente ne correspond à la sélection."},
             status=status.HTTP_404_NOT_FOUND,
         )
-    commentaire = ((request.data or {}).get('commentaire') or '').strip()
+    commentaire = donnees.get('commentaire', '')
     try:
         resultat = workflow_engine.approuver_en_masse(
             steps, user=request.user, commentaire=commentaire)
@@ -543,7 +544,10 @@ def mes_processus_view(request):
 
 _P_CHARGE = [
     _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
-    _q('seuil', OpenApiTypes.INT, 'Seuil de surcharge (entier positif).')]
+    # ERR-ENF11-FUZZ-CORE — ``minimum`` publié : ``seuil=-538`` était
+    # conforme au schéma puis refusé (400 « doit être positif »).
+    _q('seuil', {'type': 'integer', 'minimum': 0},
+       'Seuil de surcharge (entier positif).')]
 
 
 @extend_schema(parameters=_P_CHARGE, responses={200: inline_serializer(
@@ -605,16 +609,21 @@ _P_CONFORMITE = [
        enum=['xlsx'])]
 
 
-@extend_schema(parameters=_P_CONFORMITE, responses={200: inline_serializer(
-    name='RapportConformiteResponse',
-    fields={
-        'periode': drf_serializers.CharField(allow_null=True),
-        'colonnes': drf_serializers.JSONField(),
-        'decisions': drf_serializers.JSONField(),
-        'sources': drf_serializers.JSONField(),
-        'sources_en_erreur': drf_serializers.JSONField(),
-    },
-)})
+# ERR-ENF11-FUZZ-CORE — le classeur ``?export=xlsx`` est documenté (il était
+# servi sous un Content-Type absent du schéma).
+@extend_schema(parameters=_P_CONFORMITE, responses={
+    (200, 'application/json'): inline_serializer(
+        name='RapportConformiteResponse',
+        fields={
+            'periode': drf_serializers.CharField(allow_null=True),
+            'colonnes': drf_serializers.JSONField(),
+            'decisions': drf_serializers.JSONField(),
+            'sources': drf_serializers.JSONField(),
+            'sources_en_erreur': drf_serializers.JSONField(),
+        },
+    ),
+    (200, _XLSX): OpenApiTypes.BINARY,
+})
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def rapport_conformite_view(request):
@@ -635,7 +644,8 @@ def rapport_conformite_view(request):
     company = getattr(request.user, 'company', None)
     periode = request.query_params.get('periode')
     rapport = workflow_engine.decisions_conformite(company, periode=periode)
-    if request.query_params.get('export') == 'xlsx':
+    # ERR-ENF11-FUZZ-CORE — ``?export=AAA`` (hors énum publiée) = 400.
+    if choix_ou_400(request, 'export', ('xlsx',)) == 'xlsx':
         return _conformite_xlsx_response(rapport)
     rapport['colonnes'] = [
         {'cle': cle, 'libelle': libelle}
@@ -2338,6 +2348,6 @@ def sla_export_csv(request):
     company = request.user.company
     snapshots = _sla_export_rows(company)
     incidents = _incidents_export_rows(company)
-    if request.query_params.get('export') == 'xlsx':
+    if choix_ou_400(request, 'export', ('csv', 'xlsx')) == 'xlsx':
         return _sla_export_xlsx_response(snapshots, incidents)
     return _sla_export_csv_response(snapshots, incidents)
