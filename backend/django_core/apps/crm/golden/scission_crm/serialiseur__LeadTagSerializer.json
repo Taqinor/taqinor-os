@@ -19,7 +19,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "archived",
    "read_only": false,
    "required": false

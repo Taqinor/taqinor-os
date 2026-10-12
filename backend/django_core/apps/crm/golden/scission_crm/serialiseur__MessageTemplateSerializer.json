@@ -31,7 +31,7 @@
    "required": true
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "archived",
    "read_only": false,
    "required": false

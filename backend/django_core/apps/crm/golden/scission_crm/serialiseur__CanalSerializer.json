@@ -25,13 +25,13 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "protege",
    "read_only": true,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "archived",
    "read_only": false,
    "required": false
