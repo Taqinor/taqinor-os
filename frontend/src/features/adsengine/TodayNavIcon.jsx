@@ -17,18 +17,25 @@ import { normalizeTodayQueue } from './todayQueue'
 
 export default function TodayNavIcon() {
   const [count, setCount] = useState(null)
+  const [countError, setCountError] = useState(false)
 
   useEffect(() => {
     let alive = true
     adsengineApi.today.get()
       .then(r => { if (alive) setCount(normalizeTodayQueue(r.data).total) })
-      .catch(() => { if (alive) setCount(null) })
+      .catch(() => { if (alive) { setCount(null); setCountError(true) } })
     return () => { alive = false }
   }, [])
 
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
       <Sunrise size={17} strokeWidth={1.75} aria-hidden="true" />
+      {countError && (
+        <span data-testid="ae-nav-today-error" role="img"
+          aria-label="Impossible de charger la file du jour" title="Impossible de charger la file du jour"
+          style={{ position: 'absolute', top: -6, right: -8, color: '#dc2626', fontSize: '0.7rem',
+            fontWeight: 700, lineHeight: 1 }}>!</span>
+      )}
       {count != null && count > 0 && (
         <span
           data-testid="ae-nav-today-badge"
