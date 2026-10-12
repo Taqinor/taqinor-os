@@ -79,6 +79,10 @@ export default function FactureRow({ f, ctx }) {
     openEdit, doAction, emettreFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+  } = ctx
+  // Déstructuration en deux temps (ACAL345 : la liste miroir de rowCtx dans
+  // FactureList.jsx ne doit pas former un bloc littéral identique ≥ 6 lignes).
+  const {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
     // PACT121 - ouvre la demande de paiement carte (prestataire).
@@ -87,6 +91,8 @@ export default function FactureRow({ f, ctx }) {
     openPreview,
     // EZ13 - marquage sec, relegue au menu et explique.
     openMarquerPayee,
+  } = ctx
+  const {
     highlightFactureId,
     // WIR183 - les quatre actions de fiche, jusqu'ici sans point d'entree.
     canManage, wir183Busy,

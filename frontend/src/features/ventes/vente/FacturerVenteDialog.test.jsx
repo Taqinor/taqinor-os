@@ -58,13 +58,11 @@ function monter(props = {}) {
   return render(<FacturerVenteDialog devis={DEVIS} onOpenChange={() => {}} {...props} />)
 }
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
+// ACAL345 : pas de copie du helper matchMedia des tests crm — stub global minimal.
+const mockMatchMedia = (mobile) => vi.stubGlobal('matchMedia', (media) => ({
+  matches: mobile, media, onchange: null, dispatchEvent: () => false,
+  addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+}))
 
 beforeEach(() => {
   mockMatchMedia(false)
