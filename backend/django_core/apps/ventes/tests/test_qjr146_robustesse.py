@@ -26,7 +26,6 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qjr146_robustesse -v 2
 """
-from decimal import Decimal
 from unittest import mock
 
 from django.test import SimpleTestCase, TestCase
@@ -367,8 +366,6 @@ class TestAbc_ChemminsDeCopie(TestCase):
             reference='DEV-QJR146-SRC',
             etude_params={'scenario': 'Les deux (Sans + Avec)'})
         self.devis.echeancier = list(self.ECHEANCIER)
-        self.devis.acompte_pct = Decimal('50.00')
-        self.devis.acompte_montant = Decimal('1000.00')
         self.devis.custom_data = {'chantier': 'Bouskoura'}
         self.devis.save()
 
@@ -376,8 +373,6 @@ class TestAbc_ChemminsDeCopie(TestCase):
         from apps.ventes.services import dupliquer_devis
         copie = dupliquer_devis(self.devis, user=self.user)
         self.assertEqual(copie.echeancier, self.ECHEANCIER)
-        self.assertEqual(copie.acompte_pct, self.devis.acompte_pct)
-        self.assertEqual(copie.acompte_montant, self.devis.acompte_montant)
         self.assertEqual(copie.custom_data, {'chantier': 'Bouskoura'})
         self.assertEqual(copie.entite_id, self.devis.entite_id)
 
@@ -391,13 +386,12 @@ class TestAbc_ChemminsDeCopie(TestCase):
         self.assertIsNot(copie.etude_params, self.devis.etude_params)
 
     def test_a_la_gamme_soeur_herite_des_conditions_pas_du_montant(self):
-        """La sœur a « sa composition et SES prix propres » : le POURCENTAGE
-        est une condition (il suit), le MONTANT décrit le total du frère."""
+        """La sœur a « sa composition et SES prix propres » : l'échéancier
+        est une condition (il suit). VNT103 : l'acompte n'est plus dupliqué
+        sur le devis (``acompte_pct``/``acompte_montant`` retirés)."""
         from apps.ventes.services import creer_variante_gamme
         soeur = creer_variante_gamme(self.devis, 'Premium', user=self.user)
         self.assertEqual(soeur.echeancier, self.ECHEANCIER)
-        self.assertEqual(soeur.acompte_pct, self.devis.acompte_pct)
-        self.assertIsNone(soeur.acompte_montant)
         self.assertEqual(soeur.custom_data, {'chantier': 'Bouskoura'})
 
     def test_c_le_renouvellement_est_atomique(self):

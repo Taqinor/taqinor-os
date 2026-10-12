@@ -51,10 +51,10 @@ with no rate column at all — mono-MAD in practice.
 | crm | ForecastSnapshot | `apps/crm/models.py:4062` | montant_total |
 | crm | DealEnregistre | `apps/crm/models.py:4577` | montant_commission_du, montant_commission_estime |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
-| facturation | LigneFacture | `apps/facturation/models.py:762` | prix_unitaire, remise, taux_tva |
-| facturation | Paiement | `apps/facturation/models.py:829` | escompte_montant, montant |
-| facturation | Avoir | `apps/facturation/models.py:1053` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| facturation | LigneAvoir | `apps/facturation/models.py:1171` | prix_unitaire, remise, taux_tva |
+| facturation | LigneFacture | `apps/facturation/models.py:776` | prix_unitaire, remise, taux_tva |
+| facturation | Paiement | `apps/facturation/models.py:843` | escompte_montant, montant |
+| facturation | Avoir | `apps/facturation/models.py:1067` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| facturation | LigneAvoir | `apps/facturation/models.py:1185` | prix_unitaire, remise, taux_tva |
 | ged | ModeleDocument | `apps/ged/models.py:2328` | corps_html |
 | ged | LotEnvoi | `apps/ged/models.py:3240` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
@@ -93,12 +93,12 @@ with no rate column at all — mono-MAD in practice.
 | stock | ParametresNegoce | `apps/stock/models_negoce_params.py:16` | cout_rupture_jour_mad |
 | stock | AccordRFAFournisseur | `apps/stock/models_rfa.py:16` | montant_fixe |
 | stock | ExpeditionTransporteur | `apps/stock/models_wms.py:477` | cout_reel |
-| ventes | LigneDevis | `apps/ventes/models.py:587` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
-| ventes | AvenantDevis | `apps/ventes/models.py:918` | taux_remise_global |
-| ventes | DevisPreset | `apps/ventes/models.py:1752` | remise_globale, taux_tva |
-| ventes | LignePrixListe | `apps/ventes/models.py:2098` | prix_unitaire |
-| ventes | PalierRemiseVolume | `apps/ventes/models.py:2187` | remise_pct |
-| ventes | PlanCommission | `apps/ventes/models.py:2247` | montant_par_kwc |
+| ventes | LigneDevis | `apps/ventes/models.py:572` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
+| ventes | AvenantDevis | `apps/ventes/models.py:903` | taux_remise_global |
+| ventes | DevisPreset | `apps/ventes/models.py:1737` | remise_globale, taux_tva |
+| ventes | LignePrixListe | `apps/ventes/models.py:2083` | prix_unitaire |
+| ventes | PalierRemiseVolume | `apps/ventes/models.py:2172` | remise_pct |
+| ventes | PlanCommission | `apps/ventes/models.py:2232` | montant_par_kwc |
 | ventes | FactureSource | `apps/ventes/models_facturation.py:98` | sous_total_ht |
 | ventes | AffectationPaiement | `apps/ventes/models_facturation.py:397` | montant |
 | ventes | NoteDebit | `apps/ventes/models_facturation.py:431` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
@@ -118,4 +118,4 @@ with no rate column at all — mono-MAD in practice.
 | crm | ConcurrentPerte | `apps/crm/models.py:3131` | concurrent_prix | no |
 | facturation | Facture | `apps/facturation/models.py:33` | abandon_montant, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:14` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
-| ventes | Devis | `apps/ventes/models.py:19` | acompte_montant, acompte_pct, penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |
+| ventes | Devis | `apps/ventes/models.py:19` | penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |
