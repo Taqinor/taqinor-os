@@ -21,7 +21,7 @@ from rest_framework import serializers
 
 from core.champs_stricts import BooleenStrict, ChaineStricte, DecimalStricte
 
-_DECIMAL_LITTERAL = re.compile(r'^-?[0-9]+(\.[0-9]+)?$')
+_DECIMAL_LITTERAL = re.compile(r'^-?[0-9]+(\.[0-9]+)?\Z')
 
 
 class ChaineBornee(ChaineStricte):
@@ -57,4 +57,14 @@ class ChampsStrictsBornesMixin:
         models.CharField: ChaineBornee,
         models.TextField: ChaineBornee,
         models.BooleanField: BooleenStrict,
+    }
+
+
+class ChampsStrictsLitterauxMixin(ChampsStrictsBornesMixin):
+    """Idem + décimaux en chaîne de forme littérale (``DecimalLitteral``) — pour
+    les sérialiseurs dont les clients envoient déjà des décimaux en chaîne."""
+
+    serializer_field_mapping = {
+        **ChampsStrictsBornesMixin.serializer_field_mapping,
+        models.DecimalField: DecimalLitteral,
     }
