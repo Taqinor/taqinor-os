@@ -10,6 +10,8 @@ import { CheckCircle2, AlertCircle, Mail, Inbox, Check, RotateCcw } from 'lucide
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Spinner, Textarea, Input, Button } from '../../ui'
+import { toast } from '../../ui/confirm'
+import frenchError from '../../lib/frenchError'
 import { SectionTitle, Field } from './peComponents'
 
 export default function EmailSection() {
@@ -46,9 +48,8 @@ export default function EmailSection() {
       ])
       setTemplates(res.data.results ?? res.data)
       setTemplatesSavedCle(t.cle)
-    } catch {
-      // Erreur (ex. placeholder non autorisé) — laissée visible côté saisie,
-      // pas de message générique qui masquerait le détail serveur.
+    } catch (e) {
+      toast.error(frenchError(e, 'Enregistrement impossible.'))
     }
   }
 
@@ -61,8 +62,8 @@ export default function EmailSection() {
         { cle: t.cle, sujet: t.sujet_defaut, corps: t.corps_defaut },
       ])
       setTemplates(res.data.results ?? res.data)
-    } catch {
-      // idem — pas de message générique.
+    } catch (e) {
+      toast.error(frenchError(e, 'Réinitialisation impossible.'))
     }
   }
 

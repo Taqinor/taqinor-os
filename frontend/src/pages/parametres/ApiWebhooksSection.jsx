@@ -16,6 +16,7 @@ import {
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../lib/format'
 import { SectionTitle, CarteSection, ChargementCarte } from './peComponents'
+import toutesLesPages from './toutesLesPages'
 
 // Bloc « copier une fois » : affiche un secret généré avec un bouton copier.
 function RevealOnce({ label, value, onDismiss }) {
@@ -64,8 +65,8 @@ function ChangelogFeed() {
 
   useEffect(() => {
     let alive = true
-    publicapiApi.getChangelog()
-      .then((r) => { if (alive) setEntries(r.data?.results ?? []) })
+    toutesLesPages((params) => publicapiApi.getChangelog(params))
+      .then((rows) => { if (alive) setEntries(rows) })
       .catch(() => { if (alive) setError(true) })
     return () => { alive = false }
   }, [])
@@ -575,7 +576,7 @@ export default function ApiWebhooksSection() {
     title: `Désactiver la clé « ${k.label} » ?`,
     description: 'La clé cessera immédiatement de fonctionner pour tout système externe qui l’utilise. Réversible (réactivable ensuite).',
     confirmLabel: 'Désactiver',
-    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch { /* */ } },
+    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Révocation impossible.') } },
   })
   const deleteKey = (k) => setPendingAction({
     severity: 'high',
@@ -583,7 +584,7 @@ export default function ApiWebhooksSection() {
     description: `La clé « ${k.label} » sera supprimée définitivement. Tout système externe qui l’utilise cessera de fonctionner.`,
     confirmText: k.label,
     confirmLabel: 'Supprimer définitivement',
-    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch { /* */ } },
+    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') } },
   })
 
   const createWebhook = async () => {
@@ -599,7 +600,7 @@ export default function ApiWebhooksSection() {
   }
   const toggleWebhook = async (h) => {
     try { await publicapiApi.updateWebhook(h.id, { enabled: !h.enabled }); loadAll() }
-    catch { /* */ }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const rotateSecret = (h) => setPendingAction({
     severity: 'high',
@@ -609,7 +610,7 @@ export default function ApiWebhooksSection() {
     confirmLabel: 'Régénérer le secret',
     run: async () => {
       try { const r = await publicapiApi.rotateWebhookSecret(h.id); setRevealedSecret(r.data.secret) }
-      catch { /* */ }
+      catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation du secret impossible.') }
     },
   })
   const deleteWebhook = (h) => setPendingAction({
@@ -618,7 +619,7 @@ export default function ApiWebhooksSection() {
     description: `« ${h.label || h.target_url} » sera définitivement supprimé — les notifications sortantes vers cette URL cesseront.`,
     confirmText: 'SUPPRIMER',
     confirmLabel: 'Supprimer',
-    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch { /* */ } },
+    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') } },
   })
 
   if (loading) {

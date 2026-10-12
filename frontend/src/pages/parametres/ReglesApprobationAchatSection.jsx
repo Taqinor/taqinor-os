@@ -7,6 +7,7 @@ import {
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatMAD } from '../../lib/format'
+import toutesLesPages from './toutesLesPages'
 
 /* ============================================================================
    NTP2P32 — Paramètres → Achats → Règles d'approbation des demandes d'achat.
@@ -148,17 +149,17 @@ export default function ReglesApprobationAchatSection() {
   const [busy, setBusy] = useState(false)
 
   const charger = () => {
-    installationsApi.getReglesApprobationAchat()
-      .then((r) => setRegles(r.data?.results ?? r.data ?? []))
+    toutesLesPages((params) => installationsApi.getReglesApprobationAchat(params))
+      .then((rows) => setRegles(rows))
       .catch(() => toast.error('Chargement des règles impossible.'))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     charger()
-    installationsApi.getInstallations({ page_size: 200 })
-      .catch(() => ({ data: [] }))
-      .then((r) => setChantiers(r.data?.results ?? r.data ?? []))
+    toutesLesPages((params) => installationsApi.getInstallations(params), { page_size: 200 })
+      .catch(() => [])
+      .then((rows) => setChantiers(rows))
   }, [])
 
   const toggleActif = async (regle) => {

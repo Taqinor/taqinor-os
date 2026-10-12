@@ -20,6 +20,7 @@ import {
 } from '../../ui'
 import { SectionTitle, CarteSection } from './peComponents'
 import { BoutonSupprimerLigne } from './EtatsSection'
+import toutesLesPages from './toutesLesPages'
 
 // Déclencheurs (événements internes) — libellés FR, clés EN alignées sur le
 // backend (apps.automation.models.TriggerType).
@@ -84,8 +85,8 @@ function IncomingWebhookPanel({ rules }) {
   const [secret, setSecret] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = () => automationApi.getWebhooks()
-    .then((r) => setHooks(r.data.results ?? r.data)).catch(() => {})
+  const load = () => toutesLesPages((params) => automationApi.getWebhooks(params))
+    .then((rows) => setHooks(rows)).catch(() => {})
   useEffect(() => { load() }, [])
 
   // Seules les règles de type `webhook_inbound` peuvent porter un webhook.
@@ -204,12 +205,12 @@ export default function AutomatisationsSection() {
     requires_approval: false, approval_threshold: '',
   })
 
-  const loadRules = () => automationApi.getRules()
-    .then((r) => setRules(r.data.results ?? r.data)).catch(() => {})
-  const loadRuns = () => automationApi.getRuns({ ordering: '-timestamp' })
-    .then((r) => setRuns((r.data.results ?? r.data).slice(0, 30))).catch(() => {})
-  const loadApprovals = () => automationApi.getApprovals({ status: 'pending' })
-    .then((r) => setApprovals(r.data.results ?? r.data)).catch(() => {})
+  const loadRules = () => toutesLesPages((params) => automationApi.getRules(params))
+    .then((rows) => setRules(rows)).catch(() => {})
+  const loadRuns = () => toutesLesPages((params) => automationApi.getRuns(params), { ordering: '-timestamp' })
+    .then((rows) => setRuns(rows.slice(0, 30))).catch(() => {})
+  const loadApprovals = () => toutesLesPages((params) => automationApi.getApprovals(params), { status: 'pending' })
+    .then((rows) => setApprovals(rows)).catch(() => {})
 
   useEffect(() => {
     Promise.all([loadRules(), loadRuns(), loadApprovals()])
@@ -301,7 +302,7 @@ export default function AutomatisationsSection() {
   }
 
   const toggle = async (r) => {
-    try { await automationApi.toggleRule(r.id); loadRules() } catch { /* */ }
+    try { await automationApi.toggleRule(r.id); loadRules() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const delRule = async (r) => {
     if (!(await confirmerSuppression({ title: `Supprimer la règle « ${r.nom} » ?` }))) return

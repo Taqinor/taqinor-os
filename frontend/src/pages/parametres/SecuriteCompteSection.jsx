@@ -12,6 +12,7 @@ import api from '../../api/axios'
 import { formatDateTime } from '../../lib/format'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { Card, CardContent, Button, Input, Spinner } from '../../ui'
+import { toast } from '../../ui/confirm'
 import { SectionTitle, CarteSection, ChargementCarte } from './peComponents'
 
 // ── Sessions actives (N96) — liste des appareils connectés + révocation ──────
@@ -275,9 +276,11 @@ export default function SecuriteCompteSection() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
       setTimeout(() => {
-        try { navigator.clipboard?.writeText('') } catch { /* ignore */ }
+        try { navigator.clipboard?.writeText('') } catch (e) { console.warn('Effacement du presse-papiers impossible', e) } // best-effort cosmétique
       }, 60000)
-    } catch { /* clipboard indisponible : l'utilisateur recopie à la main */ }
+    } catch {
+      toast.error('Copie impossible — copiez les codes manuellement.')
+    }
   }
 
   if (loading) {

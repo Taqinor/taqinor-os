@@ -29,7 +29,7 @@ const parsePermsDiff = (v) => {
         && (Array.isArray(parsed.ajoutees) || Array.isArray(parsed.retirees))) {
       return parsed
     }
-  } catch { /* pas du JSON — valeur texte brute historique */ }
+  } catch (e) { console.debug('Valeur non JSON (texte brut historique)', e) } // valeur texte brute : repli attendu, pas une erreur
   return null
 }
 

@@ -10,6 +10,7 @@ import {
   Button, Input, Spinner, EmptyState, Card, Checkbox,
 } from '../../ui'
 import { toast } from '../../ui/confirm'
+import toutesLesPages from '../../pages/parametres/toutesLesPages'
 
 export default function Playbooks() {
   const [playbooks, setPlaybooks] = useState([])
@@ -20,8 +21,8 @@ export default function Playbooks() {
 
   const load = useCallback(() => {
     setLoading(true)
-    api.get('/crm/playbooks/')
-      .then((res) => setPlaybooks(res.data?.results ?? res.data ?? []))
+    toutesLesPages((params) => api.get('/crm/playbooks/', { params }))
+      .then((rows) => setPlaybooks(rows))
       .catch(() => toast.error('Impossible de charger les playbooks.'))
       .finally(() => setLoading(false))
   }, [])

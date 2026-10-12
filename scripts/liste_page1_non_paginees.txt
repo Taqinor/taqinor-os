@@ -4,3 +4,5 @@
 # `pagination_class = None`, une tranche `[:N]` ou `@api_view`). Entrée MORTE (site plus signalé) = rouge.
 frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog  ged/coffres/<id>/documents/  @action(pagination_class=None), liste complète @backend/django_core/apps/ged/views.py:378
 frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor  parametres/messages/  vue @api_view (liste Response(out) complète, un modèle par clé) @backend/django_core/apps/parametres/views_messages.py:112
+frontend/src/pages/parametres/ApplicationsSection.jsx::load  core/modules/toggles/  ModuleToggleViewSet pagination_class=None (la liste complète des bascules ; l'action journal renvoie un Response non paginé) @backend/django_core/core/views.py:1261
+frontend/src/pages/parametres/HistoriqueStatutPage.jsx::HistoriqueStatutPage  statuspage/historique-statut/  HistoriqueStatutComponentView pagination_class=None @backend/django_core/apps/statuspage/views.py:226

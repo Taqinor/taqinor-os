@@ -19,6 +19,7 @@ import {
 } from '../../ui'
 import { SectionTitle } from './peComponents'
 import { EtatChargementSection } from './EtatsSection'
+import toutesLesPages from './toutesLesPages'
 
 const NONE = '__none__'
 
@@ -42,8 +43,8 @@ export default function KitsSection() {
 
   useEffect(() => {
     load()
-    outillageApi.getOutils()
-      .then((r) => setOutils(r.data.results ?? r.data))
+    toutesLesPages((params) => outillageApi.getOutils(params))
+      .then((rows) => setOutils(rows))
       .catch(() => {})
     installationsApi.getTypesIntervention()
       .then((r) => setTypes((r.data.results ?? r.data).filter((t) => !t.archived)))
@@ -66,16 +67,16 @@ export default function KitsSection() {
   }
   const renameKit = async (k, nom) => {
     if (!nom.trim() || nom === k.nom) return
-    try { await outillageApi.saveKit(k.id, { nom }); load() } catch { /* */ }
+    try { await outillageApi.saveKit(k.id, { nom }); load() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Renommage impossible.') }
   }
   const setKitType = async (k, type) => {
     try {
       await outillageApi.saveKit(k.id, { type_intervention: type === NONE ? '' : type })
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const toggleKitActif = async (k) => {
-    try { await outillageApi.saveKit(k.id, { actif: !k.actif }); load() } catch { /* */ }
+    try { await outillageApi.saveKit(k.id, { actif: !k.actif }); load() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const moveKit = async (idx, dir) => {
     const j = idx + dir
@@ -87,7 +88,7 @@ export default function KitsSection() {
         outillageApi.saveKit(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Réordonnancement impossible.') }
   }
   const delKit = async (k) => {
     if (!(await confirmDelete({ title: `Supprimer le kit « ${k.nom} » ?`, description: "Sa liste d'outils sera supprimée aussi." }))) return
@@ -117,10 +118,10 @@ export default function KitsSection() {
         outillageApi.saveKitItem(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Réordonnancement impossible.') }
   }
   const delItem = async (it) => {
-    try { await outillageApi.deleteKitItem(it.id); load() } catch { /* */ }
+    try { await outillageApi.deleteKitItem(it.id); load() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
 
   // Outils disponibles à l'ajout dans un kit (hors ceux déjà présents).

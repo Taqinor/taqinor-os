@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import api from '../../api/axios'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { useConfirmDialog } from '../../ui/confirm'
+import toutesLesPages from './toutesLesPages'
 
 /* État commun des sections Paramètres « liste éditable par un admin »
    (Politiques d'approbation, Modèles brandés) : droit d'écrire, lignes lues sur
@@ -17,9 +18,9 @@ export default function useSectionListeAdmin(url) {
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const charger = useCallback(() => api.get(url)
-    .then((res) => {
-      setRows(res.data?.results ?? res.data ?? [])
+  const charger = useCallback(() => toutesLesPages((params) => api.get(url, { params }))
+    .then((rows) => {
+      setRows(rows)
       setLoadError(false)
     })
     .catch(() => setLoadError(true))
