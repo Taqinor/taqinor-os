@@ -47,7 +47,7 @@ from ..services import (
     cocher_etape_ordre,
 )
 from . import _openapi as oa
-from ..serializers import RevisionKitSerializer  # noqa: E402
+from ..serializers import RevisionKitSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -615,7 +615,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='bon-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def bon_pdf(self, request, pk=None):
         """ZMFG10 — bon d'assemblage PDF (worksheet atelier). STRICTEMENT
         INTERNE : aucun prix (test dédié « aucun prix dans le PDF »)."""
@@ -697,7 +697,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(responses=OrdreAssemblageActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def historique(self, request, pk=None):
         """XMFG4 — chatter complet de l'ordre."""
         ordre = self.get_object()
@@ -1138,7 +1138,8 @@ class OrdreDemontageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
         # ERR116 — la création borne aussi l'ordre parent (société +
         # statut PLANIFIE), comme la mise à jour.
         self._check_parent(serializer)
-        serializer.save()
+        # ACHT100 (jumeau) — ligne saisie à la main : survit à la régénération.
+        serializer.save(origine=OrdreDemontageLigne.Origine.AJOUT)
 
     def perform_update(self, serializer):
         self._check_parent(serializer)

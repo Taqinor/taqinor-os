@@ -108,11 +108,9 @@ vi.mock('@roofpro/scene3d', () => ({
   construireChampPose: (...args) => construireChampPose(...args),
 }))
 
-const {
-  default: ModeTerrain, pasMesure, tauxOccupation, empriseTablesM2,
-  contourTerrain, demandeMoteur, documentTerrain, planVue2D,
-  AXE_AUTO, motifChampVide, motifRefus,
-} = await import('../ModeTerrain')
+const { default: ModeTerrain } = await import('../ModeTerrain')
+const { demandeMoteur, documentTerrain, planVue2D, AXE_AUTO, motifChampVide, motifRefus } = await import('../ModeTerrain.helpers')
+const { pasMesure, tauxOccupation, empriseTablesM2, contourTerrain } = await import('../surfacePose')
 const { formatCote } = await import('../plan2d')
 
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`

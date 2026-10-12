@@ -19,11 +19,15 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity, SalleVente, SalleVenteVue
 from apps.crm.clients_pilotage import detecter_signal_interet_salle_vente
+from apps.parametres.models import CompanyProfile
 
 
 class SignalInteretServiceTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Taqinor NTCRM27', slug='taqinor-ntcrm27')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.lead = Lead.objects.create(
             company=self.company, nom='Lead QS27', stage=stages.QUOTE_SENT)
         self.salle = SalleVente.objects.create(
@@ -93,6 +97,9 @@ class SignalInteretEndpointTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM27 API', slug='taqinor-ntcrm27-api')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.lead = Lead.objects.create(
             company=self.company, nom='Lead QS27 API', stage=stages.QUOTE_SENT)
         self.salle = SalleVente.objects.create(

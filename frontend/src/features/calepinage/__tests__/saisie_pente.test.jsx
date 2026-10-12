@@ -22,10 +22,8 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
-const {
-  default: SaisiePente, penteDepuisDegres, penteDepuisPourcentage,
-  penteDepuisCotes, pourcentageDepuisPente, penteRetenue,
-} = await import('../SaisiePente')
+const { default: SaisiePente } = await import('../SaisiePente')
+const { penteDepuisDegres, penteDepuisPourcentage, penteDepuisCotes, pourcentageDepuisPente, penteRetenue } = await import('../SaisiePente.helpers')
 
 beforeEach(() => {
   vi.clearAllMocks()

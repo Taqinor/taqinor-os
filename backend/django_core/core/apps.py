@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -32,14 +34,14 @@ class CoreConfig(AppConfig):
         # (DEBUG interdit, ALLOWED_HOSTS explicite exigé). L'import suffit :
         # les contrôles s'enregistrent par décorateur. NO-OP TOTAL hors
         # production — en dev et en CI (settings.dev), ils rendent [].
-        from . import checks  # noqa: F401
+        import_module(f'{self.name}.checks')
 
         # Heure légale marocaine (décret 2.26.530 : UTC+0 depuis le
         # 20/09/2026) — ERREUR bloquante si la base de fuseaux de Python est
         # périmée, AVERTISSEMENT (étiqueté `database`, jamais bloquant) si
         # c'est celle de Postgres. Même mécanique : l'import enregistre les
         # contrôles par décorateur.
-        from . import checks_tz  # noqa: F401
+        import_module(f'{self.name}.checks_tz')
 
         # FG396 — supervision d'erreurs (Sentry), gardée par DSN. No-op total
         # sans ``SENTRY_DSN`` (aucune dépendance chargée, aucun appel réseau).

@@ -136,5 +136,5 @@ class XFSM15RecidiveTest(TestCase):
 
         resp = api.post(
             f'/api/django/sav/tickets/{ticket_id}/generer-facture/',
-            {'override': 'true'})
+            {'override': True})
         self.assertEqual(resp.status_code, 201, resp.content)

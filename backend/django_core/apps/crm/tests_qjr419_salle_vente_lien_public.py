@@ -27,6 +27,7 @@ from authentication.models import Company
 
 from apps.crm.models import Client, SalleVente, SalleVenteItem
 from apps.ventes.models import Devis, LigneDevis
+from apps.parametres.models import CompanyProfile
 
 
 class SalleVenteLienPublicTests(TestCase):
@@ -34,6 +35,9 @@ class SalleVenteLienPublicTests(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(
             slug='qjr419', defaults={'nom': 'QJR419'})[0]
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client QJR419')
         self.devis = Devis.objects.create(

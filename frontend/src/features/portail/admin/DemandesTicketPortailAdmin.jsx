@@ -12,8 +12,9 @@ import { Check, X, Ticket as TicketIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import portailApi from '../../../api/portailApi'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
+import EtatChargementAdmin from './EtatChargementAdmin'
 import {
-  Button, Card, EmptyState, Skeleton, StatusPill, NumberInput, DataTable, toast,
+  Button, EmptyState, StatusPill, NumberInput, DataTable, toast,
 } from '../../../ui'
 
 const formatDateHeure = (iso) => formatDateTime(iso)
@@ -139,22 +140,17 @@ export default function DemandesTicketPortailAdmin() {
         jamais d'un ticket fictif côté client.
       </p>
 
-      {loading ? (
-        <Card className="space-y-2 p-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </Card>
-      ) : loadError ? (
-        <EmptyState title="Chargement impossible"
-                    description="Les demandes de ticket n'ont pas pu être chargées. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
-      ) : rows.length === 0 ? (
-        <EmptyState icon={TicketIcon} title="Aucune demande"
-                    description="Aucune demande de ticket n'a encore été soumise depuis le portail client." />
-      ) : (
-        <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
-                   searchable={false} exportName="demandes-ticket-portail"
-                   emptyTitle="Aucune demande" />
-      )}
+      <EtatChargementAdmin loading={loading} loadError={loadError} onRetry={load}
+                           erreur="Les demandes de ticket n'ont pas pu être chargées. Réessayez.">
+        {rows.length === 0 ? (
+          <EmptyState icon={TicketIcon} title="Aucune demande"
+                      description="Aucune demande de ticket n'a encore été soumise depuis le portail client." />
+        ) : (
+          <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
+                     searchable={false} exportName="demandes-ticket-portail"
+                     emptyTitle="Aucune demande" />
+        )}
+      </EtatChargementAdmin>
     </div>
   )
 }

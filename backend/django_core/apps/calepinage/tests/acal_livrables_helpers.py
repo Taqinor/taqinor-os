@@ -158,5 +158,5 @@ def exiger_bibliotheques_pdf():
     try:
         for bibliotheque in ('fitz', 'weasyprint'):
             importlib.import_module(bibliotheque)
-    except Exception:  # noqa: BLE001 - bibliothèques natives absentes
+    except Exception:  # bibliothèques natives absentes
         raise unittest.SkipTest('WeasyPrint ou PyMuPDF indisponible')

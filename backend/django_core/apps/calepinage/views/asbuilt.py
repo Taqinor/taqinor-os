@@ -32,6 +32,7 @@ from ..services.asbuilt import (
     PoseRefusee, enregistrer_pose, etat_pose_reelle, supprimer_pose,
     version_depuis_ecarts,
 )
+from .calepinages import CalepinageViewSet
 
 __all__ = ['pose_reelle', 'supprimer_pose_reelle']
 
@@ -89,8 +90,6 @@ def supprimer_pose_reelle(self, request, pk=None, zone_id=None):
                         status=status.HTTP_404_NOT_FOUND)
     return Response(status=status.HTTP_204_NO_CONTENT)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

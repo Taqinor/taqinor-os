@@ -51,10 +51,12 @@ describe('useDocumentCalepinage', () => {
   })
 
   it('un calepinage sans conception lue avec succès rend un objet vide (ok), pas null', async () => {
-    layout.mockResolvedValue({ data: { roof_layout: null, empreinte_document: 'E0' } })
+    layout.mockResolvedValue({ data: { roof_layout: null, empreinte_document: null } })
     const { result } = renderHook(() => useDocumentCalepinage(7))
     await waitFor(() => expect(result.current.etat).toBe('ok'))
     expect(result.current.document).toEqual({})
+    // ACAL360 — le serveur sert null pour un document vide : jeton ''.
+    expect(result.current.empreinte).toBe('')
   })
 
   it('sans identifiant : erreur, aucune requête', () => {
@@ -103,10 +105,21 @@ describe('ecrireSection', () => {
     expect(documentVivant.appliquerSection).toHaveBeenCalledWith('poseSurfaces', [{ id: 's' }], 'E1')
   })
 
-  it('sans jeton : aucun POST', async () => {
+  it('sans jeton (null) : aucun POST', async () => {
     const res = await ecrireSection({ calepinageId: 7, cle: 'underlay', valeur: null, empreinte: null })
     expect(res.ok).toBe(false)
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('document vide : poste base_empreinte \'\'', async () => {
+    enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
+    const res = await ecrireSection({
+      calepinageId: 7, cle: 'horizonProfile', valeur: { points: [] }, empreinte: '',
+    })
+    expect(res).toEqual({ ok: true, empreinte: 'E1' })
+    expect(enregistrerSectionLayout).toHaveBeenCalledWith(7, {
+      cle: 'horizonProfile', valeur: { points: [] }, base_empreinte: '',
+    })
   })
 
   it('409 = conflit, aucune clé poussée dans l’atelier', async () => {

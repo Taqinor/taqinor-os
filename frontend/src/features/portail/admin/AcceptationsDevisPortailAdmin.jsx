@@ -11,7 +11,8 @@ import { formatDateTime } from '../../../lib/format'
 import { ShieldCheck } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
-import { Button, Card, EmptyState, Skeleton, StatusPill, DataTable } from '../../../ui'
+import EtatChargementAdmin from './EtatChargementAdmin'
+import { EmptyState, StatusPill, DataTable } from '../../../ui'
 
 const formatDateHeure = (iso) => formatDateTime(iso)
 
@@ -64,22 +65,17 @@ export default function AcceptationsDevisPortailAdmin() {
         naît de l'action « signer » du portail, jamais d'une saisie ERP.
       </p>
 
-      {loading ? (
-        <Card className="space-y-2 p-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </Card>
-      ) : loadError ? (
-        <EmptyState title="Chargement impossible"
-                    description="Les acceptations de devis n'ont pas pu être chargées. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
-      ) : rows.length === 0 ? (
-        <EmptyState icon={ShieldCheck} title="Aucune acceptation de devis"
-                    description="Aucun devis n'a encore été signé depuis le portail client." />
-      ) : (
-        <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
-                   searchable={false} exportName="acceptations-devis-portail"
-                   emptyTitle="Aucune acceptation de devis" />
-      )}
+      <EtatChargementAdmin loading={loading} loadError={loadError} onRetry={load}
+                           erreur="Les acceptations de devis n'ont pas pu être chargées. Réessayez.">
+        {rows.length === 0 ? (
+          <EmptyState icon={ShieldCheck} title="Aucune acceptation de devis"
+                      description="Aucun devis n'a encore été signé depuis le portail client." />
+        ) : (
+          <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
+                     searchable={false} exportName="acceptations-devis-portail"
+                     emptyTitle="Aucune acceptation de devis" />
+        )}
+      </EtatChargementAdmin>
     </div>
   )
 }

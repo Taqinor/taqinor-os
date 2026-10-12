@@ -17,7 +17,7 @@ Cet enum est une liste FERMÉE, en ordre d'entonnoir. « annulé » n'est PAS un
 from django.conf import settings
 from django.db import models
 from core.models import TenantModel
-from .models_installation import Installation  # noqa: F401
+from .models_installation import Installation
 from .models_intervention import Intervention
 
 # NOTE: découpage de l'ancien models.py monolithe (un fichier par

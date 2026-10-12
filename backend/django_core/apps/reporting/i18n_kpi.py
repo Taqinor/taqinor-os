@@ -67,7 +67,7 @@ def couverture_i18n_pct(company):
     return valeur
 
 
-def documents_non_fr_pct(company):  # noqa: ARG001 — signature homogène
+def documents_non_fr_pct(_company):  # signature homogène avec les autres KPI
     """Toujours ``None`` : la donnée source n'existe pas (voir le docstring).
 
     ZÉRO requête — on ne va pas chercher un chiffre qu'aucune table ne porte.

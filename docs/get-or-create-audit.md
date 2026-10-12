@@ -81,7 +81,6 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/ged/management/commands/migrate_attachments_to_ged.py::_ensure_lien::DocumentLien` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/ged/management/commands/seed_types_champ_signature.py::seed_types_champ_signature_for_company::TypeChampSignature` | get_or_create | TypeChampSignature.objects | code, company |
 | `backend/django_core/apps/ged/services.py::_appliquer_tag_expediteur::DocumentTag` | get_or_create | DocumentTag.objects | company, slug |
-| `backend/django_core/apps/ged/services.py::_resoudre_dossier_cible::Folder` | get_or_create | Folder.objects | cabinet, company, nom, parent |
 | `backend/django_core/apps/ged/services.py::assign_tag::DocumentTagAssignment` | get_or_create | DocumentTagAssignment.objects | document, tag |
 | `backend/django_core/apps/ged/services.py::classer_signature_completee::DocumentLien` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
 | `backend/django_core/apps/ged/services.py::ensure_cabinet::Cabinet` | get_or_create | Cabinet.objects | company, nom |

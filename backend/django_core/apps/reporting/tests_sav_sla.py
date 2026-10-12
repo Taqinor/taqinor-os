@@ -186,3 +186,23 @@ class TestSavSlaCompliance(SavSlaBase):
             f'&technicien={self.tech.id}')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['total_tickets'], 1)
+
+
+class TestParametresStrictsFuzzR12(SavSlaBase):
+    """api-fuzz r12 (CI #956) — ``?to=`` vide = borne non posée (200, et le
+    schéma le dit : ``DATE_OU_VIDE``) ; ``technicien`` illisible ou 0 → 400
+    nommant le paramètre, jamais 500."""
+
+    def test_date_vide_acceptee_et_declaree(self):
+        from apps.reporting.query_params import DATE_OU_VIDE
+        self.assertIn({'type': 'string', 'enum': ['']}, DATE_OU_VIDE['oneOf'])
+        resp = self.api.get('/api/django/reporting/insights/sav-sla/?from=&to=')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        resp = self.api.get('/api/django/reporting/insights/sav-sla/?to=2026-13-01')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_technicien_illisible_repond_400(self):
+        for valeur in ('abc', '0', '-1'):
+            resp = self.api.get('/api/django/reporting/insights/sav-sla/', {'technicien': valeur})
+            self.assertEqual(resp.status_code, 400, (valeur, resp.content))
+            self.assertIn('technicien', resp.data)

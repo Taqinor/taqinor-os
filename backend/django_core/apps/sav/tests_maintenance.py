@@ -73,6 +73,14 @@ class TestMaintenance(TestCase):
         self.assertFalse(ContratMaintenance.objects.filter(
             client=foreign_client).exists())
 
+    def test_multipart_refuse_415_json_seul(self):
+        # api-fuzz #956 : aucun upload ici, le formulaire multipart (où
+        # « None » arrive en texte) est refusé ; JSON seul.
+        r = self.api.post('/api/django/sav/contrats-maintenance/', {
+            'client': self.client_obj.id, 'periodicite': 'annuel',
+            'date_debut': date.today().isoformat()}, format='multipart')
+        self.assertEqual(r.status_code, 415)
+
     def test_cannot_bind_foreign_installation(self):
         # ERR9 — ni le chantier d'une autre société.
         from apps.installations.models import Installation

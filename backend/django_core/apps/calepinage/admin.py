@@ -3,6 +3,4 @@
 Optionnel : enregistrer les modèles internes ici pour l'admin technique. La
 plupart des modules ERP s'exposent via l'API DRF (viewsets) plutôt que l'admin.
 """
-from django.contrib import admin  # noqa: F401
-
 # admin.site.register(Exemple)

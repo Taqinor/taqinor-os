@@ -193,4 +193,4 @@ class TestCreerLotPrelevement(TestCase):
             'pick_list_ids': [self.pl1.id],
         }, format='json')
         # La pick-list appartient à une autre société -> aucune sélectionnée.
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)

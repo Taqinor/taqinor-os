@@ -108,6 +108,42 @@ class OpenAPISchemaGenerationTests(TestCase):
                 for code in ('400', '404', '429', '500'):
                     self.assertIn(code, op['responses'], f'{methode} {chemin}')
 
+    def test_profil_societe_rendu_conforme_a_son_schema(self):
+        """CI #956 (api-fuzz, DELETE parametres/delete-logo/) — le composant
+        de RÉPONSE dit ce que DRF rend : une heure ``HH:MM:SS`` sans décalage
+        (motif, plus ``format: time``) et un lien à blanc autorisé sans
+        ``format: uri`` racine (la branche ``anyOf`` fait foi). Le composant
+        de requête garde ``format: time``."""
+        from core.champs_stricts import MOTIF_HEURE_RENDUE
+        schemas = self.schema['components']['schemas']
+        profil = schemas['CompanyProfile']['properties']
+        heure = profil['appel_heure_debut']
+        self.assertNotIn('format', heure, heure)
+        self.assertEqual(heure.get('pattern'), MOTIF_HEURE_RENDUE)
+        nullable = profil['message_heure_debut']
+        branches = nullable.get('anyOf') or nullable.get('oneOf') or [nullable]
+        self.assertTrue(
+            any(b.get('pattern') == MOTIF_HEURE_RENDUE for b in branches),
+            nullable)
+        lien = profil['lien_avis_google']
+        self.assertNotIn('format', lien, lien)
+        self.assertIn({'maxLength': 0}, lien['anyOf'])
+        self.assertIn({'format': 'uri'}, lien['anyOf'])
+        requete = schemas['CompanyProfileRequest']['properties']
+        self.assertEqual(requete['appel_heure_debut'].get('format'), 'time')
+
+    def test_format_racine_redondant_retire_par_le_crochet(self):
+        from core.openapi_erreurs import aligner_motifs_sur_drf
+        doc = {'a': {'type': 'string', 'format': 'uri',
+                     'anyOf': [{'format': 'uri'}, {'maxLength': 0}]},
+               'b': {'type': 'string', 'format': 'uri'},
+               'c': {'type': 'string', 'format': 'email',
+                     'anyOf': [{'format': 'uri'}]}}
+        aligner_motifs_sur_drf(doc)
+        self.assertNotIn('format', doc['a'])
+        self.assertEqual(doc['b']['format'], 'uri')
+        self.assertEqual(doc['c']['format'], 'email')
+
     def test_lien_public_a_jeton_sans_authentification_ni_401(self):
         """ENF2 (C5) — une route publique à jeton n'exige ni ne déclare
         aucun justificatif : pas de 401 documenté."""

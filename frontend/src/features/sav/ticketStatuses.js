@@ -2,6 +2,8 @@
 // (STAGES.py) et des statuts de document devis/facture. Liste FERMÉE, en ordre
 // d'entonnoir. « annulé » est un drapeau (avec motif), pas une étape.
 
+import { lireConfigStatuts, trierPar } from './listesCommun.js'
+
 export const TICKET_STATUSES = [
   'nouveau',
   'planifie',
@@ -64,16 +66,7 @@ let _configOrder = null // { cle: ordre }
 // Applique la liste effective renvoyée par l'API
 // (parametresApi.getStatutsEffective('sav')). `null`/`[]` = réinitialise.
 export function applyTicketStatutConfig(rows) {
-  if (!rows || !rows.length) { _configLabels = null; _configOrder = null; return }
-  const labels = {}
-  const order = {}
-  for (const r of rows) {
-    if (!r || !TICKET_STATUSES.includes(r.cle)) continue
-    if (r.libelle) labels[r.cle] = r.libelle
-    if (typeof r.ordre === 'number') order[r.cle] = r.ordre
-  }
-  _configLabels = Object.keys(labels).length ? labels : null
-  _configOrder = Object.keys(order).length ? order : null
+  [_configLabels, _configOrder] = lireConfigStatuts(rows, TICKET_STATUSES)
 }
 
 export function statusLabel(key) {
@@ -164,24 +157,7 @@ export function statusCounts(items) {
 
 // Tri funnel-aware : par statut (ordre d'entonnoir) ou par priorité, sinon clé.
 export function sortTickets(items, key, dir) {
-  const sign = dir === 'asc' ? 1 : -1
-  const arr = [...(items ?? [])]
-  arr.sort((a, b) => {
-    let va
-    let vb
-    if (key === 'statut') {
-      va = statusOrder(a.statut)
-      vb = statusOrder(b.statut)
-    } else if (key === 'priorite') {
-      va = PRIO_RANK[a.priorite] ?? 1
-      vb = PRIO_RANK[b.priorite] ?? 1
-    } else {
-      va = a[key] ?? ''
-      vb = b[key] ?? ''
-    }
-    if (va < vb) return -1 * sign
-    if (va > vb) return 1 * sign
-    return 0
-  })
-  return arr
+  if (key === 'statut') return trierPar(items, dir, (t) => statusOrder(t.statut))
+  if (key === 'priorite') return trierPar(items, dir, (t) => PRIO_RANK[t.priorite] ?? 1)
+  return trierPar(items, dir, (t) => t[key] ?? '')
 }

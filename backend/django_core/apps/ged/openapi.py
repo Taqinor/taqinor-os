@@ -314,7 +314,8 @@ PUBLIC_SIGNATAIRE_ACTION = S('SignatairePublicAction', {
 QUOTA_ETAT = S('QuotaEtat', {
     'usage_octets': s.IntegerField(),
     'quota_octets': s.IntegerField(),
-    'restant_octets': s.IntegerField(),
+    # ``null`` quand le quota est illimité (services.quota_restant_octets).
+    'restant_octets': s.IntegerField(allow_null=True),
     'depasse': s.BooleanField(),
     'illimite': s.BooleanField(),
 })

@@ -17,6 +17,7 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import RapportDefinition
@@ -26,11 +27,17 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
 
 
-class RapportDefinitionSerializer(serializers.ModelSerializer):
+class RapportDefinitionSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    # ENF11 (api-fuzz) — `titre`/`dataset` stricts : un nombre JSON → 400.
     partage_label = serializers.CharField(
         source='get_partage_display', read_only=True)
     owner_username = serializers.CharField(
         source='owner.username', read_only=True, default='')
+    # ENF11 (api-fuzz) — `spec`/`pivot_spec` sont des OBJETS (lus en dict par
+    # `executer`) : un JSONField documentait « n'importe quoi » (null compris)
+    # puis refusait null. Objet exigé, documenté et appliqué ; absent = {}.
+    spec = serializers.DictField(required=False)
+    pivot_spec = serializers.DictField(required=False)
 
     class Meta:
         model = RapportDefinition
@@ -167,7 +174,8 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
         return Response({'rows': rows, 'pivot': pivot})
 
     @extend_schema(
-        parameters=[OpenApiParameter('format', OpenApiTypes.STR, required=False)],
+        parameters=[OpenApiParameter('format', OpenApiTypes.STR, required=False,
+                                     enum=['csv', 'xlsx'])],
         responses={(200, 'text/csv'): OpenApiTypes.STR,
                    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='export')

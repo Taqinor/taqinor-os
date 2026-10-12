@@ -87,6 +87,11 @@ class DeciderApprobationViaPushTests(TestCase):
         resp = self.api.post(self._url(), {}, format='json')
         self.assertEqual(resp.status_code, 401)
 
+    def test_corps_non_objet_400(self):
+        # ENF11 (api-fuzz) — un corps liste cassait `.get` en 500.
+        resp = self.api.post(self._url(), [None, None], format='json')
+        self.assertEqual(resp.status_code, 400)
+
     def test_token_for_unknown_user_401(self):
         token = make_approval_token(999999, 'automation', 1, 'approuver')
         resp = self.api.post(self._url(), {'token': token}, format='json')

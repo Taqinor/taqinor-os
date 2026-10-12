@@ -42,14 +42,6 @@ EXCEPTIONS: dict = {
     "demarrer_cadences_existantes":
         "comparaison d'INSTANT (due_at < maintenant) pour annuler des touches "
         "déjà dépassées à la reprise d'une cadence : pas un affichage de retard",
-    _C + "cadence_selectors.py::kpi_adherence":
-        "À CORRIGER (constat ALEA43, hors Files de la garde) : due_date < "
-        "aujourd'hui en jours calendaires ; devrait passer par seuil_retard "
-        "(reste de C-ALEA-028 après ALEA32)",
-    _C + "cadence_selectors.py::mes_stats_relance":
-        "À CORRIGER (constat ALEA43, hors Files de la garde) : due_date < "
-        "aujourd'hui en jours calendaires ; devrait passer par seuil_retard "
-        "(reste de C-ALEA-028 après ALEA32)",
     _C + "cadence_selectors.py::_serie_jours_sans_retard":
         "borne de la FENÊTRE de jours écoulés de la série (due_date < "
         "aujourd'hui exclut le jour en cours), la qualification retard par "

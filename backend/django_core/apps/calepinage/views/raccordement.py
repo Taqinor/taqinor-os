@@ -54,6 +54,7 @@ from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
     CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
     proposition_du_lead, saisie_du_calepinage,
 )
+from .calepinages import CalepinageViewSet
 
 __all__ = ['raccordement', 'CLE_SAISIE', 'champ_du_refus']
 
@@ -146,8 +147,6 @@ def raccordement(self, request, pk=None):
         _persister(calepinage, bloc['saisie'])
     return Response(bloc)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

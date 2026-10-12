@@ -83,7 +83,7 @@
       },
       "fonction_entree": "apps/crm/cadence_plan.py::demarrer_cadence_contact",
       "checkpoint": {
-        "persistance": "apps/crm/models.py::RelanceEtape",
+        "persistance": "apps/crm/models_cadence.py::RelanceEtape",
         "description": "Une touche échue par étape de cadence, jamais deux en parallèle."
       },
       "regles_aval": [

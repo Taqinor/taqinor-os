@@ -93,3 +93,14 @@ class DeclencherExportDatasetsForwardingTest(TestCase):
         self.assertEqual(resp.status_code, 202)
         _args, kwargs = delay.call_args
         self.assertIsNone(kwargs.get('datasets'))
+
+    def test_dataset_vide_refuse_400_sans_lancer_d_export(self):
+        # ERR-ENF11-FUZZ-CORE — `datasets: [""]` (hors schéma) lançait un
+        # export : refusé en 400 AVANT toute ligne d'historique.
+        with mock.patch(
+                'core.tasks.export_reversibilite_tenant.delay') as delay:
+            resp = self.client_api.post(
+                '/api/django/core/export-reversibilite/',
+                {'datasets': ['']}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(delay.called)

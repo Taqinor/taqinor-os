@@ -29,7 +29,7 @@ from apps.crm.models import Client, Lead, RelanceEtape
 from apps.crm.cadence_messages import (
     langue_relance_du_lead,
     message_pour_etape,
-    texte_en_repli_de_langue,
+    _texte_en_repli_de_langue,
 )
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import MessageTemplate
@@ -116,7 +116,7 @@ class ReplisDarijaTests(_Base):
                          set(_contrat('relance_etape_message')['exemple']))
 
     def test_jamais_de_traduction_automatique(self):
-        self.assertTrue(texte_en_repli_de_langue(
+        self.assertTrue(_texte_en_repli_de_langue(
             self.company, 'relance', 'darija'))
         # Le catalogue n'a rien écrit à la place de la société.
         ligne = MessageTemplate.objects.get(company=self.company, cle='relance')

@@ -1,38 +1,16 @@
-from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin  # noqa: F401
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
-)
+from authentication.permissions import IsAnyRole, IsAdminRole
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
-from django.utils import timezone  # noqa: F401
+from django.utils import timezone
 
-from .. import activity  # noqa: F401
-from .. import intervention_activity  # noqa: F401
-from ..models import (  # noqa: F401
-    Installation, Intervention, TypeIntervention, ChecklistTemplate,
-    ChecklistEtapeModele, ShotListSlot, ComponentSerial,
-    ConsommationLigne, VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot,
-)
-from ..serializers import (  # noqa: F401
-    InstallationSerializer, InterventionSerializer,
-    InstallationActivitySerializer, InterventionActivitySerializer,
-    TypeInterventionSerializer, ChecklistTemplateSerializer,
-    ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
-    ShotListSlotSerializer, InterventionPreparationSerializer,
-    ComponentSerialSerializer, MaterielConsommationSerializer,
-    ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
-    ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
-)
-from ..services import (  # noqa: F401
-    create_installation_from_devis, seed_checklist_etapes,
-    ensure_checklist_items, ensure_default_template,
-)
-from .. import field_services  # noqa: F401
-from .. import field_capture  # noqa: F401
+from .. import activity
+from ..models import Installation, TypeIntervention, ChecklistTemplate
+from ..serializers import ChecklistTemplateSerializer
+from ..services import ensure_default_template
 from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -78,7 +56,7 @@ def _apply_stock_statut_effects(inst, canon_old, canon_new, user):
     idempotente côté service). À l'arrivée à « Clôturé », libère les
     réservations restantes non consommées. Le service est idempotent : il ne
     rejoue jamais une réservation déjà consommée."""
-    from ..services import consume_reservations, release_reservations  # noqa: F401
+    from ..services import consume_reservations, release_reservations
     if canon_new == canon_old:
         return
     if canon_new == Installation.Statut.INSTALLE:

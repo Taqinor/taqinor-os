@@ -59,7 +59,7 @@ def get(company_id, name: str, default=None):
         return default
 
 
-def set(company_id, name: str, value, timeout=None):  # noqa: A001
+def set(company_id, name: str, value, timeout=None):
     """Écriture scopée société (best-effort)."""
     try:
         cache.set(tenant_key(company_id, name), value, timeout)

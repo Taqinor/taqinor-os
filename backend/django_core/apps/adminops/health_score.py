@@ -53,7 +53,7 @@ def _score_usage(company, jours=30):
         from apps.audit.models import AuditLog
         depuis = timezone.now() - timedelta(days=jours)
         n = AuditLog.objects.filter(
-            company=company, created_at__gte=depuis).count()
+            company=company, timestamp__gte=depuis).count()
         return min(int(n / 50 * 100), 100)
     except Exception:
         logger.warning("health_score._score_usage : erreur ignorée (mode dégradé)", exc_info=True)

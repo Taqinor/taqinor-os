@@ -22,12 +22,11 @@ from django.db import models, transaction
 from core.crypto_fields import EncryptedTextField
 from core.models import TenantModel
 
-logger = logging.getLogger(__name__)
-
-
 # Lu par les 3 champs ``event_type`` ci-dessous ET importé d'ici par les
 # migrations 0039-0064 (append-only) : ne pas retirer (SPL303).
-from .types_evenements import EventType  # noqa: E402
+from .types_evenements import EventType
+
+logger = logging.getLogger(__name__)
 
 
 class Channel(models.TextChoices):

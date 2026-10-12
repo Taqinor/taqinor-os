@@ -35,6 +35,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
 from ..services.export_projet import ImportProjetRefuse, importer_projet
+from .calepinages import CalepinageViewSet
 
 __all__ = ['import_projet']
 
@@ -91,8 +92,6 @@ def import_projet(self, request):
     return Response(resume, status=(status.HTTP_200_OK if apercu
                                     else status.HTTP_201_CREATED))
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

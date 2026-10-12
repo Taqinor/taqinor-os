@@ -6,6 +6,8 @@ et `protege` sont posés/verrouillés côté serveur pour les étapes système.
 """
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
+
 from .models import StageModele
 
 
@@ -28,7 +30,7 @@ def valider_unicite_societe(serializer, champ, valeur, message, **portee):
     return valeur
 
 
-class StageModeleSerializer(serializers.ModelSerializer):
+class StageModeleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     statut_legacy_display = serializers.CharField(
         source='get_statut_legacy_display', read_only=True, default=None)
 

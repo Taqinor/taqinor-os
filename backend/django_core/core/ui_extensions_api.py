@@ -13,7 +13,9 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 from rest_framework.parsers import JSONParser
-from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
+
+from core.champs_stricts import BooleenStrict
+from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -68,6 +70,8 @@ def _instance_field_context(instance):
 
 
 class UiActionBoutonSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+    actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
+
     class Meta:
         model = UiActionBouton
         fields = ['id', 'cible', 'libelle', 'icone', 'type_action', 'ref',
@@ -162,6 +166,8 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
 
 
 class UiOngletCustomSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+    actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
+
     class Meta:
         model = UiOngletCustom
         fields = ['id', 'cible', 'titre', 'type_contenu', 'ref', 'condition',

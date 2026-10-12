@@ -47,6 +47,8 @@ from apps.calepinage.views.sorties import inventaire_des_sorties
 
 from .acal_livrables_helpers import LAYOUT_SIMULABLE, patch_materiel
 from .test_cal171_planche import LAYOUT
+from apps.calepinage.models import Calepinage
+from .test_api_liste import BaseApiCalepinage, url_detail
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
@@ -310,10 +312,6 @@ if __name__ == '__main__':  # pragma: no cover
 # Écrit ici mais NON EXÉCUTÉ localement (pas de Postgres sur ce poste de
 # lane) : la CI valide. Utilise le même patron que
 # ``test_calx308_diagramme_pertes_svg.py::EndpointDiagrammeEnBaseTest``.
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
 
 
 class EndpointDocumentsEnBaseTest(BaseApiCalepinage):

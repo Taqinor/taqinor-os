@@ -15,6 +15,7 @@ Rien ici n'est un devis client : ``/proposal`` reste le seul PDF de devis
 (règle #4) et aucune pièce du module ne porte de montant (D5).
 """
 from __future__ import annotations
+from ..rapport import valeur_au_chemin
 
 
 # ── CALX297 — le rapport d'étude ────────────────────────────────────────────
@@ -87,7 +88,6 @@ def mise_en_page(code):
 # ``versions[]`` reste ``[]`` (CALX322 la branche, une ligne dans
 # ``_versions_pour`` ci-dessous — aucune autre ligne de cette section ne
 # bouge) ; ``images[]`` reste ``[]`` pour la même raison que ci-dessus.
-from ..rapport import valeur_au_chemin  # noqa: E402 — après la section CALX297
 
 #: Le champ manquant quand AUCUNE conception n'est enregistrée — copié MOT
 #: POUR MOT de l'exemple committé (``calepinage_documents.json::exemple_vide``).

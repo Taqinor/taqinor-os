@@ -29,14 +29,14 @@ class _FakeClient:
         self.objects = {}
         self.created_buckets = []
 
-    def head_bucket(self, Bucket):  # noqa: N803 — signature boto3
+    def head_bucket(self, Bucket):  # signature boto3
         if Bucket not in self.created_buckets:
             raise RuntimeError('bucket absent')
 
-    def create_bucket(self, Bucket):  # noqa: N803 — signature boto3
+    def create_bucket(self, Bucket):  # signature boto3
         self.created_buckets.append(Bucket)
 
-    def put_object(self, Bucket, Key, Body, ContentType=None):  # noqa: N803
+    def put_object(self, Bucket, Key, Body, ContentType=None):
         self.objects[(Bucket, Key)] = Body
 
 

@@ -66,7 +66,7 @@ from html import escape
 #: (CALX307) les importe SANS toucher cet assembleur, dont les imports
 #: atteignent stock/ventes (contrat import-linter CAL5, fix CI #714). Ils
 #: sont RÉEXPORTÉS ici — même objet, même identité pour ``except``.
-from .contrat import (  # noqa: F401 — réexport (__all__)
+from .contrat import (  # réexport (__all__)
     CHEMIN_CONTRAT, CODE_DOCUMENT, RapportRefuse, sections_declarees,
 )
 
@@ -574,7 +574,7 @@ def _schema_du_calepinage(calepinage):
 
     try:
         return schema_du_calepinage(calepinage)
-    except Exception as erreur:  # noqa: BLE001 - motif nommé au rapport
+    except Exception as erreur:  # motif nommé au rapport
         return {'svg': None, 'bloquants': [str(erreur)], 'manquantes': []}
 
 

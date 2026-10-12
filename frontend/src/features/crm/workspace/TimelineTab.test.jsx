@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { initState } from './draftCore'
-import TimelineTab, { matchesTimelineFilter, TIMELINE_FILTERS } from './TimelineTab'
+import TimelineTab from './TimelineTab'
+import { matchesTimelineFilter, TIMELINE_FILTERS } from './timelineFiltres'
 
 /* LW20 — `TimelineTab` : en-tête multi-touch (points-contact/, silencieux si
    vide), filtre par type persisté, notes épinglées en tête (📌) avec action

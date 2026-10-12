@@ -54,7 +54,7 @@ class TableEtPromessesTests(SimpleTestCase):
             with self.subTest(issue=issue):
                 self.assertIn('deuxieme_affaire',
                               cadence_touche.CADENCES_ARRETEES_PAR_ISSUE[issue])
-                self.assertFalse(cadence_touche.issue_fait_naitre_la_suite(
+                self.assertFalse(cadence_touche._issue_fait_naitre_la_suite(
                     issue, 'deuxieme_affaire'))
 
     def test_les_promesses_ne_disent_plus_la_touche_suivante(self):

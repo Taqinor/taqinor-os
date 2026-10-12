@@ -20,6 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
+from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
@@ -234,7 +235,9 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
 @extend_schema_view(list=extend_schema(parameters=[
     _q('event_type', OpenApiTypes.STR, "Type d'événement."),
     _q('enabled', OpenApiTypes.STR, 'Règles actives ou non.',
-       enum=_BOOL_01)]))
+       enum=_BOOL_01)]),
+    create=extend_schema(responses={
+        201: NotificationRoutingRuleSerializer, 400: OpenApiTypes.OBJECT}))
 class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG4 — CRUD des règles de routage de notifications (admin uniquement).
 
@@ -356,14 +359,26 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
         if year:
             try:
                 yr = int(year)
+            except (ValueError, TypeError):
+                yr = None
+            # ERR-ENF11-FUZZ-NOTIFICATIONS — une année hors 1..9999 (ex.
+            # 10**20) faisait lever OverflowError (500) : traitée comme un
+            # paramètre illisible, c'est-à-dire ignorée.
+            if yr is not None and 1 <= yr <= 9999:
                 from django.db.models import Q
                 qs = qs.filter(Q(date__year=yr) | Q(recurrent_annuel=True))
-            except (ValueError, TypeError):
-                pass
         return qs
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+class _DecisionGabaritSerializer(serializers.Serializer):
+    """Corps de ``decision`` : statut valide, motif = vraie chaîne (un nombre
+    ou un booléen était accepté puis stocké tel quel)."""
+    statut_approbation = serializers.ChoiceField(
+        choices=list(WhatsAppTemplate.StatutApprobation.values))
+    motif_rejet = ChaineStricte(required=False, allow_blank=True)
 
 
 @extend_schema_view(list=extend_schema(parameters=[
@@ -411,25 +426,22 @@ class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(tpl).data)
 
     @extend_schema(
-        request=inline_serializer('WhatsAppTemplateDecision', {
-            'statut_approbation': serializers.ChoiceField(
-                choices=list(WhatsAppTemplate.StatutApprobation.values)),
-            'motif_rejet': serializers.CharField(required=False),
-        }),
-        responses=WhatsAppTemplateSerializer)
+        request=_DecisionGabaritSerializer,
+        responses={200: WhatsAppTemplateSerializer, 400: _DETAIL})
     @action(detail=True, methods=['post'], url_path='decision')
     def decision(self, request, pk=None):
         """Saisie manuelle du statut d'approbation (retour Meta Business Manager).
 
         Corps : { statut_approbation: 'approuve'|'rejete', motif_rejet? }."""
         tpl = self.get_object()
-        statut = request.data.get('statut_approbation')
-        if statut not in WhatsAppTemplate.StatutApprobation.values:
+        corps = _DecisionGabaritSerializer(data=request.data)
+        if not corps.is_valid():
             return Response(
                 {'detail': "Statut d'approbation invalide."},
                 status=status.HTTP_400_BAD_REQUEST)
         set_template_approval_status(
-            tpl, statut, motif_rejet=request.data.get('motif_rejet', ''))
+            tpl, corps.validated_data['statut_approbation'],
+            motif_rejet=corps.validated_data.get('motif_rejet', ''))
         tpl.refresh_from_db()
         return Response(self.get_serializer(tpl).data)
 
@@ -446,6 +458,11 @@ _CONFORMITE = inline_serializer('AnnonceConformite', {
         'AnnonceConformiteManquant', _LIGNE_LECTURE, many=True),
     'total_cibles': serializers.IntegerField(),
 })
+
+
+# Actions ouvertes à tout rôle (module-level : la garde check_action_permission_override
+# lit les constantes de module pour voir que accuser_lecture n'atteint pas le repli admin).
+_ANNONCE_ANY_ROLE_ACTIONS = ['list', 'retrieve', 'accuser_lecture']
 
 
 @extend_schema_view(list=extend_schema(parameters=[
@@ -467,10 +484,9 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     # accuser_lecture : « J'ai lu et compris » est ouvert à tout rôle
     # destinataire — seules création/édition/publication/conformité restent
     # réservées à l'admin (voir docstrings des actions ci-dessous).
-    ANY_ROLE_ACTIONS = READ_ACTIONS + ['accuser_lecture']
 
     def get_permissions(self):
-        if self.action in self.ANY_ROLE_ACTIONS:
+        if self.action in _ANNONCE_ANY_ROLE_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
 
@@ -518,6 +534,8 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(annonce_compliance_report(annonce))
 
 
+@extend_schema_view(create=extend_schema(responses={
+    201: MessageAccueilSerializer, 400: OpenApiTypes.OBJECT}))
 class MessageAccueilViewSet(CompanyScopedModelViewSet):
     """MSGACC1 — message d'accueil posé par un responsable/admin pour UN
     employé, affiché en plein écran à sa PREMIÈRE ouverture de l'ERP à partir
@@ -676,17 +694,52 @@ def vapid_public_key(request):
 
 
 _NON_VIDE = r'\S'
+
+
+class RegexField(ChaineStricte, serializers.RegexField):
+    """``RegexField`` qui refuse les non-chaînes (400, pas de coercition)."""
+
+
+class _PushKeysSerializer(serializers.Serializer):
+    p256dh = RegexField(_NON_VIDE)
+    auth = RegexField(_NON_VIDE)
+
+
+class _PushSubscribeSerializer(serializers.Serializer):
+    """Corps de ``push/subscribe/`` (format PushManager). ``keys`` peut être
+    remplacé par ``p256dh``/``auth`` à plat (compat. historique). Un corps qui
+    n'est pas un objet, ou des champs non-chaînes, répondent 400 (ils
+    levaient AttributeError → 500)."""
+    endpoint = RegexField(_NON_VIDE)
+    keys = _PushKeysSerializer(required=False)
+    p256dh = RegexField(_NON_VIDE, required=False)
+    auth = RegexField(_NON_VIDE, required=False)
+
+    def validate(self, attrs):
+        keys = attrs.get('keys') or {}
+        p256dh = keys.get('p256dh') or attrs.get('p256dh')
+        auth = keys.get('auth') or attrs.get('auth')
+        if not p256dh or not auth:
+            raise serializers.ValidationError('Abonnement push incomplet.')
+        return {'endpoint': attrs['endpoint'], 'p256dh': p256dh, 'auth': auth}
+
+
+class _PushUnsubscribeSerializer(serializers.Serializer):
+    endpoint = RegexField(_NON_VIDE)
+
+
 _PUSH_SUBSCRIBE = inline_serializer('PushSubscribeRequest', {
-    'endpoint': serializers.RegexField(_NON_VIDE),
+    'endpoint': RegexField(_NON_VIDE),
     'keys': inline_serializer('PushSubscribeKeys', {
-        'p256dh': serializers.RegexField(_NON_VIDE),
-        'auth': serializers.RegexField(_NON_VIDE),
+        'p256dh': RegexField(_NON_VIDE),
+        'auth': RegexField(_NON_VIDE),
     }),
 })
 
 
 @extend_schema(request=_PUSH_SUBSCRIBE, responses={
     201: inline_serializer('PushSubscribed', {'id': serializers.IntegerField()}),
+    400: _DETAIL,
 })
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
@@ -697,15 +750,14 @@ def push_subscribe(request):
     Corps attendu : { endpoint, keys: { p256dh, auth } } (format PushManager).
     company + user sont FORCÉS sur l'utilisateur courant. Idempotent par
     endpoint : un ré-abonnement met simplement à jour les clés."""
-    data = request.data or {}
-    endpoint = (data.get('endpoint') or '').strip()
-    keys = data.get('keys') or {}
-    p256dh = (keys.get('p256dh') or data.get('p256dh') or '').strip()
-    auth = (keys.get('auth') or data.get('auth') or '').strip()
-    if not endpoint or not p256dh or not auth:
+    corps = _PushSubscribeSerializer(data=request.data)
+    if not corps.is_valid():
         return Response(
             {'detail': 'Abonnement push incomplet.'},
             status=status.HTTP_400_BAD_REQUEST)
+    endpoint = corps.validated_data['endpoint'].strip()
+    p256dh = corps.validated_data['p256dh'].strip()
+    auth = corps.validated_data['auth'].strip()
     sub, _created = PushSubscription.objects.update_or_create(
         endpoint=endpoint,
         defaults={
@@ -793,10 +845,11 @@ def attention_summary(request):
 
 @extend_schema(
     request=inline_serializer('PushUnsubscribeRequest', {
-        'endpoint': serializers.RegexField(r'\S'),
+        'endpoint': RegexField(r'\S'),
     }),
-    responses=inline_serializer(
-        'PushUnsubscribed', {'deleted': serializers.IntegerField()}))
+    responses={200: inline_serializer(
+        'PushUnsubscribed', {'deleted': serializers.IntegerField()}),
+        400: _DETAIL})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
@@ -804,11 +857,12 @@ def push_unsubscribe(request):
     """Supprime l'abonnement push de l'appareil courant (par endpoint).
 
     Borné à l'utilisateur courant : on ne supprime jamais l'abonnement d'autrui."""
-    endpoint = (request.data or {}).get('endpoint', '').strip()
-    if not endpoint:
+    corps = _PushUnsubscribeSerializer(data=request.data)
+    if not corps.is_valid():
         return Response(
             {'detail': 'Endpoint manquant.'},
             status=status.HTTP_400_BAD_REQUEST)
+    endpoint = corps.validated_data['endpoint'].strip()
     deleted, _ = PushSubscription.objects.filter(
         user=request.user, endpoint=endpoint).delete()
     return Response({'deleted': deleted})

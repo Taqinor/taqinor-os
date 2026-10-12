@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { AlertOctagon, Clock, ShieldCheck } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import { Badge, Card, CardContent, EmptyState, Spinner } from '../../ui'
+import { Badge, EmptyState, Spinner } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { Table } from './Table'
+import KpiCard from './KpiCard'
 
 /* ============================================================================
    XSAV8 — Rapport de conformité SLA + KPI SAV avancés
@@ -16,20 +17,6 @@ import { Table } from './Table'
 
 const pct = (v) => (v == null ? '—' : `${v} %`)
 const jours = (v) => (v == null ? '—' : `${v} j`)
-
-function KpiCard({ icon, label, value }) {
-  return (
-    <Card className="flex-1 min-w-[160px]">
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="text-muted-foreground">{icon}</div>
-        <div>
-          <div className="text-xs text-muted-foreground">{label}</div>
-          <div className="text-lg font-semibold">{value}</div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 export default function SavSlaPage() {
   const [data, setData] = useState(null)

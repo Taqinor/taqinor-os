@@ -26,9 +26,10 @@ class BusBidirectionnelTests(TestCase):
     def test_listes_blanches_a_jour(self):
         self.assertEqual(event_coverage.stale_allowlist(), set())
         self.assertNotIn('facture_emise', event_coverage.ALLOWED_UNCONSUMED)
+        # ASAV100 — ``abonnement_monitoring_resilie`` a un émetteur vivant
+        # (apps/monitoring/services.py) : il sort de la liste blanche.
         self.assertEqual(
-            event_coverage.ALLOWED_UNEMITTED,
-            {'abonnement_monitoring_resilie', 'effet_rejete'})
+            event_coverage.ALLOWED_UNEMITTED, {'effet_rejete'})
         self.assertEqual(event_coverage.orphan_signals(), set())
         self.assertEqual(event_coverage.unproduced_eventtypes(), set())
 

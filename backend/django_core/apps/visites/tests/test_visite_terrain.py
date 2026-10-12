@@ -614,8 +614,38 @@ class ListeFiltreLeadTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual([r['id'] for r in resp.data], [visite_id])
 
-    def test_lead_invalide_ignore(self):
+    def test_lead_non_entier_400(self):
+        # CI #956 (api-fuzz « accepted schema-violating », ?lead=null → 200) :
+        # `lead` est déclaré entier au schéma ; une valeur illisible est un
+        # 400 nommé — plus un filtre ignoré (l'ancien test attendait 200).
         self.creer_visite()
-        resp = self.api.get('/api/django/visites/visites/', {'lead': 'abc'})
+        for brut in ('abc', 'null', '1.5'):
+            resp = self.api.get('/api/django/visites/visites/', {'lead': brut})
+            self.assertEqual(resp.status_code, 400, (brut, resp.data))
+            self.assertIn('lead', resp.data)
+        # Vide = pas de filtre ; un id inconnu = liste vide, jamais 404.
+        resp = self.api.get('/api/django/visites/visites/', {'lead': ''})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(resp.data), 1)
+        resp = self.api.get('/api/django/visites/visites/', {'lead': '0'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data, [])
+
+
+class ModificationSansLeadTests(VisiteTerrainBase):
+    """ENF11 — le dossier (lead) d'une visite est figé : le PUT ne l'exige pas."""
+
+    def test_put_sans_lead_met_a_jour_les_notes(self):
+        visite_id = self.creer_visite()
+        resp = self.api.put(f'/api/django/visites/visites/{visite_id}/',
+                            {'notes': 'Portail vert'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['notes'], 'Portail vert')
+        self.assertEqual(resp.data['lead'], self.lead.id)
+
+    def test_put_avec_un_autre_lead_reste_refuse(self):
+        visite_id = self.creer_visite()
+        autre = Lead.objects.create(company=self.company, nom='Autre dossier')
+        resp = self.api.put(f'/api/django/visites/visites/{visite_id}/',
+                            {'lead': autre.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)

@@ -79,6 +79,11 @@ class BulkEditViewSetTests(TestCase):
         force_authenticate(req, user=self.user)
         return BulkEditViewSet.as_view({'post': 'appliquer'})(req)
 
+    def test_target_non_texte_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE — `target: [null, null]` levait TypeError.
+        resp = self._apply({'target': [None, None], 'ids': []})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_unknown_target_404(self):
         resp = self._apply({'target': 'nope', 'ids': [1]})
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)

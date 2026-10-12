@@ -69,6 +69,11 @@ class JumeauxListeLeadsTests(TestCase):
 
     def test_requetes_constantes(self):
         self._leads(3)
+        # Appel à blanc : les caches de PROCESSUS (ContentType & co.) sont
+        # chauds quel que soit l'ordre des tests du shard — seul le coût PAR
+        # LEAD est comparé ensuite.
+        self._compter(RELANCES)
+        self._compter(SLA)
         relances_3, data_r3 = self._compter(RELANCES)
         sla_3, data_s3 = self._compter(SLA)
         self.assertEqual(len(data_r3['results']), 3)

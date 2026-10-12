@@ -89,14 +89,14 @@ def notify_livraison_transition(livraison, statut, *, request=None):
                     getattr(settings, 'DEFAULT_FROM_EMAIL', None),
                     [email_addr], fail_silently=True)
                 result['email_sent'] = True
-            except Exception:  # noqa: BLE001 — best-effort, jamais fatal
+            except Exception:  # best-effort, jamais fatal
                 logger.warning(
                     'XSTK22: envoi email transition livraison %s échoué',
                     livraison.pk, exc_info=True)
 
         result['sent'] = bool(result['wa_draft_url'] or result['email_sent'])
         return result
-    except Exception:  # noqa: BLE001 — best-effort, jamais fatal
+    except Exception:  # best-effort, jamais fatal
         logger.warning(
             'XSTK22: notification transition livraison %s échouée',
             getattr(livraison, 'pk', '?'), exc_info=True)

@@ -50,6 +50,12 @@ from apps.roles.permissions_registre import (
     ELEVATED_PERMISSIONS,
     PERMISSION_MODULE,
 )
+from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
+from apps.calepinage.models import Calepinage
+from apps.records.models import Activity
+from apps.roles.models import Role
+from .test_api_liste import BaseApiCalepinage, url_detail
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = RACINE_APP / 'contract_samples' / 'calepinage_approbation.json'
@@ -261,13 +267,9 @@ class FormeDeLaReponseTest(SimpleTestCase):
 class ContratCommitteTest(SimpleTestCase):
     """Le contrat CALX334 (``calepinage_approbation.json``) EST ce que le
     service rend — l'état vide à l'identique, et chaque refus à la clé et au
-    message près. Posé par la lane contrats du même lot : sans lui sur la
-    branche, ces cas s'effacent en le DISANT (il est là au fold)."""
+    message près. Le contrat est au dépôt : son absence fait rougir."""
 
     def setUp(self):
-        if not CONTRAT.exists():
-            self.skipTest('contrat CALX334 absent de cette branche — la '
-                          'lane contrats le livre au fold.')
         self.contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
 
     def _refus(self, calepinage, **kwargs):
@@ -318,15 +320,6 @@ class ContratCommitteTest(SimpleTestCase):
 
 
 # ── HTTP — exige l'ORM (la CI est la gate de ces classes) ─────────────────
-
-from django.contrib.auth import get_user_model  # noqa: E402
-from django.contrib.contenttypes.models import ContentType  # noqa: E402
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-from apps.records.models import Activity  # noqa: E402
-from apps.roles.models import Role  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
 
 User = get_user_model()
 

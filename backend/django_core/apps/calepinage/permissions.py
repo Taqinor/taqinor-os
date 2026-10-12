@@ -22,6 +22,8 @@ ni ``marge_voir``, ni ``roles_gerer``. Le module n'expose aucune donnée de
 coût de revient, donc il n'a besoin d'aucun code élevé.
 """
 from __future__ import annotations
+from rest_framework.permissions import BasePermission
+from core.permissions import _user_has_or_legacy
 
 #: Lecture d'un calepinage (source unique — jamais de littéral en viewset).
 CAL_VOIR = 'calepinage_voir'
@@ -49,10 +51,6 @@ CAL_APPROUVER = 'calepinage_approuver'
 # sont ce que les actions déclarent — elles portent le CODE du domaine, pas un
 # palier de rôle, pour qu'une action de lecture ne puisse jamais se retrouver
 # gardée en écriture (ni l'inverse) par distraction.
-
-from rest_framework.permissions import BasePermission  # noqa: E402
-
-from core.permissions import _user_has_or_legacy  # noqa: E402
 
 
 class _PermissionCalepinage(BasePermission):

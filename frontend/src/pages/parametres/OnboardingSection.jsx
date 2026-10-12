@@ -8,14 +8,12 @@ import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Circle, PlayCircle, ArrowRight, RotateCcw } from 'lucide-react'
-import stockApi from '../../api/stockApi'
-import api from '../../api/axios'
 import {
   Card, CardContent, Button, Spinner, Progress,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
 import {
-  isCompanyProfileComplete, countFromListResponse, replayCoachmarks,
+  isCompanyProfileComplete, lireComptesOnboarding, replayCoachmarks,
 } from '../../features/onboarding/onboardingHelpers'
 import { fetchTours, reviewTour } from '../../features/onboarding/productTours'
 
@@ -97,17 +95,12 @@ export default function OnboardingSection() {
 
   useEffect(() => {
     let alive = true
-    Promise.allSettled([
-      stockApi.getProduits({ page_size: 1 }),
-      api.get('/users/'),
-    ]).then(([prod, users]) => {
+    // En cas d'échec d'une lecture, on laisse null → l'étape reste « à faire »
+    // sans jamais casser la page.
+    lireComptesOnboarding(true).then((comptes) => {
       if (!alive) return
-      // En cas d'échec d'une lecture, on laisse null → l'étape reste « à faire »
-      // sans jamais casser la page.
-      setProduitCount(prod.status === 'fulfilled'
-        ? countFromListResponse(prod.value.data) : null)
-      setUserCount(users.status === 'fulfilled'
-        ? countFromListResponse(users.value.data) : null)
+      setProduitCount(comptes.produitCount)
+      setUserCount(comptes.userCount)
     }).finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [])

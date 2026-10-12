@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import ScoreBadge, { scoreTooltip } from './ScoreBadge'
+import ScoreBadge from './ScoreBadge'
+import { scoreTooltip } from './scoreTooltip'
 
 /* LW17 — la prop `asTrigger` est ADDITIVE : le rendu par défaut (span) reste
    identique pour les consommateurs existants (kanban/liste). */

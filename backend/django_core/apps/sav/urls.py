@@ -47,8 +47,8 @@ router.register(r'problemes', ProblemeViewSet)
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'months', OpenApiTypes.INT, required=False,
-        description='Fenêtre en mois (défaut 12).')],
+        'months', {'type': 'integer', 'minimum': 1, 'maximum': 1200},
+        required=False, description='Fenêtre en mois (défaut 12).')],
     responses=inline_serializer('SavPartsForecastLigne', {
         'produit': drf_serializers.IntegerField(),
         'nom': drf_serializers.CharField(),
@@ -198,7 +198,7 @@ def performance_agent_view(request):
     'results': inline_serializer('SavFileAttenteEquipe', {
         'equipe_id': drf_serializers.IntegerField(),
         'equipe_nom': drf_serializers.CharField(),
-        'capacite': drf_serializers.IntegerField(),
+        'capacite': drf_serializers.IntegerField(allow_null=True),
         'charge': drf_serializers.IntegerField(),
         'file_attente': drf_serializers.JSONField(),
         'debordement': drf_serializers.JSONField(),

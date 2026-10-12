@@ -168,7 +168,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # « Consommé » = traité par un humain (FAIT/SAUTÉE) : un plan ANNULÉ
         # par le moteur reste redémarrable, c'est tout l'objet de
         # TREADMILL-1538.
-        consomme = dernier_barreau_consomme(lead, 'apres_devis', devis)
+        consomme = _dernier_barreau_consomme(lead, 'apres_devis', devis)
         if consomme is not None:
             suite = materialiser_touche_suivante(consomme, user)
             if suite is not None:
@@ -200,7 +200,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # touches ouvertes), et clore « Question de prix » re-posait l'étape
         # devis au lieu de reprendre le suivi. Plan épuisé : l'étape
         # générique ci-dessous.
-        consomme = (dernier_barreau_consomme(lead, 'apres_devis', None)
+        consomme = (_dernier_barreau_consomme(lead, 'apres_devis', None)
                     if _suivi_de_proposition_existe(lead) else None)
         if consomme is not None:
             suite = materialiser_touche_suivante(consomme, user)
@@ -471,7 +471,7 @@ def _ajouter_mois(jour, mois):
                         day=min(jour.day, dernier))
 
 
-def libelle_rappel_subvention(approbation):
+def _libelle_rappel_subvention(approbation):
     """Le libellé de l'étape « délai FDA » pour une approbation préalable."""
     limite = _ajouter_mois(approbation, DELAI_DEMANDE_SUBVENTION_MOIS)
     return (f'Approbation préalable du {approbation:%d/%m} : la pose ET le '
@@ -535,7 +535,7 @@ def poser_rappel_subvention(lead, user=None):
         return None
     from . import horaires
 
-    libelle = libelle_rappel_subvention(lead.dossier_subvention_le)
+    libelle = _libelle_rappel_subvention(lead.dossier_subvention_le)
     if ouverte is not None:
         if ouverte.libelle != libelle or ouverte.cle != CLE_RAPPEL_FDA:
             ouverte.libelle = libelle
@@ -559,7 +559,7 @@ def poser_rappel_subvention(lead, user=None):
     return etape
 
 
-def dernier_barreau_consomme(lead, cadence, devis=None):
+def _dernier_barreau_consomme(lead, cadence, devis=None):
     """CAD1 — le barreau de PROTOCOLE le plus avancé que cette cadence a déjà
     consommé pour ce devis, ou ``None``.
 

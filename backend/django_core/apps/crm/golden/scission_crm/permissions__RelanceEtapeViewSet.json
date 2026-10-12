@@ -110,16 +110,6 @@
   ]
  },
  {
-  "action": "kpi_adherence",
-  "methode": "GET",
-  "permissions": [
-   {
-    "attrs": {},
-    "classe": "IsAnyRole"
-   }
-  ]
- },
- {
   "action": "langue",
   "methode": "POST",
   "permissions": [
@@ -131,16 +121,6 @@
  },
  {
   "action": "list",
-  "methode": "GET",
-  "permissions": [
-   {
-    "attrs": {},
-    "classe": "IsAnyRole"
-   }
-  ]
- },
- {
-  "action": "mes_stats",
   "methode": "GET",
   "permissions": [
    {

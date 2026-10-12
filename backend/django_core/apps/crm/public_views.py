@@ -90,7 +90,14 @@ class PublicSalleVenteRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
 
 
 def _resolve_salle(token):
-    return SalleVente.objects.select_related('company').filter(token=token).first()
+    salle = SalleVente.objects.select_related('company').filter(token=token).first()
+    # ACRM65 (D-ACRM-6 (ii)=(b)) — réglage société éteint : le lien répond
+    # « introuvable » (aucune vue journalisée, aucun signal d'intérêt émis) ;
+    # la salle reste en base.
+    from .parcage import salles_vente_actives
+    if salle is not None and not salles_vente_actives(salle.company_id):
+        return None
+    return salle
 
 
 def _hash_ip(request, salle=None):

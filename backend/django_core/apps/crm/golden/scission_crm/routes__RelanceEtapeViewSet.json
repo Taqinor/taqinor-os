@@ -217,38 +217,6 @@
  },
  {
   "actions_map": {
-   "get": "kpi_adherence"
-  },
-  "motif": "^relance-etapes/kpi-adherence/$",
-  "nom": "relance-etape-kpi-adherence",
-  "vue": "RelanceEtapeViewSet"
- },
- {
-  "actions_map": {
-   "get": "kpi_adherence"
-  },
-  "motif": "^relance-etapes/kpi-adherence\\.(?P<format>[a-z0-9]+)/?$",
-  "nom": "relance-etape-kpi-adherence",
-  "vue": "RelanceEtapeViewSet"
- },
- {
-  "actions_map": {
-   "get": "mes_stats"
-  },
-  "motif": "^relance-etapes/mes-stats/$",
-  "nom": "relance-etape-mes-stats",
-  "vue": "RelanceEtapeViewSet"
- },
- {
-  "actions_map": {
-   "get": "mes_stats"
-  },
-  "motif": "^relance-etapes/mes-stats\\.(?P<format>[a-z0-9]+)/?$",
-  "nom": "relance-etape-mes-stats",
-  "vue": "RelanceEtapeViewSet"
- },
- {
-  "actions_map": {
    "get": "suivi"
   },
   "motif": "^relance-etapes/suivi/$",

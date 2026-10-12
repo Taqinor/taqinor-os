@@ -1,10 +1,11 @@
 """FG25 — sérialiseur des politiques d'approbation (ApprovalPolicy)."""
 from rest_framework import serializers
+from core.champs_stricts import TypageStrictMixin
 
 from .models_approvals import ApprovalPolicy
 
 
-class ApprovalPolicySerializer(serializers.ModelSerializer):
+class ApprovalPolicySerializer(TypageStrictMixin, serializers.ModelSerializer):
     action_type_label = serializers.CharField(
         source='get_action_type_display', read_only=True)
     approver_tier_label = serializers.CharField(

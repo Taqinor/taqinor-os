@@ -10,8 +10,9 @@ import { useEffect, useState } from 'react'
 import { Check, Milestone, Pencil, Trash2, Undo2, X } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
+import EtatChargementAdmin from './EtatChargementAdmin'
 import {
-  Button, Card, EmptyState, Skeleton, StatusPill, Input, Switch, DataTable, toast,
+  Button, EmptyState, StatusPill, Input, Switch, DataTable, toast,
 } from '../../../ui'
 
 const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '—')
@@ -166,22 +167,17 @@ export default function JalonsChantierPortailAdmin() {
         peuvent être supprimés.
       </p>
 
-      {loading ? (
-        <Card className="space-y-2 p-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </Card>
-      ) : loadError ? (
-        <EmptyState title="Chargement impossible"
-                    description="Les jalons n'ont pas pu être chargés. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
-      ) : rows.length === 0 ? (
-        <EmptyState icon={Milestone} title="Aucun jalon"
-                    description="Les jalons apparaissent ici dès que le chantier avance." />
-      ) : (
-        <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
-                   searchable={false} exportName="jalons-chantier-portail"
-                   emptyTitle="Aucun jalon" />
-      )}
+      <EtatChargementAdmin loading={loading} loadError={loadError} onRetry={load}
+                           erreur="Les jalons n'ont pas pu être chargés. Réessayez.">
+        {rows.length === 0 ? (
+          <EmptyState icon={Milestone} title="Aucun jalon"
+                      description="Les jalons apparaissent ici dès que le chantier avance." />
+        ) : (
+          <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
+                     searchable={false} exportName="jalons-chantier-portail"
+                     emptyTitle="Aucun jalon" />
+        )}
+      </EtatChargementAdmin>
     </div>
   )
 }

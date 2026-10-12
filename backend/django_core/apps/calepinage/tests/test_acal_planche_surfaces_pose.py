@@ -13,6 +13,7 @@ Essais PURS sur les vraies fonctions (aucune base, aucun mock).
 Run :
     python manage.py test apps.calepinage.tests.test_acal_planche_surfaces_pose -v2
 """
+import importlib
 import copy
 
 from django.test import SimpleTestCase
@@ -102,7 +103,7 @@ class ChampSeulTest(SimpleTestCase):
 
     def test_dxf_porte_le_calque_des_surfaces(self):
         try:
-            import ezdxf  # noqa: F401
+            importlib.import_module('ezdxf')
         except ImportError:  # pragma: no cover - dépend de l'environnement
             self.skipTest('ezdxf indisponible')
         from apps.calepinage.services.export_dxf import octets_dxf

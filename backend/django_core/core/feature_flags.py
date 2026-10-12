@@ -206,6 +206,11 @@ class DependencyError(ValueError):
         self.dependents = list(dependents or [])
 
 
+class ModuleInconnu(DependencyError):
+    """ERR-ENF11-FUZZ-CORE — clé de module sans manifeste ni ligne société :
+    ressource introuvable (404), pas une requête invalide."""
+
+
 def catalogue_modules(company):
     """Catalogue des modules installables + leur état pour ``company``.
 
@@ -313,7 +318,7 @@ def activer_module(company, key, *, user=None):
         # déjà une ligne pour elle (surface frontend éteinte au semis) : sinon
         # l'écran Applications l'afficherait sans pouvoir la rallumer.
         if key not in _cles_togglees_sans_manifeste(company, manifests):
-            raise DependencyError(f'Module inconnu : « {key} ».')
+            raise ModuleInconnu(f'Module inconnu : « {key} ».')
     a_activer = {key} | modules_infra.dependency_closure(key, manifests)
     active = []
     bascules = []
@@ -354,7 +359,7 @@ def desactiver_module(company, key, *, cascade=False, user=None):
         # déjà portée par la société reste désactivable (aucun dépendant
         # possible, elle n'est dans le `depends` d'aucun manifeste).
         if key not in _cles_togglees_sans_manifeste(company, manifests):
-            raise DependencyError(f'Module inconnu : « {key} ».')
+            raise ModuleInconnu(f'Module inconnu : « {key} ».')
 
     desactives = modules_desactives(company)
 

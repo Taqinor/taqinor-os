@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Bell, BellOff, Sparkles, Copy, GitMerge, PackagePlus, UserPlus2, Undo2,
@@ -93,7 +93,9 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
   const loadPrets = () => {
     savApi.getPretsEquipement(ticketId).then((r) => setPrets(r.data ?? [])).catch(() => {})
   }
-  useEffect(() => { loadPrets() }, [ticketId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
+  const chargerPrets = useEffectEvent(loadPrets)
+  useEffect(() => { chargerPrets() }, [ticketId])
   const retournerPret = async (pretId) => {
     try {
       await savApi.retournerPretEquipement(ticketId, pretId)
@@ -114,7 +116,7 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
     fetchAllPages((page) => stockApi.getProduits({ page, page_size: 200 }).then((r) => r.data))
       .then((res) => setProduits(Array.isArray(res) ? res : (res?.results ?? [])))
       .catch(() => {})
-  }, [pretFormOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pretFormOpen, produits.length])
   const creerPret = async () => {
     if (!pretProduitId) return
     setPretBusy(true)

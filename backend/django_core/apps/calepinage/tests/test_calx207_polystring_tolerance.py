@@ -34,7 +34,7 @@ from apps.calepinage.services.polystring import (
     PolystringRefuse, ecart_de_groupe,
 )
 
-from .test_calx206_polystring import (  # noqa: F401 — fixtures partagées
+from .test_calx206_polystring import (  # fixtures partagées
     GROUPE_EST_OUEST, _Calepinage, _materiel,
 )
 

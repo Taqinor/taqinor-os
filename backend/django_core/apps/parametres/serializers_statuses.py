@@ -1,11 +1,12 @@
 """N58 — sérialiseur de la configuration des statuts métier (StatutConfig)."""
 from rest_framework import serializers
+from core.champs_stricts import TypageStrictMixin
 
 from .models_statuses import StatutConfig
 from .statuses_defaults import VALID_DOMAINES, default_keys
 
 
-class StatutConfigSerializer(serializers.ModelSerializer):
+class StatutConfigSerializer(TypageStrictMixin, serializers.ModelSerializer):
     class Meta:
         model = StatutConfig
         fields = [

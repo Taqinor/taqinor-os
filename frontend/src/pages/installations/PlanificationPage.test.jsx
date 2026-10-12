@@ -29,7 +29,8 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 vi.mock('../../ui/confirm', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import PlanificationPage, { OutilsChantierTab, moveInterventionLocal } from './PlanificationPage'
+import PlanificationPage, { OutilsChantierTab } from './PlanificationPage'
+import { moveInterventionLocal } from './PlanificationPage.helpers'
 
 function authReducer(role) {
   return (state = { role }) => state

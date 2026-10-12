@@ -1,7 +1,7 @@
 // FG280 — Alarmes / défauts onduleur, DISTINCTES du ticket SAV (cycle de vie
 // propre : active → acquittée → escaladée/résolue). Liste + acquitter +
 // escalader (ouvre/relie un ticket SAV).
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 import { AlertTriangle, Plus, ShieldAlert } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -9,9 +9,9 @@ import { fetchAllPages } from '../../utils/fetchAllPages'
 import api from '../../api/axios'
 import {
   TooltipProvider, Card, StatusPill, Button, Input, Textarea, Select,
-  SelectTrigger, SelectValue, SelectContent, SelectItem, EmptyState, Skeleton,
-  Combobox, toast,
+  SelectTrigger, SelectValue, SelectContent, SelectItem, EmptyState, Combobox, toast,
 } from '../../ui'
+import { SqueletteListe } from './SavCommun'
 import { formatDateTime } from '../../lib/format'
 
 const GRAVITE_TONES = { info: 'neutral', warning: 'warning', critique: 'danger' }
@@ -98,8 +98,10 @@ export default function SavAlarmesPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [statutFiltre])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerListe = useEffectEvent(load)
+  useEffect(() => { Promise.resolve().then(() => chargerListe()) }, [statutFiltre])
 
   const acquitter = async (row) => {
     setBusyId(row.id)
@@ -227,9 +229,7 @@ export default function SavAlarmesPage() {
         )}
 
         {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
+          <SqueletteListe lignes={4} />
         ) : rows.length === 0 ? (
           <EmptyState icon={ShieldAlert} title="Aucune alarme"
                       description="Aucune alarme onduleur pour ce filtre." />

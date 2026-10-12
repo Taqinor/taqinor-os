@@ -1,3 +1,5 @@
+import importlib
+
 from django.apps import AppConfig
 
 
@@ -52,7 +54,7 @@ class CalepinageConfig(AppConfig):
         # lead issu du parcours public « mon toit » ouvre un calepinage
         # pré-tracé. C'est l'app CONSOMMATRICE qui s'abonne (patron M6) :
         # ``apps/crm/receivers.py`` n'a aucune connaissance de ce module.
-        from . import receivers  # noqa: F401
+        importlib.import_module(f'{self.name}.receivers')
 
         # ACAL300 — fournisseur DSR (loi 09-08) : ``core.dsr`` agrège sans
         # importer le calepinage (patron ``ventes.dsr_provider``).

@@ -1,11 +1,7 @@
-/* eslint-disable react-refresh/only-export-components --
-   `regimeDePreuve` est une fonction PURE (un bloc `preuve` → la phrase à
-   afficher) : le test jumeau l'exerce sans monter l'écran, parce que c'est ELLE
-   qui garantit qu'on n'écrit jamais « prouvé » sur une heuristique. Même
-   dérogation que `module.config.jsx` du même module. */
 import { useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
 import useSuiviJob from './production/useSuiviJob'
+import { regimeDePreuve } from './RemplissageProuve.helpers'
 
 /* ============================================================================
    CAL79 — LE REMPLISSAGE, ET L'HONNÊTETÉ SUR SON RÉGIME DE PREUVE.
@@ -35,40 +31,6 @@ import useSuiviJob from './production/useSuiviJob'
    `GET /calepinage/moteur/resultat/<job_id>/` et on AFFICHE l'avancement
    publié (`progress_pct`), jamais une barre qui avance toute seule.
    ========================================================================== */
-
-/**
- * CAL79 — le RÉGIME de preuve d'un résultat du moteur.
- * Rend `{ prouve, total, borne, phrase, methode }`, ou `null` si le moteur
- * n'a publié aucun bloc `preuve` (on n'affirme alors rien du tout).
- */
-export function regimeDePreuve(resultat) {
-  const preuve = resultat?.preuve
-  if (!preuve || typeof preuve !== 'object') return null
-
-  const total = preuve.total_retenu ?? resultat?.total_modules ?? null
-  const prouve = Boolean(preuve.optimal) && Boolean(preuve.methode_exacte)
-  const borne = preuve.borne_superieure ?? null
-
-  if (prouve) {
-    return {
-      prouve: true,
-      total,
-      borne,
-      methode: preuve.methode ?? null,
-      phrase: `Optimum prouvé (${total ?? '—'})`,
-    }
-  }
-  return {
-    prouve: false,
-    total,
-    borne,
-    methode: preuve.methode ?? null,
-    phrase: borne === null || borne === undefined
-      // Aucune borne publiée : on ne la fabrique pas.
-      ? `Meilleur plan trouvé (${total ?? '—'}) — aucune borne supérieure publiée`
-      : `Meilleur plan trouvé (${total ?? '—'}) — borne supérieure ${borne}`,
-  }
-}
 
 export default function RemplissageProuve({
   entree = null, onAppliquer = null, lectureSeule = false, intervalleMs = 2000,

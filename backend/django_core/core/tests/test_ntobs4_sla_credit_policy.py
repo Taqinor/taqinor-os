@@ -148,6 +148,18 @@ class SlaCreditsDusEndpointTest(TestCase):
         resp = self._client(self.commercial).get('/api/django/core/sla/credits/')
         self.assertEqual(resp.status_code, 403)
 
+    def test_statut_corps_invalide_400_et_404_json(self):
+        # ERR-ENF11-FUZZ-CORE — corps non objet = 400 (AttributeError avant) ;
+        # pk inconnu = 404 AVEC un corps JSON (vide et sans Content-Type avant).
+        client = self._client(self.directeur)
+        url = f'/api/django/core/sla/credits/{self.snap.pk}/statut/'
+        self.assertEqual(
+            client.post(url, [None, None], format='json').status_code, 400)
+        resp = client.post('/api/django/core/sla/credits/999999/statut/',
+                           {'statut': 'emis'}, format='json')
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('detail', resp.json())
+
     def test_marking_emis_never_creates_a_financial_document(self):
         url = f'/api/django/core/sla/credits/{self.snap.pk}/statut/'
         resp = self._client(self.directeur).post(url, {'statut': 'emis'}, format='json')

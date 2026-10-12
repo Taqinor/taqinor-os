@@ -27,7 +27,7 @@ from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import CLE_DEVIS
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.views import _prochaine_touche_publique
+from apps.crm.cadence_views import _prochaine_touche_publique
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 

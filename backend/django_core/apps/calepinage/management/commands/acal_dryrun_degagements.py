@@ -65,7 +65,7 @@ class Command(BaseCommand):
                 regle = compte_moteur_du_layout(
                     layout, company=devis.company, devis=devis,
                     traduire=True)
-            except Exception as exc:  # noqa: BLE001 — signalé, jamais fatal
+            except Exception as exc:  # signalé, jamais fatal
                 ecrire(f'  {devis.reference} : illisible ({exc})')
                 continue
             avant = actuel['modules'] if actuel else None

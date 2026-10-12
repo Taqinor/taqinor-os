@@ -74,6 +74,18 @@ class RapportDefinitionCrudTests(TestCase):
                             format='json')
         self.assertEqual(res.status_code, 400)
 
+    def test_spec_doit_etre_un_objet(self):
+        # ENF11 (api-fuzz) — spec/pivot_spec : objet exigé (documenté
+        # `type: object`) ; absent = {} (défaut du modèle).
+        for corps in ({'spec': None}, {'pivot_spec': [1]}):
+            res = self.api.post(URL, {'titre': 'T', 'dataset': 'd', **corps},
+                                format='json')
+            self.assertEqual(res.status_code, 400, res.data)
+        res = self.api.post(URL, {'titre': 'T', 'dataset': 'd'},
+                            format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['spec'], {})
+
     def test_list_is_company_scoped(self):
         RapportDefinition.objects.create(
             company=self.company, owner=self.user, titre='À moi',

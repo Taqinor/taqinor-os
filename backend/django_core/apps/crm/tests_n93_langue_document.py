@@ -8,7 +8,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.crm.serializers import ClientSerializer
+from apps.crm.serializers_clients import ClientSerializer
 
 
 def _company(slug='n93-co', nom='N93 Co'):

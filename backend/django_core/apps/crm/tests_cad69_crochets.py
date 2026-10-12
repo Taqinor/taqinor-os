@@ -28,7 +28,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.cadence_messages import crochets_a_completer
+from apps.crm.cadence_messages import _crochets_a_completer
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -47,27 +47,27 @@ class CrochetsPursTests(SimpleTestCase):
     def test_les_blancs_sont_listes_dans_l_ordre_sans_doublon(self):
         texte = ('Je vous rappelle [jour] à [heure]. '
                  'Rappel : [jour] reste à confirmer.')
-        self.assertEqual(crochets_a_completer(texte), ['[jour]', '[heure]'])
+        self.assertEqual(_crochets_a_completer(texte), ['[jour]', '[heure]'])
 
     def test_un_texte_sans_crochet_ne_liste_rien(self):
-        self.assertEqual(crochets_a_completer('Bonjour M. Aziz.'), [])
-        self.assertEqual(crochets_a_completer(''), [])
-        self.assertEqual(crochets_a_completer(None), [])
+        self.assertEqual(_crochets_a_completer('Bonjour M. Aziz.'), [])
+        self.assertEqual(_crochets_a_completer(''), [])
+        self.assertEqual(_crochets_a_completer(None), [])
 
     def test_les_blancs_de_l_offre_du_fondateur(self):
         texte = ('Suite à votre échange : [la raison réelle], il vous '
                  'accorde [montant en dirhams], soit [nouveau total TTC].')
-        self.assertEqual(crochets_a_completer(texte), [
+        self.assertEqual(_crochets_a_completer(texte), [
             '[la raison réelle]', '[montant en dirhams]',
             '[nouveau total TTC]'])
 
     def test_les_blancs_darija_aussi(self):
         self.assertEqual(
-            crochets_a_completer('غادي نعيط ليكم [النهار] على [الساعة].'),
+            _crochets_a_completer('غادي نعيط ليكم [النهار] على [الساعة].'),
             ['[النهار]', '[الساعة]'])
 
     def test_un_crochet_ne_traverse_jamais_une_ligne(self):
-        self.assertEqual(crochets_a_completer('[début\nfin]'), [])
+        self.assertEqual(_crochets_a_completer('[début\nfin]'), [])
 
 
 class CrochetsRendusTests(TestCase):

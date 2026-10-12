@@ -154,9 +154,12 @@ class SuiviActionTests(_Base):
 
     def _touche(self, quand, *, statut=RelanceEtape.Statut.A_FAIRE, lead=None,
                 **kw):
+        # ACRM55 — une seule touche OUVERTE par barreau : chaque touche du
+        # fixture porte son propre `ordre`.
+        self._ordre = getattr(self, '_ordre', 0) + 1
         return RelanceEtape.objects.create(
             company=self.company, lead=lead or self.lead, cadence='contact',
-            ordre=1, due_at=quand, due_date=quand.date(),
+            ordre=self._ordre, due_at=quand, due_date=quand.date(),
             canal=RelanceEtape.Canal.APPEL, libelle='Appel', statut=statut,
             **kw)
 
@@ -309,9 +312,11 @@ class ScopesDuesTests(_Base):
         self.dans_dix_jours = self._touche(_jour(2026, 9, 19))
 
     def _touche(self, quand):
+        # ACRM55 — une seule touche OUVERTE par barreau : `ordre` distinct.
+        self._ordre = getattr(self, '_ordre', 0) + 1
         return RelanceEtape.objects.create(
-            company=self.company, lead=self.lead, cadence='contact', ordre=1,
-            due_at=quand, due_date=quand.date(),
+            company=self.company, lead=self.lead, cadence='contact',
+            ordre=self._ordre, due_at=quand, due_date=quand.date(),
             canal=RelanceEtape.Canal.APPEL, libelle='Appel')
 
     def _ids(self, scope):

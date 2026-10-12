@@ -105,7 +105,7 @@ class XFSM1FacturationTicketTest(TestCase):
         equip.recompute_garanties()
         # Pas de garantie_mois renseignée sur `self.piece` -> on force la
         # date de fin de garantie manuellement pour simuler « sous garantie ».
-        from apps.sav.services import add_months
+        from apps.sav.dateutils import add_months
         equip.date_fin_garantie = add_months(date.today(), 12)
         equip.save(update_fields=['date_fin_garantie'])
 

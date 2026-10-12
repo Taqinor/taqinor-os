@@ -5,6 +5,8 @@ TOUJOURS posée côté serveur (TenantMixin) — jamais lue du corps de requête
 Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et les
 versions de document sont numérotées + déduppées via `services`.
 """
+from collections.abc import Mapping
+
 from django.db import models
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
@@ -17,7 +19,7 @@ from rest_framework.decorators import (
 )
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
-from rest_framework.renderers import BrowsableAPIRenderer, JSONRenderer
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -43,6 +45,7 @@ from apps.records.openapi import (
 from apps.records.serializers import CibleIntrouvable, resolve_target
 
 from . import openapi as oa, selectors, services
+from .corps_requete import _date_iso, _pk, _pks, _txt
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
@@ -136,6 +139,26 @@ class _CsvOrJSONRenderer(JSONRenderer):
     media_type = 'text/csv'
 
 
+class CorpsObjetMixin:
+    """ERR-ENF11-FUZZ-GED — une écriture dont le corps JSON n'est pas un objet
+    (liste, chaîne, ``null``) faisait lever ``AttributeError`` sur
+    ``request.data.get`` (500) dans les actions : 400 explicite, une fois, pour
+    tous les ViewSets de la GED."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        # CI #956 (fuzz) — une méthode NON servie (PUT sur ``versions/``, hors
+        # ``http_method_names`` ; PUT sur une route de liste, sans gestionnaire)
+        # ne lit pas le corps : lire ``request.data`` répondait 415 (parseur)
+        # avant le 405 que DRF doit rendre.
+        if (request.method in ('POST', 'PUT', 'PATCH')
+                and request.method.lower() in self.http_method_names
+                and hasattr(self, request.method.lower())
+                and not isinstance(request.data, Mapping)):
+            raise drf_serializers.ValidationError(
+                {"detail": "Objet JSON attendu."})
+
+
 def _permissions_effectives_csv(lignes, filename_suffix):
     """XGED22 — Sérialise le rapport de permissions effectives en CSV
     (utilisateur/rôle, niveau, source de justification) pour l'export
@@ -175,7 +198,7 @@ def _refus_sous_arbre_non_vide(folder_ids):
         status=status.HTTP_409_CONFLICT)
 
 
-class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
+class CabinetViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """Cabinets (armoires racines) d'une société."""
     queryset = Cabinet.objects.all()
     serializer_class = CabinetSerializer
@@ -201,7 +224,7 @@ class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_FOLDERS))
-class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
+class FolderViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """Dossiers arborescents (chemin matérialisé). Filtrable par cabinet et
     parent ; expose le sous-arbre via l'action `descendants`."""
     queryset = Folder.objects.select_related('cabinet', 'parent').all()
@@ -225,7 +248,7 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         if folder_id in (None, '', 'null'):
             return None
         return (Folder.objects.filter(company=self.request.user.company)
-                .filter(pk=folder_id).first())
+                .filter(pk=_pk(folder_id, 'folder')).first())
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -296,7 +319,7 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         parameters=[oa.Q_FORMAT_CSV],
         responses={200: oa.LIGNES, (200, 'text/csv'): OpenApiTypes.STR})
     @action(detail=True, methods=['get'], url_path='permissions-effectives',
-            renderer_classes=[JSONRenderer, BrowsableAPIRenderer, _CsvOrJSONRenderer])
+            renderer_classes=[JSONRenderer, _CsvOrJSONRenderer])
     def permissions_effectives(self, request, pk=None):
         """XGED22 — Rapport de permissions effectives sur ce DOSSIER.
 
@@ -330,7 +353,7 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'favori': True})
 
 
-class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
+class CoffreViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED8 — Coffres-forts par employé/client (ACL propriétaire + admin).
 
     Liste/lecture : un employé ne voit QUE ses coffres, un admin voit tous ceux
@@ -387,7 +410,7 @@ class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_DOCUMENTS))
-class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
+class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """Documents logiques (conteneurs versionnés) d'une société.
 
     GED8 — l'ACL coffre-fort est appliquée en lecture : un document placé dans
@@ -539,7 +562,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'tag': 'Tag requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         tag = DocumentTag.objects.filter(
-            company=request.user.company, pk=tag_id).first()
+            company=request.user.company, pk=_pk(tag_id, 'tag')).first()
         if tag is None:
             return Response({'tag': 'Tag inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -554,7 +577,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     def detagger(self, request, pk=None):
         """GED9 — Retire un tag de ce document. Body : `{"tag": <id>}`."""
         document = self.get_object()
-        tag_id = request.data.get('tag')
+        # CI #956 (fuzz r13) — `tag` est OBLIGATOIRE au schéma (`TAG_CORPS`) :
+        # un corps vide répondait 200 (retrait de rien) ; même garde que
+        # `tagger`, et un identifiant mal formé est un 400 nommé (`_pk`).
+        tag_id = _pk(request.data.get('tag'), 'tag')
+        if tag_id is None:
+            return Response({'tag': 'Tag requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         # ADOC19 — retrait journalisé dans le chatter (old→new).
         services.retirer_tag(document, tag_id, user=request.user)
         return Response(
@@ -703,7 +732,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=folder_id).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None or not selectors.folder_lisible(folder, request.user):
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -738,7 +767,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         nom = (request.data.get('nom') or meta['filename'] or 'Document').strip()
         document = Document.objects.create(
             company=company, folder=folder, nom=nom,
-            description=(request.data.get('description') or '').strip(),
+            description=_txt(request.data.get('description'), 'description'),
             created_by=request.user)
         # GED16 — vérifie que le document n'est pas extrait par un autre
         # utilisateur avant d'ajouter la version (televerser crée doc+v1 en
@@ -799,7 +828,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=folder_id).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -866,7 +895,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=folder_id).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -886,8 +915,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             document = services.deposer_photos_assemblees(
                 company=company, folder=folder, images_bytes=images_bytes,
-                nom=(request.data.get('nom') or '').strip(),
-                description=(request.data.get('description') or '').strip(),
+                nom=_txt(request.data.get('nom'), 'nom'),
+                description=_txt(request.data.get('description'), 'description'),
                 created_by=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
@@ -924,7 +953,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=folder_id).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -981,7 +1010,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'folder': 'Le dossier cible est requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
-                  .filter(pk=folder_id).first())
+                  .filter(pk=_pk(folder_id, 'folder')).first())
         if folder is None:
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1043,8 +1072,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
         Point d'entrée de réception : le câblage SAV (appel à l'émission d'un
         document après-vente) est une tâche FUTURE distincte."""
-        nom = (request.data.get('nom') or '').strip()
-        source_type = (request.data.get('source_type') or '').strip()
+        nom = _txt(request.data.get('nom'), 'nom')
+        source_type = _txt(request.data.get('source_type'), 'source_type')
         source_id = request.data.get('source_id')
         if not nom:
             return Response({'nom': 'Le nom du document est requis.'},
@@ -1054,7 +1083,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'source_type et source_id sont requis '
                            '(idempotence par objet SAV source).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        file_key = (request.data.get('file_key') or '').strip()
+        file_key = _txt(request.data.get('file_key'), 'file_key')
         # ASEC37 — une clé d'un autre locataire (préfixe étranger ou clé plate
         # jamais enregistrée chez nous) est refusée : on ne classe jamais le
         # fichier d'une autre société.
@@ -1186,7 +1215,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             from .models import ARCHIVE_LEGALE_MESSAGE
             return Response({'detail': ARCHIVE_LEGALE_MESSAGE},
                             status=status.HTTP_403_FORBIDDEN)
-        type_piece = (request.data.get('type_piece') or '').strip() or None
+        type_piece = _txt(request.data.get('type_piece'), 'type_piece') or None
         version = (DocumentVersion.objects
                    .filter(document=document)
                    .order_by('-version').first())
@@ -1250,7 +1279,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         new_folder = (Folder.objects
                       .filter(company=request.user.company)
-                      .filter(pk=raw_folder).first())
+                      .filter(pk=_pk(raw_folder, 'folder')).first())
         if new_folder is None or not selectors.folder_lisible(
                 new_folder, request.user):
             return Response(
@@ -1381,7 +1410,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         source_version = (DocumentVersion.objects
                           .filter(company=request.user.company,
                                   document=document,
-                                  pk=version_id)
+                                  pk=_pk(version_id, 'version'))
                           .first())
         if source_version is None:
             return Response(
@@ -1745,7 +1774,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             from django.contrib.auth import get_user_model
             approbateur = (get_user_model().objects
                            .filter(company=request.user.company,
-                                   pk=raw_approbateur)
+                                   pk=_pk(raw_approbateur, 'approbateur'))
                            .first())
             if approbateur is None:
                 return Response(
@@ -1760,11 +1789,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             if approbateur is not None:
                 demande = services.request_review(
                     document, user=request.user, approbateur=approbateur,
-                    commentaire=(request.data.get('commentaire') or '').strip())
+                    commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
             else:
                 demande = services.request_review_avec_routage(
                     document, user=request.user,
-                    commentaire=(request.data.get('commentaire') or '').strip())
+                    commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1812,8 +1841,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         retain_until = None
         raw_retain = request.data.get('retain_until')
         if raw_retain not in (None, '', 'null'):
-            from django.utils.dateparse import parse_date
-            retain_until = parse_date(str(raw_retain))
+            retain_until = _date_iso(raw_retain)
             if retain_until is None:
                 return Response(
                     {'retain_until': 'Date invalide (format attendu : '
@@ -1822,7 +1850,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             archivage = services.archiver_legalement(
                 document, user=request.user,
-                motif=(request.data.get('motif') or '').strip(),
+                motif=_txt(request.data.get('motif'), 'motif'),
                 retain_until=retain_until)
         except ValueError as exc:
             return Response(
@@ -1852,7 +1880,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             hold = services.placer_legal_hold(
                 document, user=request.user,
-                motif=(request.data.get('motif') or '').strip())
+                motif=_txt(request.data.get('motif'), 'motif'))
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1897,7 +1925,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         version = (selectors.latest_version(document) if not version_id else
                    DocumentVersion.objects.filter(
                        company=request.user.company, document=document,
-                       pk=version_id).first())
+                       pk=_pk(version_id, 'version')).first())
         if version is None:
             return Response(
                 {'detail': 'Aucune version disponible pour le caviardage.'},
@@ -1906,6 +1934,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             new_doc = services.caviarder_document(
                 version, request.data.get('zones') or [],
                 created_by=request.user)
+        except services.FichierIndisponible as exc:  # CI #956 (fuzz r13)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1927,7 +1957,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         version = (selectors.latest_version(document) if not version_id else
                    DocumentVersion.objects.filter(
                        company=request.user.company, document=document,
-                       pk=version_id).first())
+                       pk=_pk(version_id, 'version')).first())
         if version is None:
             return Response(
                 {'detail': 'Aucune version disponible pour la scission.'},
@@ -1938,6 +1968,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 created_by=request.user)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except services.FichierIndisponible as exc:
+            # CI #956 (fuzz r13) — octets absents du stockage : 404, comme le
+            # proxy de téléchargement ; un corps conforme n'est pas un 400.
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         data = DocumentSerializer(
@@ -1969,10 +2003,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'documents': 'Au moins deux documents sont requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         qs = {d.pk: d for d in selectors.documents_visible_to_user(
-            request.user).filter(pk__in=ids)}
+            request.user).filter(pk__in=_pks(ids))}
         try:
             documents_ordonnes = [qs[int(i)] for i in ids]
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
+            # TypeError : élément objet/liste (ENF11, api-fuzz : 500 -> 404).
             return Response(
                 {'documents': 'Un ou plusieurs documents sont inconnus.'},
                 status=status.HTTP_404_NOT_FOUND)
@@ -1980,7 +2015,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         cible_id = request.data.get('cible')
         if cible_id:
             cible = selectors.documents_visible_to_user(
-                request.user).filter(pk=cible_id).first()
+                request.user).filter(pk=_pk(cible_id, 'cible')).first()
             if cible is None:
                 return Response(
                     {'cible': 'Document cible inconnu.'},
@@ -2006,7 +2041,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             resultat = services.fusionner_pdf(
                 documents_ordonnes, cible=cible,
                 company=request.user.company,
-                nom=(request.data.get('nom') or '').strip(),
+                nom=_txt(request.data.get('nom'), 'nom'),
                 created_by=request.user)
         except PermissionError as exc:
             # ADOC17 — cible extraite (check-out GED16) par un autre.
@@ -2015,6 +2050,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except services.FichierIndisponible as exc:  # CI #956 (fuzz r13)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
@@ -2046,7 +2083,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         versions = {
             v.pk: v for v in DocumentVersion.objects.filter(
                 company=request.user.company, document=document,
-                pk__in=[v1_id, v2_id])
+                pk__in=_pks([v1_id, v2_id]))
         }
         try:
             v1, v2 = versions[int(v1_id)], versions[int(v2_id)]
@@ -2079,7 +2116,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'documents et operation sont requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        qs = selectors.documents_visible_to_user(request.user).filter(pk__in=ids)
+        qs = selectors.documents_visible_to_user(request.user).filter(pk__in=_pks(ids))
         documents = list(qs)
         if operation == 'telecharger_zip':
             zip_bytes, erreurs = services.zipper_documents(documents)
@@ -2100,7 +2137,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         Corps : `{"libelle": "<str>", "echeance": "AAAA-MM-JJ", "assigne_a": <id?>}`.
         `company`/`created_by` posés côté serveur. Écriture : responsable/admin."""
         document = self.get_object()
-        libelle = (request.data.get('libelle') or '').strip()
+        libelle = _txt(request.data.get('libelle'), 'libelle')
         echeance = request.data.get('echeance')
         if not libelle or not echeance:
             return Response(
@@ -2111,7 +2148,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if raw_assigne:
             from django.contrib.auth import get_user_model
             assigne_a = get_user_model().objects.filter(
-                company=request.user.company, pk=raw_assigne).first()
+                company=request.user.company, pk=_pk(raw_assigne, 'assigne_a')).first()
         try:
             planif = services.planifier_document(
                 document, libelle=libelle, echeance=echeance,
@@ -2139,7 +2176,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         parameters=[oa.Q_FORMAT_CSV],
         responses={200: oa.LIGNES, (200, 'text/csv'): OpenApiTypes.STR})
     @action(detail=True, methods=['get'], url_path='permissions-effectives',
-            renderer_classes=[JSONRenderer, BrowsableAPIRenderer, _CsvOrJSONRenderer])
+            renderer_classes=[JSONRenderer, _CsvOrJSONRenderer])
     def permissions_effectives(self, request, pk=None):
         """XGED22 — Rapport de permissions effectives (« qui voit ce document
         et pourquoi »).
@@ -2198,7 +2235,7 @@ def _lire_version(version):
         responses={200: DocumentVersionSerializer,
                    201: DocumentVersionSerializer}),
 )
-class DocumentVersionViewSet(ParsersParActionMixin, TenantMixin,
+class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin,
                              viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
     côté serveur via `services.add_version` ; `checksum` permet la dédup.
@@ -2455,7 +2492,7 @@ class DocumentVersionViewSet(ParsersParActionMixin, TenantMixin,
         request=oa.LIEN_CORPS,
         responses={200: DocumentLienSerializer, 201: DocumentLienSerializer}),
 )
-class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
+class DocumentLienViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED6 — Liens polymorphes Document ↔ objet métier (records.ALLOWED_TARGETS).
 
     Création : `{"document": <id>, "model": "ventes.devis", "id": <pk>}`. La
@@ -2517,7 +2554,7 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
         # ASEC38 — document VISIBLE de l'appelant (ACL coffre + GED19) et
         # écriture ACL exigée : lier modifie le document.
         document = selectors.documents_visible_to_user(
-            request.user).filter(pk=doc_id).first()
+            request.user).filter(pk=_pk(doc_id, 'document')).first()
         if document is None:
             return Response({'document': 'Document inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -2536,7 +2573,7 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_TAGS))
-class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
+class DocumentTagViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED9 — Taxonomie de tags documentaires (hiérarchique, scopée société).
 
     Lecture : tout rôle (les formulaires/filtres en ont besoin). Écriture :
@@ -2586,7 +2623,7 @@ class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
 
 @extend_schema_view(list=extend_schema(parameters=[
     oa.Q_DOCUMENT, oa.P('tag', oa.ID, description='Tag.')]))
-class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
+class DocumentTagAssignmentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED9 — Affectations tag↔document (M2M explicite, scopé société).
 
     Création : `{"document": <id>, "tag": <id>}` (idempotent via la contrainte
@@ -2629,7 +2666,7 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_APPROBATIONS))
-class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class DemandeApprobationViewSet(CorpsObjetMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """GED18 — Workflow d'approbation / revue documentaire (scopé société).
 
     Lecture seule en CRUD : une demande est CRÉÉE via
@@ -2686,7 +2723,7 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             # comportement GED18 inchangé).
             dem = services.avancer_chaine_approbation_ged(
                 demande, user=request.user,
-                commentaire=(request.data.get('commentaire') or '').strip())
+                commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -2712,7 +2749,7 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         try:
             dem = services.reject_demande(
                 demande, user=request.user,
-                commentaire=(request.data.get('commentaire') or '').strip())
+                commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -2726,7 +2763,7 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_DOCUMENT, oa.Q_ACTIF]))
-class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
+class PartageGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED20 — CRUD de gestion des partages publics tokenisés (scopé société).
 
     Côté GESTION uniquement (créer, lister, révoquer) — l'accès public au
@@ -2790,7 +2827,7 @@ class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_ACTIF]))
-class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
+class PolitiqueRetentionViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED22 — CRUD des politiques de rétention (scopé société).
 
     Une politique décrit la durée de conservation d'une classe de documents et
@@ -2865,7 +2902,7 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
     create=extend_schema(request=oa.ARCHIVAGE_CORPS,
                          responses={201: ArchivageLegalSerializer}),
 )
-class ArchivageLegalViewSet(TenantMixin,
+class ArchivageLegalViewSet(CorpsObjetMixin, TenantMixin,
                             mixins.ListModelMixin,
                             mixins.RetrieveModelMixin,
                             mixins.CreateModelMixin,
@@ -2911,33 +2948,22 @@ class ArchivageLegalViewSet(TenantMixin,
         "retain_until": "<YYYY-MM-DD?>"}`. Le document est borné à la société
         (404 cross-société). `company`/`archive_par`/`version`/hash/object-lock
         sont posés côté serveur (jamais lus du corps)."""
-        document_id = request.data.get('document')
-        if not document_id:
-            return Response(
-                {'document': 'Le document à archiver est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 (api-fuzz) — corps validé par son schéma (ARCHIVAGE_CORPS) :
+        # `document: [null, null]` cassait `pk=` en 500 -> 400 nommé.
+        corps = type(oa.ARCHIVAGE_CORPS)(data=request.data)
+        corps.is_valid(raise_exception=True)
         # Borne à la société courante (jamais un document d'autrui).
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=document_id).first())
+                    .filter(pk=corps.validated_data['document']).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
                 status=status.HTTP_404_NOT_FOUND)
-        retain_until = None
-        raw_retain = request.data.get('retain_until')
-        if raw_retain not in (None, '', 'null'):
-            from django.utils.dateparse import parse_date
-            retain_until = parse_date(str(raw_retain))
-            if retain_until is None:
-                return Response(
-                    {'retain_until': 'Date invalide (format attendu : '
-                                     'AAAA-MM-JJ).'},
-                    status=status.HTTP_400_BAD_REQUEST)
         try:
             archivage = services.archiver_legalement(
                 document, user=request.user,
-                motif=(request.data.get('motif') or '').strip(),
-                retain_until=retain_until)
+                motif=(corps.validated_data.get('motif') or '').strip(),
+                retain_until=corps.validated_data.get('retain_until'))
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -2974,7 +3000,7 @@ class ArchivageLegalViewSet(TenantMixin,
     create=extend_schema(request=oa.LEGAL_HOLD_CORPS,
                          responses={201: LegalHoldSerializer}),
 )
-class LegalHoldViewSet(TenantMixin,
+class LegalHoldViewSet(CorpsObjetMixin, TenantMixin,
                        mixins.ListModelMixin,
                        mixins.RetrieveModelMixin,
                        mixins.CreateModelMixin,
@@ -3036,7 +3062,7 @@ class LegalHoldViewSet(TenantMixin,
                 {'document': 'Le document à geler est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=document_id).first())
+                    .filter(pk=_pk(document_id, 'document')).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3044,7 +3070,7 @@ class LegalHoldViewSet(TenantMixin,
         try:
             hold = services.placer_legal_hold(
                 document, user=request.user,
-                motif=(request.data.get('motif') or '').strip())
+                motif=_txt(request.data.get('motif'), 'motif'))
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -3071,7 +3097,7 @@ class LegalHoldViewSet(TenantMixin,
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_ACTIF]))
-class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
+class ModeleDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint, scopé société).
 
     CRUD complet d'un `ModeleDocument` (corps HTML avec jetons ``{{ champ }}``) +
@@ -3191,6 +3217,8 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except services.SignatureEnCoursError as exc:  # ADOC178
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             {'document': document.id, 'document_nom': document.nom,
              'created': created},
@@ -3202,7 +3230,7 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     create=extend_schema(request=oa.SIGNATURE_CORPS,
                          responses={201: DemandeSignatureDocumentSerializer}),
 )
-class DemandeSignatureDocumentViewSet(TenantMixin,
+class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
                                       mixins.ListModelMixin,
                                       mixins.RetrieveModelMixin,
                                       mixins.CreateModelMixin,
@@ -3257,8 +3285,8 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         cross-société). `company`/`created_by` posés côté serveur (jamais lus du
         corps). Mode STUB no-op tant qu'aucun provider e-sign n'est configuré."""
         document_id = request.data.get('document')
-        nom = (request.data.get('signataire_nom') or '').strip()
-        email = (request.data.get('signataire_email') or '').strip()
+        nom = _txt(request.data.get('signataire_nom'), 'signataire_nom')
+        email = _txt(request.data.get('signataire_email'), 'signataire_email')
         if not document_id:
             return Response(
                 {'document': 'Le document à signer est requis.'},
@@ -3268,7 +3296,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 {'signataire': 'Le nom et l\'email du signataire sont requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=document_id).first())
+                    .filter(pk=_pk(document_id, 'document')).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3310,7 +3338,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         demande = self.get_object()  # borné à la société (TenantMixin)
         demande = services.marquer_signe(
             demande,
-            provider_ref=(request.data.get('provider_ref') or '').strip())
+            provider_ref=_txt(request.data.get('provider_ref'), 'provider_ref'))
         return Response(
             DemandeSignatureDocumentSerializer(
                 demande, context={'request': request}).data,
@@ -3406,7 +3434,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
         valide = entree.validated_data
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=document_id).first())
+                    .filter(pk=_pk(document_id, 'document')).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3482,7 +3510,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         return Response(data)
 
 
-class RoleSignataireViewSet(TenantMixin, viewsets.ModelViewSet):
+class RoleSignataireViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """ZGED1 — Catalogue de rôles signataires réutilisables (couleur + auth
     extra + peut changer de signataire).
 
@@ -3509,7 +3537,7 @@ class RoleSignataireViewSet(TenantMixin, viewsets.ModelViewSet):
 
 @extend_schema_view(list=extend_schema(parameters=[
     oa.P('demande', oa.ID, description='Demande de signature.')]))
-class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
+class SignataireDemandeViewSet(CorpsObjetMixin, TenantMixin, mixins.ListModelMixin,
                                mixins.RetrieveModelMixin,
                                viewsets.GenericViewSet):
     """XGED2 — Destinataires d'une demande de signature (LECTURE SEULE via
@@ -3538,7 +3566,7 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
 @extend_schema_view(list=extend_schema(parameters=[
     oa.P('demande', oa.ID, description='Demande de signature.'),
     oa.P('modele', oa.ID, description='Modèle de document.')]))
-class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
+class ChampSignatureViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED3 — Zones de champs positionnées (placement de modèle de signature).
 
     `company` posée CÔTÉ SERVEUR (`TenantMixin.perform_create`) — jamais lue
@@ -3601,7 +3629,7 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
 
 @extend_schema_view(list=extend_schema(parameters=[
     oa.P('actif', description='Filtre sur le drapeau actif.')]))
-class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
+class TypeChampSignatureViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """ZGED4 — Catalogue de types de champs de signature personnalisés.
 
     CRUD scopé société ; `company`/`created_by` posés côté serveur. Lecture :
@@ -3631,7 +3659,7 @@ class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
-class RoutageDocumentaireViewSet(TenantMixin, viewsets.ModelViewSet):
+class RoutageDocumentaireViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """ZGED6 — Réglages de centralisation des fichiers d'un autre module vers
     un dossier GED. CRUD scopé société ; `company`/`created_by` posés côté
     serveur. Lecture : tout rôle authentifié. Écriture : responsable/admin."""
@@ -3655,7 +3683,7 @@ class RoutageDocumentaireViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
-class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
+class VueGedEnregistreeViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """ZGED8 — Recherches/filtres GED enregistrés et partageables.
 
     Lecture : chacun voit ses vues PRIVÉES + les vues PARTAGÉES de sa société
@@ -3702,7 +3730,7 @@ class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_JOURNAL))
-class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
+class JournalAccesViewSet(CorpsObjetMixin, TenantMixin, mixins.ListModelMixin,
                           mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """GED35 — Journal d'audit d'accès aux documents (LECTURE SEULE).
 
@@ -3736,7 +3764,7 @@ class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
         return qs
 
 
-class QuotaStockageViewSet(TenantMixin, viewsets.ModelViewSet):
+class QuotaStockageViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED36 — Quota de stockage de la société (consultation + réglage admin).
 
     Au plus UNE entrée par société (OneToOne). `company` posée CÔTÉ SERVEUR
@@ -3791,7 +3819,7 @@ class QuotaStockageViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_FOLDER]))
-class DepotPublicViewSet(TenantMixin, viewsets.ModelViewSet):
+class DepotPublicViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED7 — Gestion (côté propriétaire) des liens de dépôt public.
 
     `company`/`created_by`/`token` posés côté serveur. L'accès public au dépôt
@@ -3841,7 +3869,7 @@ class DepotPublicViewSet(TenantMixin, viewsets.ModelViewSet):
             DepotPublicSerializer(depot, context={'request': request}).data)
 
 
-class ExigenceDossierViewSet(TenantMixin, viewsets.ModelViewSet):
+class ExigenceDossierViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED8 — Modèle de checklist de pièces requises (par société)."""
     queryset = ExigenceDossier.objects.select_related('cabinet', 'folder').all()
     serializer_class = ExigenceDossierSerializer
@@ -3864,7 +3892,7 @@ class ExigenceDossierViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_FOLDER, oa.Q_STATUT]))
-class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
+class DemandeDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED8 — Demandes de pièces (placeholder + relances jusqu'au dépôt)."""
     queryset = DemandeDocument.objects.select_related(
         'folder', 'exigence', 'utilisateur', 'document').all()
@@ -3933,7 +3961,7 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'folder': 'Le dossier est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         folder = Folder.objects.filter(
-            company=request.user.company, pk=folder_id).first()
+            company=request.user.company, pk=_pk(folder_id, 'folder')).first()
         if folder is None:
             return Response(
                 {'folder': 'Dossier inconnu.'}, status=status.HTTP_404_NOT_FOUND)
@@ -3952,7 +3980,7 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 @extend_schema_view(list=extend_schema(parameters=[
     oa.P('en_attente', enum=oa.FLAG_VRAI,
          description='``1`` : en attente de validation seulement.')]))
-class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
+class ValidationOcrDocumentViewSet(CorpsObjetMixin, TenantMixin, mixins.ListModelMixin,
                                    mixins.RetrieveModelMixin,
                                    viewsets.GenericViewSet):
     """XGED13 — File de validation d'extraction OCR (score de confiance).
@@ -4011,7 +4039,7 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
 
 @extend_schema_view(list=extend_schema(parameters=[
     oa.P('version', oa.ID, description='Version annotée.')]))
-class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
+class AnnotationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED16 — Annotations/tampons sur l'image d'une version (couche séparée
     — le fichier original n'est jamais modifié)."""
     queryset = AnnotationDocument.objects.select_related('version', 'auteur').all()
@@ -4062,7 +4090,7 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         # ADOC3 — version d'un document VISIBLE de l'appelant, sinon 404.
         version = DocumentVersion.objects.filter(
-            company=request.user.company, pk=version_id,
+            company=request.user.company, pk=_pk(version_id, 'version'),
             document_id__in=selectors.document_ids_visibles(request.user),
         ).first()
         if version is None:
@@ -4070,6 +4098,8 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'version': 'Version inconnue.'}, status=status.HTTP_404_NOT_FOUND)
         try:
             out_bytes = services.exporter_pdf_annote(version)
+        except services.FichierIndisponible as exc:  # CI #956 (fuzz r13)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         response = HttpResponse(out_bytes, content_type='application/pdf')
@@ -4078,7 +4108,7 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return response
 
 
-class TamponSocieteViewSet(CompanyScopedModelViewSet):
+class TamponSocieteViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     """WIR164 — Tampons PROPRES à la société (XGED16), en plus des 3 tampons
     système (`TAMPONS_SYSTEME`, jamais gérés ici — constante applicative,
     partagée par toutes les sociétés). Avant ce ViewSet, `tampons_disponibles()`
@@ -4108,7 +4138,7 @@ class TamponSocieteViewSet(CompanyScopedModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_FOLDER]))
-class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
+class RegleDossierViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED19 — Règles d'action automatique à l'upload dans un dossier."""
     queryset = RegleDossier.objects.select_related('folder', 'created_by').all()
     serializer_class = RegleDossierSerializer
@@ -4151,7 +4181,7 @@ class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
             ExecutionRegleDossierSerializer(qs, many=True).data)
 
 
-class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
+class RegleApprobationGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED20 — Routage conditionnel des approbations par métadonnées."""
     queryset = RegleApprobationGed.objects.select_related('created_by').all()
     serializer_class = RegleApprobationGedSerializer
@@ -4179,7 +4209,7 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_ACLS))
-class AclGedViewSet(CompanyScopedModelViewSet):
+class AclGedViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     """WIR163 — API de gestion des droits d'accès GED19 (`AclGed`).
 
     CRUD des entrées ACL par dossier/document (héritage + override, résolu en
@@ -4266,7 +4296,7 @@ class AclGedViewSet(CompanyScopedModelViewSet):
         instance.delete()
 
 
-class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
+class RegleAclMetadonneeViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED21 — ACL automatiques pilotées par métadonnées (couche dynamique).
 
     CRUD des règles ; l'admin voit toujours tout (résolution `acl_effective`
@@ -4304,7 +4334,7 @@ class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
     create=extend_schema(request=oa.DISPOSITION_CORPS,
                          responses={201: DemandeDispositionSerializer}),
 )
-class DemandeDispositionViewSet(TenantMixin,
+class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
                                 mixins.ListModelMixin,
                                 mixins.RetrieveModelMixin,
                                 mixins.CreateModelMixin,
@@ -4344,7 +4374,7 @@ class DemandeDispositionViewSet(TenantMixin,
         Body : `{"libelle": "<str>", "action": "detruire|archiver",
         "documents": [<id>, …]}`. Les holds actifs (GED24) sont exclus
         d'office ; `company`/`demandeur` posés côté serveur."""
-        libelle = (request.data.get('libelle') or '').strip()
+        libelle = _txt(request.data.get('libelle'), 'libelle')
         action_disp = request.data.get('action') or 'detruire'
         # ADOC7 — proposer une DESTRUCTION exige ged_gouvernance.
         if action_disp == 'detruire':
@@ -4383,7 +4413,7 @@ class DemandeDispositionViewSet(TenantMixin,
         try:
             demande = services.approuver_demande_disposition(
                 demande, user=request.user,
-                commentaire=(request.data.get('commentaire') or '').strip())
+                commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except DemandeDispositionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -4406,7 +4436,7 @@ class DemandeDispositionViewSet(TenantMixin,
         try:
             demande = services.rejeter_demande_disposition(
                 demande, user=request.user,
-                commentaire=(request.data.get('commentaire') or '').strip())
+                commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except DemandeDispositionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -4438,7 +4468,7 @@ class DemandeDispositionViewSet(TenantMixin,
                 demande, context={'request': request}).data)
 
 
-class LotEnvoiViewSet(TenantMixin,
+class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
                       mixins.ListModelMixin,
                       mixins.RetrieveModelMixin,
                       viewsets.GenericViewSet):
@@ -4484,7 +4514,7 @@ class LotEnvoiViewSet(TenantMixin,
                 {'modele': 'Le modèle de document est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         modele = ModeleDocument.objects.filter(
-            company=request.user.company, pk=modele_id).first()
+            company=request.user.company, pk=_pk(modele_id, 'modele')).first()
         if modele is None:
             return Response(
                 {'modele': 'Modèle inconnu.'}, status=status.HTTP_404_NOT_FOUND)
@@ -4506,7 +4536,7 @@ class LotEnvoiViewSet(TenantMixin,
             if client_ids:
                 from apps.crm import selectors as crm_selectors
                 clients = crm_selectors.client_base_qs(
-                    request.user.company).filter(pk__in=client_ids)
+                    request.user.company).filter(pk__in=_pks(client_ids))
                 for client in clients:
                     nom_complet = ' '.join(
                         p for p in [client.nom, getattr(client, 'prenom', '')]
@@ -4523,7 +4553,7 @@ class LotEnvoiViewSet(TenantMixin,
         lot = services.creer_lot_envoi_signature(
             company=request.user.company, modele=modele,
             destinataires=destinataires,
-            libelle=(request.data.get('libelle') or '').strip(),
+            libelle=_txt(request.data.get('libelle'), 'libelle'),
             created_by=request.user)
         return Response(
             LotEnvoiSerializer(lot, context={'request': request}).data,
@@ -4543,7 +4573,7 @@ class LotEnvoiViewSet(TenantMixin,
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_DOCUMENT]))
-class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
+class PlanificationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED15 — Activités planifiées sur un document."""
     queryset = PlanificationDocument.objects.select_related(
         'document', 'assigne_a', 'created_by').all()
@@ -4933,8 +4963,8 @@ def public_depot(request, token):
         document = services.deposer_via_lien_public(
             depot, file_key=meta['file_key'], filename=meta['filename'],
             size=meta['size'], mime=meta['mime'],
-            uploader_nom=(request.data.get('nom') or '').strip(),
-            uploader_email=(request.data.get('email') or '').strip())
+            uploader_nom=_txt(request.data.get('nom'), 'nom'),
+            uploader_email=_txt(request.data.get('email'), 'email'))
     except QuotaDepasseError:  # ADOC23 — course entre deux dépôts.
         return _ged_noindex(Response(
             {'detail': 'Quota de stockage atteint : dépôt impossible.'},
@@ -5103,7 +5133,7 @@ def public_signature(request, token):
                      status=status.HTTP_200_OK))
 
     # POST — signer ou refuser.
-    action_demandee = (request.data.get('action') or '').strip().lower()
+    action_demandee = _txt(request.data.get('action'), 'action').lower()
     ua = (request.META.get('HTTP_USER_AGENT') or '')[:512]
 
     if action_demandee == 'refuser':
@@ -5323,7 +5353,7 @@ def public_signataire(request, token):
                        "signataire : vous pouvez le consulter, pas le signer."},
             status=status.HTTP_403_FORBIDDEN)), document=demande.document)
 
-    action_demandee = (request.data.get('action') or '').strip().lower()
+    action_demandee = _txt(request.data.get('action'), 'action').lower()
     if action_demandee == 'refuser':
         try:
             signataire = services.refuser_signataire(

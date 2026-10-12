@@ -79,7 +79,12 @@ def _now():
 
 
 BASE = '/api/django/crm/points-contact/'
-ATTR = '/api/django/crm/points-contact/attribution/'
+# ACRM67 — la route ``points-contact/attribution/`` est retirée (D-ACRM-6) :
+# le résumé d'attribution reste servi par ``leads/<id>/points-contact/``.
+
+
+def attr_url(lead):
+    return f'/api/django/crm/leads/{lead.pk}/points-contact/'
 
 
 # ── Modèle ───────────────────────────────────────────────────────────────────
@@ -263,7 +268,7 @@ class TestPointContactAttribution(TestCase):
             date_contact=base + timedelta(days=3))
 
     def test_attribution_endpoint(self):
-        resp = self.api.get(ATTR, {'lead': self.lead.pk})
+        resp = self.api.get(attr_url(self.lead))
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['count'], 4)
         self.assertEqual(resp.data['first_touch']['canal'], 'meta_ads')
@@ -278,12 +283,8 @@ class TestPointContactAttribution(TestCase):
         self.assertEqual(
             canaux, ['meta_ads', 'site_web', 'whatsapp_ctwa', 'autre'])
 
-    def test_attribution_requires_lead_param(self):
-        resp = self.api.get(ATTR)
-        self.assertEqual(resp.status_code, 400)
-
     def test_attribution_unknown_lead_404(self):
-        resp = self.api.get(ATTR, {'lead': 999999})
+        resp = self.api.get('/api/django/crm/leads/999999/points-contact/')
         self.assertEqual(resp.status_code, 404)
 
     def test_lead_action_points_contact(self):
@@ -296,7 +297,7 @@ class TestPointContactAttribution(TestCase):
 
     def test_empty_journal_has_no_touches(self):
         empty_lead = make_lead(self.co, nom='Sans contact')
-        resp = self.api.get(ATTR, {'lead': empty_lead.pk})
+        resp = self.api.get(attr_url(empty_lead))
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['count'], 0)
         self.assertIsNone(resp.data['first_touch'])
@@ -343,7 +344,7 @@ class TestPointContactScoping(TestCase):
 
     def test_attribution_other_company_lead_404(self):
         api1 = make_api(self.u1)
-        resp = api1.get(ATTR, {'lead': self.lead2.pk})
+        resp = api1.get(attr_url(self.lead2))
         self.assertEqual(resp.status_code, 404)
 
 
@@ -371,14 +372,12 @@ class TestPointContactRoleGate(TestCase):
         resp = api.get(BASE)
         self.assertEqual(resp.status_code, 200)
 
-    def test_reader_can_view_attribution(self):
-        PointContact.objects.create(
-            company=self.co, lead=self.lead,
-            canal='meta_ads', date_contact=_now())
+    def test_reader_ne_voit_plus_la_route_attribution_retiree(self):
+        """ACRM67 — la route retirée répond 404, même au lecteur."""
         api = make_api(self.reader)
-        resp = api.get(ATTR, {'lead': self.lead.pk})
-        self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data['count'], 1)
+        resp = api.get('/api/django/crm/points-contact/attribution/',
+                       {'lead': self.lead.pk})
+        self.assertEqual(resp.status_code, 404)
 
     def test_writer_can_create(self):
         api = make_api(self.writer)

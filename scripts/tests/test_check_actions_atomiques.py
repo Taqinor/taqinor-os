@@ -116,7 +116,8 @@ class DepotTests(unittest.TestCase):
         self.assertEqual(guard.main([]), 0)
 
     def test_retirer_l_atomic_de_marquer_nomme_l_action(self):
-        vues = (ROOT / guard.VIEWS_REL).read_text(encoding="utf-8")
+        vues = (ROOT / "backend/django_core/apps/crm/cadence_views.py").read_text(
+            encoding="utf-8")
         services = guard.source_services()
         casse = vues.replace("@_geste_atomique\n    def _marquer",
                              "def _marquer", 1)

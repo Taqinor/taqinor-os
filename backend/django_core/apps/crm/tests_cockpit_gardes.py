@@ -30,7 +30,7 @@ from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_DECIDER_SUITE, CLE_DEVIS, CLE_DEVIS_MODIFIE, CLE_PLANIFIER)
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.views import (
+from apps.crm.cadence_views import (
     MESSAGE_ETAPE_DEJA_TRAITEE, MESSAGE_TACHE_NON_SAUTABLE)
 from apps.parametres.models import CompanyProfile
 

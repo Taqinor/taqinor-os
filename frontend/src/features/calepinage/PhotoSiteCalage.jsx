@@ -1,8 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   `positionsInitiales`/`coinsDepuisMarqueurs` sont des fonctions PURES
-   (géométrie, zéro React) : la tâche exige un « test unitaire des maths de
-   calage », qui doit pouvoir les appeler sans monter Leaflet — même
-   dérogation que `PlanImporteCalage.jsx` (CAL63) du même module. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import L from 'leaflet'
@@ -16,6 +11,7 @@ import {
   SelectTrigger, SelectValue, Spinner,
 } from '../../ui'
 import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
+import { DEFAULT_CENTER, coinsDepuisMarqueurs, positionsInitiales } from './PhotoSiteCalage.helpers'
 
 /* ============================================================================
    CAL53 — CALER LA PHOTO DE SITE (drone/oblique/sol, CAL52) SUR LA CARTE.
@@ -41,8 +37,7 @@ import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
    masquerait le contour déjà connu.
    ========================================================================== */
 
-const DEFAULT_CENTER = [31.7917, -7.0926] // Maroc — repli si rien n'est connu.
-const DELTA = 0.00012 // ≈13 m — écart initial des 4 poignées autour du centre.
+  // ≈13 m — écart initial des 4 poignées autour du centre.
 
 /* CALX38 — LE DÉPÔT D'UNE PHOTO DE SITE, EN TÊTE DU PANNEAU DE CALAGE.
    ----------------------------------------------------------------------------
@@ -69,31 +64,6 @@ const TAILLE_MAX_OCTETS = 15 * 1024 * 1024 // MAX_OCTETS, services/photos.py
 /* ACAL67 — l'opacité de départ du fond posé depuis une photo calée (confort de
    dessin, `$defs/underlay.opacite` ; la valeur du curseur de l'aperçu n'en est pas une). */
 const OPACITE_FOND = 0.6
-
-/**
- * Les 4 positions `[lat, lng]` de départ des poignées : celles d'un calage
- * déjà enregistré (relecture EXACTE, jamais recalculée), sinon un petit carré
- * autour du `centre` donné. Fonction PURE — testable sans monter la carte.
- */
-export function positionsInitiales(calageExistant, centre) {
-  const coins = calageExistant?.coins
-  if (Array.isArray(coins) && coins.length === 4) return coins
-  const [lat, lng] = centre ?? DEFAULT_CENTER
-  return [
-    [lat + DELTA, lng - DELTA],
-    [lat + DELTA, lng + DELTA],
-    [lat - DELTA, lng + DELTA],
-    [lat - DELTA, lng - DELTA],
-  ]
-}
-
-/** Les 4 marqueurs Leaflet → `[[lat, lng] × 4]`, dans leur ordre de pose. */
-export function coinsDepuisMarqueurs(marqueurs) {
-  return marqueurs.map((m) => {
-    const ll = m.getLatLng()
-    return [ll.lat, ll.lng]
-  })
-}
 
 /** ACAL203 — le motif d'un 400 de calage (`{calage: "…"}`), tel que le serveur le dit. */
 function motifCalage(donnees) {

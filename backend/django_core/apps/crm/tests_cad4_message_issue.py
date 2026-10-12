@@ -17,7 +17,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.views import MESSAGE_ISSUE_APPEL_OBLIGATOIRE
+from apps.crm.cadence_views import MESSAGE_ISSUE_APPEL_OBLIGATOIRE
 
 User = get_user_model()
 

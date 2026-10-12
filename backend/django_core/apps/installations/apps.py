@@ -1,3 +1,5 @@
+import importlib
+
 from django.apps import AppConfig
 
 
@@ -19,7 +21,7 @@ class InstallationsConfig(AppConfig):
         # M6 — abonne Installations aux événements métier (core.events) : crée
         # automatiquement le chantier à l'acceptation d'un devis, sans couplage
         # direct ventes → installations (import local pour éviter les cycles).
-        from . import receivers  # noqa: F401
+        importlib.import_module(f'{self.name}.receivers')
         # AG9 — enregistre les actions agentiques de l'app dans le registre AG1
         # (import function-local pour éviter les cycles au chargement des apps).
         from .agent_actions import register_installation_actions

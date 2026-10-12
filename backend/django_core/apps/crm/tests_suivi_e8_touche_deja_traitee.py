@@ -27,7 +27,7 @@ from testkit.time import frozen
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_touche import marquer_etape_relance
-from apps.crm.views import MESSAGE_ETAPE_DEJA_TRAITEE
+from apps.crm.cadence_views import MESSAGE_ETAPE_DEJA_TRAITEE
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

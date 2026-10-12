@@ -253,7 +253,7 @@ def generer_interventions_recurrentes_task():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += len(generer_interventions_recurrentes(company))
-        except Exception:  # noqa: BLE001 — société suivante
+        except Exception:  # société suivante
             logger.warning(
                 'installations.generer_interventions_recurrentes: échec '
                 'société %s', company.id, exc_info=True)
@@ -318,7 +318,7 @@ def relancer_rfq_en_attente_task():
                     rfq__statut=RFQ.Statut.ENVOYEE,
                     rfq__date_limite_reponse=cible,
                 ).select_related('rfq', 'rfq__created_by', 'fournisseur'))
-        except Exception:  # noqa: BLE001 — société suivante
+        except Exception:  # société suivante
             logger.warning(
                 'installations.relancer_rfq_en_attente: échec calcul '
                 'société %s', company.id, exc_info=True)
@@ -354,7 +354,7 @@ def relancer_rfq_en_attente_task():
                     link='/chantiers/consultations',
                     company=company)
                 count += 1
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except Exception:  # best-effort, jamais bloquant
                 logger.warning(
                     'installations.relancer_rfq_en_attente: notification '
                     'échouée (consultation %s)', consultation.pk,
@@ -444,7 +444,7 @@ def purger_demandes_achat_brouillon_task():
                 epinglee=False,
                 date_modification__lt=seuil,
             ).update(archivee=True, date_archivage=maintenant)
-        except Exception:  # noqa: BLE001 — société suivante
+        except Exception:  # société suivante
             logger.warning(
                 'installations.purger_demandes_achat_brouillon: échec société '
                 '%s', company.id, exc_info=True)

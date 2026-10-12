@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from .query_params import DATE_OU_VIDE, IDENTIFIANT, date_param, id_param
 from apps.crm.exports import build_xlsx_response
 from core.dates import aujourd_hui_local, maintenant_local
 from drf_spectacular.types import OpenApiTypes
@@ -64,9 +65,9 @@ _SAV_SLA_SAV_SLA_INSIGHT_REPONSE = inline_serializer('SavSlaSavSlaInsightReponse
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('from', OpenApiTypes.STR, required=False),
-        OpenApiParameter('to', OpenApiTypes.STR, required=False),
-        OpenApiParameter('technicien', OpenApiTypes.INT, required=False),
+        OpenApiParameter('from', DATE_OU_VIDE, required=False),
+        OpenApiParameter('to', DATE_OU_VIDE, required=False),
+        OpenApiParameter('technicien', IDENTIFIANT, required=False),
         OpenApiParameter('priorite', OpenApiTypes.STR, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
@@ -93,13 +94,13 @@ def sav_sla_insight(request):
 
     qs = Ticket.objects.filter(**co, annule=False)
 
-    start = request.query_params.get('from')
-    end = request.query_params.get('to')
+    start = date_param(request, 'from')
+    end = date_param(request, 'to')
     if start:
         qs = qs.filter(date_creation__date__gte=start)
     if end:
         qs = qs.filter(date_creation__date__lte=end)
-    technicien_id = request.query_params.get('technicien')
+    technicien_id = id_param(request, 'technicien')
     if technicien_id:
         qs = qs.filter(technicien_responsable_id=technicien_id)
     priorite = request.query_params.get('priorite')

@@ -122,7 +122,7 @@ class TestCreateFromDevis(TestCase):
         self.devis.save()
         r = self.api.post('/api/django/installations/chantiers/creer-depuis-devis/',
                           {'devis': self.devis.id}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_creation_writes_a_chatter_line(self):
         r = self.api.post('/api/django/installations/chantiers/creer-depuis-devis/',

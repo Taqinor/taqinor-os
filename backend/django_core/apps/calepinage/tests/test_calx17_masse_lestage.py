@@ -28,6 +28,7 @@ Essais PURS : aucune base, aucun réseau. Run ::
 """
 from __future__ import annotations
 
+import importlib
 import json
 import pathlib
 
@@ -58,7 +59,7 @@ def _actions():
     L'import d'``urls`` exécute les rattachements par attribut de classe : la
     table serait autrement celle du viewset nu.
     """
-    from apps.calepinage import urls  # noqa: F401
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return CalepinageViewSet, {methode.__name__: methode

@@ -50,6 +50,7 @@ from rest_framework.response import Response
 from ..permissions import PeutGererCalepinage
 from ..services.variantes import DuplicationEnConflit, VarianteRefusee
 from ..services.variantes import dupliquer as service_dupliquer
+from .calepinages import CalepinageViewSet
 
 __all__ = ['dupliquer']
 
@@ -84,7 +85,17 @@ def _drapeau(brut, defaut=True):
     'CalepinageDupliquerRequete', {
         'avec_variantes': drf_serializers.BooleanField(required=False),
         'titre': drf_serializers.CharField(required=False, allow_blank=True),
-    }))
+    }),
+    responses={201: inline_serializer('CalepinageDupliquerReponse', {
+        'calepinage': drf_serializers.IntegerField(),
+        'reference': drf_serializers.CharField(),
+        'nom': drf_serializers.CharField(),
+        'source': drf_serializers.IntegerField(),
+        'avec_variantes': drf_serializers.BooleanField(),
+        'variantes_copiees': drf_serializers.IntegerField(),
+        'devis': drf_serializers.IntegerField(allow_null=True),
+        'layout_hash': drf_serializers.CharField(allow_blank=True),
+    })})
 @action(detail=True, methods=['post'], url_path='dupliquer',
         permission_classes=[PeutGererCalepinage])
 def dupliquer(self, request, pk=None):
@@ -98,6 +109,13 @@ def dupliquer(self, request, pk=None):
 
     calepinage = self.get_object()  # borné société par get_queryset
     corps = request.data if isinstance(request.data, dict) else {}
+    # ENF11 — types publiés (booléen / texte) exigés : 400 nommé sinon, au lieu
+    # d'interpréter « oui » / 5 comme une valeur valide.
+    for cle, attendu, libelle in (('avec_variantes', bool, 'un booléen'),
+                                  ('titre', str, 'un texte')):
+        if cle in corps and not isinstance(corps[cle], attendu):
+            return Response({cle: f'{cle} doit être {libelle}.'},
+                            status=status.HTTP_400_BAD_REQUEST)
     avec_variantes = _drapeau(corps.get('avec_variantes'))
     # ACAL187 (D-ACAL-12) — la CIBLE optionnelle {lead, client} : absente,
     # la copie garde le rattachement de la source (refusé 409 quand la source
@@ -133,8 +151,6 @@ def dupliquer(self, request, pk=None):
         'layout_hash': copie.layout_hash or '',
     }, status=status.HTTP_201_CREATED)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF découvre
 # l'action par ``get_extra_actions()`` et reconstruit le mapping depuis

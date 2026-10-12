@@ -1,13 +1,10 @@
-/* eslint-disable react-refresh/only-export-components --
-   `libelleOrigine`/`libelleCote` sont des fonctions PURES que le test
-   unitaire confronte à l'exemple committé du contrat. Même dérogation que
-   `AffectationChaines.jsx`/`PanneauMasseLestage.jsx` du même module. */
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Card, EmptyState, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
+import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
 
 /* ============================================================================
    CALX229 — L'ONGLET « CHEMINEMENT & CÂBLES » DE L'ATELIER.
@@ -37,33 +34,6 @@ import RetourAtelier from '../atelier/RetourAtelier'
    nomme déjà le tronçon, le champ et le motif en français — l'écran les
    affiche tels quels, un champ à côté (jamais fondu dans) le motif.
    ========================================================================== */
-
-const LIBELLES_COTE = { dc: 'DC', ac: 'AC', terre: 'Terre' }
-
-/** Le libellé du côté d'un tronçon — un code inconnu est NOMMÉ, jamais tu. */
-export function libelleCote(cote) {
-  return LIBELLES_COTE[cote] ?? `côté « ${cote} »`
-}
-
-const LIBELLES_ORIGINE = {
-  plan: 'tracé sur le plan',
-  saisie: 'saisie au clavier',
-  mixte: 'tracé + saisie (mixte)',
-}
-
-/** Le libellé français de l'origine d'une longueur — jamais un nombre nu. */
-export function libelleOrigine(origine) {
-  if (!origine) return null
-  return LIBELLES_ORIGINE[origine] ?? `origine « ${origine} »`
-}
-
-/** Le contenu de la cellule « longueur » : le nombre ET sa provenance ensemble. */
-export function celluleLongueur(troncon) {
-  if (troncon?.longueur_m === null || troncon?.longueur_m === undefined) return '—'
-  const origine = libelleOrigine(troncon.longueur_origine)
-  const nombre = formatNumber(troncon.longueur_m, { decimals: 1 })
-  return origine ? `${nombre} m (${origine})` : `${nombre} m`
-}
 
 const CODE_NON_CALCULE = 'CALX229_NON_CALCULE'
 

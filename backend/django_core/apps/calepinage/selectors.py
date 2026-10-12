@@ -729,7 +729,7 @@ def entree_electrique_du_devis(devis_id, company):
             materiel = resoudre_materiel(company, donnees,
                                          calepinage=calepinage)
             module_specs = (materiel or {}).get('module') or None
-        except Exception:  # noqa: BLE001 — sans fiche, pas de NOCT
+        except Exception:  # sans fiche, pas de NOCT
             module_specs = None
         site = temperatures_pour_calepinage(
             calepinage, saisie=donnees, module_specs=module_specs)
@@ -737,7 +737,7 @@ def entree_electrique_du_devis(devis_id, company):
             temperatures = {'froid_c': float(site.froid_c),
                             'chaud_c': float(site.chaud_c),
                             'source': site.source}
-    except Exception:  # noqa: BLE001 — saisie incohérente : pas de source
+    except Exception:  # saisie incohérente : pas de source
         temperatures = None
 
     def _longueur(cle):

@@ -12,8 +12,11 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.installations.tests_acht53_fk_purge_allowlist"
 """
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
@@ -112,6 +115,28 @@ class FkPurgeAllowlistTests(SimpleTestCase):
         self.assertEqual(
             non_bornes, [],
             f"FK inscriptibles non bornées à la société : {non_bornes}")
+
+    def test_instrument_id_borne_par_societe(self):
+        """ACHT101 — `instrument_id` (entier inscriptible) : l'instrument
+        d'une AUTRE société est refusé par `validate_instrument_id` (sans lui,
+        l'entier passe tel quel). Table `Outillage` simulée : id 7 = société 2."""
+        from apps.outillage.models import Outillage
+        lignes = {(7, 2)}  # (pk, company_id)
+        faux = mock.MagicMock()
+        faux.filter.side_effect = lambda pk, company_id: mock.Mock(
+            exists=lambda: (pk, company_id) in lignes)
+        request = Request(APIRequestFactory().patch('/'))
+        request.user = User(username='acht101', company_id=1)
+        serializer = serializers_commissioning.CommissioningRecordSerializer(
+            partial=True, context={'request': request})
+        with mock.patch.object(Outillage, 'objects', faux):
+            with self.assertRaises(ValidationError) as ctx:
+                serializer.to_internal_value({'instrument_id': 7})
+            self.assertIn('instrument_id', ctx.exception.detail)
+            request.user.company_id = 2
+            self.assertEqual(
+                serializer.to_internal_value({'instrument_id': 7}),
+                {'instrument_id': 7})
 
     def test_aucune_ligne_installations_dans_les_sections(self):
         """§AANA47 et §ASTK9 ne contiennent plus aucune ligne installations."""

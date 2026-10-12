@@ -7,7 +7,7 @@
    "required": false
   },
   {
-   "classe": "PrimaryKeyRelatedField",
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
    "nom": "plan",
    "read_only": false,
    "required": true
@@ -19,7 +19,7 @@
    "required": false
   },
   {
-   "classe": "PrimaryKeyRelatedField",
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
    "nom": "activity_type",
    "read_only": false,
    "required": true
@@ -37,7 +37,7 @@
    "required": false
   },
   {
-   "classe": "PrimaryKeyRelatedField",
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
    "nom": "assigne_par_defaut",
    "read_only": false,
    "required": false

@@ -74,7 +74,7 @@ def rattacher_conception_au_devis(sender, devis, user=None, **kwargs):
             devis.pk, company, user=user)
         if origine == ORIGINE_CREE:
             enregistrer_layout(calepinage, calepinage.roof_layout, user=user)
-    except Exception:  # noqa: BLE001 — un rattachement ne casse jamais la source
+    except Exception:  # un rattachement ne casse jamais la source
         logger.exception(
             'ACAL38 : rattachement de conception en échec pour le devis %s',
             getattr(devis, 'pk', None))
@@ -126,7 +126,7 @@ def relier_calepinage_au_devis_revise(sender, ancien=None, nouveau=None,
                 libelle=LIBELLE_VERSION_ENVOYEE.format(reference=reference),
                 resultat=None, meme_empreinte_admise=True)
             lier_devis(calepinage, nouveau.pk, user=user)
-    except Exception:  # noqa: BLE001 — une re-liaison ne casse jamais la révision
+    except Exception:  # une re-liaison ne casse jamais la révision
         logger.exception(
             'ACAL92 : re-liaison du calepinage en échec (%s -> %s)',
             getattr(ancien, 'pk', None), getattr(nouveau, 'pk', None))
@@ -158,7 +158,7 @@ def reprise_du_trace_public(sender, lead=None, company=None, **kwargs):
         from .services.reprise_public import reprendre_trace_public
 
         reprendre_trace_public(lead_id, societe)
-    except Exception:  # noqa: BLE001 — une reprise ne casse jamais un lead
+    except Exception:  # une reprise ne casse jamais un lead
         logger.exception(
             'CAL110 : reprise du tracé public en échec pour le lead %s',
             lead_id)

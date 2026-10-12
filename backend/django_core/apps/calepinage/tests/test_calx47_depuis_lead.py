@@ -20,12 +20,13 @@ Deux étages, deux coûts :
 Run :
     python manage.py test apps.calepinage.tests.test_calx47_depuis_lead -v2
 """
+import importlib
 from django.test import SimpleTestCase, TestCase
 
 
 def _actions():
     """Les ``@action`` que le routeur DRF enregistrera, par nom de méthode."""
-    from apps.calepinage import urls  # noqa: F401
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return CalepinageViewSet, {methode.__name__: methode

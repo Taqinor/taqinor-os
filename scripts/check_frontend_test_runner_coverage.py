@@ -48,7 +48,7 @@ _NODE_TEST_GLOB_RE = re.compile(r'node\s+--test\s+"src/\*\*/\*\.test\.([A-Za-z0-
 
 def _import_ci_frontend_shard():
     sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
-    import ci_frontend_shard  # noqa: PLC0415 (deliberate lazy import, see module docstring)
+    import ci_frontend_shard  # deliberate lazy import, see module docstring
     return ci_frontend_shard
 
 

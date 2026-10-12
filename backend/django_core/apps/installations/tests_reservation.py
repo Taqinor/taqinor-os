@@ -292,6 +292,36 @@ class TestConsumptionManqueTrace(TestCase):
         self.assertIn(self.produit.sku, notes.first().body)
         self.assertIn('manque 4', notes.first().body)
 
+    def test_quarantaine_non_consommee_et_tracee(self):
+        """ASTK249 — stock 15 dont 10 en quarantaine, réservation 12 :
+        sortie de 5 seulement, les 10 bloqués restent, note nommant le manque."""
+        from apps.stock.models import MouvementStock
+        from apps.stock.services import mettre_en_quarantaine
+        self.produit.quantite_stock = 15
+        self.produit.save(update_fields=['quantite_stock'])
+        resa = self.inst.reservations.get(produit=self.produit)
+        resa.quantite = 12
+        resa.save(update_fields=['quantite'])
+        mettre_en_quarantaine(
+            company=self.company, produit=self.produit, quantite=10)
+        n = consume_reservations(self.inst, self.user)
+        self.assertEqual(n, 1)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 10)
+        resa.refresh_from_db()
+        self.assertTrue(resa.consomme)
+        mvt = MouvementStock.objects.get(
+            produit=self.produit, reference=self.inst.reference)
+        self.assertEqual(mvt.quantite, 5)
+        notes = self._notes()
+        self.assertEqual(notes.count(), 1)
+        self.assertIn('manque 7, dont 7 en quarantaine', notes.first().body)
+        # Idempotent : repasser ne crée rien.
+        consume_reservations(self.inst, self.user)
+        self.assertEqual(self._notes().count(), 1)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 10)
+
     def test_consommation_complete_aucune_note_de_manque(self):
         self.produit.quantite_stock = 5
         self.produit.save(update_fields=['quantite_stock'])

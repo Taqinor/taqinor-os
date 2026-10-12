@@ -46,7 +46,9 @@ _MARQUEURS_ARABIZI = ('choukran', 'dyalek', "l'parrainage", 'mokafaa',
 # tout module crm qui définit un nom de la fixture du golden de scission.
 _FICHIERS_A_VERIFIER = tuple(dict.fromkeys(
     list(modules_definissant_la_fixture())
-    + [pathlib.Path(__file__).resolve().parent / 'models.py']))
+    + [pathlib.Path(__file__).resolve().parent / 'models.py',
+       # SPL92 : Parrainage vit dans models_clients.py — le balayage le suit.
+       pathlib.Path(__file__).resolve().parent / 'models_clients.py']))
 
 
 class CatalogueUniqueSourceTests(SimpleTestCase):

@@ -28,6 +28,7 @@ import datetime
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
@@ -49,8 +50,8 @@ from authentication.models import Company
 User = get_user_model()
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 40
-HIER = datetime.date.today() - datetime.timedelta(days=1)
-DEMAIN = datetime.date.today() + datetime.timedelta(days=1)
+HIER = timezone.localdate() - datetime.timedelta(days=1)
+DEMAIN = timezone.localdate() + datetime.timedelta(days=1)
 
 #: Le cas de référence du relevé FRDISI : la profondeur de cage est la seule
 #: cote MANQUANTE, déduite par fermeture (8,82 quand le client annonçait 8,5).

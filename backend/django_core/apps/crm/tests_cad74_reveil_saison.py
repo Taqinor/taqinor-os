@@ -26,11 +26,11 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.cadence_reveil_saison import (
-    REVEIL_SAISON_CLE, REVEIL_SAISON_ORDRE, dans_la_fenetre_saison,
-    motif_de_refus,
+    REVEIL_SAISON_CLE, REVEIL_SAISON_ORDRE, _dans_la_fenetre_saison,
+    _motif_de_refus,
 )
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.cadence_plan import poser_reveil_saisonnier, poser_reveils_saisonniers
+from apps.crm.cadence_plan import _poser_reveil_saisonnier, poser_reveils_saisonniers
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
     CADENCE_REVEIL_DEFAUT, CanalRelance,
@@ -51,17 +51,17 @@ class FenetreSaisonTests(SimpleTestCase):
     def test_les_quatre_mois_de_la_saison_sont_dedans(self):
         for mois in (6, 7, 8, 9):
             self.assertTrue(
-                dans_la_fenetre_saison(datetime.date(2026, mois, 15)),
+                _dans_la_fenetre_saison(datetime.date(2026, mois, 15)),
                 f'mois {mois}')
 
     def test_mai_et_octobre_sont_dehors(self):
         for mois in (1, 5, 10, 12):
             self.assertFalse(
-                dans_la_fenetre_saison(datetime.date(2026, mois, 15)),
+                _dans_la_fenetre_saison(datetime.date(2026, mois, 15)),
                 f'mois {mois}')
 
     def test_une_date_absente_n_est_jamais_dans_la_fenetre(self):
-        self.assertFalse(dans_la_fenetre_saison(None))
+        self.assertFalse(_dans_la_fenetre_saison(None))
 
 
 class GabaritDeReveilTests(SimpleTestCase):
@@ -127,24 +127,24 @@ class PoseDuReveilSaisonnierTests(_Base):
         lead = self._dormant()
         self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
 
-        etape = poser_reveil_saisonnier(lead, self.acteur)
+        etape = _poser_reveil_saisonnier(lead, self.acteur)
 
         self.assertIsNotNone(etape)
         self.assertEqual(etape.template_cle, REVEIL_SAISON_CLE)
         self.assertEqual(etape.canal, CanalRelance.WHATSAPP)
         self.assertEqual(etape.ordre, REVEIL_SAISON_ORDRE)
         self.assertEqual(etape.cadence, 'reveil')
-        self.assertTrue(dans_la_fenetre_saison(etape.due_date))
+        self.assertTrue(_dans_la_fenetre_saison(etape.due_date))
 
     def test_aucun_dormant_n_en_recoit_deux(self):
         """Plafond : UNE touche par an et par dormant."""
         lead = self._dormant()
         self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
 
-        premier = poser_reveil_saisonnier(lead, self.acteur)
+        premier = _poser_reveil_saisonnier(lead, self.acteur)
         premier.statut = RelanceEtape.Statut.FAIT
         premier.save(update_fields=['statut'])
-        second = poser_reveil_saisonnier(lead, self.acteur)
+        second = _poser_reveil_saisonnier(lead, self.acteur)
 
         self.assertIsNotNone(premier)
         self.assertIsNone(second)
@@ -157,32 +157,51 @@ class PoseDuReveilSaisonnierTests(_Base):
         le J60 est déjà tombé en juillet a eu son message au bon moment."""
         lead = self._dormant()
         self._reveil_pose_le(lead, datetime.date(2026, 7, 2))
-        self.assertIsNone(poser_reveil_saisonnier(lead, self.acteur))
+        self.assertIsNone(_poser_reveil_saisonnier(lead, self.acteur))
 
     def test_rien_ne_s_empile_sur_une_touche_encore_ouverte(self):
         lead = self._dormant()
         self._reveil_pose_le(lead, datetime.date(2026, 3, 2),
                              statut=RelanceEtape.Statut.A_FAIRE)
-        self.assertIsNone(poser_reveil_saisonnier(lead, self.acteur))
+        self.assertIsNone(_poser_reveil_saisonnier(lead, self.acteur))
+
+    def test_course_sur_le_barreau_ouvert_relit_l_existant(self):
+        """ACRM55 (jumeau) — deux passages concurrents : le second passe la
+        garde avant que le premier n'écrive (simulé en neutralisant
+        ``_motif_de_refus``) ; la contrainte refuse le doublon, la pose relit
+        la touche ouverte au lieu de lever."""
+        from unittest import mock
+
+        from apps.crm import cadence_reveil_saison
+        lead = self._dormant()
+        ouverte = self._reveil_pose_le(lead, datetime.date(2026, 7, 16),
+                                       ordre=REVEIL_SAISON_ORDRE,
+                                       statut=RelanceEtape.Statut.A_FAIRE)
+        with mock.patch.object(cadence_reveil_saison, '_motif_de_refus',
+                               return_value=None):
+            etape = _poser_reveil_saisonnier(lead, self.acteur)
+        self.assertEqual(etape, ouverte)
+        self.assertEqual(RelanceEtape.objects.filter(
+            lead=lead, cadence='reveil', ordre=REVEIL_SAISON_ORDRE).count(), 1)
 
     def test_un_lead_qui_n_est_pas_au_Froid_n_est_pas_un_dormant(self):
         lead = self._dormant(nom='Actif', stage=stages.FOLLOW_UP)
         self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
-        self.assertIsNone(poser_reveil_saisonnier(lead, self.acteur))
-        self.assertIn('Froid', motif_de_refus(lead))
+        self.assertIsNone(_poser_reveil_saisonnier(lead, self.acteur))
+        self.assertIn('Froid', _motif_de_refus(lead))
 
     def test_un_archive_ou_un_perdu_ne_recoit_rien(self):
         archive = self._dormant(nom='Archive', is_archived=True)
         self._reveil_pose_le(archive, datetime.date(2026, 3, 2))
         perdu = self._dormant(nom='Perdu', perdu=True)
         self._reveil_pose_le(perdu, datetime.date(2026, 3, 2))
-        self.assertIsNone(poser_reveil_saisonnier(archive, self.acteur))
-        self.assertIsNone(poser_reveil_saisonnier(perdu, self.acteur))
+        self.assertIsNone(_poser_reveil_saisonnier(archive, self.acteur))
+        self.assertIsNone(_poser_reveil_saisonnier(perdu, self.acteur))
 
     def test_le_motif_de_refus_est_une_phrase_francaise(self):
         """Règle fondateur du 08/09 : jamais un refus muet."""
         lead = self._dormant(nom='Actif2', stage=stages.CONTACTED)
-        motif = motif_de_refus(lead)
+        motif = _motif_de_refus(lead)
         self.assertIsInstance(motif, str)
         self.assertTrue(motif.strip())
 
@@ -207,15 +226,15 @@ class Agr512AgricoleExcluTests(_Base):
         lead = self._dormant(type_installation='agricole')
         self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
         self.assertEqual(
-            motif_de_refus(lead),
+            _motif_de_refus(lead),
             'Texte « saison des factures » sans objet pour un lead agricole.')
-        self.assertIsNone(poser_reveil_saisonnier(lead, self.acteur))
+        self.assertIsNone(_poser_reveil_saisonnier(lead, self.acteur))
 
     def test_un_dormant_residentiel_reste_inchange(self):
         lead = self._dormant(type_installation='residentiel')
         self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
-        self.assertIsNone(motif_de_refus(lead))
-        self.assertIsNotNone(poser_reveil_saisonnier(lead, self.acteur))
+        self.assertIsNone(_motif_de_refus(lead))
+        self.assertIsNotNone(_poser_reveil_saisonnier(lead, self.acteur))
 
 
 class HorsSaisonTests(_Base):
@@ -225,7 +244,7 @@ class HorsSaisonTests(_Base):
     def test_en_janvier_aucun_reveil_saisonnier_n_est_pose(self):
         lead = self._dormant()
         self._reveil_pose_le(lead, datetime.date(2025, 11, 2))
-        self.assertIsNone(poser_reveil_saisonnier(lead, self.acteur))
+        self.assertIsNone(_poser_reveil_saisonnier(lead, self.acteur))
         self.assertEqual(
             poser_reveils_saisonniers(self.company, self.acteur), [])
-        self.assertIn('Hors saison', motif_de_refus(lead))
+        self.assertIn('Hors saison', _motif_de_refus(lead))

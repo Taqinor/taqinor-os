@@ -25,8 +25,9 @@ export default function TicketChecklistPanel({ ticketId }) {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setItems(null)
+    // ENF28 — remise à zéro différée d'une microtâche (aucun setState synchrone
+    // dans l'effet) ; elle reste mise en file AVANT la réponse du serveur.
+    Promise.resolve().then(() => setItems(null))
     savApi.getTicketChecklist(ticketId)
       .then((r) => setItems(r.data ?? []))
       .catch(() => setItems([]))

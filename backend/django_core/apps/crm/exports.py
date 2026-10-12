@@ -23,7 +23,7 @@ coercition fr-MA) pour TOUS les exports de listes.
 # jointes e-mail, lien public tokenisé). ``workbook_bytes`` neutralise
 # désormais par défaut ; seul le bundle ZIP de sauvegarde s'en exempte
 # (``neutralize=False``, round-trip de restauration).
-from apps.records.xlsx import build_xlsx_response  # noqa: F401
+from apps.records.xlsx import build_xlsx_response
 
 from .stages import STAGE_LABELS
 

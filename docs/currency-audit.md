@@ -42,14 +42,14 @@ with no rate column at all — mono-MAD in practice.
 | adminops | FactureLicence | `apps/adminops/models.py:299` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2322` | quota_total |
-| crm | Client | `apps/crm/models.py:233` | tva_recuperable |
-| crm | Lead | `apps/crm/models.py:520` | carburant_prix_declare_le, carburant_prix_unitaire_mad, montant_estime, tva_recuperable |
-| crm | GesteRelanceAppareil | `apps/crm/models.py:2645` | total |
-| crm | PointContact | `apps/crm/models.py:3213` | cout |
-| crm | CommissionPartenaire | `apps/crm/models.py:3849` | base_ht, montant |
-| crm | ForecastEntry | `apps/crm/models.py:4001` | montant_prevu |
-| crm | ForecastSnapshot | `apps/crm/models.py:4062` | montant_total |
-| crm | DealEnregistre | `apps/crm/models.py:4577` | montant_commission_du, montant_commission_estime |
+| crm | Lead | `apps/crm/models.py:241` | carburant_prix_declare_le, carburant_prix_unitaire_mad, montant_estime, tva_recuperable |
+| crm | PointContact | `apps/crm/models.py:2394` | cout |
+| crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:214` | total |
+| crm | CommissionPartenaire | `apps/crm/models_clients.py:273` | base_ht, montant |
+| crm | DealEnregistre | `apps/crm/models_clients.py:546` | montant_commission_du, montant_commission_estime |
+| crm | Client | `apps/crm/models_clients.py:779` | tva_recuperable |
+| crm | ForecastEntry | `apps/crm/models_clients.py:1418` | montant_prevu |
+| crm | ForecastSnapshot | `apps/crm/models_clients.py:1479` | montant_total |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
 | facturation | LigneFacture | `apps/facturation/models.py:776` | prix_unitaire, remise, taux_tva |
 | facturation | Paiement | `apps/facturation/models.py:843` | escompte_montant, montant |
@@ -61,7 +61,7 @@ with no rate column at all — mono-MAD in practice.
 | installations | ApprobationBCF | `apps/installations/models_approbation_bcf.py:72` | montant_approuve |
 | installations | CommandeCadreLigne | `apps/installations/models_commande_cadre.py:70` | prix_negocie |
 | installations | ContratPrixLigne | `apps/installations/models_contrat_prix.py:82` | prix_convenu, remise_pct |
-| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:187` | prix_estime |
+| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:194` | prix_estime |
 | installations | ReceptionNonFacturee | `apps/installations/models_gr_ir.py:22` | montant_provision |
 | installations | FraisImport | `apps/installations/models_landed_cost.py:28` | montant |
 | installations | Livraison | `apps/installations/models_livraison.py:19` | cout_transport |
@@ -115,7 +115,7 @@ with no rate column at all — mono-MAD in practice.
 | App | Model | File | Money fields | Has exchange rate? |
 | --- | --- | --- | --- | --- |
 | achats | FactureFournisseur | `apps/achats/models.py:476` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
-| crm | ConcurrentPerte | `apps/crm/models.py:3131` | concurrent_prix | no |
+| crm | ConcurrentPerte | `apps/crm/models_clients.py:1245` | concurrent_prix | no |
 | facturation | Facture | `apps/facturation/models.py:33` | abandon_montant, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:14` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
 | ventes | Devis | `apps/ventes/models.py:19` | acompte_montant, acompte_pct, penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |

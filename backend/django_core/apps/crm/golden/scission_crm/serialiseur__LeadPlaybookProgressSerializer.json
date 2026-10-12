@@ -7,7 +7,7 @@
    "required": false
   },
   {
-   "classe": "PrimaryKeyRelatedField",
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
    "nom": "lead",
    "read_only": false,
    "required": true

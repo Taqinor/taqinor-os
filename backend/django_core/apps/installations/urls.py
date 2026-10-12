@@ -67,6 +67,7 @@ from .views import (
     PositionTechnicienViewSet,
     GeofenceAlertViewSet,
 )
+from .views_meteo import meteo_terrain
 
 router = DefaultRouter()
 router.register(r'chantiers', InstallationViewSet)
@@ -148,8 +149,6 @@ router.register(r'positions-techniciens', PositionTechnicienViewSet,
                 basename='positiontechnicien')
 router.register(r'geofence-alertes', GeofenceAlertViewSet,
                 basename='geofencealert')
-
-from .views_meteo import meteo_terrain  # noqa: E402  (NTMOB21)
 
 urlpatterns = [
     # NTMOB21 — météo terrain du jour (Open-Meteo, cache serveur 1 h),

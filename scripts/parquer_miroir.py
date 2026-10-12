@@ -60,7 +60,7 @@ def _charger_registre():
     django_core = str(REPO_ROOT / "backend" / "django_core")
     if django_core not in sys.path:
         sys.path.insert(0, django_core)
-    import core.parked as parked  # noqa: PLC0415 — import tardif volontaire
+    import core.parked as parked  # import tardif volontaire
 
     return parked
 

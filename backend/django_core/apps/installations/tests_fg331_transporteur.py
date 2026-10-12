@@ -123,3 +123,25 @@ class TestScopingAndRoles(TestCase):
         resp = api.get(f'{BASE}/transporteurs/')
         results = resp.data.get('results', resp.data)
         self.assertEqual(len(results), 0)
+
+
+class TestChampsStrictsFuzzR12(TestCase):
+    """api-fuzz r12 (CI #956) — `note` entier (POST ou PATCH) → 400, comme le
+    schéma le déclare ; une requête valide est inchangée."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.api = auth(make_user(self.company))
+
+    def test_note_entier_refuse_en_400(self):
+        resp = self.api.post(f'{BASE}/transporteurs/', {
+            'nom': 'T', 'type_transporteur': 'interne', 'note': 0,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('note', resp.data)
+        t = Transporteur.objects.create(company=self.company, nom='T2')
+        resp = self.api.patch(f'{BASE}/transporteurs/{t.id}/', {'note': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.patch(f'{BASE}/transporteurs/{t.id}/', {'note': 'ok', 'active': False},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)

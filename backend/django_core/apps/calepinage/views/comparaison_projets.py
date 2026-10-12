@@ -40,6 +40,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from .calepinages import CalepinageViewSet
 
 __all__ = ['comparer_projets', 'comparatif_xlsx']
 
@@ -71,7 +72,7 @@ def comparer_projets(self, request):
         'ids', {'type': 'array', 'items': {'type': 'integer'}},
         required=False, explode=True,
         description='Calepinages à comparer (répétable).')],
-    responses={200: OpenApiTypes.BINARY})
+    responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'comparatif\.xlsx',
         url_name='comparatif-xlsx', permission_classes=[PeutVoirCalepinage])
 def comparatif_xlsx(self, request, pk=None):
@@ -99,8 +100,6 @@ def comparatif_xlsx(self, request, pk=None):
         octets, mime=MIME_XLSX,
         nom_fichier='comparatif-' + nom_de_fichier(calepinage, 'xlsx'))
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7 / bug de classe #105).

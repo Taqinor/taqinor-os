@@ -32,6 +32,7 @@ Run :
 """
 from __future__ import annotations
 
+import importlib
 import json
 import pathlib
 
@@ -81,7 +82,7 @@ def _contrat():
 
 def _actions():
     """Les ``@action`` que le routeur DRF enregistrera, par nom de méthode."""
-    from apps.calepinage import urls  # noqa: F401
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return CalepinageViewSet, {methode.__name__: methode
@@ -241,8 +242,7 @@ class RattachementDesCourantsTest(SimpleTestCase):
     def test_le_calibre_n_est_publie_que_pour_une_seule_chaine(self):
         conception = _conception()
         toutes = [chaine.repere for chaine in conception.chaines]
-        if len(toutes) < 2:
-            self.skipTest('la conception d essai ne pose qu une chaîne')
+        self.assertGreaterEqual(len(toutes), 2)
         courants = self._courants([
             {'id': 'amont', 'cote': 'dc', 'de': 'eq1', 'vers': 'eq2',
              'chaines': toutes},
@@ -295,8 +295,7 @@ class RattachementDesCourantsTest(SimpleTestCase):
         # pouvait pas faire sans lui.
         conception = _conception()
         toutes = [chaine.repere for chaine in conception.chaines]
-        if len(toutes) < 2:
-            self.skipTest('la conception d essai ne pose qu une chaîne')
+        self.assertGreaterEqual(len(toutes), 2)
         servi = _troncons_du_document(_document([
             {'id': 'amont', 'cote': 'dc', 'de': 'eq1', 'vers': 'eq2',
              'longueurSaisieM': 40.0, 'chaines': toutes},

@@ -6,8 +6,10 @@ leur cohabitation ici (AUD601).
 """
 from rest_framework import serializers
 
+from core.serializer_mixins import NullableDottedSourcesMixin
 
-class SameCompanyFKSerializerMixin:
+
+class SameCompanyFKSerializerMixin(NullableDottedSourcesMixin):
     """AUD601 — refuse toute FK cross-app pointant la ligne d'une AUTRE société.
 
     ``TenantMixin.get_queryset`` scope ce qu'un utilisateur LIT ; il ne dit rien

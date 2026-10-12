@@ -384,6 +384,17 @@ class JalonChantierPortailViewSet(_PortailBaseViewSet):
     ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
     http_method_names = ['get', 'patch', 'delete', 'post', 'head', 'options']
 
+    @property
+    def allowed_methods(self):
+        # ENF11 (api-fuzz « Invalid Allow header ») — sur la route de liste,
+        # POST (= `create`, 405 ADOC129, exclu du schéma) n'est pas annoncé
+        # dans `Allow` ; `post` reste servi pour les actions marquer_atteint /
+        # marquer_non_atteint (routes de détail).
+        methodes = super().allowed_methods
+        if (self.action_map or {}).get('post') == 'create':
+            return [m for m in methodes if m != 'POST']
+        return methodes
+
     @extend_schema(exclude=True)
     def create(self, request, *args, **kwargs):
         raise MethodNotAllowed(

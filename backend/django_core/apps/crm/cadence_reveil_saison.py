@@ -47,7 +47,7 @@ REVEIL_SAISON_MOIS_FIN = 9
 REVEIL_SAISON_ORDRE = 3
 
 
-def dans_la_fenetre_saison(jour):
+def _dans_la_fenetre_saison(jour):
     """La date est-elle dans la fenêtre saisonnière (juin → septembre) ?"""
     if jour is None:
         return False
@@ -65,7 +65,7 @@ def _maintenant_local(maintenant=None):
     return instant.astimezone(horaires.CASABLANCA)
 
 
-def motif_de_refus(lead, *, maintenant=None):
+def _motif_de_refus(lead, *, maintenant=None):
     """Pourquoi ce lead ne reçoit PAS le réveil saisonnier — ou ``None``.
 
     Renvoyer le MOTIF plutôt qu'un booléen : l'écran qui proposera un jour ce
@@ -76,7 +76,7 @@ def motif_de_refus(lead, *, maintenant=None):
     from .models import RelanceEtape
 
     local = _maintenant_local(maintenant)
-    if not dans_la_fenetre_saison(local.date()):
+    if not _dans_la_fenetre_saison(local.date()):
         return ('Hors saison : le réveil saisonnier ne se pose qu’entre juin '
                 'et septembre.')
     # AGR512 — la saison de `reveil_b` est celle où la facture ONEE choque le
@@ -120,17 +120,17 @@ def motif_de_refus(lead, *, maintenant=None):
     dernier = (touches.filter(cadence='reveil')
                .exclude(template_cle=REVEIL_SAISON_CLE)
                .order_by('-due_date', '-ordre').first())
-    if dernier is not None and dans_la_fenetre_saison(dernier.due_date):
+    if dernier is not None and _dans_la_fenetre_saison(dernier.due_date):
         return ('Le réveil de ce dormant est déjà tombé pendant la saison : '
                 'on n’en ajoute pas un second.')
     return None
 
 
-def poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
+def _poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
     """Pose LA touche `reveil_b` sur un dormant, ou renvoie ``None``.
 
     Idempotent par construction : le plafond « une par an et par dormant » de
-    ``motif_de_refus`` est relu à chaque appel, donc deux passages dans la
+    ``_motif_de_refus`` est relu à chaque appel, donc deux passages dans la
     même saison ne créent jamais deux touches.
 
     N'écrit RIEN d'autre : ni étape de pipeline, ni étiquette, ni message
@@ -142,7 +142,7 @@ def poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
     from . import horaires
     from .models import RelanceEtape
 
-    if motif_de_refus(lead, maintenant=maintenant) is not None:
+    if _motif_de_refus(lead, maintenant=maintenant) is not None:
         return None
 
     local = _maintenant_local(maintenant)
@@ -151,15 +151,26 @@ def poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
     jour = echeance.astimezone(horaires.CASABLANCA).date()
     # Une touche posée en toute fin de fenêtre ne doit pas déborder sur
     # octobre : hors saison, on ne la pose pas du tout.
-    if not dans_la_fenetre_saison(jour):
+    if not _dans_la_fenetre_saison(jour):
         return None
 
-    return RelanceEtape.objects.create(
-        company=lead.company, lead=lead, cadence='reveil',
-        ordre=REVEIL_SAISON_ORDRE, due_at=echeance, due_date=jour,
-        canal=CanalRelance.WHATSAPP, libelle=REVEIL_SAISON_LIBELLE,
-        template_cle=REVEIL_SAISON_CLE, cadence_depart=local,
-        statut=RelanceEtape.Statut.A_FAIRE)
+    from django.db import IntegrityError, transaction
+
+    try:
+        with transaction.atomic():
+            return RelanceEtape.objects.create(
+                company=lead.company, lead=lead, cadence='reveil',
+                ordre=REVEIL_SAISON_ORDRE, due_at=echeance, due_date=jour,
+                canal=CanalRelance.WHATSAPP, libelle=REVEIL_SAISON_LIBELLE,
+                template_cle=REVEIL_SAISON_CLE, cadence_depart=local,
+                statut=RelanceEtape.Statut.A_FAIRE)
+    except IntegrityError:
+        # ACRM55 (jumeau des barreaux) — ce barreau de réveil est DÉJÀ ouvert
+        # (contrainte `crm_relance_une_ouverte_par_barreau`, course entre
+        # deux passages) : on relit l'existant, jamais une 500 ni un doublon.
+        return RelanceEtape.objects.filter(
+            lead=lead, cadence='reveil', ordre=REVEIL_SAISON_ORDRE, cle='',
+            devis__isnull=True, statut=RelanceEtape.Statut.A_FAIRE).first()
 
 
 def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
@@ -175,15 +186,15 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     from .models import Lead, RelanceEtape
 
     local = _maintenant_local(maintenant)
-    if not dans_la_fenetre_saison(local.date()):
+    if not _dans_la_fenetre_saison(local.date()):
         return []
     plafond = max(int(limite or 0), 0)
     if not plafond:
         return []
-    # ACRM18 — les refus de ``motif_de_refus`` qui tiennent un lead d'un
+    # ACRM18 — les refus de ``_motif_de_refus`` qui tiennent un lead d'un
     # passage à l'autre passent DANS la requête, AVANT la troncature : sinon
     # les ``plafond`` premiers ids, déjà servis, étaient re-sélectionnés à
-    # chaque passage et les suivants jamais servis. ``motif_de_refus`` reste
+    # chaque passage et les suivants jamais servis. ``_motif_de_refus`` reste
     # la porte unique, relue lead par lead.
     touches = RelanceEtape.objects.filter(company=company, lead=OuterRef('pk'))
     dernier_reveil = (touches.filter(cadence='reveil')
@@ -210,7 +221,7 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     posees = []
     for lead in dormants:
         try:
-            etape = poser_reveil_saisonnier(lead, user, maintenant=maintenant)
+            etape = _poser_reveil_saisonnier(lead, user, maintenant=maintenant)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             logger.warning(
                 'CAD74 : réveil saisonnier impossible (lead #%s)',

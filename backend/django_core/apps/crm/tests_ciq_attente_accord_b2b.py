@@ -352,10 +352,10 @@ class ValiditeARenouvelerTests(_Base):
             self.lead.relance_etapes.filter(libelle=self.libelle).exists())
 
     def test_c_rejouer_une_seule_etape(self):
-        from apps.crm.cadence_reponses import poser_etape_validite_a_renouveler
+        from apps.crm.cadence_reponses import _poser_etape_validite_a_renouveler
         self._attente(rappel_le=J60.isoformat(), raison_attente='direction')
-        poser_etape_validite_a_renouveler(self.lead, J60)
-        poser_etape_validite_a_renouveler(self.lead, J60)
+        _poser_etape_validite_a_renouveler(self.lead, J60)
+        _poser_etape_validite_a_renouveler(self.lead, J60)
         self.assertEqual(
             self.lead.relance_etapes.filter(libelle=self.libelle).count(), 1)
 

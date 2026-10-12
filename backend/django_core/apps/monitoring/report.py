@@ -217,7 +217,7 @@ def email_om_report(installation, *, period='monthly', recipient=None,
     msg.attach(f'rapport-om-{ref}.pdf', pdf_bytes, 'application/pdf')
     try:
         envoyes = msg.send(fail_silently=False)
-    except Exception as exc:  # noqa: BLE001 — SMTP, réseau, refus serveur…
+    except Exception as exc:  # SMTP, réseau, refus serveur…
         raise EnvoiRapportImpossible(str(exc) or exc.__class__.__name__)
     if not envoyes:
         raise EnvoiRapportImpossible('le serveur de messagerie a refusé '

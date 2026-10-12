@@ -47,27 +47,42 @@ class LeadsVilleRowsTests(TestCase):
         self.assertEqual(rows[0]['ville'], 'Tanger')
 
     def test_filtre_canal_et_fenetre(self):
-        """AACQ10 — canaux + fenêtre de création, défaut inchangé."""
+        """AACQ10 — canaux + fenêtre de création, défaut inchangé.
+
+        AACQ106 — chaque borne est isolée par un lead du MÊME canal hors
+        fenêtre (Rabat avant ``date_start``, Fès après ``date_end``) : ignorer
+        ``date_start`` ⇒ 9 au lieu de 6, ignorer ``date_end`` ⇒ 8 au lieu de 6."""
         import datetime
         from django.utils import timezone
         hier = timezone.localdate() - datetime.timedelta(days=1)
-        for i in range(4):
-            lead = Lead.objects.create(
-                company=self.company, nom=f'Web {i}', ville='Casablanca',
-                canal='site_web')
-            Lead.objects.filter(pk=lead.pk).update(
-                date_creation=timezone.now() - datetime.timedelta(days=700))
-        for i in range(6):
-            lead = Lead.objects.create(
-                company=self.company, nom=f'Meta {i}', ville='Settat',
-                canal='meta_ads')
-            Lead.objects.filter(pk=lead.pk).update(
-                date_creation=timezone.now() - datetime.timedelta(days=1))
+
+        def creer(n, nom, ville, canal, il_y_a_jours):
+            for i in range(n):
+                lead = Lead.objects.create(
+                    company=self.company, nom=f'{nom} {i}', ville=ville,
+                    canal=canal)
+                if il_y_a_jours:
+                    Lead.objects.filter(pk=lead.pk).update(
+                        date_creation=timezone.now()
+                        - datetime.timedelta(days=il_y_a_jours))
+
+        creer(6, 'Meta', 'Settat', 'meta_ads', 1)
+        creer(3, 'Meta ancien', 'Rabat', 'meta_ads', 700)
+        creer(2, 'Meta du jour', 'Fès', 'meta_ads', 0)
+        creer(4, 'Web', 'Casablanca', 'site_web', 700)
         autre = Company.objects.create(nom='PUB62 autre', slug='pub62-autre')
-        self.assertEqual(len(leads_ville_rows(self.company)), 10)
-        rows = leads_ville_rows(self.company, canaux=['meta_ads'],
-                                date_start=hier, date_end=hier)
-        self.assertEqual(len(rows), 6)
-        self.assertEqual({r['ville'] for r in rows}, {'Settat'})
+
+        def villes(**filtres):
+            rows = leads_ville_rows(self.company, **filtres)
+            return len(rows), {r['ville'] for r in rows}
+
+        meta = {'canaux': ['meta_ads']}
+        self.assertEqual(villes(date_start=hier, date_end=hier, **meta),
+                         (6, {'Settat'}))
+        self.assertEqual(villes(date_start=hier, **meta),
+                         (8, {'Settat', 'Fès'}))
+        self.assertEqual(villes(date_end=hier, **meta),
+                         (9, {'Settat', 'Rabat'}))
+        self.assertEqual(villes()[0], 15)
         self.assertEqual(leads_ville_rows(autre, canaux=['meta_ads'],
                                           date_start=hier, date_end=hier), [])

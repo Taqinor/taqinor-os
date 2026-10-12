@@ -37,7 +37,7 @@ from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS, q_etape
 from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
-from apps.crm.views import MESSAGE_REFUS_SUR_DECIDER_SUITE
+from apps.crm.cadence_views import MESSAGE_REFUS_SUR_DECIDER_SUITE
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

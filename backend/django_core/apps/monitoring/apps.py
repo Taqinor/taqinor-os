@@ -1,3 +1,5 @@
+import importlib
+
 from django.apps import AppConfig
 
 
@@ -18,4 +20,4 @@ class MonitoringConfig(AppConfig):
     def ready(self):
         # ARC36 — abonne l'arrêt de supervision automatique à l'événement
         # abonnement_monitoring_resilie (core.events, M6).
-        from . import receivers  # noqa: F401
+        importlib.import_module(f'{self.name}.receivers')

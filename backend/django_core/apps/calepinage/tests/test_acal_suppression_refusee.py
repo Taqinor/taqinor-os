@@ -76,6 +76,20 @@ class SuppressionRefuseeTest(BaseApiCalepinage):
                                  {'titre': 'Renommé'}, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
 
+    def test_allow_n_annonce_ni_put_ni_delete(self):
+        # CI #956 (api-fuzz « Invalid Allow header ») : OPTIONS et le 405
+        # listent exactement les méthodes du schéma — sans PUT ni DELETE.
+        for reponse in (self.api.options(url_detail(self.calepinage.pk)),
+                        self.api.delete(url_detail(self.calepinage.pk))):
+            allow = {m.strip() for m in reponse['Allow'].split(',')}
+            self.assertFalse(allow & {'PUT', 'DELETE'}, allow)
+            self.assertTrue({'GET', 'PATCH'} <= allow, allow)
+        # CI #956 (fuzz r13) — le filtre ne vaut que pour la route de l'objet :
+        # une sous-route de détail annonce SON DELETE (`etiquettes/`).
+        reponse = self.api.options(url_detail(self.calepinage.pk) + 'etiquettes/')
+        allow = {m.strip() for m in reponse['Allow'].split(',')}
+        self.assertTrue({'GET', 'POST', 'DELETE'} <= allow, allow)
+
     def test_peut_supprimer_suit_l_archivage(self):
         # Lié à un devis ENVOYÉ : archiver refuse ⇒ peut_supprimer faux.
         detail = self.api.get(url_detail(self.calepinage.pk)).data
