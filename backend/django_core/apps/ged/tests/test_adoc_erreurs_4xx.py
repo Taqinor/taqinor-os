@@ -116,6 +116,29 @@ class ErreursMetierTests(TestCase):
             self.assertEqual(resp.status_code, 400, resp.content)
         self.assertEqual(Document.objects.count(), avant)
 
+    def test_detagger_tag_obligatoire_400(self):
+        # CI #956 (fuzz r13, « accepted schema-violating » sur detagger/) —
+        # `tag` est obligatoire au schéma (TAG_CORPS) : sans corps ou mal
+        # formé, 400 nommant le champ (avant : 200, retrait de rien).
+        from apps.ged.models import DocumentTag, DocumentTagAssignment
+        doc = Document.objects.create(company=self.co, folder=self.folder,
+                                      nom='t.pdf')
+        tag = DocumentTag.objects.create(company=self.co, nom='Important',
+                                         slug='important')
+        services.assign_tag(doc, tag, created_by=self.admin)
+        for corps in ({}, {'tag': 'abc'}):
+            resp = self.api.post(f'{BASE}documents/{doc.pk}/detagger/',
+                                 corps, format='json')
+            self.assertEqual(resp.status_code, 400, resp.data)
+            self.assertIn('tag', resp.data)
+        self.assertTrue(DocumentTagAssignment.objects.filter(
+            document=doc, tag=tag).exists())
+        resp = self.api.post(f'{BASE}documents/{doc.pk}/detagger/',
+                             {'tag': tag.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(DocumentTagAssignment.objects.filter(
+            document=doc, tag=tag).exists())
+
     def test_fichier_introuvable_404_pas_400(self):
         # CI #956 (fuzz r13, « rejected schema-compliant request » sur
         # scinder/) — des octets ABSENTS du stockage ne sont pas une entrée

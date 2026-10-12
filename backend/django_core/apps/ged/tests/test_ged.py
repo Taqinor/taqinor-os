@@ -1054,16 +1054,6 @@ class DocumentTagTaxonomyTests(GedBase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(DocumentTagAssignment.objects.filter(
             document=self.doc, tag=tag).count(), 1)
-        # CI #956 (fuzz r13) — `tag` obligatoire : sans corps ou mal formé,
-        # 400 nommant le champ (avant : 200, retrait de rien).
-        for corps in ({}, {'tag': 'abc'}):
-            resp = api.post(
-                f'/api/django/ged/documents/{self.doc.id}/detagger/',
-                corps, format='json')
-            self.assertEqual(resp.status_code, 400, resp.data)
-            self.assertIn('tag', resp.data)
-        self.assertTrue(DocumentTagAssignment.objects.filter(
-            document=self.doc, tag=tag).exists())
         # detagger.
         resp = api.post(f'/api/django/ged/documents/{self.doc.id}/detagger/',
                         {'tag': tag.id}, format='json')
