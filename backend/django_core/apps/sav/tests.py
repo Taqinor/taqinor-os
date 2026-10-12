@@ -635,11 +635,13 @@ class ContratsFiltreClientTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self._ids(r), [self.c1.id])
 
-    def test_client_invalide_ignore(self):
+    def test_client_invalide_refuse_400(self):
+        # ENF11 : le seul appelant (InstallationDetail) envoie un id entier ;
+        # un `?client=abc` est une erreur de l'appelant -> 400 nommant le champ.
         r = self.api.get('/api/django/sav/contrats-maintenance/',
                          {'client': 'abc'})
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(len(self._ids(r)), 2)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('client', r.json())
 
 
 class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
