@@ -1978,7 +1978,8 @@ from apps.ventes.domain.revision import (  # noqa: E402
 # VNT50 — ``_fire_capi_signed_quote`` (CAPI SignedQuote) et
 # ``_ATTRIBUTION_FIELDS`` vivent dans ``domain/capi_signee.py`` ;
 # ``accept_devis`` appelle ``emettre_signed_quote_vente`` (VNT52 : rien pour
-# un avenant) lu ICI (patchable ici).
-from apps.ventes.domain.capi_signee import (  # noqa: E402
+# un avenant) lu ICI (patchable ici) ; ``_fire_capi_signed_quote`` reste
+# importable ici (tests, ``inspect.getsource``) — re-export du déplacement.
+from apps.ventes.domain.capi_signee import (  # noqa: E402,F401
     _ATTRIBUTION_FIELDS, _fire_capi_signed_quote, emettre_signed_quote_vente,
 )
