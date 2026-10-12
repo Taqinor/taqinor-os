@@ -687,6 +687,11 @@ def decider_approbation_via_push(request):
     Un jeton invalide/expiré/altéré ⇒ 401 sans aucune fuite d'information.
     Débit BORNÉ par `DecisionPushThrottle` (endpoint public et mutant)."""
     from apps.notifications.approval_tokens import read_approval_token
+    # ENF11 (api-fuzz) — un corps JSON non-objet (liste…) cassait `.get` en
+    # 500 : 400 français, comme tout corps hors schéma.
+    if not isinstance(request.data, dict):
+        raise drf_serializers.ValidationError(
+            {'token': ['Corps attendu : un objet {token}.']})
     data = read_approval_token(request.data.get('token'))
     if data is None:
         return Response({'detail': 'Jeton invalide ou expiré.'}, status=401)

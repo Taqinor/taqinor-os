@@ -31,6 +31,11 @@ class RapportDefinitionSerializer(serializers.ModelSerializer):
         source='get_partage_display', read_only=True)
     owner_username = serializers.CharField(
         source='owner.username', read_only=True, default='')
+    # ENF11 (api-fuzz) — `spec`/`pivot_spec` sont des OBJETS (lus en dict par
+    # `executer`) : un JSONField documentait « n'importe quoi » (null compris)
+    # puis refusait null. Objet exigé, documenté et appliqué ; absent = {}.
+    spec = serializers.DictField(required=False)
+    pivot_spec = serializers.DictField(required=False)
 
     class Meta:
         model = RapportDefinition
