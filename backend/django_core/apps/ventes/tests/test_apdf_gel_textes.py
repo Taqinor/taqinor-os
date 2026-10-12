@@ -137,7 +137,7 @@ class GelTextesEnvoiTests(TestCase):
 
 # APDF48 (C-APDF-005, critère C10) — garde de parité des conditions générales
 # entre le PDF client et la page publique de signature.
-# 
+#
 # Given une puce marqueur « PARITE-APDF » dans ``DocumentTemplates.cgv_bullets``
 # (et dans la variante ``cgv_par_mode`` du commercial et de l'industriel, avec
 # SON titre), When on rend les quatre marchés (résidentiel, commercial,
@@ -147,19 +147,19 @@ class GelTextesEnvoiTests(TestCase):
 # (``payload_conditions._conditions_publiques(build_quote_data(d), d)`` et
 # ``_conditions_titre_publique``) sont présents dans le texte du PDF, sans aucun
 # marqueur ``{...}`` non substitué, ni d'un côté ni de l'autre.
-# 
+#
 # Rendu RÉEL : ``test_pdf_apdf_identite.rendre_pdf`` (PDF servi par /proposal,
 # registre des renderers et repli legacy, stockage MinIO remplacé en mémoire),
 # texte extrait par PyMuPDF (``texte_pdf``) ; options de la page publique lues
 # de ``public_views._opts_quote_data_public``. Aucune doublure du moteur. Le
 # rendu ne touche ni au statut ni aux clauses gelées (empreinte avant = après) ;
 # ``TestCase`` : transaction annulée.
-# 
+#
 # Écart déclaré (constat, pas une exemption silencieuse) : le une-page du
 # moteur legacy imprime les puces (``_conditions_onepage_html``) mais AUCUN
 # titre de conditions — le titre n'y est donc pas exigé
 # (``FORMATS_SANS_TITRE``) ; les puces et le marqueur le sont.
-# 
+#
 # Rouge d'abord : sur le commit pré-APDF13, le résidentiel premium composait en
 # dur son bloc « Conditions » (validité / paiement / TVA) sans lire
 # ``cgv_bullets`` ⇒ ``assertIn(MARQUEUR, pdf)`` échoue pour
@@ -168,12 +168,6 @@ class GelTextesEnvoiTests(TestCase):
 # échoue sur le marqueur côté page publique. Test-du-test : remettre le bloc
 # « Conditions » en dur de ``residential/trust.py`` ⇒ le cas
 # résidentiel-défaut échoue.
-)
-from apps.ventes.tests.test_pdf_apdf_identite import (
-    MARCHES, rendre_pdf, texte_pdf,
-)
-from apps.ventes.tests.test_qjr668_clauses_cgv import _compact
-
 MARQUEUR = 'PARITE-APDF'
 #: Puces société (résidentiel, agricole) : le marqueur + une case remplie.
 PUCES_SOCIETE = [f'{MARQUEUR} clause témoin',
