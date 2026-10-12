@@ -11,6 +11,7 @@ n'interceptent qu'ainsi).
 from ..openapi_params import qint
 from django.db import transaction
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from ..utils.corps import valider_corps
@@ -24,11 +25,19 @@ from ..serializers import (
 )
 from authentication.permissions import (
     IsAnyRole,
+    IsAdminOrResponsableTier,
     IsResponsableOrAdmin,
     IsAdminRole,
     HasPermissionOrLegacy,
 )
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
+
+
+#: VNT60 (arbitrage 5) — « Prix négocié » et « Demander la signature » de
+#: l'avenant : palier responsable/admin ET un code d'écriture ``ventes_*`` —
+#: jamais un Commercial (``ventes_valider`` sans palier), un Technicien
+#: responsable ni un Admin RH.
+PEUT_NEGOCIER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
 
 class _LotCreationSerializer(serializers.Serializer):
@@ -761,3 +770,69 @@ class DevisCycleActionsMixin:
         act = activity.log_devis_note(devis, request.user, body)
         return Response(DevisActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=None,
+                   responses={200: OpenApiTypes.OBJECT,
+                              201: OpenApiTypes.OBJECT,
+                              400: D.ErreurDetail, 409: D.ErreurDetail})
+    @action(detail=True, methods=['post'], url_path='prix-negocie',
+            permission_classes=PEUT_NEGOCIER)
+    def prix_negocie(self, request, pk=None):
+        """VNT60 (D-VNT-2) — « Prix négocié » sur une vente acceptée, au
+        format du contrat ``devis_prix_negocie.json`` : corps exactement UN de
+        ``prix_ttc`` / ``remise_pct``, ``mode`` = ``apercu`` (200, aucun
+        effet) ou ``appliquer`` (201 : V2 créée ET acceptée), option
+        ``confirmer_avoir``. Refus : 400 ``erreurs_400``, 409 ``erreurs_409``
+        (``version_remplacee`` + ``successeur``, ``vente_active_existante`` +
+        ``vente_active``, ``pas_une_vente_active``)."""
+        from ..domain.negociation import (
+            PrixNegocieErreur, apercu_prix_negocie, appliquer_prix_negocie)
+        devis = self.get_object()
+        mode = str(request.data.get('mode') or 'apercu').strip()
+        if mode not in ('apercu', 'appliquer'):
+            return Response(
+                {'detail': "mode attendu : « apercu » ou « appliquer ».",
+                 'code': 'mode_invalide'},
+                status=status.HTTP_400_BAD_REQUEST)
+        saisie = {'prix_ttc': request.data.get('prix_ttc'),
+                  'remise_pct': request.data.get('remise_pct'),
+                  'user': request.user,
+                  'confirmer_avoir': bool(request.data.get('confirmer_avoir'))}
+        try:
+            if mode == 'apercu':
+                return Response(apercu_prix_negocie(devis, **saisie))
+            return Response(appliquer_prix_negocie(devis, **saisie),
+                            status=status.HTTP_201_CREATED)
+        except PrixNegocieErreur as exc:
+            return Response(exc.corps, status=exc.statut_http)
+
+    @extend_schema(request=None,
+                   responses={200: OpenApiTypes.OBJECT, 409: D.ErreurDetail})
+    @action(detail=True, methods=['post'],
+            url_path='avenant/demander-signature',
+            permission_classes=PEUT_NEGOCIER)
+    def avenant_demander_signature(self, request, pk=None):
+        """VNT60 (D-ADEV-6) — faire signer l'avenant (V2 acceptée en interne) :
+        le lien de proposition de la V2 (réutilisé, jamais régénéré) et UNE
+        tâche « Faire signer l'avenant » sur le lead
+        (``apps.crm.services.poser_tache_avenant``, idempotente). Rend
+        ``{share_link, tache_id}`` (section ``demander_signature`` du
+        contrat). Aucun statut écrit (règle #4)."""
+        from ..models import ShareLink
+        from ..selectors import predecesseur_accepte
+        from ..utils.client_links import url_proposition
+        devis = self.get_object()
+        if (devis.statut != Devis.Statut.ACCEPTE or not devis.is_active
+                or predecesseur_accepte(devis) is None):
+            return Response(
+                {'detail': "Ce devis n'est pas un avenant accepté.",
+                 'code': 'pas_un_avenant'},
+                status=status.HTTP_409_CONFLICT)
+        lien = ShareLink.for_devis(devis)
+        tache_id = None
+        if devis.lead_id:
+            from apps.crm.services import poser_tache_avenant
+            etape = poser_tache_avenant(devis.lead, devis, request.user)
+            tache_id = getattr(etape, 'pk', None)
+        return Response({'share_link': url_proposition(devis, lien.token),
+                         'tache_id': tache_id})
