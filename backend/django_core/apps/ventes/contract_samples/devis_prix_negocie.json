@@ -9,71 +9,151 @@
     "mode": "appliquer"
   },
   "exemple": {
-    "devis_v2": {"id": 502, "reference": "DEV-202610-0021", "version": 2},
-    "remise_pct": "10.09",
+    "devis_v2": {
+      "id": 502,
+      "reference": "DEV-202610-0021",
+      "version": 2
+    },
+    "remise_pct": "10.00",
     "total_ttc": "49000.00",
-    "factures_annulees": [{"reference": "BROUILLON-318"}],
-    "factures_reprises": [{"reference": "FAC-202610-0044", "base_ht": "32913.33"}],
+    "factures_annulees": [
+      {
+        "reference": "BROUILLON-318"
+      }
+    ],
+    "factures_reprises": [],
     "ecart_ttc": "-5500.00",
-    "regularisation": {"type": "aucune", "montant": "0.00"},
-    "reste_a_facturer": "40800.00"
+    "regularisation": {
+      "type": "aucune",
+      "montant": "0.00"
+    },
+    "reste_a_facturer": "49000.00"
   },
   "reponse_apercu_200": {
-    "devis_v2": {"id": null, "reference": null, "version": 2},
-    "remise_pct": "10.09",
+    "devis_v2": {
+      "id": null,
+      "reference": null,
+      "version": 2
+    },
+    "remise_pct": "10.00",
     "total_ttc": "49000.00",
-    "factures_annulees": [{"reference": "BROUILLON-318"}],
-    "factures_reprises": [{"reference": "FAC-202610-0044", "base_ht": "32913.33"}],
+    "factures_annulees": [
+      {
+        "reference": "BROUILLON-318"
+      }
+    ],
+    "factures_reprises": [],
     "ecart_ttc": "-5500.00",
-    "regularisation": {"type": "aucune", "montant": "0.00"},
-    "reste_a_facturer": "40800.00"
+    "regularisation": {
+      "type": "aucune",
+      "montant": "0.00"
+    },
+    "reste_a_facturer": "49000.00"
   },
   "reponse_appliquer_201": {
-    "devis_v2": {"id": 502, "reference": "DEV-202610-0021", "version": 2},
-    "remise_pct": "10.09",
+    "devis_v2": {
+      "id": 502,
+      "reference": "DEV-202610-0021",
+      "version": 2
+    },
+    "remise_pct": "10.00",
     "total_ttc": "49000.00",
-    "factures_annulees": [{"reference": "BROUILLON-318"}],
-    "factures_reprises": [{"reference": "FAC-202610-0044", "base_ht": "32913.33"}],
+    "factures_annulees": [
+      {
+        "reference": "BROUILLON-318"
+      }
+    ],
+    "factures_reprises": [],
     "ecart_ttc": "-5500.00",
-    "regularisation": {"type": "aucune", "montant": "0.00"},
-    "reste_a_facturer": "40800.00"
+    "regularisation": {
+      "type": "aucune",
+      "montant": "0.00"
+    },
+    "reste_a_facturer": "49000.00"
   },
   "notes": {
     "types": "montants et pourcentages en TEXTE décimal à 2 décimales ; regularisation.type vaut 'complement' (le client doit un complément), 'avoir' (un avoir est émis) ou 'aucune'.",
     "bases_reelles": "panier réel : 54 500,00 TTC → 49 000,00 TTC ; bases de facturation 8 640,00 et 32 913,33.",
-    "regularisation": "type 'avoir' : le serveur répond 400 `avoir_a_confirmer` tant que l'avoir n'est pas confirmé."
+    "regularisation": "type 'avoir' : le serveur répond 400 `avoir_a_confirmer` tant que l'avoir n'est pas confirmé.",
+    "remise_pct": "le serveur choisit la remise la plus RONDE (entier, puis 1 décimale, puis 2) parmi celles qui atteignent exactement le prix tapé après l'arrondi au 100 MAD ; 54 500 → 49 000 = 10,00 % (intervalle atteignable 9,97-10,14 %, mesuré sur noyau_totaux.py le 12/10/2026).",
+    "factures_reprises": "éléments {reference, total_ttc} : factures ÉMISES de la V1 rattachées à la V2 (D-QJR5-11) ; vide ici car la V1 n'avait qu'un brouillon (annulé) — reste_a_facturer = prix convenu − Σ émises non annulées."
   },
   "erreurs_400": {
-    "saisie_vide": {"detail": "Indiquez un prix TTC ou une remise.", "code": "saisie_vide"},
-    "saisie_double": {"detail": "Indiquez le prix TTC OU la remise, pas les deux.", "code": "saisie_double"},
-    "prix_non_rond": {"detail": "Le prix négocié doit être un montant rond.", "code": "prix_non_rond"},
-    "prix_superieur": {"detail": "Le prix négocié dépasse le prix actuel du devis.", "code": "prix_superieur"},
-    "prix_identique": {"detail": "Le prix négocié est identique au prix actuel.", "code": "prix_identique"},
+    "saisie_vide": {
+      "detail": "Indiquez un prix TTC ou une remise.",
+      "code": "saisie_vide"
+    },
+    "saisie_double": {
+      "detail": "Indiquez le prix TTC OU la remise, pas les deux.",
+      "code": "saisie_double"
+    },
+    "prix_non_rond": {
+      "detail": "Le prix négocié doit être un montant rond.",
+      "code": "prix_non_rond"
+    },
+    "prix_superieur": {
+      "detail": "Le prix négocié dépasse le prix actuel du devis.",
+      "code": "prix_superieur"
+    },
+    "prix_identique": {
+      "detail": "Le prix négocié est identique au prix actuel.",
+      "code": "prix_identique"
+    },
     "prix_inatteignable": {
       "detail": "Ce prix ne peut pas être atteint exactement.",
       "code": "prix_inatteignable",
-      "prix_atteignables": ["48999.00", "49001.00"]
+      "prix_atteignables": [
+        "48999.00",
+        "49001.00"
+      ]
     },
-    "approbation_requise": {"detail": "Cette remise demande l'approbation d'un responsable.", "code": "approbation_requise"},
-    "avoir_a_confirmer": {"detail": "Un avoir sera émis : confirmez pour continuer.", "code": "avoir_a_confirmer"}
+    "approbation_requise": {
+      "detail": "Cette remise demande l'approbation d'un responsable.",
+      "code": "approbation_requise"
+    },
+    "avoir_a_confirmer": {
+      "detail": "Un avoir sera émis : confirmez pour continuer.",
+      "code": "avoir_a_confirmer"
+    }
   },
   "erreurs_409": {
     "version_remplacee": {
       "detail": "Cette version du devis a été remplacée par une révision.",
       "code": "version_remplacee",
-      "successeur": {"id": 503, "reference": "DEV-202610-0022"}
+      "successeur": {
+        "id": 503,
+        "reference": "DEV-202610-0022"
+      }
     },
-    "pas_une_vente_active": {"detail": "Ce devis n'est pas une vente active.", "code": "pas_une_vente_active"},
+    "pas_une_vente_active": {
+      "detail": "Ce devis n'est pas une vente active.",
+      "code": "pas_une_vente_active"
+    },
     "vente_active_existante": {
       "detail": "Une vente active existe déjà pour ce client.",
       "code": "vente_active_existante",
-      "vente_active": {"id": 410, "reference": "DEV-202610-0009"}
+      "vente_active": {
+        "id": 410,
+        "reference": "DEV-202610-0009"
+      }
     }
   },
-  "effets_non_rejoues": ["CAPI", "webhook", "notification", "automatisation", "parrainage", "chantier", "SAV", "commission"],
+  "effets_non_rejoues": [
+    "CAPI",
+    "webhook",
+    "notification",
+    "automatisation",
+    "parrainage",
+    "chantier",
+    "SAV",
+    "commission"
+  ],
   "demander_signature": {
     "endpoint": "POST /api/django/ventes/devis/<int:pk>/avenant/demander-signature/",
     "idempotent": true,
-    "exemple": {"share_link": "https://taqinor.ma/proposition/Xk3p9Qz2Lm", "tache_id": 207}
+    "exemple": {
+      "share_link": "https://taqinor.ma/proposition/Xk3p9Qz2Lm",
+      "tache_id": 207
+    }
   }
 }

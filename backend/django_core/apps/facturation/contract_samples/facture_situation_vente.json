@@ -6,7 +6,10 @@
     "arrondi": "montant RETRANCHÉ du total après remise : total_ht = sous_total_ht − remise_montant − arrondi (46243.50 − 4624.35 − 65.82 = 41553.33).",
     "tva_par_taux": "une ligne par taux ; Σ bases = total_ht ; Σ tva + total_ht = total_ttc.",
     "situation_vente": "ÉMISES seulement (un brouillon n'y figure jamais) ; mêmes noms que `vente` de vente_etat.json.",
-    "statuts": "aucun statut nouveau (règle #4)."
+    "statuts": "aucun statut nouveau (règle #4).",
+    "lignes": "les 11 lignes sont celles de l'OPTION ACCEPTÉE (« avec batterie », option_lines) du devis réel 388 (Σ HT 46 243,50 ; panneaux à 10 %, le reste à 20 %) ; les lignes de l'autre option (onduleur réseau, smart meter, dongle) n'y figurent jamais ; `marque` vient de Produit.marque (vide quand la fiche n'en a pas).",
+    "garanties": "valeurs d'EXEMPLE : le serveur lit Produit.garantie_mois / garantie_production_mois / garantie (helper garanties_de_la_vente) et OMET toute ligne sans donnée — aucune durée n'est jamais inventée.",
+    "prochaines_echeances": "calculées par la formule de next_tranche sur le prix convenu moins l'émis : après un acompte de 15 000 sur 30/60/10 → 29 400,00 puis 4 600,00 (goldens R3-D)."
   },
   "exemple": {
     "id": 118,
@@ -15,9 +18,94 @@
       "devis_reference": "DEV-202610-0021",
       "devis_version": 2,
       "lignes": [
-        {"designation": "Panneaux photovoltaïques", "marque": "Jinko", "quantite": "8.00", "prix_unitaire_ht": "1200.00", "total_ht": "9600.00", "taux_tva": "10.00"},
-        {"designation": "Onduleur réseau", "marque": "Huawei", "quantite": "1.00", "prix_unitaire_ht": "18500.00", "total_ht": "18500.00", "taux_tva": "20.00"},
-        {"designation": "Structure, câblage et installation", "marque": "", "quantite": "1.00", "prix_unitaire_ht": "18143.50", "total_ht": "18143.50", "taux_tva": "20.00"}
+        {
+          "designation": "Onduleur hybride Deye 5kW Monophasé",
+          "marque": "Deye",
+          "quantite": "1.00",
+          "prix_unitaire_ht": "12500.00",
+          "total_ht": "12500.00",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Panneau Canadian Solar 710W",
+          "marque": "Canadian Solar",
+          "quantite": "8.00",
+          "prix_unitaire_ht": "1200.00",
+          "total_ht": "9600.00",
+          "taux_tva": "10.00"
+        },
+        {
+          "designation": "Batterie Dyness 5 kWh",
+          "marque": "Dyness",
+          "quantite": "1.00",
+          "prix_unitaire_ht": "11666.67",
+          "total_ht": "11666.67",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Structures acier",
+          "marque": "",
+          "quantite": "8.00",
+          "prix_unitaire_ht": "416.67",
+          "total_ht": "3333.36",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Socles",
+          "marque": "",
+          "quantite": "16.00",
+          "prix_unitaire_ht": "67.00",
+          "total_ht": "1072.00",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Câble solaire Nexans 6mm² (au mètre)",
+          "marque": "Nexans",
+          "quantite": "60.00",
+          "prix_unitaire_ht": "10.83",
+          "total_ht": "649.80",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Câble de terre Nexans 6 mm² (au mètre)",
+          "marque": "Nexans",
+          "quantite": "40.00",
+          "prix_unitaire_ht": "12.00",
+          "total_ht": "480.00",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Accessoires",
+          "marque": "",
+          "quantite": "1.00",
+          "prix_unitaire_ht": "416.67",
+          "total_ht": "416.67",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Tableau De Protection AC/DC",
+          "marque": "",
+          "quantite": "1.00",
+          "prix_unitaire_ht": "1625.00",
+          "total_ht": "1625.00",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Installation",
+          "marque": "",
+          "quantite": "1.00",
+          "prix_unitaire_ht": "4000.00",
+          "total_ht": "4000.00",
+          "taux_tva": "20.00"
+        },
+        {
+          "designation": "Transport",
+          "marque": "",
+          "quantite": "1.00",
+          "prix_unitaire_ht": "900.00",
+          "total_ht": "900.00",
+          "taux_tva": "20.00"
+        }
       ],
       "sous_total_ht": "46243.50",
       "remise_pct": "10.00",
@@ -25,14 +113,30 @@
       "arrondi": "65.82",
       "total_ht": "41553.33",
       "tva_par_taux": [
-        {"taux": "10.00", "base": "8640.00", "tva": "864.00"},
-        {"taux": "20.00", "base": "32913.33", "tva": "6582.67"}
+        {
+          "taux": "10.00",
+          "base": "8640.00",
+          "tva": "864.00"
+        },
+        {
+          "taux": "20.00",
+          "base": "32913.33",
+          "tva": "6582.67"
+        }
       ],
       "total_ttc": "49000.00"
     },
     "garanties": [
-      {"libelle": "Panneaux photovoltaïques", "duree": "25 ans", "detail": "Performance linéaire"},
-      {"libelle": "Onduleur", "duree": "10 ans", "detail": "Pièces et main-d'œuvre"}
+      {
+        "libelle": "Panneaux photovoltaïques",
+        "duree": "25 ans",
+        "detail": "Performance linéaire"
+      },
+      {
+        "libelle": "Onduleur",
+        "duree": "10 ans",
+        "detail": "Pièces et main-d'œuvre"
+      }
     ],
     "situation_vente": {
       "devis_reference": "DEV-202610-0021",
@@ -42,12 +146,28 @@
       "reste_a_payer_ttc": "34000.00",
       "reste_a_facturer_ttc": "34000.00",
       "factures": [
-        {"id": 118, "reference": "FAC-202610-0007", "date_emission": "2026-10-12", "nature": "acompte", "total_ttc": "15000.00", "montant_paye": "15000.00", "statut": "payee"}
+        {
+          "id": 118,
+          "reference": "FAC-202610-0007",
+          "date_emission": "2026-10-12",
+          "nature": "acompte",
+          "total_ttc": "15000.00",
+          "montant_paye": "15000.00",
+          "statut": "payee"
+        }
       ]
     },
     "prochaines_echeances": [
-      {"cle": "intermediaire_1", "libelle": "Livraison du matériel", "montant_ttc": "29400.00"},
-      {"cle": "solde", "libelle": "Solde", "montant_ttc": "4600.00"}
+      {
+        "cle": "intermediaire_1",
+        "libelle": "Livraison du matériel",
+        "montant_ttc": "29400.00"
+      },
+      {
+        "cle": "solde",
+        "libelle": "Solde",
+        "montant_ttc": "4600.00"
+      }
     ]
   }
 }

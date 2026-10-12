@@ -1237,6 +1237,10 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
 # Cle : `<app>/<fichier>.json`. Valeur : la route visee et la raison de
 # l'abstention — jamais « plus tard », toujours un identifiant de tache.
 ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
+    # VNT8 (Groupe VNT, M0) — blocs objet_vente / garanties / situation_vente /
+    # prochaines_echeances du détail facture ; vue produite en M1.
+    'facturation/contract_samples/facture_situation_vente.json':
+        'GET /api/django/ventes/factures/<int:pk>/',
     "adsengine/veille_verdict.json":
         "POST adsengine/veille/annonceurs/<id>/verdict/ — verdict humain, "
         "reponse = l'annonceur au format veille_annonceur.json : servie par "

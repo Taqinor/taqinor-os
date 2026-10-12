@@ -16,3 +16,4 @@ TEXTE décimal (« 15000.00 »), jamais en nombre flottant.
 | `facture_annulation.json` | `POST /api/django/ventes/factures/<pk>/annuler/` — directive `acompte` et refus `directive_acompte_requise` | AFAC1 (producteur AFAC12, écran AFAC13) |
 | `paiement_annuler_saisie.json` | `POST /api/django/ventes/paiements/<pk>/annuler-saisie/` — état `annule_saisie` daté, motif, auteur | AFAC4 (producteur AFAC17, écran AFAC18) |
 | `paiement_reaffecter.json` | `POST /api/django/ventes/paiements/<pk>/reaffecter/` — réaffectation vers une facture du même client | AFAC4 (producteur AFAC17, écran AFAC18) |
+| `facture_situation_vente.json` | `GET /api/django/ventes/factures/<pk>/` — blocs additifs `objet_vente`, `garanties`, `situation_vente`, `prochaines_echeances` (facture qui fait confiance) | VNT8 (producteurs VNT35/VNT38, M1) |

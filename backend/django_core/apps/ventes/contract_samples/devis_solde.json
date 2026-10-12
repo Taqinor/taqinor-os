@@ -23,10 +23,7 @@
       "tranches_total": "3",
       "tranches_facturees": "1",
       "porte_facturation": "tranche",
-      "facturation_terminee": "False",
-      "emis": "36000.00",
-      "brouillons": "0.00",
-      "reste_a_facturer": "84000.00"
+      "facturation_terminee": "False"
     }
   },
   "exemple_vide": {
@@ -41,10 +38,7 @@
       "tranches_total": "0",
       "tranches_facturees": "0",
       "porte_facturation": "libre",
-      "facturation_terminee": "False",
-      "emis": "0.00",
-      "brouillons": "0.00",
-      "reste_a_facturer": "54000.00"
+      "facturation_terminee": "False"
     }
   },
   "exemple_tout_facture": {
@@ -59,10 +53,27 @@
       "tranches_total": "0",
       "tranches_facturees": "1",
       "porte_facturation": "aucune",
-      "facturation_terminee": "True",
-      "emis": "54000.00",
-      "brouillons": "0.00",
-      "reste_a_facturer": "0.00"
+      "facturation_terminee": "True"
+    }
+  },
+  "cles_m1": {
+    "pourquoi": "VNT5 : clés AJOUTÉES à `solde` par la tâche productrice de M1 (plan_facturation / etat_vente) ; tenues hors des exemples tant que le serveur ne les sert pas, car test_atot_portes_facturation compare les clés servies à `exemple.solde`. La tâche productrice les déplace dans `exemple.solde` dans le même commit.",
+    "exemples": {
+      "exemple": {
+        "emis": "36000.00",
+        "brouillons": "0.00",
+        "reste_a_facturer": "84000.00"
+      },
+      "exemple_vide": {
+        "emis": "0.00",
+        "brouillons": "0.00",
+        "reste_a_facturer": "54000.00"
+      },
+      "exemple_tout_facture": {
+        "emis": "54000.00",
+        "brouillons": "0.00",
+        "reste_a_facturer": "0.00"
+      }
     }
   }
 }
