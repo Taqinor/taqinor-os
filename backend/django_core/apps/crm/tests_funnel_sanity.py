@@ -78,6 +78,39 @@ class TestSigneSansDevisActif(TestCase):
         self._devis(lead, statut=Devis.Statut.REFUSE)
         self.assertFalse(lead_signe_sans_devis_actif(lead))
 
+    def test_flag_false_when_v1_accepted_in_revision(self):
+        """VNT86 — V1 acceptée dont la révision V2 est brouillon = vente en vigueur."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Revision', stage='SIGNED')
+        v1 = self._devis(lead, statut=Devis.Statut.ACCEPTE)
+        v2 = self._devis(lead, statut=Devis.Statut.BROUILLON)
+        Devis.objects.filter(pk=v1.pk).update(
+            is_active=False, superseded_by=v2)
+        self.assertFalse(lead_signe_sans_devis_actif(lead))
+
+    def test_flag_true_when_accepted_devis_archived_without_sale(self):
+        """VNT86 — accepté archivé sans remplaçant = aucune vente en vigueur
+        (le filtre mort ``is_archived`` ne le voyait pas)."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Archive', stage='SIGNED')
+        v1 = self._devis(lead, statut=Devis.Statut.ACCEPTE)
+        Devis.objects.filter(pk=v1.pk).update(is_active=False)
+        self.assertTrue(lead_signe_sans_devis_actif(lead))
+
+    def test_exit_signed_unaccepts_v1_when_v2_draft(self):
+        """VNT86 — sortie de Signé avec V1 acceptée (en révision) + V2 brouillon."""
+        from apps.crm.fiche_funnel import desaccepter_devis_du_lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Sortie', stage='SIGNED')
+        v1 = self._devis(lead, statut=Devis.Statut.ACCEPTE)
+        v2 = self._devis(lead, statut=Devis.Statut.BROUILLON)
+        Devis.objects.filter(pk=v1.pk).update(
+            is_active=False, superseded_by=v2)
+        nb = desaccepter_devis_du_lead(lead, self.user)
+        self.assertEqual(nb, 1)
+        v1.refresh_from_db()
+        self.assertEqual(v1.statut, Devis.Statut.ENVOYE)
+
     # ── Réaction au refus : note de chatter, JAMAIS de recul d'étape ─────────
 
     def test_refusal_logs_chatter_note_and_keeps_stage(self):
