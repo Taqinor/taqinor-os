@@ -10,6 +10,13 @@ documents PERSISTÉS (oracle `oracles_argent`, ATOT13).
   chaque tranche HT + TVA = TTC, et annuler la tranche k puis régénérer
   reconstitue l'échéancier (une seule facture active par clé). Aucun 500.
 
+VNT90 — `etat_vente` après une chaîne de gestes aléatoires (brouillons
+créés / émis / retirés, tranches, paiements, rejets, avoirs correction /
+geste / retour, annulations, révisions) : reste à payer = prix − payé −
+avoirs de réduction, reste à facturer ≥ 0, un brouillon ne bouge ni l'émis ni
+le reste à payer, une correction rend du facturable (un geste non), et
+`solde_devis` == `etat_vente` clé à clé là où les définitions coïncident.
+
 Échoue sur le pré-correctif d'ATOT5 (annulation de l'acompte → matériel ×2)
 et d'ATOT6 (panier unique). Endpoints et services réels, aucun mock.
 
@@ -350,3 +357,242 @@ class ProprietesAvoirEcheancierTests(_Base):
             self.assertEqual(
                 [t['valeur'] for t in tranches_normalisees(devis)],
                 [30, 60, 10])
+
+
+#: VNT90 — gestes de la vente appliqués au hasard (oracle : lignes en base).
+GESTES_VENTE = ('acompte', 'acompte_emis', 'tranche', 'tranche_emise',
+                'emettre', 'retirer_brouillons', 'paiement', 'rejet',
+                'correction', 'geste_commercial', 'retour', 'annuler',
+                'revision')
+
+ECHEANCIER_VNT90 = [
+    {'type': 'acompte', 'libelle': 'Acompte', 'unite': 'pct',
+     'pct_or_montant': 30},
+    {'type': 'materiel', 'libelle': 'Livraison du matériel', 'unite': 'pct',
+     'pct_or_montant': 60},
+    {'type': 'solde', 'libelle': 'Solde', 'unite': 'pct',
+     'pct_or_montant': 10}]
+
+
+class ProprietesEtatVenteVNT90(_Base):
+    """VNT90 — invariants de ``etat_vente`` (et de sa projection
+    ``solde_devis``) après des gestes aléatoires, brouillons compris.
+    L'oracle relit les factures, paiements et avoirs PERSISTÉS de la chaîne ;
+    un refus métier d'un geste (409/400 nommé) n'est pas une violation."""
+
+    def _vente(self):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        self._contexte()
+        self.n_version = 0
+        return creer_devis_388(self.company, self.admin, self.client_obj,
+                               f'DEV-VNT90-{uuid.uuid4().hex[:6]}',
+                               ECHEANCIER_VNT90)
+
+    def _vivantes(self, tete):
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import chaine_vente
+        ids = [d.pk for d in chaine_vente(tete)]
+        return list(Facture.objects.filter(
+            company=self.company, devis_id__in=ids)
+            .exclude(statut=Facture.Statut.ANNULEE).order_by('id'))
+
+    def _etat(self, tete):
+        """``etat_vente`` relu + invariants vérifiés contre la base."""
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.echeancier import solde_devis
+        from apps.ventes.utils.options import option_totaux
+        from apps.ventes.vente_facturation import STATUTS_EMIS, etat_vente
+        tete = Devis.objects.get(pk=tete.pk)
+        etat = etat_vente(tete)
+        vivantes = self._vivantes(tete)
+        prix = _q(option_totaux(tete)['ttc'])
+        paye = sum((Decimal(str(f.montant_paye)) for f in vivantes), ZERO)
+        emises = [f for f in vivantes if f.statut in STATUTS_EMIS]
+        reduction = sum((Decimal(str(a.total_ttc)) for f in emises
+                         for a in f.avoirs.all()
+                         if a.statut == 'emise' and a.type != 'correction'),
+                        ZERO)
+        abandons = sum((Decimal(str(f.abandon_montant or 0))
+                        for f in emises), ZERO)
+        lu = {k: Decimal(etat[k]) for k in (
+            'prix_convenu_ttc', 'emis_ttc', 'brouillons_ttc', 'paye_ttc',
+            'reste_a_facturer_ttc', 'reste_a_payer_ttc')}
+        self.assertEqual(lu['prix_convenu_ttc'], prix)
+        self.assertGreaterEqual(lu['reste_a_facturer_ttc'], ZERO)
+        self.assertEqual(lu['reste_a_payer_ttc'],
+                         _q(prix - paye - reduction - abandons))
+        solde = solde_devis(tete)
+        for cle_solde, cle_vente in (
+                ('total_ttc', 'prix_convenu_ttc'), ('facture', 'emis_ttc'),
+                ('paye', 'paye_ttc'), ('restant', 'reste_a_payer_ttc'),
+                ('brouillons', 'brouillons_ttc'),
+                ('reste_a_facturer', 'reste_a_facturer_ttc')):
+            self.assertEqual(_q(solde[cle_solde]), lu[cle_vente], cle_solde)
+        return lu
+
+    def _sans_effet_sur_l_argent(self, avant, apres, geste):
+        for cle in ('emis_ttc', 'reste_a_payer_ttc'):
+            self.assertEqual(avant[cle], apres[cle], (geste, cle))
+
+    def _facturer(self, tete, nature, fraction, emettre):
+        from apps.ventes.domain.facturation_vente import facturer_vente
+        from apps.ventes.vente_facturation import plan_facturation
+        options = {'user': self.admin, 'emettre': emettre}
+        if nature == 'acompte':
+            options['montant_ttc'] = str(max(_q(
+                plan_facturation(tete)['prix_convenu_ttc'] * fraction
+                / Decimal('250')), CENT))
+        else:
+            prochaine = plan_facturation(tete)['prochaine']
+            if prochaine is None:
+                return
+            nature = str(prochaine['type'])
+        facturer_vente(tete, nature=nature, **options)
+
+    def _emettre_premier_brouillon(self, tete):
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        brouillon = next((f for f in self._vivantes(tete)
+                          if f.statut == 'brouillon'), None)
+        if brouillon is not None:
+            emettre_facture(brouillon, user=self.admin, source='vnt90')
+
+    def _encaissable(self, tete):
+        return [f for f in self._vivantes(tete)
+                if f.statut in ('emise', 'en_retard')
+                and Decimal(str(f.montant_du)) > 0]
+
+    def _payer(self, tete, fraction):
+        from datetime import date
+        from apps.ventes.domain.encaissements import encaisser_sur_facture
+        ouvertes = self._encaissable(tete)
+        if ouvertes:
+            f = ouvertes[-1]
+            du = Decimal(str(f.montant_du))
+            encaisser_sur_facture(facture=f, user=self.admin, donnees={
+                'montant': max(_q(du * fraction / 100), CENT),
+                'date_paiement': date.today(), 'mode': 'virement',
+                'reference': ''})
+
+    def _rejeter(self, tete):
+        from apps.ventes.domain.recouvrement import rejeter_paiement
+        from apps.ventes.models import Paiement
+        paiement = (Paiement.objects.filter(facture__in=self._vivantes(tete))
+                    .exclude(statut__in=Paiement.STATUTS_NON_COMPTES)
+                    .order_by('-id').first())
+        if paiement is not None:
+            rejeter_paiement(paiement=paiement, motif='Chèque impayé',
+                             user=self.admin)
+
+    def _avoir(self, tete, type_avoir, fraction):
+        """Avoir ÉMIS de ``type_avoir`` ≤ dû d'une facture émise ; rend
+        son TTC (0 si aucune facture ouverte)."""
+        from apps.ventes.models import Avoir
+        ouvertes = [f for f in self._vivantes(tete)
+                    if f.statut in ('emise', 'en_retard', 'payee')
+                    and Decimal(str(f.montant_du)) > 0]
+        if not ouvertes:
+            return ZERO
+        f = ouvertes[0]
+        ttc = max(_q(Decimal(str(f.montant_du)) * fraction / 100), CENT)
+        ht = _q(ttc / Decimal('1.2'))
+        Avoir.objects.create(
+            company=self.company, facture=f, client=self.client_obj,
+            reference=f'AV-VNT90-{uuid.uuid4().hex[:8]}', type=type_avoir,
+            statut=Avoir.Statut.EMISE, montant_ht=ht, montant_tva=ttc - ht,
+            montant_ttc=ttc)
+        return ttc
+
+    def _annuler(self, tete):
+        from apps.ventes.domain.annulation_facture import annuler_facture
+        emises = [f for f in self._vivantes(tete)
+                  if f.statut in ('emise', 'en_retard')]
+        if emises:
+            annuler_facture(emises[-1], user=self.admin, motif='VNT90')
+
+    def _reviser(self, tete):
+        """Révision acceptée au même prix (chaîne ``superseded_by``)."""
+        from apps.ventes.models import Devis
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        self.n_version += 1
+        suivante = creer_devis_388(
+            self.company, self.admin, self.client_obj,
+            f'DEV-VNT90-R{self.n_version}-{uuid.uuid4().hex[:4]}',
+            tete.echeancier, version_parent=tete)
+        Devis.objects.filter(pk=tete.pk).update(superseded_by=suivante,
+                                                is_active=False)
+        return Devis.objects.get(pk=suivante.pk)
+
+    def _appliquer(self, tete, geste, fraction):
+        """Applique ``geste`` ; rend ``(tête, TTC de l'avoir créé)``."""
+        if geste in ('acompte', 'acompte_emis'):
+            self._facturer(tete, 'acompte', fraction, geste == 'acompte_emis')
+        elif geste in ('tranche', 'tranche_emise'):
+            self._facturer(tete, 'tranche', fraction,
+                           geste == 'tranche_emise')
+        elif geste == 'emettre':
+            self._emettre_premier_brouillon(tete)
+        elif geste == 'retirer_brouillons':
+            from apps.ventes.domain.annulation_facture import (
+                retirer_brouillons_de_la_vente)
+            retirer_brouillons_de_la_vente(tete, user=self.admin)
+        elif geste == 'paiement':
+            self._payer(tete, fraction)
+        elif geste == 'rejet':
+            self._rejeter(tete)
+        elif geste in ('correction', 'geste_commercial', 'retour'):
+            return tete, self._avoir(tete, geste, fraction)
+        elif geste == 'annuler':
+            self._annuler(tete)
+        else:
+            tete = self._reviser(tete)
+        return tete, ZERO
+
+    @PROPRIETES
+    @given(gestes=st.lists(st.tuples(st.sampled_from(GESTES_VENTE),
+                                     fraction_strategie),
+                           min_size=1, max_size=8))
+    def test_invariants_etat_vente_apres_gestes(self, gestes):
+        from django.db import transaction
+        from apps.ventes.domain.annulation_facture import AnnulationRefusee
+        from apps.ventes.domain.encaissements import EncaissementRefuse
+        from apps.ventes.domain.facturation_ops import (
+            EmissionRefusee, StockInsuffisantError)
+        from apps.ventes.domain.facturation_vente import (
+            FacturationVenteRefusee)
+        from apps.ventes.domain.recouvrement import (
+            CreditHoldError, PaiementRejectError)
+        from apps.ventes.models import Devis
+        refus = (FacturationVenteRefusee, EmissionRefusee,
+                 StockInsuffisantError, CreditHoldError, AnnulationRefusee,
+                 EncaissementRefuse, PaiementRejectError)
+        tete = self._vente()
+        avant = self._etat(tete)
+        for geste, fraction in gestes:
+            ttc_avoir = ZERO
+            tete = Devis.objects.get(pk=tete.pk)
+            try:
+                with transaction.atomic():
+                    tete, ttc_avoir = self._appliquer(tete, geste, fraction)
+            except refus:
+                pass
+            apres = self._etat(tete)
+            if geste in ('acompte', 'tranche', 'retirer_brouillons',
+                         'revision'):
+                # Un brouillon est PRÉVU, jamais FACTURÉ.
+                self._sans_effet_sur_l_argent(avant, apres, geste)
+            if geste == 'correction':
+                # Une correction rend du facturable, au centime.
+                self.assertEqual(apres['emis_ttc'],
+                                 avant['emis_ttc'] - ttc_avoir)
+                self.assertEqual(apres['reste_a_facturer_ttc'],
+                                 avant['reste_a_facturer_ttc'] + ttc_avoir)
+            if geste in ('geste_commercial', 'retour'):
+                # Un geste ou un retour réduit le dû, jamais le facturé.
+                self.assertEqual(apres['emis_ttc'], avant['emis_ttc'])
+                self.assertEqual(apres['reste_a_facturer_ttc'],
+                                 avant['reste_a_facturer_ttc'])
+                self.assertEqual(apres['reste_a_payer_ttc'],
+                                 avant['reste_a_payer_ttc'] - ttc_avoir)
+            avant = apres
