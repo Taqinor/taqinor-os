@@ -20,7 +20,6 @@ frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab
 frontend/src/features/crm/workspace/VisiteTab.jsx::VisiteTab
 frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise
 frontend/src/features/crm/workspace/sections/SectionPipeline.jsx::onFriseChanged
-frontend/src/features/entites/EntitesPage.jsx::load
 frontend/src/features/ged/GedNavigator.jsx::submit
 frontend/src/features/installations/InterventionFieldExecution.jsx::ClientInfoPanel
 frontend/src/features/notifications/AnnoncesPage.jsx::AnnoncesPage

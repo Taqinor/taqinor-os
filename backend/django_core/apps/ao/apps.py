@@ -25,7 +25,10 @@ class AoConfig(AppConfig):
         'label': "Appels d'offres",
         'icone': 'gavel',
         'depends': ['crm', 'ventes'],
-        'description': "Gestion des appels d'offres publics/privés : bordereaux de prix (BOQ), cautions/garanties de soumission, dossier administratif, échéancier de deadlines et analyse gagné/perdu.",
+        'description': (
+            "Gestion des appels d'offres publics/privés : bordereaux de prix (BOQ), cautions/garanties de soumission, "
+            "dossier administratif, échéancier de deadlines et analyse gagné/perdu."
+        ),
         'categorie': 'Commercial',
         'parked': True,
     }

@@ -25,7 +25,10 @@ class AssurancesConfig(AppConfig):
         'label': 'Assurances',
         'icone': 'shield',
         'depends': [],
-        'description': "Registre des polices d'assurance d'entreprise (RC pro, décennale, multirisque, cyber, homme-clé), échéancier de primes, sinistres transverses (hors véhicule) et attestations d'assurance.",
+        'description': (
+            "Registre des polices d'assurance d'entreprise (RC pro, décennale, multirisque, cyber, homme-clé), "
+            "échéancier de primes, sinistres transverses (hors véhicule) et attestations d'assurance."
+        ),
         'categorie': 'Finance',
         'parked': True,
     }

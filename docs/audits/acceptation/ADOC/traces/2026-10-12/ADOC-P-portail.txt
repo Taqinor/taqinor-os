@@ -1,0 +1,6 @@
+Compte portail client de test « acc_portail_test » (portée portail_client, client démo, rôle « Portail client » ; mot de passe généré
+hors dépôt ; compte désactivé en fin de rejeu — demo_portail absent de cette base, semée avant QAH12). Chromium Playwright, contexte
+neuf : connexion par le formulaire /login SANS rechargement ⇒ arrivée sur /portail/client (« Espace client … Bienvenue dans votre
+espace client. ») ; AUCUN appel à messages-accueil, aucun toast « Message d'accueil », aucune « Bienvenue chez Taqinor », aucun dialogue ;
+rechargé ⇒ identique.
+Oracles 2/3 : 403 GET /parametres/traductions/effective/ (console « Failed to load resource … 403 ») — défaut voisin hors ADOC183 → écart accepté.

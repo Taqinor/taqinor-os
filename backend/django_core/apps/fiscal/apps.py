@@ -25,7 +25,11 @@ class FiscalConfig(AppConfig):
         'label': 'Conformité fiscale',
         'icone': 'calendar-check',
         'depends': [],
-        'description': "Calendrier fiscal marocain complet par obligation (TVA/IS/IR/acomptes/timbre/RAS/CNSS/taxe professionnelle), rappels d'échéance, tableau de bord de conformité, attestations tenant avec expirations, registre UBO et veille réglementaire actionnable (Groupe NTMAR).",
+        'description': (
+            "Calendrier fiscal marocain complet par obligation (TVA/IS/IR/acomptes/timbre/RAS/CNSS/taxe "
+            "professionnelle), rappels d'échéance, tableau de bord de conformité, attestations tenant avec "
+            "expirations, registre UBO et veille réglementaire actionnable (Groupe NTMAR)."
+        ),
         'categorie': 'Finance',
         'parked': True,
     }
