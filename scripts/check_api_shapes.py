@@ -1237,6 +1237,10 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
 # Cle : `<app>/<fichier>.json`. Valeur : la route visee et la raison de
 # l'abstention — jamais « plus tard », toujours un identifiant de tache.
 ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
+    # VNT8 (Groupe VNT, M0) — blocs objet_vente / garanties / situation_vente /
+    # prochaines_echeances du détail facture ; vue produite en M1.
+    'facturation/facture_situation_vente.json':
+        'GET /api/django/ventes/factures/<int:pk>/',
     "adsengine/veille_verdict.json":
         "POST adsengine/veille/annonceurs/<id>/verdict/ — verdict humain, "
         "reponse = l'annonceur au format veille_annonceur.json : servie par "
@@ -1329,6 +1333,15 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "ACHT66 la produit (InstallationSerializer.divergence_devis) mais le "
         "detail n'est pas lisible statiquement — ACHT67 (ecran) s'appuie "
         "sur CET exemple (ACHT40)",
+    "ventes/vente_etat.json":
+        "GET ventes/devis/<pk>/ — cle ADDITIVE `vente` (etat de la vente dit "
+        "par le serveur) : servie par un ModelViewSet (forme non lisible "
+        "statiquement) ; le producteur et l'ecran s'appuient sur CET "
+        "exemple (VNT7)",
+    "crm/lead_devis_ligne.json":
+        "GET crm/leads/<id>/ — cles ADDITIVES `solde` et `vente` de chaque "
+        "element de `devis[]` : servie par un ModelViewSet (forme non lisible "
+        "statiquement) ; DevisTab s'appuie sur CET exemple (VNT7)",
 }
 
 
