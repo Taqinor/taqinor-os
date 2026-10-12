@@ -450,3 +450,103 @@ class VNT11AnnulationAvecAvoir(TestCase):
         self.assertEqual(self._avoirs(provisoire), [])
         self.assertEqual(len(self._avoirs(legale)), 1)
         self.assertEqual(self._avoirs(emise), [])
+
+
+class VNT12GarderEnAvance(TestCase):
+    """VNT12 — directive ``garder_en_avance`` : une facture (même PAYÉE)
+    s'annule, ses paiements deviennent une avance client NON affectée
+    (XFAC1), les affectations ventilées sont défaites, l'avoir CORRECTION
+    est émis ; sans directive → 400 ``directive_acompte_requise``."""
+
+    def setUp(self):
+        self.company = make_company(slug='vnt12-co', nom='VNT12 Co')
+        self.client_obj = make_client(self.company, email='vnt12@example.com')
+        self.admin = User.objects.create_user(
+            username='vnt12_admin', password='x', role_legacy='admin',
+            company=self.company,
+        )
+        self.api = auth(self.admin)
+        self.devis = make_accepted_devis(
+            self.company, self.client_obj, ref='DEV-VNT12-0001')
+
+    def _facture(self, reference, statut=Facture.Statut.EMISE):
+        # FAC-0007 de Tijani : acompte 14 700 TTC (12 466,00 + 2 234,00).
+        return Facture.objects.create(
+            company=self.company, reference=reference, devis=self.devis,
+            client=self.client_obj, statut=statut, type_facture='solde',
+            montant_ht=Decimal('12466.00'), montant_tva=Decimal('2234.00'),
+            montant_ttc=Decimal('14700.00'), created_by=self.admin,
+        )
+
+    def _annuler(self, facture, body=None):
+        return self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/annuler/',
+            body or {}, format='json')
+
+    def test_payee_garder_en_avance(self):
+        from apps.ventes.models import Avoir
+        f = self._facture(f'FAC-{MONTH}-0007', statut=Facture.Statut.PAYEE)
+        p = Paiement.objects.create(
+            company=self.company, facture=f, montant=Decimal('14700'),
+            date_paiement=timezone.now().date(), mode='virement',
+            created_by=self.admin)
+        r = self._annuler(f, {'acompte': {'action': 'garder_en_avance'}})
+        self.assertEqual(r.status_code, 200, r.data)
+        f.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(f.montant_paye, Decimal('0'))
+        # Le paiement devient une avance client NON affectée de 14 700.
+        self.assertIsNone(p.facture_id)
+        self.assertEqual(p.client_id, self.client_obj.id)
+        self.assertEqual(p.statut_affectation,
+                         Paiement.StatutAffectation.NON_AFFECTE)
+        self.assertEqual(p.montant_disponible, Decimal('14700.00'))
+        avoirs = list(Avoir.objects.filter(facture=f))
+        self.assertEqual(len(avoirs), 1)
+        self.assertEqual(avoirs[0].type, Avoir.Type.CORRECTION)
+        self.assertEqual(avoirs[0].total_ttc, Decimal('14700.00'))
+
+    def test_payee_sans_directive_400(self):
+        f = self._facture(f'FAC-{MONTH}-0017', statut=Facture.Statut.PAYEE)
+        Paiement.objects.create(
+            company=self.company, facture=f, montant=Decimal('14700'),
+            date_paiement=timezone.now().date(), mode='virement',
+            created_by=self.admin)
+        r = self._annuler(f)
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['code'], 'directive_acompte_requise')
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.PAYEE)
+        # Rembourser une PAYÉE reste refusé : seule la garde en avance passe.
+        r = self._annuler(f, {'acompte': {'action': 'rembourser'}})
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_affectation_ventilee_defaite(self):
+        from apps.ventes.domain.encaissements import (
+            enregistrer_avance, ventiler_avance)
+        f = self._facture(f'FAC-{MONTH}-0027')
+        avance = enregistrer_avance(
+            company=self.company, client=self.client_obj,
+            montant=Decimal('20000'), date_paiement=timezone.now().date(),
+            mode='virement', created_by=self.admin)
+        ventiler_avance(paiement=avance, facture=f,
+                        montant=Decimal('14700'), user=self.admin)
+        f.refresh_from_db()
+        self.assertEqual(f.montant_paye, Decimal('14700'))
+        r = self._annuler(f, {'acompte': {'action': 'garder_en_avance'}})
+        self.assertEqual(r.status_code, 200, r.data)
+        avance.refresh_from_db()
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(f.affectations_paiement.count(), 0)
+        self.assertEqual(avance.montant_disponible, Decimal('20000.00'))
+        self.assertEqual(avance.statut_affectation,
+                         Paiement.StatutAffectation.NON_AFFECTE)
+
+    def test_garder_sans_argent_refuse(self):
+        f = self._facture(f'FAC-{MONTH}-0037')
+        r = self._annuler(f, {'acompte': {'action': 'garder_en_avance'}})
+        self.assertEqual(r.status_code, 400, r.data)
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.EMISE)

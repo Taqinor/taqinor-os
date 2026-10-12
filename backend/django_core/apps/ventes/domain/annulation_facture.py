@@ -12,6 +12,10 @@ from decimal import Decimal
 from django.db import transaction
 
 
+#: VNT12 — directive : les paiements deviennent une avance client (XFAC1).
+GARDER_EN_AVANCE = 'garder_en_avance'
+
+
 class AnnulationRefusee(Exception):
     """L'annulation est refusée : ``corps`` = le corps JSON du 400, tel quel."""
 
@@ -20,14 +24,25 @@ class AnnulationRefusee(Exception):
         self.corps = corps
 
 
-def _refus_prealable(facture):
-    """Refus lus HORS verrou : payée, déjà annulée, ND active (AFAC32),
-    avoir actif (AFAC12)."""
+def _refuser_payee(facture, action):
+    """VNT12 — une PAYÉE ne s'annule qu'avec ``garder_en_avance`` ; sans
+    directive, l'argent qu'elle porte est nommé (``directive_acompte_requise``,
+    contrat ``facture_annulation.json``)."""
+    if action == GARDER_EN_AVANCE:
+        return
+    if not action:
+        _refuser_si_argent(facture, Decimal(str(facture.montant_paye)))
+    raise AnnulationRefusee(
+        {'detail': 'Une facture payée ne peut pas être annulée.'},
+    )
+
+
+def _refus_prealable(facture, action=''):
+    """Refus lus HORS verrou : payée (VNT12 : sauf garde en avance), déjà
+    annulée, ND active (AFAC32), avoir actif (AFAC12)."""
     from ..models import Facture
     if facture.statut == Facture.Statut.PAYEE:
-        raise AnnulationRefusee(
-            {'detail': 'Une facture payée ne peut pas être annulée.'},
-        )
+        _refuser_payee(facture, action)
     if facture.statut == Facture.Statut.ANNULEE:
         raise AnnulationRefusee(
             {'detail': 'Cette facture est déjà annulée.'},
@@ -231,6 +246,68 @@ def _transferer_acompte(locked, directive, paiements, net_acompte, user,
     return locked
 
 
+def _reclasser_avance(paiement):
+    """VNT12 — ``statut_affectation`` d'une avance redérivé de ce qu'il lui
+    reste ventilé (aucune → non affectée ; une part → partiellement)."""
+    from ..models import Paiement
+    paiement.refresh_from_db()
+    if paiement.facture_id is not None:
+        return
+    ventile = sum((a.montant for a in paiement.affectations.all()),
+                  Decimal('0'))
+    if ventile <= 0:
+        statut = Paiement.StatutAffectation.NON_AFFECTE
+    elif paiement.montant - ventile > 0:
+        statut = Paiement.StatutAffectation.PARTIELLEMENT_AFFECTE
+    else:
+        statut = Paiement.StatutAffectation.AFFECTE
+    if paiement.statut_affectation != statut:
+        paiement.statut_affectation = statut
+        paiement.save(update_fields=['statut_affectation'])
+
+
+def _garder_en_avance(locked, paiements, net_acompte, user):
+    """VNT12 — directive ``garder_en_avance`` : les paiements comptés de la
+    facture sont DÉTACHÉS et deviennent une avance client non affectée
+    (XFAC1 : ``facture`` vide, ``client`` posé) ; les avances ventilées sur
+    elle sont DÉFAITES (l'affectation disparaît, l'avance retrouve son
+    disponible). Jamais un paiement supprimé ni recréé : la trace reste."""
+    from ..models import FactureActivity, Paiement
+    if net_acompte <= 0:
+        raise AnnulationRefusee(
+            {'detail': 'Aucun paiement à garder en avance sur cette facture.'},
+        )
+    if locked.client_id is None:
+        raise AnnulationRefusee(
+            {'detail': (
+                "Une avance exige un client : cette facture n'en a pas.")},
+        )
+    if any(p.montant < 0 for p in paiements):
+        raise AnnulationRefusee(
+            {'detail': (
+                'Cette facture porte déjà un remboursement : choisissez '
+                '« rembourser » pour le reste.')},
+        )
+    for p in paiements:
+        p.facture = None
+        p.client_id = locked.client_id
+        p.statut_affectation = Paiement.StatutAffectation.NON_AFFECTE
+        p.save(update_fields=['facture', 'client', 'statut_affectation'])
+    for a in list(locked.affectations_paiement.select_related('paiement')):
+        if a.paiement.statut in Paiement.STATUTS_NON_COMPTES:
+            continue
+        avance = a.paiement
+        a.delete()
+        _reclasser_avance(avance)
+    FactureActivity.objects.create(
+        company=locked.company, facture=locked, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='acompte', field_label='Acompte gardé en avance',
+        old_value=str(net_acompte),
+        body=(f'{net_acompte} MAD gardés en avance client (non affectée) à '
+              "l'annulation de la facture."))
+
+
 def _refuser_si_argent(locked, net_acompte):
     """AFAC12 — sans directive, une facture qui porte de l'argent est
     refusée (400 ``directive_acompte_requise``)."""
@@ -270,6 +347,9 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
         net retombe à 0 et l'écriture négative matérialise l'obligation de
         remboursement (l'acompte n'est plus « coincé » sur une facture
         morte).
+      - ``{"acompte": {"action": "garder_en_avance"}}`` (VNT12) : les
+        paiements deviennent une avance client non affectée, les avances
+        ventilées sont défaites — la SEULE directive qui annule une PAYÉE.
 
     AFAC12 — sans directive, une facture qui porte de l'argent est
     REFUSÉE (400 ``directive_acompte_requise``) ; une facture sous avoir
@@ -282,13 +362,13 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
     La facture rendue porte ``avoir_annulation`` (l'avoir, ou None).
     """
     from ..models import Facture, Paiement
-    _refus_prealable(facture)
     directive = directive or {}
     if not isinstance(directive, dict):
         raise AnnulationRefusee(
             {'detail': 'Directive « acompte » invalide.'},
         )
     acompte_action = (directive.get('action') or '').strip()
+    _refus_prealable(facture, acompte_action)
 
     # Paiements « bloqués » sur la facture morte (l'acompte versé). On ne
     # déplace/contre-passe que le NET : si la facture porte déjà des
@@ -297,7 +377,9 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
     from .. import activity
     with transaction.atomic():
         locked = Facture.objects.select_for_update().get(pk=facture.pk)
-        if locked.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
+        if locked.statut == Facture.Statut.ANNULEE or (
+                locked.statut == Facture.Statut.PAYEE
+                and acompte_action != GARDER_EN_AVANCE):
             raise AnnulationRefusee(
                 {'detail': 'Cette facture ne peut plus être annulée.'},
             )
@@ -336,11 +418,16 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
                 locked, user, net_acompte)
             facture = locked
 
+        elif acompte_action == GARDER_EN_AVANCE:
+            _garder_en_avance(locked, paiements, net_acompte, user)
+            locked.avoir_annulation = _contre_passer(locked, user, motif)
+            facture = locked
+
         elif acompte_action:
             raise AnnulationRefusee(
                 {'detail': (
                     "Action acompte invalide. Valeurs : « transferer », "
-                    "« rembourser »."
+                    "« rembourser », « garder_en_avance »."
                 )},
             )
         else:
