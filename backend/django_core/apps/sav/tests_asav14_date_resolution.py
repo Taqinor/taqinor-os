@@ -68,6 +68,15 @@ class DateResolutionTests(TestCase):
             self.assertEqual(t.statut, Ticket.Statut.RESOLU)
             self.assertEqual(t.date_resolution, timezone.localdate())
 
+    def test_lot_motif_non_chaine_refuse_400(self):
+        # CI #985 (api-fuzz) : `motif` déclaré chaîne ; {} était avalé (200).
+        t = self._ticket(Ticket.Statut.EN_COURS)
+        r = self.api.post(f'{BASE}/actions-groupees/', {
+            'ids': [t.pk], 'operation': 'priorite', 'priorite': 'basse',
+            'motif': {}}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('motif', r.json())
+
     def test_patch_ignore(self):
         t = self._ticket(Ticket.Statut.NOUVEAU)
         r = self.api.patch(f'{BASE}/{t.pk}/', {

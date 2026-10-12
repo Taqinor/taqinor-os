@@ -575,7 +575,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
 
 # ENF11 — `list` renvoie l'objet unique (singleton société), pas un tableau.
 @extend_schema_serializer(many=False)
-class SavSlaSettingsSerializer(serializers.ModelSerializer):
+class SavSlaSettingsSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     class Meta:
         model = SavSlaSettings
         fields = [
@@ -863,7 +863,7 @@ class ReleveCompteurEquipementSerializer(SameCompanyFKSerializerMixin,
 
 # ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
 
-class ReponseTypeSerializer(serializers.ModelSerializer):
+class ReponseTypeSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     class Meta:
         model = ReponseType
         fields = [
@@ -960,7 +960,7 @@ class TicketWorksheetSerializer(SameCompanyFKSerializerMixin,
 
 # ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────
 
-class ProblemeSerializer(serializers.ModelSerializer):
+class ProblemeSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """NTSRV16 — un problème + le NOMBRE de tickets rattachés.
 
     ``reference`` et ``company`` sont posés côté serveur (numérotation

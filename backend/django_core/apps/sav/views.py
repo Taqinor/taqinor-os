@@ -1338,6 +1338,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if operation not in self._ACTIONS_GROUPEES_VALEURS:
             return Response(
                 {'operation': 'Opération inconnue.'}, status=400)
+        # ENF11 : `motif` est déclaré chaîne — un objet/nombre n'est plus avalé.
+        if not isinstance(request.data.get('motif', ''), str):
+            return Response({'motif': 'Une chaîne est attendue.'}, status=400)
 
         # ASAV25 — seuls les tickets VISIBLES (portée de l'utilisateur) sont
         # traités ; les autres ids sortent en échec « introuvable », sans

@@ -682,6 +682,24 @@ class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
             with self.assertRaises(ValidationError, msg=champ):
                 champs[champ].run_validation(valeur)
 
+    def test_champs_probleme_reponse_type_sla_stricts(self):
+        # CI #985 (api-fuzz) : cause_racine=0, archived=0, csat_detaille_actif=0
+        # étaient coercés en "0"/False au lieu d'être refusés.
+        from rest_framework.exceptions import ValidationError
+        from apps.sav.serializers import (
+            ProblemeSerializer, ReponseTypeSerializer,
+            SavSlaSettingsSerializer)
+        for ser, champ, bon, mauvais in (
+                (ProblemeSerializer, 'cause_racine', 'Câble', 0),
+                (ProblemeSerializer, 'description', 'x', 5),
+                (ReponseTypeSerializer, 'archived', True, 0),
+                (ReponseTypeSerializer, 'corps', 'x', 0),
+                (SavSlaSettingsSerializer, 'csat_detaille_actif', False, 0)):
+            champs = ser().fields
+            self.assertEqual(champs[champ].run_validation(bon), bon)
+            with self.assertRaises(ValidationError, msg=champ):
+                champs[champ].run_validation(mauvais)
+
     def test_limit_des_similaires_entier_strict_minimum_un(self):
         from rest_framework.exceptions import ValidationError
         from core.champs_stricts import entier_ou_400
