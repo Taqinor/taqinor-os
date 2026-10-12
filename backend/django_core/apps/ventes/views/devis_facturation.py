@@ -26,6 +26,67 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+#: VNT31 — clés ``vente`` du contrat ``devis_facturer.json`` (sous-ensemble
+#: de ``etat_vente``, contrat ``vente_etat.json``).
+CLES_VENTE_FACTURER = ('prix_convenu_ttc', 'emis_ttc', 'brouillons_ttc',
+                       'paye_ttc', 'reste_a_facturer_ttc',
+                       'reste_a_payer_ttc')
+#: Les champs du corps transmis tels quels à ``facturer_vente``.
+CHAMPS_FACTURER_VENTE = ('nature', 'montant_ttc', 'pourcentage',
+                         'cle_attendue', 'libelle', 'emettre', 'paiements',
+                         'remplacer_brouillons', 'utiliser_avances')
+
+
+def _texte(valeur):
+    from decimal import Decimal
+    return f'{Decimal(str(valeur)):.2f}'
+
+
+def apercu_facturer(devis, user):
+    """GET ``devis/<id>/facturer/`` : le plan (tranches émise / brouillon /
+    à faire), la prochaine tranche, l'acompte proposé et la vente — lus
+    sur ``plan_facturation`` / ``etat_vente`` (aucun calcul ici)."""
+    from ..vente_facturation import etat_vente, plan_facturation
+    plan = plan_facturation(devis)
+    etat = etat_vente(devis, user)
+    p = plan['prochaine']
+    return {
+        'plan': [{'cle': t['cle'], 'libelle': t['libelle'],
+                  'unite': t['unite'], 'valeur': _texte(t['valeur']),
+                  'montant_ttc': _texte(t['montant_ttc']),
+                  'statut': t['statut']} for t in plan['tranches']],
+        'prochaine': ({'cle': p['cle'], 'libelle': p['libelle'],
+                       'montant_ttc': _texte(p['montant_ttc'])}
+                      if p else None),
+        'acompte_propose': etat['acompte_propose'],
+        'vente': {cle: etat[cle] for cle in CLES_VENTE_FACTURER},
+    }
+
+
+def refus_avant_facturer(vue, request, devis, corps):
+    """403 avant toute écriture : émettre / encaisser / utiliser les avances
+    exigent le code d'encaissement (même garde que
+    ``factures/<id>/enregistrer-paiement/``) ; avertissement de vente
+    bloquant (ZSAL9, ``override_avertissement``)."""
+    if corps.get('emettre') or corps.get('paiements') \
+            or corps.get('utiliser_avances'):
+        if not HasPermissionOrLegacy('encaisser')().has_permission(
+                request, vue):
+            return Response(
+                {'detail': ("Émettre ou encaisser une facture exige le "
+                            "droit d'encaissement.")},
+                status=status.HTTP_403_FORBIDDEN)
+    from ..services import SaleWarningError, verifier_sale_warnings
+    try:
+        verifier_sale_warnings(
+            devis, override=bool(corps.get('override_avertissement')),
+            user=request.user, chatter_target=devis)
+    except SaleWarningError as exc:
+        return Response(
+            {'detail': f'Avertissement de vente bloquant : {exc.motif}.',
+             'code': 'sale_warning'}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
 
 class DevisFacturationActionsMixin:
     """SPL141 — actions de facturation de ``DevisViewSet`` (mixin, aucune base)."""
@@ -241,6 +302,54 @@ class DevisFacturationActionsMixin:
                 'mode_paiement': p.mode,
                 'reference': p.reference or '',
             } for p in paiements],
+        }, status=status.HTTP_201_CREATED)
+
+    @extend_schema(methods=['GET'], request=None,
+                   responses={200: D.FacturerVenteApercu})
+    @extend_schema(methods=['POST'], request=D.FacturerVenteRequest,
+                   responses={201: D.FacturerVenteResponse,
+                              400: D.ErreurFacturerVente,
+                              403: D.ErreurFacturerVente,
+                              409: D.ErreurFacturerVente})
+    # api-only: l'écran FacturerVenteDialog arrive avec VNT45 (lot M1).
+    @action(
+        detail=True,
+        methods=['get', 'post'],
+        url_path='facturer',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def facturer(self, request, pk=None):
+        """VNT31 — « Facturer la vente » (contrat ``devis_facturer.json``).
+
+        GET : l'aperçu (plan, prochaine tranche, acompte proposé, vente).
+        POST : ``domain/facturation_vente.facturer_vente`` — la facture naît
+        brouillon (``emettre`` / ``paiements`` / ``utiliser_avances`` exigent
+        le code d'encaissement) ; les refus du service sont rendus tels quels
+        (``code`` + clé fautive). Jamais de prix d'achat ni de marge."""
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response(apercu_facturer(devis, request.user))
+        corps = valider_corps(request, D.FacturerVenteRequest)
+        refus = refus_avant_facturer(self, request, devis, corps)
+        if refus is not None:
+            return refus
+        from ..domain.facturation_vente import (
+            FacturationVenteRefusee, facturer_vente)
+        try:
+            facture, _paiements = facturer_vente(
+                devis, user=request.user,
+                **{c: corps[c] for c in CHAMPS_FACTURER_VENTE if c in corps})
+        except FacturationVenteRefusee as exc:
+            return Response(exc.corps, status=exc.status)
+        from ..vente_facturation import etat_vente
+        etat = etat_vente(Devis.objects.get(
+            pk=devis.pk, company_id=devis.company_id), request.user)
+        return Response({
+            'facture': {'id': facture.pk, 'reference': facture.reference,
+                        'statut': facture.statut,
+                        'total_ttc': _texte(facture.total_ttc),
+                        'nature': facture.type_facture},
+            'vente': {cle: etat[cle] for cle in CLES_VENTE_FACTURER},
         }, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=None, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})

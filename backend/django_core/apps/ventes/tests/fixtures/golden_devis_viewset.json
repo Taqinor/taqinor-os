@@ -193,6 +193,16 @@
       ]
     },
     {
+      "nom": "facturer",
+      "url_path": "facturer",
+      "url_name": "facturer",
+      "detail": true,
+      "methodes": [
+        "get",
+        "post"
+      ]
+    },
+    {
       "nom": "facturer_complet",
       "url_path": "facturer-complet",
       "url_name": "facturer-complet",
@@ -585,6 +595,7 @@
     "envoyer_email",
     "etat_pdf",
     "etude_params",
+    "facturer",
     "facturer_complet",
     "filter_backends",
     "filter_queryset",

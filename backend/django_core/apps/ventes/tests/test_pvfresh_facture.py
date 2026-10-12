@@ -162,6 +162,96 @@ class ClePdfAJourFactureTests(TestCase):
         self.assertTrue(self.facture.pdf_render_meta.get('empreinte'))
 
 
+# Rendu WeasyPrint réel, SANS ``@tag('pdf')`` (la CI exclut ce tag) : comme
+# test_atot_pdf_chaine_totaux, le contrat VNT42 doit tourner à chaque PR.
+@patch('apps.ventes.utils.pdf._upload_pdf')
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class EmpreinteBlocsVenteTests(TestCase):
+    """VNT42 — l'empreinte PVFRESH d'une facture rattachée à un devis porte
+    l'objet de la vente, les garanties, la situation, les prochaines
+    échéances et le filigrane : (a) paiement sur la facture SŒUR et (d)
+    brouillon → émise ⇒ re-rendu ; (b) révision de la tête et (c)
+    ``garantie_mois`` changé ⇒ AUCUN re-rendu de l'émise (instantanés),
+    re-rendu du brouillon ; sans changement ⇒ servi tel quel."""
+
+    def setUp(self):
+        from apps.ventes.models import Devis, LigneDevis
+        self.company = _company('pvfresh-vnt42-co')
+        self.client_obj = _client_obj(self.company)
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-VNT42-0001',
+            client=self.client_obj, statut='accepte',
+            taux_tva=Decimal('20.00'))
+        for nom, prix, mois in (
+                ('Onduleur hybride Deye SUN-8K-SG05LP3', '12500', 120),
+                ('Coffret de protection AC/DC', '1500', None)):
+            produit = Produit.objects.create(
+                company=self.company, nom=nom, sku=f'VNT42-{prix}',
+                prix_vente=Decimal(prix), quantite_stock=50,
+                garantie_mois=mois)
+            LigneDevis.objects.create(
+                devis=self.devis, produit=produit, designation=nom,
+                quantite=Decimal('1'), prix_unitaire=Decimal(prix),
+                remise=Decimal('0'), taux_tva=Decimal('20.00'))
+
+    def _tranche(self, reference, type_facture='acompte', emettre=True):
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        facture = Facture.objects.create(
+            company=self.company, reference=reference,
+            client=self.client_obj, devis=self.devis,
+            statut=Facture.Statut.BROUILLON, type_facture=type_facture,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'))
+        if emettre:
+            emettre_facture(facture, source='test_vnt42')
+        return facture.pk
+
+    def _re_rendu(self, pk, mock_upload):
+        from apps.ventes.utils.pdf import cle_facture_pdf_a_jour
+        avant = mock_upload.call_count
+        cle_facture_pdf_a_jour(Facture.objects.get(pk=pk))
+        return mock_upload.call_count > avant
+
+    def test_quatre_cas(self, mock_dl, mock_upload):
+        from datetime import date
+
+        from apps.ventes.domain.encaissements import (
+            recalculer_statut_paiement)
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        from apps.ventes.models import LigneDevis, Paiement
+        emise = self._tranche('FAC-VNT42-0001')
+        soeur = self._tranche('FAC-VNT42-0002', 'intermediaire')
+        brouillon = self._tranche('FAC-VNT42-0003', 'solde', emettre=False)
+        for pk in (emise, brouillon):
+            self.assertTrue(self._re_rendu(pk, mock_upload))
+        # Sans changement : servi tel quel.
+        self.assertFalse(self._re_rendu(emise, mock_upload))
+        self.assertFalse(self._re_rendu(brouillon, mock_upload))
+        # (c) garantie du catalogue changée.
+        Produit.objects.filter(company=self.company,
+                               nom__startswith='Onduleur').update(
+            garantie_mois=60)
+        self.assertFalse(self._re_rendu(emise, mock_upload))
+        self.assertTrue(self._re_rendu(brouillon, mock_upload))
+        # (b) révision de la tête (désignation d'une ligne du devis).
+        LigneDevis.objects.filter(
+            devis=self.devis, designation__startswith='Coffret').update(
+            designation='Coffret de protection AC/DC 32 A')
+        self.assertFalse(self._re_rendu(emise, mock_upload))
+        self.assertTrue(self._re_rendu(brouillon, mock_upload))
+        # (a) paiement sur la facture SŒUR : la situation de la vente bouge.
+        Paiement.objects.create(
+            company=self.company, facture_id=soeur, montant=Decimal('1200'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        recalculer_statut_paiement(Facture.objects.get(pk=soeur))
+        self.assertTrue(self._re_rendu(emise, mock_upload))
+        # (d) brouillon → émise.
+        emettre_facture(Facture.objects.get(pk=brouillon),
+                        source='test_vnt42')
+        self.assertTrue(self._re_rendu(brouillon, mock_upload))
+        self.assertFalse(self._re_rendu(brouillon, mock_upload))
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # (2) Routage public — le endpoint passe par la fraîcheur, dégrade si besoin
 # ═════════════════════════════════════════════════════════════════════════════

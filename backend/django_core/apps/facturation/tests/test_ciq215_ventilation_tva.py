@@ -136,6 +136,117 @@ class VentilationTrancheMixteTest(_Base):
         self.assertNotIn('16.67%', html)
 
 
+class PartDeLaVente388Test(_Base):
+    """VNT36 — sur le panier RÉEL du 388 (49 000 TTC), la facture de tranche
+    imprime sa part CALCULÉE au rendu (« Acompte : 15000.00 MAD TTC (30.61 %
+    du prix convenu 49000.00 MAD) » ; la dernière « Solde : 34000.00 MAD TTC
+    (reste de la vente) »), jamais lue du libellé ni de
+    ``Facture.pourcentage`` ; la TVA ventilée par taux est imprimée."""
+
+    LIBRE = [{'type': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+              'pct_or_montant': 15000},
+             {'type': 'solde', 'libelle': 'Solde', 'unite': 'montant',
+              'pct_or_montant': 34000}]
+
+    def _devis_388(self, reference, echeancier):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.options import option_totaux
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                reference, echeancier)
+        tot = option_totaux(devis)
+        self.assertEqual((tot['ht'], tot['tva'], tot['ttc']),
+                         (Decimal('41553.33'), Decimal('7446.67'),
+                          Decimal('49000.00')))
+        self.assertEqual(
+            [(Decimal(str(b['base_ht'])), Decimal(str(b['montant'])))
+             for b in tot['tva_par_taux']],
+            [(Decimal('8640.00'), Decimal('864.00')),
+             (Decimal('32913.33'), Decimal('6582.67'))])
+        return devis
+
+    def _html(self, facture):
+        from apps.ventes.utils.pdf import (
+            _company_context, _render_html, contexte_vente_facture)
+        facture.refresh_from_db()
+        ctx = _company_context(company=self.company)
+        ctx['facture'] = facture
+        ctx.update(contexte_vente_facture(facture))
+        return _render_html('facture.html', ctx)
+
+    def _paniers(self, facture):
+        return [(b['taux'], b['base_ht'], b['montant'])
+                for b in facture.tva_par_taux]
+
+    def test_acompte_libre_15000_puis_solde(self):
+        devis = self._devis_388('DEV-VNT36-0388', self.LIBRE)
+        acompte, solde = self._facturer_tout_388(devis, 2)
+        self.assertEqual((acompte.total_ttc, acompte.total_ht,
+                          acompte.total_tva),
+                         (Decimal('15000.00'), Decimal('12720.41'),
+                          Decimal('2279.59')))
+        self.assertEqual(self._paniers(acompte), [
+            (Decimal('10.00'), Decimal('2644.90'), Decimal('264.49')),
+            (Decimal('20.00'), Decimal('10075.51'), Decimal('2015.10'))])
+        self.assertEqual((solde.total_ttc, solde.total_ht, solde.total_tva),
+                         (Decimal('34000.00'), Decimal('28832.92'),
+                          Decimal('5167.08')))
+        self.assertEqual(self._paniers(solde), [
+            (Decimal('10.00'), Decimal('5995.10'), Decimal('599.51')),
+            (Decimal('20.00'), Decimal('22837.82'), Decimal('4567.57'))])
+        for i, (base, tva) in enumerate(((Decimal('8640.00'),
+                                          Decimal('864.00')),
+                                         (Decimal('32913.33'),
+                                          Decimal('6582.67')))):
+            self.assertEqual(sum(self._paniers(f)[i][1]
+                                 for f in (acompte, solde)), base)
+            self.assertEqual(sum(self._paniers(f)[i][2]
+                                 for f in (acompte, solde)), tva)
+        html_acompte = self._html(acompte)
+        self.assertIn('Acompte : 15000.00 MAD TTC (30.61 % du prix convenu '
+                      '49000.00 MAD)', html_acompte)
+        for montant in ('12720.41', '2644.90', '264.49', '10075.51',
+                        '2015.10'):
+            self.assertIn(f'{montant} MAD', html_acompte)
+        html_solde = self._html(solde)
+        self.assertIn('Solde : 34000.00 MAD TTC (reste de la vente)',
+                      html_solde)
+        self.assertNotIn('du prix convenu', html_solde)
+        for montant in ('28832.92', '5995.10', '599.51', '22837.82',
+                        '4567.57'):
+            self.assertIn(f'{montant} MAD', html_solde)
+        # Jamais lue du pourcentage stocké ni du libellé de la facture.
+        type(acompte).objects.filter(pk=acompte.pk).update(
+            pourcentage=Decimal('10'), libelle='Solde 10 %')
+        self.assertIn('(30.61 % du prix convenu', self._html(acompte))
+
+    def test_non_regression_acompte_30_pour_cent(self):
+        devis = self._devis_388('DEV-VNT36-0030', [
+            {'type': 'acompte', 'pct_or_montant': 30},
+            {'type': 'materiel', 'pct_or_montant': 60},
+            {'type': 'solde', 'pct_or_montant': 10}])
+        (acompte,) = self._facturer_tout_388(devis, 1)
+        self.assertEqual((acompte.total_ttc, acompte.total_ht,
+                          acompte.total_tva),
+                         (Decimal('14700.00'), Decimal('12466.00'),
+                          Decimal('2234.00')))
+        self.assertEqual(self._paniers(acompte), [
+            (Decimal('10.00'), Decimal('2592.00'), Decimal('259.20')),
+            (Decimal('20.00'), Decimal('9874.00'), Decimal('1974.80'))])
+        self.assertIn('Acompte : 14700.00 MAD TTC (30.00 % du prix convenu '
+                      '49000.00 MAD)', self._html(acompte))
+
+    def _facturer_tout_388(self, devis, n):
+        from apps.ventes.models import Facture
+        factures = []
+        for _ in range(n):
+            r = self.api.post(
+                f'/api/django/ventes/devis/{devis.id}/generer-facture/')
+            self.assertEqual(r.status_code, 201, r.data)
+            factures.append(Facture.objects.get(pk=r.data['id']))
+        return factures
+
+
 class MonoTauxInchangeTest(_Base):
     def test_facture_mono_taux_sans_ventilation(self):
         devis = self._devis('DEV-CIQ215-0020', [

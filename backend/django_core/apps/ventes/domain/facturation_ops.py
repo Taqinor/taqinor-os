@@ -119,6 +119,9 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         raise EmissionRefusee(
             'La facture doit contenir au moins une ligne.')
     verifier_ice_client_entreprise(facture)
+    from apps.ventes.vente_facturation import motif_emission_hors_prix
+    if (motif := motif_emission_hors_prix(facture)):  # VNT20 : 1 vente, 1 fois
+        raise EmissionRefusee(motif)
 
     if verifier_credit and facture.client_id:
         from apps.ventes.domain.recouvrement import verifier_credit_hold
@@ -176,6 +179,9 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         # VNT9 — couture : objet_vente + garanties figés (no-op, VNT35/38).
         from .instantanes_facture import figer_a_l_emission
         figer_a_l_emission(facture)
+        # VNT21 — sortie de stock U9 (reliquat, idempotente) à l'ÉMISSION : un brouillon ne sort rien.
+        if facture.devis_id and (not facture.bon_commande_id or source == 'facturer_devis_complet'):
+            reserver_stock_devis_facture(devis=facture.devis, user=user, company=facture.company)
         facture.save()
 
     from core.events import facture_emise
@@ -708,8 +714,6 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
         bc = None
 
     with transaction.atomic():
-        reserver_stock_devis_facture(devis=devis, user=user, company=company)
-
         def _create(ref):
             facture = Facture.objects.create(
                 reference=ref,

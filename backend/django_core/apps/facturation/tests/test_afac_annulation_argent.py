@@ -221,3 +221,15 @@ class AnnulationArgentTests(TestCase):
         r = self._annuler(acompte)
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(self._relire(acompte).statut, 'annulee')
+        # VNT11 (D-VNT-1) — une référence LÉGALE s'annule par son avoir de
+        # contre-passation CORRECTION (jamais un statut seul, jamais un trou).
+        from apps.ventes.models import Avoir
+        from core.numbering import est_reference_provisoire
+        acompte = self._relire(acompte)
+        avoirs = list(Avoir.objects.filter(facture=acompte))
+        if est_reference_provisoire(acompte.reference):
+            self.assertEqual(avoirs, [])
+        else:
+            self.assertEqual(len(avoirs), 1)
+            self.assertEqual(avoirs[0].type, Avoir.Type.CORRECTION)
+            self.assertEqual(avoirs[0].total_ttc, acompte.total_ttc)
