@@ -88,6 +88,15 @@ LIBELLES = {
         'garanties': 'Garanties',
         'duree': 'Durée',
         'detail': 'Détail',
+        # VNT40 — « Situation de la vente » (factures émises de la vente).
+        'situation_vente_au': 'Situation de la vente au',
+        'prix_convenu': 'Prix convenu',
+        'cette_facture': 'Cette facture',
+        'total_facture': 'Total facturé',
+        'paye_sur_la_vente': 'Payé sur la vente',
+        'reste_du_sur_la_vente': 'Reste dû sur la vente',
+        'reste_a_facturer': 'Reste à facturer',
+        'reste_du': 'reste dû',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -145,6 +154,14 @@ LIBELLES = {
         'garanties': 'الضمانات',
         'duree': 'المدة',
         'detail': 'التفاصيل',
+        'situation_vente_au': 'وضعية البيع بتاريخ',
+        'prix_convenu': 'الثمن المتفق عليه',
+        'cette_facture': 'هذه الفاتورة',
+        'total_facture': 'مجموع المفوتر',
+        'paye_sur_la_vente': 'المؤدى من البيع',
+        'reste_du_sur_la_vente': 'المتبقي المستحق من البيع',
+        'reste_a_facturer': 'المتبقي للفوترة',
+        'reste_du': 'المتبقي المستحق',
     },
 }
 

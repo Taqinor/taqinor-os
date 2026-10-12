@@ -667,6 +667,36 @@ def part_vente_pdf(facture, tete, etat):
             'prix_convenu': etat['prix_convenu_ttc'], 'derniere': derniere}
 
 
+#: VNT40 — statuts d'une facture ÉMISE (un brouillon n'est jamais facturé).
+STATUTS_EMIS_VENTE = ('emise', 'payee', 'en_retard')
+_CLES_FACTURE_SITUATION = ('id', 'reference', 'date_emission', 'nature',
+                           'total_ttc', 'montant_paye', 'statut')
+
+
+def situation_vente_pdf(tete, etat):
+    """VNT40 — « Situation de la vente » : sous-ensemble ÉMIS de
+    ``etat_vente`` (mêmes noms que le bloc ``vente`` de ``vente_etat.json``,
+    contrat ``facture_situation_vente.json``), VIVANT (un état de paiement,
+    comme « Déjà payé »). Chaque facture émise porte aussi ``reste_du_ttc``
+    (TTC − payé, texte) pour la ligne « payée ou reste »."""
+    from decimal import Decimal
+    factures = []
+    for f in etat['factures']:
+        if f['statut'] not in STATUTS_EMIS_VENTE:
+            continue
+        ligne = {cle: f[cle] for cle in _CLES_FACTURE_SITUATION}
+        reste = Decimal(f['total_ttc']) - Decimal(f['montant_paye'])
+        ligne['reste_du_ttc'] = f'{max(reste, Decimal("0")):.2f}'
+        factures.append(ligne)
+    return {
+        'devis_reference': tete.reference,
+        **{cle: etat[cle] for cle in (
+            'prix_convenu_ttc', 'emis_ttc', 'paye_ttc', 'reste_a_payer_ttc',
+            'reste_a_facturer_ttc')},
+        'factures': factures,
+    }
+
+
 def contexte_vente_facture(facture, langue='fr'):
     """Les blocs de la vente du PDF facture (dict à fusionner dans le
     contexte du gabarit) ; une facture sans devis n'en porte aucun. L'état
@@ -680,7 +710,8 @@ def contexte_vente_facture(facture, langue='fr'):
     etat = etat_vente(tete)
     return {'objet_vente': objet_vente_pdf(facture),
             'part_vente': part_vente_pdf(facture, tete, etat),
-            'garanties_vente': garanties_pdf(facture, langue)}
+            'garanties_vente': garanties_pdf(facture, langue),
+            'situation_vente': situation_vente_pdf(tete, etat)}
 
 
 def _facture_render_data(facture) -> dict:

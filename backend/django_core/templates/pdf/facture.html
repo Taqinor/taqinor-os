@@ -41,6 +41,11 @@
   'ttc': 'TTC', 'du_prix_convenu': 'du prix convenu',
   'reste_de_la_vente': 'reste de la vente',
   'garanties': 'Garanties', 'duree': 'Durée', 'detail': 'Détail',
+  'situation_vente_au': 'Situation de la vente au',
+  'prix_convenu': 'Prix convenu', 'cette_facture': 'Cette facture',
+  'total_facture': 'Total facturé', 'paye_sur_la_vente': 'Payé sur la vente',
+  'reste_du_sur_la_vente': 'Reste dû sur la vente',
+  'reste_a_facturer': 'Reste à facturer', 'reste_du': 'reste dû',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -447,6 +452,53 @@
     Escompte {{ facture.escompte_mention.pct }} % si règlement sous
     {{ facture.escompte_mention.jours }} jours, soit
     {{ "%.2f"|format(facture.escompte_mention.montant) }} MAD.
+  </div>
+  {% endif %}
+
+  {# VNT40 — « Situation de la vente » APRÈS le Total TTC : factures ÉMISES de
+     la vente (``utils/pdf.situation_vente_pdf`` = sous-ensemble d'``etat_vente``),
+     vivante comme « Déjà payé ». Libellés distincts de ceux du bloc des
+     règlements de CETTE facture ; montants en texte serveur. #}
+  {% if situation_vente %}
+  {% set sv = situation_vente %}
+  <div class="totaux situation-vente" style="width: 360px;">
+    <div class="totaux-row deja-paye-titre">
+      <span>{{ _L('situation_vente_au') }} {{ now.strftime('%d/%m/%Y') }}</span>
+      <span></span>
+    </div>
+    <div class="totaux-row">
+      <span>{{ _L('prix_convenu') }}</span>
+      <span>{{ sv.prix_convenu_ttc }} MAD</span>
+    </div>
+    {% for f in sv.factures if f.id != facture.id %}
+    {% set d = f.date_emission or '' %}
+    <div class="totaux-row reglement">
+      <span>{{ f.reference }} · {% if d %}{{ d[8:10] }}/{{ d[5:7] }}/{{ d[0:4] }}{% endif %} · {{ f.total_ttc }} MAD · {% if f.statut == 'payee' %}{{ _L('Payée') }}{% else %}{{ _L('reste_du') }} {{ f.reste_du_ttc }} MAD{% endif %}</span>
+      <span></span>
+    </div>
+    {% endfor %}
+    <div class="totaux-row">
+      <span>{{ _L('cette_facture') }}</span>
+      <span>{{ "%.2f"|format(facture.total_ttc) }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>{{ _L('total_facture') }}</span>
+      <span>{{ sv.emis_ttc }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>{{ _L('paye_sur_la_vente') }}</span>
+      <span>{{ sv.paye_ttc }} MAD</span>
+    </div>
+    <div class="totaux-row reste-a-payer">
+      <span>{{ _L('reste_du_sur_la_vente') }}</span>
+      <span>{{ sv.reste_a_payer_ttc }} MAD</span>
+    </div>
+    {% if sv.reste_a_facturer_ttc != '0.00' %}
+    <div class="totaux-row">
+      <span>{{ _L('reste_a_facturer') }}</span>
+      <span>{{ sv.reste_a_facturer_ttc }} MAD</span>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
