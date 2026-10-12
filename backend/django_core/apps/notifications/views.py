@@ -49,8 +49,7 @@ from .serializers import (
 )
 from .services import (
     acknowledge_annonce, annonce_compliance_report, merged_preferences,
-    publish_annonce, resolve_vapid_keys, EVENEMENTS_ROUTABLES, EVENEMENTS_ROUTABLES_CHOIX,
-    set_template_approval_status,
+    publish_annonce, resolve_vapid_keys, EVENEMENTS_ROUTABLES_CHOIX, set_template_approval_status,
     submit_template_for_approval,
 )
 
