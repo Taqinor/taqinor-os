@@ -565,7 +565,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if motif_refus:
             return Response({'detail': motif_refus},
                             status=status.HTTP_409_CONFLICT)
-        motif = ((request.data or {}).get('motif') or '').strip()
+        motif = valider_corps(request, D.MarquerPayeeRequest)['motif'].strip()
         if not motif:
             return Response(
                 {'detail': (
