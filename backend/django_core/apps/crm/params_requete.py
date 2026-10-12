@@ -19,17 +19,26 @@ from rest_framework.exceptions import ValidationError
 _ENTIER = re.compile(r'^[+-]?\d+$')
 
 
-def entier_param(request, nom, defaut=None, *, mini=None, maxi=None):
+def entier_param(request, nom, defaut=None, *, mini=None, maxi=None,
+                 tolerant=False):
     """Valeur entière du paramètre de requête ``nom``.
 
     Absent ou vide → ``defaut``. Non entier (« null », « abc », « 2.5 ») → 400
     nommant le paramètre. ``mini``/``maxi`` BORNENT (clamp) sans refuser : le
-    schéma annonce un entier, pas une plage."""
+    schéma annonce un entier, pas une plage.
+
+    ``tolerant=True`` : contrat TOLÉRANT (fenêtres ``?jours=`` des agrégats
+    KPI, MRY19/MRY21/CAD87 — « jours invalide retombe sur le défaut ») : une
+    valeur non entière vaut ``defaut`` au lieu d'un 400. Le schéma de ces
+    paramètres l'annonce honnêtement (``schema_docs.P_JOURS`` : entier OU
+    texte) — jamais un ``integer`` strict que le serveur ne tiendrait pas."""
     brut = request.query_params.get(nom)
     if brut is None or str(brut).strip() == '':
         return defaut
     brut = str(brut).strip()
     if not _ENTIER.match(brut):
+        if tolerant:
+            return defaut
         raise ValidationError({nom: 'Un nombre entier est attendu.'})
     valeur = int(brut)
     if mini is not None:

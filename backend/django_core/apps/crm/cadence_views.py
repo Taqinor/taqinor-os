@@ -1752,7 +1752,8 @@ class LeadCadenceActionsMixin:
 
         `null` dès qu'un dénominateur est 0 — jamais un 0 % qui se lirait
         comme un échec là où il n'y a rien à mesurer."""
-        jours = entier_param(request, 'jours', 30, mini=1, maxi=365)
+        jours = entier_param(request, 'jours', 30, mini=1, maxi=365,
+                             tolerant=True)
         from .selectors import kpi_cadences as _kpi
         return Response(_kpi(request.user.company, jours=jours))
 
@@ -1787,7 +1788,8 @@ class LeadCadenceActionsMixin:
         from .mesure_cadence import JOURS_MESURE_DEFAUT
         from .mesure_cadence import mesure_cadence as _mesure
         jours = entier_param(request, 'jours', JOURS_MESURE_DEFAUT,
-                             mini=1, maxi=365)
+                             mini=1, maxi=365,
+                             tolerant=True)
         return Response(_mesure(request.user.company, jours=jours))
 
     # ── CAD-L ── CAD148 — le panneau d'appel guidé.

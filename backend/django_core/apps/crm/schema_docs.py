@@ -49,8 +49,15 @@ def ids_requis(**kw):
 # ── Paramètres de requête réutilisés ────────────────────────────────────────
 
 P_Q = param('q', description='Texte recherché.')
-P_JOURS = param('jours', OpenApiTypes.INT,
-                description='Fenêtre en jours (1 à 365).')
+#: ``jours`` des agrégats KPI (MRY19/MRY21/CAD87) : contrat TOLÉRANT —
+#: entier borné à [1, 365] ; une valeur non entière retombe sur le défaut
+#: (``params_requete.entier_param(tolerant=True)``). Déclaré entier OU texte,
+#: pour que le schéma dise ce que le serveur fait.
+P_JOURS = OpenApiParameter(
+    'jours', {'anyOf': [{'type': 'integer'}, {'type': 'string'}]},
+    OpenApiParameter.QUERY, required=False,
+    description='Fenêtre en jours (1 à 365, bornée) ; une valeur non entière '
+                'retombe sur le défaut de la vue.')
 P_OWNER = param('owner', OpenApiTypes.INT,
                 description='Identifiant du responsable.')
 #: ``owner`` : identifiant entier OU le mot « null » (responsable vide).

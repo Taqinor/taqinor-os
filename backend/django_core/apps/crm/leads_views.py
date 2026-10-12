@@ -543,7 +543,8 @@ class LeadIntakeActionsMixin:
         Minutes OUVRÉES, leads OS_NATIVE seulement, `null` partout sur zéro
         lead — jamais un 0 % fabriqué. Ne touche PAS à `sla-breach`, dont le
         contrat est consommé tel quel par `CrmInsightsPanel`."""
-        jours = entier_param(request, 'jours', 30, mini=1, maxi=365)
+        jours = entier_param(request, 'jours', 30, mini=1, maxi=365,
+                             tolerant=True)
         from .selectors import kpi_premier_contact as _kpi
         return Response(_kpi(request.user.company, jours=jours))
 
