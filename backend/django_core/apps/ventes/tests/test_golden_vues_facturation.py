@@ -55,8 +55,8 @@ PYTHON_CAPTURE = '3.11'
 #: VNT97-VNT100, se repérer par NOM).
 GROUPES = {
     # VNT97 → views/facture_cycle.py
-    # (``montant_tranche`` y vit déjà, posé par VNT67 : VNT97 l'ajoute ici.)
-    'cycle': ['emettre', 'remettre_brouillon', 'marquer_payee', 'annuler'],
+    'cycle': ['emettre', 'remettre_brouillon', 'marquer_payee', 'annuler',
+              'montant_tranche'],
     # VNT98 → views/facture_encaissement.py
     'encaissement': ['paiements', 'arrondi_caisse', 'enregistrer_paiement',
                      'abandonner_solde', 'reprendre_abandon',
@@ -81,7 +81,9 @@ GROUPES = {
 
 #: groupe → fichier de ``views/`` où il DOIT vivre ; rempli par chaque
 #: déplacement (ex. VNT97 : ``PLACE['cycle'] = 'facture_cycle.py'``).
-PLACE = {}
+PLACE = {
+    'cycle': 'facture_cycle.py',  # VNT97
+}
 
 #: Actions standard du ``ModelViewSet`` (non décorées).
 ACTIONS_STANDARD = ('list', 'retrieve', 'create', 'update',
