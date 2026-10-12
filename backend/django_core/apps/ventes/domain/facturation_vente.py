@@ -433,6 +433,64 @@ def _facturer_acompte(devis, plan, *, user, montant, cle_attendue, libelle):
     return creer_brouillon_tranche(devis, tranche, user, libelle)
 
 
+# ── VNT29 — la facture COMPLÈTE ──────────────────────────────────────────────
+
+def _creer_brouillon_complet(devis, user, libelle):
+    """Brouillon COMPLET (100 %, panier du devis recopié par
+    ``copier_devis_sur_facture``) ; rattaché au BC du devis s'il n'a encore
+    aucune facture."""
+    from apps.ventes.models import BonCommande, Facture
+    from apps.ventes.utils.company_settings import create_provisoire
+    from .facturation_ops import (
+        copier_devis_sur_facture, entete_facture_depuis_devis)
+    bc = BonCommande.objects.filter(
+        devis=devis, company_id=devis.company_id).first()
+    if bc is not None and (
+            bc.statut == BonCommande.Statut.ANNULE
+            or Facture.objects.filter(bon_commande=bc).exists()):
+        bc = None
+    champs = dict(entete_facture_depuis_devis(devis),
+                  **_revue_initiale(devis, user))
+    champs.update(devis=devis, bon_commande=bc, client=devis.client,
+                  company_id=devis.company_id,
+                  statut=Facture.Statut.BROUILLON,
+                  type_facture=Facture.TypeFacture.COMPLETE, created_by=user)
+    if libelle:
+        champs['libelle'] = libelle
+    facture = create_provisoire(
+        lambda ref: _inserer_facture(reference=ref, **champs))
+    return copier_devis_sur_facture(facture, devis)
+
+
+def _facturer_complete(devis, plan, *, user, remplacer_brouillons, libelle):
+    """Nature ``complete`` : 409 ``deja_facture`` si une facture ÉMISE existe
+    sur la vente ; 409 ``brouillons_a_remplacer`` (+ liste) tant que des
+    brouillons existent sans confirmation ; confirmés, ils sont retirés par
+    ``retirer_brouillons_de_la_vente`` (annulés, jamais supprimés)."""
+    from apps.ventes.vente_facturation import STATUT_BROUILLON, STATUTS_EMIS
+    factures = [f for f, _r in plan['factures_parts']]
+    emises = [f for f in factures if f.statut in STATUTS_EMIS]
+    if emises:
+        raise _conflit(
+            'deja_facture',
+            'Cette vente est déjà facturée par '
+            + ', '.join(f.reference for f in emises)
+            + ' : une facture complète ne peut plus être créée.')
+    brouillons = [f for f in factures if f.statut == STATUT_BROUILLON]
+    if brouillons and not remplacer_brouillons:
+        raise _conflit(
+            'brouillons_a_remplacer',
+            'Des brouillons existent : confirmez leur remplacement.',
+            brouillons=[{'id': f.pk, 'reference': f.reference,
+                         'total_ttc': str(_q(f.total_ttc))}
+                        for f in brouillons])
+    if brouillons:
+        from .annulation_facture import retirer_brouillons_de_la_vente
+        retirer_brouillons_de_la_vente(
+            devis, user=user, motif='Remplacé par la facture complète')
+    return _creer_brouillon_complet(devis, user, libelle)
+
+
 def facturer_vente(devis, *, nature, user, montant_ttc=None,
                    pourcentage=None, cle_attendue=None, libelle=None,
                    emettre=False, paiements=None, remplacer_brouillons=False,
@@ -456,8 +514,9 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
         if nature == 'acompte':
             facture = _facturer_acompte(devis, plan, **options)
         elif nature == 'complete':
-            raise FacturationVenteRefusee(
-                'La nature « complete » arrive avec VNT29.')
+            facture = _facturer_complete(
+                devis, plan, user=user, libelle=libelle,
+                remplacer_brouillons=bool(remplacer_brouillons))
         else:
             facture = _facturer_tranche(devis, plan, nature, **options)
     return facture, []

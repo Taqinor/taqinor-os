@@ -504,3 +504,47 @@ class FacturerVenteAcompteVNT28(_BaseVente):
         self._facturer(devis, nature='acompte', montant_ttc='15000.00')
         self.assertTrue(DevisActivity.objects.filter(
             devis=devis, field='correction_apres_acceptation').exists())
+
+
+class FacturerVenteCompleteVNT29(_BaseVente):
+    """VNT29 — nature ``complete`` : 409 ``deja_facture`` après une émise ;
+    409 ``brouillons_a_remplacer`` (+ liste) sans drapeau ; avec
+    ``remplacer_brouillons`` les brouillons sont ANNULÉS (jamais supprimés)
+    et la complète naît brouillon au prix convenu."""
+
+    def test_brouillon_d_acompte_sans_drapeau_409(self):
+        devis = self._388('DEV-VNT29-SANS')
+        acompte = self._acompte_14700(devis, statut='brouillon',
+                                      reference='')
+        refus = self._refus(devis, nature='complete')
+        self.assertEqual(refus.status, 409)
+        self.assertEqual(refus.corps['code'], 'brouillons_a_remplacer')
+        self.assertEqual(refus.corps['brouillons'], [
+            {'id': acompte.id, 'reference': acompte.reference,
+             'total_ttc': '14700.00'}])
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.statut, Facture.Statut.BROUILLON)
+
+    def test_avec_drapeau_brouillon_annule_complete_a_49000(self):
+        devis = self._388('DEV-VNT29-AVEC')
+        acompte = self._acompte_14700(devis, statut='brouillon',
+                                      reference='')
+        facture, _p = self._facturer(devis, nature='complete',
+                                     remplacer_brouillons=True)
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.statut, Facture.Statut.ANNULEE)
+        self.assertTrue(Facture.objects.filter(pk=acompte.pk).exists())
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+        self.assertEqual(facture.type_facture, 'complete')
+        self.assertEqual(facture.total_ttc, Decimal('49000.00'))
+
+    def test_acompte_emis_409_deja_facture(self):
+        devis = self._388('DEV-VNT29-EMIS')
+        self._acompte_14700(devis)
+        refus = self._refus(devis, nature='complete',
+                            remplacer_brouillons=True)
+        self.assertEqual(refus.status, 409)
+        self.assertEqual(refus.corps['code'], 'deja_facture')
+        self.assertFalse(Facture.objects.filter(
+            devis=devis, type_facture='complete').exists())
