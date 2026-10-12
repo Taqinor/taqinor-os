@@ -105,7 +105,12 @@ def _garde_blocages_acceptation(devis, *, user, override_credit=False,
     avertissement de vente bloquant (ZSAL9). Lève ``AcceptationBloquee`` ;
     un override n'est honoré que s'il est demandé (les portes client ne le
     demandent jamais) ET que ``peut_passer_outre(user)`` (ADEV14) — un
-    drapeau posé par un Commercial est ignoré, le refus tombe."""
+    drapeau posé par un Commercial est ignoré, le refus tombe.
+
+    VNT54 — d'abord : une seule vente en vigueur par lead (hors chaîne de
+    révision), 409 ``vente_active_existante`` avant toute écriture."""
+    from apps.ventes.domain.negociation import garde_vente_unique
+    garde_vente_unique(devis, user=user)
     from apps.ventes.domain.recouvrement import (
         CreditHoldError, SaleWarningError, verifier_credit_hold,
         verifier_sale_warnings,
@@ -1178,12 +1183,6 @@ def _build_acceptance_wa_url(*, devis):
 # ── QJ9 — Attribution first-touch + Meta CAPI hook ───────────────────────────
 
 #: Champs UTM/fbclid copiés du Lead vers etude_params du Devis à l'acceptation.
-_ATTRIBUTION_FIELDS = (
-    'fbclid', 'utm_source', 'utm_medium',
-    'utm_campaign', 'utm_content', 'utm_term',
-)
-
-
 def _persist_attribution(*, devis):
     """QJ9 — Copie les champs d'attribution first-touch du lead vers le devis.
 
@@ -1429,9 +1428,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
                 conflict=True)
-        # VNT54 — une seule vente en vigueur par lead (hors chaîne de révision).
-        from apps.ventes.domain.negociation import garde_vente_unique
-        garde_vente_unique(devis, user=user)
 
         # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
         # bloquant : UNE garde, ici, pour les trois portes (vue interne,
@@ -1667,7 +1663,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
     # ADSENG2 — thread ip/user_agent (EMQ) déjà reçus par accept_devis.
     try:
-        _fire_capi_signed_quote(devis=devis, ip=ip, user_agent=user_agent)
+        emettre_signed_quote_vente(devis=devis, ip=ip, user_agent=user_agent)
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
@@ -1979,8 +1975,10 @@ def log_supplier_email(
 from apps.ventes.domain.revision import (  # noqa: E402
     rattacher_aval_financier_revision,
 )
-# VNT50 — ``_fire_capi_signed_quote`` (CAPI SignedQuote) vit dans
-# ``domain/capi_signee.py`` ; ``accept_devis`` le lit ICI (patchable ici).
+# VNT50 — ``_fire_capi_signed_quote`` (CAPI SignedQuote) et
+# ``_ATTRIBUTION_FIELDS`` vivent dans ``domain/capi_signee.py`` ;
+# ``accept_devis`` appelle ``emettre_signed_quote_vente`` (VNT52 : rien pour
+# un avenant) lu ICI (patchable ici).
 from apps.ventes.domain.capi_signee import (  # noqa: E402
-    _fire_capi_signed_quote,
+    _ATTRIBUTION_FIELDS, _fire_capi_signed_quote, emettre_signed_quote_vente,
 )

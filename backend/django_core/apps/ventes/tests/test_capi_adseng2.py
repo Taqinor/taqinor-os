@@ -93,8 +93,9 @@ class Adseng2CapiEmitterTests(TestCase):
     def test_avenant_aucun_post_premiere_vente_inchangee(self):
         """VNT52 — une V2 qui remplace une vente ACCEPTÉE (avenant) n'émet
         AUCUN SignedQuote (ROAS gonflé à chaque version) ; la première vente
-        part comme avant."""
-        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
+        part comme avant (``emettre_signed_quote_vente`` = l'appel
+        d'``accept_devis``)."""
+        from apps.ventes.domain.cycle_vie import emettre_signed_quote_vente
         v2 = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-AE2C02',
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
@@ -106,12 +107,17 @@ class Adseng2CapiEmitterTests(TestCase):
             with mock.patch('urllib.request.urlopen',
                             return_value=_mock_resp()) as m:
                 with self.assertLogs('apps.ventes.services', 'INFO') as logs:
-                    _fire_capi_signed_quote(devis=v2)
+                    emettre_signed_quote_vente(devis=v2)
         m.assert_not_called()
         self.assertTrue(any('avenant' in ligne for ligne in logs.output))
         # La première vente (V1, sans prédécesseur) part toujours.
-        url, _body = self._fire()
-        self.assertIn('/999/events', url)
+        with override_settings(META_CAPI_ACCESS_TOKEN='T',
+                               META_CAPI_PIXEL_ID='999'):
+            with mock.patch('urllib.request.urlopen',
+                            return_value=_mock_resp()) as m:
+                emettre_signed_quote_vente(devis=self.devis)
+        m.assert_called_once()
+        self.assertIn('/999/events', m.call_args[0][0].full_url)
 
 
 class Adseng2SharedVersionTests(SimpleTestCase):

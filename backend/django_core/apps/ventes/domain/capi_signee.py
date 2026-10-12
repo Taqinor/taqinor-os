@@ -8,13 +8,37 @@ recopié à l'octet près ; ``accept_devis`` le lit toujours sous
 Les tests patchent ``urllib.request.urlopen`` GLOBAL (import fonction-local
 ci-dessous) : le déplacement leur est transparent.
 
-Ce module n'importe ``cycle_vie`` qu'à l'APPEL (``_ATTRIBUTION_FIELDS``, lu au
-moment de l'émission) : il se charge donc dans n'importe quel ordre.
+``_ATTRIBUTION_FIELDS`` vit ICI (lu par l'émetteur ET par
+``cycle_vie._persist_attribution`` via le même pont) : ce module n'importe
+jamais ``cycle_vie`` et se charge donc dans n'importe quel ordre.
 Logger figé sur ``apps.ventes.services`` (même nom que ``cycle_vie``).
+
+VNT52 — ``emettre_signed_quote_vente`` (l'appel d'``accept_devis``) n'émet
+RIEN pour un avenant (V2 qui remplace une vente déjà acceptée).
 """
 import logging
 
 logger = logging.getLogger("apps.ventes.services")
+
+_ATTRIBUTION_FIELDS = (
+    'fbclid', 'utm_source', 'utm_medium',
+    'utm_campaign', 'utm_content', 'utm_term',
+)
+
+
+def emettre_signed_quote_vente(*, devis, ip=None, user_agent=''):
+    """VNT52 — l'émission CAPI d'une acceptation : un AVENANT (prédécesseur de
+    révision accepté, ``predecesseur_accepte``) n'est pas une nouvelle vente —
+    le dédoublonnage par référence ne le voit pas et chaque version gonflait
+    le ROAS. Journalisé, aucun POST ; sinon ``_fire_capi_signed_quote``."""
+    avenant_de = _avenant_de(devis)
+    if avenant_de is not None:
+        logger.info(
+            'VNT52: CAPI SignedQuote non émis pour devis %s — avenant de la '
+            'vente %s (déjà comptée).', getattr(devis, 'reference', '?'),
+            avenant_de)
+        return
+    _fire_capi_signed_quote(devis=devis, ip=ip, user_agent=user_agent)
 
 
 def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
@@ -39,8 +63,6 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     import os
     from django.conf import settings
 
-    from apps.ventes.domain.cycle_vie import _ATTRIBUTION_FIELDS
-
     token = (
         getattr(settings, 'META_CAPI_ACCESS_TOKEN', None)
         or os.environ.get('META_CAPI_ACCESS_TOKEN', '')
@@ -50,17 +72,6 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
         logger.info(
             'QJ9: CAPI SignedQuote ignoré pour devis %s — META_CAPI_ACCESS_TOKEN absent',
             getattr(devis, 'reference', '?'))
-        return
-
-    # VNT52 — un AVENANT (V2 qui remplace une vente déjà acceptée) n'est pas
-    # une nouvelle vente : aucun SignedQuote (le dédoublonnage par référence
-    # ne le voit pas, chaque version gonflait le ROAS). Journalisé, sans POST.
-    avenant_de = _avenant_de(devis)
-    if avenant_de is not None:
-        logger.info(
-            'VNT52: CAPI SignedQuote non émis pour devis %s — avenant de la '
-            'vente %s (déjà comptée).', getattr(devis, 'reference', '?'),
-            avenant_de)
         return
 
     pixel_id = (
