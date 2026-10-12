@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from core.champs_stricts import ChaineStricte
+from apps.records.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,

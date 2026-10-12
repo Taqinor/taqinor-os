@@ -1,4 +1,4 @@
-"""ENF11 — champs de sérialiseur qui REFUSENT la coercition silencieuse.
+"""ENF11 (lane fuzz GED/portail/records/onboarding/notifications) — champs de sérialiseur qui REFUSENT la coercition silencieuse.
 
 ``serializers.CharField`` accepte un entier ou un booléen et le convertit en
 chaîne (``0`` → ``"0"``) : l'API acceptait alors une donnée que son schéma
@@ -6,6 +6,7 @@ OpenAPI déclare invalide (constat api-fuzz « accepted schema-violating
 request »). ``ChaineStricte`` répond 400 tant que la valeur n'est pas déjà une
 chaîne ; le comportement d'une requête valide est inchangé.
 """
+from django.db import models
 from rest_framework import serializers
 
 
@@ -57,3 +58,23 @@ class BooleenStrict(serializers.BooleanField):
         if not isinstance(data, bool):
             self.fail('invalid', input=data)
         return data
+
+
+class EntierStrict(serializers.IntegerField):
+    """Entier JSON réel : ``"5"``, ``5.0`` et ``true`` sont refusés (400)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, int):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class ChampsStrictsMixin:
+    """À placer AVANT ``ModelSerializer`` dans les bases du sérialiseur."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+    }

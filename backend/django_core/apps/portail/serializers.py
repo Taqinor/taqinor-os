@@ -14,8 +14,8 @@ fondateur du 21/09/2026, SOLMVP16b).
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte
-from core.serializers_stricts import EntierStrict
+from apps.records.champs_stricts import ChaineStricte
+from apps.records.champs_stricts import EntierStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
 from apps.records.storage import AttachmentSerializerMixin

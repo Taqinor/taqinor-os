@@ -2,9 +2,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import DecimalStricte
+from apps.records.champs_stricts import DecimalStricte
 from core.mixins import SameCompanyFKSerializerMixin
-from core.serializers_stricts import ChampsStrictsMixin, EntierStrict
+from apps.records.champs_stricts import ChampsStrictsMixin, EntierStrict
 
 from .models import (
     Annonce,
