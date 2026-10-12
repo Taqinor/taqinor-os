@@ -229,6 +229,12 @@ class RejeuTests(unittest.TestCase):
         self.assertEqual(corps, {"lignes": [{"ligne_devis": 5, "quantite": 2}], "bc": 96, "produit": 9})
         with self.assertRaises(LookupError):
             m.valeur("@Facture.montant_du")
+        etape = _etape(regle_aval=["reference"])
+        s = {"par": {}, "reps": [mock.Mock(status_code=404)], "auto": False}
+        m.oracles_parcours(etape, {"attendu": 404}, s, None, (1, 2, "x"), (1, 2, "x"))
+        self.assertEqual(s["par"]["aval"], "PASS")  # refus déclaré qui n'écrit rien
+        m.oracles_parcours(etape, {"attendu": 404}, s, None, (1, 2, "x"), (2, 3, "y"))
+        self.assertEqual(s["par"]["aval"], "FAIL")
         r400 = mock.Mock(data={"detail": "lignes est requis"})
         self.assertEqual(m.sans_corps({"id": "PA4.03"}, r400)["verdict"], "NON_JOUEE")
 

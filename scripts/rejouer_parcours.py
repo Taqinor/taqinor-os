@@ -277,7 +277,9 @@ class _Moteur:
                 str(relu.get(k)) == str(v) for k, v in valeurs.items()) else 'FAIL'
             s['trace'].append(f'PATCH checkpoint -> {getattr(r, "status_code", "sans route")}')
         types = {x.get('type') if isinstance(x, dict) else x for x in e.get('regle_aval') or []}
-        if 'refus_409' in types and reps and reps[0].status_code < 300 and d.get('repeter', True):
+        if (d.get('attendu') or 0) >= 400:  # refus déclaré : il ne doit RIEN avoir écrit
+            par['aval'] = 'PASS' if apres == avant else 'FAIL'
+        elif 'refus_409' in types and reps and reps[0].status_code < 300 and d.get('repeter', True):
             r2 = self.appeler(s['route'][1], s['url'], s['corps'])
             par['aval'] = 'PASS' if 400 <= r2.status_code < 500 and r2.status_code != 401 else 'FAIL'
             s['trace'].append(f'rejouée -> {r2.status_code} (refus attendu)')
