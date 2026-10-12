@@ -10,7 +10,25 @@ from datetime import date
 
 from rest_framework.exceptions import ValidationError
 
+from core.champs_stricts import entier_ou_400
+
 _ISO_STRICT = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+# api-fuzz r12 (CI #956, « accepted schema-violating request ») — ``date_param``
+# lit « vide » comme « borne non posée » : le schéma le DIT (date ISO ou chaîne
+# vide) au lieu d'annoncer une date seule qu'un ``?to=`` contredit. À poser sur
+# CHAQUE paramètre lu par ``date_param`` (même patron que monitoring).
+DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+# ``id_param`` refuse 0, les négatifs et ``abc`` (400 nommant le paramètre, au
+# lieu d'un 500 de l'ORM) : le schéma annonce ``minimum: 1``.
+IDENTIFIANT = {'type': 'integer', 'minimum': 1}
+
+
+def id_param(request, nom):
+    """Identifiant entier STRICT du paramètre ``nom`` : ``None`` si absent ou
+    vide ; illisible ou < 1 → 400 nommant le paramètre."""
+    return entier_ou_400(request.query_params.get(nom), nom, mini=1)
 
 
 def date_param(request, nom):
