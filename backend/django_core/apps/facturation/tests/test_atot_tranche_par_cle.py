@@ -340,11 +340,11 @@ class TrancheParCleTests(TestCase):
              ('Solde', Decimal('4600.00'), Decimal('3900.92'),
               Decimal('699.08'))])
         self.assertEqual(a_venir[0]['ventilation_tva'], [
-            {'taux': '10', 'base_ht': '5184.00', 'montant': '518.40'},
-            {'taux': '20', 'base_ht': '19748.00', 'montant': '3949.60'}])
+            {'taux': '10.00', 'base_ht': '5184.00', 'montant': '518.40'},
+            {'taux': '20.00', 'base_ht': '19748.00', 'montant': '3949.60'}])
         self.assertEqual(a_venir[1]['ventilation_tva'], [
-            {'taux': '10', 'base_ht': '811.10', 'montant': '81.11'},
-            {'taux': '20', 'base_ht': '3089.82', 'montant': '617.97'}])
+            {'taux': '10.00', 'base_ht': '811.10', 'montant': '81.11'},
+            {'taux': '20.00', 'base_ht': '3089.82', 'montant': '617.97'}])
         nt = next_tranche(devis)
         self.assertEqual((nt['cle'], nt['ttc'], nt['ht'], nt['tva']),
                          ('materiel', Decimal('29400.00'),

@@ -249,8 +249,8 @@ def facture_tranche(devis, reference, cle, ttc, ht, tva, statut='emise',
         montant_tva=Decimal(tva), ventilation_tva=ventilation)
 
 
-VENT_ACOMPTE_15000 = [{'taux': '10', 'base_ht': '2644.90', 'montant': '264.49'},
-                      {'taux': '20', 'base_ht': '10075.51',
+VENT_ACOMPTE_15000 = [{'taux': '10.00', 'base_ht': '2644.90', 'montant': '264.49'},
+                      {'taux': '20.00', 'base_ht': '10075.51',
                        'montant': '2015.10'}]
 
 
@@ -329,10 +329,10 @@ class PlanFacturationVenteTest(TestCase):
                          (Decimal('34000.00'), Decimal('28832.92'),
                           Decimal('5167.08')))
         self.assertEqual(solde['ventilation_tva'], [
-            {'taux': '10', 'base_ht': '5995.10', 'montant': '599.51'},
-            {'taux': '20', 'base_ht': '22837.82', 'montant': '4567.57'}])
-        for taux, base, tva in (('10', '8640.00', '864.00'),
-                                ('20', '32913.33', '6582.67')):
+            {'taux': '10.00', 'base_ht': '5995.10', 'montant': '599.51'},
+            {'taux': '20.00', 'base_ht': '22837.82', 'montant': '4567.57'}])
+        for taux, base, tva in (('10.00', '8640.00', '864.00'),
+                                ('20.00', '32913.33', '6582.67')):
             vents = [b for t in plan['tranches'] for b in t['ventilation_tva']
                      if b['taux'] == taux]
             self.assertEqual(sum(Decimal(b['base_ht']) for b in vents),

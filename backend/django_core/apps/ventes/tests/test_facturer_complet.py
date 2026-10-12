@@ -697,3 +697,30 @@ class FacturerVenteEndpointVNT31(_BaseVente):
             *self._role('Commercial', COMMERCIAL_PERMISSIONS), devis, corps)
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['facture']['statut'], 'emise')
+
+    def test_override_credit_passe_le_blocage_credit(self):
+        """Comme ``generer-facture`` : blocage crédit XFAC28 → 403
+        ``credit_hold`` ; ``override_credit`` (responsable/admin) émet."""
+        from apps.parametres.models import CompanyProfile
+        devis = self._388('DEV-VNT31-HOLD')
+        profile = CompanyProfile.get(company=self.company)
+        profile.credit_hold_actif = True
+        profile.save(update_fields=['credit_hold_actif'])
+        self.client_obj.plafond_credit = Decimal('1')
+        self.client_obj.save(update_fields=['plafond_credit'])
+        Facture.objects.create(
+            company=self.company, reference=f'FAC-HOLD-{_nxt()}',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20'), montant_ht=Decimal('50000'),
+            montant_tva=Decimal('10000'), montant_ttc=Decimal('60000'))
+        corps = {'nature': 'acompte', 'montant_ttc': '15000.00',
+                 'emettre': True}
+        resp = self.api.post(self._url(devis), corps, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(resp.data['code'], 'credit_hold')
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+        resp = self.api.post(self._url(devis),
+                             {**corps, 'override_credit': True},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['facture']['statut'], 'emise')

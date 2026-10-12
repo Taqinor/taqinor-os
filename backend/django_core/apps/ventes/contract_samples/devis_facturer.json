@@ -3,7 +3,7 @@
   "forme_serveur": "partielle",
   "pourquoi": "VNT3 (PACT10, Groupe VNT, P0) — « Facturer la vente » : UN seul guichet devis→facture qui connaît la nature de la facture (acompte, intermédiaire, solde, complète) et un montant libre. Contrat posé SEUL sur main AVANT la vue et l'écran. Aujourd'hui `FacturerDevisDialog` ne sait faire que 100 % + « paiements déjà reçus » ; `devis_facturer_complet.json` ne connaît que la facture complète. Le GET rend l'aperçu (plan, prochaine tranche, acompte proposé, état de la vente) ; le POST crée la facture. Montants en TEXTE décimal à 2 décimales (« 15000.00 »), jamais un flottant. Exemple : acompte de 15 000,00 sur une vente à 49 000,00 TTC, libellé « Acompte » (règle de libellé unique de l'arbitrage 6). Jamais de prix d'achat ni de marge.",
   "requete": {
-    "regle": "`nature` ∈ acompte | intermediaire | solde | complete ; `montant_ttc` XOR `pourcentage` (jamais les deux) ; `cle_attendue` = clé de la tranche que l'écran croit facturer (défense contre un plan modifié entre-temps) ; `emettre` = vrai pour émettre tout de suite (numéro définitif), faux pour laisser en brouillon ; `remplacer_brouillons` et `utiliser_avances` = confirmations explicites.",
+    "regle": "`nature` ∈ acompte | intermediaire | solde | complete ; `montant_ttc` XOR `pourcentage` (jamais les deux) ; `cle_attendue` = clé de la tranche que l'écran croit facturer (défense contre un plan modifié entre-temps) ; `emettre` = vrai pour émettre tout de suite (numéro définitif), faux pour laisser en brouillon ; `remplacer_brouillons` et `utiliser_avances` = confirmations explicites ; `override_credit` (responsable/admin, comme `generer-facture`) passe outre le blocage crédit à l'émission, journalisé — absent ou faux : 403 `credit_hold`.",
     "nature": "acompte",
     "montant_ttc": "15000.00",
     "pourcentage": null,
@@ -14,7 +14,8 @@
       {"montant": "15000.00", "date_paiement": "2026-10-12", "mode_paiement": "virement", "reference": "VIR-1012"}
     ],
     "remplacer_brouillons": false,
-    "utiliser_avances": false
+    "utiliser_avances": false,
+    "override_credit": false
   },
   "exemple": {
     "facture": {

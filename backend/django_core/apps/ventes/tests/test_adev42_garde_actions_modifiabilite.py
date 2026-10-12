@@ -88,6 +88,10 @@ EXEMPTEES = {
     'convertir_en_bc': 'aval d’un accepté (BonCommande).',
     'generer_facture': 'aval d’un accepté (facture).',
     'facturer_complet': 'aval d’un accepté (factures).',
+    # VNT31 — « Facturer la vente » : aval d'un accepté ; une version
+    # REMPLACÉE est refusée par le service (``_exiger_vente_en_jeu`` :
+    # 409 ``corps_version_remplacee``), jamais par _refus_modifiabilite.
+    'facturer': 'aval d’un accepté (facture de la vente, VNT31).',
     # detail=False — ne visent aucun devis existant.
     'atomic': 'création d’un NOUVEAU devis (detail=False).',
     'auto': 'création d’un NOUVEAU devis (detail=False).',

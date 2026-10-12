@@ -760,6 +760,13 @@
      null,
      false
     ],
+    "garanties": [
+     "JSONField",
+     true,
+     false,
+     null,
+     false
+    ],
     "id": [
      "IntegerField",
      true,
@@ -868,6 +875,13 @@
     "note": [
      "CharField",
      false,
+     false,
+     null,
+     false
+    ],
+    "objet_vente": [
+     "JSONField",
+     true,
      false,
      null,
      false
