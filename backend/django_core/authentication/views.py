@@ -1760,7 +1760,8 @@ class CompanyViewSet(viewsets.ModelViewSet):
             'inline; filename="kit-demo.pdf"')
         return response
 
-    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
+    @extend_schema(responses={
+        (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     def demo_kit_export_xlsx(self, request, pk=None):
         """NTDMO24 — journal des 12 mois de démo en 4 onglets (Leads, Devis,
         Chantiers, Factures), pour vérification hors-ligne avant un
