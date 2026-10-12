@@ -8,7 +8,7 @@ routes historiques ``/api/django/stock/…`` continuent d'utiliser les MÊMES
 classes.
 """
 
-from apps.stock.serializers import (
+from apps.stock.serializers import (  # noqa: F401
     BonCommandeFournisseurSerializer,
     FactureFournisseurSerializer,
     LigneBonCommandeFournisseurSerializer,
@@ -20,16 +20,3 @@ from apps.stock.serializers import (
     ReceptionFournisseurSerializer,
     RetourFournisseurSerializer,
 )
-
-__all__ = [
-    'BonCommandeFournisseurSerializer',
-    'FactureFournisseurSerializer',
-    'LigneBonCommandeFournisseurSerializer',
-    'LigneFactureFournisseurSerializer',
-    'LigneReceptionFournisseurSerializer',
-    'LigneRetourFournisseurSerializer',
-    'PaiementFournisseurSerializer',
-    'PrixFournisseurSerializer',
-    'ReceptionFournisseurSerializer',
-    'RetourFournisseurSerializer',
-]

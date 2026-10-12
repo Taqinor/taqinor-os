@@ -4563,10 +4563,9 @@ def _mesure_onepage(html):
         # AMOT20 — la postcondition porte sur le DERNIER bloc de la zone (la
         # ligne Validité/Acompte/TVA ; le bon pour accord agricole est déjà
         # dans ``formes``) : son bloc entier (toutes ses lignes) doit tenir.
-        # CAD177 — ligne de conditions dans le HTML mais jetée sous le bord A4
-        # (arabe) : ``None`` force la mesure sur la page haute ci-dessous.
-        from .textes import bas_avec_bloc_fin
-        bas_totaux = bas_avec_bloc_fin(bas_totaux, _bas_bloc_fin(page), html, _formes_bloc_fin())
+        bas_fin = _bas_bloc_fin(page)
+        if bas_fin is not None and bas_totaux is not None:
+            bas_totaux = max(bas_totaux, bas_fin)
         if bas_totaux is None:
             # CAD177 — le bloc de totaux est ABSENT de la page composée : ce
             # n'est PAS une mesure impossible. WeasyPrint arrête la composition

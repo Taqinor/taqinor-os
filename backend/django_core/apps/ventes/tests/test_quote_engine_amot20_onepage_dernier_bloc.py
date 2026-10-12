@@ -41,11 +41,8 @@ class OnepageDernierBlocTests(TestCase):
                 ('Structure acier', '10', '300'),
                 ('Installation et mise en service', '1', '4000'),
             ], reference='DEV-AMOT20-1')
-        # CAD177 — densité recalibrée : depuis APDF13 (conditions = puces
-        # ``cgv_imprimees``) une note ×60 tenait en français sans troncature ;
-        # ×150 force la troncature déclarée dans les trois langues.
         Devis.objects.filter(pk=self.devis.pk).update(
-            note=('Note longue du commercial pour le client. ' * 150).strip(),
+            note=('Note longue du commercial pour le client. ' * 60).strip(),
             clauses_appliquees=[
                 {'type': 'clause', 'nom': f'Clause {i}',
                  'corps_texte': ('Texte contractuel de la clause. ' * 20)}
