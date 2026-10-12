@@ -46,7 +46,8 @@ from django.db import models
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from .champs_stricts import BooleenStrict, ChaineStricte
+from .champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsMixin
+from .conflit_etat import ConflitEtat
 from .parseurs import ListeJSON, ObjetJSON
 
 from .models import (
@@ -576,7 +577,8 @@ class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializ
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 
-class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class PaymentTransactionSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
     """FG370 — transaction de paiement carte en ligne (CMI / Payzone).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le statut, la
@@ -595,6 +597,9 @@ class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.Mode
     """
     #: AUD806 — champs figés après l'initiation auprès du PSP.
     _CHAMPS_FIGES_APRES_INITIATION = ('montant', 'content_type', 'object_id')
+    # ERR-ENF11-FUZZ-CORE — vide tant que le PSP n'a pas répondu : le schéma
+    # ``format: uri`` d'un URLField était violé par ``""`` (réponse hors schéma).
+    redirect_url = serializers.CharField(read_only=True)
 
     class Meta:
         model = PaymentTransaction
@@ -609,10 +614,12 @@ class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.Mode
         ]
 
     def validate(self, attrs):
-        """AUD806 — refus EXPLICITE (400), jamais un champ silencieusement
+        """AUD806 — refus EXPLICITE, jamais un champ silencieusement
         ignoré : un opérateur qui croit avoir repointé la transaction doit le
         savoir. Les champs restent donc écrivables au SCHÉMA (création) et
-        c'est l'ÉTAT de l'instance qui décide."""
+        c'est l'ÉTAT de l'instance qui décide — d'où un 409 ``ConflitEtat``
+        (ERR-ENF11-FUZZ-CORE : le corps est conforme, un 400 le disait
+        invalide)."""
         attrs = super().validate(attrs)
         instance = self.instance
         if instance is not None and instance.statut != (
@@ -620,11 +627,10 @@ class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.Mode
             interdits = [nom for nom in self._CHAMPS_FIGES_APRES_INITIATION
                          if nom in attrs]
             if interdits:
-                raise serializers.ValidationError({
-                    nom: ("Transaction déjà envoyée au fournisseur de "
-                          "paiement : ce champ ne peut plus être modifié. "
-                          "Créez une nouvelle transaction.")
-                    for nom in interdits})
+                raise ConflitEtat(
+                    "Transaction déjà envoyée au fournisseur de paiement, "
+                    f"champ(s) figé(s) : {', '.join(interdits)}. "
+                    "Créez une nouvelle transaction.")
         return attrs
 
 

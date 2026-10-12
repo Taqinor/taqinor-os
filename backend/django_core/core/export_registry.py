@@ -38,6 +38,7 @@ from rest_framework.decorators import (
     throttle_classes,
 )
 from rest_framework.parsers import JSONParser
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
@@ -277,7 +278,7 @@ def declencher_export_reversibilite(request):
     la tâche Celery et renvoie 202 immédiatement (l'export complet d'un gros
     tenant peut prendre plusieurs minutes)."""
     if not _is_directeur_or_admin(request.user):
-        return Response(status=status.HTTP_403_FORBIDDEN)
+        raise PermissionDenied()  # corps JSON (ERR-ENF11-FUZZ-CORE)
     from . import tasks as core_tasks
     from .parseurs import corps_valide
 

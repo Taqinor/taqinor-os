@@ -33,6 +33,7 @@ from rest_framework.decorators import (
     action,
 )
 from rest_framework.parsers import JSONParser
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import (
     SAFE_METHODS, AllowAny, BasePermission, IsAuthenticated,
 )
@@ -2230,7 +2231,7 @@ def registre_fiabilite_export_pdf(request):
     from .pdf_registre_fiabilite import generer_pdf_registre_fiabilite
 
     if not _est_directeur_ou_admin(request.user):
-        return Response(status=status.HTTP_403_FORBIDDEN)
+        raise PermissionDenied()  # corps JSON (ERR-ENF11-FUZZ-CORE)
 
     debut_str = request.query_params.get('periode_debut')
     fin_str = request.query_params.get('periode_fin')
