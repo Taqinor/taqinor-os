@@ -116,6 +116,38 @@ class ErreursMetierTests(TestCase):
             self.assertEqual(resp.status_code, 400, resp.content)
         self.assertEqual(Document.objects.count(), avant)
 
+    def test_fichier_introuvable_404_pas_400(self):
+        # CI #956 (fuzz r13, « rejected schema-compliant request » sur
+        # scinder/) — des octets ABSENTS du stockage ne sont pas une entrée
+        # invalide : 404 (comme le proxy de téléchargement), jamais 400 ; même
+        # règle sur caviarder, fusionner et l'export annoté.
+        docs = []
+        for nom in ('a.pdf', 'b.pdf'):
+            d = Document.objects.create(company=self.co, folder=self.folder,
+                                        nom=nom)
+            services.add_version(d, file_key=f'attachments/{nom}',
+                                 company=self.co, mime='application/pdf')
+            docs.append(d)
+        avant = Document.objects.count()
+        with mock.patch('apps.ged.services._fetch_version_bytes',
+                        return_value=(None, 'Fichier introuvable.')):
+            resp = self.api.post(f'{BASE}documents/{docs[0].pk}/scinder/',
+                                 {'points_de_coupe': []}, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            self.assertEqual(resp.data['detail'], 'Fichier introuvable.')
+            resp = self.api.post(f'{BASE}documents/{docs[0].pk}/caviarder/', {
+                'zones': [{'page': 0, 'x0': 0, 'y0': 0, 'x1': 10,
+                           'y1': 10}]}, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            resp = self.api.post(f'{BASE}documents/fusionner/', {
+                'documents': [d.pk for d in docs]}, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            version = docs[0].versions.first()
+            resp = self.api.get(
+                f'{BASE}annotations/export-annote/?version={version.pk}')
+            self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(Document.objects.count(), avant)
+
     def test_disposition_ignore_archive(self):
         PolitiqueRetention.objects.create(
             company=self.co, nom='Globale', duree_conservation_jours=30)

@@ -418,9 +418,16 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
 
     def _allowed_methods(self):
         """CI #956 (fuzz) — l'en-tête ``Allow`` (OPTIONS, 405) annonçait PUT et
-        DELETE, absents du schéma : il ne liste que les méthodes servies."""
-        return [m for m in super()._allowed_methods()
-                if m not in self.METHODES_REFUSEES]
+        DELETE, absents du schéma : il ne liste que les méthodes servies.
+
+        Seule la route de l'OBJET (``calepinages/{id}/``, dont PUT/DELETE
+        mènent à ``update``/``destroy``) les retire : une sous-route de détail
+        (``etiquettes/``, ``photos/{photo_id}/``…) sert son propre DELETE/PUT
+        et doit l'annoncer (fuzz r13 : « missing documented methods »)."""
+        action_map = getattr(self, 'action_map', None) or {}
+        refusees = {m for m in self.METHODES_REFUSEES
+                    if action_map.get(m.lower()) in ('update', 'destroy')}
+        return [m for m in super()._allowed_methods() if m not in refusees]
 
     @extend_schema(exclude=True)
     def update(self, request, *args, **kwargs):

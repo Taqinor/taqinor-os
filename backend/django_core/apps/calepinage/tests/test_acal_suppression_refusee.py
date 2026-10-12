@@ -84,6 +84,11 @@ class SuppressionRefuseeTest(BaseApiCalepinage):
             allow = {m.strip() for m in reponse['Allow'].split(',')}
             self.assertFalse(allow & {'PUT', 'DELETE'}, allow)
             self.assertTrue({'GET', 'PATCH'} <= allow, allow)
+        # CI #956 (fuzz r13) — le filtre ne vaut que pour la route de l'objet :
+        # une sous-route de détail annonce SON DELETE (`etiquettes/`).
+        reponse = self.api.options(url_detail(self.calepinage.pk) + 'etiquettes/')
+        allow = {m.strip() for m in reponse['Allow'].split(',')}
+        self.assertTrue({'GET', 'POST', 'DELETE'} <= allow, allow)
 
     def test_peut_supprimer_suit_l_archivage(self):
         # Lié à un devis ENVOYÉ : archiver refuse ⇒ peut_supprimer faux.

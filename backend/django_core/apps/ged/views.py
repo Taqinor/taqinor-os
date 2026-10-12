@@ -577,7 +577,13 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     def detagger(self, request, pk=None):
         """GED9 — Retire un tag de ce document. Body : `{"tag": <id>}`."""
         document = self.get_object()
-        tag_id = request.data.get('tag')
+        # CI #956 (fuzz r13) — `tag` est OBLIGATOIRE au schéma (`TAG_CORPS`) :
+        # un corps vide répondait 200 (retrait de rien) ; même garde que
+        # `tagger`, et un identifiant mal formé est un 400 nommé (`_pk`).
+        tag_id = _pk(request.data.get('tag'), 'tag')
+        if tag_id is None:
+            return Response({'tag': 'Tag requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         # ADOC19 — retrait journalisé dans le chatter (old→new).
         services.retirer_tag(document, tag_id, user=request.user)
         return Response(
@@ -1928,6 +1934,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             new_doc = services.caviarder_document(
                 version, request.data.get('zones') or [],
                 created_by=request.user)
+        except services.FichierIndisponible as exc:  # CI #956 (fuzz r13)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1960,6 +1968,10 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                 created_by=request.user)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except services.FichierIndisponible as exc:
+            # CI #956 (fuzz r13) — octets absents du stockage : 404, comme le
+            # proxy de téléchargement ; un corps conforme n'est pas un 400.
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         data = DocumentSerializer(
@@ -2038,6 +2050,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except services.FichierIndisponible as exc:  # CI #956 (fuzz r13)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
@@ -4084,6 +4098,8 @@ class AnnotationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
                 {'version': 'Version inconnue.'}, status=status.HTTP_404_NOT_FOUND)
         try:
             out_bytes = services.exporter_pdf_annote(version)
+        except services.FichierIndisponible as exc:  # CI #956 (fuzz r13)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         response = HttpResponse(out_bytes, content_type='application/pdf')

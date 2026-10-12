@@ -841,6 +841,15 @@ SPECTACULAR_SETTINGS = {
         # uniquement — aucun choix ne change.
         'OrdreLigneOrigineEnum':
             'apps.installations.models_kitting.OrdreAssemblageLigne.Origine',
+        # CI #956 (fuzz r13) — `Installation.dossier_statut` (non_concerne /
+        # a_deposer / depose / approuve / compteur_pose) et `Dossier.statut`
+        # (ouvert / en_cours / …) tombaient tous deux sur le nom
+        # « DossierStatutEnum » : le second écrasait le premier, le schéma
+        # annonçait « ouvert » comme choix valide du chantier et le fuzz
+        # voyait un 400 sur un corps « conforme ». Nommage de schéma
+        # uniquement — aucun choix ne change.
+        'InstallationDossierStatutEnum':
+            'apps.installations.models_installation.Installation.DossierStatut',
         # ALEA31 — `portee` est servi par UserSerializer ET MeSerializer
         # (/auth/me/) : même jeu, deux composants → le générateur ne savait
         # plus nommer l'enum (« PorteeB4dEnum »). On garde le nom historique.

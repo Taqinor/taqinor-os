@@ -5428,9 +5428,7 @@ def scinder_pdf(version, points_de_coupe, *, created_by=None):
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
-    data, err = _fetch_version_bytes(version)
-    if err:
-        raise ValueError(err)
+    data = _octets_version(version)
     _exiger_pdf(data)  # ADOC22
     src = fitz.open(stream=data, filetype='pdf')
     try:
@@ -5500,9 +5498,7 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
             version = selectors_latest_version(doc)
             if version is None:
                 raise ValueError(f"« {doc.nom} » n'a aucune version.")
-            data, err = _fetch_version_bytes(version)
-            if err:
-                raise ValueError(err)
+            data = _octets_version(version)
             _exiger_pdf(data)  # ADOC22
             seg = fitz.open(stream=data, filetype='pdf')
             out.insert_pdf(seg)
@@ -5540,6 +5536,23 @@ def _exiger_pdf(data):
     annoté) refusent un fichier non PDF par un 400 nommé, jamais une 500."""
     if not (data or b'').lstrip()[:5] == b'%PDF-':
         raise ValueError("Opération réservée aux PDF.")
+
+
+class FichierIndisponible(ValueError):
+    """CI #956 (fuzz r13) — les octets d'une version sont INTROUVABLES dans
+    le stockage (clé vide, objet absent, MinIO injoignable). Ce n'est pas une
+    entrée invalide (400) : la vue répond 404, comme le proxy de
+    téléchargement (``_lire_version``). Sous-classe de ``ValueError`` pour
+    que les appelants historiques (``except ValueError``) tiennent."""
+
+
+def _octets_version(version):
+    """Les octets d'une version, ou ``FichierIndisponible`` (jamais un
+    ``ValueError`` nu : « Fichier introuvable » n'est pas un 400)."""
+    data, err = _fetch_version_bytes(version)
+    if err:
+        raise FichierIndisponible(err)
+    return data
 
 
 def _fetch_version_bytes(version):
@@ -5883,9 +5896,7 @@ def exporter_pdf_annote(version):
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
-    data, err = _fetch_version_bytes(version)
-    if err:
-        raise ValueError(err)
+    data = _octets_version(version)
     _exiger_pdf(data)  # ADOC22
     doc = fitz.open(stream=data, filetype='pdf')
     try:
@@ -6384,9 +6395,7 @@ def caviarder_document(version, zones, *, created_by=None):
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
-    data, err = _fetch_version_bytes(version)
-    if err:
-        raise ValueError(err)
+    data = _octets_version(version)
     if not zones:
         raise ValueError("Au moins une zone à caviarder est requise.")
     _exiger_pdf(data)  # ADOC22

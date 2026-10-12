@@ -349,13 +349,27 @@ class TestEntreesTypeesEnf11(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
 
     def test_jours_non_entier_refuse_et_entier_accepte(self):
-        url = '/api/django/crm/leads/kpi-cadences/'
+        # Contrat STRICT (schéma `integer`) : cadences-echues refuse en 400
+        # nommant le champ (avant : 500 ou défaut silencieux).
+        url = '/api/django/crm/relance-etapes/cadences-echues/'
         for brut in ('null', 'abc', '2.5'):
             resp = self.api.get(url, {'jours': brut})
             self.assertEqual(resp.status_code, 400, (brut, resp.content))
+            self.assertIn('jours', resp.data)
         self.assertEqual(self.api.get(url, {'jours': 10}).status_code, 200)
-        # hors plage : borné, pas refusé (le schéma annonce un entier).
-        self.assertEqual(self.api.get(url, {'jours': 99999}).status_code, 200)
+        # Contrat TOLÉRANT (97f493887, règle produit MRY19/MRY21/CAD87 ; schéma
+        # `schema_docs.P_JOURS` = entier OU texte) : les trois agrégats KPI
+        # retombent sur le défaut au lieu de bloquer un tableau de bord.
+        for url in ('/api/django/crm/leads/kpi-cadences/',
+                    '/api/django/crm/leads/kpi-premier-contact/',
+                    '/api/django/crm/leads/mesure-cadence/'):
+            for brut in ('null', 'abc', '2.5'):
+                resp = self.api.get(url, {'jours': brut})
+                self.assertEqual(resp.status_code, 200, (url, brut, resp.content))
+            self.assertEqual(self.api.get(url, {'jours': 10}).status_code, 200)
+            # hors plage : borné [1, 365], pas refusé.
+            self.assertEqual(
+                self.api.get(url, {'jours': 99999}).status_code, 200, url)
 
     def test_cadences_echues_jours_enorme_ne_leve_plus_500(self):
         resp = self.api.get('/api/django/crm/relance-etapes/cadences-echues/',
