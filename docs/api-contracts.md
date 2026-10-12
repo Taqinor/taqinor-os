@@ -57,7 +57,7 @@
 - frontend/src/api/coreApi.js :: appliquer -> /api/django/core/bulk-edit/appliquer
     detail:texte, modifies:inconnu
 - frontend/src/api/coreApi.js :: delier -> /api/django/core/dossiers/<>/delier
-    detache:booleen, detail:texte
+    detache:booleen, detail:inconnu
 - frontend/src/api/coreApi.js :: desactiver -> /api/django/core/modules/<>/desactiver
     dependants:inconnu, desactives:inconnu, detail:texte
 - frontend/src/api/coreApi.js :: getPublic -> /api/django/core/dashboards-partages/public/<>
@@ -249,7 +249,7 @@
 - frontend/src/api/installationsApi.js :: getTourneeLivraison -> /api/django/installations/tournee-livraison
     depart:texte, jour:texte, sans_gps:inconnu, total:inconnu, tournee:inconnu
 - frontend/src/api/installationsApi.js :: leverReserveChantier -> /api/django/installations/chantiers/<>/reserves/<>/lever
-    bloquante:inconnu, date_echeance:inconnu, description:texte, id:inconnu, levee_le:inconnu, origine:inconnu, responsable:texte, statut:inconnu
+    bloquante:inconnu, date_echeance:inconnu, description:texte, detail:texte, id:inconnu, levee_le:inconnu, origine:inconnu, resolution:texte, responsable:texte, statut:inconnu
 - frontend/src/api/installationsApi.js :: ouvrirRecettePompage -> /api/django/installations/chantiers/<>/recette-pompage
     detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
@@ -298,8 +298,6 @@
     deleted:inconnu, detail:texte
 - frontend/src/api/notificationsApi.js :: unreadCount -> /api/django/notifications/notifications/unread-count
     actions:inconnu, infos:nombre, unread:inconnu
-- frontend/src/api/offlinesyncApi.js :: envoyerLot -> /api/django/offlinesync/operations/batch
-    applied:inconnu, conflicts:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
 - frontend/src/api/offlinesyncApi.js :: resoudreConflit -> /api/django/offlinesync/operations/<>/resoudre
     detail:texte, operation:inconnu, resultat:inconnu
 - frontend/src/api/parametresApi.js :: getEmailTemplates -> /api/django/parametres/email-templates/effective
@@ -366,8 +364,6 @@
     action_mix:inconnu, daily_counts:inconnu, detail:texte, failed_logins:inconnu, from:texte, object_churn:inconnu, to:texte, top_users:inconnu, total_entries:inconnu, window_days:inconnu
 - frontend/src/api/reportingApi.js :: commercialDashboard -> /api/django/reporting/commercial/dashboard
     detail:texte, funnel:inconnu, leaderboard:inconnu, sales_velocity:inconnu, time_in_stage:inconnu, time_to_first_touch:inconnu, total_leads:nombre, total_signes:inconnu, win_rate_pct:inconnu
-- frontend/src/api/reportingApi.js :: deciderApprobationsEnMasse -> /api/django/reporting/approbations-en-attente/decider-en-masse
-    detail:texte, resultats:inconnu
 - frontend/src/api/reportingApi.js :: effectiveDashboardConfig -> /api/django/reporting/dashboard-config/effective
     cards:inconnu, config_id:inconnu, menu_tier:inconnu, source:texte
 - frontend/src/api/reportingApi.js :: executerRapportDefinition -> /api/django/reporting/rapport-definitions/<>/executer
@@ -388,8 +384,6 @@
     badges:inconnu, count:nombre, tuiles:inconnu
 - frontend/src/api/reportingApi.js :: rafraichirClasseur -> /api/django/reporting/classeurs/<>/rafraichir
     cellules:inconnu
-- frontend/src/api/reportingApi.js :: rescheduleCalendar -> /api/django/reporting/calendar/reschedule
-    date:texte, detail:texte, ok:booleen
 - frontend/src/api/reportingApi.js :: savTauxAttache -> /api/django/reporting/insights/sav-taux-attache
     avec_contrat:inconnu, detail:texte, taux_pct:inconnu, total:inconnu
 - frontend/src/api/reportingApi.js :: savTicketsCoutMoyen -> /api/django/reporting/insights/sav-tickets-cout-moyen
@@ -1412,8 +1406,12 @@
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: updateUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
     champs: actif, code, id, libelle
+- frontend/src/api/portailApi.js :: corriger -> /api/django/portail/jalons-chantier-portail/<>  [JalonChantierPortailSerializer]
+    champs: atteint, chantier_id, cle_phase, date_creation, date_jalon, id, libelle, ordre
 - frontend/src/api/portailApi.js :: patch -> /api/django/portail/comptes-portail/<>  [ComptePortailClientSerializer]
     champs: actif, client, date_creation, derniere_connexion, email, id, token_apercu
+- frontend/src/api/portailApi.js :: supprimer -> /api/django/portail/jalons-chantier-portail/<>  [JalonChantierPortailSerializer]
+    champs: atteint, chantier_id, cle_phase, date_creation, date_jalon, id, libelle, ordre
 - frontend/src/api/recordsApi.js :: createTag -> /api/django/records/tags  [TagSerializer]
     champs: couleur, created_at, id, nom
 - frontend/src/api/recordsApi.js :: deleteTag -> /api/django/records/tags/<>  [TagSerializer]

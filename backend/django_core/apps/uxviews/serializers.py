@@ -2,7 +2,7 @@ from typing import Optional
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldError
-from drf_spectacular.utils import extend_schema_serializer
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -79,6 +79,7 @@ class SavedViewSerializer(SameCompanyFKSerializerMixin,
         # actif par rôle+écran).
         read_only_fields = ['id', 'owner', 'est_defaut_role', 'created_at', 'updated_at']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_nom(self, obj):
         owner = obj.owner
         if not owner:
@@ -86,6 +87,7 @@ class SavedViewSerializer(SameCompanyFKSerializerMixin,
         full = f'{getattr(owner, "first_name", "")} {getattr(owner, "last_name", "")}'.strip()
         return full or getattr(owner, 'username', None) or getattr(owner, 'email', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_role_nom(self, obj):
         return obj.role.nom if obj.role_id else None
 

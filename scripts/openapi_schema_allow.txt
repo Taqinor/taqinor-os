@@ -72,9 +72,6 @@ Warning|MonitoringConfigViewSet > MonitoringConfigSerializer|unable to resolve t
 Warning|MonitoringConfigViewSet > MonitoringConfigSerializer|unable to resolve type hint for function "get_provider_label". Consider using a type hint or @extend_schema_field. Defau
 Warning|OnboardingProgressViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|ProductTourViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|SavedViewViewSet > SavedViewSerializer|Encountered # components with identical names "PatchedSavedViewRequest" and different identities <class 'apps.uxviews.se
-Warning|SavedViewViewSet > SavedViewSerializer|Encountered # components with identical names "SavedView" and different identities <class 'apps.uxviews.serializers.Save
-Warning|SavedViewViewSet > SavedViewSerializer|Encountered # components with identical names "SavedViewRequest" and different identities <class 'apps.uxviews.serialize
 Warning|SodRuleViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|TicketViewSet|could not derive type of path parameter "activite_id" because model "apps.sav.models.Ticket" contained no such field. Co
 Warning|TicketViewSet|could not derive type of path parameter "piece_id" because model "apps.sav.models.Ticket" contained no such field. Consi

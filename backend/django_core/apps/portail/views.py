@@ -382,19 +382,26 @@ class JalonChantierPortailViewSet(_PortailBaseViewSet):
     serializer_class = JalonChantierPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
-    # ENF11 (api-fuzz) — `post` n'est plus une méthode servie : l'en-tête
-    # `Allow` ne l'annonce plus (le schéma ne la publiait pas) ; le 405 garde
-    # le message ADOC129 via `http_method_not_allowed`.
-    http_method_names = ['get', 'patch', 'delete', 'head', 'options']
+    http_method_names = ['get', 'patch', 'delete', 'post', 'head', 'options']
 
-    def http_method_not_allowed(self, request, *args, **kwargs):
-        if request.method.upper() == 'POST':
-            raise MethodNotAllowed(
-                request.method,
-                detail=("Les jalons portail viennent du chantier (synchronisés) : "
-                        "ils ne se créent pas à la main. Corrigez le jalon "
-                        "existant."))
-        return super().http_method_not_allowed(request, *args, **kwargs)
+    @property
+    def allowed_methods(self):
+        # ENF11 (api-fuzz « Invalid Allow header ») — sur la route de liste,
+        # POST (= `create`, 405 ADOC129, exclu du schéma) n'est pas annoncé
+        # dans `Allow` ; `post` reste servi pour les actions marquer_atteint /
+        # marquer_non_atteint (routes de détail).
+        methodes = super().allowed_methods
+        if (self.action_map or {}).get('post') == 'create':
+            return [m for m in methodes if m != 'POST']
+        return methodes
+
+    @extend_schema(exclude=True)
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(
+            request.method,
+            detail=("Les jalons portail viennent du chantier (synchronisés) : "
+                    "ils ne se créent pas à la main. Corrigez le jalon "
+                    "existant."))
 
     def destroy(self, request, *args, **kwargs):
         jalon = self.get_object()
