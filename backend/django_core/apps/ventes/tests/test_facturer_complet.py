@@ -697,3 +697,71 @@ class FacturerVenteEndpointVNT31(_BaseVente):
             *self._role('Commercial', COMMERCIAL_PERMISSIONS), devis, corps)
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['facture']['statut'], 'emise')
+
+
+class AcompteAutomatiqueVNT62(_BaseVente):
+    """VNT62 (AMET4 / D-SIGN-AUTO = a, D-ECH-FIGE) — à l'acceptation : échéancier
+    figé puis UN brouillon d'acompte depuis lui ; « Facturer l'acompte » ÉDITE
+    ce brouillon ; la dés-acceptation l'ANNULE (sans avoir)."""
+
+    def _accepter(self, devis):
+        from unittest import mock
+        from apps.ventes.domain.cycle_vie import accept_devis
+        with mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf'), \
+                mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails'):
+            return accept_devis(devis=devis, user=self.user, nom='Kharbachi',
+                                option='sans_batterie')
+
+    def _acomptes(self, devis):
+        return Facture.objects.filter(
+            devis=devis, type_facture='acompte').exclude(statut='annulee')
+
+    def test_acceptation_fige_et_cree_le_brouillon_14700(self):
+        devis = self._accepter(self._388('DEV-VNT62-1', statut='envoye'))
+        devis.refresh_from_db()
+        self.assertEqual(
+            [(e['type'], e['unite'], Decimal(str(e['pct_or_montant'])))
+             for e in devis.echeancier],
+            [('acompte', 'pct', Decimal('30')),
+             ('materiel', 'pct', Decimal('60')),
+             ('solde', 'pct', Decimal('10'))])
+        acomptes = list(self._acomptes(devis))
+        self.assertEqual(len(acomptes), 1)
+        self.assertEqual(acomptes[0].statut, Facture.Statut.BROUILLON)
+        self.assertTrue(acomptes[0].reference.startswith('BROUILLON-'))
+        self.assertEqual(acomptes[0].montant_ttc, Decimal('14700.00'))
+        # « Facturer l'acompte » 15 000 : LE MÊME brouillon passe à 15 000.
+        facture, _p = self._facturer(devis, nature='acompte',
+                                     montant_ttc='15000.00',
+                                     cle_attendue='acompte')
+        self.assertEqual(facture.pk, acomptes[0].pk)
+        self.assertEqual(self._acomptes(devis).count(), 1)
+        facture.refresh_from_db()
+        self.assertEqual(facture.montant_ttc, Decimal('15000.00'))
+
+    def test_sans_echeancier_propre_les_conditions_du_jour_sont_figees(self):
+        devis = self._accepter(self._388('DEV-VNT62-2', echeancier=None,
+                                         statut='envoye'))
+        devis.refresh_from_db()
+        self.assertTrue(devis.echeancier)
+        self.assertEqual(self._acomptes(devis).count(), 1)
+
+    def test_desacceptation_annule_le_brouillon_sans_avoir(self):
+        from apps.ventes.domain.cycle_vie import (
+            annuler_acceptation, raison_blocage_annulation_acceptation)
+        from apps.ventes.models import Avoir
+        devis = self._accepter(self._388('DEV-VNT62-3', statut='envoye'))
+        brouillon = self._acomptes(devis).get()
+        self.assertIsNone(raison_blocage_annulation_acceptation(devis))
+        annuler_acceptation(devis=devis, user=self.user, motif='test')
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        brouillon.refresh_from_db()
+        self.assertEqual(brouillon.statut, Facture.Statut.ANNULEE)
+        self.assertFalse(Avoir.objects.filter(facture=brouillon).exists())
+
+    def test_reacceptation_jamais_un_deuxieme_brouillon(self):
+        devis = self._accepter(self._388('DEV-VNT62-4', statut='envoye'))
+        from apps.ventes.domain.negociation import preparer_acompte_automatique
+        self.assertIsNone(preparer_acompte_automatique(devis, self.user))
+        self.assertEqual(self._acomptes(devis).count(), 1)

@@ -20,6 +20,10 @@ VNT61 — ``etat_avenant`` / ``signer_avenant`` : un avenant accepté en interne
 signe par le lien client — une ``DevisSignature`` (empreinte + PDF signé), sans
 changer le statut ni émettre le moindre événement (règle #4).
 
+VNT62 (AMET4 / D-SIGN-AUTO = a, D-ECH-FIGE) — à l'acceptation (hors avenant
+négocié) : échéancier FIGÉ puis UN brouillon d'acompte ``BROUILLON-<id>`` créé
+depuis lui ; la dés-acceptation l'annule (sans avoir) au lieu d'être bloquée.
+
 Ordre de chargement : ce module importe ``cycle_vie`` (``AcceptError``) ;
 ``cycle_vie`` ne l'importe qu'à l'APPEL (import fonction-local), jamais au
 chargement — aucun cycle.
@@ -269,6 +273,8 @@ def effets_apres_acceptation(devis, *, user, lignes=None, ip=None,
     if canal == CANAL_AVENANT_NEGOCIE:
         return
     from apps.ventes.domain import capi_signee
+    # VNT62 — AVANT le mail : il annonce l'acompte prévu (le brouillon).
+    preparer_acompte_automatique(devis, user)
     _cycle_vie._store_signed_pdf(devis=devis)
     try:
         devis.refresh_from_db(fields=['fichier_pdf'])
@@ -426,3 +432,70 @@ def signer_avenant(devis, *, nom, ip=None, user_agent='', consentement=True,
             'reference': devis.reference, 'statut': devis.statut,
             'accepte_par_nom': devis.accepte_par_nom,
             'avenant_signe': {'signe_le': (etat or {}).get('signe_le')}}
+
+
+# ── VNT62 — l'acompte automatique de l'acceptation ───────────────────────────
+
+def _tranche_acompte_a_faire(plan):
+    """La 1re tranche d'acompte À FAIRE du plan (> 0), ou ``None`` dès qu'un
+    acompte est déjà prévu ou émis (jamais un 2e brouillon d'acompte)."""
+    acomptes = [t for t in plan['tranches'] if str(t['type']) == 'acompte']
+    if not acomptes or any(t['statut'] != 'a_faire' for t in acomptes):
+        return None
+    premiere = acomptes[0]
+    return premiere if premiere['montant_ttc'] > 0 else None
+
+
+def preparer_acompte_automatique(devis, user=None):
+    """VNT62 (AMET4 / D-SIGN-AUTO = a) — l'échéancier est FIGÉ
+    (``figer_echeancier``, idempotent : un échéancier propre — pct OU montant
+    — n'est jamais réécrit) puis UN brouillon d'acompte « BROUILLON-<id> »
+    est créé DEPUIS lui (``creer_brouillon_tranche`` de la 1re tranche du
+    plan : l'échéancier n'est pas réécrit en MAD). « Facturer l'acompte »
+    ÉDITE ce brouillon (VNT28). Best-effort (point de sauvegarde) : jamais
+    une acceptation cassée pour ça. Rend la facture créée ou ``None``."""
+    from django.db import transaction
+    from apps.ventes.utils.echeancier import figer_echeancier
+    from apps.ventes.vente_facturation import plan_facturation
+    try:
+        with transaction.atomic():
+            figer_echeancier(devis)
+            tranche = _tranche_acompte_a_faire(plan_facturation(devis))
+            if tranche is None:
+                return None
+            from apps.ventes.domain.facturation_vente import (
+                creer_brouillon_tranche)
+            return creer_brouillon_tranche(devis, tranche, user)
+    except Exception:  # noqa: BLE001 — best-effort, journalisé
+        logger.exception('VNT62 : acompte automatique non créé (devis %s)',
+                         getattr(devis, 'reference', '?'))
+        return None
+
+
+def acomptes_automatiques(devis):
+    """VNT62 — ids des brouillons d'acompte « BROUILLON-<id> » du devis sans
+    paiement compté : ce que l'acceptation a créé et que la dés-acceptation
+    ANNULE (sans avoir) au lieu d'être bloquée par eux."""
+    from core.numbering import est_reference_provisoire
+    from apps.ventes.models import Facture, Paiement
+    ids = []
+    for f in (Facture.objects.filter(
+            company_id=devis.company_id, devis_id=devis.pk,
+            statut=Facture.Statut.BROUILLON, type_facture='acompte')
+            .prefetch_related('paiements')):
+        if est_reference_provisoire(f.reference) and not any(
+                p.statut not in Paiement.STATUTS_NON_COMPTES
+                for p in f.paiements.all()):
+            ids.append(f.pk)
+    return ids
+
+
+def retirer_acomptes_automatiques(devis, user=None):
+    """VNT62 — la dés-acceptation ANNULE (jamais supprime) le brouillon
+    d'acompte automatique : ``annuler_facture`` (un ``BROUILLON-<id>``
+    bascule seul, sans avoir). Rend les factures annulées."""
+    from apps.ventes.domain.annulation_facture import annuler_facture
+    from apps.ventes.models import Facture
+    return [annuler_facture(f, user=user,
+                            motif='Acceptation annulée — acompte retiré')
+            for f in Facture.objects.filter(pk__in=acomptes_automatiques(devis))]

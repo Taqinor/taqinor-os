@@ -248,15 +248,24 @@ class ApercuPrixNegocie(TestCase):
             self._apercu(**saisie)
         return ctx.exception.code
 
-    def test_apercu_49000_remise_10_effets_rien_ecrit(self, *_):
-        acompte = self._tranche()
+    def _acompte_paye_et_materiel_brouillon(self, ref='FAC-VNT58-0001'):
+        """L'acompte automatique de l'acceptation (VNT62) passé PAYÉ sous un
+        numéro légal, puis la tranche matériel laissée en BROUILLON."""
+        acompte = Facture.objects.get(
+            devis=self.v1, type_facture='acompte',
+            statut=Facture.Statut.BROUILLON)
         Facture.objects.filter(pk=acompte.pk).update(
-            statut=Facture.Statut.PAYEE, reference='FAC-VNT58-0001')
+            statut=Facture.Statut.PAYEE, reference=ref)
         materiel = self._tranche()
         Facture.objects.filter(pk=materiel.pk).update(
-            statut=Facture.Statut.BROUILLON)
-        materiel.refresh_from_db()
+            statut=Facture.Statut.BROUILLON,
+            reference=f'BROUILLON-{materiel.pk}')
         acompte.refresh_from_db()
+        materiel.refresh_from_db()
+        return acompte, materiel
+
+    def test_apercu_49000_remise_10_effets_rien_ecrit(self, *_):
+        acompte, materiel = self._acompte_paye_et_materiel_brouillon()
         nb_devis, nb_factures = Devis.objects.count(), Facture.objects.count()
 
         a = self._apercu(prix_ttc='49000')
@@ -269,7 +278,7 @@ class ApercuPrixNegocie(TestCase):
         self.assertEqual(a['factures_annulees'],
                          [{'reference': materiel.reference}])
         self.assertEqual([f['reference'] for f in a['factures_reprises']],
-                         ['FAC-VNT58-0001'])
+                         [acompte.reference])
         self.assertEqual(Decimal(a['reste_a_facturer']),
                          Decimal('49000.00') - Decimal(str(acompte.total_ttc)))
         self.assertEqual(a['regularisation'],
@@ -317,16 +326,8 @@ class AppliquerPrixNegocie(TestCase):
 
     setUp = ApercuPrixNegocie.setUp
     _tranche = ApercuPrixNegocie._tranche
-
-    def _acompte_paye_et_materiel_brouillon(self):
-        acompte = self._tranche()
-        Facture.objects.filter(pk=acompte.pk).update(
-            statut=Facture.Statut.PAYEE, reference='FAC-VNT59-0001')
-        materiel = self._tranche()
-        Facture.objects.filter(pk=materiel.pk).update(
-            statut=Facture.Statut.BROUILLON,
-            reference=f'BROUILLON-{materiel.pk}')
-        return acompte, materiel
+    _acompte_paye_et_materiel_brouillon = (
+        ApercuPrixNegocie._acompte_paye_et_materiel_brouillon)
 
     def _appliquer(self, prix='49000'):
         from apps.ventes.domain.negociation import appliquer_prix_negocie
@@ -367,6 +368,9 @@ class AppliquerPrixNegocie(TestCase):
         self.assertEqual(r['factures_annulees'],
                          [{'reference': materiel.reference}])
         self.assertEqual(Avoir.objects.count(), nb_avoirs)
+        # VNT62 — l'avenant négocié ne crée AUCUN brouillon d'acompte neuf.
+        self.assertFalse(Facture.objects.filter(
+            devis=v2, statut=Facture.Statut.BROUILLON).exists())
         acompte.refresh_from_db()
         self.assertEqual(acompte.devis_id, v2.pk)
         self.assertFalse(DevisSignature.objects.filter(devis=v2).exists())

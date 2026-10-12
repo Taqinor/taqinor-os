@@ -1693,14 +1693,15 @@ def raison_blocage_annulation_acceptation(devis):
     ``devis``, ou ``None`` si l'annulation est permise. Lecture seule.
 
     Bloquent : une facture non annulée liée au devis (directement, par son bon
-    de commande ou par une facture consolidée — brouillon comprise : elle
-    n'est jamais créée par l'acceptation), un bon de commande non annulé, un
+    de commande ou par une facture consolidée — brouillon comprise, sauf
+    l'acompte automatique de l'acceptation, VNT62), un BC non annulé, un
     dossier 82-21 sorti de « En constitution », puis ce que disent les
     sélecteurs des apps propriétaires (chantier avancé, contrat SAV engagé)."""
     from django.db.models import Q
     from apps.ventes.models import (
         BonCommande, Facture, RegulatoryDossier,
     )
+    from apps.ventes.domain.negociation import acomptes_automatiques
 
     company_id = devis.company_id
     facture = (Facture.objects
@@ -1709,6 +1710,7 @@ def raison_blocage_annulation_acceptation(devis):
                        | Q(bon_commande__devis_id=devis.pk)
                        | Q(sources__devis_id=devis.pk))
                .exclude(statut=Facture.Statut.ANNULEE)
+               .exclude(pk__in=acomptes_automatiques(devis))  # VNT62
                .order_by('pk').distinct().first())
     if facture is not None:
         if facture.statut == Facture.Statut.BROUILLON:
@@ -1794,6 +1796,8 @@ def annuler_acceptation(*, devis, user, motif=''):
         raison = raison_blocage_annulation_acceptation(devis)
         if raison:
             raise AnnulationAcceptationBloquee(raison)
+        from apps.ventes.domain.negociation import retirer_acomptes_automatiques
+        retirer_acomptes_automatiques(devis, user)  # VNT62 — sans avoir
 
         ancienne_option = devis.option_acceptee or ''
         ancienne_date = devis.date_acceptation
