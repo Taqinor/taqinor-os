@@ -136,9 +136,9 @@ PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
 @extend_schema_view(list=extend_schema(
     parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]),
-    # VNT14 — seul un « BROUILLON-<id> » se supprime : 400 sinon.
+    # VNT14 — seul un « BROUILLON-<id> » se supprime : 409 sinon (ENF11).
     destroy=extend_schema(
-        responses={204: None, 400: D.ErreurSuppressionFacture}))
+        responses={204: None, 409: D.ErreurSuppressionFacture}))
 class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
@@ -312,28 +312,31 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         Gardes, plus une traduction :
           1. seul un BROUILLON est supprimable (tout le reste s'ANNULE) ;
           1 bis. VNT14 (D-VNT-1) — seul un « BROUILLON-<id> » : une référence
-             LÉGALE remise en brouillon s'annule (400 ``reference_legale``),
+             LÉGALE remise en brouillon s'annule (409 ``reference_legale``),
              sinon « plus-haut-utilisé + 1 » réutiliserait le numéro ;
           2. aucun paiement, même rejeté (piste d'audit) ;
           3. verrou de période comptable ;
           4. ``ProtectedError`` (avoir, note de débit, intention de paiement
-             portail) devient un 400 français, plus une 500 non traduite.
+             portail) devient un refus français, plus une 500 non traduite.
+        Chaque refus dépend de l'ÉTAT de la facture, pas du corps : 409
+        ``ConflitEtat`` (ENF11, ``core/conflit_etat.py``), jamais un 400.
         """
         from django.db.models import ProtectedError
+        from core.conflit_etat import ConflitEtat
         from core.numbering import est_reference_provisoire
 
         if instance.statut != Facture.Statut.BROUILLON:
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 'Seule une facture brouillon peut être supprimée. Une facture '
                 'émise, en retard ou payée s\'ANNULE (elle porte un numéro '
                 'légal et, le cas échéant, des encaissements).'
             )})
         if not est_reference_provisoire(instance.reference):
-            raise ValidationError({'code': 'reference_legale', 'detail': (
+            raise ConflitEtat({'code': 'reference_legale', 'detail': (
                 f'Cette facture porte le numéro {instance.reference} : '
                 'annulez-la (un numéro légal ne se supprime jamais).')})
         if instance.paiements.exists():
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 'Cette facture porte au moins un paiement : la supprimer '
                 'effacerait des encaissements réels. Annulez-la ou rejetez '
                 'd\'abord ses paiements.'
@@ -341,7 +344,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             instance.delete()
         except ProtectedError:
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 'Suppression impossible : cette facture est référencée par un '
                 'avoir, une note de débit ou un paiement du portail client. '
                 'Annulez-la plutôt que de la supprimer.'
@@ -566,14 +569,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response({'detail': motif_refus},
                             status=status.HTTP_409_CONFLICT)
         motif = valider_corps(request, D.MarquerPayeeRequest)['motif'].strip()
-        if not motif:
-            return Response(
-                {'detail': (
-                    'Motif obligatoire : marquer une facture payée sans '
-                    'encaissement doit être justifié et tracé.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         # Résiduel réel vs tolérance société (XFAC13, défaut 0 = aucun
         # résiduel toléré). Au-dessus, ce n'est pas un « marquer payée » :
         # c'est un abandon de créance, qui a son propre geste et son écriture.
@@ -1425,10 +1420,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
         motif = valider_corps(request, D.RetourClientRequest)['motif'].strip()
-        if not motif:
-            return Response(
-                {'detail': 'Le motif du retour est obligatoire.'},
-                status=status.HTTP_400_BAD_REQUEST)
         restocker = bool(request.data.get('restocker', False))
         lignes = request.data.get('lignes')
         if not isinstance(lignes, list) or not lignes:

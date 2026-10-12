@@ -437,7 +437,7 @@ const ventesApi = {
   // facture_annulation.json) : où va l'argent rattaché à la facture annulée.
   annulerFacture: (id, body) => api.post(`/ventes/factures/${id}/annuler/`, body),
   // VNT46 (D-VNT-1) — suppression d'un brouillon `BROUILLON-<id>` SEUL (le serveur
-  // répond 400 `reference_legale` pour tout autre numéro : on annule, on ne supprime pas).
+  // répond 409 `reference_legale` pour tout autre numéro : on annule, on ne supprime pas).
   supprimerFacture: (id) => api.delete(`/ventes/factures/${id}/`),
   // VNT43/VNT46 — quittance PDF d'UN paiement (fichier Quittance_<numero_recu>.pdf).
   recuPdfPaiement: (id) => api.get(`/ventes/paiements/${id}/recu-pdf/`, { responseType: 'blob' }),

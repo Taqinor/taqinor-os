@@ -98,14 +98,14 @@ class TestSuppressionFacture(TestCase):
             company=self.company, facture=facture, montant=Decimal('1000'),
             date_paiement=date(2026, 3, 1), mode='virement')
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
         self.assertTrue(Paiement.objects.filter(pk=paiement.pk).exists())
 
     def test_facture_payee_refusee(self):
         facture = self._facture(statut=Facture.Statut.PAYEE)
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
 
     def test_brouillon_avec_paiement_refuse(self):
@@ -115,7 +115,7 @@ class TestSuppressionFacture(TestCase):
             company=self.company, facture=facture, montant=Decimal('10'),
             date_paiement=date(2026, 3, 1), mode='especes')
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
 
     # ── VNT13 (D-VNT-1, arbitrage 5) — palier responsable/admin ET un code
@@ -171,7 +171,7 @@ class TestSuppressionFacture(TestCase):
 
     # ── ProtectedError traduit, plus une 500 ──────────────────────────────
 
-    def test_facture_avec_avoir_repond_400_francais(self):
+    def test_facture_avec_avoir_repond_409_francais(self):
         facture = self._facture(reference='')  # VNT14 : brouillon provisoire
         Avoir.objects.create(
             company=self.company, reference=f'AV-AUD103-{_nxt()}',
@@ -180,7 +180,7 @@ class TestSuppressionFacture(TestCase):
             montant_ht=Decimal('100'), montant_tva=Decimal('20'),
             montant_ttc=Decimal('120'))
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', resp))
         self.assertIn('avoir', str(resp.data).lower())
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
 
@@ -205,7 +205,7 @@ class TestSuppressionFacture(TestCase):
 
         legale = self._facture(reference='FAC-0012', avec_ligne=False)
         resp = self.api_su.delete(self._url(legale))
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', resp))
         self.assertEqual(resp.data['code'], 'reference_legale')
         self.assertIn('FAC-0012', str(resp.data['detail']))
         self.assertIn('annulez-la', str(resp.data['detail']))
