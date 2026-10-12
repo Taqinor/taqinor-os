@@ -19,6 +19,19 @@ from core.mixins import SameCompanyFKSerializerMixin
 from .domain.bornes import montant_saisi, pourcentage_saisi
 
 
+def _retirer_unicite_tranche(serializer):
+    """VNT15 — ``uq_facture_tranche_vivante`` (devis, cle_tranche) fait
+    générer par DRF un ``UniqueTogetherValidator`` AUTO qui IMPOSE ``devis``
+    au POST (CI M1 : 400 « devis obligatoire » sur toute facture manuelle
+    sans devis). ``cle_tranche`` est posée par le serveur, jamais par le
+    corps : la contrainte base reste l'arbitre du double clic, et ``devis``
+    redevient FACULTATIF (``extra_kwargs`` de chaque Meta)."""
+    serializer.validators = [
+        v for v in serializer.validators
+        if not (isinstance(v, UniqueTogetherValidator)
+                and 'cle_tranche' in getattr(v, 'fields', ()))]
+
+
 class _BornesArgentMixin:
     """AFAC69 (C-AFAC-059) — bornes d'argent d'une facture / d'un avoir
     validées AU SÉRIALISEUR par la garde unique ``domain/bornes`` (ATOT21) :
@@ -476,7 +489,15 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
                             # ATOT5 — clé de tranche posée par le serveur.
                             'cle_tranche',
                             # APAR61 — identité vendeur figée à l'émission.
-                            'identite_vendeur']
+                            'identite_vendeur',
+                            # VNT15 — blocs figés à l'émission par le serveur.
+                            'objet_vente', 'garanties']
+        # VNT15 — ``devis`` facultatif malgré ``uq_facture_tranche_vivante``.
+        extra_kwargs = {'devis': {'required': False}}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _retirer_unicite_tranche(self)
 
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):
@@ -568,6 +589,14 @@ class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
             'retenue_liberee_le', 'statut_teledeclaration', 'fichier_ubl',
             'pdf_render_meta', 'updated_by',
         ]
+        # VNT15 — ``devis`` facultatif malgré ``uq_facture_tranche_vivante`` :
+        # une facture manuelle SANS devis reste permise ; la porte d'émission
+        # ne s'applique qu'à une facture AVEC devis.
+        extra_kwargs = {'devis': {'required': False}}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _retirer_unicite_tranche(self)
 
 
 class LigneAvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,

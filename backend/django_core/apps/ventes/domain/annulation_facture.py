@@ -456,6 +456,18 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
     return facture
 
 
+def avoir_annulation_corps(facture):
+    """VNT4 — clé ``avoir`` du contrat ``facture_annulation.json`` :
+    ``{id, reference, montant}`` (montant TTC en texte décimal) de l'avoir
+    de contre-passation posé par :func:`annuler_facture`, ``None`` pour un
+    ``BROUILLON-<id>`` (aucun avoir)."""
+    avoir = getattr(facture, 'avoir_annulation', None)
+    if avoir is None:
+        return None
+    return {'id': avoir.pk, 'reference': avoir.reference,
+            'montant': f'{Decimal(str(avoir.total_ttc)):.2f}'}
+
+
 def retirer_brouillons_de_la_vente(devis, *, user, motif=''):
     """VNT11 — LE helper partagé par « Prix négocié » et le cycle facture :
     chaque BROUILLON de la vente de ``devis`` (``factures_de_la_vente`` :

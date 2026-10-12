@@ -83,6 +83,10 @@ LIBELLES = {
 
 _PAIRE = re.compile(r'\s*(.+?)\s+([−-])?\s?([0-9]+\.[0-9]{2}) MAD')
 _TAUX = re.compile(r'\(([0-9]+(?:\.[0-9]+)?) ?%\)')
+#: Pied courant d'un saut de page (« Société FAC-… Page 1 / 2 ») collé
+#: devant le libellé suivant quand la chaîne chevauche deux pages (VNT40 :
+#: le bloc « Situation de la vente » allonge la facture).
+_SAUT_PAGE = re.compile(r'^.*\bPage [0-9]+ / [0-9]+\s*')
 
 
 def _q(valeur):
@@ -110,7 +114,8 @@ def figures_lues(texte, lib_sous_total, lib_ttc):
     tva = []
     total_ht = None
     for m in _PAIRE.finditer(texte, debut):
-        libelle, montant = m.group(1).strip(), Decimal(m.group(3))
+        libelle = _SAUT_PAGE.sub('', m.group(1).strip())
+        montant = Decimal(m.group(3))
         if libelle == lib_ttc:
             lues['ttc'] = montant
             break

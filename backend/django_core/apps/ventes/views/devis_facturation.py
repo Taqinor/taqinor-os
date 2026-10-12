@@ -31,7 +31,8 @@ CLES_VENTE_FACTURER = ('prix_convenu_ttc', 'emis_ttc', 'brouillons_ttc',
 #: Les champs du corps transmis tels quels à ``facturer_vente``.
 CHAMPS_FACTURER_VENTE = ('nature', 'montant_ttc', 'pourcentage',
                          'cle_attendue', 'libelle', 'emettre', 'paiements',
-                         'remplacer_brouillons', 'utiliser_avances')
+                         'remplacer_brouillons', 'utiliser_avances',
+                         'override_credit')
 
 
 def refus_porte_historique(exc):
