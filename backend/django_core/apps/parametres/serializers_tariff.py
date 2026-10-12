@@ -64,6 +64,10 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
         ] + CHAMPS_LOT5 + CHAMPS_POMPAGE + CHAMPS_CI
         # version/date posés serveur ; company jamais exposée ni acceptée.
         read_only_fields = ['version', 'date_modification']
+        # Un JSON ``null`` vaut « vide » ([] / {}) — les ``validate_<champ>``
+        # ci-dessous le convertissent ; sans allow_null DRF le refusait avant.
+        extra_kwargs = {champ: {'allow_null': True} for champ in (
+            'charges_pompage_solaire', 'regle_fda_pompage', 'sensibilites_ci')}
 
     def validate(self, attrs):
         """CALX72 — la porte de saisie relaie ``erreurs_reglages_tarif``.
