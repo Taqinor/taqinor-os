@@ -7,15 +7,19 @@
 // VNT75 — « Facturer l'acompte » / « Facturer le solde » : 2 boutons au plus,
 // ouverts par `vente.peut` (venteEtat.js), jamais sur une version remplacée ni
 // quand la prochaine action est « aucune » ; ils ouvrent FacturerVenteDialog.
+// VNT78 — « Prix négocié » (PrixNegocieDialog) suit `vente.peut.prix_negocie`
+// (tête acceptée active) ; le succès rafraîchit la fiche, qui montre la V2.
 import { useState } from 'react'
 import { Button } from '../../../ui'
 import BilanVente from './BilanVente'
 import LigneFactureVente from './LigneFactureVente'
 import FacturerVenteDialog from './FacturerVenteDialog'
-import { peutFacturerAcompte, peutFacturerSolde } from './venteEtat'
+import PrixNegocieDialog from '../PrixNegocieDialog'
+import { peutFacturerAcompte, peutFacturerSolde, peutVente } from './venteEtat'
 
-export default function PanneauVente({ devis, onAction }) {
+export default function PanneauVente({ devis, onAction, onOuvrirDevis }) {
   const [facturerCible, setFacturerCible] = useState(null)
+  const [prixCible, setPrixCible] = useState(null)
   // Dernier état servi par un GET détail (état dérivé pendant le rendu).
   const [dernier, setDernier] = useState(devis?.vente ?? null)
   if (devis?.vente && devis.vente !== dernier) setDernier(devis.vente)
@@ -30,6 +34,7 @@ export default function PanneauVente({ devis, onAction }) {
   const ouvert = !remplacee && vente.prochaine_action !== 'aucune'
   const acompte = ouvert && peutFacturerAcompte(actif)
   const solde = ouvert && peutFacturerSolde(actif)
+  const prixNegocie = !remplacee && peutVente(actif, 'prix_negocie')
 
   return (
     <section className="vente-panneau" data-testid={`panneau-vente-${devis.id}`} aria-label="Vente">
@@ -44,7 +49,7 @@ export default function PanneauVente({ devis, onAction }) {
           {factures.map((f) => <LigneFactureVente key={f.id} facture={f} onChange={rafraichir} />)}
         </ul>
       )}
-      {(acompte || solde) && (
+      {(acompte || solde || prixNegocie) && (
         <div className="vente-actions">
           {acompte && (
             <Button
@@ -62,6 +67,14 @@ export default function PanneauVente({ devis, onAction }) {
               🧾 Facturer le solde
             </Button>
           )}
+          {prixNegocie && (
+            <Button
+              type="button" size="sm" variant="outline" data-testid={`vente-prix-negocie-${devis.id}`}
+              onClick={() => setPrixCible(actif)}
+            >
+              Prix négocié
+            </Button>
+          )}
         </div>
       )}
       {vente.revision_en_cours?.reference && (
@@ -74,6 +87,12 @@ export default function PanneauVente({ devis, onAction }) {
         devis={facturerCible}
         onOpenChange={(o) => { if (!o) setFacturerCible(null) }}
         onDone={() => onAction?.('refresh')}
+      />
+      <PrixNegocieDialog
+        devis={prixCible}
+        onOpenChange={(o) => { if (!o) setPrixCible(null) }}
+        onApplied={rafraichir}
+        onOuvrirDevis={onOuvrirDevis}
       />
     </section>
   )

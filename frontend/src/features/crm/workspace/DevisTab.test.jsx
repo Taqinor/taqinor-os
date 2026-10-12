@@ -3,7 +3,7 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
 import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
@@ -20,7 +20,7 @@ import DevisTab, {
 
 const {
   genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement,
-  ouvrirPdfFacture, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
+  ouvrirPdfFacture, prixNegocie, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
@@ -39,6 +39,8 @@ const {
     envoyerEmailFacture: vi.fn(() => Promise.resolve({ data: {} })),
     recuPdfPaiement: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF']), headers: {} })),
     ouvrirPdfFacture: vi.fn(() => Promise.resolve('ouvert')),
+    // VNT78 — PrixNegocieDialog monté depuis le panneau.
+    prixNegocie: vi.fn(),
     createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
     whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR538 — l'aperçu sans effet : réponse fournie par le test depuis
@@ -71,7 +73,7 @@ const {
   }
 })
 vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+  default: { genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, prixNegocie, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
 }))
 vi.mock('../../ventes/vente/facturePdf', () => ({ ouvrirPdfFacture }))
 vi.mock('../../../utils/pdfBlob', () => ({ openPdfBlob: vi.fn(), messageErreurBlob: vi.fn(() => Promise.resolve('')) }))
@@ -1398,5 +1400,62 @@ describe('VNT76 — gestes par facture du panneau de vente', () => {
     c.vente.factures[0].paiements[0].peut = { recu: false }
     renderTab({ state: leadState({ devis: [c] }) })
     expect(within(screen.getByTestId('vente-paiement-301')).queryByRole('button', { name: /Reçu/ })).toBeNull()
+  })
+})
+
+/* VNT78 — « Prix négocié » (PrixNegocieDialog, VNT73) monté dans le panneau :
+   ouvert par `vente.peut.prix_negocie` (tête acceptée active seulement) ; le
+   succès rafraîchit la fiche, qui montre alors la V2 acceptée. */
+describe('VNT78 — « Prix négocié » dans le panneau de vente', () => {
+  const CONTRAT = documentContrat('ventes', 'devis_prix_negocie')
+  const tete = {
+    id: 501, reference: 'DEV-202610-0020', statut: 'accepte', total_ttc: '54500',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+    vente: { ...exempleContrat('ventes', 'vente_etat', 'exemple_acompte_paye_solde_a_faire').vente,
+      prix_convenu_ttc: '54500.00', tete_id: 501,
+      versions: [{ id: 501, reference: 'DEV-202610-0020', version: 1, statut: 'accepte', is_active: true }] },
+  }
+
+  it('bouton ouvert par vente.peut.prix_negocie, absent sur version remplacée et quand le serveur le ferme', () => {
+    renderTab({ state: leadState({ devis: [tete] }) })
+    expect(screen.getByTestId('vente-prix-negocie-501')).toBeInTheDocument()
+    cleanup()
+    const remplacee = { ...tete, vente: exempleContrat('ventes', 'vente_etat', 'exemple_version_remplacee').vente }
+    renderTab({ state: leadState({ devis: [{ ...remplacee, id: 501 }] }) })
+    expect(screen.queryByTestId('vente-prix-negocie-501')).toBeNull()
+    cleanup()
+    const ferme = { ...tete, vente: { ...tete.vente, peut: { ...tete.vente.peut, prix_negocie: false } } }
+    renderTab({ state: leadState({ devis: [ferme] }) })
+    expect(screen.queryByTestId('vente-prix-negocie-501')).toBeNull()
+  })
+
+  it('tête 54 500 avec 15 000 facturés : aperçu, application, puis la V2 acceptée s\'affiche', async () => {
+    const user = userEvent.setup()
+    prixNegocie.mockImplementation((id, body) => Promise.resolve({
+      data: JSON.parse(JSON.stringify(body.mode === 'appliquer' ? CONTRAT.reponse_appliquer_201 : CONTRAT.reponse_apercu_200)),
+    }))
+    const { onAction, rerender } = renderTab({ state: leadState({ devis: [tete] }) })
+    await user.click(screen.getByTestId('vente-prix-negocie-501'))
+    await user.type(await screen.findByLabelText('Prix négocié TTC (MAD)'), '49000')
+    expect(await screen.findByTestId('prix-negocie-apercu')).toBeInTheDocument()
+    expect(screen.getByTestId('prix-negocie-remise')).toHaveTextContent('10,00')
+    await user.click(screen.getByRole('button', { name: 'Appliquer le prix négocié' }))
+    await waitFor(() => expect(prixNegocie).toHaveBeenCalledWith(501, expect.objectContaining({ mode: 'appliquer', prix_ttc: '49000' })))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    // la fiche relue porte la V1 remplacée et la V2 acceptée
+    const v1 = { ...tete, is_active: false, vente: exempleContrat('ventes', 'vente_etat', 'exemple_version_remplacee').vente }
+    const v2 = { ...tete, id: 502, reference: 'DEV-202610-0021', total_ttc: '49000',
+      vente: exempleContrat('ventes', 'vente_etat', 'exemple').vente }
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [v1, v2] })} onAction={onAction} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('panneau-vente-502')).toBeInTheDocument()
+    expect(within(screen.getByTestId('panneau-vente-502')).getByTestId('vente-bilan')).toHaveTextContent(/49\s?000/)
+    expect(screen.queryByTestId('vente-prix-negocie-501')).toBeNull()
   })
 })
