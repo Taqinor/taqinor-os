@@ -51,6 +51,17 @@ class BackupTests(TestCase):
         self.assertEqual(run.declenche_par, self.admin)
         self.assertEqual(run.manifest['total_lignes'], 1)
 
+    def test_datasets_non_liste_de_noms_refuses_400(self):
+        # ERR-ENF11-FUZZ-CORE — `null` (conforme au schéma `{}` puis refusé
+        # par le champ de modèle) est désormais hors schéma ; un élément non
+        # textuel levait TypeError dans core.backup (500).
+        for datasets in (None, [{}], [[]], 'companies_probe'):
+            resp = self._create(self.admin, {'kind': 'export',
+                                             'datasets': datasets})
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST,
+                             datasets)
+        self.assertFalse(BackupRun.objects.exists())
+
     def test_create_requires_admin_tier(self):
         resp = self._create(self.user, {'kind': 'export'})
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)

@@ -31,6 +31,27 @@ def _instance_avec_formulaire(company, schema, champs_conditionnels=None):
     return instance, formulaire
 
 
+class FormulaireSchemaPublieTests(TestCase):
+    """ERR-ENF11-FUZZ-CORE — le serializer applique EXACTEMENT le schéma
+    publié : listes/objets non nuls, champ = « nom » non vide OU « ref »
+    entière >= 1."""
+
+    def _valide(self, **donnees):
+        from core.serializers import FormulaireDefinitionSerializer
+        return FormulaireDefinitionSerializer(
+            data={'code': 'f', 'nom': 'F', **donnees}).is_valid()
+
+    def test_schema_conforme_accepte(self):
+        self.assertTrue(self._valide(schema=[{'nom': 'A'}, {'ref': 3}],
+                                     champs_conditionnels={}))
+
+    def test_hors_schema_refuse(self):
+        for donnees in ({'schema': None}, {'champs_conditionnels': None},
+                        {'schema': [{'nom': 5}]}, {'schema': [{'ref': True}]},
+                        {'schema': [{'ref': 0}]}, {'schema': ['A']}):
+            self.assertFalse(self._valide(**donnees), donnees)
+
+
 class FormulaireBloqueApprobationTests(TestCase):
     @classmethod
     def setUpTestData(cls):

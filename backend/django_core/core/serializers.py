@@ -47,7 +47,7 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from .champs_stricts import BooleenStrict, ChaineStricte
-from .parseurs import ObjetJSON
+from .parseurs import ListeJSON, ObjetJSON
 
 from .models import (
     ApiUsagePlan,
@@ -400,6 +400,29 @@ class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mode
         return code
 
 
+#: ERR-ENF11-FUZZ-CORE — un champ de formulaire porte un « nom » non vide OU
+#: une « ref » (id de champ réutilisable >= 1) : schéma publié de l'élément.
+_ITEM_FORMULAIRE = {
+    'type': 'object', 'additionalProperties': True,
+    'anyOf': [
+        {'required': ['nom'],
+         'properties': {'nom': {'type': 'string', 'minLength': 1}}},
+        {'required': ['ref'],
+         'properties': {'ref': {'type': 'integer', 'minimum': 1}}},
+    ],
+}
+
+
+def _champ_formulaire_valide(champ):
+    """La règle de ``_ITEM_FORMULAIRE``, côté serveur."""
+    if not isinstance(champ, dict):
+        return False
+    nom, ref = champ.get('nom'), champ.get('ref')
+    return ((isinstance(nom, str) and nom != '')
+            or (isinstance(ref, int) and not isinstance(ref, bool)
+                and ref >= 1))
+
+
 class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL1 — matrice d'approbation d'entreprise unifiée.
 
@@ -415,6 +438,9 @@ class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.Mode
     volontairement non paginée car petite."""
 
     avertissements = serializers.SerializerMethodField()
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    chaine_paliers = ListeJSON(element=dict, required=False)
 
     class Meta:
         model = MatriceApprobation
@@ -474,6 +500,10 @@ class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mo
     frontend — ``FormBuilder.jsx``/``DynamicForm.jsx`` — porte la
     validation de FORME détaillée ; ici, une vérification minimale de
     structure suffit à éviter un schéma manifestement cassé)."""
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    schema = ListeJSON(element=dict, items=_ITEM_FORMULAIRE, required=False)
+    champs_conditionnels = ObjetJSON(required=False)
 
     class Meta:
         model = FormulaireDefinition
@@ -494,7 +524,7 @@ class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mo
             # partagée) n'a pas son propre « nom » : il est résolu EN DIRECT
             # depuis FormulaireChampReutilisable (voir
             # core.selectors.resoudre_champs_formulaire), jamais dupliqué ici.
-            if not isinstance(champ, dict) or not (champ.get('nom') or champ.get('ref')):
+            if not _champ_formulaire_valide(champ):
                 raise serializers.ValidationError(
                     f"Champ {i} : doit être un objet avec au moins « nom » "
                     "ou « ref ».")
@@ -514,6 +544,9 @@ class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mo
 
 class FormulaireChampReutilisableSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL13 — champ de bibliothèque réutilisable entre formulaires."""
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    options = ListeJSON(required=False)
 
     class Meta:
         model = FormulaireChampReutilisable
@@ -600,6 +633,10 @@ class SavedQuerySerializer(CompanyScopedRelationsMixin, serializers.ModelSeriali
 
     ``company`` et ``owner`` ne sont JAMAIS lus du corps (imposés côté serveur).
     """
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    spec = ObjetJSON(required=False)
+
     class Meta:
         model = SavedQuery
         fields = [
@@ -619,6 +656,10 @@ class ScheduledExportSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
     ``dernier_curseur`` est posé par le RUNNER et reste en lecture seule (une
     borne saisie à la main ferait sauter des lignes).
     """
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    spec = ObjetJSON(required=False)
+
     class Meta:
         model = ScheduledExport
         fields = [
@@ -683,6 +724,9 @@ class TenantThemeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerial
     id = serializers.IntegerField(read_only=True, allow_null=True)
     created_at = serializers.DateTimeField(read_only=True, allow_null=True)
     updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    extra = ObjetJSON(required=False)
 
     class Meta:
         model = TenantTheme
@@ -764,6 +808,10 @@ class DataSubjectRequestSerializer(CompanyScopedRelationsMixin, serializers.Mode
     ``company`` n'est JAMAIS lu du corps. Le statut et le résultat sont en
     lecture seule : ils ne bougent que via le traitement (``core.dsr``).
     """
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    pieces = ListeJSON(required=False)
+
     class Meta:
         model = DataSubjectRequest
         fields = [
@@ -804,6 +852,10 @@ class BackupRunSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializ
     serveur). Le statut, le manifeste, l'horodatage de fin et le détail sont en
     lecture seule : ils ne bougent que via le runner (``core.backup``).
     """
+    # ERR-ENF11-FUZZ-CORE — liste de NOMS de datasets, non nulle : un élément
+    # non textuel (``[{}]``) levait TypeError (500) dans ``core.backup``.
+    datasets = ListeJSON(element=str, required=False)
+
     class Meta:
         model = BackupRun
         fields = [

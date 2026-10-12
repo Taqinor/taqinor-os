@@ -23,7 +23,7 @@ from authentication.role_tiers import (
 )
 
 from .models import VuePersonnalisee
-from .parseurs import ChoixDocumente
+from .parseurs import ChoixDocumente, ObjetJSON
 from .viewsets import CompanyScopedModelViewSet
 from .vues import (
     demarquer_defauts_concurrents, filtre_visibilite, resoudre_vue_defaut,
@@ -44,6 +44,9 @@ class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelS
     # inconnu était conforme au schéma (texte libre) puis refusé.
     role_tier = ChoixDocumente(
         ['', *sorted(TIERS_VALIDES)], required=False, allow_blank=True)
+    # ERR-ENF11-FUZZ-CORE — objet JSON publié et exigé (``null`` était
+    # conforme au schéma ``{}`` puis refusé par le champ de modèle non nul).
+    config = ObjetJSON(required=False)
 
     class Meta:
         model = VuePersonnalisee
