@@ -91,8 +91,9 @@ _PREFETCH_FACTURE = ('paiements', 'avoirs', 'avoirs__lignes', 'lignes',
 
 def _factures_et_parts(devis, *, inclure_annulees=False) -> list:
     """``[(facture, ratio)]`` de la vente : ``ratio`` = part de la facture
-    imputée à la vente (1 pour une facture de la chaîne ; sous-total HT des
-    sources / HT de la facture pour une CONSOLIDÉE). Trié par id."""
+    imputée à la vente (1 pour une facture de la chaîne ; part TTC convenue
+    des sources pour une CONSOLIDÉE, :func:`_parts_des_sources`). Trié par
+    id."""
     from django.db.models import Q
 
     from apps.ventes.models import Facture
@@ -128,19 +129,38 @@ def _factures_et_parts(devis, *, inclure_annulees=False) -> list:
         autres = list(autres)
         if autres:
             from apps.ventes.models_facturation import FactureSource
-            sous_totaux = {}
-            for fid, st in FactureSource.objects.filter(
-                    facture_id__in=[f.pk for f in autres],
-                    devis_id__in=ids).values_list(
-                        'facture_id', 'sous_total_ht'):
-                sous_totaux[fid] = sous_totaux.get(fid, ZERO) + _d(st)
+            sources = list(FactureSource.objects.filter(
+                facture_id__in=[f.pk for f in autres])
+                .select_related('devis'))
+            sous_parts = {}
+            for (fid, did), part in _parts_des_sources(sources).items():
+                if did in ids:
+                    sous_parts[fid] = sous_parts.get(fid, ZERO) + part
             for f in autres:
                 ratio = Decimal('1')
-                if f.devis_id not in ids and f.pk in sous_totaux:
-                    ht = _d(f.total_ht)
-                    ratio = (sous_totaux[f.pk] / ht) if ht > 0 else ZERO
+                if f.devis_id not in ids and f.pk in sous_parts:
+                    ratio = sous_parts[f.pk]
                 parts[f.pk] = (f, ratio)
     return sorted(parts.values(), key=lambda p: p[0].pk)
+
+
+def _parts_des_sources(sources) -> dict:
+    """``{(facture_id, devis_id): part}`` d'une CONSOLIDÉE : TTC convenu du
+    devis source (``option_totaux``) / Σ TTC convenus des sources de la
+    facture. ``consolider_factures`` compose la consolidée à Σ TTC des devis
+    AU CENTIME (ATOT3) : part × TTC facture = TTC du devis, exactement.
+    Jamais sous-total HT AVANT remise / HT APRÈS remise (gonflé de la
+    remise : 100 800 imputés à une vente de 95 700) ni un prorata HT sur des
+    taux de TVA mêlés (17 250 pour 17 000)."""
+    from apps.ventes.utils.options import option_totaux
+    ttc, totaux = {}, {}
+    for s in sources:
+        if s.devis_id not in ttc:
+            ttc[s.devis_id] = _d(option_totaux(s.devis)['ttc'])
+        totaux[s.facture_id] = totaux.get(s.facture_id, ZERO) + ttc[s.devis_id]
+    return {(s.facture_id, s.devis_id): (
+        ttc[s.devis_id] / totaux[s.facture_id]
+        if totaux[s.facture_id] > 0 else ZERO) for s in sources}
 
 
 def factures_de_la_vente(devis, *, inclure_annulees=False) -> list:
@@ -397,7 +417,7 @@ def factures_bloquantes(devis, porte) -> list:
 def _ventes_de_la_facture(facture):
     """``[(devis, part)]`` que ``facture`` facture : son devis (ou celui de
     son BC) pour la part entière, sinon les sources d'une CONSOLIDÉE au
-    prorata de leur sous-total HT."""
+    prorata de leur TTC convenu (:func:`_parts_des_sources`)."""
     devis = facture.devis if facture.devis_id else None
     if devis is None and facture.bon_commande_id:
         devis = getattr(facture.bon_commande, 'devis', None)
@@ -405,9 +425,9 @@ def _ventes_de_la_facture(facture):
         return [(devis, Decimal('1'))]
     if facture.pk is None:
         return []
-    ht = _d(facture.total_ht)
-    return [(s.devis, (_d(s.sous_total_ht) / ht) if ht > 0 else ZERO)
-            for s in facture.sources.select_related('devis')]
+    sources = list(facture.sources.select_related('devis'))
+    parts = _parts_des_sources(sources)
+    return [(s.devis, parts[(s.facture_id, s.devis_id)]) for s in sources]
 
 
 def motif_emission_hors_prix(facture):
