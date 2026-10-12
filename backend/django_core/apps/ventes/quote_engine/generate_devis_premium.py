@@ -4566,6 +4566,13 @@ def _mesure_onepage(html):
         bas_fin = _bas_bloc_fin(page)
         if bas_fin is not None and bas_totaux is not None:
             bas_totaux = max(bas_totaux, bas_fin)
+        elif bas_fin is None and _bloc_fin_dans_html(html):
+            # CAD177 — la ligne de conditions est dans le HTML mais ABSENTE de
+            # la page composée : WeasyPrint l'a jetée sous le bord A4 (constaté
+            # en arabe, interligne plus haut). Le bas du « Total TTC » seul
+            # disait « tout tient » et les conditions disparaissaient en
+            # silence : on mesure donc sur la page haute, comme sans totaux.
+            bas_totaux = None
         if bas_totaux is None:
             # CAD177 — le bloc de totaux est ABSENT de la page composée : ce
             # n'est PAS une mesure impossible. WeasyPrint arrête la composition
@@ -4642,6 +4649,13 @@ def _formes_bloc_fin():
         if brut and brut not in formes:
             formes.append(brut)
     return tuple(formes)
+
+
+def _bloc_fin_dans_html(source):
+    """CAD177 — la ligne de conditions (un libellé de ``_formes_bloc_fin``)
+    figure-t-elle dans le HTML source du une-page ?"""
+    texte = html.unescape(source or "").replace("\xa0", " ")
+    return any(forme in texte for forme in _formes_bloc_fin())
 
 
 def _conditions_onepage_html():
