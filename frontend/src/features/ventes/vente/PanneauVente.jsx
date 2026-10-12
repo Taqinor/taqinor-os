@@ -25,6 +25,7 @@ export default function PanneauVente({ devis, onAction }) {
   const remplacee = vente.est_tete === false
   const tete = (vente.versions ?? []).find((v) => v.id === vente.tete_id)
   const factures = vente.factures ?? []
+  const rafraichir = () => onAction?.('refresh')
   const actif = { ...devis, vente }
   const ouvert = !remplacee && vente.prochaine_action !== 'aucune'
   const acompte = ouvert && peutFacturerAcompte(actif)
@@ -40,7 +41,7 @@ export default function PanneauVente({ devis, onAction }) {
       <BilanVente vente={vente} />
       {factures.length > 0 && (
         <ul className="vente-factures">
-          {factures.map((f) => <LigneFactureVente key={f.id} facture={f} />)}
+          {factures.map((f) => <LigneFactureVente key={f.id} facture={f} onChange={rafraichir} />)}
         </ul>
       )}
       {(acompte || solde) && (

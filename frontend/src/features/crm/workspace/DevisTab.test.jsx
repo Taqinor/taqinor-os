@@ -19,7 +19,8 @@ import DevisTab, {
    props contrôlées, comme le fera réellement ContextRail). */
 
 const {
-  genererFacture, apercuFacturerVente, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
+  genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement,
+  ouvrirPdfFacture, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
@@ -32,6 +33,12 @@ const {
     genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
     // VNT75 — l'aperçu de FacturerVenteDialog, ouvert depuis le panneau de vente.
     apercuFacturerVente: vi.fn(),
+    // VNT76 — gestes par facture du panneau (useActionsVente) ; jamais de toast.
+    emettreFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    whatsappFacture: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212612345678?text=x' } })),
+    envoyerEmailFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    recuPdfPaiement: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF']), headers: {} })),
+    ouvrirPdfFacture: vi.fn(() => Promise.resolve('ouvert')),
     createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
     whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR538 — l'aperçu sans effet : réponse fournie par le test depuis
@@ -64,8 +71,10 @@ const {
   }
 })
 vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+  default: { genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
 }))
+vi.mock('../../ventes/vente/facturePdf', () => ({ ouvrirPdfFacture }))
+vi.mock('../../../utils/pdfBlob', () => ({ openPdfBlob: vi.fn(), messageErreurBlob: vi.fn(() => Promise.resolve('')) }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
@@ -1320,5 +1329,74 @@ describe('VNT74 — panneau de vente (lecture seule)', () => {
     )
     expect(screen.getByTestId('panneau-vente-502')).toBeInTheDocument()
     expect(screen.getByTestId('vente-facture-117')).toBeInTheDocument()
+  })
+})
+
+/* VNT76 — gestes PAR FACTURE dans le panneau : Émettre, PDF, Envoyer (WhatsApp /
+   e-mail), Reçu PAR PAIEMENT ; chaque bouton suit `facture.peut` (serveur) ;
+   un refus s'affiche en `role=alert` SOUS cette facture avec sa référence, jamais
+   en toast. (Encaisser : PaiementDialog.instantane.test.jsx.) */
+describe('VNT76 — gestes par facture du panneau de vente', () => {
+  const accepte = {
+    id: 502, reference: 'DEV-202610-0021', statut: 'accepte', total_ttc: '49000',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+  }
+  const carte = (variante) => ({
+    ...accepte, vente: exempleContrat('ventes', 'vente_etat', variante).vente,
+  })
+
+  it('brouillon : Émettre et PDF seulement (peut.emettre / peut.pdf), pas d\'Envoyer ni d\'Encaisser', () => {
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('vente-facture-117')
+    expect(within(ligne).getByRole('button', { name: 'Émettre' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    expect(within(ligne).queryByRole('button', { name: /WhatsApp|E-mail|Encaisser/ })).toBeNull()
+  })
+
+  it('Émettre : appelle l\'API de CETTE facture puis rafraîchit la fiche', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    await user.click(within(screen.getByTestId('vente-facture-117')).getByRole('button', { name: 'Émettre' }))
+    await waitFor(() => expect(emettreFacture).toHaveBeenCalledWith(117))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('refus serveur : role=alert SOUS la facture avec sa référence, aucun toast', async () => {
+    const user = userEvent.setup()
+    const err = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    emettreFacture.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'La facture est déjà émise.', code: 'deja_emise' } },
+    })
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    await user.click(within(screen.getByTestId('vente-facture-117')).getByRole('button', { name: 'Émettre' }))
+    const alerte = await within(screen.getByTestId('vente-facture-117')).findByRole('alert')
+    expect(alerte).toHaveTextContent('BROUILLON-117')
+    expect(alerte).toHaveTextContent('La facture est déjà émise.')
+    expect(err).not.toHaveBeenCalled()
+  })
+
+  it('facture payée : PDF, WhatsApp, E-mail et Reçu par paiement ; pas d\'Émettre', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('vente-facture-118')
+    expect(within(ligne).queryByRole('button', { name: 'Émettre' })).toBeNull()
+    await user.click(within(ligne).getByRole('button', { name: 'PDF' }))
+    await waitFor(() => expect(ouvrirPdfFacture).toHaveBeenCalledWith(118, 'FAC-202610-0007', undefined))
+    await user.click(within(ligne).getByRole('button', { name: 'E-mail' }))
+    await waitFor(() => expect(envoyerEmailFacture).toHaveBeenCalledWith(118))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    await user.click(within(ligne).getByRole('button', { name: 'WhatsApp' }))
+    await waitFor(() => expect(whatsappFacture).toHaveBeenCalledWith(118, { modele: 'facture', langue: 'fr' }))
+    await waitFor(() => expect(open).toHaveBeenCalledWith('https://wa.me/212612345678?text=x', '_blank', 'noopener'))
+    open.mockRestore()
+    await user.click(within(screen.getByTestId('vente-paiement-301')).getByRole('button', { name: /Reçu/ }))
+    await waitFor(() => expect(recuPdfPaiement).toHaveBeenCalledWith(301))
+  })
+
+  it('« Reçu » seulement quand le serveur l\'ouvre (paiement.peut.recu)', () => {
+    const c = carte('exemple_acompte_paye_solde_a_faire')
+    c.vente.factures[0].paiements[0].peut = { recu: false }
+    renderTab({ state: leadState({ devis: [c] }) })
+    expect(within(screen.getByTestId('vente-paiement-301')).queryByRole('button', { name: /Reçu/ })).toBeNull()
   })
 })

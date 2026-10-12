@@ -59,3 +59,27 @@ describe('PaiementDialog — AFAC65 : instantané relu', () => {
     await waitFor(() => expect(ventesApi.getFacture).toHaveBeenCalledTimes(2))
   })
 })
+
+/* VNT76 — « Encaisser » du panneau de vente monte CE PaiementDialog (même
+   composant que la liste des factures), relit la facture, et le panneau
+   rafraîchit la fiche à la fermeture. */
+describe('PaiementDialog — VNT76 : monté depuis le panneau de vente', () => {
+  it('Encaisser ouvre le dialogue de la facture, fermer rafraîchit la fiche', async () => {
+    ventesApi.getFacture.mockResolvedValue({ data: FACTURE_SERVEUR })
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const { default: PanneauVente } = await import('../../features/ventes/vente/PanneauVente')
+    const { exempleContrat } = await import('../../test/fixtures/contractSamples')
+    const vente = exempleContrat('ventes', 'vente_etat', 'exemple_acompte_paye_solde_a_faire').vente
+    vente.factures[0].statut = 'emise'
+    vente.factures[0].peut = { ...vente.factures[0].peut, encaisser: true }
+    const onAction = vi.fn()
+    const user = userEvent.setup()
+    render(<PanneauVente devis={{ id: 502, reference: 'DEV-1', vente }} onAction={onAction} />)
+
+    await user.click(screen.getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(ventesApi.getFacture).toHaveBeenCalledWith(118))
+    expect(await screen.findByText(/Enregistrer un paiement — FAC-202610-0007/)).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+})
