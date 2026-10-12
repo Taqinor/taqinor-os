@@ -651,16 +651,18 @@ def part_vente_pdf(facture, tete, etat):
     cette facture ferme la vente (rien ne reste à facturer et c'est la plus
     récente facture vivante) ⇒ « reste de la vente »."""
     from decimal import ROUND_HALF_UP, Decimal
+
+    from core.money import quantize_mad
     if not _est_tranche_de_vente(facture):
         return None
     cent = Decimal('0.01')
     prix = Decimal(etat['prix_convenu_ttc'])
-    ttc = Decimal(str(facture.total_ttc or 0)).quantize(cent, ROUND_HALF_UP)
+    ttc = quantize_mad(Decimal(str(facture.total_ttc or 0)))
     vivantes = [f['id'] for f in etat['factures']
                 if f['statut'] != 'annulee']
     derniere = bool(Decimal(etat['reste_a_facturer_ttc']) <= 0 and vivantes
                     and facture.pk == max(vivantes))
-    pct = ((ttc / prix * 100).quantize(cent, ROUND_HALF_UP)
+    pct = ((ttc / prix * 100).quantize(cent, rounding=ROUND_HALF_UP)
            if prix > 0 else Decimal('0.00'))
     return {'libelle': _libelle_tranche_facture(facture, tete),
             'ttc': f'{ttc:.2f}', 'pourcentage': f'{pct:.2f}',
@@ -722,11 +724,26 @@ def contexte_vente_facture(facture, langue='fr'):
     tete = devis_de_la_vente(facture.devis)
     etat = etat_vente(tete)
     part = part_vente_pdf(facture, tete, etat)
-    return {'objet_vente': objet_vente_pdf(facture),
-            'part_vente': part,
-            'prochaines_echeances': prochaines_echeances_pdf(part, etat),
-            'garanties_vente': garanties_pdf(facture, langue),
-            'situation_vente': situation_vente_pdf(tete, etat)}
+    blocs = {'objet_vente': objet_vente_pdf(facture),
+             'part_vente': part,
+             'prochaines_echeances': prochaines_echeances_pdf(part, etat),
+             'garanties_vente': garanties_pdf(facture, langue),
+             'situation_vente': situation_vente_pdf(tete, etat)}
+    if remise_negociee_pdf(facture):
+        blocs['remise_negociee'] = True
+    return blocs
+
+
+def remise_negociee_pdf(facture):
+    """VNT71 — la remise globale de la facture est celle d'un AVENANT
+    NÉGOCIÉ : son devis a un prédécesseur de révision ACCEPTÉ
+    (``selectors.predecesseur_accepte``, VNT51). La chaîne des totaux
+    l'imprime alors « Remise négociée » + montant, sans « (x %) » ; même
+    argent (remise % + arrondi ARRONDI-100), seul le libellé change."""
+    if not facture.devis_id or not (facture.remise_globale or 0) > 0:
+        return False
+    from apps.ventes.selectors import predecesseur_accepte
+    return predecesseur_accepte(facture.devis) is not None
 
 
 def _facture_render_data(facture) -> dict:
