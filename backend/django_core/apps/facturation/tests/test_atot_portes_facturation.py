@@ -34,6 +34,16 @@ def _nxt():
     return _CTR[0]
 
 
+def _texte_pdf(pdf_bytes):
+    """VNT33 — texte PyMuPDF d'un PDF rendu (espaces normalisés)."""
+    import fitz
+    doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+    try:
+        return ' '.join(' '.join(page.get_text().split()) for page in doc)
+    finally:
+        doc.close()
+
+
 class PortesFacturationTests(TestCase):
     def setUp(self):
         from apps.crm.models import Client
@@ -324,6 +334,42 @@ class NumeroEmissionTests(TestCase):
             'logo_uri': None, 'signature_uri': None, 'rib': '',
             'banque': ''})
         self.assertIn(f'BROUILLON-{facture.pk}', html)
+        # VNT33 — contexte minimal (sans ``L``) : le filigrane imprime le
+        # français du dict de repli du macro ``_L``, jamais la clé brute.
+        self.assertIn('Sans valeur comptable', html)
+        self.assertNotIn('filigrane_', html)
+        # VNT33 — rendu WeasyPrint RÉEL : le brouillon porte le filigrane,
+        # la même facture émise ni « BROUILLON » ni « Sans valeur comptable ».
+        from unittest.mock import patch
+
+        from apps.ventes.utils.pdf import _render_html as rendre
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        objets = {}
+        with patch('apps.ventes.utils.pdf._upload_pdf',
+                   side_effect=lambda b, k: objets.__setitem__(k, b)):
+            texte_brouillon = _texte_pdf(
+                objets[generate_facture_pdf(facture.pk)])
+            self.assertIn('BROUILLON', texte_brouillon)
+            self.assertIn('Sans valeur comptable', texte_brouillon)
+            resp = self.api.post(
+                f'/api/django/ventes/factures/{facture.pk}/emettre/', {},
+                format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            texte_emise = _texte_pdf(objets[generate_facture_pdf(facture.pk)])
+        self.assertNotIn('BROUILLON', texte_emise)
+        self.assertNotIn('Sans valeur comptable', texte_emise)
+        # VNT33 — arabe : le filigrane est traduit (``libelles_ar``), jamais
+        # le français dans la page RTL.
+        from apps.ventes.utils.libelles_ar import LIBELLES, libelle
+        brouillon_ar = Facture.objects.get(pk=self._porte(
+            'bc', self._devis()).data['id'])
+        html_ar = rendre('facture.html', {
+            'facture': brouillon_ar, 'entreprise_nom': 'ATOT27',
+            'couleur_principale': '#059669', 'langue_document': 'ar',
+            'L': lambda cle: libelle(cle, 'ar')})
+        self.assertIn(LIBELLES['ar']['filigrane_sans_valeur'], html_ar)
+        self.assertIn(LIBELLES['ar']['filigrane_brouillon'], html_ar)
+        self.assertNotIn('Sans valeur comptable', html_ar)
 
 
 class PortesSavInterventionNumeroTests(TestCase):
