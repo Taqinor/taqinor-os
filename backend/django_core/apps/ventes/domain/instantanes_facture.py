@@ -80,14 +80,38 @@ def objet_vente_du_devis(devis):
     }
 
 
+def langue_de_la_facture(facture) -> str:
+    """Langue imprimée du PDF facture (``fr`` ou ``ar`` ; toute autre
+    langue rend le français, APDF31) — même règle que le rendu."""
+    from apps.ventes.utils.libelles_ar import document_langue
+    langue = document_langue(facture.client, company=facture.company)
+    return langue if langue in ('fr', 'ar') else 'fr'
+
+
+def garanties_du_devis(devis, langue='fr') -> list:
+    """VNT38 — tableau « Garanties » de la vente (``[{libelle, duree,
+    detail}]``, forme du contrat) depuis ``utils/garanties`` (durées des
+    fiches produit, mêmes que la bande du PDF devis du marché) ; jamais une
+    ligne sans durée ; ``[]`` sans devis."""
+    if devis is None:
+        return []
+    from apps.ventes.utils.garanties import garanties_de_la_vente
+    return [{'libelle': g['designation'], 'duree': g['duree'],
+             'detail': g['detail']}
+            for g in garanties_de_la_vente(devis, langue)
+            if (g.get('duree') or '').strip()]
+
+
 def figer_a_l_emission(facture):
     """Fige les blocs de la vente sur ``facture`` (appelée par
     ``emettre_facture``, dans sa transaction, avant le ``save``).
 
     VNT35 — ``objet_vente`` : seulement pour une facture de TRANCHE (sans
     ligne) rattachée à un devis ; une facture complète montre déjà son
-    matériel. Un instantané déjà posé n'est jamais réécrit. Ne sauve rien :
-    l'appelant fait le ``save``.
+    matériel. VNT38 — ``garanties`` : toute facture rattachée à un devis,
+    dans la langue imprimée (``[]`` = aucune garantie connue). Un instantané
+    déjà posé n'est jamais réécrit. Ne sauve rien : l'appelant fait le
+    ``save``.
     """
     if not facture.devis_id:
         return None
@@ -95,4 +119,7 @@ def figer_a_l_emission(facture):
     sans_ligne = facture.pk is None or not facture.lignes.exists()
     if facture.objet_vente is None and sans_ligne:
         facture.objet_vente = objet_vente_du_devis(devis)
+    if facture.garanties is None:
+        facture.garanties = garanties_du_devis(
+            devis, langue_de_la_facture(facture))
     return None

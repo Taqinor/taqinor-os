@@ -583,6 +583,20 @@ def objet_vente_pdf(facture):
     return objet_vente_du_devis(devis_de_la_vente(facture.devis))
 
 
+def garanties_pdf(facture, langue='fr'):
+    """VNT38 — tableau « Garanties » de toute facture rattachée à un devis :
+    l'instantané figé à l'émission pour une émise, sinon (brouillon, émise
+    antérieure sans instantané) les garanties VIVANTES du catalogue.
+    ``[]`` (tableau omis) sans devis ou sans garantie connue."""
+    if not facture.devis_id:
+        return []
+    if facture.statut != 'brouillon' and facture.garanties is not None:
+        return facture.garanties
+    from apps.ventes.domain.instantanes_facture import (
+        devis_de_la_vente, garanties_du_devis)
+    return garanties_du_devis(devis_de_la_vente(facture.devis), langue)
+
+
 def _libelle_tranche_facture(facture, tete):
     """Libellé de l'échéancier de la tranche de ``facture`` (sa clé), sinon
     le type de facture — jamais lu du libellé de la facture."""
@@ -630,7 +644,8 @@ def contexte_vente_facture(facture, langue='fr'):
     tete = devis_de_la_vente(facture.devis)
     etat = etat_vente(tete)
     return {'objet_vente': objet_vente_pdf(facture),
-            'part_vente': part_vente_pdf(facture, tete, etat)}
+            'part_vente': part_vente_pdf(facture, tete, etat),
+            'garanties_vente': garanties_pdf(facture, langue)}
 
 
 def _facture_render_data(facture) -> dict:

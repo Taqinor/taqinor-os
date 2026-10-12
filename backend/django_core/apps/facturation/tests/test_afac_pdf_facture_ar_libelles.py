@@ -116,6 +116,12 @@ class PdfFactureArLibellesTests(TestCase):
         self.assertIn('Émise', texte)
         self.assertIn('Virement', texte)
 
+    def test_sans_devis_aucun_tableau_de_garanties(self):
+        # VNT38 — une facture sans devis n'imprime aucune garantie.
+        texte = self._pdf(self._facture('fr'))
+        # En-tête de tableau en capitales (CSS) : comparaison sans casse.
+        self.assertNotIn('garanties', texte.lower())
+
     def test_libelle_hors_arabe_rend_le_texte(self):
         from apps.ventes.utils.libelles_ar import libelle
         self.assertEqual(libelle('Émise', 'fr'), 'Émise')
@@ -123,3 +129,108 @@ class PdfFactureArLibellesTests(TestCase):
                          'Virement (avance)')
         self.assertNotIn('Virement', libelle('Virement (avance)', 'ar'))
         self.assertEqual(libelle('Texte inconnu', 'ar'), 'Texte inconnu')
+
+
+class GarantiesFactureTests(TestCase):
+    """VNT38 — tableau « Garanties » (désignation, durée, détail) sur toute
+    facture rattachée à un devis, FR et AR : durées des fiches produit,
+    FIGÉES à l'émission (``Facture.garanties``), vivantes en brouillon ;
+    aucune ligne sans durée. Rendu WeasyPrint réel (upload neutralisé)."""
+
+    ONDULEUR = 'Onduleur hybride Deye SUN-8K-SG05LP3'
+    BATTERIE = 'Batterie lithium Deye BOS-B-Pack16-A3 16 kWh'
+
+    def setUp(self):
+        from authentication.models import Company
+        n = _nxt()
+        self.company = Company.objects.create(
+            nom=f'VNT38 {n}', slug=f'vnt38-{n}')
+        self.objets = {}
+        p_up = patch('apps.ventes.utils.pdf._upload_pdf',
+                     side_effect=lambda b, k: self.objets.__setitem__(k, b))
+        p_up.start()
+        self.addCleanup(p_up.stop)
+
+    def _vente(self, langue='fr'):
+        from apps.crm.models import Client
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis, LigneDevis
+        n = _nxt()
+        client = Client.objects.create(
+            company=self.company, nom='Garantie', prenom='VNT38',
+            email=f'vnt38-{n}@example.invalid', langue_document=langue)
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-VNT38-{n:04d}',
+            client=client, statut='accepte', taux_tva=Decimal('20.00'))
+        for nom, prix, mois in ((self.ONDULEUR, '12500', 120),
+                                (self.BATTERIE, '10000', None)):
+            produit = Produit.objects.create(
+                company=self.company, nom=nom, sku=f'VNT38-{n}-{prix}',
+                prix_vente=Decimal(prix), quantite_stock=50,
+                garantie_mois=mois)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal('1'), prix_unitaire=Decimal(prix),
+                remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        return devis
+
+    def _tranche(self, devis, type_facture='acompte'):
+        from apps.ventes.models import Facture
+        return Facture.objects.create(
+            company=self.company, reference=f'FAC-VNT38-{_nxt():04d}',
+            client=devis.client, devis=devis,
+            statut=Facture.Statut.BROUILLON, type_facture=type_facture,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'))
+
+    def _pdf(self, facture):
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        return _texte(self.objets[generate_facture_pdf(facture.id)])
+
+    def test_acompte_et_solde_meme_garanties_figees_a_l_emission(self):
+        from apps.stock.models import Produit
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        devis = self._vente()
+        acompte = self._tranche(devis)
+        solde = self._tranche(devis, 'solde')
+        for facture in (acompte, solde):
+            texte = self._pdf(facture)
+            # En-tête de tableau en capitales (CSS) : comparaison sans casse.
+            self.assertIn('garanties', texte.lower())
+            self.assertIn('Onduleur 10 ans', texte)
+            tableau = texte.lower().split('garanties', 1)[1]
+            self.assertNotIn('batterie', tableau)
+        emettre_facture(acompte, source='test_vnt38')
+        acompte.refresh_from_db()
+        self.assertIn({'libelle': 'Onduleur', 'duree': '10 ans',
+                       'detail': ''}, acompte.garanties)
+        self.assertTrue(all(g['duree'] for g in acompte.garanties))
+        Produit.objects.filter(company=self.company,
+                               nom=self.ONDULEUR).update(garantie_mois=60)
+        # L'émise garde l'instantané ; le brouillon suit le catalogue.
+        texte_emise = self._pdf(acompte)
+        self.assertIn('Onduleur 10 ans', texte_emise)
+        self.assertNotIn('Onduleur 5 ans', texte_emise)
+        self.assertIn('Onduleur 5 ans', self._pdf(solde))
+
+    def test_client_arabe(self):
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        from apps.ventes.utils.garanties import garanties_de_la_vente
+        from apps.ventes.utils.pdf import (
+            _company_context, _render_html, contexte_vente_facture)
+        from apps.ventes.utils.libelles_ar import libelle
+        devis = self._vente('ar')
+        acompte = self._tranche(devis)
+        emettre_facture(acompte, source='test_vnt38_ar')
+        acompte.refresh_from_db()
+        attendu = [g['designation'] for g in garanties_de_la_vente(devis, 'ar')]
+        self.assertEqual([g['libelle'] for g in acompte.garanties], attendu)
+        self.assertNotIn('Onduleur', repr(acompte.garanties))
+        ctx = _company_context(company=self.company)
+        ctx.update({'facture': acompte, 'langue_document': 'ar',
+                    'L': lambda cle: libelle(cle, 'ar')})
+        ctx.update(contexte_vente_facture(acompte, 'ar'))
+        html = _render_html('facture.html', ctx)
+        self.assertIn(libelle('garanties', 'ar'), html)
+        for designation in attendu:
+            self.assertIn(designation, html)

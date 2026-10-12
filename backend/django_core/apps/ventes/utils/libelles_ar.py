@@ -84,6 +84,10 @@ LIBELLES = {
         'ttc': 'TTC',
         'du_prix_convenu': 'du prix convenu',
         'reste_de_la_vente': 'reste de la vente',
+        # VNT38 — tableau des garanties de la vente.
+        'garanties': 'Garanties',
+        'duree': 'Durée',
+        'detail': 'Détail',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -138,6 +142,9 @@ LIBELLES = {
         'ttc': 'شامل الضريبة',
         'du_prix_convenu': 'من الثمن المتفق عليه',
         'reste_de_la_vente': 'باقي البيع',
+        'garanties': 'الضمانات',
+        'duree': 'المدة',
+        'detail': 'التفاصيل',
     },
 }
 

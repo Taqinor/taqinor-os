@@ -40,6 +40,7 @@
   'prix_devis_ttc': 'Prix du devis toutes taxes comprises',
   'ttc': 'TTC', 'du_prix_convenu': 'du prix convenu',
   'reste_de_la_vente': 'reste de la vente',
+  'garanties': 'Garanties', 'duree': 'Durée', 'detail': 'Détail',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -446,6 +447,32 @@
     Escompte {{ facture.escompte_mention.pct }} % si règlement sous
     {{ facture.escompte_mention.jours }} jours, soit
     {{ "%.2f"|format(facture.escompte_mention.montant) }} MAD.
+  </div>
+  {% endif %}
+
+  {# VNT38 — garanties RÉELLES de la vente (fiches produit), figées à
+     l'émission, vivantes en brouillon (``utils/pdf.garanties_pdf``) ;
+     tableau omis quand la liste est vide (jamais une durée inventée). #}
+  {% if garanties_vente %}
+  <div class="garanties-vente">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ _L('garanties') }}</th>
+          <th>{{ _L('duree') }}</th>
+          <th>{{ _L('detail') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in garanties_vente %}
+        <tr>
+          <td>{{ g.libelle }}</td>
+          <td>{{ g.duree }}</td>
+          <td>{{ g.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
   {% endif %}
 
