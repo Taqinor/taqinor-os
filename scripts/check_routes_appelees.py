@@ -77,9 +77,6 @@ A_CORRIGER: dict[str, str] = {
     "crm/deals-enregistres/a-payer": _ACRM2_III,
     "crm/clients/<>/dupliquer": _SANS_ECRAN,
     "crm/clients/<>/engagement": _SANS_ECRAN,
-    # ACRM69 : collection soeur de `clients/<pk>` (appel detail du front), desormais
-    # detectee ; retrait porte par la branche lane-crm-next (session Vente).
-    "crm/clients/engagement-bulk": _ACRM2_IV,
     "crm/forecast/historique": _SANS_ECRAN,
     "crm/objectifs": _SANS_ECRAN,
     "crm/partenaires": _SANS_ECRAN,
