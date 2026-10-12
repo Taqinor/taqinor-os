@@ -103,14 +103,17 @@ _MESSAGE_ECRIT = inline_serializer('MessageTemplateEcrit', {
 
 
 @extend_schema(methods=['GET'], responses=_MESSAGE_LIGNE)
-@extend_schema(methods=['PUT', 'PATCH'],
+# ENF11 — PUT seul : l'écriture identifie la ligne par ``cle`` (obligatoire).
+# Un PATCH « partiel » annonçait au schéma un corps sans ``cle`` que le serveur
+# refusait (400) ; l'écran n'a toujours utilisé que PUT.
+@extend_schema(methods=['PUT'],
                request=MessageTemplateEcritRequestSerializer,
                responses=_MESSAGE_ECRIT)
-@api_view(['GET', 'PUT', 'PATCH'])
+@api_view(['GET', 'PUT'])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 @permission_classes([IsAnyRole])
 def messages_endpoint(request):
-    """GET : lecture (tout rôle). PUT/PATCH : enregistrement (Administrateur +
+    """GET : lecture (tout rôle). PUT : enregistrement (Administrateur +
     Responsable promu, jamais le palier limité)."""
     if request.method == 'GET':
         return _messages_list(request)

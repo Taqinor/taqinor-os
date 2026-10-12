@@ -103,7 +103,9 @@ class ImportValideTests(TestCase):
         for corps, champ in (
                 ({'fuseau_horaire': 'Mars/Olympus'}, 'fuseau_horaire'),
                 ({'langue_repli': 'zz'}, 'langue_repli'),
-                ({'devise': 'X' * 12}, 'devise_defaut')):
+                # ENF11 — la longueur max (10) est publiée au schéma du corps :
+                # le refus porte le nom du champ DU CORPS (``devise``).
+                ({'devise': 'X' * 12}, 'devise')):
             with self.subTest(champ=champ):
                 r = self.api.post(ONBOARDING, dict(corps, pays='MA'),
                                   format='json')

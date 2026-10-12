@@ -28,10 +28,13 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
+from core.champs_stricts import ChaineStricte
+
 from .models import SettingsAuditLog
 from .models_tariff import TariffSettings
 from .serializers_tariff import (
     CHAMPS_LOT5, CHAMPS_POMPAGE, TariffSettingsSerializer)
+from .requetes_strictes import FlottantStrict, valider_corps
 from .views_common import _audit_company
 from . import tariff as tariff_service
 from . import pvgis as pvgis_client
@@ -135,47 +138,35 @@ def update_tariff_settings(request):
     return Response(TariffSettingsSerializer(updated).data)
 
 
-_BORNE_NOMBRE = 1e12
+#: Bornes du calcul ROI (publiées au schéma) : au-delà, l'arithmétique Decimal
+#: du service débordait (500). Ordres de grandeur sans rapport avec un projet
+#: réel (1e9 kWh/mois, 1e12 MAD) : aucune valeur utile n'est refusée.
+_BORNE_NOMBRE = 1e9
+_BORNE_COUT = 1e12
 
 
-def _num(data, key, default=0):
-    try:
-        valeur = float(data.get(key, default))
-    except (TypeError, ValueError):
-        return default
-    # ENF11 — NaN / infini / démesure : repli sur le défaut (ils faisaient
-    # lever ``Decimal`` plus loin, soit un 500).
-    if not math.isfinite(valeur) or abs(valeur) > _BORNE_NOMBRE:
-        return default
-    return valeur
+class CalculRoiRequestSerializer(serializers.Serializer):
+    """Corps de ``POST tarification/roi/`` — source du schéma ET de la
+    validation (ENF11). Nombres JSON réels uniquement : une chaîne, un objet ou
+    une valeur démesurée répond 400 au lieu d'être remplacé par 0 en silence
+    (200) ou de lever dans le calcul (500)."""
+
+    kwc = FlottantStrict(
+        required=False, min_value=-_BORNE_NOMBRE, max_value=_BORNE_NOMBRE)
+    conso_mensuelle_kwh = FlottantStrict(
+        required=False, min_value=-_BORNE_NOMBRE, max_value=_BORNE_NOMBRE)
+    cout_total_ttc = FlottantStrict(
+        required=False, min_value=-_BORNE_COUT, max_value=_BORNE_COUT)
+    classe = ChaineStricte(required=False, allow_blank=True)
+    autoconsommation_pct = FlottantStrict(
+        required=False, allow_null=True,
+        min_value=-_BORNE_NOMBRE, max_value=_BORNE_NOMBRE)
+    productible_kwh_kwc = FlottantStrict(
+        required=False, allow_null=True,
+        min_value=-_BORNE_NOMBRE, max_value=_BORNE_NOMBRE)
 
 
-def _optionnel(data, cle):
-    """Nombre OPTIONNEL du corps : ``None`` si absent ou vide ; non numérique,
-    non fini ou démesuré → 400 nommé (c'était un 500)."""
-    brut = data.get(cle)
-    if brut in (None, ''):
-        return None
-    try:
-        valeur = float(brut)
-    except (TypeError, ValueError):
-        valeur = None
-    if (valeur is None or not math.isfinite(valeur)
-            or abs(valeur) > _BORNE_NOMBRE):
-        raise serializers.ValidationError({cle: 'Nombre attendu.'})
-    return brut
-
-
-_ROI_REQUEST = inline_serializer('CalculRoiRequest', {
-    'kwc': serializers.FloatField(required=False),
-    'conso_mensuelle_kwh': serializers.FloatField(required=False),
-    'cout_total_ttc': serializers.FloatField(required=False),
-    'classe': serializers.CharField(required=False),
-    'autoconsommation_pct': serializers.FloatField(
-        required=False, allow_null=True),
-    'productible_kwh_kwc': serializers.FloatField(
-        required=False, allow_null=True),
-})
+_ROI_REQUEST = CalculRoiRequestSerializer
 
 
 def _q(nom, type_, description):
@@ -198,25 +189,17 @@ def compute_roi(request):
              autoconsommation_pct?, productible_kwh_kwc?}.
     Tous les montants sortent en chaînes (Decimal sérialisé)."""
     obj = _settings(request)
-    data = request.data or {}
-    if not isinstance(data, dict):
-        raise serializers.ValidationError(
-            {'detail': 'Corps JSON objet attendu.'})
+    data = valider_corps(CalculRoiRequestSerializer, request)
     classe = data.get('classe', 'residentiel')
-    if not isinstance(classe, str):
-        raise serializers.ValidationError({'classe': 'Texte attendu.'})
-    conso = _num(data, 'conso_mensuelle_kwh', 0)
-
-    auto = _optionnel(data, 'autoconsommation_pct')
-    prod = _optionnel(data, 'productible_kwh_kwc')
+    conso = data.get('conso_mensuelle_kwh', 0)
     result = tariff_service.compute_roi(
         obj,
-        kwc=_num(data, 'kwc', 0),
+        kwc=data.get('kwc', 0),
         conso_mensuelle_kwh=conso,
-        cout_total_ttc=_num(data, 'cout_total_ttc', 0),
+        cout_total_ttc=data.get('cout_total_ttc', 0),
         classe=classe,
-        autoconsommation_pct=auto if auto not in (None, '') else None,
-        productible_kwh_kwc=prod if prod not in (None, '') else None,
+        autoconsommation_pct=data.get('autoconsommation_pct'),
+        productible_kwh_kwc=data.get('productible_kwh_kwc'),
     )
     result['facture_mensuelle_ttc'] = tariff_service.monthly_bill(
         obj, conso, classe)
