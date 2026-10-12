@@ -363,7 +363,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             except TransitionRefusee as exc:
                 raise ValidationError({'statut': exc.raisons})
 
-    @oa.extend_schema(request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.i(True)), responses={200: InstallationSerializer, 201: InstallationSerializer})
+    @oa.extend_schema(request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.idf(True)), responses={200: InstallationSerializer, 201: InstallationSerializer})
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
     def creer_depuis_devis(self, request):
@@ -371,15 +371,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         existe déjà pour ce devis, le RETOURNE (jamais de doublon)."""
         from apps.ventes.selectors import get_devis_by_pk, is_devis_accepte
         company = request.user.company
-        devis_id = request.data.get('devis')
-        devis = get_devis_by_pk(devis_id)
+        devis = get_devis_by_pk(oa.id_entier(
+            oa.corps_objet(request).get('devis'), 'devis'))
         if devis is None or devis.company_id != company.id:
             return Response({'detail': 'Devis inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND)
         if not is_devis_accepte(devis):
             return Response(
                 {'detail': 'Le devis doit être « Accepté » pour créer le chantier.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # AUD316 — `create_installation_from_devis` journalise ELLE-MÊME la
         # création au chatter (les 3 chemins — API, ce bouton, et l'événement
         # `devis_accepted` — l'obtiennent donc identiquement). Ne PAS rappeler
@@ -1426,10 +1426,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             Q(installation=inst) | Q(intervention__installation=inst),
             company=inst.company, pk=rid).first()
         if reserve is None:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Réserve introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        resolution = oa.corps_objet(request).get('resolution') or ''
+        if not isinstance(resolution, str):
+            return Response({'resolution': 'Texte attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         lever_reserve_chantier(
-            reserve, request.user,
-            resolution=(request.data.get('resolution') or '').strip())
+            reserve, request.user, resolution=resolution.strip())
         return Response(reserve_contrat(reserve))
 
     # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──

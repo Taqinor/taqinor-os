@@ -70,7 +70,7 @@ class ApprobationBCFViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyMode
             qs = qs.filter(bcf_id=bcf)
         return qs
 
-    @oa.extend_schema(request=oa.body('ApprobationBcfRequete', bcf=oa.i(True), note=oa.s()))
+    @oa.extend_schema(request=oa.body('ApprobationBcfRequete', bcf=oa.idf(True), note=oa.s()))
     @action(detail=False, methods=['post'])
     def approuver(self, request):
         """FG312 — approuve un BCF en appliquant le palier requis selon son
@@ -78,11 +78,16 @@ class ApprobationBCFViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyMode
         l'utilisateur n'a pas le palier requis (admin obligatoire au-dessus du
         seuil). Idempotent si déjà approuvé au bon palier."""
         company = request.user.company
-        bcf_id = request.data.get('bcf')
-        if not bcf_id:
+        data = oa.corps_objet(request)
+        if not data.get('bcf'):
             return Response(
                 {'bcf': 'Paramètre `bcf` requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        bcf_id = oa.id_entier(data.get('bcf'), 'bcf')
+        note = data.get('note') or ''
+        if not isinstance(note, str):
+            return Response({'note': 'Texte attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         # Le BCF doit appartenir à la société (lu via sélecteur, string-FK).
         from django.apps import apps as django_apps
@@ -118,7 +123,7 @@ class ApprobationBCFViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyMode
                 'palier': palier,
                 'montant_approuve': montant,
                 'approuve_par': user,
-                'note': (request.data.get('note') or '').strip() or None,
+                'note': note.strip() or None,
             })
         return Response(
             self.get_serializer(approbation).data,

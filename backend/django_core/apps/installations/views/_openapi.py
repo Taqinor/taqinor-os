@@ -11,11 +11,14 @@ de requête, statuts, binaires).
   n'est jamais déclaré obligatoire (sinon ACC), un champ réellement exigé par
   le code l'est (sinon REJ).
 """
+from collections.abc import Mapping
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (  # noqa: F401  (ré-exportés)
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 UPLOAD_PARSERS = [MultiPartParser, FormParser]
@@ -25,6 +28,36 @@ JSON_AND_UPLOAD_PARSERS = [JSONParser, MultiPartParser, FormParser]
 class JsonOnlyMixin:
     """D2 — JSON seulement (les actions d'upload surchargent ``parser_classes``)."""
     parser_classes = [JSONParser]
+
+
+# ── lecture défensive d'un corps libre (ENF11 : jamais de 500 sur entrée absurde)
+ID_MAX = 2147483647  # borne d'une clé primaire entière PostgreSQL
+
+
+def corps_objet(request):
+    """Corps JSON de type objet, sinon 400 FR (un tableau/une chaîne en corps
+    faisait lever ``AttributeError`` sur ``.get``)."""
+    if not isinstance(request.data, Mapping):
+        raise ValidationError({'detail': 'Corps JSON de type objet attendu.'})
+    return request.data
+
+
+def id_entier(valeur, nom):
+    """Identifiant entier 1..ID_MAX (``int`` ou chaîne de chiffres), sinon
+    400 nommant le champ — évite ``TypeError``/``DataError`` côté ORM."""
+    if (isinstance(valeur, bool) or not isinstance(valeur, (int, str))
+            or (isinstance(valeur, str) and not valeur.strip().isdigit())
+            or not 1 <= int(valeur) <= ID_MAX):
+        raise ValidationError({nom: 'Identifiant entier valide requis.'})
+    return int(valeur)
+
+
+def ids_entiers(valeur, nom, maxi=500):
+    """Liste NON vide d'identifiants entiers valides, sinon 400."""
+    if not isinstance(valeur, list) or not 1 <= len(valeur) <= maxi:
+        raise ValidationError(
+            {nom: f'Liste de 1 à {maxi} identifiants entiers attendue.'})
+    return [id_entier(v, nom) for v in valeur]
 
 
 # ── champs de corps / de réponse ──────────────────────────────────────────────
@@ -73,6 +106,20 @@ def lst(child=None, required=False, null=False, **kw):
 def ints(required=False, **kw):
     return serializers.ListField(
         child=serializers.IntegerField(), required=required, **kw)
+
+
+def ids(required=False, **kw):
+    """Liste non vide d'identifiants entiers 1..ID_MAX (exactement ce que
+    ``ids_entiers`` accepte)."""
+    return serializers.ListField(
+        child=serializers.IntegerField(min_value=1, max_value=ID_MAX),
+        min_length=1, max_length=500, required=required, **kw)
+
+
+def idf(required=False, **kw):
+    """Identifiant entier 1..ID_MAX (exactement ce que ``id_entier`` accepte)."""
+    return serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=required, **kw)
 
 
 def choice(values, required=False, **kw):

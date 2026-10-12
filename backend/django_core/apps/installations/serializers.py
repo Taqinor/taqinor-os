@@ -183,7 +183,7 @@ class FicheInterventionValeurSerializer(serializers.ModelSerializer):
         read_only_fields = ['champ']
 
 
-class FicheInterventionReleveSerializer(serializers.ModelSerializer):
+class FicheInterventionReleveSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     valeurs = FicheInterventionValeurSerializer(many=True, read_only=True)
     template_nom = serializers.CharField(
         source='template.nom', read_only=True, default=None)
@@ -196,7 +196,7 @@ class FicheInterventionReleveSerializer(serializers.ModelSerializer):
 
 
 class ChantierChecklistItemSerializer(serializers.ModelSerializer):
-    fait_par_nom = serializers.SerializerMethodField()
+    fait_par_nom = serializers.CharField(source='fait_par.username', read_only=True, allow_null=True)
     # NTMOB11 — nombre de photos déjà capturées pour cette étape (pellicule
     # côté client), sans requête séparée. `source='photos.count'` : DRF
     # appelle automatiquement la méthode du related manager.
@@ -208,9 +208,6 @@ class ChantierChecklistItemSerializer(serializers.ModelSerializer):
                   # FG76 — photo obligatoire.
                   'photo_obligatoire',
                   'fait', 'fait_par_nom', 'fait_le', 'photos_count']
-
-    def get_fait_par_nom(self, obj):
-        return getattr(obj.fait_par, 'username', None)
 
 
 class PhotoChecklistMetaSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
@@ -1315,8 +1312,8 @@ class SousTraitantSerializer(serializers.Serializer):
     actif = serializers.BooleanField(required=False, default=True)
     note = serializers.CharField(
         required=False, allow_blank=True, allow_null=True)
-    date_creation = serializers.DateTimeField(read_only=True)
-    date_modification = serializers.DateTimeField(read_only=True)
+    date_creation = serializers.DateTimeField(read_only=True, allow_null=True)
+    date_modification = serializers.DateTimeField(read_only=True, allow_null=True)
 
     _METIER_LABELS = {
         'terrassement': 'Terrassement', 'genie_civil': 'Génie civil',
