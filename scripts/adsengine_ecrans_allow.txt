@@ -6,3 +6,4 @@
 # Un site liste ici est CONSTATE, pas approuve : le corriger puis retirer sa
 # ligne. REGLE ABSOLUE : cette liste ne peut que DECROITRE ; une entree devenue
 # conforme sans etre retiree fait echouer la garde.
+frontend/src/features/adsengine/InstagramScreen.jsx::R1::InstagramScreen

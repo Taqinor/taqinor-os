@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { History } from 'lucide-react'
 import auditApi from '../../api/auditApi'
 import { formatDateTime } from '../../lib/format'
-import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   Button, Spinner, EmptyState,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -36,13 +35,8 @@ export default function ObjectHistoryButton({
     setLoading(true)
     setError(null)
     try {
-      const tout = await fetchAllPages(
-        (numero, { page_size } = {}) => auditApi
-          .getObjectHistory(contentType, objectId, { page: numero, page_size })
-          .then((r) => r.data),
-        { concurrency: 3 },
-      )
-      setEntries(Array.isArray(tout) ? tout : (tout?.results ?? []))
+      const res = await auditApi.getObjectHistory(contentType, objectId)
+      setEntries(res?.data?.results ?? [])
     } catch (err) {
       if (err?.response?.status === 403) {
         setError("Vous n'avez pas accès à l'historique de cet objet.")

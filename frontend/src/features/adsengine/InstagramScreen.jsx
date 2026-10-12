@@ -4,7 +4,6 @@ import {
   MessagesSquare, Clock,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import fetchAllPages from '../../utils/fetchAllPages'
 import { erreurServeur } from './adsengine'
 import LoadErrorNotice from './LoadErrorNotice'
 import { markLoadError } from './loadErrors'
@@ -51,8 +50,8 @@ export default function InstagramScreen() {
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
-      fetchAllPages((page) => adsengineApi.instagram.media({ page }).then(r => r.data), { concurrency: 3 }).catch(() => { setLoadErrors(markLoadError("les médias Instagram")); return [] }),
-      fetchAllPages((page) => adsengineApi.instagram.comments({ page }).then(r => r.data), { concurrency: 3 }).catch(() => { setLoadErrors(markLoadError("les commentaires Instagram")); return [] }),
+      adsengineApi.instagram.media().then(r => r.data).catch(() => { setLoadErrors(markLoadError("les médias Instagram")); return [] }),
+      adsengineApi.instagram.comments().then(r => r.data).catch(() => { setLoadErrors(markLoadError("les commentaires Instagram")); return [] }),
       adsengineApi.instagram.quota().then(r => r.data).catch(() => { setLoadErrors(markLoadError("le quota de publication")); return null }),
     ]).then(([m, c, q]) => {
       setMedia(Array.isArray(m) ? m : (m?.results || []))

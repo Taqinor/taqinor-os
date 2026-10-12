@@ -50,7 +50,7 @@ describe('ObjectHistoryButton (WIR19)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Historique des modifications/ }))
 
-    await waitFor(() => expect(getObjectHistory).toHaveBeenCalledWith('crm.lead', 42, expect.objectContaining({ page: 1 })))
+    await waitFor(() => expect(getObjectHistory).toHaveBeenCalledWith('crm.lead', 42))
     await waitFor(() => expect(screen.getByTestId('object-history-list')).toBeTruthy())
     expect(screen.getByText('Modification')).toBeTruthy()
     expect(screen.getByText(/stage: NEW → CONTACTED/)).toBeTruthy()
