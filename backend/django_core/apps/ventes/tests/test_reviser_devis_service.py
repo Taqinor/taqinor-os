@@ -236,6 +236,30 @@ class ReviserDevisService(TestCase):
         self.assertFalse(v2.is_active)
         self._assert_v1_reactivee(v1)
 
+    def _v2_envoyee(self):
+        v1, v2 = self._v1_acceptee_et_v2()
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
+        v2.refresh_from_db()
+        return v1, v2
+
+    def test_vnt56_v2_envoyee_refusee_reactive_la_v1(self):
+        v1, v2 = self._v2_envoyee()
+        r = self.api.post(f'/api/django/ventes/devis/{v2.id}/refuser/',
+                          {'motif': 'prix'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self._assert_v1_reactivee(v1)
+
+    def test_vnt56_v2_envoyee_expiree_reactive_la_v1(self):
+        import datetime
+        from apps.ventes.domain.recouvrement import expire_stale_devis
+        v1, v2 = self._v2_envoyee()
+        Devis.objects.filter(pk=v2.pk).update(
+            date_validite=datetime.date(2020, 1, 1))
+        expire_stale_devis()
+        v2.refresh_from_db()
+        self.assertEqual(v2.statut, Devis.Statut.EXPIRE)
+        self._assert_v1_reactivee(v1)
+
     def test_vnt55_v1_non_acceptee_reste_archivee(self):
         v1 = self._devis(Devis.Statut.ENVOYE)
         v2 = Devis.objects.get(pk=self._post(v1).data['id'])

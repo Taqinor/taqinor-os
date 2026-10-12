@@ -723,6 +723,9 @@ class DevisCycleActionsMixin:
         devis.save(update_fields=['statut', 'date_refus', 'motif_refus'])
         activity.log_devis_refusal(devis, request.user, motif, date_ref,
                                    note=note)
+        # VNT56 (ADEV16) — V2 refusée d'une vente signée ⇒ V1 réactivée.
+        from ..domain.revision import abandonner_revision
+        abandonner_revision(devis, request.user)
 
         # M6 — événement découplé : ventes émet, crm réagit
         # (marque le lead perdu si demandé et lead_id présent).
