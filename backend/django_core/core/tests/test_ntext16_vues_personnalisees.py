@@ -84,6 +84,23 @@ class CrudScopingTests(TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertIn('equipe', res.data)
 
+    def test_team_share_missing_team_from_stored_view_is_409(self):
+        # ERR-ENF11-FUZZ-CORE — le corps est conforme ; c'est la vue
+        # ENREGISTRÉE (partagée à l'équipe) qui s'oppose à `equipe` vide.
+        vue = VuePersonnalisee.objects.create(
+            company=self.company, owner=self.user, cible='crm.lead',
+            nom='Équipe', partage=VuePersonnalisee.Partage.EQUIPE,
+            equipe='equipe-nord')
+        res = self.api.patch(f'{URL}{vue.id}/', {'equipe': ''},
+                             format='json')
+        self.assertEqual(res.status_code, 409, res.data)
+        res = self.api.patch(f'{URL}{vue.id}/',
+                             {'partage': 'equipe', 'equipe': ' '},
+                             format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        vue.refresh_from_db()
+        self.assertEqual(vue.equipe, 'equipe-nord')
+
     def test_view_of_another_company_is_never_reachable(self):
         etrangere = VuePersonnalisee.objects.create(
             company=self.autre, cible='crm.lead', nom='Étrangère',
