@@ -98,8 +98,10 @@ class DepotReelTests(unittest.TestCase):
         self.assertNotIn("crm/relance-etapes/kpi-adherence", noms)
         self.assertNotIn("crm/relance-etapes/mes-stats", noms)
         self.assertIn("crm/salles-vente", noms)
-        # ACRM69 : `clients/segments` (retiree D-ACRM-6) doit etre FORCEE rouge.
-        self.assertIn("crm/clients/segments", noms)
+        # ACRM69 : une action collection soeur d'un appel detail `clients/<pk>`
+        # n'est plus masquee (`clients/segments` retiree par ACRM64/67 ;
+        # `clients/engagement-bulk` reste servie sans appelant) -> FORCEE rouge.
+        self.assertIn("crm/clients/engagement-bulk", noms)
 
 
 if __name__ == "__main__":
