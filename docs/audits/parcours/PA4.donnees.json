@@ -1,19 +1,76 @@
 {
- "_doc": "AMET98 — données de rejeu de PA4 pour scripts/rejouer_parcours.py (--donnees). Les références @Modele[.chemin] se résolvent sur les objets COURANTS du rejeu (le BC créé à PA4.01, la facture créée à PA4.04), jamais sur un pk figé : le fichier vaut pour tout devis accepté sans BC. `avant` = ancre d'une variante (porte alternative jouée puis annulée).",
- "PA4.03": {"corps": {"lignes": {"@liste": "@BonCommande.reliquat_par_ligne", "si": "reliquat",
-                                 "champs": {"ligne_devis": "ligne_devis_id", "quantite": "reliquat"}}}},
- "PA4.05": {"avant": "PA4.01", "repeter": false},
- "PA4.07": {"corps": {"montant": "100.00", "date_paiement": "@aujourdhui", "mode": "virement",
-                      "reference": "REJEU-AMET98"}, "repeter": false},
- "PA4.08": {"non_jouable": "commit d'import de relevé : exige le jeton d'un dry-run sur un fichier bancaire téléversé (multipart), non rejouable par un corps JSON"},
- "PA4.09": {"corps": {"mode": "correction", "motif": "Rejeu AMET98",
-                      "lignes": [{"designation": "Rejeu AMET98", "produit": "@Facture.lignes[produit_id].produit_id",
-                                  "quantite": 1, "prix_unitaire": "10.00", "taux_tva": "@Facture.taux_tva"}]}},
- "PA4.10": {"corps": {"motif": "Rejeu AMET98", "montant": "50.00"}},
- "PA4.11": {"avant": "PA4.07", "corps": {"montant": "100.00", "date_paiement": "@aujourdhui", "mode": "virement",
-                                         "taux": "75"}},
- "PA4.14": {"attendu": 404, "motif": "transmission DGI inactive pour la société (dgi_transmission_actif OFF) : la route répond introuvable, règle aval preserve_manuel"},
- "PA4.15": {"source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.relancer",
-            "corps": {"note": "Rejeu AMET98"}},
- "PA4.16": {"avant": "PA4.01"}
+  "_doc": "AMET98 — données de rejeu de PA4 pour scripts/rejouer_parcours.py (--donnees). Les références @Modele[.chemin] se résolvent sur les objets COURANTS du rejeu (le BC créé à PA4.01, la facture créée à PA4.04), jamais sur un pk figé : le fichier vaut pour tout devis accepté sans BC. `avant` = ancre d'une variante (porte alternative jouée puis annulée).",
+  "PA4.03": {
+    "corps": {
+      "lignes": {
+        "@liste": "@BonCommande.reliquat_par_ligne",
+        "si": "reliquat",
+        "champs": {
+          "ligne_devis": "ligne_devis_id",
+          "quantite": "reliquat"
+        }
+      }
+    }
+  },
+  "PA4.05": {
+    "avant": "PA4.01",
+    "repeter": false
+  },
+  "PA4.07": {
+    "corps": {
+      "montant": "100.00",
+      "date_paiement": "@aujourdhui",
+      "mode": "virement",
+      "reference": "REJEU-AMET98"
+    },
+    "repeter": false
+  },
+  "PA4.08": {
+    "non_jouable": "commit d'import de relevé : exige le jeton d'un dry-run sur un fichier bancaire téléversé (multipart), non rejouable par un corps JSON"
+  },
+  "PA4.09": {
+    "corps": {
+      "mode": "correction",
+      "motif": "Rejeu AMET98",
+      "lignes": [
+        {
+          "designation": "Rejeu AMET98",
+          "produit": "@Facture.lignes[produit_id].produit_id",
+          "quantite": 1,
+          "prix_unitaire": "10.00",
+          "taux_tva": "@Facture.taux_tva"
+        }
+      ]
+    },
+    "repeter": false,
+    "pourquoi_repeter": "avoir PARTIEL (10 MAD) : un second avoir partiel identique est légitime tant que le reste dû le permet (négatif déclaré de la table = « montant supérieur au reste dû », pas « deux fois ») — rejeu du 12/10 : 201 attendu, pas un refus"
+  },
+  "PA4.10": {
+    "corps": {
+      "motif": "Rejeu AMET98",
+      "montant": "50.00"
+    }
+  },
+  "PA4.11": {
+    "avant": "PA4.07",
+    "corps": {
+      "montant": "100.00",
+      "date_paiement": "@aujourdhui",
+      "mode": "virement",
+      "taux": "75"
+    }
+  },
+  "PA4.14": {
+    "attendu": 404,
+    "motif": "transmission DGI inactive pour la société (dgi_transmission_actif OFF) : la route répond introuvable, règle aval preserve_manuel"
+  },
+  "PA4.15": {
+    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.relancer",
+    "corps": {
+      "note": "Rejeu AMET98"
+    }
+  },
+  "PA4.16": {
+    "avant": "PA4.01"
+  }
 }
