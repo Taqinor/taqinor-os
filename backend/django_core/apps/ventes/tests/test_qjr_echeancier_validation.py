@@ -305,3 +305,201 @@ class ApiEcheancier(TestCase):
     def test_echeancier_vide_reste_accepte(self):
         reponse = self._patch(None)
         self.assertEqual(reponse.status_code, 200, reponse.data)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. VNT25 — LE GESTE ÉCHÉANCIER (brouillon / envoyé / ACCEPTÉ)
+# ═══════════════════════════════════════════════════════════════════════════
+ECHEANCIER_30_60_10 = [
+    {'type': 'acompte', 'libelle': 'Acompte', 'unite': 'pct',
+     'pct_or_montant': 30},
+    {'type': 'materiel', 'libelle': 'Livraison du matériel', 'unite': 'pct',
+     'pct_or_montant': 60},
+    {'type': 'solde', 'libelle': 'Solde', 'unite': 'pct',
+     'pct_or_montant': 10}]
+#: Forme stockée : 15 000 MAD, 60 %, 10 % (dernière = reste).
+ECHEANCIER_LIBRE_VNT = [
+    {'type': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+     'pct_or_montant': 15000},
+    {'type': 'materiel', 'libelle': 'Livraison du matériel',
+     'pct_or_montant': 60},
+    {'type': 'solde', 'libelle': 'Solde', 'unite': 'pct',
+     'pct_or_montant': 10}]
+#: La forme du contrat ``devis_echeancier.json`` : 15 000 MAD, 60 %, reste.
+ACOMPTE_LIBRE_15000 = [
+    {'cle': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+     'valeur': '15000.00'},
+    {'cle': 'materiel', 'libelle': 'Livraison du matériel', 'unite': 'pct',
+     'valeur': '60.00'},
+    {'cle': 'solde', 'libelle': 'Solde', 'unite': 'pct', 'valeur': '10.00'}]
+
+
+def _tranches(entries):
+    return valider_echeancier(entries, controler_somme=False)
+
+
+class RegleSommeVente(SimpleTestCase):
+    """``regle_somme_vente`` (pure) : Σ des NON dernières ≤ prix convenu,
+    dernière = reste, tout-% = 100 — goldens du 388 (49 000)."""
+
+    def test_acompte_libre_15000_puis_60_pct_permis(self):
+        from apps.ventes.domain.modifiabilite import regle_somme_vente
+        montants, reste = regle_somme_vente(
+            _tranches(ECHEANCIER_LIBRE_VNT), Decimal('49000.00'))
+        # 15 000 + 29 400 = 44 400 ≤ 49 000 (la règle « Σ des valeurs
+        # déclarées ≤ TTC » aurait refusé 15 000 + 60 % + 10 % = 49 300).
+        self.assertEqual(montants, [Decimal('15000.00'), Decimal('29400.00')])
+        self.assertEqual(reste, Decimal('4600.00'))
+
+    def test_acompte_egal_ou_superieur_au_prix_refuse(self):
+        from apps.ventes.domain.modifiabilite import (
+            CODE_SOMME_INVALIDE, EcheancierRefuse, regle_somme_vente)
+        for acompte in (49000, 52000):
+            with self.subTest(acompte=acompte), \
+                    self.assertRaises(EcheancierRefuse) as ctx:
+                regle_somme_vente(_tranches([
+                    {'type': 'acompte', 'unite': 'montant',
+                     'pct_or_montant': acompte},
+                    {'type': 'solde', 'unite': 'pct', 'pct_or_montant': 10}]),
+                    Decimal('49000.00'))
+            self.assertEqual(ctx.exception.code, CODE_SOMME_INVALIDE)
+            self.assertEqual(ctx.exception.status, 400)
+
+    def test_somme_des_non_dernieres_au_dela_du_prix_refusee(self):
+        from apps.ventes.domain.modifiabilite import (
+            EcheancierRefuse, regle_somme_vente)
+        with self.assertRaises(EcheancierRefuse) as ctx:
+            regle_somme_vente(_tranches([
+                {'type': 'acompte', 'unite': 'montant',
+                 'pct_or_montant': 20000},
+                {'type': 'materiel', 'unite': 'pct', 'pct_or_montant': 60},
+                {'type': 'solde', 'unite': 'pct', 'pct_or_montant': 10}]),
+                Decimal('49000.00'))  # 20 000 + 29 400 = 49 400
+        self.assertEqual(ctx.exception.corps()['code'], 'somme_invalide')
+
+    def test_tout_pourcentage_doit_faire_100(self):
+        from apps.ventes.domain.modifiabilite import (
+            EcheancierRefuse, regle_somme_vente)
+        with self.assertRaises(EcheancierRefuse) as ctx:
+            regle_somme_vente(_tranches([
+                {'type': 'acompte', 'pct_or_montant': 30},
+                {'type': 'materiel', 'pct_or_montant': 60},
+                {'type': 'solde', 'pct_or_montant': 20}]),
+                Decimal('49000.00'))
+        self.assertEqual(ctx.exception.code, 'somme_invalide')
+        self.assertIn('110', ctx.exception.detail)
+        montants, reste = regle_somme_vente(
+            _tranches(ECHEANCIER_30_60_10), Decimal('49000.00'))
+        self.assertEqual(montants, [Decimal('14700.00'), Decimal('29400.00')])
+        self.assertEqual(reste, Decimal('4900.00'))
+
+
+class GesteEcheancierVente(TestCase):
+    """``controler_echeancier_vente`` sur le panier réel du 388 + la trace
+    « corrigé après acceptation »."""
+
+    def setUp(self):
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _388(self, reference, echeancier=ECHEANCIER_30_60_10, **champs):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        return creer_devis_388(self.company, self.user, self.client_obj,
+                               reference, echeancier, **champs)
+
+    def test_le_geste_est_permis_sur_un_accepte(self):
+        from apps.ventes.domain import modifiabilite as mod
+        devis = self._388('DEV-VNT25-V')
+        self.assertTrue(mod.verdict(devis, mod.ECHEANCIER)['modifiable'])
+        # L'en-tête reste figé : seul le geste ÉCHÉANCIER s'ouvre.
+        self.assertFalse(mod.verdict(devis, mod.ENTETE)['modifiable'])
+        for statut in ('refuse', 'expire'):
+            with self.subTest(statut=statut):
+                self.assertFalse(mod.verdict(
+                    self._388(f'DEV-VNT25-{statut}', statut=statut),
+                    mod.ECHEANCIER)['modifiable'])
+
+    def test_388_acompte_15000_60_pct_reste_permis(self):
+        from apps.ventes.domain.modifiabilite import controler_echeancier_vente
+        devis = self._388('DEV-VNT25-388')
+        entrees = controler_echeancier_vente(devis, ACOMPTE_LIBRE_15000)
+        self.assertEqual(
+            [(e['type'], e['unite'], Decimal(str(e['pct_or_montant'])))
+             for e in entrees],
+            [('acompte', 'montant', Decimal('15000')),
+             ('materiel', 'pct', Decimal('60')),
+             ('solde', 'montant', Decimal('4600'))])
+        # Le contrôle n'écrit ni le devis ni son statut (règle #4).
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'accepte')
+        self.assertEqual(devis.echeancier, ECHEANCIER_30_60_10)
+
+    def test_acompte_au_prix_convenu_refuse_somme_invalide(self):
+        from apps.ventes.domain.modifiabilite import (
+            EcheancierRefuse, controler_echeancier_vente)
+        devis = self._388('DEV-VNT25-PRIX')
+        with self.assertRaises(EcheancierRefuse) as ctx:
+            controler_echeancier_vente(devis, [
+                {'cle': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+                 'valeur': '49000.00'},
+                {'cle': 'solde', 'libelle': 'Solde', 'unite': 'pct',
+                 'valeur': '10.00'}])
+        self.assertEqual((ctx.exception.status, ctx.exception.code),
+                         (400, 'somme_invalide'))
+
+    def test_tranche_emise_modifiee_409_tranche_facturee(self):
+        from apps.ventes.domain.modifiabilite import (
+            EcheancierRefuse, controler_echeancier_vente)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            facture_tranche)
+        devis = self._388('DEV-VNT25-EMIS')
+        facture_tranche(devis, 'FAC-VNT25-1', 'acompte', '14700.00',
+                        '12466.00', '2234.00')
+        with self.assertRaises(EcheancierRefuse) as ctx:
+            controler_echeancier_vente(devis, ACOMPTE_LIBRE_15000)
+        self.assertEqual(ctx.exception.status, 409)
+        self.assertEqual(ctx.exception.corps(), {
+            'detail': "La tranche « Acompte » est déjà facturée : elle ne "
+                      'peut plus être modifiée.',
+            'code': 'tranche_facturee',
+            'tranche': {'cle': 'acompte', 'libelle': 'Acompte'}})
+        # Supprimer la tranche couverte est refusé de même.
+        with self.assertRaises(EcheancierRefuse) as ctx:
+            controler_echeancier_vente(devis, [
+                ACOMPTE_LIBRE_15000[1],
+                dict(ACOMPTE_LIBRE_15000[2], unite='montant', valeur='0')])
+        self.assertEqual(ctx.exception.code, 'tranche_facturee')
+        # Les tranches NON couvertes se réécrivent, l'acompte inchangé.
+        entrees = controler_echeancier_vente(devis, [
+            dict(ECHEANCIER_30_60_10[0]),
+            dict(ECHEANCIER_30_60_10[1], pct_or_montant=50),
+            dict(ECHEANCIER_30_60_10[2], pct_or_montant=20)])
+        self.assertEqual([e['pct_or_montant'] for e in entrees], [30, 50, 20])
+
+    def test_version_remplacee_refusee(self):
+        from apps.ventes.domain.modifiabilite import (
+            DevisNonModifiable, controler_echeancier_vente)
+        devis = self._388('DEV-VNT25-OLD', is_active=False)
+        with self.assertRaises(DevisNonModifiable):
+            controler_echeancier_vente(devis, ACOMPTE_LIBRE_15000)
+
+    def test_trace_corrige_apres_acceptation(self):
+        from apps.ventes.domain.modifiabilite import (
+            consigner_correction_apres_envoi)
+        devis = self._388('DEV-VNT25-TRACE')
+        # Sans le drapeau, un accepté n'est pas tracé (QJR518 inchangé).
+        self.assertIsNone(consigner_correction_apres_envoi(
+            devis, user=self.user, objet='echeancier', resume='échéancier'))
+        entree = consigner_correction_apres_envoi(
+            devis, user=self.user, objet='echeancier', resume='échéancier',
+            apres_acceptation=True)
+        self.assertEqual(entree.field_label, 'Corrigé après acceptation')
+        self.assertEqual(entree.body,
+                         'Corrigé après acceptation — échéancier.')
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'accepte')
+        self.assertIn('resync_apres_envoi', devis.etude_params or {})
