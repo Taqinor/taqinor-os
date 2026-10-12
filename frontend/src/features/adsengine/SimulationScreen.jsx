@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { MonitorPlay } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { normalizeSimReport, verdictTone, formatMAD, formatNumber } from './adsengine'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ENG44 — Visionneuse de simulation (rejeu visuel d'un run ADSENG36).
@@ -22,6 +24,7 @@ function stepTotal(bras) {
 const SEGMENT_COLORS = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2']
 
 export default function SimulationScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -32,7 +35,7 @@ export default function SimulationScreen() {
     setSelectedId(id)
     adsengineApi.simulations.get(id)
       .then(r => setReport(normalizeSimReport(r.data)))
-      .catch(() => setReport(null))
+      .catch(() => { setReport(null); setLoadErrors(markLoadError("le rapport de simulation")) })
   }, [])
 
   const load = useCallback(() => {
@@ -54,6 +57,7 @@ export default function SimulationScreen() {
 
   return (
     <div className="page ae-simulation">
+      <LoadErrorNotice errors={loadErrors} />
       <div className="page-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <MonitorPlay size={20} aria-hidden="true" /> Visionneuse de simulation

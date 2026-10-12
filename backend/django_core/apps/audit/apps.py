@@ -1,3 +1,5 @@
+import importlib
+
 from django.apps import AppConfig
 
 
@@ -24,7 +26,7 @@ class AuditConfig(AppConfig):
         # journalise un PDF (AuditLog.Action.PDF) sur document_pdf_generated,
         # sans que ventes importe apps.audit (suppression de l'arête montante
         # ventes → audit). Voir la « carte des trois couches » dans core/events.
-        from . import receivers  # noqa: F401
+        importlib.import_module(f'{self.name}.receivers')  # abonnements branchés à l'import
         # ENF20 — branche le recorder comme enregistreur générique de `core`
         # (`core.audit_registry`, même pattern que `core.notify_registry`) :
         # stock/automation/dataimport journalisent SANS importer apps.audit.

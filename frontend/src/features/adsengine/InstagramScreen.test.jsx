@@ -134,3 +134,12 @@ describe('InstagramScreen (ADSDEEP56)', () => {
     await waitFor(() => expect(mocks.proposeToggleComments).toHaveBeenCalledWith('m-1', { enabled: false }))
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('InstagramScreen — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.media.mockRejectedValue(new Error('boom'))
+    renderScreen()
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

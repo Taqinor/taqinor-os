@@ -15,6 +15,8 @@ import { presetRange, previousRange, computeDelta, formatDeltaPct } from './date
 import SyncStatusBanner from './SyncStatusBanner'
 // FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
 import UpdateBanner from './UpdateBanner'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 // PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
 // campagnes listées) — pure, testable isolément.
@@ -72,6 +74,7 @@ function formatLearningValue(v) {
 }
 
 export default function CampaignsScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [campaigns, setCampaigns] = useState([])
   const [loading, setLoading] = useState(true)
   const [ranking, setRanking] = useState([])
@@ -124,13 +127,13 @@ export default function CampaignsScreen() {
       .finally(() => setLoading(false))
     adsengineApi.campaigns.creativeRanking()
       .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : [])))
-      .catch(() => setRanking([]))
+      .catch(() => { setRanking([]); setLoadErrors(markLoadError("le classement")) })
     // ADSDEEP19 — comptes de leads RÉELS (remplace le « Leads: 0 » des insights).
     const realLeadsFn = adsengineApi.metrics?.realLeads
     if (realLeadsFn) {
       realLeadsFn()
         .then(r => setRealLeads(r?.data?.by_campaign || {}))
-        .catch(() => setRealLeads({}))
+        .catch(() => { setRealLeads({}); setLoadErrors(markLoadError("les vrais leads")) })
     }
     const connGet = adsengineApi.connection?.get
     if (connGet) {
@@ -143,7 +146,7 @@ export default function CampaignsScreen() {
       const prev = previousRange(range)
       listAllCampaigns({ debut: prev.debut, fin: prev.fin })
         .then(({ rows }) => setPreviousTotal(totalCampaignSpend(rows)))
-        .catch(() => setPreviousTotal(null))
+        .catch(() => { setPreviousTotal(null); setLoadErrors(markLoadError("la période précédente")) })
     } else {
       setPreviousTotal(null)
     }
@@ -160,7 +163,7 @@ export default function CampaignsScreen() {
     setHierarchyLoading(true)
     adsengineApi.campaigns.hierarchy(c.id)
       .then(r => setHierarchy(r.data || { ...c, adsets: [] }))
-      .catch(() => setHierarchy({ ...c, adsets: [] }))
+      .catch(() => { setHierarchy({ ...c, adsets: [] }); setLoadErrors(markLoadError("la hiérarchie de la campagne")) })
       .finally(() => setHierarchyLoading(false))
   }
   const closeCampaign = () => { setHierarchy(null); setOpenAdsetId(null); setOpenBreakdownId(null) }
@@ -236,6 +239,7 @@ export default function CampaignsScreen() {
       <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <LoadErrorNotice errors={loadErrors} />
       <SyncStatusBanner />
 
       {/* PUB40 — sélecteur de période + comparaison. */}

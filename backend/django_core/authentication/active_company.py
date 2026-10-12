@@ -28,7 +28,10 @@ modèles ``authentication``, résolus paresseusement).
 """
 from __future__ import annotations
 
+import logging
 import threading
+
+logger = logging.getLogger(__name__)
 
 _state = threading.local()
 
@@ -66,7 +69,7 @@ def companies_for_user(user):
         for c in user.societes_autorisees.all():
             ids[c.id] = c
     except Exception:  # noqa: BLE001 — relation absente (instance non sauvée)
-        pass
+        logger.debug("active_company : sociétés autorisées illisibles (instance non sauvée)", exc_info=True)
     return list(ids.values())
 
 

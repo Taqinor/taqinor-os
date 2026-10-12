@@ -16,6 +16,8 @@ donnée d'un tenant n'est exposée ici au-delà des compteurs agrégés.
 """
 from __future__ import annotations
 
+import logging
+
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.permissions import BasePermission
@@ -23,6 +25,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Company
+
+logger = logging.getLogger(__name__)
 
 
 class IsSuperuserConsole(BasePermission):
@@ -43,7 +47,7 @@ def _usage_counts(company):
         devis = ventes_selectors.compter_devis(company)
         factures = ventes_selectors.compter_factures(company)
     except Exception:  # noqa: BLE001 — un selector KO ne casse pas la console
-        pass
+        logger.warning("console : compteurs ventes indisponibles", exc_info=True)
     return {'users': users, 'devis': devis, 'factures': factures}
 
 
@@ -60,12 +64,12 @@ def _plan_et_sieges(company):
         from apps.parametres.feature_flags import plan_code_for_company
         infos['plan_code'] = plan_code_for_company(company) or ''
     except Exception:  # noqa: BLE001 — lane plan pas encore fondue
-        pass
+        logger.debug("console : code de plan indisponible", exc_info=True)
     try:
         from authentication import services
         infos['sieges_utilises'] = services.sieges_utilises(company)
     except Exception:  # noqa: BLE001 — idem
-        pass
+        logger.debug("console : sièges utilisés indisponibles", exc_info=True)
     return infos
 
 
@@ -76,7 +80,7 @@ def _sante_et_licence(company):
         from apps.adminops.health_score import calculer_health_score
         infos['health_score'] = calculer_health_score(company).get('score')
     except Exception:  # noqa: BLE001 — un module absent ne casse pas la console
-        pass
+        logger.warning("console : health score indisponible", exc_info=True)
     try:
         from apps.adminops.models import FactureLicence
         impayees = FactureLicence.objects.filter(company=company).exclude(
@@ -84,7 +88,7 @@ def _sante_et_licence(company):
         infos['licences_impayees'] = impayees.count()
         infos['licences_du_ttc'] = sum(f.montant_ttc for f in impayees)
     except Exception:  # noqa: BLE001
-        pass
+        logger.warning("console : licences impayées indisponibles", exc_info=True)
     return infos
 
 

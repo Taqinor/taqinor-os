@@ -86,3 +86,13 @@ describe('SimulationScreen (ENG44)', () => {
     expect(await screen.findByTestId('ae-sim-empty')).toBeInTheDocument()
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('SimulationScreen — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.get.mockRejectedValue(new Error('boom'))
+    mocks.list.mockResolvedValue({ data: [{ id: 1 }] })
+    renderScreen()
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

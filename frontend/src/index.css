@@ -11661,3 +11661,14 @@ textarea.form-control {
    écran — vérifié par la revue du 09/10 (un décalage `--gen-pied-h` tenté
    d'abord laissait la barre flotter 61 px au-dessus du bas, pour rien). */
 .bdc-proxy { bottom: 0; }
+
+/* ── CAD177 — colonne TVA de la table des lignes : jamais plus large que 72 px ── */
+/* ATOT20 (723d33568) a remplacé l'indice « 10 % attendu » par « TVA appliquée :
+   20 % (catalogue : 10 %) ». Son mot le plus long, « (catalogue », mesure 55,3 px
+   en Hanken 12 px pour 56 px utiles (72 px moins le padding) — et ~64-70 px dans
+   toute police de repli plus large (Verdana/DejaVu, avant le chargement de la
+   police de marque) : la cellule s'élargissait et la table débordait de 13 px à
+   1 366 px, rail replié (EDC10, nocturnes 38041876480 et 38236408895 : « table
+   1031px dans 1018px »), contre la promesse EDC2 « sans défilement horizontal ».
+   Le texte de la cellule se coupe où il faut ; la colonne garde sa largeur. */
+.lines-table td[data-label="TVA %"] { overflow-wrap: anywhere; }

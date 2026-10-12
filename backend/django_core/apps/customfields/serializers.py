@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from core.champs_stricts import BooleenStrict
+from core.mixins import SameCompanyFKSerializerMixin
 from .models import (
     CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
 )
@@ -329,8 +330,13 @@ def _validate_fichier_value(field_def, val):
     raise ValidationError({field_def.code: 'Fichier attendu.'})
 
 
-class FieldRolePermissionSerializer(serializers.ModelSerializer):
+class FieldRolePermissionSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
     """NTEXT9 — permission de champ par palier de rôle (admin)."""
+
+    # ENF17 — FK inscriptible bornée à la société : un id d'ailleurs reçoit la
+    # réponse d'un id absent (400), à la création comme au PATCH.
+    same_company_fields = ('field_def',)
 
     # SCA4 — le socle ``TenantModel`` horodate en ``created_at``/
     # ``updated_at`` ; l'API expose ``date_creation``/``date_modification``

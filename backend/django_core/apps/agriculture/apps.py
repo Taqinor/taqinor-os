@@ -25,7 +25,10 @@ class AgricultureConfig(AppConfig):
         'label': 'Agriculture',
         'icone': 'leaf',
         'depends': [],
-        'description': 'Exploitations, parcelles, campagnes culturales, intrants et traçabilité phytosanitaire pour une exploitation ou coopérative agricole.',
+        'description': (
+            'Exploitations, parcelles, campagnes culturales, intrants et traçabilité phytosanitaire pour une '
+            'exploitation ou coopérative agricole.'
+        ),
         'categorie': 'Verticaux',
         'parked': True,
     }

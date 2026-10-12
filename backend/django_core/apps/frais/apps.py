@@ -25,7 +25,10 @@ class FraisConfig(AppConfig):
         'label': 'Notes de frais',
         'icone': 'receipt',
         'depends': ['rh', 'compta'],
-        'description': 'Notes de frais, rapports de frais, plafonds de politique, barèmes et indemnités kilométriques / per-diem chantier. La validation et le remboursement postent leurs écritures via apps.compta.services.',
+        'description': (
+            'Notes de frais, rapports de frais, plafonds de politique, barèmes et indemnités kilométriques / '
+            'per-diem chantier. La validation et le remboursement postent leurs écritures via '
+            'apps.compta.services.'),
         'categorie': 'Finance',
         'parked': True,
     }
