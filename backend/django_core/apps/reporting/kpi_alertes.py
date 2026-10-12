@@ -25,6 +25,7 @@ from decimal import Decimal
 from rest_framework import serializers, viewsets
 
 from authentication.permissions import IsResponsableOrAdmin
+from core.champs_stricts import ChampsStrictsMixin, TexteLie
 from core.mixins import TenantMixin
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -33,8 +34,11 @@ from .models import KpiAlerte
 from rest_framework.parsers import JSONParser
 
 
-class KpiAlerteSerializer(SameCompanyFKSerializerMixin,
+class KpiAlerteSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
+    """api-fuzz r12 (CI #956) — champs stricts : ``actif: 0`` ou un ``nom``
+    non-chaîne répondent 400 comme le schéma le déclare ; ``seuil`` reste un
+    décimal-CHAÎNE (l'écran envoie ``e.target.value``)."""
     # AANA17 — un destinataire d'une AUTRE société est refusé (400) : l'alerte
     # lui enverrait le chiffre de la société courante.
     # ENF28 — la métrique nommée naît bornée à la société : l'id d'une métrique
@@ -46,7 +50,9 @@ class KpiAlerteSerializer(SameCompanyFKSerializerMixin,
         source='get_operateur_display', read_only=True)
     # NTDATA13 — clé lisible de la métrique ciblée (vide pour une alerte
     # « catalogue »), pour que l'écran n'ait pas à re-interroger semantic.
-    metric_cle = serializers.CharField(
+    # api-fuzz r12 — ``TexteLie`` : la clé est servie aussi sur un PATCH (DRF
+    # sautait un champ à ``default`` en réponse partielle → schéma violé).
+    metric_cle = TexteLie(
         source='metric_definition.cle', read_only=True, default='')
     # NTDATA41 — libellé FR du mode de détection (seuil / variation / anomalie).
     mode_detection_label = serializers.CharField(

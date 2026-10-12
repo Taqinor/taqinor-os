@@ -141,3 +141,34 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
             operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('1'), actif=False)
         results = evaluate_all_kpi_alertes(now=timezone.now())
         self.assertEqual(results, [])
+
+
+class TestChampsStrictsFuzzR12(KpiAlerteBase):
+    """api-fuzz r12 (CI #956) — ``actif: 0`` (POST/PATCH/PUT) → 400 comme le
+    schéma le déclare ; ``metric_cle`` est servie aussi sur un PATCH (DRF
+    sautait la clé à ``default`` en réponse partielle → schéma violé)."""
+
+    def _alerte(self):
+        return KpiAlerte.objects.create(
+            company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+            operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('60'))
+
+    def test_actif_entier_refuse_en_400(self):
+        corps = {'kpi': KpiAlerte.Kpi.VALEUR_STOCK_TOTALE, 'operateur': 'sup',
+                 'seuil': '0', 'actif': 0}
+        resp = self.api.post('/api/django/reporting/kpi-alertes/', corps, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('actif', resp.data)
+        alerte = self._alerte()
+        url = f'/api/django/reporting/kpi-alertes/{alerte.id}/'
+        self.assertEqual(self.api.patch(url, {'actif': 0}, format='json').status_code, 400)
+        self.assertEqual(self.api.put(url, corps, format='json').status_code, 400)
+        resp = self.api.put(url, {**corps, 'actif': False}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_patch_sert_metric_cle(self):
+        alerte = self._alerte()
+        resp = self.api.patch(
+            f'/api/django/reporting/kpi-alertes/{alerte.id}/', {'nom': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data.get('metric_cle', 'ABSENTE'), '')
