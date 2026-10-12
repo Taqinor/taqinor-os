@@ -7,7 +7,6 @@
 # (la fonction n'est plus signalee) fait echouer la garde.
 # AFAC95/ASAV77 (2026-10-09) : racines etendues a pages/** et store/** ; leurs sites
 # (releve du jour) sont geles ici, memes regles (fichier::fonction, decroissant).
-frontend/src/features/audit/ObjectHistoryButton.jsx::charger
 frontend/src/features/core/ExplorateurDonneesPage.jsx::ExplorateurDonneesPage
 frontend/src/features/crm/ConcurrentsPerte.jsx::ConcurrentsPerte
 frontend/src/features/crm/ConcurrentsPerte.jsx::chargerConcurrents
