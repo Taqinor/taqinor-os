@@ -14,6 +14,7 @@ fondateur du 21/09/2026, SOLMVP16b).
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChaineStricte
 from core.mixins import SameCompanyFKSerializerMixin
 
 from apps.records.storage import AttachmentSerializerMixin
@@ -262,10 +263,24 @@ class JalonChantierPortailSerializer(serializers.ModelSerializer):
         read_only_fields = ['ordre', 'cle_phase', 'date_creation']
 
 
+class _EntierJsonStrict(serializers.IntegerField):
+    """Entier JSON réel : ``"5"``, ``5.0`` et ``true`` ne sont plus convertis
+    en silence (le schéma déclare ``integer`` — constat api-fuzz)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, int):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
 class DemandeTicketPortailSerializer(serializers.ModelSerializer):
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
-    client_id = serializers.IntegerField(min_value=0)
-    chantier_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    # ERR-ENF11-FUZZ-PORTAIL — entiers et chaînes STRICTS (400, plus de
+    # coercition silencieuse d'un type que le schéma OpenAPI déclare invalide).
+    client_id = _EntierJsonStrict(min_value=0)
+    chantier_id = _EntierJsonStrict(min_value=0, required=False, allow_null=True)
+    sujet = ChaineStricte(max_length=200)
+    description = ChaineStricte(required=False, allow_blank=True)
     ticket_id = serializers.IntegerField(
         min_value=0, required=False, allow_null=True, read_only=True)
 
