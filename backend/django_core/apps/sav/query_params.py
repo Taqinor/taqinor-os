@@ -8,6 +8,11 @@ from rest_framework.exceptions import ValidationError
 # Borne haute d'une clé primaire PostgreSQL (integer).
 ID_MAX = 2147483647
 
+#: CI #956 (api-fuzz « rejected schema-compliant », sav/equipements/?produit=0) —
+#: schéma OpenAPI d'un paramètre d'identifiant lu par ``entier_param`` : les
+#: bornes PUBLIÉES sont celles que la vue applique (``0`` n'est pas un id).
+ENTIER_ID = {'type': 'integer', 'minimum': 1, 'maximum': ID_MAX}
+
 
 def entier_param(request, nom, defaut=None, *, mini=1, maxi=ID_MAX):
     """Entier du paramètre ``nom`` (``defaut`` si absent ou vide), borné à

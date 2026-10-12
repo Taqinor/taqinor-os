@@ -154,6 +154,22 @@ class TestEquipementFilters(TestCase):
         got = set(ids_of(r))
         self.assertEqual(got, {self.sous.id, self.expire.id})
 
+    def test_filtres_identifiants_bornes_publiees(self):
+        # CI #956 (fuzz « rejected schema-compliant ») : le schéma publie les
+        # bornes 1..ID_MAX que `entier_param` applique — même verdict des deux
+        # côtés (0, négatif, non entier → 400 nommé ; vide → ignoré).
+        from apps.sav.query_params import ENTIER_ID, ID_MAX
+        self.assertEqual(ENTIER_ID, {'type': 'integer', 'minimum': 1,
+                                     'maximum': ID_MAX})
+        for nom in ('produit', 'installation', 'client', 'categorie'):
+            for brut in ('0', '-1', 'abc', '99999999999'):
+                r = self.api.get('/api/django/sav/equipements/', {nom: brut})
+                self.assertEqual(r.status_code, 400, (nom, brut, r.data))
+                self.assertIn(nom, r.data)
+        r = self.api.get('/api/django/sav/equipements/',
+                         {'produit': '', 'client': ''})
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_filter_by_marque(self):
         r = self.api.get('/api/django/sav/equipements/', {'marque': 'Canadian'})
         self.assertEqual(set(ids_of(r)), {self.hors.id, self.vide.id})
