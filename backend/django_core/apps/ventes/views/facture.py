@@ -419,13 +419,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Seule une facture brouillon peut être émise.'},
                 status=status.HTTP_409_CONFLICT,
             )
-        if not facture.lignes.exists():
-            return Response(
-                {'detail': (
-                    'La facture doit contenir au moins une ligne.'
-                )},
-                status=status.HTTP_409_CONFLICT,
-            )
         # AUD101 — l'émission (workflow de revue XFAC18, verrou de période,
         # blocage crédit XFAC28, dérivation d'échéance XFAC23, pose du statut
         # et émission de `facture_emise`) vit DANS le service unique. L'écran
@@ -433,11 +426,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..domain.facturation_ops import EmissionRefusee, emettre_facture
         from ..domain.recouvrement import CreditHoldError
         try:
-            anomalies = emettre_facture(
-                facture, user=request.user, source='ecran_facture')
+            anomalies = emettre_facture(  # VNT32 : lignes OU libellé
+                facture, user=request.user, source='ecran_facture',
+                exiger_lignes=True)
         except EmissionRefusee as exc:
-            return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+            vide = not (facture.lignes.exists() or facture.libelle)
+            return Response({'detail': exc.motif}, status=(
+                status.HTTP_409_CONFLICT if vide
+                else status.HTTP_400_BAD_REQUEST))
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_403_FORBIDDEN)

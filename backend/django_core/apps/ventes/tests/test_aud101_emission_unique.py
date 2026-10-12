@@ -420,3 +420,39 @@ class DateEmissionTests(_BaseEmission):
             f'&end={fin:%Y-%m-%d}&fmt=csv')
         self.assertEqual(resp.status_code, 200)
         self.assertIn(relue.reference, resp.content.decode('utf-8'))
+
+
+class EmissionLibelleSeulVNT32(_BaseEmission):
+    """VNT32 — l'écran ``factures/<id>/emettre/`` délègue « lignes OU
+    libellé » au service (``exiger_lignes=True``) : un brouillon de tranche
+    à libellé seul (« Acompte ») s'émet et reçoit son numéro légal ; un
+    brouillon sans ligne ni libellé garde son 409."""
+
+    def _brouillon_sans_ligne(self, libelle):
+        return Facture.objects.create(
+            company=self.company, reference='', client=self.client_obj,
+            statut=Facture.Statut.BROUILLON, taux_tva=Decimal('20'),
+            type_facture='acompte', libelle=libelle,
+            montant_ht=Decimal('12500'), montant_tva=Decimal('2500'),
+            montant_ttc=Decimal('15000'))
+
+    def test_brouillon_libelle_seul_emis_numerote(self):
+        from core.numbering import est_reference_provisoire
+        facture = self._brouillon_sans_ligne('Acompte')
+        self.assertTrue(est_reference_provisoire(facture.reference))
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/emettre/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.EMISE)
+        self.assertFalse(est_reference_provisoire(facture.reference))
+
+    def test_brouillon_sans_ligne_ni_libelle_409(self):
+        facture = self._brouillon_sans_ligne('')
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/emettre/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)

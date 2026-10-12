@@ -708,6 +708,52 @@ FacturerCompletResponse = _ser('DevisFacturerCompletResponse', {
         'reference': s.CharField(allow_blank=True),
     }, many=True),
 })
+# VNT31 — « Facturer la vente » (contrat ``devis_facturer.json``) : montants
+# en TEXTE décimal, natures = ``Facture.TypeFacture``.
+FacturerVenteRequest = _ser('DevisFacturerVenteRequest', {
+    # acompte | intermediaire | solde | complete (validée par le service).
+    'nature': ChaineStricte(),
+    'montant_ttc': ChaineStricte(required=False, allow_null=True,
+                                 allow_blank=True),
+    'pourcentage': ChaineStricte(required=False, allow_null=True,
+                                 allow_blank=True),
+    'cle_attendue': ChaineStricte(required=False, allow_null=True,
+                                  allow_blank=True),
+    'libelle': ChaineStricte(required=False, allow_null=True,
+                             allow_blank=True),
+    'emettre': BooleenStrict(required=False),
+    'paiements': s.ListField(child=s.DictField(), required=False,
+                             max_length=5),
+    'remplacer_brouillons': BooleenStrict(required=False),
+    'utiliser_avances': BooleenStrict(required=False),
+    'override_avertissement': BooleenStrict(required=False),
+})
+FacturerVenteMontants = _ser('DevisFacturerVenteMontants', {
+    cle: s.CharField() for cle in (
+        'prix_convenu_ttc', 'emis_ttc', 'brouillons_ttc', 'paye_ttc',
+        'reste_a_facturer_ttc', 'reste_a_payer_ttc')})
+FacturerVenteResponse = _ser('DevisFacturerVenteResponse', {
+    'facture': _ser('DevisFacturerVenteFacture', {
+        'id': s.IntegerField(), 'reference': s.CharField(),
+        'statut': s.CharField(), 'total_ttc': s.CharField(),
+        'nature': s.CharField()}),
+    'vente': FacturerVenteMontants,
+})
+FacturerVenteApercu = _ser('DevisFacturerVenteApercu', {
+    'plan': _ser('DevisFacturerVentePlanLigne', {
+        cle: s.CharField() for cle in (
+            'cle', 'libelle', 'unite', 'valeur', 'montant_ttc', 'statut')},
+        many=True),
+    'prochaine': _ser('DevisFacturerVenteProchaine', {
+        cle: s.CharField() for cle in ('cle', 'libelle', 'montant_ttc')},
+        allow_null=True),
+    'acompte_propose': s.CharField(),
+    'vente': FacturerVenteMontants,
+})
+ErreurFacturerVente = _ser('DevisFacturerVenteErreur', {
+    'detail': s.CharField(),
+    'code': s.CharField(required=False),
+})
 GenererFactureRequest = _ser('DevisGenererFactureRequest', {
     'override_credit': s.BooleanField(required=False),
     'override_avertissement': s.BooleanField(required=False),

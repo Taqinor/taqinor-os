@@ -77,6 +77,9 @@ FIGEE = {
     # ASEC29 / D-ASEC-1 — garde INVERSÉE par la tâche : geste d'argent,
     # réservé au code ``encaisser``.
     'facturer_complet': 'HasPermissionOrLegacy_encaisser',
+    # VNT31 : « Facturer la vente » — créer un brouillon = écriture ventes ;
+    # émettre / encaisser exigent en plus ``encaisser`` (garde dans la vue).
+    'facturer': RESP,
 
     # ADOC131 (D-ADOC-4) : « Révoquer le lien client » (écriture).
     'revoquer_lien_public': RESP,
