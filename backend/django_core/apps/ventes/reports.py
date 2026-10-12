@@ -42,12 +42,13 @@ def kwc_concu_devis(devis):
     en repli quand le devis ne porte aucune ligne panneau, et
     ``etude_params.puissance_kwc`` en tout dernier repli.
     """
-    from .quote_engine import puissance_panneaux_lignes
+    # ACAL273 — la règle du kWc VENDU est écrite UNE fois
+    # (``scenario.puissance_kwc_du_devis``) ; plus de dérivation recodée ici.
+    from .domain.scenario import puissance_kwc_du_devis
 
-    lignes = [li for li in devis.lignes.all() if li.compte_dans_totaux]
-    nb_panneaux, watt = puissance_panneaux_lignes(lignes)
-    if nb_panneaux > 0:
-        return round(nb_panneaux * watt / 1000, 2)
+    vendu = puissance_kwc_du_devis(devis)
+    if vendu:
+        return round(float(vendu), 2)
 
     roof_layout = devis.roof_layout
     if isinstance(roof_layout, dict):

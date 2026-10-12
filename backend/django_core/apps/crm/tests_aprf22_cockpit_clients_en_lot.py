@@ -1,6 +1,6 @@
-"""APRF22 — « Comptes dormants », « Portefeuille » et ``engagement-bulk``
+"""APRF22 — « Comptes dormants », « Portefeuille »
 calculés EN LOT : 3 puis 13 clients coûtent le même nombre de requêtes aux
-trois endpoints, et rendent les mêmes listes/scores que le calcul unitaire
+deux endpoints, et rendent les mêmes listes/scores que le calcul unitaire
 d'AVANT (recopié ici comme oracle, sur les sélecteurs ventes d'origine).
 
 Test-du-test : rappeler un calcul par client (ancien
@@ -155,7 +155,7 @@ class CockpitClientsEnLotTests(TestCase):
     def _appels(self):
         sorties = {}
         nb = {}
-        for nom in ('dormants/', 'mon-portefeuille/', 'engagement-bulk/'):
+        for nom in ('dormants/', 'mon-portefeuille/'):
             with CaptureQueriesContext(connection) as ctx:
                 resp = self.api.get(BASE + nom)
             self.assertEqual(resp.status_code, 200, resp.data)

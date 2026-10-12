@@ -163,6 +163,18 @@ def calepinage_ouvert_du_lead(company, lead_id):
     return _ouverts(company, lead_id).first()
 
 
+def mesures_du_calepinage(calepinage):
+    """ACAL273 — ``{modules, kwc, ...}`` du document de pose d'un calepinage,
+    LU par ``mesures_du_document`` (la fiche du module du document, jamais le
+    wattage constant de l'outil). ``{}`` sans calepinage ni document."""
+    from .services.mesures import mesures_du_document
+
+    document = getattr(calepinage, 'roof_layout', None)
+    if not isinstance(document, dict):
+        return {}
+    return mesures_du_document(document)
+
+
 def _ouverts(company, lead_id):
     """Les calepinages OUVERTS d'un lead : non archivés ET non MODÈLES — un
     modèle n'est pas « le » calepinage ouvert de son lead (ACAL187,

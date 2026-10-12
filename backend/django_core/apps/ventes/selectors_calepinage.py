@@ -10,6 +10,9 @@ aucun import de ``.selectors`` en tête (cycle).
 """
 
 
+import logging
+
+
 def conception_pour_lead(lead, company):
     """PV78 — la conception 3D la plus RÉCENTE d'un lead, en lecture seule.
 
@@ -29,34 +32,67 @@ def conception_pour_lead(lead, company):
     autre société ne fait rien fuiter). Point d'entrée cross-app pour
     ``apps.crm`` — jamais un import des modèles ventes de son côté.
     """
-    vide = {'kwc': None, 'image_url': None}
+    vide = {'kwc': None, 'image_url': None, 'calepinage': None}
     lead_id = getattr(lead, 'pk', None) or getattr(lead, 'id', None)
     if not lead_id or company is None:
         return vide
     from .models import Devis
-    devis = (Devis.objects
-             .filter(lead_id=lead_id, company=company,
-                     roof_layout__isnull=False)
-             .order_by('-date_creation', '-id')
-             .first())
-    if devis is None:
-        return vide
+    tous = Devis.objects.filter(lead_id=lead_id, company=company)
+    devis = (tous.filter(roof_layout__isnull=False)
+             .order_by('-date_creation', '-id').first())
 
-    layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
-    resultat = layout.get('result') if isinstance(layout, dict) else None
-    kwc = (resultat or {}).get('kwc') if isinstance(resultat, dict) else None
+    # ACAL273 — la pastille lit d'abord le kWc VENDU (celui des lignes du
+    # devis le plus récent, ``puissance_kwc_du_devis``) ; sans devis chiffré,
+    # le calepinage OUVERT du lead (fiche du document, jamais 720 W constants).
+    from .domain.scenario import puissance_kwc_du_devis
+    kwc, calepinage = None, None
+    dernier = tous.order_by('-date_creation', '-id').first()
+    if dernier is not None:
+        kwc = puissance_kwc_du_devis(dernier)
     if kwc in (None, ''):
-        kwc = (devis.etude_params or {}).get('puissance_kwc')
+        ouvert = _calepinage_ouvert_mesure(company, lead_id)
+        if ouvert is not None:
+            kwc, calepinage = ouvert
+    if kwc in (None, '') and devis is not None:
+        layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
+        resultat = layout.get('result')
+        kwc = (resultat or {}).get('kwc') if isinstance(resultat, dict) else None
+        if kwc in (None, ''):
+            kwc = (devis.etude_params or {}).get('puissance_kwc')
     try:
         kwc = float(kwc) if kwc not in (None, '') else None
     except (TypeError, ValueError):
         kwc = None
 
     image_url = None
-    if (devis.roof_image or '').strip():
+    if devis is not None and (devis.roof_image or '').strip():
         from .domain.stockage_toiture import url_fichier_toiture_devis
         image_url = url_fichier_toiture_devis(devis.pk)
-    return {'kwc': kwc, 'image_url': image_url}
+    return {'kwc': kwc, 'image_url': image_url, 'calepinage': calepinage}
+
+
+logger = logging.getLogger(__name__)
+
+
+def _calepinage_ouvert_mesure(company, lead_id):
+    """ACAL273 — ``(kwc, {id, statut})`` du calepinage OUVERT du lead, lu par
+    ``apps.calepinage.selectors`` (import fonction-local, jamais les modèles) et
+    ``mesures_du_document`` ; ``None`` sans calepinage ouvert ou sans modules."""
+    try:
+        from apps.calepinage.selectors import (
+            calepinage_ouvert_du_lead, mesures_du_calepinage,
+        )
+        calepinage = calepinage_ouvert_du_lead(company, lead_id)
+        if calepinage is None:
+            return None
+        mesure = mesures_du_calepinage(calepinage)
+    except Exception as exc:  # noqa: BLE001 — une pastille ne casse jamais la fiche
+        logger.warning('ACAL273 : pastille kWc du lead %s indisponible : %s', lead_id, exc)
+        return None
+    kwc = (mesure or {}).get('kwc')
+    if not kwc:
+        return None
+    return float(kwc), {'id': calepinage.pk, 'statut': calepinage.statut}
 
 
 def calepinage_du_devis(devis, company=None):
