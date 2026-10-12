@@ -548,3 +548,61 @@ class FacturerVenteCompleteVNT29(_BaseVente):
         self.assertEqual(refus.corps['code'], 'deja_facture')
         self.assertFalse(Facture.objects.filter(
             devis=devis, type_facture='complete').exists())
+
+
+class FacturerVenteEncaissementVNT30(_BaseVente):
+    """VNT30 — ``emettre`` / ``paiements`` / ``utiliser_avances`` : émission
+    (numéro légal) puis encaissement, Σ ≤ total ; les avances client non
+    affectées se ventilent d'abord (réparation D-VNT-4)."""
+
+    def _paiement(self, montant):
+        return {'montant': montant, 'date_paiement': date.today().isoformat(),
+                'mode_paiement': 'virement', 'reference': 'VIR-1012'}
+
+    def test_acompte_15000_paye_15000(self):
+        from core.numbering import est_reference_provisoire
+        devis = self._388('DEV-VNT30-PAYE')
+        facture, paiements = self._facturer(
+            devis, nature='acompte', montant_ttc='15000.00', emettre=True,
+            paiements=[self._paiement('15000.00')])
+        facture.refresh_from_db()
+        self.assertFalse(est_reference_provisoire(facture.reference))
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        self.assertEqual(len(paiements), 1)
+        self.assertEqual(paiements[0].montant, Decimal('15000.00'))
+
+    def test_paiements_superieurs_au_montant_400(self):
+        devis = self._388('DEV-VNT30-TROP')
+        refus = self._refus(devis, nature='acompte', pourcentage='30',
+                            emettre=True,
+                            paiements=[self._paiement('15000.00')])
+        self.assertEqual(refus.status, 400)
+        self.assertEqual(refus.corps['code'], 'paiements_invalides')
+        # Rien n'est écrit : ni facture, ni numéro, ni échéancier.
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+        self.assertEqual(Paiement.objects.count(), 0)
+
+    def test_avance_14700_puis_paiement_300(self):
+        from apps.ventes.domain.encaissements import enregistrer_avance
+        devis = self._388('DEV-VNT30-AVANCE')
+        avance = enregistrer_avance(
+            company=self.company, client=self.client_obj,
+            montant=Decimal('14700'), date_paiement=date.today(),
+            mode='virement', created_by=self.user)
+        facture, paiements = self._facturer(
+            devis, nature='acompte', montant_ttc='15000.00', emettre=True,
+            utiliser_avances=True, paiements=[self._paiement('300.00')])
+        facture.refresh_from_db()
+        avance.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        self.assertEqual(facture.montant_paye, Decimal('15000.00'))
+        self.assertEqual(avance.montant_disponible, Decimal('0'))
+        self.assertEqual([p.montant for p in paiements], [Decimal('300.00')])
+
+    def test_sans_emettre_reste_brouillon(self):
+        devis = self._388('DEV-VNT30-BR')
+        facture, paiements = self._facturer(
+            devis, nature='acompte', montant_ttc='15000.00')
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+        self.assertEqual(paiements, [])

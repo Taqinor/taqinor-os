@@ -491,6 +491,95 @@ def _facturer_complete(devis, plan, *, user, remplacer_brouillons, libelle):
     return _creer_brouillon_complet(devis, user, libelle)
 
 
+# ── VNT30 — émettre, encaisser, utiliser les avances ─────────────────────────
+
+def _paiements_saisis(paiements):
+    """Les paiements DÉJÀ reçus (0 à 5 lignes, ``valider_paiements_saisis``
+    de « Facturer ») ; 400 ``paiements_invalides`` sinon."""
+    from .facturation_ops import FacturationRefusee, valider_paiements_saisis
+    try:
+        return valider_paiements_saisis(paiements or [])
+    except FacturationRefusee as exc:
+        raise FacturationVenteRefusee(exc.motif, code='paiements_invalides')
+
+
+def _emettre(facture, user):
+    """Numéro légal + sortie de stock U9 par LE service d'émission (AUD101,
+    VNT21) ; refus traduits (403 ``credit_hold``)."""
+    from .facturation_ops import (
+        EmissionRefusee, StockInsuffisantError, emettre_facture)
+    from .recouvrement import CreditHoldError
+    try:
+        emettre_facture(facture, user=user, source='facturer_vente')
+    except EmissionRefusee as exc:
+        raise FacturationVenteRefusee(exc.motif)
+    except StockInsuffisantError as exc:
+        raise FacturationVenteRefusee(exc.message)
+    except CreditHoldError as exc:
+        raise FacturationVenteRefusee(
+            f'Le client est en blocage crédit : {exc.motif}.',
+            code='credit_hold', status=403)
+
+
+def _motif(exc):
+    detail = getattr(exc, 'motif', None) or getattr(exc, 'detail', exc)
+    if isinstance(detail, dict):
+        detail = next(iter(detail.values()), '')
+    if isinstance(detail, (list, tuple)):
+        detail = detail[0] if detail else ''
+    return str(detail)
+
+
+def _avances_du_client(facture):
+    """Avances NON affectées (XFAC1) du client de la facture, même société,
+    encaissées, les plus anciennes d'abord."""
+    from apps.ventes.models import Paiement
+    avances = (Paiement.objects.filter(
+        company_id=facture.company_id, client_id=facture.client_id,
+        facture__isnull=True)
+        .exclude(statut__in=Paiement.STATUTS_NON_COMPTES)
+        .order_by('date_paiement', 'pk'))
+    return [a for a in avances if a.montant_disponible > 0]
+
+
+def _encaisser(facture, *, user, saisis, utiliser_avances):
+    """VNT30 — sur la facture ÉMISE : les avances du client se ventilent
+    d'abord (``ventiler_avance``), les paiements saisis complètent
+    (``encaisser_sur_facture``, le code de ``enregistrer-paiement``) ;
+    Σ > total ⇒ 400 ``paiements_invalides``. Renvoie les paiements créés."""
+    from rest_framework.exceptions import ValidationError
+    from .encaissements import (
+        EncaissementRefuse, encaisser_sur_facture, ventiler_avance)
+    facture.refresh_from_db()
+    total = _q(facture.total_ttc)
+    avances = _avances_du_client(facture) if utiliser_avances else []
+    reste = total
+    ventilees = []
+    for a in avances:
+        part = min(_q(a.montant_disponible), reste)
+        if part > 0:
+            ventilees.append((a, part))
+            reste -= part
+    somme = sum((p['montant'] for p in saisis), Decimal('0'))
+    if somme - reste > CENT:
+        raise FacturationVenteRefusee(
+            'Les paiements saisis dépassent le montant de la facture.',
+            code='paiements_invalides')
+    crees = []
+    try:
+        for avance, part in ventilees:
+            ventiler_avance(paiement=avance, facture=facture, montant=part,
+                            user=user)
+        for donnees in saisis:
+            facture, paiement = encaisser_sur_facture(
+                facture=facture, donnees=donnees, user=user)
+            crees.append(paiement)
+    except (EncaissementRefuse, ValueError, ValidationError) as exc:
+        raise FacturationVenteRefusee(_motif(exc),
+                                      code='paiements_invalides')
+    return crees
+
+
 def facturer_vente(devis, *, nature, user, montant_ttc=None,
                    pourcentage=None, cle_attendue=None, libelle=None,
                    emettre=False, paiements=None, remplacer_brouillons=False,
@@ -509,6 +598,7 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
         plan = plan_facturation(devis)
         montant = _montant_demande(plan['prix_convenu_ttc'], montant_ttc,
                                    pourcentage)
+        saisis = _paiements_saisis(paiements)
         options = {'user': user, 'montant': montant,
                    'cle_attendue': cle_attendue, 'libelle': libelle}
         if nature == 'acompte':
@@ -519,4 +609,11 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
                 remplacer_brouillons=bool(remplacer_brouillons))
         else:
             facture = _facturer_tranche(devis, plan, nature, **options)
-    return facture, []
+        crees = []
+        # VNT30 — des paiements ou des avances à utiliser ⇒ émission d'abord.
+        if emettre or saisis or utiliser_avances:
+            _emettre(facture, user)
+            crees = _encaisser(facture, user=user, saisis=saisis,
+                               utiliser_avances=bool(utiliser_avances))
+            facture.refresh_from_db()
+    return facture, crees
