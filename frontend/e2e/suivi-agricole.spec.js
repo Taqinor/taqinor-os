@@ -31,14 +31,6 @@ let playbookCree = null
 // Numéro marocain E.164 UNIQUE (la cadence ne démarre pas sur un doublon).
 const telephoneUnique = () => `+2126${String(Date.now()).slice(-8)}`
 
-function isoDansJours(n) {
-  const d = new Date()
-  d.setDate(d.getDate() + n)
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const j = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${m}-${j}`
-}
-
 async function json(res, quoi) {
   expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
   return res.json()
@@ -195,7 +187,14 @@ test.describe('AGR545 — suivi d’un lead agricole, en direct', () => {
     leadB = await creerLeadAgricole(request, `Ferme AGR545 veille ${Date.now()}`)
     const [premiere] = ouvertes(await touches(request, leadB.id))
     expect(premiere, 'première touche du protocole').toBeTruthy()
-    const date = isoDansJours(7)
+    // Un MARDI (≥ 7 jours) : le serveur ramène un rappel posé un jour non
+    // ouvré (dimanche, férié) au prochain jour ouvré — un `+7` tombant un
+    // dimanche (nocturne du 11/10 : 18 demandé, 19 rendu) faisait échouer le
+    // test selon le jour d'exécution.
+    const d = new Date()
+    d.setDate(d.getDate() + 7)
+    d.setDate(d.getDate() + ((2 - d.getDay() + 7) % 7))
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const rep = await json(await request.post(
       `${API}/crm/relance-etapes/${premiere.id}/fait/`,
       // CIQ508 : la raison d'attente est OBLIGATOIRE (serveur : 400 sinon).
