@@ -255,11 +255,16 @@ def _emettre_export_reversibilite_declenche(run, user):
             'échouée (run %s)', getattr(run, 'pk', '?'), exc_info=True)
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré AVANT de créer
+# la ligne d'historique : ``datasets: [""]`` (hors schéma) lançait un export.
+_REQUETE_EXPORT = inline_serializer('ExportReversibiliteRequete', {
+    'datasets': serializers.ListField(
+        child=serializers.CharField(), required=False),
+})
+
+
 @extend_schema(
-    request=inline_serializer('ExportReversibiliteRequete', {
-        'datasets': serializers.ListField(
-            child=serializers.CharField(), required=False),
-    }),
+    request=_REQUETE_EXPORT,
     responses={202: ExportReversibiliteRunSerializer})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -273,11 +278,12 @@ def declencher_export_reversibilite(request):
     if not _is_directeur_or_admin(request.user):
         return Response(status=status.HTTP_403_FORBIDDEN)
     from . import tasks as core_tasks
+    from .parseurs import corps_valide
 
+    datasets = corps_valide(request, _REQUETE_EXPORT).get('datasets') or None
     run = ExportReversibiliteRun.objects.create(
         company=request.user.company, demande_par=request.user,
         statut=ExportReversibiliteRun.Statut.EN_COURS)
-    datasets = request.data.get('datasets') or None
     core_tasks.export_reversibilite_tenant.delay(
         request.user.company_id, demande_par_id=request.user.id,
         datasets=datasets, run_id=run.id)
