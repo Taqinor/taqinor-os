@@ -139,13 +139,22 @@ def devis_post_save(sender, instance, created, **kwargs):
             'reference': instance.reference,
             'statut': instance.statut,
         })
-    if instance.statut == Devis.Statut.ACCEPTE and old != Devis.Statut.ACCEPTE:
+    if (instance.statut == Devis.Statut.ACCEPTE and old != Devis.Statut.ACCEPTE
+            and not _est_avenant(instance)):
         _safe_dispatch(instance.company_id, EVENT_DEVIS_ACCEPTED, {
             'event': EVENT_DEVIS_ACCEPTED,
             'id': instance.pk,
             'reference': instance.reference,
             'statut': instance.statut,
         })
+
+
+def _est_avenant(devis):
+    """VNT53 — un avenant (V2 qui remplace une vente ACCEPTÉE) n'est pas une
+    nouvelle vente : aucun webhook ``devis.accepted``. Ce post_save ne voit pas
+    le kwarg ``avenant_de`` du bus : il lit LE sélecteur ventes."""
+    from apps.ventes.selectors import predecesseur_accepte
+    return predecesseur_accepte(devis) is not None
 
 
 # ── Installation / Chantier ──────────────────────────────────────────────────
