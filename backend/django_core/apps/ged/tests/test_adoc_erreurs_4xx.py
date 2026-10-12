@@ -538,3 +538,18 @@ class Enf11FuzzGedCorpsTests(TestCase):
         resp = self._post(f'documents/{self.doc.pk}/planifier/', {
             'libelle': 'x' * 201, 'echeance': '2030-01-01'})
         self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_import_masse_nom_trop_long_est_une_erreur_de_ligne(self):
+        # Un nom > 255 (ou un NUL) dans le CSV faisait lever DataError (500) ;
+        # c'est désormais une erreur de LIGNE, le reste de l'import continue.
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        lf = chr(10)
+        contenu = lf.join(['nom,description', 'Bon,ok', 'y' * 300 + ',trop long', '']).encode('utf-8')
+        resp = self.api.post(f'{BASE}documents/import-masse/', {
+            'folder': self.folder.pk,
+            'csv': SimpleUploadedFile('m.csv', contenu, 'text/csv')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['crees'], 1)
+        self.assertEqual(resp.data['erreurs'], [
+            {'ligne': 2, 'detail': 'Nom : 255 caractères au plus.'}])

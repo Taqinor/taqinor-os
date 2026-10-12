@@ -258,3 +258,21 @@ def conflit_archivage(document):
     if ArchivageLegal.objects.filter(document=document).exists():
         return "Ce document est déjà archivé légalement."
     return None
+
+
+def lignes_csv_invalides(lignes):
+    """Lignes d'un CSV d'import que la base refuserait (``nom`` plus long que la
+    colonne, caractère NUL) : ``{n° de ligne: détail}``. Le ``nom`` de ces lignes
+    est vidé pour que le service les rapporte en erreur de ligne SANS arrêter
+    l'import (c'étaient des ``DataError`` = 500)."""
+    invalides = {}
+    for idx, ligne in enumerate(lignes or [], start=1):
+        nul = any(chr(0) in str(v) for v in ligne.values() if v is not None)
+        if nul:
+            invalides[idx] = 'Caractère nul interdit.'
+        elif len((ligne.get('nom') or '').strip()) > 255:
+            invalides[idx] = 'Nom : 255 caractères au plus.'
+        else:
+            continue
+        ligne['nom'] = ''
+    return invalides

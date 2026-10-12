@@ -49,7 +49,7 @@ from .corps_requete import (
     GedArchiverLegalementCorps, GedClasserApresVenteCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
     GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
-    _pk, _pks, _txt, conflit_archivage, corps_valide,
+    _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
@@ -1045,6 +1045,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         zip_file = request.FILES.get('zip')
         zip_bytes = zip_file.read() if zip_file else None
+        invalides = lignes_csv_invalides(lignes)
 
         def _valider_custom(data):
             from apps.customfields.serializers import validate_custom_data
@@ -1062,6 +1063,9 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         except QuotaDepasseError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_403_FORBIDDEN)
+        for erreur in result['erreurs']:
+            if erreur.get('ligne') in invalides:
+                erreur['detail'] = invalides[erreur['ligne']]
         ser = DocumentSerializer(
             result['documents'], many=True, context={'request': request})
         http = (status.HTTP_201_CREATED if result['crees']
