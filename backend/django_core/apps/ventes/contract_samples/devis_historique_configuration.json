@@ -56,9 +56,7 @@
                 "type": "solde",
                 "pct_or_montant": 60
               }
-            ],
-            "acompte_pct": "40.00",
-            "acompte_montant": "19400.00"
+            ]
           },
           "etude": {
             "scenario": "Les deux (Sans + Avec)",

@@ -1,6 +1,6 @@
 """Renouvellement, révision et aval financier de version (SPL263, déplacé de ``domain/cycle_vie.py``).
 
-NTCPQ13 ``renouveler_devis`` (nouveau brouillon depuis un accepté/expiré),
+NTCPQ13 ``renouveler_devis`` (nouveau brouillon depuis un expiré — VNT106),
 QJR521/QJR558 ``reviser_devis`` (V+1 unique, jamais de fourche) et
 QJR560 ``rattacher_aval_financier_revision`` (BC et factures de la V1
 reprises par la V2, seul l'écart régularisé). Ce module n'importe JAMAIS
@@ -15,7 +15,7 @@ logger = logging.getLogger("apps.ventes.services")
 
 
 def renouveler_devis(devis, *, user=None):
-    """NTCPQ13 — Renouvelle un devis déjà ACCEPTÉ (ou expiré/clos).
+    """NTCPQ13 — Renouvelle un devis EXPIRÉ.
 
     Crée un NOUVEAU ``Devis`` en ``brouillon`` reprenant les lignes actuelles
     avec les prix COURANTS recalculés (``prix_applicable`` — jamais une simple
@@ -28,6 +28,13 @@ def renouveler_devis(devis, *, user=None):
     ``renouveler`` laisse le devis source
     strictement intact (statut, chaîne BC/Facture, historique).
 
+    VNT106 (arbitrage 7) — un devis ACCEPTÉ ne se renouvelle PAS : le
+    renouveler créait sur le MÊME lead une chaîne neuve à côté de la vente
+    en vigueur (deux ventes actives). Une deuxième vente est une deuxième
+    affaire (nouvelle fiche lead, cadence ``deuxieme_affaire``) ; un prix
+    se change par « Réviser » ou « Prix négocié ». Un accepté lève
+    ``ConflitEtat`` (409, ``code`` ``deuxieme_affaire``) avant toute écriture.
+
     Lève ``ValidationError`` si le devis n'est pas dans un état renouvelable.
     Renvoie le nouveau devis."""
     from rest_framework.exceptions import ValidationError
@@ -37,10 +44,18 @@ def renouveler_devis(devis, *, user=None):
     from apps.ventes.domain.creation_clone import conditions_ci_pour_copie
     from apps.ventes.utils.company_settings import create_numbered
 
-    RENOUVELABLES = (Devis.Statut.ACCEPTE, Devis.Statut.EXPIRE)
+    if devis.statut == Devis.Statut.ACCEPTE:
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat({
+            'detail': (
+                'Ce devis est accepté : une nouvelle vente se crée sur une '
+                'deuxième affaire (nouvelle fiche lead) ; pour changer le '
+                'prix, utilisez Réviser ou Prix négocié.'),
+            'code': 'deuxieme_affaire'})
+    RENOUVELABLES = (Devis.Statut.EXPIRE,)
     if devis.statut not in RENOUVELABLES:
         raise ValidationError({'statut': (
-            'Seul un devis accepté ou expiré peut être renouvelé '
+            'Seul un devis expiré peut être renouvelé '
             '(un devis en cours se corrige avec « réviser »).')})
 
     company = devis.company
@@ -61,15 +76,11 @@ def renouveler_devis(devis, *, user=None):
             prix_cible_kwc=devis.prix_cible_kwc,
             # QJR146 (a) — l'échéancier était bien copié, mais par RÉFÉRENCE :
             # deux devis partageaient la même liste JSON, exactement le piège
-            # que QJR117 a fermé pour ``etude_params``. Et ``acompte_pct``
-            # (une CONDITION) comme ``custom_data`` manquaient.
-            # ``acompte_montant`` reste EXCLU : ce renouvellement re-tarife les
-            # lignes au catalogue courant, donc le montant de l'acompte du
-            # devis source ne décrit plus ce total.
+            # que QJR117 a fermé pour ``etude_params``. Et ``custom_data``
+            # manquait.
             echeancier=(list(devis.echeancier)
                         if isinstance(devis.echeancier, list)
                         else devis.echeancier),
-            acompte_pct=devis.acompte_pct,
             custom_data=(dict(devis.custom_data)
                          if isinstance(devis.custom_data, dict)
                          else devis.custom_data),
@@ -171,6 +182,7 @@ def reviser_devis(devis, *, user=None):
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from apps.ventes.domain.creation_clone import cloner_devis
+    from apps.ventes.selectors import racine_groupe
 
     with transaction.atomic():
         old = (Devis.objects.select_for_update(of=('self',))
@@ -192,7 +204,7 @@ def reviser_devis(devis, *, user=None):
         nd = cloner_devis(
             old, user=user, note=old.note,
             version=old.version + 1,
-            version_parent=old.version_parent or old, revision=True)
+            version_parent=racine_groupe(old), revision=True)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])

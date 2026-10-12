@@ -1,5 +1,8 @@
-"""Tests FG46 — échéancier personnalisé + acompte persisté sur Devis."""
-from decimal import Decimal
+"""Tests FG46 — échéancier personnalisé sur Devis.
+
+VNT103 — ``acompte_pct`` / ``acompte_montant`` (persistés « pour accès
+rapide », jamais lus) sont RETIRÉS : l'échéancier est l'unique vérité de
+l'acompte (D-VNT-3)."""
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -28,19 +31,17 @@ def _client(co):
         email='ech@example.com', telephone='+212600000089')
 
 
-def _devis(co, user, client, ref='DEV-ECH-001', echeancier=None,
-           acompte_pct=None, acompte_montant=None):
+def _devis(co, user, client, ref='DEV-ECH-001', echeancier=None):
     return Devis.objects.create(
         company=co, created_by=user, client=client,
         reference=ref, statut='brouillon',
         echeancier=echeancier,
-        acompte_pct=acompte_pct,
-        acompte_montant=acompte_montant,
     )
 
 
 class TestDevisEcheancierFields(TestCase):
-    """Vérifie que les 3 nouveaux champs existent et sont nullable."""
+    """L'échéancier existe et est nullable ; l'acompte n'est plus dupliqué
+    sur le devis (VNT103)."""
 
     def setUp(self):
         self.co = _company()
@@ -51,13 +52,14 @@ class TestDevisEcheancierFields(TestCase):
         d = _devis(self.co, self.user, self.cli, ref='DEV-ECH-NULL')
         self.assertIsNone(d.echeancier)
 
-    def test_acompte_pct_nullable(self):
-        d = _devis(self.co, self.user, self.cli, ref='DEV-ECH-PCT')
-        self.assertIsNone(d.acompte_pct)
-
-    def test_acompte_montant_nullable(self):
-        d = _devis(self.co, self.user, self.cli, ref='DEV-ECH-MONT')
-        self.assertIsNone(d.acompte_montant)
+    def test_acompte_retire_du_modele_vnt103(self):
+        """VNT103 — 0 lecteur : champs et contrainte retirés du modèle."""
+        noms = {f.name for f in Devis._meta.get_fields()}
+        self.assertNotIn('acompte_pct', noms)
+        self.assertNotIn('acompte_montant', noms)
+        self.assertNotIn(
+            'ck_devis_acompte_montant_positif',
+            {c.name for c in Devis._meta.constraints})
 
     def test_echeancier_stored_and_retrieved(self):
         custom = [
@@ -71,18 +73,6 @@ class TestDevisEcheancierFields(TestCase):
         self.assertEqual(len(d.echeancier), 3)
         self.assertEqual(d.echeancier[0]['libelle'], 'Démarrage')
         self.assertEqual(d.echeancier[0]['pct_or_montant'], 40)
-
-    def test_acompte_pct_stored(self):
-        d = _devis(self.co, self.user, self.cli, ref='DEV-ECH-PCT2',
-                   acompte_pct=Decimal('30.00'))
-        d.refresh_from_db()
-        self.assertEqual(d.acompte_pct, Decimal('30.00'))
-
-    def test_acompte_montant_stored(self):
-        d = _devis(self.co, self.user, self.cli, ref='DEV-ECH-M2',
-                   acompte_montant=Decimal('54000.00'))
-        d.refresh_from_db()
-        self.assertEqual(d.acompte_montant, Decimal('54000.00'))
 
 
 class TestScheduleForDevisCustom(TestCase):

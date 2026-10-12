@@ -11,6 +11,8 @@ Covers:
   - GET /ventes/devis/{id}/variantes/ lists siblings with the same version_parent.
   - proposal_data (public endpoint) includes a 'variants' key.
   - _variant_summaries returns [] when the devis is isolated (no siblings).
+  - VNT104 : ``selectors.racine_groupe`` (objet) / ``groupe_proposition``
+    (queryset) sont les SEULS calculs de la racine du groupe ``version_parent``.
 
 Run:
     docker compose exec django_core python manage.py test \
@@ -314,3 +316,59 @@ class TestVariantSummaries(TestCase):
         self.assertAlmostEqual(summaries[0]['total_ttc'], 21100.0, places=0)
         # prix_achat must not appear
         self.assertNotIn('prix_achat', summaries[0])
+
+
+class TestGroupeProposition(TestCase):
+    """VNT104 — la racine du groupe de proposition se calcule à UN endroit."""
+
+    def setUp(self):
+        self.company = make_company('qj15-grp')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.racine = make_devis(
+            self.company, self.user, self.client_obj, 'DEV-QJ15-G1')
+        self.soeur = Devis.objects.create(
+            company=self.company, reference='DEV-QJ15-G2',
+            client=self.client_obj, statut='brouillon',
+            version_parent=self.racine, version=2, is_active=True,
+            created_by=self.user)
+        self.isole = make_devis(
+            self.company, self.user, self.client_obj, 'DEV-QJ15-G3')
+
+    def test_racine_groupe_rend_l_objet_racine(self):
+        from apps.ventes.selectors import racine_groupe
+        self.assertEqual(racine_groupe(self.racine), self.racine)
+        self.assertEqual(racine_groupe(self.soeur), self.racine)
+        self.assertEqual(racine_groupe(self.isole), self.isole)
+
+    def test_groupe_proposition_racine_et_soeurs_non_filtre(self):
+        from apps.ventes.selectors import groupe_proposition
+        attendu = {self.racine.pk, self.soeur.pk}
+        for membre in (self.racine, self.soeur):
+            with self.subTest(membre=membre.reference):
+                self.assertEqual(
+                    set(groupe_proposition(membre).values_list('pk', flat=True)),
+                    attendu)
+        self.assertEqual(
+            list(groupe_proposition(self.isole).values_list('pk', flat=True)),
+            [self.isole.pk])
+
+    def test_aucun_calcul_de_racine_a_la_main_hors_des_deux_aides(self):
+        """Garde de source : ``version_parent_id or`` / ``version_parent or``
+        ne s'écrivent plus que dans ``selectors.py`` (les deux aides)."""
+        import re
+        from pathlib import Path
+        ventes = Path(__file__).resolve().parent.parent
+        motif = re.compile(r'version_parent(_id)? or\b')
+        fautifs = []
+        for chemin in sorted(ventes.rglob('*.py')):
+            rel = chemin.relative_to(ventes).as_posix()
+            if rel.startswith(('tests/', 'migrations/')) or rel == 'selectors.py':
+                continue
+            for n, ligne in enumerate(
+                    chemin.read_text(encoding='utf-8').splitlines(), 1):
+                if motif.search(ligne):
+                    fautifs.append(f'{rel}:{n}')
+        self.assertEqual(fautifs, [])
+        source = (ventes / 'selectors.py').read_text(encoding='utf-8')
+        self.assertEqual(len(motif.findall(source)), 2)

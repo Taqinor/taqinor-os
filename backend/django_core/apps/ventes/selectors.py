@@ -1410,6 +1410,36 @@ def devis_envoyes_expirant(company, limite, lead_ids):
     return out
 
 
+def racine_groupe(devis):
+    """VNT104 — la RACINE (l'objet) du groupe de proposition de ``devis``.
+
+    Trois liens distincts, à ne jamais confondre :
+      * le GROUPE de proposition (``version_parent``) — variantes QJ15, gamme
+        sœur et révisions pointent la racine, qui n'a pas de
+        ``version_parent`` : c'est ce que lisent ``racine_groupe`` et
+        :func:`groupe_proposition`, et rien d'autre ne recalcule cette racine ;
+      * la CHAÎNE de révision (``superseded_by``) — V1 → V2 → … (QJR521) :
+        :func:`devis_predecesseurs_revision_ids` / :func:`predecesseurs_acceptes` ;
+      * la VENTE (``etat_vente``, ``vente_facturation``) — la vente en vigueur
+        d'un lead, jamais déduite du groupe.
+    Lit la relation ``version_parent`` (une requête si elle n'est pas en
+    cache) ; ``devis`` lui-même quand il est la racine."""
+    return devis.version_parent or devis
+
+
+def groupe_proposition(devis):
+    """VNT104 — le queryset NON filtré du groupe de proposition de ``devis`` :
+    la racine et tous les devis dont ``version_parent`` est la racine
+    (``devis`` compris). L'appelant pose ses ``filter`` / ``exclude`` /
+    ``select_related`` / ``select_for_update`` / ``order_by`` — société
+    comprise (voir :func:`racine_groupe`)."""
+    from django.db.models import Q
+    from .models import Devis
+
+    racine = devis.version_parent_id or devis.pk
+    return Devis.objects.filter(Q(pk=racine) | Q(version_parent_id=racine))
+
+
 def devis_predecesseurs_revision_ids(devis):
     """QJR559 — les ids des versions que ``devis`` REMPLACE, par révision
     (relation inverse ``remplace`` = ``superseded_by``), toute la chaîne

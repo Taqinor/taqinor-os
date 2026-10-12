@@ -39,7 +39,8 @@ LIGNES = [
     ('Installation', '1', '5000'),
 ]
 
-#: Les SEPT champs que les deux vues perdaient, avec une valeur NON par défaut.
+#: Les SEPT champs que les deux vues perdaient, avec une valeur NON par défaut
+#: (VNT103 : ``acompte_pct``/``acompte_montant`` retirés du modèle — cinq restent).
 ECHEANCIER_NEGOCIE = [
     {'libelle': 'Acompte', 'type': 'pct', 'pct_or_montant': 45},
     {'libelle': 'Solde', 'type': 'pct', 'pct_or_montant': 55},
@@ -66,7 +67,6 @@ class _Base(TestCase):
         Devis.objects.filter(pk=self.source.pk).update(
             devise='EUR', taux_change=Decimal('11.0000'),
             echeancier=ECHEANCIER_NEGOCIE,
-            acompte_pct=Decimal('45.00'), acompte_montant=Decimal('1234.56'),
             entite=self.entite, custom_data={'dossier': 'X-42'})
         self.source.refresh_from_db()
 
@@ -74,9 +74,6 @@ class _Base(TestCase):
         self.assertEqual(copie.devise, 'EUR')
         self.assertEqual(Decimal(str(copie.taux_change)), Decimal('11.0000'))
         self.assertEqual(copie.echeancier, ECHEANCIER_NEGOCIE)
-        self.assertEqual(Decimal(str(copie.acompte_pct)), Decimal('45.00'))
-        self.assertEqual(Decimal(str(copie.acompte_montant)),
-                         Decimal('1234.56'))
         self.assertEqual(copie.entite_id, self.entite.pk)
         self.assertEqual(copie.custom_data, {'dossier': 'X-42'})
 
