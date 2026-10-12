@@ -1,4 +1,7 @@
-"""Registre des modèles suivis par le journal d'audit (TRACKED_MODELS, MODELES_SANS_UPDATE_GENERIQUE) — sorti de audit/signals.py par SPL305."""
+"""Registre des modèles suivis par le journal d'audit.
+
+(TRACKED_MODELS, MODELES_SANS_UPDATE_GENERIQUE) — sorti de audit/signals.py par SPL305.
+"""
 # (app_label, ModelName) des objets métier suivis.
 TRACKED_MODELS = [
     ('crm', 'Lead'),
