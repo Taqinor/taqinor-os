@@ -27,6 +27,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
+from ..serializers import forme_du_contrat, forme_reponse
 from ..services.fixation import (
     FixationRefusee, appliquer_systeme, bom_de_fixation, resoudre_systeme,
 )
@@ -35,9 +36,12 @@ from .calepinages import CalepinageViewSet
 __all__ = ['bom_fixation', 'fixation']
 
 
-@extend_schema(parameters=[OpenApiParameter(
-    'systeme', OpenApiTypes.INT, required=False,
-    description='Système de fixation (défaut : celui du calepinage).')])
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'systeme', OpenApiTypes.INT, required=False,
+        description='Système de fixation (défaut : celui du calepinage).')],
+    responses=forme_du_contrat('CalepinageFixationBom',
+                               'calepinage_fixation_bom.json'))
 @action(detail=True, methods=['get'], url_path='bom-fixation',
         url_name='bom-fixation', permission_classes=[PeutVoirCalepinage])
 def bom_fixation(self, request, pk=None):
@@ -47,22 +51,35 @@ def bom_fixation(self, request, pk=None):
     avant l'unique système actif.
     """
     calepinage = self.get_object()  # borné société par get_queryset
+    demande = request.query_params.get('systeme')
+    try:
+        if demande not in (None, ''):
+            int(str(demande).strip())
+    except ValueError:
+        # ERR-ENF11-FUZZ-CALEPINAGE — le paramètre est publié entier : une
+        # valeur qui n'en est pas un est refusée, jamais lue comme « absent ».
+        return Response(
+            {'systeme': "« systeme » attend l'identifiant numérique d'un "
+                        f"système de fixation (reçu : « {demande} »)."},
+            status=status.HTTP_400_BAD_REQUEST)
     systeme, refus, source = resoudre_systeme(
-        calepinage.company, request.query_params.get('systeme'),
+        calepinage.company, demande,
         calepinage=calepinage, avec_source=True)
     return Response(bom_de_fixation(calepinage, systeme, refus, source))
 
 
-@extend_schema(request=inline_serializer(
-    'CalepinageFixationRequete', {
-        'systeme_id': drf_serializers.IntegerField()}))
+@extend_schema(
+    request=inline_serializer('CalepinageFixationRequete', {
+        'systeme_id': drf_serializers.IntegerField(allow_null=True)}),
+    responses=forme_reponse('CalepinageFixationChoix', 'systeme',
+                            'systeme_source'))
 @action(detail=True, methods=['post'], url_path='fixation',
         url_name='fixation', permission_classes=[PeutGererCalepinage])
 def fixation(self, request, pk=None):
     """ACAL81 — ``{systeme_id|null}`` → ``{systeme, systeme_source}``.
 
     Persiste le système de fixation choisi (``null`` l'efface). Un id absent
-    ou d'une autre société : le MÊME 400, champ ``systeme_id`` nommé.
+    ou d'une autre société : le MÊME 404, champ ``systeme_id`` nommé.
     """
     calepinage = self.get_object()  # borné société par get_queryset
     corps = request.data if isinstance(request.data, dict) else {}
@@ -75,7 +92,7 @@ def fixation(self, request, pk=None):
         reponse = appliquer_systeme(calepinage, corps.get('systeme_id'))
     except FixationRefusee as refus:
         return Response({refus.champ: str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_404_NOT_FOUND)
     return Response(reponse)
 
 
