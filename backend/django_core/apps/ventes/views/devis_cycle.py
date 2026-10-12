@@ -196,6 +196,8 @@ class DevisCycleActionsMixin:
         scopé société. Retourne la liste des devis créés.
         """
         source = self.get_object()
+        # Tour 3 M1 — corps hors schéma (``variante_pct: {}``…) = 400.
+        valider_corps(request, D.DupliquerVarianteRequest)
         company = source.company
         root = source.version_parent or source
 

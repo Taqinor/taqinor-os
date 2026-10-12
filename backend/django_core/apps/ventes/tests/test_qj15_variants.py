@@ -109,6 +109,21 @@ class TestDupliquerVariante(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(len(resp.data), 3)
 
+    def test_corps_hors_schema_refuse_400(self):
+        """CI M1 tour 3 (api-fuzz) — ``variante_pct: {}`` était lu comme
+        « pas d'override » et créait 3 variantes (201) : corps hors schéma
+        accepté. Désormais 400, aucun devis créé."""
+        d = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ15-FZ')
+        add_ligne(d, self.produit, qty='10')
+        avant = Devis.objects.count()
+        for corps in ({'scales': [], 'variante_pct': {}},
+                      {'variante_pct': '10'}, {'variante_pct': True},
+                      {'scales': ['0.8']}, {'scales': [1e308]}):
+            with self.subTest(corps=corps):
+                resp = self.api.post(url_variante(d.id), corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(Devis.objects.count(), avant)
+
     def test_all_variants_are_brouillon(self):
         d = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ15-V2')
         add_ligne(d, self.produit, qty='8')

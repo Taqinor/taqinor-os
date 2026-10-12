@@ -115,9 +115,23 @@ PdfTaskResponse = _ser('PdfTaskResponse', {
     'detail': s.CharField(),
 })
 
+
+class NombreStrict(s.FloatField):
+    """Tour 3 M1 — nombre JSON réel : ``"0.8"``, ``true`` → 400 (``FloatField``
+    les convertissait en silence : corps hors schéma accepté)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+# Échelle bornée (0,01 → ×10) : au-delà, ``Decimal(str(x)).quantize`` des
+# quantités levait (500) sur un corps pourtant conforme.
 DupliquerVarianteRequest = _ser('DevisDupliquerVarianteRequest', {
-    'scales': s.ListField(child=s.FloatField(), required=False),
-    'variante_pct': s.FloatField(required=False),
+    'scales': s.ListField(child=NombreStrict(min_value=0.01, max_value=10),
+                          required=False),
+    'variante_pct': NombreStrict(required=False),
 })
 DupliquerVarianteGammeRequest = _ser('DevisDupliquerVarianteGammeRequest', {
     'nom': ChaineStricte(required=False, allow_blank=True),
