@@ -650,18 +650,18 @@ def part_vente_pdf(facture, tete, etat):
     ``{libelle, ttc, pourcentage, prix_convenu, derniere}``. ``derniere`` =
     cette facture ferme la vente (rien ne reste à facturer et c'est la plus
     récente facture vivante) ⇒ « reste de la vente »."""
-    from decimal import ROUND_HALF_UP, Decimal
+    from decimal import Decimal
+
+    from core.money import quantize_mad
     if not _est_tranche_de_vente(facture):
         return None
-    cent = Decimal('0.01')
     prix = Decimal(etat['prix_convenu_ttc'])
-    ttc = Decimal(str(facture.total_ttc or 0)).quantize(cent, ROUND_HALF_UP)
+    ttc = quantize_mad(facture.total_ttc or 0)
     vivantes = [f['id'] for f in etat['factures']
                 if f['statut'] != 'annulee']
     derniere = bool(Decimal(etat['reste_a_facturer_ttc']) <= 0 and vivantes
                     and facture.pk == max(vivantes))
-    pct = ((ttc / prix * 100).quantize(cent, ROUND_HALF_UP)
-           if prix > 0 else Decimal('0.00'))
+    pct = quantize_mad(ttc / prix * 100) if prix > 0 else Decimal('0.00')
     return {'libelle': _libelle_tranche_facture(facture, tete),
             'ttc': f'{ttc:.2f}', 'pourcentage': f'{pct:.2f}',
             'prix_convenu': etat['prix_convenu_ttc'], 'derniere': derniere}

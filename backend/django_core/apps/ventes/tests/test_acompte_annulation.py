@@ -387,6 +387,10 @@ class VNT11AnnulationAvecAvoir(TestCase):
         self.assertEqual(avoirs[0].type, Avoir.Type.CORRECTION)
         self.assertEqual(avoirs[0].statut, Avoir.Statut.EMISE)
         self.assertEqual(avoirs[0].total_ttc, Decimal('1600.00'))
+        # VNT4 — la réponse sert la clé ``avoir`` (facture_annulation.json).
+        self.assertEqual(r.data['avoir'], {
+            'id': avoirs[0].pk, 'reference': avoirs[0].reference,
+            'montant': '1600.00'})
         # Le devis est libéré : plus aucune facture active ne le ferme.
         exiger_devis_facturable(self.devis, 'complete')
 
@@ -406,6 +410,17 @@ class VNT11AnnulationAvecAvoir(TestCase):
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.ANNULEE)
         self.assertEqual(self._avoirs(f), [])
+        self.assertIsNone(r.data['avoir'])
+
+    def test_corps_illisible_400_jamais_500(self):
+        # ENF11 (api-fuzz) — une directive de mauvais type est un 400, la
+        # facture reste émise.
+        f = self._facture(f'FAC-{MONTH}-0046')
+        r = self._annuler(f, {'acompte': {'action': [None, None],
+                                          'facture_cible': 0}})
+        self.assertEqual(r.status_code, 400, r.data)
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.EMISE)
 
     def test_rembourser_une_facture_legale_emet_aussi_l_avoir(self):
         f = self._facture(f'FAC-{MONTH}-0045')
