@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4826, operations: 7586, components: 3382}
+counts: {paths: 4826, operations: 7586, components: 3383}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10449,6 +10449,7 @@ components:
 - InstagramMediaMirror
 - Installation
 - InstallationActivity
+- InstallationDossierStatutEnum
 - InstallationRegime8221Enum
 - InstallationRequest
 - InstallerModeleReponse
