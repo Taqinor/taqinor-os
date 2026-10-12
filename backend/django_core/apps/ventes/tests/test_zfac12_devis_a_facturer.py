@@ -93,3 +93,56 @@ class TestDevisAFacturer(TestCase):
             date_acceptation=TODAY - timedelta(days=10))
         candidats = devis_a_facturer(self.company, jours=7, today=TODAY)
         self.assertEqual(candidats, [])
+
+
+class TestVnt88VentesEnVigueur(TestCase):
+    """VNT88 — ``devis_a_facturer`` et ``carnet_commande_par_mois`` lisent
+    ``devis_signes_en_vigueur`` ; « facturé » = une facture ÉMISE."""
+
+    def setUp(self):
+        self.company = make_company(slug='vnt88-co', nom='VNT88 Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='VNT88',
+            telephone='+212600000088')
+        self.jour = TODAY - timedelta(days=10)
+
+    def _devis(self, ref):
+        return Devis.objects.create(
+            company=self.company, reference=ref, client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE, date_acceptation=self.jour)
+
+    def _facture(self, devis, statut, ref):
+        return Facture.objects.create(
+            company=self.company, reference=ref, client=self.client_obj,
+            devis=devis, statut=statut, montant_ttc=Decimal('1000'))
+
+    def _ids(self):
+        return {d.id for d in devis_a_facturer(
+            self.company, jours=7, today=TODAY)}
+
+    def _carnet(self):
+        from apps.ventes.selectors import carnet_commande_par_mois
+        return carnet_commande_par_mois(
+            self.company, self.jour.replace(day=1), TODAY)
+
+    def test_version_remplacee_jamais_rappelee(self):
+        v1 = self._devis('DEV-VNT88-V1')
+        v2 = self._devis('DEV-VNT88-V2')
+        Devis.objects.filter(pk=v2.pk).update(version_parent=v1)
+        Devis.objects.filter(pk=v1.pk).update(superseded_by=v2,
+                                              is_active=False)
+        self.assertEqual(self._ids(), {v2.id})
+
+    def test_facture_annulee_seule_rappelee(self):
+        devis = self._devis('DEV-VNT88-ANN')
+        self._facture(devis, Facture.Statut.ANNULEE, 'FAC-VNT88-ANN')
+        self.assertIn(devis.id, self._ids())
+        self.assertTrue(self._carnet())
+
+    def test_brouillon_seul_rappele_emise_non(self):
+        devis = self._devis('DEV-VNT88-BR')
+        self._facture(devis, Facture.Statut.BROUILLON, 'BROUILLON-VNT88')
+        self.assertIn(devis.id, self._ids())
+        self._facture(devis, Facture.Statut.EMISE, 'FAC-VNT88-EM')
+        self.assertNotIn(devis.id, self._ids())
+        self.assertEqual(self._carnet(), {})

@@ -600,25 +600,37 @@ def devis_a_facturer(company, *, jours=7, today=None):
     """ZFAC12 — ``Devis`` ``accepte`` d'une société, sans ``Facture`` liée
     depuis PLUS de ``jours`` jours (revenu bloqué en amont, backlog à
     facturer). Un devis déjà facturé (au moins une ``Facture`` via
-    ``devis.factures``) est ignoré. Lecture seule."""
+    ``devis.factures``) est ignoré. Lecture seule.
+
+    VNT88 — les candidats sont LES ventes signées en vigueur
+    (``devis_signes_en_vigueur`` : une version remplacée n'est jamais
+    rappelée) ; « facturé » = une facture ÉMISE : un devis dont la seule
+    facture est ANNULÉE (ou un brouillon, prévu) est rappelé."""
     from datetime import timedelta
 
     from django.utils import timezone
-
-    from .models import Devis
 
     today = today or timezone.now().date()
     seuil = today - timedelta(days=jours)
 
     candidats = (
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                date_acceptation__isnull=False,
+        _ventes_signees_non_facturees(company)
+        .filter(date_acceptation__isnull=False,
                 date_acceptation__lte=seuil)
-        .exclude(factures__isnull=False)
-        .distinct()
     )
     return list(candidats)
+
+
+def _ventes_signees_non_facturees(company):
+    """VNT88 — ventes signées en vigueur sans facture ÉMISE (QuerySet)."""
+    from django.db.models import Exists, OuterRef
+
+    from .models import Facture
+    from .selectors import devis_signes_en_vigueur
+    from .vente_facturation import STATUTS_EMIS
+    emises = Facture.objects.filter(company=company, devis_id=OuterRef('pk'),
+                                    statut__in=STATUTS_EMIS)
+    return devis_signes_en_vigueur(company).exclude(Exists(emises))
 
 
 def tranche_facturee(devis, type_facture):
@@ -706,19 +718,17 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
     pipeline probabiliste NTFPA11 — un devis accepté sort automatiquement du
     pipeline (son lead passe SIGNED), donc pas de double-compte. Lecture seule ;
     renvoie ``{'YYYY-MM': Decimal}``.
+
+    VNT88 — même périmètre que ``devis_a_facturer`` : ventes signées en
+    vigueur, sans facture ÉMISE (une annulée ou un brouillon n'y suffit pas).
     """
     from decimal import Decimal
 
-    from .models import Devis
-
     candidats = (
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                date_acceptation__isnull=False,
+        _ventes_signees_non_facturees(company)
+        .filter(date_acceptation__isnull=False,
                 date_acceptation__gte=mois_debut,
                 date_acceptation__lte=mois_fin)
-        .exclude(factures__isnull=False)
-        .distinct()
     )
     # APRF12 — `devis_avec_totaux` (APRF7) : `lignes__produit`, ce que lit
     # `Devis.total_ttc` (avec `lignes` seul : +1/+2 requêtes par devis).
