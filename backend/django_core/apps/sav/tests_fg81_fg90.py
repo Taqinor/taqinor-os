@@ -114,6 +114,15 @@ class TestSavSlaSettings(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn('sla_response_days', r.data)
 
+    def test_singleton_sans_pagination_declaree(self):
+        # CI #956 (fuzz « accepted schema-violating », ?page_size=null) : le
+        # singleton ne pagine pas, le schéma ne déclare donc plus page_size.
+        from apps.sav.views import SavSlaSettingsViewSet
+        self.assertIsNone(SavSlaSettingsViewSet.pagination_class)
+        r = self.api.get('/api/django/sav/sla-settings/?page_size=null')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('sla_response_days', r.data)
+
     def test_api_update_singleton(self):
         r = self.api.post('/api/django/sav/sla-settings/', {
             'sla_response_days': 2,
