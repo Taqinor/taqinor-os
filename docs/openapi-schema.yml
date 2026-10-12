@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7570, components: 3351}
+counts: {paths: 4818, operations: 7570, components: 3365}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -457,7 +457,7 @@ operations:
 - post /api/django/auth/2fa/setup/ -> django_auth_2fa_setup_create
 - get /api/django/auth/2fa/status/ -> django_auth_2fa_status_retrieve
 - post /api/django/auth/change-password/ -> django_auth_change_password_create
-- get /api/django/auth/console/tenants/ -> django_auth_console_tenants_retrieve
+- get /api/django/auth/console/tenants/ -> django_auth_console_tenants_list
 - post /api/django/auth/console/tenants/creer/ -> django_auth_console_tenants_creer_create
 - post /api/django/auth/console/tenants/{id}/note/ -> django_auth_console_tenants_note_create
 - post /api/django/auth/console/tenants/{id}/statut/ -> django_auth_console_tenants_statut_create
@@ -4281,7 +4281,7 @@ operations:
 - post /api/v1/auth/2fa/setup/ -> v1_auth_2fa_setup_create
 - get /api/v1/auth/2fa/status/ -> v1_auth_2fa_status_retrieve
 - post /api/v1/auth/change-password/ -> v1_auth_change_password_create
-- get /api/v1/auth/console/tenants/ -> v1_auth_console_tenants_retrieve
+- get /api/v1/auth/console/tenants/ -> v1_auth_console_tenants_list
 - post /api/v1/auth/console/tenants/creer/ -> v1_auth_console_tenants_creer_create
 - post /api/v1/auth/console/tenants/{id}/note/ -> v1_auth_console_tenants_note_create
 - post /api/v1/auth/console/tenants/{id}/statut/ -> v1_auth_console_tenants_statut_create
@@ -9404,11 +9404,16 @@ components:
 - AttestationRE
 - AttestationRERequest
 - AttesterRequest
+- AuditAnalyticsReponse
+- AuditChurnObjet
+- AuditCompteJournalier
 - AuditLog
 - AuditLogActionEnum
 - AuditObjectHistory
 - AuditPortalAccessEvents
+- AuditRepartitionAction
 - AuditSecurityEvents
+- AuditTopUtilisateur
 - AuthExtraEnum
 - AutoRemplirEnum
 - AutomationApproval
@@ -9605,6 +9610,8 @@ components:
 - ChampSignature
 - ChampSignatureRequest
 - ChampSignatureTypeChampEnum
+- ChangePasswordReponse
+- ChangePasswordRequeteRequest
 - ChangelogEntry
 - ChangelogEntryCategorieEnum
 - ChangelogEntryRequest
@@ -12063,6 +12070,7 @@ components:
 - SessionComptage
 - SessionComptageRequest
 - SessionImpersonation
+- SessionRevoqueeReponse
 - SettingsAuditLog
 - SeuilApprobationBCF
 - SeuilApprobationBCFRequest
@@ -12239,6 +12247,10 @@ components:
 - TemplateKeyEnum
 - TenantConsoleCreateReponse
 - TenantConsoleCreateRequeteRequest
+- TenantConsoleListeReponse
+- TenantConsoleNoteRequeteRequest
+- TenantConsoleStatutRequeteRequest
+- TenantConsoleUsage
 - TenantTheme
 - TenantThemeRequest
 - TenantUsageSnapshot
@@ -12304,6 +12316,8 @@ components:
 - TwoFactorDisableRequeteRequest
 - TwoFactorEnableReponse
 - TwoFactorEnableRequeteRequest
+- TwoFactorSetupReponse
+- TwoFactorStatutReponse
 - TypeAccesEnum
 - TypeAchatEnum
 - TypeActionEnum
