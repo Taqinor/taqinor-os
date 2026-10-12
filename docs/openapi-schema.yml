@@ -12006,8 +12006,7 @@ components:
 - SavEscaladerRequeteRequest
 - SavFacturerReponseA
 - SavFacturerReponseB
-- SavFacturerRequeteARequest
-- SavFacturerRequeteBRequest
+- SavFacturerRequeteRequest
 - SavFcrExclusions
 - SavFcrInsight
 - SavFcrTicket
@@ -12019,6 +12018,7 @@ components:
 - SavLogAppelReponse
 - SavLogAppelRequeteRequest
 - SavMettreAuRebutRequeteRequest
+- SavNePlusSuivreReponse
 - SavNoterRequeteRequest
 - SavParetoPannes
 - SavPartageQrReponse
