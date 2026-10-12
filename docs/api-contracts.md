@@ -1406,12 +1406,8 @@
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: updateUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
     champs: actif, code, id, libelle
-- frontend/src/api/portailApi.js :: corriger -> /api/django/portail/jalons-chantier-portail/<>  [JalonChantierPortailSerializer]
-    champs: atteint, chantier_id, cle_phase, date_creation, date_jalon, id, libelle, ordre
 - frontend/src/api/portailApi.js :: patch -> /api/django/portail/comptes-portail/<>  [ComptePortailClientSerializer]
     champs: actif, client, date_creation, derniere_connexion, email, id, token_apercu
-- frontend/src/api/portailApi.js :: supprimer -> /api/django/portail/jalons-chantier-portail/<>  [JalonChantierPortailSerializer]
-    champs: atteint, chantier_id, cle_phase, date_creation, date_jalon, id, libelle, ordre
 - frontend/src/api/recordsApi.js :: createTag -> /api/django/records/tags  [TagSerializer]
     champs: couleur, created_at, id, nom
 - frontend/src/api/recordsApi.js :: deleteTag -> /api/django/records/tags/<>  [TagSerializer]

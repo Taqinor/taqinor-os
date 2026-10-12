@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4822, operations: 7582, components: 3382}
+counts: {paths: 4826, operations: 7586, components: 3382}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2489,6 +2489,8 @@ operations:
 - delete /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_destroy
 - get /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_retrieve
 - patch /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_partial_update
+- post /api/django/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> django_portail_jalons_chantier_portail_marquer_atteint_create
+- post /api/django/portail/jalons-chantier-portail/{id}/marquer_non_atteint/ -> django_portail_jalons_chantier_portail_marquer_non_atteint_create
 - get /api/django/portail/ma-performance/ -> django_portail_ma_performance_retrieve
 - get /api/django/portail/ma-preference/ -> django_portail_ma_preference_retrieve
 - put /api/django/portail/ma-preference/ -> django_portail_ma_preference_update
@@ -6319,6 +6321,8 @@ operations:
 - delete /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_destroy
 - get /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_retrieve
 - patch /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_partial_update
+- post /api/v1/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> v1_portail_jalons_chantier_portail_marquer_atteint_create
+- post /api/v1/portail/jalons-chantier-portail/{id}/marquer_non_atteint/ -> v1_portail_jalons_chantier_portail_marquer_non_atteint_create
 - get /api/v1/portail/ma-performance/ -> v1_portail_ma_performance_retrieve
 - get /api/v1/portail/ma-preference/ -> v1_portail_ma_preference_retrieve
 - put /api/v1/portail/ma-preference/ -> v1_portail_ma_preference_update

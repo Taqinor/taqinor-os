@@ -60,9 +60,6 @@ Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for fun
 Warning|AuditLogViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|BackgroundJobViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|ChangelogViewSet > ChangelogEntrySerializer|unable to resolve type hint for function "get_lu". Consider using a type hint or @extend_schema_field. Defaulting to str
-Warning|ConsentRecordViewSet > ConsentRecordSerializer|Encountered # components with identical names "ConsentRecord" and different identities <class 'core.serializers.ConsentR
-Warning|ConsentRecordViewSet > ConsentRecordSerializer|Encountered # components with identical names "ConsentRecordRequest" and different identities <class 'core.serializers.C
-Warning|ConsentRecordViewSet|Encountered # components with identical names "PaginatedConsentRecordList" and different identities <class 'core.seriali
 Warning|EquipementViewSet|could not derive type of path parameter "downtime_id" because model "apps.sav.models.Equipement" contained no such field
 Warning|LeadViewSet|could not derive type of path parameter "activite_id" because model "apps.crm.models.Lead" contained no such field. Cons
 Warning|MesDevisPortailViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
