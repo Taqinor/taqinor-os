@@ -6,9 +6,9 @@ import path from 'node:path'
 import {
   espions, PAS_REPONSE_POSE, EMPRISE_REPONSE_POSE,
   verifierSectionEcrite, verifierLectureEnEchec, verifierSectionPousseeDansAtelier,
-} from '../../test/fixtures/calepinageApiMock'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
-import { SAISIE_SOL } from '../../test/fixtures/saisiesSurfacePose'
+} from '../../../test/fixtures/calepinageApiMock'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { SAISIE_SOL } from '../../../test/fixtures/saisiesSurfacePose'
 
 /* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
    (que la configuration vitest fixe à `frontend/`) et on remonte jusqu'à la
@@ -40,7 +40,7 @@ function racineDepot() {
 
 // ACAL345 — la doublure partagée de `calepinageApi` (document + `moteur.pose`).
 const { layout, enregistrerLayoutCalepinage, enregistrerSectionLayout, pose } = espions
-vi.mock('../../api/calepinageApi', async () => (await import('../../test/fixtures/calepinageApiMock')).apiDocument({ moteur: true }))
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiDocument({ moteur: true }))
 
 /* CALX50 — `@roofpro/scene3d` porte la couche WebGL (Three + MapLibre) : en CI
  * (job frontend-vitest-shard) seul `frontend/node_modules` est installé, donc
@@ -108,10 +108,10 @@ vi.mock('@roofpro/scene3d', () => ({
   construireChampPose: (...args) => construireChampPose(...args),
 }))
 
-const { default: ModeTerrain } = await import('./ModeTerrain')
-const { demandeMoteur, documentTerrain, planVue2D, AXE_AUTO, motifChampVide, motifRefus } = await import('./ModeTerrain.helpers')
-const { pasMesure, tauxOccupation, empriseTablesM2, contourTerrain } = await import('./surfacePose')
-const { formatCote } = await import('./plan2d')
+const { default: ModeTerrain } = await import('../ModeTerrain')
+const { demandeMoteur, documentTerrain, planVue2D, AXE_AUTO, motifChampVide, motifRefus } = await import('../ModeTerrain.helpers')
+const { pasMesure, tauxOccupation, empriseTablesM2, contourTerrain } = await import('../surfacePose')
+const { formatCote } = await import('../plan2d')
 
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
  *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
@@ -446,7 +446,7 @@ describe('CALX50 — l’écran dessine le champ rendu par le moteur', () => {
 
 describe('CAL89 — la route est déclarée dans le module', () => {
   it('`/calepinage/:id/terrain` existe et monte ModeTerrain', async () => {
-    const config = (await import('./module.config')).default
+    const config = (await import('../module.config')).default
     const route = config.routes.find((r) => r.path === '/calepinage/:id/terrain')
     expect(route).toBeTruthy()
     expect(route.component).toBeTruthy()

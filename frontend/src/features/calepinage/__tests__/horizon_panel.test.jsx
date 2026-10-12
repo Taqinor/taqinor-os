@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { reponseContrat, exempleContrat } from '../../test/fixtures/contractSamples'
-import { espions } from '../../test/fixtures/calepinageApiMock'
+import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
+import { espions } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN : au moins deux points pour s'activer, jamais un
@@ -17,11 +17,11 @@ import { espions } from '../../test/fixtures/calepinageApiMock'
 
 // ACAL345 — la doublure partagée de `calepinageApi` (document + `horizon`).
 const { layout, enregistrerLayoutCalepinage, enregistrerSectionLayout, horizon } = espions
-vi.mock('../../api/calepinageApi', async () => (await import('../../test/fixtures/calepinageApiMock')).apiDocument({ horizon: true }))
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiDocument({ horizon: true }))
 
 const {
   default: HorizonPanel,
-} = await import('./HorizonPanel')
+} = await import('../HorizonPanel')
 const {
   sortedHorizonPoints, horizonHeightAtAzimuth, horizonMaxHeightDeg, hourlyHorizonFactors, maskedHourCount,
 } = await import('@rooflib/horizonEngine')
@@ -354,7 +354,7 @@ describe('CAL92 — bouton « Récupérer depuis PVGIS »', () => {
 
 describe('CAL93 — l’écran est ATTEIGNABLE', () => {
   it('le module déclare la route `/calepinage/:id/horizon` avec ses rôles', async () => {
-    const { default: config } = await import('./module.config.jsx')
+    const { default: config } = await import('../module.config.jsx')
     const route = config.routes.find((r) => r.path === '/calepinage/:id/horizon')
     expect(route, 'route horizon absente du module').toBeTruthy()
     expect(Array.isArray(route.roles) && route.roles.length > 0).toBe(true)

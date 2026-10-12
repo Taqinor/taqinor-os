@@ -6,8 +6,8 @@ import path from 'node:path'
 import {
   espions, PAS_REPONSE_POSE, EMPRISE_REPONSE_POSE,
   verifierSectionEcrite, verifierLectureEnEchec, verifierSectionPousseeDansAtelier,
-} from '../../test/fixtures/calepinageApiMock'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+} from '../../../test/fixtures/calepinageApiMock'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
    (fixé à `frontend/` par la configuration vitest) et on remonte jusqu'à la
@@ -39,7 +39,7 @@ function racineDepot() {
 
 // ACAL345 — la doublure partagée de `calepinageApi` (document + `moteur.pose`).
 const { layout, enregistrerLayoutCalepinage, enregistrerSectionLayout, pose } = espions
-vi.mock('../../api/calepinageApi', async () => (await import('../../test/fixtures/calepinageApiMock')).apiDocument({ moteur: true }))
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiDocument({ moteur: true }))
 
 /* CALX51 — `@roofpro/scene3d` porte la couche WebGL (Three + MapLibre) : en CI
  * (job frontend-vitest-shard) seul `frontend/node_modules` est installé, donc
@@ -119,12 +119,12 @@ vi.mock('@roofpro/scene3d', () => ({
   construireOmbriere: (...args) => construireOmbriere(...args),
 }))
 
-const { default: Ombriere } = await import('./Ombriere')
-const { totauxParBatiment, coupeOmbriere } = await import('./Ombriere.helpers')
-const { documentSurfacePose } = await import('./surfacePose')
+const { default: Ombriere } = await import('../Ombriere')
+const { totauxParBatiment, coupeOmbriere } = await import('../Ombriere.helpers')
+const { documentSurfacePose } = await import('../surfacePose')
 /** ACAL25 — un seul survivant : l'ombrière est `documentSurfacePose(…, 'ombriere')`. */
 const documentOmbriere = (saisie, reponse) => documentSurfacePose(saisie, reponse, 'ombriere')
-const { formatCote } = await import('./plan2d')
+const { formatCote } = await import('../plan2d')
 
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
  *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
@@ -479,7 +479,7 @@ describe('CALX51 — l’écran lève la couverture à la hauteur SAISIE, ou pas
 
 describe('CAL91 — la route est déclarée dans le module', () => {
   it('`/calepinage/:id/ombriere` existe et monte Ombriere', async () => {
-    const config = (await import('./module.config')).default
+    const config = (await import('../module.config')).default
     const route = config.routes.find((r) => r.path === '/calepinage/:id/ombriere')
     expect(route).toBeTruthy()
     expect(route.component).toBeTruthy()
