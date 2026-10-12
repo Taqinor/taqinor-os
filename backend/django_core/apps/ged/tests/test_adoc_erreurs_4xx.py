@@ -253,6 +253,10 @@ class Enf7ContratGedTests(TestCase):
         self.assertNotIn('PUT', resp['Allow'])
         resp = self.api.patch(f'{BASE}versions/', {}, format='json')
         self.assertEqual(resp.status_code, 405, resp.content)
+        # PUT sur une route de LISTE (aucun gestionnaire) : 405 aussi.
+        resp = self.api.put(f'{BASE}cabinets/', {'nom': 'X'},
+                            format='multipart')
+        self.assertEqual(resp.status_code, 405, resp.content)
         # Une méthode SERVIE garde le 400 « Objet JSON attendu ».
         resp = self.api.post(f'{BASE}cabinets/', [1], format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
