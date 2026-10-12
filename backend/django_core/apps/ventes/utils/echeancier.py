@@ -1041,52 +1041,49 @@ def solde_devis(devis):
     partielle, d'autant plus trompeuse qu'elle est servie sur l'écran devis
     (``serializers.py``), donc potentiellement sous les yeux du client. On LIT
     désormais la propriété — les trois divergences se ferment d'un coup."""
-    from apps.ventes.utils.options import option_totaux
-    actives = factures_actives(devis)
-    total = Decimal(str(option_totaux(devis)['ttc']))
-    facture = sum((Decimal(str(f.total_ttc)) for f in actives), Decimal('0'))
-    paye = sum(
-        (Decimal(str(f.montant_paye)) for f in actives),
-        Decimal('0'),
-    )
-    # Avoirs (notes de crédit) actifs : réduisent le restant dû. Aucun avoir
-    # → 0 → solde historique strictement inchangé.
-    avoirs = sum(
-        (Decimal(str(a.total_ttc))
-         for f in actives for a in f.avoirs.all() if a.statut != 'annulee'),
-        Decimal('0'),
-    )
-    # ATOT7 (C-ATOT-005) — LA définition unique du reste (D-ATOT-4) : le dû
-    # des factures actives (``Facture.montant_du`` : payé valide, avoirs,
-    # notes de débit, retenues subies, abandon) + ce qui reste à FACTURER
-    # (TTC du devis − facturé net des avoirs, borné à 0). L'ancienne formule
-    # ``total − payé − avoirs`` comptait deux fois un avoir de révision
-    # (déjà sorti du total révisé) et ignorait notes de débit et RAS.
-    du = sum((Decimal(str(f.montant_du)) for f in actives), Decimal('0'))
-    # ATOT36 — le reste à facturer suit EXACTEMENT ``next_tranche`` : seuls
-    # les avoirs de correction y sont remis (décision fondateur 10/10).
-    a_facturer = total - (facture - sum(
-        (Decimal(str(a.total_ttc)) for a in avoirs_correction(actives)),
-        Decimal('0')))
-    restant = du + (a_facturer if a_facturer > 0 else Decimal('0'))
-    # ATOT2 — ``tranches_facturees`` ne compte plus que les factures de
-    # TRANCHE (la complète et la facture de BC n'en sont pas) ; la porte
-    # suivante est DITE par le serveur (contrat ``devis_solde.json``).
-    from apps.ventes.selectors_facturation import est_facture_de_tranche
-    tranches = [f for f in actives if est_facture_de_tranche(f, devis)]
-    porte = porte_facturation(devis, actives=actives)
+    # VNT19 — PROJECTION SCALAIRE de ``vente_facturation.plan_facturation``
+    # (toute la chaîne de versions, les quatre portes) : aucune somme propre.
+    # ``facture`` = ÉMIS net des avoirs de CORRECTION (un brouillon est
+    # prévu, jamais facturé) ; ``emis`` / ``brouillons`` / ``reste_a_facturer``
+    # = clés VNT5 (contrat ``devis_solde.json``).
+    from apps.ventes.vente_facturation import STATUTS_EMIS, plan_facturation
+    plan = plan_facturation(devis)
+    parts = plan['factures_parts']
+    zero = Decimal('0')
+    emises = [(f, r) for f, r in parts if f.statut in STATUTS_EMIS]
+    paye = sum((Decimal(str(f.montant_paye)) * r for f, r in parts), zero)
+    # Avoirs (notes de crédit) actifs : réduisent le restant dû.
+    avoirs = sum((Decimal(str(a.total_ttc)) * r for f, r in parts
+                  for a in f.avoirs.all() if a.statut != 'annulee'), zero)
+    # ATOT7 (D-ATOT-4) — le reste DÛ = dû des factures ÉMISES (payé valide,
+    # avoirs, notes de débit, retenues, abandon : ``Facture.montant_du``) +
+    # ce qui reste à facturer (prix − émis net des corrections, borné à 0)
+    # = prix − payé − avoirs de réduction (geste, retour) sur une vente
+    # ordinaire. Un brouillon n'y change rien.
+    du = sum((Decimal(str(f.montant_du)) * r for f, r in emises), zero)
+    a_facturer = plan['prix_convenu_ttc'] - plan['emis_net']
+    restant = du + (a_facturer if a_facturer > 0 else zero)
+    porte = porte_facturation(devis)
     return {
-        'total_ttc': _q(total),
-        'facture': _q(facture),
+        'total_ttc': plan['prix_convenu_ttc'],
+        'facture': plan['emis_net'],
         'paye': _q(paye),
         'avoirs': _q(avoirs),
         'restant': _q(restant),
-        'tranches_total': len(schedule_for_devis(devis)),
-        'tranches_facturees': len(tranches),
+        'tranches_total': len(plan['tranches']),
+        # ATOT2 / VNT19 — tranches ÉMISES seulement (brouillon exclu ; la
+        # complète et la facture de BC ne sont pas des tranches).
+        'tranches_facturees': sum(1 for t in plan['tranches']
+                                  if t['statut'] == 'emise'),
         'porte_facturation': porte,
-        # AMET9 (C-AMET-002) — « plus rien à facturer » DIT par le serveur :
-        # complète / BC / consolidée ou toutes les tranches = porte « aucune ».
-        'facturation_terminee': porte == 'aucune',
+        # AMET9 / VNT19 — « plus rien à facturer » : plan plein (émis +
+        # brouillons = prix convenu) ou porte « aucune ».
+        'facturation_terminee': (porte == 'aucune' or (
+            plan['prix_convenu_ttc'] > 0 and plan['reste_a_facturer'] <= 0)),
+        'emis': _q(sum((Decimal(str(f.total_ttc)) * r for f, r in emises),
+                       zero)),
+        'brouillons': plan['brouillons'],
+        'reste_a_facturer': plan['reste_a_facturer'],
     }
 
 

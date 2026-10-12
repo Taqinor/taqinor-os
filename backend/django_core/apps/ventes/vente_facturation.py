@@ -360,4 +360,7 @@ def plan_facturation(devis, option=None, lignes=None) -> dict:
         'reste_a_facturer': _q(reste if reste > 0 else ZERO),
         'prochaine': prochaine,
         'hors_tranche': [f.pk for f, _r in hors],
+        # (facture, part) vivantes de la vente — lecteurs internes (solde,
+        # etat_vente) ; jamais sérialisé tel quel.
+        'factures_parts': parts,
     }
