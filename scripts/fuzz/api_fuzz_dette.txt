@@ -1680,3 +1680,17 @@ API accepted schema-violating request|POST /api/django/ventes/economie-ci/previe
 API accepted schema-violating request|PUT /api/django/crm/vues-enregistrees/{id}/
 Server error|POST /api/django/crm/leads/bulk/
 Server error|POST /api/django/crm/public/booking/{token}/reserve/
+# VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
+API accepted schema-violating request|POST /api/django/core/paiements-en-ligne/
+API accepted schema-violating request|POST /api/django/ventes/devis/{id}/lots/
+API accepted schema-violating request|POST /api/django/ventes/economie-pompage/preview/
+API accepted schema-violating request|POST /api/django/ventes/etude-ci/preview/
+API rejected schema-compliant request|PATCH /api/django/core/paiements-en-ligne/{id}/
+API rejected schema-compliant request|POST /api/django/ventes/packs-asbuilt/
+API rejected schema-compliant request|PUT /api/django/core/theme/courant/
+Response violates schema|GET /api/django/core/paiements-en-ligne/
+Response violates schema|GET /api/django/core/paiements-en-ligne/{id}/
+Response violates schema|PATCH /api/django/ventes/parametrages-relance-client/{id}/
+Response violates schema|POST /api/django/core/paiements-en-ligne/
+Server error|POST /api/django/crm/relance-etapes/{id}/reporter/
+Server error|POST /api/django/ventes/devis/auto/
