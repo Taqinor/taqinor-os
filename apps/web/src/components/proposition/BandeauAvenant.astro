@@ -1,0 +1,104 @@
+---
+/**
+ * VNT72 — le bandeau « Avenant à <V1> — nouveau prix » de la page publique
+ * /proposition, puis sa confirmation.
+ *
+ * Il se monte en tête de la page, sous le jeton du client, UNIQUEMENT quand
+ * `proposal_data` porte la clé additive `avenant` (VNT61 ; absente sur une
+ * proposition qui n'est pas un avenant ⇒ AUCUN rendu, pas même un conteneur
+ * vide). Tout le texte vient de `lib/avenant.ts` (pur, testé sur les exemples du
+ * contrat) : la page ne calcule rien.
+ *
+ *  - `data-avenant-etat="a_signer"` : le titre + la phrase d'invitation ; la
+ *    confirmation est rendue CACHÉE juste dessous.
+ *  - `data-avenant-etat="signe"` : la confirmation datée (le client revient sur
+ *    son lien après avoir signé).
+ *
+ * Le seul script bascule de « à signer » à « signé » quand la page révèle son
+ * écran de succès (`#sign-success`, levé par l'acceptation) — sans recharger et
+ * sans rien ajouter au script de 11 800 lignes de la page.
+ */
+import { avenantVue, lireAvenant } from '../../lib/avenant';
+
+interface Props {
+  /** La valeur de la clé `avenant` de `proposal_data` (pas le document entier). */
+  avenant?: unknown;
+}
+
+const vue = avenantVue(lireAvenant(Astro.props.avenant));
+---
+
+{vue && (
+  <section id="avenant" class="mx-auto max-w-4xl px-5 pt-8 sm:px-8" data-avenant data-avenant-etat={vue.etat}>
+    <div
+      class="cine-card rounded-xl p-5 sm:p-6"
+      style="border-color: rgb(232 181 74 / 0.4)"
+      data-avenant-bloc="principal"
+    >
+      <p
+        class="fig text-xl text-brass-300"
+        data-i18n
+        data-fr={vue.titre.fr}
+        data-en={vue.titre.en}
+        data-ar={vue.titre.ar}
+        data-avenant-titre
+      >{vue.titre.fr}</p>
+      <p
+        class="v2-body mt-1"
+        data-i18n
+        data-fr={vue.corps.fr}
+        data-en={vue.corps.en}
+        data-ar={vue.corps.ar}
+        data-avenant-corps
+      >{vue.corps.fr}</p>
+    </div>
+    {vue.etat === 'a_signer' && (
+      <div
+        class="cine-card mt-3 rounded-xl p-5 sm:p-6"
+        style="border-color: rgb(232 181 74 / 0.4)"
+        data-avenant-bloc="confirmation"
+        hidden
+      >
+        <p
+          class="fig text-xl text-brass-300"
+          data-i18n
+          data-fr={vue.confirmation.titre.fr}
+          data-en={vue.confirmation.titre.en}
+          data-ar={vue.confirmation.titre.ar}
+        >{vue.confirmation.titre.fr}</p>
+        <p
+          class="v2-body mt-1"
+          data-i18n
+          data-fr={vue.confirmation.corps.fr}
+          data-en={vue.confirmation.corps.en}
+          data-ar={vue.confirmation.corps.ar}
+        >{vue.confirmation.corps.fr}</p>
+      </div>
+    )}
+  </section>
+)}
+
+{vue && vue.etat === 'a_signer' && (
+  <script is:inline>
+    function brancherAvenant() {
+      var bandeau = document.getElementById('avenant');
+      var succes = document.getElementById('sign-success');
+      if (!bandeau || !succes) return;
+      var principal = bandeau.querySelector('[data-avenant-bloc="principal"]');
+      var confirmation = bandeau.querySelector('[data-avenant-bloc="confirmation"]');
+      function basculer() {
+        if (succes.hidden) return;
+        if (principal) principal.hidden = true;
+        if (confirmation) confirmation.hidden = false;
+        bandeau.setAttribute('data-avenant-etat', 'signe');
+        obs.disconnect();
+      }
+      var obs = new MutationObserver(basculer);
+      obs.observe(succes, { attributes: true, attributeFilter: ['hidden'] });
+      basculer();
+    }
+    // `#sign-success` est plus bas dans la page que ce bandeau : on attend le DOM.
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', brancherAvenant);
+    else brancherAvenant();
+  </script>
+)}
