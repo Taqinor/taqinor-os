@@ -39,7 +39,7 @@ const reportingApi = {
   // N85 — Vue carte. Points géolocalisés ; filtres optionnels ?types=&statuts=.
   getGeoPoints: (params) => api.get('/reporting/geo/', { params }),
   // FG91 — Rapports sauvegardés (CRUD). company + owner posés côté serveur.
-  listSavedReports: () => api.get('/reporting/saved-reports/'),
+  listSavedReports: (params) => api.get('/reporting/saved-reports/', { params }),
   createSavedReport: (data) => api.post('/reporting/saved-reports/', data),
   updateSavedReport: (id, data) =>
     api.patch(`/reporting/saved-reports/${id}/`, data),

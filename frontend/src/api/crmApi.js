@@ -245,7 +245,7 @@ const crmApi = {
   getTags: () => api.get('/crm/tags/'),
   saveTag: (id, data) => id ? api.patch(`/crm/tags/${id}/`, data) : api.post('/crm/tags/', data),
   deleteTag: (id) => api.delete(`/crm/tags/${id}/`),
-  getMotifsPerte: () => api.get('/crm/motifs-perte/'),
+  getMotifsPerte: (params) => api.get('/crm/motifs-perte/', { params }),
   saveMotifPerte: (id, data) => id ? api.patch(`/crm/motifs-perte/${id}/`, data) : api.post('/crm/motifs-perte/', data),
   deleteMotifPerte: (id) => api.delete(`/crm/motifs-perte/${id}/`),
   // Canaux / sources de lead gérés (Paramètres → CRM). 'site_web' est protégé.

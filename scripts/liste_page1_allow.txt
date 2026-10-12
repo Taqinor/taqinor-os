@@ -43,9 +43,6 @@ frontend/src/features/portail/client/PortailClientSav.jsx::charger
 frontend/src/features/portail/client/PortailClientSav.jsx::voirFil
 frontend/src/features/portail/fournisseur/PortailFournisseurBcf.jsx::charger
 frontend/src/features/portail/partenaire/PortailPartenaireLeads.jsx::charger
-frontend/src/pages/Journal.jsx::run
-frontend/src/pages/Rapports.jsx::MesRapports
-frontend/src/pages/approbations/ApprobationsPage.jsx::load
 frontend/src/pages/crm/ClientForm.jsx::ClientForm
 frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour
 frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget
@@ -62,7 +59,6 @@ frontend/src/pages/crm/leads/AppointmentBooker.jsx::AppointmentBooker
 frontend/src/pages/crm/leads/PerduPopover.jsx::setOpen
 frontend/src/pages/crm/leads/PlanActiviteDialog.jsx::PlanActiviteDialog
 frontend/src/pages/crm/leads/SigneDialog.jsx::SigneDialog
-frontend/src/pages/ia/AgentActions.jsx::load
 frontend/src/pages/installations/AteliersPage.jsx::load
 frontend/src/pages/installations/ChantierPhotos.jsx::load
 frontend/src/pages/installations/ChantierPhotos.jsx::loadInterventionPhotos
@@ -139,15 +135,6 @@ frontend/src/pages/stock/ProduitDetail.jsx::useFicheTechnique
 frontend/src/pages/stock/StockList.jsx::applyStockView
 frontend/src/pages/stock/StockList.jsx::loadEmplacements
 frontend/src/pages/stock/StockList.jsx::loadTransferts
-frontend/src/pages/ventes/DevisList.jsx::chargerVariantes
-frontend/src/pages/ventes/DevisList.jsx::openRefusModal
-frontend/src/pages/ventes/DevisPresetPanel.jsx::ApplySection
-frontend/src/pages/ventes/DossiersReglementairesPage.jsx::changerRessource
-frontend/src/pages/ventes/ListesPrixPage.jsx::reload
-frontend/src/pages/ventes/NoteDebitDialog.jsx::NoteDebitDialog
-frontend/src/pages/ventes/RelancesPage.jsx::loadParametrages
-frontend/src/pages/ventes/RelancesPage.jsx::openParametrage
-frontend/src/pages/ventes/RemisesEncaissementPage.jsx::charger
 frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage
 frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage
 frontend/src/pages/visites/VisiteHistoriquePanel.jsx::VisiteHistoriquePanel

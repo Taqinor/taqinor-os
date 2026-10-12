@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, Inbox, Trash2, UserCog, XCircle } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import automationApi from '../../api/automationApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import api from '../../api/axios'
 import { formatMAD } from '../../lib/format'
 import {
@@ -74,13 +75,14 @@ function DelegationsTab() {
 
   const load = () => {
     setLoading(true)
+    // Toutes les pages (fetchAllPages), jamais la seule page 1.
     return Promise.all([
-      automationApi.getDelegations(),
-      api.get('/users/'),
+      fetchAllPages((page, extra) => automationApi.getDelegations({ page, ...extra }).then((r) => r.data)),
+      fetchAllPages((page, extra) => api.get('/users/', { params: { page, ...extra } }).then((r) => r.data)),
     ])
-      .then(([delegRes, usersRes]) => {
-        setDelegations(delegRes.data?.results ?? delegRes.data ?? [])
-        setUsers(usersRes.data?.results ?? usersRes.data ?? [])
+      .then(([delegRows, userRows]) => {
+        setDelegations(delegRows?.results ?? delegRows ?? [])
+        setUsers(userRows?.results ?? userRows ?? [])
       })
       .catch(() => toast.error('Chargement des délégations impossible.'))
       .finally(() => setLoading(false))
@@ -649,19 +651,21 @@ function DemandesAdHocTab() {
 
   const load = () => {
     setLoading(true)
+    const toutes = (appel) => fetchAllPages((page, extra) => appel({ page, ...extra }).then((r) => r.data))
     Promise.all([
-      automationApi.getApprovalRequestTypes(),
+      toutes(automationApi.getApprovalRequestTypes),
       // WIR261 — le cycle « complément d'information » (ZCTR8) restait
       // entièrement inatteignable : seul `status=pending` était chargé, les
       // demandes `info_requested` n'apparaissaient jamais. On charge les
       // deux statuts et on fusionne.
-      automationApi.getApprovalRequests({ status: 'pending' }),
-      automationApi.getApprovalRequests({ status: 'info_requested' }),
+      toutes((p) => automationApi.getApprovalRequests({ ...p, status: 'pending' })),
+      toutes((p) => automationApi.getApprovalRequests({ ...p, status: 'info_requested' })),
     ])
       .then(([t, d, di]) => {
-        setTypes(Array.isArray(t.data) ? t.data : (t.data?.results ?? []))
-        const pending = Array.isArray(d.data) ? d.data : (d.data?.results ?? [])
-        const infoRequested = Array.isArray(di.data) ? di.data : (di.data?.results ?? [])
+        const liste = (rows) => (Array.isArray(rows) ? rows : (rows?.results ?? []))
+        setTypes(liste(t))
+        const pending = liste(d)
+        const infoRequested = liste(di)
         setDemandes([...pending, ...infoRequested])
       })
       .catch(() => toast.error('Chargement impossible.'))
