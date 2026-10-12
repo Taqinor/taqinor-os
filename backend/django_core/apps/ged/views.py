@@ -2911,33 +2911,22 @@ class ArchivageLegalViewSet(TenantMixin,
         "retain_until": "<YYYY-MM-DD?>"}`. Le document est borné à la société
         (404 cross-société). `company`/`archive_par`/`version`/hash/object-lock
         sont posés côté serveur (jamais lus du corps)."""
-        document_id = request.data.get('document')
-        if not document_id:
-            return Response(
-                {'document': 'Le document à archiver est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 (api-fuzz) — corps validé par son schéma (ARCHIVAGE_CORPS) :
+        # `document: [null, null]` cassait `pk=` en 500 -> 400 nommé.
+        corps = type(oa.ARCHIVAGE_CORPS)(data=request.data)
+        corps.is_valid(raise_exception=True)
         # Borne à la société courante (jamais un document d'autrui).
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=document_id).first())
+                    .filter(pk=corps.validated_data['document']).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
                 status=status.HTTP_404_NOT_FOUND)
-        retain_until = None
-        raw_retain = request.data.get('retain_until')
-        if raw_retain not in (None, '', 'null'):
-            from django.utils.dateparse import parse_date
-            retain_until = parse_date(str(raw_retain))
-            if retain_until is None:
-                return Response(
-                    {'retain_until': 'Date invalide (format attendu : '
-                                     'AAAA-MM-JJ).'},
-                    status=status.HTTP_400_BAD_REQUEST)
         try:
             archivage = services.archiver_legalement(
                 document, user=request.user,
-                motif=(request.data.get('motif') or '').strip(),
-                retain_until=retain_until)
+                motif=(corps.validated_data.get('motif') or '').strip(),
+                retain_until=corps.validated_data.get('retain_until'))
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

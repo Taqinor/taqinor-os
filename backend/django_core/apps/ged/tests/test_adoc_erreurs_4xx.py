@@ -191,6 +191,13 @@ class Enf7ContratGedTests(TestCase):
             company=self.co, cabinet=self.cab, nom='R')
         self.api = auth(self.admin)
 
+    def test_archivage_corps_hors_schema_400(self):
+        # ENF11 (api-fuzz) — `document: [null, null]` répondait 500.
+        resp = self.api.post(f'{BASE}archivages-legaux/', {
+            'document': [None, None], 'motif': '',
+            'retain_until': '2000-01-01'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_identifiants_non_numeriques_jamais_500(self):
         for route in ('archivages-legaux/', 'legal-holds/'):
             resp = self.api.post(
