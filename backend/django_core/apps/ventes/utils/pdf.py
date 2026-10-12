@@ -722,11 +722,26 @@ def contexte_vente_facture(facture, langue='fr'):
     tete = devis_de_la_vente(facture.devis)
     etat = etat_vente(tete)
     part = part_vente_pdf(facture, tete, etat)
-    return {'objet_vente': objet_vente_pdf(facture),
-            'part_vente': part,
-            'prochaines_echeances': prochaines_echeances_pdf(part, etat),
-            'garanties_vente': garanties_pdf(facture, langue),
-            'situation_vente': situation_vente_pdf(tete, etat)}
+    blocs = {'objet_vente': objet_vente_pdf(facture),
+             'part_vente': part,
+             'prochaines_echeances': prochaines_echeances_pdf(part, etat),
+             'garanties_vente': garanties_pdf(facture, langue),
+             'situation_vente': situation_vente_pdf(tete, etat)}
+    if remise_negociee_pdf(facture):
+        blocs['remise_negociee'] = True
+    return blocs
+
+
+def remise_negociee_pdf(facture):
+    """VNT71 — la remise globale de la facture est celle d'un AVENANT
+    NÉGOCIÉ : son devis a un prédécesseur de révision ACCEPTÉ
+    (``selectors.predecesseur_accepte``, VNT51). La chaîne des totaux
+    l'imprime alors « Remise négociée » + montant, sans « (x %) » ; même
+    argent (remise % + arrondi ARRONDI-100), seul le libellé change."""
+    if not facture.devis_id or not (facture.remise_globale or 0) > 0:
+        return False
+    from apps.ventes.selectors import predecesseur_accepte
+    return predecesseur_accepte(facture.devis) is not None
 
 
 def _facture_render_data(facture) -> dict:
@@ -1149,6 +1164,22 @@ def assurer_numero_recu(paiement):
     raise IntegrityError('Numéro de reçu : trop de collisions concurrentes.')
 
 
+def vente_recu_pdf(paiement):
+    """VNT92 — « Reste dû sur la vente » du reçu d'un paiement sur une
+    facture de VENTE : ``{devis_reference, reste_du_ttc}`` lus d'``etat_vente``
+    (version qui fait foi ; ``reste_a_payer_ttc`` = dû des émises + reste à
+    facturer). ``None`` (ligne omise, reçu d'hier) sans facture ou sans
+    devis."""
+    facture = paiement.facture if paiement.facture_id else None
+    if facture is None or not facture.devis_id:
+        return None
+    from apps.ventes.domain.instantanes_facture import devis_de_la_vente
+    from apps.ventes.vente_facturation import etat_vente
+    tete = devis_de_la_vente(facture.devis)
+    return {'devis_reference': tete.reference,
+            'reste_du_ttc': etat_vente(tete)['reste_a_payer_ttc']}
+
+
 def generate_recu_pdf(paiement):
     """XFAC9 — quittance (reçu de paiement) PDF. Layout maison (PAS le moteur
     devis) : identité société, montant en chiffres ET en lettres, mode,
@@ -1184,6 +1215,7 @@ def generate_recu_pdf(paiement):
     context['affectations'] = affectations
     context['solde_restant'] = solde_restant
     context['montant_lettres'] = montant_en_lettres(paiement.montant)
+    context['vente_recu'] = vente_recu_pdf(paiement)
     _contexte_langue(context, client, company, traduit=True)
 
     html = _render_html('recu.html', context)
