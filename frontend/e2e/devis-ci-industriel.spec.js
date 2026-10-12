@@ -19,7 +19,8 @@
 // Base partagée, workers: 1 : nettoyage best-effort en afterAll.
 import { test, expect } from '@playwright/test'
 import {
-  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, listeDe, nombrePagesPdf, textePdf,
+  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, listeDe,
+  nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner,
 } from './helpers'
 
 const ANNEE_FACTURES = new Date().getFullYear() - 1
@@ -97,6 +98,8 @@ test('CIQ346 — créer (MT, 12 factures, taux d’actualisation déclaré), rou
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
   await page.getByTestId('btn-auto-remplir').click()
   await auto
+  // CAD177 — AGNR31 : les lignes « prix à renseigner » bloquent la création.
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
   // CAD177 — l'étude C&I part APRÈS la création, par la fusion
@@ -106,8 +109,7 @@ test('CIQ346 — créer (MT, 12 factures, taux d’actualisation déclaré), rou
   const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
     && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const cree = await (await creation).json()
+  const cree = await (await cliquerCreerDevis(page, creation)).json()
   await etudeEcrite
   etat.devisId = cree.id ?? cree.devis?.id
   expect(etat.devisId, 'identifiant du devis créé').toBeTruthy()
