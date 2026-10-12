@@ -10,6 +10,7 @@ aucun import de ``.selectors`` en tête (cycle).
 """
 
 
+import logging
 def conception_pour_lead(lead, company):
     """PV78 — la conception 3D la plus RÉCENTE d'un lead, en lecture seule.
 
@@ -68,6 +69,9 @@ def conception_pour_lead(lead, company):
     return {'kwc': kwc, 'image_url': image_url, 'calepinage': calepinage}
 
 
+logger = logging.getLogger(__name__)
+
+
 def _calepinage_ouvert_mesure(company, lead_id):
     """ACAL273 — ``(kwc, {id, statut})`` du calepinage OUVERT du lead, lu par
     ``apps.calepinage.selectors`` (import fonction-local, jamais les modèles) et
@@ -80,7 +84,8 @@ def _calepinage_ouvert_mesure(company, lead_id):
         if calepinage is None:
             return None
         mesure = mesures_du_calepinage(calepinage)
-    except Exception:  # noqa: BLE001 — une pastille ne casse jamais la fiche
+    except Exception as exc:  # noqa: BLE001 — une pastille ne casse jamais la fiche
+        logger.warning('ACAL273 : pastille kWc du lead %s indisponible : %s', lead_id, exc)
         return None
     kwc = (mesure or {}).get('kwc')
     if not kwc:

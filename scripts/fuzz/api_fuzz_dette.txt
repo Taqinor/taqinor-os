@@ -1706,3 +1706,12 @@ Server error|POST /api/django/core/data-explorer/run/
 Server error|POST /api/django/ventes/devis/{id}/replace-lines/
 Server error|POST /api/django/ventes/devis/from-layout/
 Server error|POST /api/django/ventes/factures/{id}/retour-client/
+# PR #984 (12/10/2026) — 7 constats PRÉ-EXISTANTS relevés par le tirage du job PR (périmètre calepinage/crm/ventes),
+# gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (les deux 500 crm = vrais bugs à corriger à la cause).
+API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/comparatif.xlsx/
+API rejected schema-compliant request|PATCH /api/django/calepinage/calepinages/{id}/
+API rejected schema-compliant request|PATCH /api/django/crm/canaux/{id}/
+API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/dupliquer/
+Response violates schema|GET /api/django/calepinage/calepinages/{id}/meteo-fichier/
+Server error|POST /api/django/crm/leads/export-xlsx/
+Server error|POST /api/django/crm/leads/{id}/locataire/
