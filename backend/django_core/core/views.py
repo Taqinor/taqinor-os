@@ -56,6 +56,7 @@ from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
+from .champs_stricts import ChaineStricte, EntierStrict
 from .mixins import TenantMixin
 from .parametres_requete import choix_ou_400
 from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
@@ -982,6 +983,21 @@ class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
 #: la rogner en silence (un utilisateur qui demande 50 000 lignes doit savoir
 #: qu'il n'en a reçu que 5 000).
 LIMITE_MAX_EXPLORATION = 5000
+_TEXTES = drf_serializers.ListField(child=ChaineStricte(), required=False)
+_OBJETS = drf_serializers.ListField(
+    child=drf_serializers.DictField(), required=False)
+_REQUETE_RUN = inline_serializer('DataExplorerRunRequete', {
+    'dataset': ChaineStricte(),
+    'select': _TEXTES,
+    'filters': drf_serializers.DictField(required=False),
+    'group_by': _TEXTES,
+    'aggregates': _OBJETS,
+    'formula_measures': _OBJETS,
+    'order': _TEXTES,
+    'order_by': _TEXTES,
+    'limit': EntierStrict(
+        required=False, min_value=1, max_value=LIMITE_MAX_EXPLORATION),
+})
 
 
 class DataExplorerRunView(APIView):
@@ -1010,20 +1026,7 @@ class DataExplorerRunView(APIView):
     permission_classes = [IsResponsableOrAdmin]
 
     @extend_schema(
-        request=inline_serializer('DataExplorerRunRequete', {
-            'dataset': drf_serializers.CharField(),
-            'select': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-            'filters': drf_serializers.DictField(required=False),
-            'group_by': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-            'aggregates': drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False),
-            'order': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-            'limit': drf_serializers.IntegerField(
-                required=False, min_value=1, max_value=5000),
-        }),
+        request=_REQUETE_RUN,
         responses=inline_serializer('DataExplorerRunReponse', {
             'dataset': drf_serializers.CharField(),
             'nb': drf_serializers.IntegerField(),
@@ -1032,43 +1035,18 @@ class DataExplorerRunView(APIView):
     def post(self, request):
         from .formula import FormulaError
 
-        corps = request.data or {}
-        dataset = corps.get('dataset')
-        if not dataset:
-            return Response({'detail': "Champ « dataset » requis."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        limite = corps.get('limit')
-        if limite not in (None, ''):
-            try:
-                limite = int(limite)
-            except (TypeError, ValueError):
-                return Response(
-                    {'detail': "Champ « limit » : un entier est attendu."},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if limite < 1:
-                return Response(
-                    {'detail': "Champ « limit » : doit valoir au moins 1."},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if limite > LIMITE_MAX_EXPLORATION:
-                return Response(
-                    {'detail': "Champ « limit » : %d lignes au maximum."
-                               % LIMITE_MAX_EXPLORATION},
-                    status=status.HTTP_400_BAD_REQUEST)
-        else:
-            limite = None
-
-        spec = {
-            'select': corps.get('select') or [],
-            'filters': corps.get('filters') or {},
-            'group_by': corps.get('group_by') or [],
-            'aggregates': corps.get('aggregates') or [],
-            'formula_measures': corps.get('formula_measures') or [],
-            # « order » est le mot de la spec NTDATA6 ; « order_by » celui du
-            # moteur — les deux sont acceptés, jamais un troisième.
-            'order_by': corps.get('order') or corps.get('order_by') or [],
-            'limit': limite,
-        }
+        # ERR-ENF11-FUZZ-CORE — corps validé par le serializer publié : un
+        # corps tableau levait AttributeError (500) ; « limit » non entier ou
+        # hors bornes = 400 par champ.
+        corps = corps_valide(request, _REQUETE_RUN)
+        dataset = corps['dataset']
+        spec = {cle: corps.get(cle) or [] for cle in (
+            'select', 'group_by', 'aggregates', 'formula_measures')}
+        spec['filters'] = corps.get('filters') or {}
+        # « order » est le mot de la spec NTDATA6 ; « order_by » celui du
+        # moteur — les deux sont acceptés, jamais un troisième.
+        spec['order_by'] = corps.get('order') or corps.get('order_by') or []
+        spec['limit'] = corps.get('limit')
         try:
             rows = data_explorer.run_query(
                 dataset, request.user.company, request.user, spec)

@@ -98,13 +98,28 @@ class RunEndpointTests(TestCase):
         reponse = self._post({'dataset': 'ntdata6_ds',
                               'limit': LIMITE_MAX_EXPLORATION + 1})
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn(str(LIMITE_MAX_EXPLORATION), reponse.data['detail'])
+        self.assertIn(str(LIMITE_MAX_EXPLORATION), reponse.data['limit'][0])
 
     def test_limite_invalide_refusee(self):
         for mauvaise in ('beaucoup', 0, -3):
             reponse = self._post({'dataset': 'ntdata6_ds', 'limit': mauvaise})
             self.assertEqual(reponse.status_code,
                              status.HTTP_400_BAD_REQUEST, mauvaise)
+
+    def test_corps_mal_forme_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE (api-fuzz « Server error ») : corps tableau,
+        # dataset non textuel, agrégat ou filtre illisible pour le champ.
+        for corps in ([None, None],
+                      {'dataset': [None, None]},
+                      {'dataset': 'ntdata6_ds', 'select': [0]},
+                      {'dataset': 'ntdata6_ds',
+                       'aggregates': [{'fn': [], 'field': 'id'}]},
+                      {'dataset': 'ntdata6_ds', 'formula_measures': [{}]},
+                      {'dataset': 'ntdata6_ds', 'filters': {'id': 'abc'}},
+                      {'dataset': 'ntdata6_ds', 'filters': {'id': {}}}):
+            reponse = self._post(corps)
+            self.assertEqual(reponse.status_code,
+                             status.HTTP_400_BAD_REQUEST, corps)
 
     def test_limite_respectee(self):
         reponse = self._post({'dataset': 'ntdata6_ds', 'select': ['id'],
