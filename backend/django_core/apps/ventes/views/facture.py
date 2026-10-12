@@ -1424,7 +1424,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Un retour ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        motif = (request.data.get('motif') or '').strip()
+        motif = valider_corps(request, D.RetourClientRequest)['motif'].strip()
         if not motif:
             return Response(
                 {'detail': 'Le motif du retour est obligatoire.'},
