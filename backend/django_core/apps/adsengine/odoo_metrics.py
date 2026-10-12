@@ -35,6 +35,9 @@ from django.db.models import Sum
 from .models import AdCampaignMirror, InsightSnapshot
 from .odoo_client import is_configured as odoo_is_configured
 from .odoo_selectors import signed_deals as odoo_signed_deals
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Note de limitation reprise à l'identique dans les réponses (front + diagnostic).
 ATTRIBUTION_GAP_NOTE = (
@@ -242,6 +245,7 @@ def odoo_signatures_by_ad(company, since=None, client=None):
         deals = odoo_signed_deals(
             since=since, client=client, company=company)  # ASEC40
     except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
+        logger.warning("odoo_metrics.odoo_signatures_by_ad : erreur ignorée (mode dégradé)", exc_info=True)
         deals = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]
 
@@ -327,6 +331,7 @@ def odoo_cost_per_signature(company, since=None, client=None):
         deals = odoo_signed_deals(
             since=since, client=client, company=company)  # ASEC40
     except Exception as exc:  # noqa: BLE001 — dégradation propre voulue (jamais un 500)
+        logger.warning("odoo_metrics.odoo_cost_per_signature : erreur ignorée (mode dégradé)", exc_info=True)
         deals = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]
     signatures = len(deals)

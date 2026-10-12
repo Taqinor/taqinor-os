@@ -92,7 +92,6 @@ frontend/src/pages/ia/AgentActions.jsx::load
 frontend/src/pages/installations/AteliersPage.jsx::load
 frontend/src/pages/installations/ChantierPhotos.jsx::load
 frontend/src/pages/installations/ChantierPhotos.jsx::loadInterventionPhotos
-frontend/src/pages/installations/DemandesAchatList.jsx::load
 frontend/src/pages/installations/DemandesAchatList.jsx::pickProduit
 frontend/src/pages/installations/InstallationDetail.jsx::loadContrats
 frontend/src/pages/installations/InstallationDetail.jsx::loadDossierReglementaire
@@ -177,7 +176,6 @@ frontend/src/pages/sav/TicketAdvancedPanel.jsx::creerPret
 frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi
 frontend/src/pages/sav/TicketChecklistPanel.jsx::load
 frontend/src/pages/sav/TicketWorksheetPanel.jsx::TicketWorksheetPanel
-frontend/src/pages/sav/TicketsPage.jsx::loadInterventions
 frontend/src/pages/stock/BonsCommandeFournisseur.jsx::ligneInitiale
 frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reload
 frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadEnRetard
@@ -196,9 +194,7 @@ frontend/src/pages/stock/FournisseursStock.jsx::reloadCategories
 frontend/src/pages/stock/InventairesAnnuels.jsx::reload
 frontend/src/pages/stock/ModelesBcf.jsx::reload
 frontend/src/pages/stock/MouvementsPage.jsx::load
-frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx::PaiementsFournisseurLedgerPage
 frontend/src/pages/stock/ProduitDetail.jsx::useFicheTechnique
-frontend/src/pages/stock/ProduitForm.jsx::setFicheCiField
 frontend/src/pages/stock/ProfilsSaisonniersSection.jsx::ProfilsSaisonniersSection
 frontend/src/pages/stock/ReceptionsFournisseur.jsx::reload
 frontend/src/pages/stock/RetoursFournisseur.jsx::RetoursFournisseur
@@ -220,8 +216,4 @@ frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage
 frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage
 frontend/src/pages/visites/VisiteHistoriquePanel.jsx::VisiteHistoriquePanel
 frontend/src/pages/visites/VisitesListPage.jsx::VisitesListPage
-# ADOC182 (2026-10-11) : lecture `.results` par helper local sans appel HTTP (`unpage`, `rows`) ;
-# sites constates au releve du jour, memes regles (fichier::fonction, decroissant).
-frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog
-frontend/src/features/ged/advanced/ReglesDossierPage.jsx::JournalDialog
-frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor
+# ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.

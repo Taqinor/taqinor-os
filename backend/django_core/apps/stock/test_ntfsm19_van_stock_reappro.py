@@ -114,6 +114,16 @@ class TestVanStockAReapprovisionner(TestCase):
             {}, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_creer_transfert_identifiants_non_entiers_400(self):
+        """ENF11 — un identifiant liste/texte répond 400, jamais 500."""
+        url = '/api/django/stock/emplacements/van-stock/creer-transfert/'
+        for corps in ({'produit_id': self.produit.id,
+                       'emplacement_id': [None, None]},
+                      {'produit_id': 'abc', 'emplacement_id': self.van.id},
+                      [None, None]):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+
     def test_isolation_societe(self):
         company2 = make_company('ntfsm19-co2', 'NTFSM19 Co 2')
         result = van_stock_a_reapprovisionner(company2)

@@ -495,6 +495,7 @@ def _capture_old_stage(sender, instance, **kwargs):
             old = lead_current_stage(
                 getattr(instance, 'company_id', None), instance.pk)
         except Exception:  # noqa: BLE001 — jamais casser le save
+            logger.warning("capi_crm._capture_old_stage : erreur ignorée (mode dégradé)", exc_info=True)
             old = None
     setattr(instance, _STASH_ATTR, old)
 

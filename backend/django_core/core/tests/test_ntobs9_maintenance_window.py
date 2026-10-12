@@ -3,7 +3,7 @@ avant qu'elles n'arrivent."""
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -211,3 +211,41 @@ class MaintenanceWindowPermissionTest(TestCase):
         fenetre.refresh_from_db()
         self.assertEqual(fenetre.statut, MaintenanceWindow.Statut.ANNULE)
         self.assertTrue(notify_mock.called)
+
+
+class AuditRegistryTest(SimpleTestCase):
+    """ENF20 — ``core.audit_registry`` : même inversion de dépendance que
+    ``core.notify_registry`` (``core`` n'importe jamais ``apps.audit``)."""
+
+    def setUp(self):
+        from core import audit_registry
+        self.registry = audit_registry
+        self._avant = (audit_registry._RECORD, audit_registry._CURRENT_USER)
+        audit_registry.desenregistrer()
+
+    def tearDown(self):
+        self.registry._RECORD, self.registry._CURRENT_USER = self._avant
+
+    def test_sans_enregistreur_no_op_et_log(self):
+        with self.assertLogs('core.audit_registry', level='DEBUG') as logs:
+            self.assertIsNone(self.registry.record('update', detail='x'))
+        self.assertIn('aucun enregistreur', logs.output[0])
+        self.assertIsNone(self.registry.current_user())
+
+    def test_enregistre_relaie_les_kwargs_tels_quels(self):
+        record_mock = mock.Mock(return_value=None)
+        user = object()
+        self.registry.enregistrer(record_mock, current_user=lambda: user)
+        self.registry.record(
+            'security_alert', user=None, company='co', detail='SOD : x')
+        record_mock.assert_called_once_with(
+            'security_alert', user=None, company='co', detail='SOD : x')
+        self.assertIs(self.registry.current_user(), user)
+
+    def test_kwarg_user_absent_reste_absent(self):
+        # ``recorder.record`` distingue « user non fourni » (acteur courant)
+        # de ``user=None`` (système) : le registre ne doit rien injecter.
+        record_mock = mock.Mock()
+        self.registry.enregistrer(record_mock)
+        self.registry.record('create', instance='i', detail='d')
+        self.assertNotIn('user', record_mock.call_args.kwargs)

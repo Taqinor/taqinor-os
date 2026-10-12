@@ -133,6 +133,9 @@ class ConfigPackageSerializer(serializers.ModelSerializer):
 
 
 class AdminOpsSettingsSerializer(serializers.ModelSerializer):
+    # ENF11 — null tant que les réglages par défaut ne sont pas enregistrés.
+    date_modification = serializers.DateTimeField(read_only=True, allow_null=True)
+
     class Meta:
         model = AdminOpsSettings
         fields = [

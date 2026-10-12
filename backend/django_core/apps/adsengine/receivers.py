@@ -43,6 +43,7 @@ def on_meta_lead_captured(sender, **kwargs):
             from apps.crm.selectors import normalize_phone_key
             phone_key = normalize_phone_key(telephone) or ''
         except Exception:  # noqa: BLE001 — la clé n'empêche jamais le miroir
+            logger.warning("receivers.on_meta_lead_captured : erreur ignorée (mode dégradé)", exc_info=True)
             phone_key = ''
 
     defaults = {

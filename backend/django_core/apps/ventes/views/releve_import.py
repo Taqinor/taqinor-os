@@ -68,7 +68,7 @@ def releve_dry_run(request):
     200: D.ReleveCommitResponse, 201: D.ReleveCommitResponse})
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
-@parser_classes([JSONParser, MultiPartParser, FormParser])
+@parser_classes([JSONParser])  # ENF11/D2 : le commit ne reçoit plus de fichier
 def releve_commit(request):
     """FG42 — Import effectif du relevé bancaire.
 

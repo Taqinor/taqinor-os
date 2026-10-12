@@ -23,6 +23,9 @@ from __future__ import annotations
 
 import os
 from decimal import ROUND_HALF_UP, Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["compute_deposit", "deposit_protection_message", "DEFAULT_RATE"]
 
@@ -40,7 +43,7 @@ def _read_rate() -> Decimal:
             if Decimal("0") < rate <= Decimal("1"):
                 return rate
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning("deposit._read_rate : erreur ignorée (mode dégradé)", exc_info=True)
     return DEFAULT_RATE
 
 

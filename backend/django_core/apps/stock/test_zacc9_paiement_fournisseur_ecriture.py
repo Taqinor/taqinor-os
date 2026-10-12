@@ -2,7 +2,7 @@
 Payment).
 
 Couvre :
-  * un paiement > solde dû est refusé (400) sur
+  * un paiement > solde dû est refusé (409) sur
     `factures-fournisseur/{id}/paiements/` (POST) ;
   * cross-company : une facture d'une autre société → 404.
   * AUD208 — le verrou `select_for_update` posé sur la facture AVANT de
@@ -84,7 +84,7 @@ class TestGardeSurPaiement(Zacc9Base):
     def test_paiement_superieur_au_solde_du_refuse(self):
         resp = self.api.post(self._paiements_url(), {
             'montant': '150', 'mode': 'virement'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_paiement_egal_au_solde_du_accepte(self):
         resp = self.api.post(self._paiements_url(), {
@@ -98,7 +98,7 @@ class TestGardeSurPaiement(Zacc9Base):
         # Reste dû = 20 ; tenter 50 doit être refusé.
         resp2 = self.api.post(self._paiements_url(), {
             'montant': '50', 'mode': 'virement'}, format='json')
-        self.assertEqual(resp2.status_code, 400, resp2.data)
+        self.assertEqual(resp2.status_code, 409, resp2.data)
 
     def test_reduit_le_solde_du_bon_montant(self):
         self.api.post(self._paiements_url(), {
@@ -295,7 +295,7 @@ class TestAUD208DeuxPaiementsConcurrentsNeDepassentPlusLeSolde(
         # A (premier à acquérir le verrou) réussit ; B, en relisant le solde
         # dû SOUS verrou APRÈS le commit de A, est refusé (140 > 120).
         self.assertEqual(resultats['a'][0], 201, resultats['a'][1])
-        self.assertEqual(resultats['b'][0], 400, resultats['b'][1])
+        self.assertEqual(resultats['b'][0], 409, resultats['b'][1])
 
         self.facture.refresh_from_db()
         self.assertEqual(

@@ -21,6 +21,7 @@ def _auteur_id():
         user = current_user()
         return getattr(user, 'pk', None)
     except Exception:  # pragma: no cover — défensif, jamais bloquant
+        logger.warning("receivers_casier._auteur_id : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -40,6 +41,7 @@ def _pre_save_bin(sender, instance, **kwargs):
                 'code', 'zone', 'allee', 'casier', 'ordre', 'categorie_id',
                 'archived').first()
     except Exception:  # pragma: no cover — défensif
+        logger.warning("receivers_casier._pre_save_bin : erreur ignorée (mode dégradé)", exc_info=True)
         instance._ntwms39_avant = None
 
 
@@ -100,6 +102,7 @@ def register_historique_casier():
     try:
         modele = django_apps.get_model('installations', 'BinLocation')
     except Exception:  # pragma: no cover — app absente : rien à journaliser
+        logger.warning("receivers_casier.register_historique_casier : erreur ignorée (mode dégradé)", exc_info=True)
         return
     pre_save.connect(_pre_save_bin, sender=modele,
                      dispatch_uid='stock_ntwms39_pre_save_bin')

@@ -14,6 +14,9 @@ fenêtres glissantes sont donc reproductibles en test.
 from decimal import Decimal
 
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Fenêtre glissante par défaut des indicateurs fournisseur.
 FENETRE_MOIS_DEFAUT = 12
@@ -26,6 +29,7 @@ def _dec(value):
     try:
         return Decimal(str(value))
     except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash.
+        logger.warning("selectors_fournisseur._dec : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('0')
 
 

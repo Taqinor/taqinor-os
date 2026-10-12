@@ -89,6 +89,7 @@ def scenario_effectif(devis, auto):
     try:
         valeur, source = effectif(devis, 'scenario', auto)
     except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        logger.warning("scenario.scenario_effectif : erreur ignorée (mode dégradé)", exc_info=True)
         return auto
     if source == 'auto' or valeur not in connus:
         return auto
@@ -108,6 +109,7 @@ def recommended_option_effective(devis, auto):
     try:
         valeur, source = effectif(devis, 'recommended_option', auto)
     except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        logger.warning("scenario.recommended_option_effective : erreur ignorée (mode dégradé)", exc_info=True)
         return auto
     if source == 'auto' or valeur not in connus:
         return auto
@@ -213,6 +215,7 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
         if deux_options_declarees(devis):
             lignes_kwc = filter_lines_for_option(lignes, AVEC_BATTERIE)
     except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais
+        logger.warning("scenario.puissance_kwc_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         lignes_kwc = lignes
     nb_lu, watt_lu = panneaux_et_watt_lu(lignes_kwc)
     auto = (round(nb_lu * watt_lu / 1000, 2)

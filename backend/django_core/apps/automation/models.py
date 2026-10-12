@@ -21,6 +21,9 @@ from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TriggerType(models.TextChoices):
@@ -116,6 +119,7 @@ def record_state_change_targets(company=None):
         from core import platform
         entries = platform.automation_state_fields(company=company)
     except Exception:  # pragma: no cover - registre indisponible
+        logger.warning("models.record_state_change_targets : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     out = {}
     for entry in entries:
@@ -226,6 +230,7 @@ class ModeleMessage(models.Model):
                 row = cls.objects.filter(
                     company=company, canal=canal, enabled=True).first()
             except Exception:  # pragma: no cover - défensif
+                logger.warning("models.ModeleMessage.resolve : erreur ignorée (mode dégradé)", exc_info=True)
                 row = None
         if row is None:
             return default['objet'], default['corps']
@@ -957,6 +962,7 @@ def creer_version_automation_rule(rule, *, auteur=None):
             rule=rule, version=rang, snapshot=_rule_snapshot(rule),
             auteur=auteur)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("models.creer_version_automation_rule : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

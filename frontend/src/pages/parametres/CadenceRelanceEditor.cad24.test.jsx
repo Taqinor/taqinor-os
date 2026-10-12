@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, cleanup } from '@testing-library/react'
+import { screen, cleanup } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -29,17 +29,11 @@ const CONTRAT = JSON.parse(readFileSync(join(
 
 const LIGNES = CONTRAT.exemple_liste
 
-vi.mock('../../api/parametresApi', () => ({
-  default: {
-    getMessages: vi.fn(async () => ({ data: [] })),
-    getCadenceRelance: vi.fn(async () => ({ data: [] })),
-    updateCadenceRelanceEtape: vi.fn(async () => ({ data: {} })),
-  },
-}))
+vi.mock('../../api/parametresApi', async () => (await import('./cadenceRelance.testHelpers.jsx')).cadenceApiVide())
 
 import parametresApi from '../../api/parametresApi'
-import { ThemeProvider } from '../../design/ThemeProvider'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
+import { monterEditeur } from './cadenceRelance.testHelpers.jsx'
 
 beforeEach(() => {
   parametresApi.getCadenceRelance.mockReset()
@@ -50,15 +44,7 @@ beforeEach(() => {
 })
 afterEach(() => cleanup())
 
-const renderEditor = async () => {
-  await act(async () => {
-    render(
-      <ThemeProvider>
-        <CadenceRelanceEditor />
-      </ThemeProvider>,
-    )
-  })
-}
+const renderEditor = () => monterEditeur(CadenceRelanceEditor)
 
 describe('CAD24 — la case « dimanche » et la mention de la règle', () => {
   it('le contrat partagé porte bien `dimanche_ok`', () => {

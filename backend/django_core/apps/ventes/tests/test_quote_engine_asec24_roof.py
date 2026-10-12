@@ -10,17 +10,37 @@ pour la clé légitime).
 Test-du-test : retirer le contrôle de préfixe ⇒
 ``test_cle_etrangere_non_telechargee`` échoue.
 """
+import base64
+import io
 from unittest import mock
 
+import fitz
 from django.test import TestCase
 
 from apps.ventes.models import Devis
 from apps.ventes.quote_engine import builder
 from apps.ventes.tests._quote_engine_common import (
-    make_client, make_company, make_devis, make_user,
+    DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
 )
+from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
+PNG_VALIDE = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ'
+    '/pLvAAAAAElFTkSuQmCC')
+
+
+#: Devis résidentiel COMPLET (deux onduleurs + batterie réelle, 14 × 550 Wc =
+#: 7,70 kWc — mêmes lignes que test_cj2b_graphe_mensuel) : le moteur résidentiel
+#: refuse tout document sans couche économique (« missing quote field »).
+LIGNES_RESIDENTIEL = [
+    ('Onduleur réseau 10kW', '1', '11700'),
+    ('Onduleur hybride 5kW', '1', '24000'),
+    ('Panneau mono 550W', '14', '1100'),
+    ('Batterie 5 kWh', '1', '14000'),
+    ('Structures acier', '14', '375'),
+    ('Installation', '1', '4000'),
+]
 
 
 class ToitPrefixeSocieteTests(TestCase):
@@ -30,7 +50,9 @@ class ToitPrefixeSocieteTests(TestCase):
         self.user = make_user(self.societe_a)
         self.devis = make_devis(
             self.societe_a, self.user, make_client(self.societe_a),
-            [('Onduleur hybride', '1', '12000')], reference='DEV-ASEC24-1')
+            LIGNES_RESIDENTIEL, reference='DEV-ASEC24-1',
+            etude_params={**DEUX_OPTIONS,
+                          'etude_horaire': bloc_horaire(7.70)})
 
     def _poser(self, cle):
         Devis.objects.filter(pk=self.devis.pk).update(roof_image=cle)
@@ -65,3 +87,28 @@ class ToitPrefixeSocieteTests(TestCase):
                 self.assertFalse(builder.cle_toit_de_la_societe(self.devis, cle))
         self.assertTrue(builder.cle_toit_de_la_societe(
             self.devis, 'roofs/%s/x.png' % self.societe_a.pk))
+
+    def test_nombre_de_pages_inchange(self):
+        """CLIENT — toit légitime : même nombre de pages que sans toit ;
+        vrai ``download_roof_image``, seul ``utils.pdf.get_minio_client``
+        est remplacé (comme ``test_pdf_public_accepte_signe``)."""
+        from apps.ventes.quote_engine.residential import renderer
+        cle = 'roofs/%s/DEV-ASEC24-1.png' % self.societe_a.pk
+        client = mock.Mock()
+        client.get_object.return_value = {'Body': io.BytesIO(PNG_VALIDE)}
+
+        def pages(devis):
+            renderer._PDF_CACHE.clear()
+            data = builder.build_quote_data(devis, {'_embed_roof_render': True})
+            pdf = renderer.render_pdf_bytes(builder.echapper_textes_client(data))
+            with fitz.open(stream=pdf, filetype='pdf') as doc:
+                return data, len(doc)
+        _, temoin = pages(self.devis)
+        self._poser(cle)
+        with mock.patch('apps.ventes.utils.pdf.get_minio_client',
+                        return_value=client):
+            data, n = pages(self.devis)
+        client.get_object.assert_called_once()
+        self.assertEqual(client.get_object.call_args.kwargs['Key'], cle)
+        self.assertTrue(data['roof_render'].startswith('data:image/png'))
+        self.assertEqual(n, temoin)

@@ -3,15 +3,18 @@ import { Undo2, FileMinus2,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
-  StatusPill, DataTable,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Button,
+  StatusPill, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, Button,
 } from '../../ui'
+import { TableauStock } from './ComposantsStock'
+
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
+import { frErrDetail as frErr } from '../../lib/frErr'
+import { AlerteErreurStock } from './BandeauxListeStock'
+import CellulesProduitQuantite from './CellulesProduitQuantite'
 
 // L744 — Liste consultable des RETOURS FOURNISSEUR (RetourFournisseurViewSet
 // existait sans écran). Référence RF, fournisseur, statut, date + consultation
@@ -19,14 +22,6 @@ import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 // liste n'affiche aucun prix.
 
 // Message FR d'une erreur serveur (jamais de JSON brut).
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
-}
-
 const RETOUR_STATUTS = {
   brouillon: 'Brouillon',
   valide: 'Validé',
@@ -100,10 +95,7 @@ export function RetourDetail({ retour, onClose, onAvoirGenere, peutPayer = true 
               )}
               {lignes.map((l) => (
                 <tr key={l.id} className="border-t border-border">
-                  <td className="px-3 py-2">
-                    {l.produit_nom}{l.produit_sku ? ` (${l.produit_sku})` : ''}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums">{l.quantite}</td>
+                  <CellulesProduitQuantite l={l} />
                   <td className="px-3 py-2">{l.motif || <span className="text-muted-foreground">—</span>}</td>
                 </tr>
               ))}
@@ -179,26 +171,15 @@ export default function RetoursFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Undo2}
         title="Retours fournisseur"
         subtitle={`${items.length} retour(s)`}
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <AlerteErreurStock error={error} />
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(r) => r.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (référence, fournisseur)…"
         globalColumns={['reference', 'fournisseur_nom']}
         onRowClick={openRetour}

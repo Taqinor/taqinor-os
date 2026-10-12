@@ -221,6 +221,22 @@ class EnfSchemaValidationTests(TestCase):
         self.client_api = APIClient()
         self.client_api.force_authenticate(self.admin)
 
+    def test_config_package_corps_non_objet_400_et_nom_numerique_400(self):
+        """ENF11 — corps liste → 400 (était 500) ; ``nom`` numérique refusé."""
+        base = '/api/django/adminops/config-packages/'
+        for action in ('previsualiser', 'appliquer'):
+            resp = self.client_api.post(
+                f'{base}{action}/', [None, None], format='json')
+            self.assertEqual(resp.status_code, 400, (action, resp.content))
+        resp = self.client_api.post(
+            f'{base}exporter/', {'nom': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_settings_date_modification_nulle_avant_enregistrement(self):
+        resp = self.client_api.get('/api/django/adminops/settings/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.data['date_modification'])
+
     def test_tracker_usage_module_requis(self):
         resp = self.client_api.post(
             '/api/django/adminops/tracker-usage/', {}, format='json')

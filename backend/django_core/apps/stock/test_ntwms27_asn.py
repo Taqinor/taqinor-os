@@ -180,3 +180,15 @@ class TestEndpointsAsn(Ntwms27Base):
             bordereau, format='json')
         self.assertEqual(reponse.status_code, 200)
         self.assertTrue(reponse.data['valide'])
+
+    def test_import_structure_invalide_400_ENF11(self):
+        """Une structure hors schéma (types) = 400 ; un contenu incohérent
+        reste un 200 `valide: false`."""
+        url = '/api/django/stock/unites-logistiques/import-asn/'
+        for corps in ({'version': 3}, {'unite': 'x'}, {'lignes': 'x'},
+                      {'lignes': [1]}, {'totaux': []}, [1, 2]):
+            reponse = self.api.post(url, corps, format='json')
+            self.assertEqual(reponse.status_code, 400, corps)
+        reponse = self.api.post(url, {}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertFalse(reponse.data['valide'])

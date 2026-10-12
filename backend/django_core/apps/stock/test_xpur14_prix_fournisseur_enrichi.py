@@ -279,6 +279,17 @@ class TestPrixFournisseurEndpoints(Xpur14Base):
             f'?fournisseur={self.fournisseur.id}')
         self.assertEqual(resp.status_code, 200)
 
+    def test_import_fichier_vide_ou_non_xlsx_400_jamais_500(self):
+        """ENF11 — un fichier qui n'est pas un classeur xlsx répond 400."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        for contenu in (b'', b'pas un xlsx'):
+            resp = self.api.post(
+                '/api/django/stock/prix-fournisseurs/import-xlsx/',
+                {'fournisseur': self.fournisseur.id,
+                 'file': SimpleUploadedFile('tarif.xlsx', contenu)},
+                format='multipart')
+            self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_import_endpoint(self):
         from openpyxl import Workbook
         wb = Workbook()

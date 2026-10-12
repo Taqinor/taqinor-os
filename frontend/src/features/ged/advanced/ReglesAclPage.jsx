@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, CheckCircle2, XCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
+  Button, Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, StatusPill, toast,
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import rolesApi from '../../../api/rolesApi'
-import { errMessage, toutesLesPages } from './shared.js'
+import {
+  errMessage, toutesLesPages, unpage, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+} from './shared.js'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
+import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
 
 /* ============================================================================
    PACT133 — Règles d'accès par métadonnée (XGED21, couche dynamique).
@@ -37,60 +40,28 @@ const NIVEAUX = [
   { value: 'gestion', label: 'Gestion' },
 ]
 
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
-
-function operateurLabel(op) {
-  return OPERATEURS.find((o) => o.value === op)?.label || op
-}
-
 function niveauLabel(niveau) {
   return NIVEAUX.find((n) => n.value === niveau)?.label || niveau
-}
-
-function resumeCondition(conditionGroup) {
-  const leaf = conditionGroup?.conditions?.[0]
-  if (!leaf?.field) return '—'
-  if (leaf.operator === 'exists') return `${leaf.field} existe`
-  const val = Array.isArray(leaf.value) ? leaf.value.join(', ') : leaf.value
-  return `${leaf.field} ${operateurLabel(leaf.operator)} ${val ?? ''}`.trim()
 }
 
 export default function ReglesAclPage() {
   const [regles, setRegles] = useState([])
   const [roles, setRoles] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [r, ro] = await Promise.all([
-        // ADOC31 — toutes les pages, jamais la seule première.
-        toutesLesPages(gedApi.getReglesAclMetadonnee),
-        rolesApi.getRoles(),
-      ])
-      setRegles(unpage(r.data))
-      setRoles(unpage(ro.data))
-    } catch (err) {
-      setError(errMessage(err, 'Impossible de charger les règles ACL.'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
-    load()
-  }, [])
+  const { loading, error, load } = useChargementGed(async () => {
+    const [r, ro] = await Promise.all([
+      // ADOC31 — toutes les pages, jamais la seule première.
+      toutesLesPages(gedApi.getReglesAclMetadonnee),
+      rolesApi.getRoles(),
+    ])
+    setRegles(unpage(r.data))
+    setRoles(unpage(ro.data))
+  }, 'Impossible de charger les règles ACL.')
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Règle', accessor: (r) => r.nom },
-    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group) },
+    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group, OPERATEURS) },
     { id: 'role', header: 'Rôle cible', accessor: (r) => r.role_nom, width: 160 },
     {
       id: 'niveau', header: 'Niveau', width: 110,
@@ -104,26 +75,14 @@ export default function ReglesAclPage() {
     },
   ], [])
 
-  const toggleActif = async (r) => {
-    try {
-      await gedApi.updateRegleAclMetadonnee(r.id, { actif: !r.actif })
-      toast.success(r.actif ? 'Règle désactivée.' : 'Règle activée.')
-      load()
-    } catch (err) { toast.error(errMessage(err)) }
-  }
+  const toggleActif = (r) => actionAvecToast(
+    () => gedApi.updateRegleAclMetadonnee(r.id, { actif: !r.actif }),
+    r.actif ? 'Règle désactivée.' : 'Règle activée.', load)
 
-  const rowActions = (r) => [
-    r.actif
-      ? { id: 'desactiver', label: 'Désactiver', icon: XCircle, onClick: () => toggleActif(r) }
-      : { id: 'activer', label: 'Activer', icon: CheckCircle2, onClick: () => toggleActif(r) },
-    {
-      id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: async () => {
-        try { await gedApi.deleteRegleAclMetadonnee(r.id); toast.success('Règle supprimée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
-      },
-    },
-  ]
+  const supprimer = (r) => actionAvecToast(
+    () => gedApi.deleteRegleAclMetadonnee(r.id), 'Règle supprimée.', load)
+
+  const rowActions = (r) => actionsActivation(r, toggleActif, supprimer)
 
   return (
     <>
@@ -181,64 +140,40 @@ function CreateRegleAclDialog({ roles, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle règle d'accès par métadonnée</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Nom de la règle</Label>
-            <Input aria-label="Nom de la règle" value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <div>
-              <Label>Champ</Label>
-              <Input aria-label="Champ de la condition" placeholder="Ex. tags, type, custom_data.confidentiel"
-                value={champ} onChange={(e) => setChamp(e.target.value)} className="w-56" />
-            </div>
-            <div>
-              <Label>Opérateur</Label>
-              <Select value={operateur} onValueChange={setOperateur}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {OPERATEURS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {operateur !== 'exists' && (
-              <div>
-                <Label>Valeur</Label>
-                <Input aria-label="Valeur de la condition" value={valeur} onChange={(e) => setValeur(e.target.value)} className="w-40" />
-              </div>
-            )}
-          </div>
-          <div>
-            <Label>Rôle cible</Label>
-            <Select value={roleId} onValueChange={setRoleId}>
-              <SelectTrigger aria-label="Choisir un rôle cible"><SelectValue placeholder="Choisir un rôle…" /></SelectTrigger>
-              <SelectContent>
-                {roles.map((r) => <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Niveau d'accès</Label>
-            <Select value={niveau} onValueChange={setNiveau}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {NIVEAUX.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Priorité</Label>
-            <Input type="number" step="1" value={priorite} onChange={(e) => setPriorite(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouvelle règle d'accès par métadonnée" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Nom de la règle</Label>
+        <Input aria-label="Nom de la règle" value={nom} onChange={(e) => setNom(e.target.value)} />
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <ConditionOperateurValeur
+          champ={champ} setChamp={setChamp} placeholder="Ex. tags, type, custom_data.confidentiel" champClassName="w-56"
+          operateurs={OPERATEURS} operateur={operateur} setOperateur={setOperateur}
+          valeur={valeur} setValeur={setValeur}
+        />
+      </div>
+      <div>
+        <Label>Rôle cible</Label>
+        <Select value={roleId} onValueChange={setRoleId}>
+          <SelectTrigger aria-label="Choisir un rôle cible"><SelectValue placeholder="Choisir un rôle…" /></SelectTrigger>
+          <SelectContent>
+            {roles.map((r) => <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Niveau d'accès</Label>
+        <Select value={niveau} onValueChange={setNiveau}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {NIVEAUX.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Priorité</Label>
+        <Input type="number" step="1" value={priorite} onChange={(e) => setPriorite(e.target.value)} />
+      </div>
+    </DialogueFormulaire>
   )
 }

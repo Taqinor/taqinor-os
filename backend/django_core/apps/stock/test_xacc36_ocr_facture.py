@@ -169,16 +169,38 @@ class TestDepuisOcrEndpoint(Xacc36Base):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(Decimal(resp.data['montant_ttc']), Decimal('9600'))
 
-    def test_endpoint_sans_fournisseur_refuse_400(self):
+    def test_endpoint_sans_fournisseur_introuvable_404(self):
         resp = self.api.post(
             '/api/django/stock/factures-fournisseur/depuis-ocr/',
             {'fields': {'fournisseur': 'Zzz Introuvable'}}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_endpoint_champ_fields_invalide(self):
         resp = self.api.post(
             '/api/django/stock/factures-fournisseur/depuis-ocr/',
             {'fields': 'not-a-dict'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_enf11_corps_non_objet_400_jamais_500(self):
+        for corps in ([1, 2], 'texte', 12):
+            resp = self.api.post(
+                '/api/django/stock/factures-fournisseur/depuis-ocr/',
+                corps, format='json')
+            self.assertEqual(resp.status_code, 400, corps)
+
+    def test_enf11_valeurs_hors_plage_jamais_500(self):
+        resp = self.api.post(
+            '/api/django/stock/factures-fournisseur/depuis-ocr/',
+            {'fields': {'fournisseur': 'Solar Import SARL',
+                        'ice': '001234567000089\x00',
+                        'montant_ttc': 'NaN', 'montant_ht': 'Infinity',
+                        'montant_tva': '1e30'}}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(Decimal(resp.data['montant_ttc']), Decimal('0'))
+        resp = self.api.post(
+            '/api/django/stock/factures-fournisseur/depuis-ocr/',
+            {'fields': {'fournisseur': 'Solar Import SARL',
+                        'numero': 'X' * 101}}, format='json')
         self.assertEqual(resp.status_code, 400)
 
     @mock.patch('apps.records.storage.get_minio_client')

@@ -5,7 +5,8 @@ SOCIÉTÉ-JUMELLE sandbox de la clé appelante (jamais la société réelle — 
 clé `environnement='live'` n'a d'ailleurs aucun moyen d'atteindre ce
 endpoint, voir ``IsTestApiKey``).
 """
-from rest_framework import permissions, status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -32,6 +33,10 @@ class SandboxResetView(PublicApiResponseMixin, APIView):
     permission_classes = [IsTestApiKey]
     throttle_classes = [ApiKeyRateThrottle]
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'SandboxResetReponse', {
+            'reset': serializers.BooleanField(),
+            'leads_recrees': serializers.IntegerField()}))
     def post(self, request):
         from .models import SandboxTenant
         from .services import reset_sandbox

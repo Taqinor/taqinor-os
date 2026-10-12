@@ -8,6 +8,7 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+from . import openapi_shapes as SH
 from .openapi_params import qstr
 import logging
 
@@ -159,6 +160,7 @@ def _opts_quote_data_public(link):
     return opts
 
 
+@extend_schema(responses=SH.PublicDocumentResponses)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -277,6 +279,7 @@ def public_document(request, token):
 # dans l'UI client. X-Robots-Tag: noindex + throttle par IP+jeton, comme les
 # autres liens publics.
 
+@extend_schema(responses=SH.PublicBcfResponses)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -1134,6 +1137,7 @@ def _economies_cumul_25_ans_publique(data):
     return out or None
 
 
+@extend_schema(responses={200: SH.ProposalDataResponse, 403: SH.OtpRequis})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -2087,7 +2091,8 @@ def proposal_roof_image(request, token):
     return _noindex(reponse)
 
 
-@extend_schema(parameters=[qstr('variante')])
+@extend_schema(parameters=[qstr('variante')],
+               responses=SH.PublicDocumentResponses)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -2160,6 +2165,7 @@ def proposal_pdf(request, token):
     return _noindex(response)
 
 
+@extend_schema(responses={200: SH.SuiviPublicResponse, 403: SH.OtpRequis})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

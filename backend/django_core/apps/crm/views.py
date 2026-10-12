@@ -182,7 +182,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
                      'client_ref', 'client_ref_provisoire']
     ordering_fields = ['nom', 'date_creation', 'stage', 'score']
-    ordering = ['-date_creation', 'id']
+    ordering = ['-date_creation', 'id']  # départage déterministe (golden GET leads ; même ligne que #956)
 
     def list(self, request, *args, **kwargs):
         # YOPSB13 — LeadSerializer.get_next_activity() et get_devis() (via

@@ -222,7 +222,9 @@ class SavedViewApiTests(TestCase):
         # En-tête + 2 lignes de données.
         self.assertEqual(ws.max_row, 3)
         header = [c.value for c in ws[1]]
-        self.assertEqual(header, ['Écran', 'Nom', 'Propriétaire', 'Visibilité', 'Rôle par défaut', 'Dernière modification'])
+        self.assertEqual(
+            header,
+            ['Écran', 'Nom', 'Propriétaire', 'Visibilité', 'Rôle par défaut', 'Dernière modification'])
         noms = {ws.cell(row=r, column=2).value for r in (2, 3)}
         self.assertEqual(noms, {'Équipe', 'Perso'})
         # Le rôle par défaut n'apparaît que pour la vue qui le porte.
@@ -282,7 +284,8 @@ class SavedViewApiTests(TestCase):
         fichier = self._csv([('crm.leads', 'Mes leads', config)])
         resp = auth(self.directeur).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(SavedView.objects.filter(company=self.co_a, owner=self.directeur, ecran='crm.leads').count(), 2)
+        self.assertEqual(
+            SavedView.objects.filter(company=self.co_a, owner=self.directeur, ecran='crm.leads').count(), 2)
         imported = SavedView.objects.get(
             company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Mes leads (import)')
         self.assertEqual(imported.configuration, {'nouveau': True})

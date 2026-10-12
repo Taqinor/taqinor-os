@@ -21,6 +21,9 @@ n'est réécrit, aucun marqueur n'est posé rétroactivement.
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _classes_du_contenu(contenu):
@@ -102,6 +105,7 @@ class Command(BaseCommand):
             try:
                 ttc = totaux(devis, vue=Vue.NET).ttc
             except Exception:  # noqa: BLE001 — un total illisible est signalé
+                logger.warning("acal_dryrun_kit_recree.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 ttc = '?'
             for classe, designation, montant in recrees:
                 self.stdout.write(

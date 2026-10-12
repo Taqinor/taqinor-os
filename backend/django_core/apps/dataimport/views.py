@@ -11,6 +11,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, parser_classes
+from core.parseurs import PARSEURS_JSON
 from rest_framework.response import Response
 from rest_framework.parsers import FormParser, MultiPartParser
 
@@ -278,6 +279,7 @@ def list_mappings(request):
         'mapping': serializers.DictField()}))
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
+@parser_classes(PARSEURS_JSON)
 def save_mapping(request):
     """XPLT2 — sauvegarde (ou remplace) un mapping colonne→champ nommé pour une
     cible, réapplicable au prochain dry-run/commit via ``mapping=<nom>``."""

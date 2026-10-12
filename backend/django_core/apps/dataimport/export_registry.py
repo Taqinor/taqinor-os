@@ -19,6 +19,9 @@ utilisateur n'exporte que les enregistrements de SA société, jamais d'une autr
 from collections import OrderedDict
 
 from django.db import models
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Champs sensibles, jamais exportés, par (app_label, model_name).
 # Centralise la garantie « aucun prix d'achat / marge ne sort ».
@@ -188,4 +191,5 @@ def declared_import_specs(company=None):
         from core import platform
         return set(platform.import_specs(company=company))
     except Exception:  # pragma: no cover - registre indisponible
+        logger.warning("export_registry.declared_import_specs : erreur ignorée (mode dégradé)", exc_info=True)
         return set()

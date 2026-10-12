@@ -1,11 +1,4 @@
 # Vendored from RedaSolar/devis-simulator — Morocco solar ROI/production constants.
-# ---------- CONSTANTES VISUELLES ----------
-BLUE_MAIN = "#0A5275"        # Bleu TAQINOR
-BLUE_LIGHT = "#E6F1F7"
-TEXT_DARK = "#222222"
-ORANGE_ACCENT = "#F28E2B"
-GREY_NEUTRAL = "#555555"
-
 # ---------- CONSTANTES ROI / PRODUCTION ----------
 # DC9 — SOURCE UNIQUE (côté Python) de la table d'irradiance GHI mensuelle du
 # Maroc. `frontend/src/features/ventes/solar.js` porte la MÊME table (miroir

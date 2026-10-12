@@ -135,7 +135,7 @@ def _notify_devis_reply(devis, from_email, subject):
             body=(f'Réponse email reçue de {from_email or "?"} : '
                   f'« {(subject or "").strip()[:120]} »'))
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.warning("inbound_email._notify_devis_reply : erreur ignorée (mode dégradé)", exc_info=True)
     try:
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
@@ -148,7 +148,7 @@ def _notify_devis_reply(devis, from_email, subject):
                 link=f'/ventes/devis?devis={devis.id}',
                 company=devis.company)
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.warning("inbound_email._notify_devis_reply : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def ventes_inbound_handler(message, company):

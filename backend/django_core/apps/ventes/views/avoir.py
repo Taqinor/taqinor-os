@@ -1,49 +1,30 @@
 from drf_spectacular.utils import extend_schema_view, extend_schema
+from . import openapi_docs as D
 from ..openapi_params import qint
 from django.db import transaction
 from django.http import HttpResponse
-from django.utils import timezone  # noqa: F401
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.stock.services import (
     mouvement_type_sortie, record_stock_movement,
 )
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-    NoteDebit,
-)
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    LigneDevisSerializer,
-    DevisActivitySerializer,
-)
-from ..serializers_facturation import (  # noqa: F401
-    BonCommandeSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    NoteDebitSerializer,
-    RelanceLogSerializer,
-)
+from ..models import Facture, Avoir, NoteDebit
+from ..serializers_facturation import AvoirSerializer, NoteDebitSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from authentication.scoping import scope_queryset
+from core.mixins import company_qs
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
-
-
-from authentication.scoping import scope_queryset  # noqa: E402
-from core.mixins import company_qs  # noqa: E402
 
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
@@ -57,6 +38,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
     """Avoirs (notes de crédit) : lecture pour tout rôle ; PDF pour
     Responsable/Admin ; annulation Admin. Création via la facture
     (creer-avoir), jamais directement."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     queryset = Avoir.objects.select_related(
         'client', 'facture', 'created_by').prefetch_related('lignes').all()
     serializer_class = AvoirSerializer
@@ -147,6 +129,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
                 created_by=user)
         return None
 
+    @extend_schema(request=None, responses=AvoirSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """AUD127 — annule un avoir ET contre-passe son effet.
@@ -228,6 +211,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
                     user=request.user, source='annulation_avoir')
         return Response(AvoirSerializer(avoir).data)
 
+    @extend_schema(responses=D.PdfBinaire)
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
     def telecharger_pdf(self, request, pk=None):
         avoir = self.get_object()
@@ -238,6 +222,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
                 avoir.refresh_from_db()
             pdf_bytes = download_pdf(avoir.fichier_pdf)
         except Exception:
+            logger.warning("avoir.AvoirViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': 'PDF indisponible.'},
                             status=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -258,6 +243,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
     """ZFAC4 — notes de débit : lecture pour tout rôle ; PDF pour
     Responsable/Admin. Création via la facture (creer-note-debit), jamais
     directement — même patron qu'``AvoirViewSet``."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     queryset = NoteDebit.objects.select_related(
         'client', 'facture', 'created_by').prefetch_related('lignes').all()
     serializer_class = NoteDebitSerializer
@@ -281,6 +267,9 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
             return [IsAdminRole()]
         return [IsResponsableOrAdmin()]
 
+    @extend_schema(request=None,
+                   responses={200: D.NoteDebitAnnuleeResponse,
+                              201: D.NoteDebitAnnuleeResponse})
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """AFAC32 (D-AFAC-C4) — annule une note de débit ÉMISE par un AVOIR de
@@ -302,12 +291,13 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
                 generate_avoir_pdf(avoir.id)
                 avoir.refresh_from_db()
             except Exception:  # noqa: BLE001 — PDF best-effort
-                pass
+                logger.warning("avoir.NoteDebitViewSet.annuler : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(
             {'note_debit': NoteDebitSerializer(note_debit).data,
              'avoir': AvoirSerializer(avoir).data, 'cree': cree},
             status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
+    @extend_schema(responses=D.PdfBinaire)
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
     def telecharger_pdf(self, request, pk=None):
         note_debit = self.get_object()
@@ -318,6 +308,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
                 note_debit.refresh_from_db()
             pdf_bytes = download_pdf(note_debit.fichier_pdf)
         except Exception:
+            logger.warning("avoir.NoteDebitViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': 'PDF indisponible.'},
                             status=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')

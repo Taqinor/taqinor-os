@@ -21,6 +21,9 @@ exactement les pages dont le rendu a changé — à revoir avant de committer.
 """
 from django.core.management.base import BaseCommand
 from django.db import transaction
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -60,6 +63,8 @@ class Command(BaseCommand):
                         case['name'], pdf_bytes,
                         page_count=case['page_count'], update=True)
                 except Exception as exc:  # noqa: BLE001 — on veut TOUT tenter
+                    logger.warning(
+                        "update_pdf_baselines.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                     failures.append((case['name'], exc))
                     continue
                 written_total.extend(written)

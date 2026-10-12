@@ -259,6 +259,7 @@ def _sources(rule):
     try:
         steps = list(rule.steps.all())
     except Exception:  # pragma: no cover - règle détachée
+        logger.warning("simulation._sources : erreur ignorée (mode dégradé)", exc_info=True)
         steps = []
     if steps:
         return [_Source(s.action_type, s.action_config, s.ordre)

@@ -45,6 +45,9 @@ from .metrics import cout_par_lead
 from .odoo_client import is_configured as odoo_is_configured
 from .odoo_selectors import all_leads as odoo_all_leads
 from .odoo_selectors import parse_odoo_lead_name
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Longueur minimale d'un indice de nom pour tenter un rapprochement (évite les
 # faux positifs sur des jetons trop courts).
@@ -324,6 +327,7 @@ def _resolve_attributions(company, since=None, client=None):
     try:
         leads = odoo_all_leads(client=client, company=company)  # ASEC40
     except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
+        logger.warning("odoo_leads._resolve_attributions : erreur ignorée (mode dégradé)", exc_info=True)
         leads = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]
 

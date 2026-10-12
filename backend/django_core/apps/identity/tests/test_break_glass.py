@@ -109,6 +109,17 @@ class BreakGlassEndpointTests(TenantAPITestCase):
         target.refresh_from_db()
         self.assertEqual(target.role_legacy, CustomUser.ROLE_ADMIN)
 
+    def test_enf11_corps_mal_forme_400_pas_500(self):
+        """ENF11 — motif liste / durée hors bornes / corps non objet = 400."""
+        admin = self._admin_with_mfa()
+        target = UserFactory(company=self.company, username='t4')
+        api = self.client_as(user=admin)
+        for corps in ({'user_id': target.id, 'motif': [None, None]},
+                      {'user_id': target.id, 'motif': 'x', 'duree_minutes': 0},
+                      {'user_id': 'abc', 'motif': 'x'}, [1]):
+            r = api.post(self.URL, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+
     def test_non_admin_forbidden(self):
         r = self.client_as().get(self.URL)
         self.assertEqual(r.status_code, 403)

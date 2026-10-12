@@ -8,6 +8,8 @@ import logging
 from decimal import Decimal, InvalidOperation
 from django.db import models
 
+from .erreurs_achats import EtatIncompatible, IntrouvableMetier
+
 logger = logging.getLogger('stock.audit')
 
 BULK_ACTIONS = {'set_price', 'set_warranty', 'set_category', 'set_brand'}
@@ -790,6 +792,7 @@ def stock_valuation_method(company):
         from apps.parametres.models_company import CompanyProfile
         profile = CompanyProfile.objects.filter(company=company).first()
     except Exception:  # parametres absent / champ pas encore migré
+        logger.warning("services.stock_valuation_method : erreur ignorée (mode dégradé)", exc_info=True)
         profile = None
     method = getattr(profile, 'stock_valuation_method', None)
     return method if method in (VALUATION_WAVG, VALUATION_FIFO) else VALUATION_WAVG
@@ -1699,7 +1702,7 @@ def confirm_reception_fournisseur(reception, user):
             sender=ReceptionFournisseur, reception=reception,
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning("services.confirm_reception_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
     # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
     # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
     try:
@@ -3771,7 +3774,7 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
             sender=FactureFournisseur, instance=facture,
             company=company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning("services._construire_facture_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
     return FactureFournisseur.objects.get(pk=facture.pk)
 
 
@@ -4079,18 +4082,19 @@ def fusionner_bcf(company, user, bon_commande_ids):
             company=company, id__in=bon_commande_ids)
         .select_related('fournisseur').prefetch_related('lignes__produit'))
     if len(bcs) != len(set(bon_commande_ids)):
-        raise ValueError('Un ou plusieurs bons de commande sont introuvables.')
+        raise IntrouvableMetier(
+            'Un ou plusieurs bons de commande sont introuvables.')
     if len(bcs) < 2:
         raise ValueError('Au moins deux bons de commande sont requis.')
     fournisseur_ids = {bc.fournisseur_id for bc in bcs}
     if len(fournisseur_ids) > 1:
-        raise ValueError(
+        raise EtatIncompatible(
             'Tous les bons de commande doivent être du même fournisseur.')
     non_brouillon = [
         bc for bc in bcs
         if bc.statut != BonCommandeFournisseur.Statut.BROUILLON]
     if non_brouillon:
-        raise ValueError(
+        raise EtatIncompatible(
             'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
             f'({non_brouillon[0].reference} ne l\'est pas).')
     # ASTK66 — des BCF rattachés à des chantiers / destinations / devises
@@ -4099,7 +4103,7 @@ def fusionner_bcf(company, user, bon_commande_ids):
     for champ, libelle in CHAMPS_RATTACHEMENT_BCF:
         valeurs = {getattr(bc, champ) for bc in bcs}
         if len(valeurs) > 1:
-            raise ValueError(
+            raise EtatIncompatible(
                 f'Fusion impossible : rattachements différents ({libelle}).')
 
     # Cumule les quantités par produit ; garde le prix du BCF le plus RÉCENT
@@ -4198,7 +4202,7 @@ def definir_frais_annexes_ligne_bcf(company, bon_commande_id, produit_id,
     passage DC38 sur une ligne reçue trace au chatter du BCF l'ancien/nouveau
     frais et le coût moyen pondéré recalculé. Ligne non reçue : inchangé."""
     from decimal import Decimal
-    from apps.audit.recorder import current_user
+    from core.audit_registry import current_user
     from .models import LigneBonCommandeFournisseur
 
     if not bon_commande_id or not produit_id:
@@ -4988,10 +4992,10 @@ def remplacer_composant_masse(company, *, produit_ancien_id,
             + len(resultat['kits_installations']))
 
         # Ligne d'audit récapitulative (best-effort, jamais bloquante).
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
+        # ENF20 — via core.audit_registry ; 'update' = AuditLog.Action.UPDATE.
+        from core.audit_registry import record
         record(
-            AuditLog.Action.UPDATE,
+            'update',
             instance=nouveau,
             company=company, user=user,
             detail=(
@@ -6490,9 +6494,9 @@ def log_doublon_override(*, user, instance, detail):
     logger existant (apps.audit) ; un échec de journalisation ne casse
     jamais la création elle-même."""
     try:
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
-        record(AuditLog.Action.CREATE, instance=instance,
+        # ENF20 — via core.audit_registry ; 'create' = AuditLog.Action.CREATE.
+        from core.audit_registry import record
+        record('create', instance=instance,
                user=user, detail=detail)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.info('doublon override (audit indisponible): %s', detail)
@@ -6513,12 +6517,13 @@ def match_fournisseur_from_ocr(company, fields):
     silencieuse). LECTURE SEULE."""
     from .models import Fournisseur
     fields = fields or {}
-    ice = (fields.get('ice') or '').strip()
+    ice = str(fields.get('ice') or '').replace('\x00', '').strip()
     if ice:
         match = Fournisseur.objects.filter(company=company, ice=ice).first()
         if match is not None:
             return match
-    nom = (fields.get('fournisseur') or '').strip()
+    nom = str(fields.get('fournisseur') or '').replace(
+        '\x00', '').strip()
     if nom:
         return Fournisseur.objects.filter(
             company=company, nom__iexact=nom).first()
@@ -6544,7 +6549,7 @@ def creer_facture_fournisseur_depuis_ocr(
     fields = fields or {}
     fournisseur = match_fournisseur_from_ocr(company, fields)
     if fournisseur is None:
-        raise ValueError(
+        raise IntrouvableMetier(
             'Aucun fournisseur trouvé pour ce document (ICE ou nom) — '
             'saisie manuelle requise.')
 
@@ -6553,7 +6558,11 @@ def creer_facture_fournisseur_depuis_ocr(
         if val is None or val == '':
             return None
         try:
-            return Decimal(str(val))
+            montant = Decimal(str(val))
+            # ENF11 — NaN/Infinity/hors plage (14,2) : champ laissé vide.
+            if not montant.is_finite() or abs(montant) >= Decimal(10) ** 12:
+                return None
+            return montant.quantize(Decimal('0.01'))
         except (InvalidOperation, TypeError, ValueError):
             return None
 
@@ -6573,7 +6582,11 @@ def creer_facture_fournisseur_depuis_ocr(
     montant_ht = _num('montant_ht')
     montant_tva = _num('montant_tva')
     montant_ttc = _num('montant_ttc')
-    ref_fournisseur = (fields.get('numero') or '').strip() or None
+    ref_fournisseur = str(fields.get('numero') or '').replace(
+        '\x00', '').strip() or None
+    if ref_fournisseur is not None and len(ref_fournisseur) > 100:
+        raise ValueError(
+            'Le numéro de facture fournisseur dépasse 100 caractères.')
 
     doublons = detect_facture_fournisseur_doublon(
         company, fournisseur_id=fournisseur.id,
@@ -6703,6 +6716,7 @@ def check_prix_ligne_bcf(
             company, produit_id, fournisseur_id=fournisseur_id,
             a_la_date=a_la_date)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("services.check_prix_ligne_bcf : erreur ignorée (mode dégradé)", exc_info=True)
         accord = None
     if accord and accord.get('prix_convenu') is not None:
         prix_convenu = Decimal(str(accord['prix_convenu']))
@@ -6751,6 +6765,7 @@ def rapport_achats_hors_contrat(
     try:
         from apps.installations.selectors import prix_convenu_fournisseur
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning("services.rapport_achats_hors_contrat : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
     qs = (LigneBonCommandeFournisseur.objects
@@ -6775,6 +6790,7 @@ def rapport_achats_hors_contrat(
                 a_la_date=bc.date_creation.date() if bc.date_creation
                 else None)
         except Exception:  # noqa: BLE001 — best-effort
+            logger.warning("services.rapport_achats_hors_contrat : erreur ignorée (mode dégradé)", exc_info=True)
             accord = None
         if not accord or accord.get('prix_convenu') is None:
             continue
@@ -7179,6 +7195,7 @@ def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres)
             return True
         return False
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("services._invalidate_approbation_si_hausse : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -7633,7 +7650,7 @@ def notify_bcf_confirmation_fournisseur(bc):
             author=None,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("services.notify_bcf_confirmation_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 # ── NTPRT3 — Compte fournisseur RÉEL (remplace le jeton comme voie primaire) ─
@@ -7694,7 +7711,7 @@ def _nom_affiche_societe(company):
         if theme is not None and (theme.nom_affichage or '').strip():
             return theme.nom_affichage.strip()
     except Exception:  # noqa: BLE001 — la marque ne casse jamais un accès
-        pass
+        logger.warning("services._nom_affiche_societe : erreur ignorée (mode dégradé)", exc_info=True)
     return (getattr(company, 'nom', '') or '').strip()
 
 
@@ -7730,6 +7747,8 @@ def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
         )
         return True
     except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès
+        logger.warning(
+            "services._envoyer_identifiants_portail_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -8113,7 +8132,7 @@ def notify_annonce_livraison_fournisseur(annonce):
             author=None,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("services.notify_annonce_livraison_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 # ── XPUR24 — Tableau de bord achats (analyse des dépenses) ──────────────────
@@ -8564,7 +8583,7 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         'fournisseur': fields.get('nom_fournisseur'),
     })
     if fournisseur is None:
-        raise ValueError(
+        raise IntrouvableMetier(
             'Aucun fournisseur trouvé pour ce document UBL (ICE ou nom) — '
             'saisie manuelle requise.')
 
@@ -8768,6 +8787,7 @@ def ecrire_identite_fournisseur(fournisseur) -> bool:
                 'rib': fournisseur.rib or '',
             })
     except Exception:
+        logger.warning("services.ecrire_identite_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -8848,7 +8868,7 @@ def _notifier_candidature_fournisseur(fournisseur):
         )
     except Exception:  # noqa: BLE001 - une notification KO ne fait jamais
         # perdre la candidature (elle reste visible dans /stock/fournisseurs).
-        pass
+        logger.warning("services._notifier_candidature_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def decider_candidature_fournisseur(fournisseur, *, valider):
@@ -9080,11 +9100,10 @@ def produits_par_ids(company, ids):
 # -- Groupe NTWMS -- couche ENTREPOT (rangement, vagues, colisage, quais) --
 # Definis dans `services_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.services import ...`.
-from .services_wms import (  # noqa: E402,F401
+from .services_wms import (  # noqa: E402
     FENETRE_ROTATION_JOURS,
     affecter_reception_cross_dock,
     appliquer_quarantaine_rappel,
-    blocages_du_rappel,
     ajouter_ligne_unite_logistique,
     ajouter_unite_plan_chargement,
     assurer_plans_comptage_tournant,
@@ -9125,7 +9144,6 @@ from .services_wms import (  # noqa: E402,F401
     receptionner_retour_client,
     resoudre_token_portail_tiers,
     sceller_unite_logistique,
-    seuil_approbation_transfert,
     solde_portail_tiers,
     suggestions_rangement_reception,
     demande_transfert_approuvee_existe,
@@ -9133,6 +9151,26 @@ from .services_wms import (  # noqa: E402,F401
     valeur_transfert,
     verifier_capacite_plan,
 )
+
+__all__ = [
+    'FENETRE_ROTATION_JOURS', 'affecter_reception_cross_dock', 'ajouter_ligne_unite_logistique',
+    'ajouter_unite_plan_chargement', 'appliquer_quarantaine_rappel',
+    'assurer_plans_comptage_tournant', 'cloturer_alerte_rappel', 'configurer_liberation_vague',
+    'controler_scan_emballage', 'creer_expedition_transporteur', 'creer_plan_chargement',
+    'creer_retour_client', 'creer_unite_logistique', 'creer_vague_depuis_besoins',
+    'declarer_mouvement_rebut', 'decrementer_stock_expedition',
+    'demande_transfert_approuvee_existe', 'deplacer_unite_logistique',
+    'enregistrer_arrivee_chauffeur', 'enregistrer_mouvement_scanne', 'exporter_asn',
+    'generer_comptages_tournants', 'generer_etiquette_expedition', 'impact_rappel', 'importer_asn',
+    'inspecter_retour_client', 'lancer_vague', 'lever_quarantaine', 'lever_quarantaine_bin',
+    'liberer_vagues_planifiees', 'mettre_en_quarantaine', 'notifier_rappel',
+    'ordonner_parcours_serpentin', 'prelever_ligne_picking', 'proposer_cross_dock',
+    'quantite_disponible_hors_quarantaine', 'quantite_en_quarantaine', 'rapport_pertes_entrepot',
+    'recalculer_parcours_vague', 'reception_est_cross_dock', 'receptionner_retour_client',
+    'reference_sortie_expedition', 'resoudre_token_portail_tiers', 'sceller_unite_logistique',
+    'solde_portail_tiers', 'suggestions_rangement_reception', 'transfert_exige_approbation',
+    'valeur_transfert', 'verifier_capacite_plan',
+]
 
 
 def creer_produit(company, **champs):

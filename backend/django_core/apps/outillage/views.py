@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, IsAdminRole
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
+from core.parseurs import PARSEURS_JSON
 
 from .models import Outillage, KitOutillage, KitOutillageItem
 from .serializers import (
@@ -57,6 +58,7 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
     """Catalogue d'outillage durable (F1). Lecture tout rôle ; écriture
     responsable/admin. Filtrable par statut et emplacement, recherche par
     nom / asset tag / n° de série. JAMAIS de stock vendable."""
+    parser_classes = PARSEURS_JSON  # ENF11 — D2 : vue sans fichier = JSON seul
     queryset = Outillage.objects.select_related('emplacement').all()
     serializer_class = OutillageSerializer
     # ACHT79 — l'outillage relève du module « installations » pour les droits :
@@ -132,6 +134,9 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         (défaut = aujourd'hui). Émet une notification si la prochaine date est
         dépassée à la sauvegarde."""
         outil = self.get_object()
+        if not isinstance(request.data, dict):  # ENF11 — corps liste/null = 500
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         date_str = request.data.get('date_calibration')
         try:
             date_cal = (datetime.date.fromisoformat(date_str)
@@ -140,18 +145,18 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
             return Response({'date_calibration': 'Date invalide (YYYY-MM-DD).'},
                             status=status.HTTP_400_BAD_REQUEST)
         # ACHT74 — une calibration ne se date ni dans le futur ni avant la
-        # précédente.
+        # précédente (refus d'ÉTAT daté d'aujourd'hui / de l'outil : 409).
         if date_cal > datetime.date.today():
             return Response(
                 {'date_calibration': 'Date de calibration dans le futur.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         if (outil.date_derniere_calibration is not None
                 and date_cal < outil.date_derniere_calibration):
             return Response(
                 {'date_calibration': (
                     'Date antérieure à la dernière calibration '
                     f'({outil.date_derniere_calibration}).')},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         outil.date_derniere_calibration = date_cal
         # `Outillage.save()` dérive `date_prochaine_calibration` (vrais mois).
         outil.save(update_fields=[
@@ -178,6 +183,7 @@ class KitOutillageViewSet(UsageGuardedDestroyMixin, TenantMixin, viewsets.ModelV
     en cours pouvait disparaître silencieusement, ou l'admin ne savait jamais
     QUI a supprimé quel kit) : UsageGuardedDestroyMixin bloque un kit en
     usage (409 FR) et journalise la suppression effective."""
+    parser_classes = PARSEURS_JSON  # ENF11 — D2 : vue sans fichier = JSON seul
     queryset = KitOutillage.objects.prefetch_related('items__outil').all()
     serializer_class = KitOutillageSerializer
 
@@ -210,6 +216,7 @@ class KitOutillageViewSet(UsageGuardedDestroyMixin, TenantMixin, viewsets.ModelV
 class KitOutillageItemViewSet(TenantMixin, viewsets.ModelViewSet):
     """Outils d'un kit (F2). Company posée côté serveur depuis le kit parent ;
     écriture admin. Filtrable par kit."""
+    parser_classes = PARSEURS_JSON  # ENF11 — D2 : vue sans fichier = JSON seul
     queryset = KitOutillageItem.objects.select_related('outil', 'kit').all()
     serializer_class = KitOutillageItemSerializer
 

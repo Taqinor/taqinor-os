@@ -6633,6 +6633,25 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </p>
             </div>
 
+            <!-- ADEV53 (C-ADEV-023) — l'acompte et le virement, LUS dans `paiement` de la
+                 réponse d'acceptation (contrat `proposal_accept.json`) : rien n'est rendu sans
+                 valeur servie (jamais un montant ni un RIB de repli), aucun lien de paiement
+                 par carte (aucune route serveur ne l'accepte). « J'ai effectué le virement » poste au proxy
+                 same-origin /api/proposition-virement (→ `/virement/`). -->
+            <div id="sign-paiement" class="mt-5 rounded-xl border border-white/10 bg-nuit-800/60 p-4" hidden>
+              <p class="tech-label text-brass-300" data-i18n data-fr="Acompte à régler" data-en="Deposit to pay" data-ar="العربون المستحق">Acompte à régler</p>
+              <p id="sign-paiement-acompte" class="mt-2 fig text-lg text-lune" dir="ltr" hidden></p>
+              <div id="sign-paiement-rib-bloc" class="mt-3" hidden>
+                <p class="text-sm text-lune-faint" data-i18n data-fr="Par virement sur le compte (RIB) :" data-en="By bank transfer to (RIB):" data-ar="عبر تحويل بنكي إلى الحساب (RIB):">Par virement sur le compte (RIB) :</p>
+                <p id="sign-paiement-rib" class="mt-1 fig text-lune" dir="ltr"></p>
+              </div>
+              <p id="sign-paiement-message" class="mt-3 text-sm text-lune-soft" hidden></p>
+              <button type="button" id="sign-virement-btn" class="btn-pill mt-4 inline-flex items-center justify-center gap-2" hidden>
+                <span data-i18n data-fr="J’ai effectué le virement" data-en="I have made the transfer" data-ar="لقد قمت بالتحويل">J’ai effectué le virement</span>
+              </button>
+              <p id="sign-virement-status" class="mt-2 text-sm text-lune-soft" role="status" aria-live="polite" hidden></p>
+            </div>
+
             <!-- WJ78 — PDF + « Et après ? » directement dans le bloc de succès :
                  le client n'a plus besoin de chercher plus bas dans la page au
                  moment précis où il vient de s'engager. -->
@@ -7942,6 +7961,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     type ServedProduction,
   } from '../../lib/dayProfiles';
   import { brancherOtpLecture } from '../../lib/otpLecture';
+  import {
+    lirePaiementAcceptation,
+    normalizeVirementResponse,
+    paiementVue,
+    virementMessage,
+    VIREMENT_MSG,
+  } from '../../lib/paiementAcceptation';
 
   // ── PREVIEW-V3-FIX (16/09/2026, audit C5) · L'ÉCRAN DE CODE DE LECTURE ────
   // Îlot autonome : il ne s'exécute QUE sur l'écran `#otp-lecture` (donc
@@ -8889,6 +8915,55 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       }
     }
 
+    // ADEV53 — bloc acompte/RIB/déclaration de virement de l'écran de succès, rempli
+    // depuis `paiement` de la réponse d'acceptation (fonctions pures testées sur le
+    // contrat). Rien servi ⇒ le bloc reste caché ; RIB absent ⇒ sa ligne reste cachée.
+    function afficherPaiement(reponse: unknown): void {
+      const bloc = document.getElementById('sign-paiement');
+      const vue = paiementVue(lirePaiementAcceptation(reponse));
+      if (!bloc || !vue) return;
+      const acompteEl = document.getElementById('sign-paiement-acompte');
+      if (acompteEl && vue.acompte) {
+        acompteEl.textContent = vue.pourcentage ? `${vue.acompte} (${vue.pourcentage} %)` : vue.acompte;
+        acompteEl.hidden = false;
+      }
+      const ribBloc = document.getElementById('sign-paiement-rib-bloc');
+      const ribEl = document.getElementById('sign-paiement-rib');
+      if (ribBloc && ribEl && vue.rib) {
+        ribEl.textContent = vue.rib;
+        ribBloc.hidden = false;
+      }
+      const messageEl = document.getElementById('sign-paiement-message');
+      if (messageEl && vue.message) {
+        messageEl.textContent = vue.message;
+        messageEl.hidden = false;
+      }
+      const btn = document.getElementById('sign-virement-btn') as HTMLButtonElement | null;
+      const statut = document.getElementById('sign-virement-status');
+      if (btn && statut && vue.peutDeclarer) {
+        btn.hidden = false;
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          let message = VIREMENT_MSG.generique;
+          try {
+            const r = await fetch('/api/proposition-virement', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ token: cfg.token }),
+            });
+            const resultat = normalizeVirementResponse(r.status, await r.json().catch(() => null));
+            message = virementMessage(resultat);
+            if (!resultat.ok) btn.disabled = false;
+          } catch {
+            btn.disabled = false;
+          }
+          statut.textContent = message[currentLang] ?? message.fr;
+          statut.hidden = false;
+        });
+      }
+      bloc.hidden = false;
+    }
+
     // Déjà accepté au chargement → affiche directement l'état confirmé (pas de
     // scroll : le client arrive déjà sur une page qui affiche l'état confirmé,
     // rien à "faire défiler jusqu'à" au premier paint).
@@ -9099,9 +9174,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           accepte_par_nom?: string;
           champ?: string;
           code?: string;
+          paiement?: unknown;
         };
         if (res.ok && data.ok) {
           showSuccess(data.accepte_par_nom || nom.trim(), signedAt, signatureDataUrl, true);
+          afficherPaiement(data);
           return;
         }
         // ADEV51 — la proposition a été corrigée depuis la lecture : on dit

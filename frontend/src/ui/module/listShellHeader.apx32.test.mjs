@@ -102,10 +102,15 @@ test('(d) ApprobationPage n’a plus un seul style inline en px', () => {
 })
 
 test('(e) le 4ᵉ idiome d’en-tête de la GED a disparu', () => {
+  // ENF19 (11/10/2026) : les deux écrans passent par l'en-tête commun
+  // `features/ged/EnteteGed.jsx`, lui-même bâti sur l'en-tête UNIQUE de l'app.
+  const entete = read('features/ged/EnteteGed.jsx')
+  assert.match(entete, /import \{ PageHeader \} from '\.\.\/\.\.\/ui\/PageHeader'/)
+  assert.match(entete, /<PageHeader/)
   for (const f of ['features/ged/GedNavigator.jsx', 'features/ged/NumeriserPage.jsx']) {
     const src = read(f)
-    assert.match(src, /import \{ PageHeader \} from '\.\.\/\.\.\/ui\/PageHeader'/, f)
-    assert.match(src, /<PageHeader/, f)
+    assert.match(src, /import EnteteGed from '\.\/EnteteGed'/, f)
+    assert.match(src, /<EnteteGed/, f)
     assert.doesNotMatch(src, /<h1 className="text-xl font-semibold">/, f)
   }
 })

@@ -1,38 +1,11 @@
-from django.db import transaction  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
-from django.utils import timezone  # noqa: F401
-from rest_framework import viewsets, status, filters  # noqa: F401
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from drf_spectacular.utils import extend_schema
+from .. import openapi_shapes as SH
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, record_stock_movement,
-)
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-)
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    LigneDevisSerializer,
-    DevisActivitySerializer,
-)
-from ..serializers_facturation import (  # noqa: F401
-    BonCommandeSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    RelanceLogSerializer,
-)
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsResponsableOrAdmin,
-    IsAdminRole,
-)
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from authentication.permissions import IsAnyRole
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -43,6 +16,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema(responses=SH.EmailConfigResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def email_config(request):
@@ -67,4 +41,5 @@ def _inbound_configured():
         from ..inbound_email import is_inbound_configured
         return is_inbound_configured()
     except Exception:
+        logger.warning("email._inbound_configured : erreur ignorée (mode dégradé)", exc_info=True)
         return False

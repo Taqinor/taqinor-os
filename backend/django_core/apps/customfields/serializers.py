@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from core.champs_stricts import BooleenStrict
 from .models import (
     CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
 )
@@ -360,12 +361,20 @@ class FieldRolePermissionSerializer(serializers.ModelSerializer):
 # --- XPLT16 — objets personnalisés no-code ----------------------------------
 
 class CustomObjectDefSerializer(serializers.ModelSerializer):
+    actif = BooleenStrict(required=False)  # ENF11 : `0`/`"oui"` = 400
+
     class Meta:
         model = CustomObjectDef
         fields = ['id', 'code', 'libelle', 'icone', 'actif', 'verrouille',
                   'date_creation']
         # NTEXT38 — verrou en lecture seule ici (cf. CustomFieldDefSerializer).
         read_only_fields = ['date_creation', 'verrouille']
+
+
+class ReordonnerDefinitionsSerializer(serializers.Serializer):
+    """ENF11 — corps de `reorder` : `ids` obligatoire (liste d'entiers)."""
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1, max_value=2147483647))
 
 
 class CustomRecordSerializer(serializers.ModelSerializer):

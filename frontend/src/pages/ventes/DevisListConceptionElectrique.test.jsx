@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, within, cleanup, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
+import { screen, within, cleanup, waitFor } from '@testing-library/react'
 import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* PV43 — entrée « Conception électrique » de la liste des devis.
@@ -14,25 +10,11 @@ import { reponseContrat } from '../../test/fixtures/contractSamples'
    `features/ventes/ConceptionElectrique.test.jsx`). Ici on vérifie seulement
    le CÂBLAGE : le bon devis, la bonne API, le bon panneau. */
 
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }) }
-})
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: { ...actual.default, getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })) },
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).ventesSliceSansFetch(await importOriginal()))
+vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).crmApiMotifsPerteVide(await importOriginal()))
 vi.mock('../../api/ventesApi', async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -45,40 +27,14 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
   }
 })
 
-import DevisList from './DevisList'
 import ventesApi from '../../api/ventesApi'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderList, ouvrirMenu } from './devisList.testHelpers.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const devisBase = {
   id: 3, reference: 'DEV-2026-08-0003', client_nom: 'ACME', statut: 'brouillon',
   date_creation: '2026-08-01', total_ttc: 45000, nb_options: 1, version: 1,
-}
-
-function renderList(devis) {
-  const store = configureStore({
-    reducer: {
-      ventes: (s = { devis, loading: false, error: null }) => s,
-      auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
-    },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider>
-          <DevisList />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-async function ouvrirMenu(reference) {
-  const user = userEvent.setup()
-  const row = screen.getByText(reference).closest('tr')
-  await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
-  return user
 }
 
 describe('PV43 — « Conception électrique » (liste des devis)', () => {

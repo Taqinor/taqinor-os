@@ -42,9 +42,11 @@ scopé, exactement comme le fait ``TenantMixin`` pour les listes.
 ``core`` reste FONDATION : aucun import d'app métier ici.
 """
 from django.core.exceptions import FieldDoesNotExist
+from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from .champs_stricts import BooleenStrict, ChaineStricte
 from .models import (
     ApiUsagePlan,
     BackgroundJob,
@@ -866,3 +868,18 @@ class OutboxEventSerializer(CompanyScopedRelationsMixin, serializers.ModelSerial
             'created_at', 'updated_at',
         ]
         read_only_fields = fields
+
+
+class ChampsTexteBooleenStricts:
+    """Mixin de ``ModelSerializer`` : les champs texte du modèle naissent
+    ``ChaineStricte`` et ses booléens ``BooleenStrict`` — un entier dans un
+    champ texte ou ``1``/``"true"`` dans un booléen répondent 400 au lieu
+    d'être convertis en silence (ENF11, constat api-fuzz « accepted
+    schema-violating request »). À placer AVANT ``ModelSerializer``."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+    }

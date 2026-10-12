@@ -40,6 +40,9 @@ from __future__ import annotations
 
 from ..lecture_pure import nombre_normalise
 from .mentions import mentions_ci
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Version de la forme servie (contrat CIQ4).
 VERSION = 1
@@ -491,6 +494,7 @@ def _garanties(data):
         from ..residential import theme
         bande = theme.warranties_for(data) or []
     except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+        logger.warning("synthese._garanties : erreur ignorée (mode dégradé)", exc_info=True)
         return []
     sortie = []
     for n, unite, libelle, _sous in bande:

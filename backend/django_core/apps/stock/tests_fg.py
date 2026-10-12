@@ -585,6 +585,16 @@ class TestFG64ExpiryTracking(TestCase):
         ids = [d['produit_id'] for d in data]
         self.assertIn(self.produit.id, ids)
 
+    def test_expirant_bientot_jours_gigantesque_ou_texte_400(self):
+        """ENF11 — horizon hors plage / illisible : 400 nommé, jamais 500."""
+        for valeur in ('1152921504606846977', 'null'):
+            r = self.client.get(
+                '/api/django/stock/produits/expirant-bientot/?jours=' + valeur)
+            self.assertEqual(r.status_code, 400, r.content)
+        r = self.client.get(
+            '/api/django/stock/produits/previsions-reappro/?nb_mois=5214')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_expirant_bientot_excludes_far_future(self):
         """Produits expirant après la fenêtre ne doivent pas apparaître."""
         import datetime

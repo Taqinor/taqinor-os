@@ -149,3 +149,16 @@ class TestEndpointEmplacementsTiers(Ntwms19Base):
             format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('type_proprietaire', reponse.data)
+
+
+class IdentiteFournisseurSansPrixTests(TestCase):
+    """AUDV23 (déplacé de apps.tiers.tests) — garde permanente : le pont
+    d'identité fournisseur → Tiers ne pousse QUE de l'identité."""
+
+    def test_aucun_prix_d_achat_ne_traverse_le_pont(self):
+        import inspect
+
+        from apps.stock.services import ecrire_identite_fournisseur
+        source = inspect.getsource(ecrire_identite_fournisseur)
+        self.assertNotIn('prix_achat', source)
+        self.assertNotIn('marge', source)

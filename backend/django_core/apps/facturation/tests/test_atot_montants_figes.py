@@ -88,11 +88,11 @@ class MontantsFigesTests(TestCase):
             'facture': facture.id, 'produit': self.produit.id,
             'designation': 'Ajout tardif', 'quantite': '1',
             'prix_unitaire': '500'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         ligne = LigneFacture.objects.filter(facture=facture).first()
         r = self.api.patch(f'/api/django/ventes/factures-lignes/{ligne.id}/',
                            {'prix_unitaire': '1'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(
             list(LigneFacture.objects.filter(facture=facture)
                  .values_list('id', 'quantite', 'prix_unitaire')), avant)

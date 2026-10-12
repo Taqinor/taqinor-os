@@ -3,9 +3,8 @@ import { render, screen, waitFor, within, fireEvent } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import authReducer from '../../features/auth/store/authSlice'
+import { makeAuthStore } from './stockPage.testHelpers.jsx'
 
 /* ============================================================================
    XPUR25 — Fiche fournisseur 360. L'agrégat `fournisseurs/{id}/vue-360/` est
@@ -68,17 +67,7 @@ import stockApi from '../../api/stockApi'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 import FournisseurFiche360 from './FournisseurFiche360.jsx'
 
-function makeStore({ role = 'admin', permissions = [] } = {}) {
-  return configureStore({
-    reducer: { auth: authReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role, role_nom: role, permissions,
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const makeStore = (o) => makeAuthStore({ permissions: [], ...o })
 
 function renderPage({ authState, fournisseurId = '7' } = {}) {
   return render(

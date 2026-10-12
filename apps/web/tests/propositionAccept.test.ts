@@ -13,6 +13,17 @@ import { POST } from '../src/pages/api/proposition-accept';
 // remise à zéro entre tests, les nombreux appels de ce fichier (partageant
 // tous la même IP « unknown ») finiraient par se faire 429 entre eux.
 import { resetRateLimit } from '../src/lib/rateLimit';
+// ADEV53 — succès post-signature : `paiement` du contrat partagé `proposal_accept.json`.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { POST as POST_VIREMENT } from '../src/pages/api/proposition-virement';
+import {
+  lirePaiementAcceptation,
+  paiementVue,
+  virementEndpoint,
+  virementMessage,
+  VIREMENT_MSG,
+} from '../src/lib/paiementAcceptation';
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/proposition-accept', {
@@ -183,5 +194,95 @@ describe('POST /api/proposition-accept — relais au backend', () => {
     expect(status).toBe(502);
     expect(json.ok).toBe(false);
     expect(json.detail).toMatch(/indisponible/i);
+  });
+});
+
+// ── ADEV53 (C-ADEV-023) — l'écran de paiement naît de l'échantillon du contrat ──────────────
+const lire = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const CONTRAT = JSON.parse(lire('../src/contract_samples/proposal_accept.json')) as {
+  reponse_200: Record<string, unknown> & { paiement: Record<string, unknown> };
+};
+const PAGE = lire('../src/pages/proposition/[...token].astro');
+
+async function callVirement(body: unknown) {
+  const req = new Request('http://localhost/api/proposition-virement', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const res = (await POST_VIREMENT({ request: req } as unknown as Parameters<typeof POST_VIREMENT>[0])) as Response;
+  return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+}
+
+describe('ADEV53 — succès post-signature : acompte, RIB, déclaration de virement', () => {
+  it('le contrat ne sert plus de lien carte (aucune route pay-card)', () => {
+    expect(CONTRAT.reponse_200.paiement).not.toHaveProperty('card_payment_url');
+    expect(String(CONTRAT.reponse_200.paiement.declare_url)).toMatch(/\/virement\/$/);
+  });
+
+  it('le proxy relaie `paiement` de la réponse 200 du contrat, jamais sur un refus', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(200, CONTRAT.reponse_200)));
+    const ok = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
+    expect(ok.status).toBe(200);
+    expect(ok.json.paiement).toEqual(lirePaiementAcceptation(CONTRAT.reponse_200));
+    expect(Object.keys(ok.json.paiement as object).sort()).toEqual(Object.keys(CONTRAT.reponse_200.paiement).sort());
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(409, { detail: 'Refus.', code: 'statut', paiement: {} })));
+    const refus = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
+    expect(refus.json).not.toHaveProperty('paiement');
+  });
+
+  it('la réponse du contrat produit l’écran : acompte servi, RIB absent quand vide, action de déclaration', () => {
+    const vue = paiementVue(lirePaiementAcceptation(CONTRAT.reponse_200));
+    expect(vue).toEqual({
+      acompte: '12 000,00 MAD',
+      pourcentage: '30',
+      rib: null,
+      message: null,
+      peutDeclarer: true,
+    });
+    // Un RIB servi par le profil société est affiché tel quel (valeur de test, pas un vrai compte).
+    const avecRib = { ...CONTRAT.reponse_200, paiement: { ...CONTRAT.reponse_200.paiement, rib: 'RIB-DE-TEST' } };
+    expect(paiementVue(lirePaiementAcceptation(avecRib))?.rib).toBe('RIB-DE-TEST');
+    // Rien de servi ⇒ aucun écran (jamais un montant de repli).
+    const vide = { paiement: { acompte_ttc: null, pourcentage: null, rib: '', message: '', declare_url: '' } };
+    expect(paiementVue(lirePaiementAcceptation(vide))).toBeNull();
+  });
+
+  it('la page branche le bloc de paiement sur la réponse d’acceptation', () => {
+    expect(PAGE).toContain('id="sign-paiement"');
+    expect(PAGE).toContain('id="sign-paiement-acompte"');
+    expect(PAGE).toContain('id="sign-paiement-rib"');
+    expect(PAGE).toContain('id="sign-virement-btn"');
+    expect(PAGE).toContain('afficherPaiement(data);');
+    expect(PAGE).toContain("fetch('/api/proposition-virement'");
+    expect(PAGE).not.toMatch(/card_payment_url|pay-card/);
+  });
+
+  it('le proxy de virement poste au /virement/ du jeton et reflète 200 puis 403 otp_required', async () => {
+    const fn = vi.fn().mockResolvedValue(upstream(200, { detail: 'Merci ! Votre déclaration a été transmise.' }));
+    vi.stubGlobal('fetch', fn);
+    const ok = await callVirement({ token: 'tok 1' });
+    expect(ok.status).toBe(200);
+    expect(ok.json.ok).toBe(true);
+    const [url, init] = fn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(virementEndpoint('https://api.taqinor.ma', 'tok 1'));
+    expect(url).toBe('https://api.taqinor.ma/api/django/ventes/proposal/tok%201/virement/');
+    expect(init.method).toBe('POST');
+    expect(virementMessage(ok.json as never)).toBe(VIREMENT_MSG.succes);
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(403, { detail: 'otp_required' })));
+    const refus = await callVirement({ token: 'tok' });
+    expect(refus.status).toBe(403);
+    expect(refus.json.detail).toBe('otp_required');
+    expect(virementMessage(refus.json as never)).toBe(VIREMENT_MSG.otp);
+  });
+
+  it('le proxy de virement exige un jeton (aucun appel amont sinon)', async () => {
+    const fn = vi.fn();
+    vi.stubGlobal('fetch', fn);
+    const { status } = await callVirement({});
+    expect(status).toBe(400);
+    expect(fn).not.toHaveBeenCalled();
   });
 });

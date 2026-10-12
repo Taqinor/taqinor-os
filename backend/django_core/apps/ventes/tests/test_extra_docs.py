@@ -146,6 +146,11 @@ class TestLettreRelancePremium(_Base):
             f'/api/django/ventes/factures/{facture.id}/'
             'lettre-relance-premium/?niveau=9')
         self.assertEqual(resp.status_code, 400)
+        # ENF11 — un niveau non entier répond 400 (il retombait sur 1).
+        resp = self.api.get(
+            f'/api/django/ventes/factures/{facture.id}/'
+            'lettre-relance-premium/?niveau=abc')
+        self.assertEqual(resp.status_code, 400)
         # Autre société → 404.
         other_co = make_company(slug='other-co', nom='Other Co')
         other_user = make_user(other_co, username='other_user')

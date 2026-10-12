@@ -85,6 +85,8 @@ class _FiltreSecretsHttpx(logging.Filter):
         try:
             message = record.getMessage()
         except Exception:  # noqa: BLE001 — message illisible : on le laisse
+            logger.warning(
+                "ad_library_client._FiltreSecretsHttpx.filter : erreur ignorée (mode dégradé)", exc_info=True)
             return True
         nettoye = _RE_SECRET_URL.sub(r'\1••••', message)
         if nettoye != message:

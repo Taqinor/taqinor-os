@@ -88,13 +88,25 @@ class CalibrationTests(TestCase):
         data = self._creer()
         r = self.api.post(f'{URL}{data["id"]}/calibrer/',
                           {'date_calibration': '2099-01-01'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('futur', str(r.data))
         self.api.post(f'{URL}{data["id"]}/calibrer/',
                       {'date_calibration': str(self.jour)}, format='json')
         r = self.api.post(f'{URL}{data["id"]}/calibrer/',
                           {'date_calibration': '2020-01-01'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('antérieure', str(r.data))
         outil = Outillage.objects.get(pk=data['id'])
         self.assertEqual(outil.date_derniere_calibration, self.jour)
+
+    def test_enf11_patch_sans_emplacement_porte_emplacement_nom_ou_omis(self):
+        """ENF11 — ``emplacement_nom`` est facultatif dans le schéma (absent
+        d'une réponse PATCH quand l'emplacement est nul) ; JSON seul (415)."""
+        data = self._creer()
+        r = self.api.patch(f"{URL}{data['id']}/", {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data.get('emplacement'))
+        r = self.api.post(f"{URL}{data['id']}/calibrer/", [1, 2], format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(URL, {'nom': 'X'}, format='multipart')
+        self.assertEqual(r.status_code, 415, r.data)

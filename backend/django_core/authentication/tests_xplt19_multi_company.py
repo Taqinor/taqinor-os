@@ -90,6 +90,13 @@ class SwitchCompanyApiTest(TenantAPITestCase):
                      {'company_id': self.company_b.id}, format='json')
         self.assertEqual(r.status_code, 403)
 
+    def test_enf11_switch_corps_invalide_400_pas_500(self):
+        api = _client_with_active(self.bi_user)
+        for corps in ([None, None], {}, {'company_id': 'abc'},
+                      {'company_id': 10 ** 30}):
+            r = api.post('/api/django/auth/switch-company/', corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+
     def test_switch_vers_societe_non_membre_refuse(self):
         # bi_user n'est PAS membre de other_company.
         api = _client_with_active(self.bi_user)

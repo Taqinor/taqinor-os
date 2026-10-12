@@ -56,7 +56,7 @@ class RemettreBrouillonArgentTests(TestCase):
             {}, format='json')
 
     def _assert_refus_intact(self, r, nature):
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(nature, r.data['detail'])
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, 'emise')

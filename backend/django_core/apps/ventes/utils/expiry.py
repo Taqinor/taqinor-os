@@ -7,6 +7,9 @@ si renseignée, sinon `date_creation + quote_validity_days` (réglage société)
 On ne PERSISTE rien et on ne touche jamais à l'étape du lead.
 """
 from datetime import timedelta
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Statuts encore « ouverts » : seuls ceux-ci peuvent devenir expirés à la volée.
 PENDING_STATUTS = ('brouillon', 'envoye')
@@ -18,6 +21,7 @@ def _validity_days(company):
         prof = CompanyProfile.get(company)
         return int(prof.quote_validity_days or 30)
     except Exception:
+        logger.warning("expiry._validity_days : erreur ignorée (mode dégradé)", exc_info=True)
         return 30
 
 

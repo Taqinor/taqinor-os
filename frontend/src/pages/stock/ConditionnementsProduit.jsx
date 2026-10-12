@@ -1,39 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
-import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, PackagePlus,
+import {
+  Plus, PackagePlus,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
-  Button, IconButton, DataTable, Spinner,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormField, Input,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, FormField, Input, Select, SelectTrigger, SelectValue, SelectContent,
 } from '../../ui'
+import { TableauStock, OptionsProduits, BoutonsModifierSupprimer } from './ComposantsStock'
+
+import { EnteteStock } from './EnteteStock'
+import { AlerteErreurStock } from './BandeauxListeStock'
+import usePeutEcrireStock from './usePeutEcrireStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { frErrChamps as frErr } from '../../lib/frErr'
+import DialogueFormulaireStock from './DialogueFormulaireStock'
+import { soumettreDialogue } from './dialogueStock'
 
 /* WIR109 — XSTK15 : conditionnements d'ACHAT d'un produit (« Touret 100 m »,
    « Carton 50 ») avec leur facteur de conversion vers l'unité de stock. Le
    stock reste stocké dans UNE SEULE unité (jamais de double comptage) :
    recevoir « 2 tourets de 100 m » incrémente 200 m via `facteur`. CRUD
    complet côté serveur, jusqu'ici sans écran. */
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
-}
 
 function ConditionnementForm({ produits, conditionnement, onClose, onSaved }) {
   const isNew = !conditionnement?.id
@@ -53,77 +43,58 @@ function ConditionnementForm({ produits, conditionnement, onClose, onSaved }) {
     if (!fields.nom.trim()) { setError('Le nom est requis.'); return }
     const facteur = Number(fields.facteur)
     if (!facteur || facteur <= 0) { setError('Le facteur doit être positif.'); return }
-    setSaving(true)
-    setError(null)
-    try {
-      const payload = {
-        produit: Number(fields.produit),
-        nom: fields.nom.trim(),
-        facteur,
-        code_barres: fields.code_barres.trim() || null,
-      }
-      if (isNew) await stockApi.createConditionnementProduit(payload)
-      else await stockApi.updateConditionnementProduit(conditionnement.id, payload)
-      onSaved?.()
-      onClose()
-    } catch (err) {
-      setError(frErr(err, "L'enregistrement a échoué."))
-    } finally { setSaving(false) }
+    await soumettreDialogue({
+      setSaving, setError, onSaved, onClose,
+      erreur: (err) => frErr(err, "L'enregistrement a échoué."),
+      action: async () => {
+        const payload = {
+          produit: Number(fields.produit),
+          nom: fields.nom.trim(),
+          facteur,
+          code_barres: fields.code_barres.trim() || null,
+        }
+        if (isNew) await stockApi.createConditionnementProduit(payload)
+        else await stockApi.updateConditionnementProduit(conditionnement.id, payload)
+      },
+    })
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{isNew ? 'Nouveau conditionnement' : `Conditionnement — ${conditionnement.nom}`}</DialogTitle>
-          <DialogDescription>
+    <DialogueFormulaireStock title={isNew ? 'Nouveau conditionnement' : `Conditionnement — ${conditionnement.nom}`}
+      description={<>
             Conditionnement d&apos;achat (touret, carton…), converti vers l&apos;unité de stock du produit.
-          </DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Produit" required htmlFor="cond-produit" fullWidth>
-            <Select value={fields.produit} onValueChange={(v) => setField('produit', v)}>
-              <SelectTrigger id="cond-produit"><SelectValue placeholder="Choisir un produit…" /></SelectTrigger>
-              <SelectContent>
-                {produits.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Nom" required htmlFor="cond-nom" fullWidth>
-            <Input id="cond-nom" placeholder="Ex. Touret 100 m" value={fields.nom}
-                   onChange={(e) => setField('nom', e.target.value)} />
-          </FormField>
-          <FormField label="Facteur (→ unité de stock)" required htmlFor="cond-facteur">
-            <Input id="cond-facteur" type="number" step="any" value={fields.facteur}
-                   onChange={(e) => setField('facteur', e.target.value)} />
-          </FormField>
-          <FormField label="Code-barres" htmlFor="cond-code">
-            <Input id="cond-code" value={fields.code_barres}
-                   onChange={(e) => setField('code_barres', e.target.value)} />
-          </FormField>
-          {error && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+          </>}
+      onClose={onClose}
+      onSubmit={submit}
+      error={error}
+      saving={saving}>
+        <FormField label="Produit" required htmlFor="cond-produit" fullWidth>
+          <Select value={fields.produit} onValueChange={(v) => setField('produit', v)}>
+            <SelectTrigger id="cond-produit"><SelectValue placeholder="Choisir un produit…" /></SelectTrigger>
+            <SelectContent>
+              <OptionsProduits produits={produits} />
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Nom" required htmlFor="cond-nom" fullWidth>
+          <Input id="cond-nom" placeholder="Ex. Touret 100 m" value={fields.nom}
+                 onChange={(e) => setField('nom', e.target.value)} />
+        </FormField>
+        <FormField label="Facteur (→ unité de stock)" required htmlFor="cond-facteur">
+          <Input id="cond-facteur" type="number" step="any" value={fields.facteur}
+                 onChange={(e) => setField('facteur', e.target.value)} />
+        </FormField>
+        <FormField label="Code-barres" htmlFor="cond-code">
+          <Input id="cond-code" value={fields.code_barres}
+                 onChange={(e) => setField('code_barres', e.target.value)} />
+        </FormField>
+    </DialogueFormulaireStock>
   )
 }
 
 export default function ConditionnementsProduit() {
   const [confirmer, dialogueConfirmation] = useConfirmation()
-  const hasFinePermissions = useSelector((s) => (s.auth.permissions || []).length > 0)
-  const canWriteViaPerm = useHasPermission('stock_modifier')
-  const canWriteViaRole = useIsAdminOrResponsable()
-  const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  const canWrite = usePeutEcrireStock()
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -168,14 +139,8 @@ export default function ConditionnementsProduit() {
       cell: (_v, c) => (
         canWrite ? (
           <div className="flex items-center justify-end gap-1">
-            <IconButton size="sm" variant="ghost" label="Modifier" onClick={() => setSelected(c)}>
-              <Pencil className="size-4" aria-hidden="true" />
-            </IconButton>
-            <IconButton size="sm" variant="ghost" label="Supprimer"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => supprimer(c)}>
-              <Trash2 className="size-4" aria-hidden="true" />
-            </IconButton>
+            <BoutonsModifierSupprimer onModifier={() => setSelected(c)}
+                                      onSupprimer={() => supprimer(c)} />
           </div>
         ) : null
       ) },
@@ -185,10 +150,7 @@ export default function ConditionnementsProduit() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={PackagePlus}
         title="Conditionnements produit"
         subtitle="Conditionnements d'achat (touret, carton…) — le stock reste dans une seule unité."
@@ -199,17 +161,9 @@ export default function ConditionnementsProduit() {
         ) : null}
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <AlerteErreurStock error={error} />
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(c) => c.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (conditionnement, produit)…"
         globalColumns={['nom', 'produit_nom']}
         emptyTitle="Aucun conditionnement"

@@ -92,8 +92,13 @@ def _cibles_par_nom():
     cibles = {}
     for modele in apps.get_models():
         for champ in modele._meta.get_fields():
+            # ENF11 — les M2M DIRECTS (``entites_visibles``…) sont des FK du
+            # corps comme les autres : leurs ids doivent être connus aussi
+            # (``concrete`` est faux pour un M2M, qui n'a pas de colonne).
+            directe_m2m = (getattr(champ, 'many_to_many', False)
+                           and not getattr(champ, 'auto_created', False))
             if not (getattr(champ, 'is_relation', False)
-                    and getattr(champ, 'concrete', False)):
+                    and (getattr(champ, 'concrete', False) or directe_m2m)):
                 continue
             cible = champ.related_model
             if cible is None or isinstance(cible, str):

@@ -39,9 +39,10 @@ def _deposit_success_payload(devis, token):
     """QX33be — payload d'acompte pour l'écran/email de succès post-signature.
 
     Montant = 1ʳᵉ tranche de l'échéancier (acompte) calculée sur le TTC REMISÉ
-    (chaîne canonique QX1). RIB si configuré. ``card_payment_url`` non nul
-    UNIQUEMENT si un vrai PSP est configuré (QXG2) — sinon None. Best-effort :
-    jamais d'exception (renvoie un payload minimal)."""
+    (chaîne canonique QX1). RIB si configuré. ADEV53 (C-ADEV-023) : aucune
+    clé ``card_payment_url`` — la route ``pay-card`` n'existe pas, la page ne
+    doit jamais lier une route inexistante (contrat ``proposal_accept.json``).
+    Best-effort : jamais d'exception (renvoie un payload minimal)."""
     from decimal import Decimal
     payload = {
         'acompte_ttc': None,
@@ -49,7 +50,6 @@ def _deposit_success_payload(devis, token):
         'rib': _company_rib(getattr(devis, 'company', None)),
         'message': '',
         'declare_url': f'/api/django/public/proposal/{token}/virement/',
-        'card_payment_url': None,
     }
     try:
         from ..deposit import deposit_protection_message
@@ -64,15 +64,6 @@ def _deposit_success_payload(devis, token):
             payload['message'] = deposit_protection_message(
                 acompte, reference=devis.reference)
     except Exception:  # noqa: BLE001 — best-effort
-        pass
-    # QX33be — slot lien carte : actif seulement si un PSP réel est configuré.
-    try:
-        from django.conf import settings
-        provider = (getattr(settings, 'PAYMENT_PROVIDER', '') or '').strip()
-        if provider and provider != 'noop':
-            payload['card_payment_url'] = (
-                f'/api/django/public/proposal/{token}/pay-card/')
-    except Exception:  # noqa: BLE001
         pass
     return payload
 
@@ -95,6 +86,13 @@ def proposal_virement_declare(request, token):
     # enverrait le vendeur vérifier un versement qui n'existe pas.
     if link.via_interne:
         return _refus_apercu_interne()
+    # ADEV53 (C-ADEV-022) — même garde que la LECTURE de la proposition : un
+    # lien à OTP de lecture non déverrouillé ne déclare rien (403
+    # ``otp_required``, le contrat que la page sait déjà traiter).
+    from ..services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis
     # Idempotence : une déclaration par lien et par heure.
     try:

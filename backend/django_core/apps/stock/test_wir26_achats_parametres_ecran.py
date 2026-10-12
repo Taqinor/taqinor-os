@@ -191,7 +191,7 @@ class TestStatutFournisseurViaFiche(Wir26Base):
                 'prix_achat_unitaire': '100',
             }],
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('Retard qualité répété', resp.data['detail'])
 
     def test_bloquer_paiements_depuis_la_fiche_refuse_le_paiement_suivant(self):
@@ -206,7 +206,7 @@ class TestStatutFournisseurViaFiche(Wir26Base):
         resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
             'facture': facture.id, 'montant': '1200',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_repasser_actif_depuis_la_fiche_debloque(self):
         self.fournisseur.statut = Fournisseur.Statut.BLOQUE_TOTAL

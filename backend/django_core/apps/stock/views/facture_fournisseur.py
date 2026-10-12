@@ -1,37 +1,21 @@
 import logging
 
 from django.db import transaction
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import viewsets, filters, status  # noqa: F401
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, NUM, P, PDF, STR, corps
+from ..erreurs_achats import IntrouvableMetier
+from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
-)
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
+from ..models import FactureFournisseur
+from ..serializers import (
+    FactureFournisseurSerializer, PaiementFournisseurSerializer,
     EcheanceFactureFournisseurSerializer,
 )
 from authentication.permissions import (
@@ -49,6 +33,17 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
+
+
+class TrancheEcheancierSerializer(serializers.Serializer):
+    """ENF11 — une tranche d'échéancier : la forme que le service lit déjà
+    (``pourcentage``/``montant`` optionnels, ``date_echeance`` obligatoire),
+    déclarée au schéma au lieu d'un ``DictField`` libre."""
+    pourcentage = serializers.DecimalField(
+        max_digits=5, decimal_places=2, required=False, allow_null=True)
+    montant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True)
+    date_echeance = serializers.DateField()
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('statut', STR,
@@ -105,8 +100,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        fournisseur_id = self.request.query_params.get('fournisseur')
-        if fournisseur_id:
+        from ..utils.params import entier_ou_400
+        fournisseur_id = entier_ou_400(
+            self.request.query_params.get('fournisseur'), 'fournisseur')
+        if fournisseur_id is not None:
             qs = qs.filter(fournisseur_id=fournisseur_id)
         statut = self.request.query_params.get('statut')
         if statut:
@@ -252,7 +249,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                             f'malgré {len(doublons)} doublon(s) potentiel(s) '
                             '(override confirmé).'))
                 except Exception:  # noqa: BLE001 — best-effort
-                    pass
+                    logger.warning(
+                        "facture_fournisseur.FactureFournisseurViewSet.create "
+                        ": erreur ignorée (mode dégradé)", exc_info=True)
         return response
 
     @extend_schema(
@@ -278,12 +277,19 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         import json
         from ..services import creer_facture_fournisseur_depuis_ocr
 
+        if not hasattr(request.data, 'get'):
+            return Response(
+                {'detail': 'Le corps doit être un objet.'},
+                status=status.HTTP_400_BAD_REQUEST)
         fields = request.data.get('fields') or {}
         if isinstance(fields, str):
             try:
                 fields = json.loads(fields)
             except (TypeError, ValueError):
-                fields = {}
+                return Response(
+                    {'detail': 'Le champ « fields » doit être un objet '
+                               '(JSON illisible).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(fields, dict):
             return Response(
                 {'detail': 'Le champ « fields » doit être un objet.'},
@@ -304,6 +310,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 confirmer_malgre_doublon=bool(
                     request.data.get('confirmer_malgre_doublon')),
             )
+        except IntrouvableMetier as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -326,12 +335,15 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         from ..permissions import PeutVoirPrixAchat
         from ..selectors import suggerer_bcf_pour_facture
 
-        fournisseur_id = request.query_params.get('fournisseur')
-        if not fournisseur_id:
+        from ..utils.params import decimal_ou_400, entier_ou_400
+        fournisseur_id = entier_ou_400(
+            request.query_params.get('fournisseur'), 'fournisseur')
+        if fournisseur_id is None:
             return Response(
                 {'detail': 'Le paramètre fournisseur est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        montant = request.query_params.get('montant')
+        montant = decimal_ou_400(
+            request.query_params.get('montant'), 'montant')
         suggestions = suggerer_bcf_pour_facture(
             request.user.company, fournisseur_id=fournisseur_id,
             montant=montant)
@@ -359,10 +371,11 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
         parametres = AchatsParametres.for_company(request.user.company)
         if not parametres.einvoicing_entrant_actif:
+            # ENF11 — réglage société éteint = état (409), pas un corps invalide.
             return Response(
                 {'detail': "L'e-facturation entrante (UBL) n'est pas "
                            'activée pour cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
         upload = request.FILES.get('file')
         if upload is None:
@@ -374,6 +387,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             facture = creer_facture_fournisseur_depuis_ubl(
                 company=request.user.company, user=request.user,
                 xml_bytes=upload.read())
+        except IntrouvableMetier as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -391,8 +407,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         from ..selectors import releve_deductions_tva_par_taux
         releve = releve_deductions_tva_par_taux(
             request.user.company,
-            date_debut=request.query_params.get('date_debut'),
-            date_fin=request.query_params.get('date_fin'))
+            date_debut=date_ou_400(
+                request.query_params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(
+                request.query_params.get('date_fin'), 'date_fin'))
         return Response(releve)
 
     @extend_schema(responses=corps('FactureComptesAPayer', results=FactureFournisseurSerializer(many=True),
@@ -426,7 +444,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True))
     @extend_schema(methods=['POST'], request=PaiementFournisseurSerializer,
                    responses={201: FactureFournisseurSerializer})
-    @action(detail=True, methods=['get', 'post'], url_path='paiements')
+    @action(detail=True, methods=['get', 'post'], url_path='paiements',
+            pagination_class=None)
     def paiements(self, request, pk=None):
         """GET : liste des paiements de la facture. POST : enregistre un
         paiement (montant/date/mode), recalcule le statut + le solde dû."""
@@ -448,8 +467,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 request.user.company, facture.fournisseur)
             check_facture_exception_gate(request.user.company, facture)
         except ValueError as exc:
+            # ENF11 — fournisseur bloqué / conformité / exception = état (409).
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         # POST — enregistre un paiement, company posée serveur.
         serializer = PaiementFournisseurSerializer(
             data={**request.data, 'facture': facture.id},
@@ -471,7 +491,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                     facture, montant)
             except ValueError as exc:
                 return Response(
-                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
             taux, montant_ras = compute_ras_tva(
                 request.user.company, facture, montant)
             paiement = serializer.save(
@@ -510,11 +530,12 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 commentaire=request.data.get('commentaire', ''))
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(facture).data)
 
     @extend_schema(responses=FactureFournisseurSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='en-exception')
+    @action(detail=False, methods=['get'], url_path='en-exception',
+            pagination_class=None)
     def en_exception(self, request):
         """XPUR10 — file « Factures en exception » (rapprochement 3 voies
         hors tolérance, non résolu). LECTURE SEULE."""
@@ -524,7 +545,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(methods=['GET'], responses=LISTE)
     @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps',
-                                                   tranches=serializers.ListField(child=serializers.DictField())),
+                                                   tranches=serializers.ListField(
+                                                       child=TrancheEcheancierSerializer(), min_length=1)),
                    responses={201: EcheanceFactureFournisseurSerializer(many=True)})
     @action(detail=True, methods=['get', 'post'], url_path='echeancier')
     def echeancier(self, request, pk=None):
@@ -547,12 +569,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Au moins une tranche est requise.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        for t in tranches:
-            if not t.get('date_echeance'):
-                return Response(
-                    {'detail': 'Chaque tranche doit porter une date '
-                               "d'échéance."},
-                    status=status.HTTP_400_BAD_REQUEST)
+        saisie = TrancheEcheancierSerializer(data=tranches, many=True)
+        saisie.is_valid(raise_exception=True)
+        tranches = saisie.validated_data
         from ..services import creer_echeancier_facture_fournisseur
         created = creer_echeancier_facture_fournisseur(
             request.user.company, facture, tranches)

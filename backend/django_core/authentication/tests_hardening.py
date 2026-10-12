@@ -119,10 +119,7 @@ class TestLoginAuditActorNormalization(TestCase):
             role_legacy='admin', company=self.company)
 
     def test_actor_username_comes_from_resolved_user(self):
-        try:
-            from apps.audit.models import AuditLog
-        except Exception:
-            self.skipTest('app audit indisponible')
+        from apps.audit.models import AuditLog
         api = APIClient()
         resp = api.post('/api/django/token/', {
             'username': 'AuditUser', 'password': 'secretpass1'},
@@ -137,10 +134,7 @@ class TestLoginAuditActorNormalization(TestCase):
         self.assertEqual(row.actor_username, self.user.username)
 
     def test_failed_login_records_no_authoritative_actor(self):
-        try:
-            from apps.audit.models import AuditLog
-        except Exception:
-            self.skipTest('app audit indisponible')
+        from apps.audit.models import AuditLog
         api = APIClient()
         before = AuditLog.objects.filter(
             action=AuditLog.Action.LOGIN).count()

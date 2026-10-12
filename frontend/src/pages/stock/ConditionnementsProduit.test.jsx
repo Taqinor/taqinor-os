@@ -1,11 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import authReducer from '../../features/auth/store/authSlice'
+import { makeAuthStore as makeStore, renderStockPage } from './stockPage.testHelpers.jsx'
 
 /* ============================================================================
    WIR109 — XSTK15 : conditionnements d'achat d'un produit (« Touret 100 m »,
@@ -25,27 +21,7 @@ vi.mock('../../api/stockApi', () => ({
 import stockApi from '../../api/stockApi'
 import ConditionnementsProduit from './ConditionnementsProduit'
 
-function makeStore({ role = 'admin', permissions = ['stock_modifier', 'stock_voir'] } = {}) {
-  return configureStore({
-    reducer: { auth: authReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role, role_nom: role, permissions,
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
-function renderPage(store = makeStore()) {
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ThemeProvider><ConditionnementsProduit /></ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderPage = (store = makeStore()) => renderStockPage(ConditionnementsProduit, store)
 
 describe('ConditionnementsProduit (WIR109)', () => {
   it('liste les conditionnements existants', async () => {

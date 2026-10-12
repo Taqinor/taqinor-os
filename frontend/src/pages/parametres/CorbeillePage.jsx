@@ -18,6 +18,8 @@ import { useConfirmDialog, toast } from '../../ui/confirm'
 import { formatDateTime } from '../../lib/format'
 import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import RestaurationMasseDialog from './RestaurationMasseDialog'
+import { useFiltresPaginees } from './useFiltresPaginees'
+import PaginationPrecedentSuivant from './PaginationPrecedentSuivant'
 
 const FILTRES_VIDES = { type: '', depuis: '', jusqua: '' }
 const PAGE_SIZE = 50
@@ -27,13 +29,11 @@ export default function CorbeillePage() {
   // `saisie` = ce que l'utilisateur tape ; `filtres` = ce qui a été appliqué —
   // sans cette séparation, chaque frappe déclencherait une requête (patron
   // PiecesJointesPage.jsx, WIR270).
-  const [saisie, setSaisie] = useState(FILTRES_VIDES)
-  const [filtres, setFiltres] = useState(FILTRES_VIDES)
+  const { saisie, filtres, page, setPage, appliquer, reinitialiser, set } = useFiltresPaginees(FILTRES_VIDES)
   // NTUX24 — ce même toggle pilote AUSSI le journal d'audit exportable
   // (`buildParams()` ci-dessous) : jamais un filtre serveur `?restaures=`
   // dupliqué entre la liste et l'export.
   const [inclureRestaures, setInclureRestaures] = useState(false)
-  const [page, setPage] = useState(1)
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -76,19 +76,6 @@ export default function CorbeillePage() {
     charger()
   }, [charger])
 
-  const appliquer = (e) => {
-    e.preventDefault()
-    setPage(1)
-    setFiltres(saisie)
-  }
-
-  const reinitialiser = () => {
-    setPage(1)
-    setSaisie(FILTRES_VIDES)
-    setFiltres(FILTRES_VIDES)
-  }
-
-  const set = (cle) => (e) => setSaisie((p) => ({ ...p, [cle]: e.target.value }))
 
   const restaurer = async (element) => {
     const ok = await confirm({
@@ -298,19 +285,7 @@ export default function CorbeillePage() {
             </tbody>
           </table>
 
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <Button type="button" size="sm" variant="outline"
-                    disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Précédent
-            </Button>
-            <span data-testid="corbeille-pagination">
-              Page {page} / {pages}
-            </span>
-            <Button type="button" size="sm" variant="outline"
-                    disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-              Suivant
-            </Button>
-          </div>
+          <PaginationPrecedentSuivant page={page} pages={pages} setPage={setPage} testId="corbeille-pagination" />
         </>
       )}
 

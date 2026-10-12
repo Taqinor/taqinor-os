@@ -1,42 +1,20 @@
-from django.db import transaction  # noqa: F401
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
+import io
+import logging
+import zipfile
+
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import viewsets, filters, status  # noqa: F401
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, INT, OBJET, P, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
-from apps.ventes.utils.references import create_with_reference  # noqa: F401
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
-)
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
-)
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsAdminRole,
-    IsResponsableOrAdmin,
-    HasPermissionOrLegacy,
-)
+from ..models import Produit, Fournisseur, PrixFournisseur
+from ..serializers import PrixFournisseurSerializer
+from authentication.permissions import HasPermissionOrLegacy
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -53,6 +31,21 @@ def _flag(valeur):
     l'option DÉSACTIVÉE — un écrasement du tarif réel ne peut donc jamais
     résulter d'une valeur mal comprise (même règle que `dataimport.views`)."""
     return str(valeur).strip().lower() in ('1', 'true', 'yes', 'on', 'oui')
+
+
+def _classeur_lisible(contenu):
+    """``True`` si ``contenu`` s'ouvre comme un classeur xlsx : une archive zip
+    qui n'est pas un classeur (ou un classeur corrompu) est un fichier illisible
+    (400), jamais un 500 levé par openpyxl au milieu de l'import."""
+    if not zipfile.is_zipfile(io.BytesIO(contenu)):
+        return False
+    from openpyxl import load_workbook
+    try:
+        load_workbook(io.BytesIO(contenu), read_only=True).close()
+    except Exception:  # noqa: BLE001 — tout échec d'ouverture = fichier illisible
+        logger.warning("prix_fournisseur._classeur_lisible : classeur illisible", exc_info=True)
+        return False
+    return True
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('produit', INT, False, 'Produit (id)')]))
@@ -90,8 +83,10 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        produit_id = self.request.query_params.get('produit')
-        if produit_id:
+        from ..utils.params import entier_ou_400
+        produit_id = entier_ou_400(
+            self.request.query_params.get('produit'), 'produit')
+        if produit_id is not None:
             qs = qs.filter(produit_id=produit_id)
         return qs
 
@@ -107,10 +102,11 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, True,
-                                                                          'Fournisseur (id)'), P('quantite', INT,
-                                                                                                 False,
-                                                                                                 'Quantité (défaut 1)')], responses=corps('PrixFournisseurEffectifReponse', prix_effectif=serializers.CharField(allow_null=True)))
+    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'),
+                               P('fournisseur', INT, True, 'Fournisseur (id)'),
+                               P('quantite', INT, False, 'Quantité (défaut 1)')],
+                   responses=corps('PrixFournisseurEffectifReponse',
+                                   prix_effectif=serializers.CharField(allow_null=True)))
     @action(detail=False, methods=['get'], url_path='effectif')
     def effectif(self, request):
         """XPUR14 (AUDV04/DRAFT165-117) — prix d'achat EFFECTIF pour un
@@ -188,14 +184,25 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'fournisseur et file sont requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        try:
+            fournisseur_id = int(fournisseur_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'fournisseur doit être un identifiant entier.'},
+                status=status.HTTP_400_BAD_REQUEST)
         fournisseur = Fournisseur.objects.filter(
             pk=fournisseur_id, company=request.user.company).first()
         if fournisseur is None:
             return Response(
                 {'detail': 'Fournisseur introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
+        contenu = upload.read()
+        if not _classeur_lisible(contenu):
+            return Response(
+                {'detail': 'Fichier xlsx illisible ou vide.'},
+                status=status.HTTP_400_BAD_REQUEST)
         result = import_prix_fournisseur_xlsx(
-            request.user.company, fournisseur, upload.read(),
+            request.user.company, fournisseur, contenu,
             apercu=_flag(request.data.get('apercu')),
             ecraser=_flag(request.data.get('ecraser')),
             user=request.user, filename=getattr(upload, 'name', '') or '')

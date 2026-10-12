@@ -71,7 +71,8 @@ class BaremeFacturesReellesTest(SimpleTestCase):
         """594,25 en espèces — vérifié, et DÉLIBÉRÉMENT hors du total."""
         total = B.facture_mad(359, jours=30, millesime=2026)['total_mad']
         self.assertAlmostEqual(
-            total * (1 + B.TIMBRE_ESPECES_PCT), 594.25, places=2)
+            # timbre espèces 0,25 % : frais de mode de paiement, hors barème
+            total * 1.0025, 594.25, places=2)
 
     def test_factures_b_et_c_dans_la_tolerance_mesuree(self):
         for libelle, kwh, jours, millesime, attendu in FACTURES_REELLES[1:]:
@@ -1051,7 +1052,9 @@ class GlitchSortieMoteurTest(SimpleTestCase):
                       ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
                       equipements=equipements)
         balayage = EH.balayer_stockage_horaire(capacites_kwh=[10.0], **commun)
-        etude = EH.calculer_etude_horaire(batterie_kwh_utile=10.0, **{'tranches': None, 'charges_fixes_mad': None, **commun})
+        etude = EH.calculer_etude_horaire(
+            batterie_kwh_utile=10.0,
+            **{'tranches': None, 'charges_fixes_mad': None, **commun})
         self.assertIsNotNone(balayage)
         palier = balayage['paliers'][0]
         self.assertAlmostEqual(palier['autoconsomme_kwh'],

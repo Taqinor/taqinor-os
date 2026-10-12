@@ -18,6 +18,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { EtatChargementSection } from './EtatsSection'
 
 const NONE = '__none__'
 
@@ -128,21 +129,9 @@ export default function KitsSection() {
     return outils.filter((o) => !used.has(o.id))
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
-
-  if (loadError) return (
-    <div className="flex flex-col items-start gap-2">
-      <p className="flex items-center gap-2 text-sm text-destructive">
-        <AlertCircle className="size-4" aria-hidden="true" />
-        Kits d'outillage indisponibles (serveur ?).
-      </p>
-      <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
-    </div>
-  )
+  if (loading || loadError) {
+    return <EtatChargementSection loading={loading} loadError={loadError} message="Kits d'outillage indisponibles (serveur ?)." onRetry={load} />
+  }
 
   return (
     <Card>

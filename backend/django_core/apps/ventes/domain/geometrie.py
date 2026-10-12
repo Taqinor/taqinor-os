@@ -989,6 +989,7 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
                 company, _is_panel, watt=watt, role='panneau',
                 gamme=gamme_nom(devis) if devis is not None else None)
         except Exception:      # pragma: no cover - catalogue indisponible
+            logger.warning("geometrie._panneau_pour_calepinage : erreur ignorée (mode dégradé)", exc_info=True)
             produit = None
     if produit is None:
         return None, None
@@ -1482,8 +1483,8 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _lignes_produit,
 )
 from apps.ventes.domain.composition import _v_txt  # noqa: E402,F401
-from apps.ventes.domain.gammes import gamme_nom  # noqa: E402,F401
-from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
+from apps.ventes.domain.gammes import gamme_nom  # noqa: E402
+from apps.ventes.domain.etape_composer import (  # noqa: E402
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, cleanup } from '@testing-library/react'
+import { screen, cleanup } from '@testing-library/react'
 
 /* CAD114 — le canal « Visite » n'est plus PROPOSÉ à la configuration.
 
@@ -28,8 +28,8 @@ vi.mock('../../api/parametresApi', () => ({
 }))
 
 import parametresApi from '../../api/parametresApi'
-import { ThemeProvider } from '../../design/ThemeProvider'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
+import { monterEditeur } from './cadenceRelance.testHelpers.jsx'
 
 const BARREAU_APPEL = {
   id: 61, cadence: 'contact', ordre: 1, delai_jours: 0, delai_minutes: 0,
@@ -53,15 +53,7 @@ beforeEach(() => {
 })
 afterEach(() => cleanup())
 
-const renderEditor = async () => {
-  await act(async () => {
-    render(
-      <ThemeProvider>
-        <CadenceRelanceEditor />
-      </ThemeProvider>,
-    )
-  })
-}
+const renderEditor = () => monterEditeur(CadenceRelanceEditor)
 
 const user = async () => {
   const { default: userEvent } = await import('@testing-library/user-event')

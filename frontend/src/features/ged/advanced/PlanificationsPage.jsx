@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Trash2, CheckCircle2 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import {
-  Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
+  Button, Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, toast,
 } from '../../../ui'
 import { formatDate } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { errMessage, toutesLesPages } from './shared.js'
+import {
+  errMessage, toutesLesPages, unpage, useChargementGed, actionAvecToast,
+} from './shared.js'
+import { ChampDocument } from './ChampsGed.jsx'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
    PACT137 — Planifications de document (XGED15).
@@ -31,43 +34,23 @@ function statutDe(r) {
   return r.echeance && r.echeance < today ? 'en_retard' : 'a_venir'
 }
 
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
-
 export default function PlanificationsPage() {
   const [planifications, setPlanifications] = useState([])
   const [documents, setDocuments] = useState([])
   const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [p, docs, u] = await Promise.all([
-        // ADOC31 — toutes les pages, jamais la seule première.
-        toutesLesPages(gedApi.getPlanificationsDocument),
-        toutesLesPages(gedApi.getDocumentsList),
-        gedApi.getUsers(),
-      ])
-      setPlanifications(unpage(p.data))
-      setDocuments(unpage(docs.data))
-      setUsers(unpage(u.data))
-    } catch (err) {
-      setError(errMessage(err, 'Impossible de charger les planifications.'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
-    load()
-  }, [])
+  const { loading, error, load } = useChargementGed(async () => {
+    const [p, docs, u] = await Promise.all([
+      // ADOC31 — toutes les pages, jamais la seule première.
+      toutesLesPages(gedApi.getPlanificationsDocument),
+      toutesLesPages(gedApi.getDocumentsList),
+      gedApi.getUsers(),
+    ])
+    setPlanifications(unpage(p.data))
+    setDocuments(unpage(docs.data))
+    setUsers(unpage(u.data))
+  }, 'Impossible de charger les planifications.')
 
   const columns = useMemo(() => [
     { id: 'libelle', header: 'Planification', accessor: (r) => r.libelle },
@@ -86,20 +69,14 @@ export default function PlanificationsPage() {
   const rowActions = (r) => (r.faite ? [] : [
     {
       id: 'faite', label: 'Marquer faite', icon: CheckCircle2,
-      onClick: async () => {
-        try {
-          await gedApi.updatePlanificationDocument(r.id, { faite: true })
-          toast.success('Planification marquée faite.')
-          load()
-        } catch (err) { toast.error(errMessage(err)) }
-      },
+      onClick: () => actionAvecToast(
+        () => gedApi.updatePlanificationDocument(r.id, { faite: true }),
+        'Planification marquée faite.', load),
     },
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: async () => {
-        try { await gedApi.deletePlanificationDocument(r.id); toast.success('Planification supprimée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
-      },
+      onClick: () => actionAvecToast(
+        () => gedApi.deletePlanificationDocument(r.id), 'Planification supprimée.', load),
     },
   ])
 
@@ -150,42 +127,25 @@ function CreatePlanificationDialog({ documents, users, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle planification</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger aria-label="Choisir un document"><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Libellé</Label>
-            <Input aria-label="Libellé de la planification" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
-          </div>
-          <div>
-            <Label>Échéance</Label>
-            <Input aria-label="Échéance" type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} />
-          </div>
-          <div>
-            <Label>Assigné à (optionnel)</Label>
-            <Select value={assigneA} onValueChange={setAssigneA}>
-              <SelectTrigger aria-label="Choisir un assigné"><SelectValue placeholder="Choisir un utilisateur…" /></SelectTrigger>
-              <SelectContent>
-                {users.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouvelle planification" onClose={onClose} submit={submit} saving={saving}>
+      <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} ariaLabel="Choisir un document" />
+      <div>
+        <Label>Libellé</Label>
+        <Input aria-label="Libellé de la planification" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+      </div>
+      <div>
+        <Label>Échéance</Label>
+        <Input aria-label="Échéance" type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} />
+      </div>
+      <div>
+        <Label>Assigné à (optionnel)</Label>
+        <Select value={assigneA} onValueChange={setAssigneA}>
+          <SelectTrigger aria-label="Choisir un assigné"><SelectValue placeholder="Choisir un utilisateur…" /></SelectTrigger>
+          <SelectContent>
+            {users.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+    </DialogueFormulaire>
   )
 }

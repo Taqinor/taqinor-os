@@ -15,6 +15,10 @@ Every class is prefixed `c1-` so it can never clash with pages 2/3.
 Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def libelle_fixe(d, cle, fr, **valeurs):
     """APDF8 — libellé FIXE du gabarit résidentiel dans la langue du document.
@@ -955,6 +959,7 @@ def _yrs(v):
     try:
         f = float(v)
     except Exception:
+        logger.warning("cover._yrs : erreur ignorée (mode dégradé)", exc_info=True)
         return str(v)
     if f == int(f):
         return str(int(f))

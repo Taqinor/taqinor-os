@@ -5,7 +5,7 @@
 // compter ses rendus sans tirer ses dépendances redux/permissions internes.
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { wrap, baseLine, baseProps } from './devisLineRow.testHelpers.jsx'
 import DevisLineRow from './DevisLineRow'
 
 const produitPickerRenderSpy = vi.fn()
@@ -18,37 +18,6 @@ vi.mock('../../components/ProduitPicker', () => ({
     return <div data-testid="produit-picker-mock">{props.value ?? 'aucun'}</div>
   },
 }))
-
-function wrap(ui) {
-  return <ThemeProvider>{ui}</ThemeProvider>
-}
-
-const baseLine = {
-  _key: 'l1', designation: 'Panneau solaire 450W', produit: '10',
-  quantite: '4', prix_unit_ttc: '1500', taux_tva: '20',
-}
-
-const noop = () => {}
-function baseProps(overrides = {}) {
-  return {
-    line: baseLine,
-    produits: [{ id: 10, nom: 'Panneau solaire 450W' }],
-    multiMode: 'none',
-    villaGroups: [],
-    canRenameLine: true,
-    tarifBadge: undefined,
-    tvaPanneaux: 10,
-    tvaStandard: 20,
-    onSetField: noop,
-    onDesignationBlur: noop,
-    onProduitChange: noop,
-    onProduitCreated: noop,
-    onQuantiteChange: noop,
-    onSetGroupe: noop,
-    onRemove: noop,
-    ...overrides,
-  }
-}
 
 describe('DevisLineRow (VX188) — mémoïsation', () => {
   it('rend la ligne avec les mêmes contrats DOM (data-label, step="any", noValidate côté champs)', () => {

@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from importlib import import_module
 
 
 class StockConfig(AppConfig):
@@ -32,7 +33,7 @@ class StockConfig(AppConfig):
         register_stock_signup_hooks()
         # ARC18 — miroir one-way stock.Fournisseur → répertoire unifié
         # tiers.Tiers (l'import câble le récepteur post_save ; pont réversible).
-        from . import tiers_bridge  # noqa: F401
+        import_module('.tiers_bridge', __package__)
         # NTWMS39 — journal léger des casiers (installations.BinLocation,
         # résolu par apps.get_model : aucun import de leurs modèles).
         from .receivers_casier import register_historique_casier

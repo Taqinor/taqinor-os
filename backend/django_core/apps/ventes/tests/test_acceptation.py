@@ -105,6 +105,19 @@ class TestDevisAcceptation(TestCase):
         devis.refresh_from_db()
         self.assertNotEqual(devis.statut, 'accepte')
 
+    def test_corps_mal_type_rejete_sans_accepter(self):
+        # ENF11 — champ de mauvais type / corps non objet : 400, rien n'est accepté.
+        devis = self._devis(num=30)
+        for corps in ({'nom': 5}, {'date': 20260610}, {'override_credit': 1},
+                      {'override_avertissement': 'true'}, {'entreprise': 'x'},
+                      [1]):
+            r = self.api.post(
+                f'/api/django/ventes/devis/{devis.id}/accepter/',
+                corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        devis.refresh_from_db()
+        self.assertNotEqual(devis.statut, 'accepte')
+
     def test_historique_and_noter(self):
         devis = self._devis(num=4)
         r = self.api.post(

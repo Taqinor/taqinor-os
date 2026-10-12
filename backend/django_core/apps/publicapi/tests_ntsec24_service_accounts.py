@@ -61,6 +61,18 @@ class ServiceAccountEndpointTests(TenantAPITestCase):
         detail = self._admin().get(f'{self.URL}{sa_id}/')
         self.assertNotIn('token', detail.json())
 
+    def test_enf11_scopes_non_textes_et_null_refuses_400(self):
+        """ENF11 — scopes: [0] (entier) à la création et scopes: null en PATCH
+        sont refusés (400) au lieu d'être acceptés / de dépendre d'un schéma any."""
+        r = self._admin().post(
+            self.URL, {'nom': 'bot', 'scopes': [0]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        sa_id = self._admin().post(
+            self.URL, {'nom': 'ok'}, format='json').json()['id']
+        r = self._admin().patch(
+            f'{self.URL}{sa_id}/', {'scopes': None}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_non_admin_forbidden(self):
         r = self.client_as().post(self.URL, {'nom': 'bot'}, format='json')
         self.assertEqual(r.status_code, 403)

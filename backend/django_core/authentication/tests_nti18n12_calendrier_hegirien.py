@@ -56,6 +56,12 @@ class CalendrierHegirienSelfServiceApiTests(TestCase):
             {'calendrier_hegirien': 'oui'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_enf11_corps_vide_ou_non_objet_400(self):
+        for corps in ({}, [None, None], {'calendrier_hegirien': 1}):
+            resp = self.api.patch(
+                '/api/django/auth/me/calendrier-hegirien/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_only_affects_current_user(self):
         self.api.patch(
             '/api/django/auth/me/calendrier-hegirien/',

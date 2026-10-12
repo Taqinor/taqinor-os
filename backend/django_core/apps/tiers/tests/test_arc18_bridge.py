@@ -14,26 +14,26 @@ from io import StringIO
 from django.core.management import call_command
 from django.test import TestCase
 
-from testkit.factories import CompanyFactory, another_tenant
+from testkit.factories import (
+    ClientFactory, CompanyFactory, FournisseurFactory, another_tenant,
+)
 
 from apps.tiers import services as tiers_services
 from apps.tiers.models import Tiers
 
 
 def _client(company, **kw):
-    from apps.crm.models import Client
     defaults = dict(nom='Alaoui', prenom='Youssef',
                     email='y.alaoui@example.ma', telephone='0600000000')
     defaults.update(kw)
-    return Client.objects.create(company=company, **defaults)
+    return ClientFactory(company=company, **defaults)
 
 
 def _fournisseur(company, **kw):
-    from apps.stock.models import Fournisseur
     defaults = dict(nom='ACME Solaire', email='contact@acme.ma',
                     ice='001122334455667')
     defaults.update(kw)
-    return Fournisseur.objects.create(company=company, **defaults)
+    return FournisseurFactory(company=company, **defaults)
 
 
 class Arc18ServiceDedupTests(TestCase):
@@ -171,10 +171,8 @@ class Arc18BackfillCommandTests(TestCase):
         f = _fournisseur(self.company, email='bf-four@example.ma',
                          ice='ICE-BF-1')
         # Simule des lignes historiques (lien vidé + Tiers supprimés).
-        from apps.crm.models import Client
-        from apps.stock.models import Fournisseur
-        Client.objects.filter(pk=client.pk).update(tiers=None)
-        Fournisseur.objects.filter(pk=f.pk).update(tiers=None)
+        type(client).objects.filter(pk=client.pk).update(tiers=None)
+        type(f).objects.filter(pk=f.pk).update(tiers=None)
         Tiers.objects.all().delete()
 
         output = self._run()

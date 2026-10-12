@@ -19,7 +19,6 @@
 
 # ASTK9 - pre-existant (releve 2026-10-07) : FK meme-app vers modele a societe, sites hors stock ; CONSTATES, pas approuves
 backend/django_core/apps/customfields/serializers.py::FieldRolePermissionSerializer.field_def
-backend/django_core/apps/identity/serializers.py::IpAllowRuleSerializer.policy
 # ASEC46 — FactureWriteSerializer déclare ses champs par Meta.exclude (invisible avant ASEC46) : 8 FK
 # écrivables non bornées CONSTATÉES, à corriger par la lane ventes (same_company_fields) ; chaque ligne
 # se retire dès que son champ est borné (sinon « ligne d'allowlist inutile »).

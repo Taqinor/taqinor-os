@@ -40,3 +40,14 @@ export function BandeauxStock({ erreur, info }) {
     </>
   )
 }
+
+/** Écran réservé à l'administrateur (coûts d'achat internes) : même bandeau partout. */
+export function ReserveAdminStock() {
+  return (
+    <div className="ui-root px-4 py-5 sm:px-5">
+      <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+        Réservé à l&apos;administrateur (coûts d&apos;achat internes).
+      </div>
+    </div>
+  )
+}

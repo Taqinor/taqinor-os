@@ -396,4 +396,4 @@ def concevoir_electrique_du_devis(devis, *, origine=''):
 # tâches, donc le bloc QJR68 ne porte pas encore les noms de QJR75.
 from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
-from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
+from apps.ventes.domain.lignes import creer_ligne  # noqa: E402

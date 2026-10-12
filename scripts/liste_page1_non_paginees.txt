@@ -1,0 +1,6 @@
+# ADOC182 — endpoints NON paginés lus par `.results`/unpage sans fetchAllPages (faux positifs de la garde).
+# Format : fichier::fonction  <endpoint>  <raison> @<fichier_backend>:<ligne>
+# La citation @fichier:ligne est vérifiée par scripts/check_liste_page1.py (la ligne doit porter
+# `pagination_class = None`, une tranche `[:N]` ou `@api_view`). Entrée MORTE (site plus signalé) = rouge.
+frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog  ged/coffres/<id>/documents/  @action(pagination_class=None), liste complète @backend/django_core/apps/ged/views.py:378
+frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor  parametres/messages/  vue @api_view (liste Response(out) complète, un modèle par clé) @backend/django_core/apps/parametres/views_messages.py:112

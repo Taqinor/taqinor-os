@@ -13,6 +13,9 @@ import {
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { ActionEcheance, errMessage, formatOctets, toutesLesPages } from './shared.js'
+import { ChampDocument, PiedFermer } from './ChampsGed.jsx'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
+import DecisionDialogue from './DecisionDialogue.jsx'
 
 /* ============================================================================
    UX46 — Rétention, archivage légal & partage.
@@ -447,36 +450,27 @@ function PolitiqueDialog({ onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle politique de rétention</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Nom</Label>
-            <Input value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div>
-            <Label>Durée de conservation (jours)</Label>
-            <Input type="number" min="1" step="1" value={duree} onChange={(e) => setDuree(e.target.value)} />
-          </div>
-          <div>
-            <Label>Action à l'échéance</Label>
-            <Select value={action} onValueChange={setAction}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="signaler">Signaler</SelectItem>
-                <SelectItem value="archiver">Archiver</SelectItem>
-                <SelectItem value="supprimer">Supprimer</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouvelle politique de rétention" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Nom</Label>
+        <Input value={nom} onChange={(e) => setNom(e.target.value)} />
+      </div>
+      <div>
+        <Label>Durée de conservation (jours)</Label>
+        <Input type="number" min="1" step="1" value={duree} onChange={(e) => setDuree(e.target.value)} />
+      </div>
+      <div>
+        <Label>Action à l'échéance</Label>
+        <Select value={action} onValueChange={setAction}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="signaler">Signaler</SelectItem>
+            <SelectItem value="archiver">Archiver</SelectItem>
+            <SelectItem value="supprimer">Supprimer</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -499,34 +493,17 @@ function ArchivageDialog({ documents, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Archiver légalement</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Motif (optionnel)</Label>
-            <Textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} />
-          </div>
-          <div>
-            <Label>Conserver jusqu'au (optionnel)</Label>
-            <Input type="date" value={retain} onChange={(e) => setRetain(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Archivage…' : 'Archiver'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Archiver légalement" onClose={onClose} submit={submit} saving={saving} libelle="Archiver" libelleEnCours="Archivage…">
+      <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} />
+      <div>
+        <Label>Motif (optionnel)</Label>
+        <Textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} />
+      </div>
+      <div>
+        <Label>Conserver jusqu'au (optionnel)</Label>
+        <Input type="date" value={retain} onChange={(e) => setRetain(e.target.value)} />
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -546,30 +523,13 @@ function HoldDialog({ documents, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Poser un legal hold</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Motif (optionnel)</Label>
-            <Textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Pose…' : 'Poser le hold'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Poser un legal hold" onClose={onClose} submit={submit} saving={saving} libelle="Poser le hold" libelleEnCours="Pose…">
+      <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} />
+      <div>
+        <Label>Motif (optionnel)</Label>
+        <Textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} />
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -598,42 +558,25 @@ function PartageDialog({ documents, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouveau partage public</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Expire le (optionnel)</Label>
-            <Input type="datetime-local" value={expires} onChange={(e) => setExpires(e.target.value)} />
-          </div>
-          <div>
-            <Label>Quota de téléchargements (optionnel)</Label>
-            <Input type="number" min="1" step="1" value={quota} onChange={(e) => setQuota(e.target.value)} />
-          </div>
-          <div>
-            <Label>Mot de passe (optionnel)</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={watermark} onCheckedChange={setWatermark} />
-            Filigraner le document servi
-          </label>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer le lien'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouveau partage public" onClose={onClose} submit={submit} saving={saving} libelle="Créer le lien">
+      <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} />
+      <div>
+        <Label>Expire le (optionnel)</Label>
+        <Input type="datetime-local" value={expires} onChange={(e) => setExpires(e.target.value)} />
+      </div>
+      <div>
+        <Label>Quota de téléchargements (optionnel)</Label>
+        <Input type="number" min="1" step="1" value={quota} onChange={(e) => setQuota(e.target.value)} />
+      </div>
+      <div>
+        <Label>Mot de passe (optionnel)</Label>
+        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={watermark} onCheckedChange={setWatermark} />
+        Filigraner le document servi
+      </label>
+    </DialogueFormulaire>
   )
 }
 
@@ -663,82 +606,46 @@ function DispositionDialog({ echus, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle demande de disposition</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Libellé</Label>
-            <Input aria-label="Libellé du lot" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
-          </div>
-          <div>
-            <Label>Action</Label>
-            <Select value={action} onValueChange={setAction}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="detruire">Détruire</SelectItem>
-                <SelectItem value="archiver">Archiver</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="disposition-documents">Documents échus concernés</Label>
-            <MultiSelect
-              id="disposition-documents"
-              options={options}
-              value={documentIds}
-              onChange={setDocumentIds}
-              placeholder="Choisir des documents échus…"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Proposer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouvelle demande de disposition" onClose={onClose} submit={submit} saving={saving} libelle="Proposer">
+      <div>
+        <Label>Libellé</Label>
+        <Input aria-label="Libellé du lot" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+      </div>
+      <div>
+        <Label>Action</Label>
+        <Select value={action} onValueChange={setAction}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="detruire">Détruire</SelectItem>
+            <SelectItem value="archiver">Archiver</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label htmlFor="disposition-documents">Documents échus concernés</Label>
+        <MultiSelect
+          id="disposition-documents"
+          options={options}
+          value={documentIds}
+          onChange={setDocumentIds}
+          placeholder="Choisir des documents échus…"
+        />
+      </div>
+    </DialogueFormulaire>
   )
 }
 
 function DecisionDispositionDialog({ decision, onClose, onDone }) {
-  const [commentaire, setCommentaire] = useState('')
-  const [saving, setSaving] = useState(false)
-  const approuver = decision.type === 'approuver'
-
-  const submit = async () => {
-    setSaving(true)
-    try {
-      if (approuver) await gedApi.approuverDisposition(decision.demande.id, { commentaire })
-      else await gedApi.rejeterDisposition(decision.demande.id, { commentaire })
-      toast.success(approuver ? 'Demande approuvée.' : 'Demande rejetée.')
-      onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
-  }
-
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{approuver ? 'Approuver la disposition' : 'Rejeter la disposition'}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">
-            Lot : <strong>{decision.demande.libelle}</strong> ({decision.demande.documents?.length ?? 0} document(s))
-          </p>
-          <div>
-            <Label>Commentaire (optionnel)</Label>
-            <Textarea value={commentaire} onChange={(e) => setCommentaire(e.target.value)} rows={3} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button variant={approuver ? 'default' : 'destructive'} onClick={submit} disabled={saving}>
-            {saving ? '…' : (approuver ? 'Approuver' : 'Rejeter')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DecisionDialogue
+      decision={decision} onClose={onClose} onDone={onDone} objet="la disposition"
+      appels={{
+        approuver: (id, corps) => gedApi.approuverDisposition(id, corps),
+        rejeter: (id, corps) => gedApi.rejeterDisposition(id, corps),
+      }}
+    >
+      Lot : <strong>{decision.demande.libelle}</strong> ({decision.demande.documents?.length ?? 0} document(s))
+    </DecisionDialogue>
   )
 }
 
@@ -791,9 +698,7 @@ function CertificatsDialog({ demande, onClose }) {
             </li>
           ))}
         </ul>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )

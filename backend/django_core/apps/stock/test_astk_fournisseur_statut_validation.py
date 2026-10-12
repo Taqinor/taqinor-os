@@ -78,6 +78,15 @@ class FournisseurStatutValidationTests(TestCase):
         self.assertEqual(relu.statut_validation, EN_ATTENTE)
         self.assertEqual(relu.company_id, self.co.pk)
 
+    def test_decider_candidature_booleen_strict_ENF11(self):
+        url = f'{self.url}decider-candidature/'
+        for valeur in ('true', 1, 'on', None):
+            r = _api(self.admin).post(url, {'valider': valeur}, format='json')
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+        r = _api(self.admin).post(url, [True], format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self._relu().statut_validation, EN_ATTENTE)
+
     def test_decider_candidature_reste_admin(self):
         url = f'{self.url}decider-candidature/'
         r = _api(self.resp).post(url, {'valider': True}, format='json')

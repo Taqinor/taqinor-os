@@ -194,6 +194,20 @@ class TestReorder(CFWiringBase):
         self.assertEqual(b.ordre, 0)
         self.assertEqual(a.ordre, 1)
 
+    def test_enf11_reorder_corps_invalide_400(self):
+        """ENF11 — corps absent / `ids` non entiers = 400 (jamais 200 ni 500)."""
+        url = '/api/django/custom-fields/definitions/reorder/'
+        self.assertEqual(self.api.post(url).status_code, 400)
+        self.assertEqual(
+            self.api.post(url, {'ids': ['x']}, format='json').status_code, 400)
+        self.assertEqual(
+            self.api.post(url, {'ids': 'abc'}, format='json').status_code, 400)
+
+    def test_enf11_objet_actif_non_booleen_400(self):
+        r = self.api.post('/api/django/custom-fields/objects/', {
+            'code': 'zz', 'libelle': 'ZZ', 'actif': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
 
 class TestFG100NewModules(CFWiringBase):
     """FG100 — DEVIS/INSTALLATION/TICKET ajoutés au Module de CustomFieldDef."""

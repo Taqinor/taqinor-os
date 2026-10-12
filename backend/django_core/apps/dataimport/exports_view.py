@@ -1,10 +1,12 @@
 """T9 — export Excel générique pour les listes restantes (devis, factures,
 chantiers, équipements, tickets SAV). Lecture seule, borné à la société.
 Leads/clients/produits ont leurs propres exports dédiés."""
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes)
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from core.parseurs import PARSEURS_JSON
 from apps.crm.exports import build_xlsx_response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -127,6 +129,7 @@ _BUILDERS = {
     responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
+@parser_classes(PARSEURS_JSON)
 def export_list(request, entity):
     """POST /imports/export/<entity>/ {ids?: [...]} → .xlsx (société courante).
 

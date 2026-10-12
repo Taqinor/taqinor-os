@@ -85,25 +85,14 @@ import { toastWithUndo } from '../../lib/toast'
 import { deleteProduit } from '../../features/stock/store/stockSlice'
 import { createViewMock } from '../../features/uxviews/useServerSavedViews'
 import StockList from './StockList.jsx'
+import { produitStockBase } from './catalogue.testHelpers.js'
 import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
 const CAT_PANNEAUX = { id: 1, nom: 'Panneaux', ordre: 1 }
 const CAT_ONDULEURS = { id: 2, nom: 'Onduleurs', ordre: 2 }
 
 const baseProduit = (over = {}) => ({
-  id: 1,
-  nom: 'Panneau 550 Wc',
-  sku: 'PAN-550',
-  marque: 'JA Solar',
-  prix_vente: '1000',
-  prix_achat: '700',
-  tva: 20,
-  quantite_stock: 12,
-  quantite_reservee: 0,
-  quantite_disponible: 12,
-  seuil_alerte: 5,
-  is_low_stock: false,
-  is_archived: false,
+  ...produitStockBase,
   categorie: CAT_PANNEAUX,
   ...over,
 })

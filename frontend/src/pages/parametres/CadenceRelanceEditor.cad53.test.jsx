@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 
 /* CAD53 (décision fondateur du 21/09/2026) — l'éditeur de cadence OUVRE
    l'ajout et la suppression d'un barreau, et expose la case « Autorisée le
@@ -29,8 +29,8 @@ vi.mock('../../api/parametresApi', () => ({
 }))
 
 import parametresApi from '../../api/parametresApi'
-import { ThemeProvider } from '../../design/ThemeProvider'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
+import { monterEditeur } from './cadenceRelance.testHelpers.jsx'
 
 const BARREAU_1 = {
   id: 51, cadence: 'contact', ordre: 1, delai_jours: 0, delai_minutes: 0,
@@ -59,13 +59,7 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 const renderEditor = async () => {
-  await act(async () => {
-    render(
-      <ThemeProvider>
-        <CadenceRelanceEditor />
-      </ThemeProvider>,
-    )
-  })
+  await monterEditeur(CadenceRelanceEditor)
   await screen.findByDisplayValue("Message d'identité")
 }
 

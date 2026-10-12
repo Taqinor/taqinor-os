@@ -13,6 +13,7 @@ RULE #4 : ce viewset est CREATION-FREE côté preset — la création passe par
           save-preset sur le DevisViewSet qui garantit que la company vient
           du devis (pas de la requête).
 """
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 
@@ -27,6 +28,7 @@ class DevisPresetViewSet(viewsets.GenericViewSet):
     Expose uniquement list + destroy : la création passe par
     ``POST /ventes/devis/{id}/save-preset/`` (company forcée depuis devis).
     """
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     serializer_class = DevisPresetSerializer
     pagination_class = None  # list() renvoie une liste brute
     permission_classes = [IsResponsableOrAdmin]

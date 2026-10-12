@@ -4,88 +4,30 @@
 // prix négociée s'applique (source !== 'standard'). Prix pré-rempli depuis la
 // résolution, jamais un blocage/snap de la saisie manuelle ultérieure.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduits: vi.fn(() => Promise.resolve({ data: [] })),
-    dupliquerProduit: vi.fn(),
-  },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(),
-    // PVMRQ — DevisGenerator interroge ce singleton au montage (best-effort) ;
-    // sans lui, l'effet lève sur un mock partiel avant même le premier rendu.
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-  },
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiDuplication())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock({
+  getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
+  getPrixApplicable: vi.fn(),
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { bancCreation } from './devisGenerator.testHelpers.jsx'
 
 const PRODUITS = [
   { id: 10, nom: 'Smart Meter Huawei DTSU666', prix_vente: 1500, tva: 20, is_archived: false, prix_achat: 900 },
 ]
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Directeur', permissions: ['stock_creer'],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const { renderGenerator } = bancCreation({ DevisGenerator, crmApi, stockApi, produits: PRODUITS })
 
-function renderGenerator() {
-  crmApi.getClients.mockResolvedValue({ data: [] })
-  crmApi.getLeads.mockResolvedValue({ data: [] })
-  stockApi.getProduits.mockResolvedValue({ data: PRODUITS })
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter>
-        <DevisGenerator />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
 
 describe('XSAL3 — badge tarif applicable', () => {
   it('affiche « Tarif : <liste> » quand la résolution renvoie une liste', async () => {

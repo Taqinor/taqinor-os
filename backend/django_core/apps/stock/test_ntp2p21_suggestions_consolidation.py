@@ -50,6 +50,14 @@ def _api(user):
     return api
 
 
+def _milieu_de_semaine():
+    """Mercredi 10 h UTC de la semaine ISO courante : les BCF créés à « now + 2 h »
+    tombaient dans la semaine suivante le dimanche soir (UTC) — le sélecteur groupe
+    par ``isocalendar()`` — et la suite rougissait une fois par semaine."""
+    now = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+    return now - timedelta(days=now.weekday() - 2)
+
+
 def _bcf_brouillon(company, fournisseur, ref, *, date_creation=None):
     bc = BonCommandeFournisseur.objects.create(
         company=company, reference=ref, fournisseur=fournisseur,
@@ -73,7 +81,7 @@ class SuggestionsConsolidationBcfTests(TestCase):
             prix_vente=Decimal('100'), prix_achat=Decimal('60'))
 
     def test_deux_bcf_meme_fournisseur_meme_semaine_declenchent_suggestion(self):
-        now = timezone.now()
+        now = _milieu_de_semaine()
         b1 = _bcf_brouillon(self.company, self.fournisseur, 'BCF-C1',
                             date_creation=now)
         b2 = _bcf_brouillon(self.company, self.fournisseur, 'BCF-C2',
@@ -104,7 +112,7 @@ class SuggestionsConsolidationBcfTests(TestCase):
         self.assertEqual(suggestions, [])
 
     def test_semaines_differentes_ne_fusionnent_pas(self):
-        now = timezone.now()
+        now = _milieu_de_semaine()
         _bcf_brouillon(self.company, self.fournisseur, 'BCF-S1',
                        date_creation=now)
         _bcf_brouillon(self.company, self.fournisseur, 'BCF-S2',
@@ -116,7 +124,7 @@ class SuggestionsConsolidationBcfTests(TestCase):
     def test_economie_estimee_quand_fournisseur_configure(self):
         self.fournisseur.frais_livraison_estimes = Decimal('150')
         self.fournisseur.save(update_fields=['frais_livraison_estimes'])
-        now = timezone.now()
+        now = _milieu_de_semaine()
         _bcf_brouillon(self.company, self.fournisseur, 'BCF-E1',
                        date_creation=now)
         _bcf_brouillon(self.company, self.fournisseur, 'BCF-E2',
@@ -130,7 +138,7 @@ class SuggestionsConsolidationBcfTests(TestCase):
         self.assertEqual(suggestions[0]['economie_estimee'], Decimal('300'))
 
     def test_bcf_non_brouillon_exclu(self):
-        now = timezone.now()
+        now = _milieu_de_semaine()
         b1 = _bcf_brouillon(self.company, self.fournisseur, 'BCF-ENV1',
                             date_creation=now)
         b1.statut = BonCommandeFournisseur.Statut.ENVOYE
@@ -142,7 +150,7 @@ class SuggestionsConsolidationBcfTests(TestCase):
         self.assertEqual(suggestions, [])
 
     def test_ne_fusionne_jamais_rien_elle_meme(self):
-        now = timezone.now()
+        now = _milieu_de_semaine()
         _bcf_brouillon(self.company, self.fournisseur, 'BCF-RO1',
                        date_creation=now)
         _bcf_brouillon(self.company, self.fournisseur, 'BCF-RO2',

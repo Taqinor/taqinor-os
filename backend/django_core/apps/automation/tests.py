@@ -958,7 +958,20 @@ class ApprovalRequestTests(TestCase):
             'request_type': req_type.pk,
             'payload': {'montant': '100'},
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+
+    def test_type_inconnu_404_et_type_illisible_400(self):
+        # ENF11 — id bien formé mais inconnu : 404 ; id illisible : 400.
+        api = auth(self.employe)
+        url = '/api/django/automation/approval-requests/'
+        resp = api.post(url, {'request_type': 999999, 'payload': {}},
+                        format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        for mauvais in ('abc', None, [1], {}):
+            resp = api.post(url, {'request_type': mauvais, 'payload': {}},
+                            format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1074,6 +1087,24 @@ class ApprovalDelegationTests(TestCase):
         resp = api.get('/api/django/automation/approval-requests/')
         ids = [r['id'] for r in rows(resp)]
         self.assertIn(req.pk, ids)
+
+    def test_delegation_fenetre_inversee_400_et_dates_en_utc(self):
+        """ENF11 — fin avant début : 400 ; dates rendues en UTC (``Z``)."""
+        api = auth(self.employe)
+        now = timezone.now()
+        resp = api.post('/api/django/automation/approval-delegations/', {
+            'delegant': self.employe.pk, 'suppleant': self.suppleant.pk,
+            'date_debut': (now + timedelta(days=2)).isoformat(),
+            'date_fin': (now + timedelta(days=1)).isoformat(),
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = api.post('/api/django/automation/approval-delegations/', {
+            'delegant': self.employe.pk, 'suppleant': self.suppleant.pk,
+            'date_debut': (now - timedelta(days=1)).isoformat(),
+            'date_fin': (now + timedelta(days=1)).isoformat(),
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertTrue(resp.data['date_fin'].endswith('Z'), resp.data)
 
     def test_employee_can_only_delegate_self(self):
         api = auth(self.employe)

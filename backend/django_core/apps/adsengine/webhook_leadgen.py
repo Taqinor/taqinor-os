@@ -84,6 +84,7 @@ def _erreur_graph(exc):
             code = err.get('code')
             return f'{message} (code {code})' if code else str(message)
         except Exception:  # noqa: BLE001 — corps illisible
+            logger.warning("webhook_leadgen._erreur_graph : erreur ignorée (mode dégradé)", exc_info=True)
             return f'HTTP {exc.code}'
     return str(exc)
 
@@ -164,6 +165,7 @@ def etat_webhook_leadgen(company):
         etat['has_pages_manage_metadata'] = (
             'pages_manage_metadata' in etat['scopes'])
     except Exception as exc:  # noqa: BLE001 — jamais bloquant
+        logger.warning("webhook_leadgen.etat_webhook_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
         etat['erreur'] = _erreur_graph(exc)
         etat['detail'] = f'Meta injoignable ({etat["erreur"]}).'
         return etat
@@ -191,6 +193,7 @@ def etat_webhook_leadgen(company):
                     etat['app_subscribed'] = True
                     break
         except Exception as exc:  # noqa: BLE001
+            logger.warning("webhook_leadgen.etat_webhook_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
             etat['erreur'] = _erreur_graph(exc)
     else:
         etat['erreur'] = (
@@ -216,6 +219,7 @@ def etat_webhook_leadgen(company):
                 etat['page_subscribed_raison'] = (
                     "l'app n'est pas abonnée au champ leadgen de la Page")
         except Exception as exc:  # noqa: BLE001
+            logger.warning("webhook_leadgen.etat_webhook_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
             etat['page_subscribed'] = None
             message = _erreur_graph(exc)
             if '(#200)' in message or 'code 200' in message:
@@ -246,6 +250,7 @@ def _page_access_token(page_id, user_token):
             'fields': 'access_token', 'access_token': user_token})
         return str((payload or {}).get('access_token') or '') or user_token
     except Exception:  # noqa: BLE001 — repli assumé, l'appel suivant tranchera
+        logger.warning("webhook_leadgen._page_access_token : erreur ignorée (mode dégradé)", exc_info=True)
         return user_token
 
 
@@ -300,6 +305,7 @@ def abonner_page_leadgen(company):
         payload = _graph_post(f'{page_id}/subscribed_apps', {
             'subscribed_fields': CHAMP_LEADGEN, 'access_token': page_token})
     except Exception as exc:  # noqa: BLE001 — l'erreur Meta remonte en texte
+        logger.warning("webhook_leadgen.abonner_page_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
         return {'ok': False, 'detail': _erreur_graph(exc)}
     if (payload or {}).get('success'):
         return {'ok': True, 'detail': 'Page abonnée au champ leadgen.'}

@@ -204,6 +204,7 @@ import {
   partDiurneParDefaut,
   FENETRE_REFERENCE_MS,
 } from '../../features/ventes/quote/ecranDefauts.js'
+import { AlerteErreur } from '../../ui/AlertesServeur'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -2314,11 +2315,7 @@ export default function DevisGenerator({
               Que souhaitez-vous faire ?
             </DialogDescription>
           </DialogHeader>
-          {renameError && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {renameError}
-            </div>
-          )}
+          <AlerteErreur error={renameError} />
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch">
             <Button type="button" variant="outline" onClick={renameHereOnly} disabled={renameBusy}>
               Renommer sur ce devis seulement

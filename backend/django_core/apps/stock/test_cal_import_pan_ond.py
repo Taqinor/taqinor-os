@@ -191,6 +191,15 @@ class ImporterDatasheetEndpointTests(TestCase):
         self.assertFalse(
             FicheTechnique.objects.filter(produit=self.produit).exists())
 
+    def test_produit_non_entier_400_jamais_500(self):
+        """ENF11 — ``produit`` illisible : 400 nommant le champ."""
+        resp = self.client_api.post(
+            '/api/django/stock/fiches-techniques/importer-datasheet/',
+            {'produit': 'None', 'file': self._upload(FICHIER_PAN)},
+            format='multipart')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.data['champ'], 'produit')
+
     def test_confirmer_ecrit_et_cree_la_fiche(self):
         resp = self.client_api.post(
             '/api/django/stock/fiches-techniques/importer-datasheet/',

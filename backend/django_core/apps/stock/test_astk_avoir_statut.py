@@ -73,7 +73,7 @@ class AvoirStatutTests(TestCase):
                       {'montant_ttc': '9999'},
                       {'fournisseur': self.f2.pk}):
             r = self.api.patch(url, corps, format='json')
-            self.assertEqual(r.status_code, 400, r.content)
+            self.assertEqual(r.status_code, 409, r.content)
             self.assertIn('non modifiable', r.json()['detail'])
 
         avoir.refresh_from_db()

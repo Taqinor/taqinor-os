@@ -10,6 +10,8 @@ Endpoints livrés ici :
 Toutes ces valeurs sont INTERNES (prix d'achat, coûts) : gardées
 responsable/admin, jamais dans une sortie client-facing.
 """
+from decimal import Decimal, InvalidOperation
+
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers
@@ -150,7 +152,7 @@ OTIF_SHAPE = {
 class ScmFournisseurActionsMixin:
     """NTSCM8 / NTSCM11 — indicateurs montés sur le viewset fournisseur."""
 
-    @extend_schema(parameters=[P('fenetre_mois', INT, False, 'Fenêtre glissante (mois)')], responses={
+    @extend_schema(parameters=[P('fenetre_mois', INT, False, 'Fenêtre glissante (mois)', mini=1, maxi=36)], responses={
         200: inline_serializer('StockFournisseurOtif', OTIF_SHAPE)})
     @action(detail=True, methods=['get'], url_path='otif',
             permission_classes=[IsAnyRole])
@@ -167,7 +169,8 @@ class ScmFournisseurActionsMixin:
         return Response(otif_fournisseur(
             request.user.company, self.get_object(), fenetre_mois=fenetre))
 
-    @extend_schema(parameters=[P('produit', INT), P('fenetre_mois', INT), P('seuil_ecart_pct', NUM)], responses={
+    @extend_schema(parameters=[P('produit', INT), P('fenetre_mois', INT, mini=1, maxi=36),
+                               P('seuil_ecart_pct', NUM)], responses={
         200: inline_serializer('StockFournisseurDelaiMesure', {
             'fournisseur_id': serializers.IntegerField(),
             'produit_id': serializers.IntegerField(allow_null=True),
@@ -209,7 +212,7 @@ class ScmFournisseurActionsMixin:
 class ScmProduitTcoMixin:
     """NTSCM26 — colonne TCO du panneau « Comparer fournisseurs » (FG58)."""
 
-    @extend_schema(parameters=[P('cout_rupture_jour', NUM), P('fenetre_mois', INT)], responses={
+    @extend_schema(parameters=[P('cout_rupture_jour', NUM), P('fenetre_mois', INT, mini=1, maxi=36)], responses={
         200: inline_serializer('StockProduitComparerTco', {
             'produit': serializers.IntegerField(),
             'cout_rupture_jour': serializers.CharField(),
@@ -227,12 +230,20 @@ class ScmProduitTcoMixin:
         """
         from ..selectors_fournisseur import comparer_tco_fournisseurs
 
+        from ..selectors_fournisseur import valider_fenetre_mois
+        fenetre = _fenetre_mois_ou_400(
+            request.query_params.get('fenetre_mois'), valider_fenetre_mois)
         cout_jour = request.query_params.get('cout_rupture_jour') or 0
+        try:
+            Decimal(str(cout_jour))
+        except (InvalidOperation, ValueError):
+            raise serializers.ValidationError(
+                {'cout_rupture_jour': ['Nombre attendu.']})
         return Response({
             'produit': self.get_object().id,
             'cout_rupture_jour': str(cout_jour),
             'fournisseurs': comparer_tco_fournisseurs(
                 request.user.company, self.get_object(),
                 cout_rupture_jour=cout_jour,
-                fenetre_mois=request.query_params.get('fenetre_mois')),
+                fenetre_mois=fenetre),
         })

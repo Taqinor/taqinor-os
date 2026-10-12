@@ -30,18 +30,22 @@ GARDES
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 
+from . import openapi_docs as D
 from ..economie import EconomieInvalide, economie_pour_devis
 from .devis import DevisViewSet
 
 __all__ = ['economie']
 
 
+@extend_schema(responses={200: D.EconomieResponse,
+                          400: D.ErreurEconomie})
 @action(detail=True, methods=['get'], url_path='economie',
         permission_classes=[IsAnyRole])
 def economie(self, request, pk=None):

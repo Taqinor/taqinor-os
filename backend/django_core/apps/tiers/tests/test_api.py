@@ -107,3 +107,52 @@ class TiersApiTests(TenantAPITestCase):
             company=self.company, type_tiers='entreprise',
             nom='ACME', raison_sociale='ACME Solaire SARL')
         self.assertEqual(t.nom_complet, 'ACME Solaire SARL')
+
+
+class TiersEnf11Tests(TenantAPITestCase):
+    """ENF11 (api-fuzz) — corps strictement typés, e-mail vide servi tel quel."""
+
+    def _post(self, **overrides):
+        payload = {'nom': 'Strict SARL'}
+        payload.update(overrides)
+        return self.client_as().post(URL, payload, format='json')
+
+    def test_texte_non_chaine_refuse_400_nommant_le_champ(self):
+        for champ in ('nom', 'ville', 'adresse', 'ice'):
+            r = self._post(**{champ: 0})
+            self.assertEqual(r.status_code, 400, (champ, r.content))
+            self.assertIn(champ, r.data, (champ, r.data))
+        self.assertFalse(Tiers.objects.filter(nom='Strict SARL').exists())
+
+    def test_booleen_non_booleen_refuse_400(self):
+        for valeur in (1, 0, 'true'):
+            r = self._post(is_client=valeur)
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+            self.assertIn('is_client', r.data)
+        self.assertEqual(self._post(is_client=True).status_code, 201)
+
+    def test_decimal_gps_est_une_chaine(self):
+        r = self._post(gps_lat=33.5)
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('gps_lat', r.data)
+        ok = self._post(gps_lat='33.5731100', gps_lng='-7.5898430')
+        self.assertEqual(ok.status_code, 201, ok.content)
+        self.assertEqual(ok.data['gps_lat'], '33.5731100')
+        vide = self._post(nom='Sans GPS', gps_lat='')
+        self.assertEqual(vide.status_code, 201, vide.content)
+        self.assertIsNone(vide.data['gps_lat'])
+
+    def test_email_vide_accepte_et_servi_vide(self):
+        r = self._post(email='')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['email'], '')
+        self.assertEqual(self._post(email='pas-un-email').status_code, 400)
+        self.assertEqual(self._post(email=5).status_code, 400)
+
+    def test_schema_email_reponse_sans_format_requete_avec(self):
+        from apps.tiers.serializers import EmailTiersExtension
+        ext = EmailTiersExtension(target=None)
+        rep = ext.map_serializer_field(None, 'response')
+        req = ext.map_serializer_field(None, 'request')
+        self.assertNotIn('format', rep)
+        self.assertEqual(req['anyOf'][0]['format'], 'email')

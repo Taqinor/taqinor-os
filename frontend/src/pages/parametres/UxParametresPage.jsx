@@ -6,9 +6,11 @@ import { Settings2 } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
 import {
-  Button, Card, CardContent, Input, Label, MultiSelect, Spinner, Switch,
+  Card, CardContent, Input, Label, MultiSelect, Switch,
 } from '../../ui'
 import { toast } from '../../ui/confirm'
+import { frErrDetail as frErr } from '../../lib/frErr'
+import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
 
 const emptyForm = {
   duree_hover_peek_ms: 400,
@@ -17,14 +19,6 @@ const emptyForm = {
   roles_autorises_definir_defaut: [],
   max_vues_par_utilisateur: 50,
   max_favoris_par_utilisateur: 30,
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
 }
 
 export default function UxParametresPage() {
@@ -70,27 +64,18 @@ export default function UxParametresPage() {
       .finally(() => setSaving(false))
   }
 
-  if (loading) {
-    return (
-      <div className="page">
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-          <Spinner /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <PageChargement />
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Réglages UX</h1>
-        <div className="page-subtitle">
+    <PageReglages titre="Réglages UX"
+      sousTitre={
+        <>
           Réglages transverses de l'expérience power-user (vues sauvegardées,
           favoris, édition en masse) pour votre société.
-        </div>
-      </div>
+        </>
+      }>
 
-      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      <FormulaireReglages onSubmit={submit} saving={saving}>
         <Card>
           <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -172,12 +157,7 @@ export default function UxParametresPage() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end">
-          <Button type="submit" loading={saving}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
-        </div>
-      </form>
-    </div>
+      </FormulaireReglages>
+    </PageReglages>
   )
 }

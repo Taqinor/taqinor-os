@@ -75,6 +75,29 @@ class TestCreerVarianteGamme(GammeBase):
         noms = {g['nom'] for g in resp.data['gammes']}
         self.assertEqual(noms, {'Essentielle', 'Premium'})
 
+    def test_endpoint_recommandee_non_booleen_400(self):
+        # ENF11 — « recommandee » doit être un booléen reconnu : une valeur
+        # fantaisiste valait silencieusement « non ».
+        d = make_devis(self.company, self.user, self.client_obj, 'DEV-GAM-017')
+        add_ligne(d, self.panneau, qty='8')
+        resp = self.api.post(url_gamme(d.id), {'recommandee': 'peut-etre'},
+                             format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertFalse(Devis.objects.filter(version_parent=d).exists())
+        # ENF11 — strictement booléen (le schéma dit « boolean ») : "true",
+        # "0" ou 1 sont refusés, un vrai booléen JSON passe.
+        for brut in ('true', '0', 1, None):
+            ko = self.api.post(url_gamme(d.id), {'recommandee': brut},
+                               format='json')
+            self.assertEqual(ko.status_code, 400, (brut, ko.data))
+        for brut in (True, False):
+            ok = self.api.post(url_gamme(d.id), {'recommandee': brut},
+                               format='json')
+            self.assertEqual(ok.status_code, 201, (brut, ok.data))
+            d = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-GAM-018-%s' % str(brut))
+            add_ligne(d, self.panneau, qty='8')
+
     def test_endpoint_autre_societe_404(self):
         autre = make_company('gamme-autre')
         etranger = make_devis(autre, make_user(autre, 'u_gamme_autre'),

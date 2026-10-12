@@ -36,6 +36,9 @@ from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 
 from apps.ventes.models import Avoir, Facture
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Ordre canonique des tranches.
 TRANCHE_ORDER = ['acompte', 'materiel', 'solde']
@@ -506,6 +509,7 @@ def dates_prevues_par_creneau(devis):
     try:
         tranches = tranches_normalisees(devis)
     except Exception:  # noqa: BLE001 — best-effort, rendu sans date
+        logger.warning("echeancier.dates_prevues_par_creneau : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if not any(t.get('date_prevue') for t in tranches):
         return None
@@ -562,6 +566,7 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
     try:
         tranches = pourcentages_echeancier(devis, lignes=lignes)
     except Exception:  # noqa: BLE001 — best-effort, société en repli
+        logger.warning("echeancier.termes_paiement_devis : erreur ignorée (mode dégradé)", exc_info=True)
         tranches = []
     if not tranches:
         return slots

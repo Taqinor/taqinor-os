@@ -64,6 +64,27 @@ class TestObjectsList(ExportBase):
         self.assertEqual(fmt_keys, {'csv', 'xlsx', 'json'})
 
 
+class TestFormatStrict(ExportBase):
+    """ENF11 — un format FOURNI mais inconnu est refusé (400) par la
+    sauvegarde ; l'export d'UN objet garde son repli CSV documenté pour une
+    chaîne inconnue (``TestFormats``) mais refuse un type faux ; le corps
+    multipart est refusé (415)."""
+
+    def test_format_invalide_400(self):
+        for url, corps in (
+                ('/api/django/imports/export-object/',
+                 {'object': 'clients', 'format': 12}),
+                ('/api/django/imports/sauvegarde/', {'format': 'pdf'})):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (url, resp.content))
+
+    def test_format_absent_utilise_le_defaut(self):
+        resp = self.api.post(
+            '/api/django/imports/export-object/', {'object': 'clients'},
+            format='json')
+        self.assertEqual(resp.status_code, 200)
+
+
 class TestCompanyScoping(ExportBase):
     def test_export_only_own_company_rows(self):
         Client.objects.create(company=self.company, nom='Mien')

@@ -52,6 +52,7 @@ def _branded_html(company, sujet, corps):
             couleur_principale=identite.get('couleur_principale', ''),
         )
     except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        logger.warning("email_service._branded_html : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
 
@@ -114,11 +115,13 @@ def _signature(company, **context):
         from apps.parametres.selectors import company_identity
         nom = (company_identity(company).get('nom') or '').strip()
     except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        logger.warning("email_service._signature : erreur ignorée (mode dégradé)", exc_info=True)
         nom = ''
     try:
         from core.selectors import resolve_email_signature
         return resolve_email_signature(company, nom, **context)
     except Exception:  # noqa: BLE001 — repli ultime, jamais d'échec d'envoi
+        logger.warning("email_service._signature : erreur ignorée (mode dégradé)", exc_info=True)
         return f"L'équipe {nom}" if nom else "L'équipe"
 
 
@@ -177,6 +180,7 @@ def _document_pdf(document):
         if sig is not None:
             signed_key = getattr(sig, 'signed_pdf_key', None) or None
     except Exception:  # noqa: BLE001 — pas de signature liée → ignore
+        logger.warning("email_service._document_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         signed_key = None
     chosen = signed_key or key
     ref = getattr(document, 'reference', 'document')
@@ -262,7 +266,7 @@ def _chatter_note(devis, body, user):
             company=devis.company, devis=devis, user=user,
             kind=DevisActivity.Kind.NOTE, body=body)
     except Exception:  # pragma: no cover - le log email reste la source de vérité
-        pass
+        logger.warning("email_service._chatter_note : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _modele_email_personnalise(company, cle, client, reference, **contexte):
@@ -495,6 +499,7 @@ def send_pre_echeance_email(facture, *, user=None):
         session = get_provider(link.provider).create_session(link)
         lien = session.get('pay_url') or ''
     except Exception:  # pragma: no cover — lien de paiement best-effort
+        logger.warning("email_service.send_pre_echeance_email : erreur ignorée (mode dégradé)", exc_info=True)
         lien = ''
 
     rendered = EmailTemplate.render(

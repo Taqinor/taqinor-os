@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, within, cleanup } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
+import { screen, within, cleanup } from '@testing-library/react'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 /* PV76 — entrée « Étude bancable » de la liste des devis.
@@ -14,28 +10,13 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    `features/ventes/EtudeBancable.test.jsx`). Ici on vérifie seulement le
    CÂBLAGE : le bon devis passé en prop, le bon panneau affiché. */
 
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }) }
-})
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: { ...actual.default, getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })) },
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).ventesSliceSansFetch(await importOriginal()))
+vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).crmApiMotifsPerteVide(await importOriginal()))
 
-import DevisList from './DevisList'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderList, ouvrirMenu } from './devisList.testHelpers.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -49,31 +30,6 @@ const devisSansEtude = {
 const devisAvecEtude = {
   ...devisSansEtude, id: 9, reference: 'DEV-2026-08-0009',
   etude_params: { simulation: SIMULATION },
-}
-
-function renderList(devis) {
-  const store = configureStore({
-    reducer: {
-      ventes: (s = { devis, loading: false, error: null }) => s,
-      auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
-    },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider>
-          <DevisList />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-async function ouvrirMenu(reference) {
-  const user = userEvent.setup()
-  const row = screen.getByText(reference).closest('tr')
-  await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
-  return user
 }
 
 describe('PV76 — « Étude bancable » (liste des devis)', () => {

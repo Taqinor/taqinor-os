@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """Sélecteurs LECTURE SEULE des audiences de croissance et des faits publicitaires
 (valeur d'un devis pour un lead, segments de suivi/relance/cross-sell, totaux
 signés, vélocité de signature, faits de témoignage) — sortis de
@@ -206,6 +209,8 @@ def devis_accepted_totals_by_lead(company, lead_ids):
         try:
             amount = Decimal(str(devis.total_ttc or 0))
         except Exception:
+            logger.warning(
+                "selectors_publicite.devis_accepted_totals_by_lead : erreur ignorée (mode dégradé)", exc_info=True)
             amount = Decimal('0')
         totals[devis.lead_id] = totals.get(devis.lead_id, Decimal('0')) + amount
     return totals

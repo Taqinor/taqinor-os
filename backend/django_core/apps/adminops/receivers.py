@@ -77,7 +77,7 @@ def _alerter_administrateurs(company, utilises, max_sieges):
                   'contactez-nous pour l\'augmenter.'),
             company=company)
     except Exception:  # noqa: BLE001 — jamais bloquant
-        pass
+        logger.warning("receivers._alerter_administrateurs : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _dispatch_webhook_quota(company, utilises, max_sieges):
@@ -93,7 +93,7 @@ def _dispatch_webhook_quota(company, utilises, max_sieges):
             'sieges_max': max_sieges,
         })
     except Exception:  # noqa: BLE001 — jamais bloquant
-        pass
+        logger.warning("receivers._dispatch_webhook_quota : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def user_post_save_quota_sieges(sender, instance, created, **kwargs):
@@ -105,6 +105,7 @@ def user_post_save_quota_sieges(sender, instance, created, **kwargs):
     try:
         resultat = _statut_sieges(company)
     except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning("receivers.user_post_save_quota_sieges : erreur ignorée (mode dégradé)", exc_info=True)
         return
     if resultat is None:
         return

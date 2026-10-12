@@ -17,6 +17,9 @@ from decimal import Decimal
 
 from django.db.models import F, Sum
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Fenêtre par défaut (jours) des alertes de péremption du cockpit.
 HORIZON_PEREMPTION_JOURS = 30
@@ -30,6 +33,7 @@ def _dec(value):
     try:
         return Decimal(str(value))
     except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash.
+        logger.warning("selectors_entrepot._dec : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('0')
 
 

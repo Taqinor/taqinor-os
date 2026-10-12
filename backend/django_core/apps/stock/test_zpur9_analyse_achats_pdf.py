@@ -83,6 +83,18 @@ class TestEndpointPdf(Zpur9Base):
         self.assertEqual(resp['Content-Type'], 'application/pdf')
         self.assertTrue(resp.content.startswith(b'%PDF'))
 
+    def test_pdf_avec_periode_en_parametres_de_requete(self):
+        """ENF11 — ``date_debut``/``date_fin`` arrivent en chaînes : le gabarit
+        les formate (strftime) sans lever d'UndefinedError (500)."""
+        self._bcf()
+        url = '/api/django/stock/produits/analyse-achats/pdf/'
+        resp = self.api.get(
+            url + '?date_debut=2000-01-01&date_fin=2100-01-01')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.content.startswith(b'%PDF'))
+        resp = self.api.get(url + '?date_debut=null')
+        self.assertEqual(resp.status_code, 400)
+
     def test_non_autorise_recoit_403(self):
         user_standard = _user(
             self.company, 'zpur9-standard', permissions=['stock_voir'],

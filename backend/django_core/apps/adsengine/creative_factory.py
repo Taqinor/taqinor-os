@@ -28,8 +28,9 @@ from django.conf import settings
 # ``policy`` le consomme sans tirer la fabrique) ; ré-exporté ici pour les
 # appelants historiques. Le POURQUOI métier complet reste documenté sur le
 # grand banc de commentaires PUB126 ci-dessous.
-from .ai_lanes import (  # noqa: F401
-    AI_GENERATED_LANES, asset_is_ai_generated, lane_is_ai_generated,
+from .ai_lanes import (
+    asset_is_ai_generated,
+    lane_is_ai_generated,
 )
 from .models import CreativeAsset
 

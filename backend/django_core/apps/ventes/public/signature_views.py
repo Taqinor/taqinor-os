@@ -473,9 +473,9 @@ def proposal_accept(request, token):
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
     # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
-    # REMISÉ per QX1) + instructions de virement (RIB) + slot lien carte si un
-    # PSP est configuré. Aucun changement de comportement si rien n'est
-    # configuré (RIB vide, pas de PSP) — l'objet ``paiement`` est alors minimal.
+    # REMISÉ per QX1) + instructions de virement (RIB) + ``declare_url``.
+    # ADEV53 — plus de lien carte (aucune route ``pay-card``) ; RIB vide quand
+    # la société n'en a pas — l'objet ``paiement`` est alors minimal.
     return _noindex(Response({
         'detail': 'Proposition acceptée. Merci !',
         'reference': devis.reference,
