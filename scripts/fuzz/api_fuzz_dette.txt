@@ -1720,3 +1720,34 @@ Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
 API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
 # VNT lot M1, tour 3 (12/10/2026) : PATCH factures/{id} — le harnais fuzz envoie entite: 0 (aucune Entite pour la societe fuzz, prepare_fuzz_env.py) ; limite du harnais, pas de la vue.
 API rejected schema-compliant request|PATCH /api/django/ventes/factures/{id}/
+
+# PR #984 (12/10/2026) — 7 constats PRÉ-EXISTANTS relevés par le tirage du job PR (périmètre calepinage/crm/ventes),
+# gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (les deux 500 crm = vrais bugs à corriger à la cause).
+API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/comparatif.xlsx/
+API rejected schema-compliant request|PATCH /api/django/calepinage/calepinages/{id}/
+API rejected schema-compliant request|PATCH /api/django/crm/canaux/{id}/
+API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/dupliquer/
+Response violates schema|GET /api/django/calepinage/calepinages/{id}/meteo-fichier/
+Server error|POST /api/django/crm/leads/export-xlsx/
+Server error|POST /api/django/crm/leads/{id}/locataire/
+# PR #984, 2e tirage (12/10/2026) — 2 constats PRÉ-EXISTANTS supplémentaires (variance de couverture du job PR),
+# gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (leads/{id}/merge = vrai 500 crm à corriger à la cause).
+API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/schema-unifilaire/
+Server error|POST /api/django/crm/leads/{id}/merge/
+# PR #984, 3e tirage (12/10/2026) — 17 constats PRÉ-EXISTANTS (variance de couverture du job PR : 198 opérations revues au 3e tirage contre 154 au 1er),
+# gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
+API accepted schema-violating request|PATCH /api/django/crm/partenaires/{id}/
+API accepted schema-violating request|POST /api/django/crm/clients/
+API accepted schema-violating request|POST /api/django/crm/partenaires/
+API accepted schema-violating request|PUT /api/django/crm/partenaires/{id}/
+API rejected schema-compliant request|POST /api/django/crm/forecast-entries/
+API rejected schema-compliant request|PUT /api/django/calepinage/parametres/profils-types/
+Server error|POST /api/django/crm/leads/{id}/convertir-client/
+Server error|POST /api/django/crm/leads/{id}/message-visite/ouvert/
+Server error|POST /api/django/crm/leads/{id}/relance/arreter/
+Server error|POST /api/django/crm/leads/{id}/resume-associe/
+Server error|POST /api/django/crm/leads/{id}/whatsapp-devis/
+Server error|POST /api/django/crm/leads/{id}/whatsapp-devis-apercu/
+Server error|POST /api/django/facturation/factures/{id}/retour-client/
+Server error|POST /api/django/ventes/devis/{id}/generer-facture/
+Server error|POST /api/django/ventes/factures/{id}/creer-avoir/

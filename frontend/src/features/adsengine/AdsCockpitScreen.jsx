@@ -18,6 +18,9 @@ import SyncStatusBanner from './SyncStatusBanner'
 // FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
 import UpdateBanner from './UpdateBanner'
 import { COCKPIT_VIEWS, applyCockpitView, loadSavedCockpitView, saveCockpitView } from './cockpitViews'
+import { fatigueTone } from './fatigueTone'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 // PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
 // testable isolément ; une ligne sans dépense compte pour 0 (jamais NaN).
@@ -153,12 +156,14 @@ function AdThumbnail({ mediaRef, kind }) {
 // de lecture calculable (jamais un 0 fabriqué).
 function AdRetentionCurve({ adMetaId, kind }) {
   const [point, setPoint] = useState(null)
+  const [retentionError, setRetentionError] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let alive = true
     // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement d'ad)
     setPoint(null)
+    setRetentionError(false)
     if (kind !== 'video' || !adMetaId) return undefined
     setLoading(true)
     adsengineApi.reports.scatter()
@@ -167,7 +172,7 @@ function AdRetentionCurve({ adMetaId, kind }) {
         const points = Array.isArray(r.data?.points) ? r.data.points : []
         setPoint(points.find(p => p.ad_meta_id === adMetaId) || null)
       })
-      .catch(() => { if (alive) setPoint(null) })
+      .catch(() => { if (alive) { setPoint(null); setRetentionError(true) } })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [adMetaId, kind])
@@ -176,6 +181,10 @@ function AdRetentionCurve({ adMetaId, kind }) {
   if (loading) {
     return <p data-testid="ae-cockpit-retention-loading" style={{ color: '#64748b', margin: '0.75rem 0 0' }}>
       Chargement de la rétention…</p>
+  }
+  if (retentionError) {
+    return <p data-testid="ae-cockpit-retention-error" role="alert" style={{ color: '#dc2626', margin: '0.75rem 0 0' }}>
+      Impossible de charger la courbe de rétention.</p>
   }
   const retention = point?.retention
   const values = retention ? [retention.p25, retention.p50, retention.p75, retention.p100] : []
@@ -193,15 +202,6 @@ function AdRetentionCurve({ adMetaId, kind }) {
   )
 }
 
-function fatigueTone(fatigue) {
-  if (!fatigue) return { bg: '#f1f5f9', color: '#64748b', label: 'Inconnu' }
-  if (fatigue.insufficient_data) return { bg: '#f1f5f9', color: '#64748b', label: 'Historique insuffisant' }
-  if (!fatigue.fired) return { bg: '#dcfce7', color: '#166534', label: 'Pas de fatigue' }
-  return fatigue.severity === 'critique'
-    ? { bg: '#fee2e2', color: '#991b1b', label: 'Fatigue confirmée' }
-    : { bg: '#ffedd5', color: '#9a3412', label: 'Fatigue possible' }
-}
-
 // PUB43 — dernière vue enregistrée (localStorage), lue UNE FOIS au montage —
 // jamais recalculée entre-temps (un `useState(() => ...)` initializer, comme
 // `range` ci-dessous).
@@ -215,6 +215,7 @@ const initialCockpitView = () => {
 }
 
 export default function AdsCockpitScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   // PUB43 — vues enregistrées un-clic (Top Ads / En fatigue / En baisse /
@@ -270,7 +271,7 @@ export default function AdsCockpitScreen() {
       adsengineApi.metrics.adsCockpit({ debut: prev.debut, fin: prev.fin })
         .then(r => setPreviousTotal(
           totalSpend(Array.isArray(r.data) ? r.data : [])))
-        .catch(() => setPreviousTotal(null))
+        .catch(() => { setPreviousTotal(null); setLoadErrors(markLoadError("la période précédente")) })
     } else {
       setPreviousTotal(null)
     }
@@ -351,6 +352,7 @@ export default function AdsCockpitScreen() {
       <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <LoadErrorNotice errors={loadErrors} />
       <SyncStatusBanner />
 
       {/* PUB40 — sélecteur de période + comparaison. */}

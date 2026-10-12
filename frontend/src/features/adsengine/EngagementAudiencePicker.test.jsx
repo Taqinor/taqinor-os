@@ -79,3 +79,12 @@ describe('EngagementAudiencePicker (ADSDEEP59)', () => {
     expect(await screen.findByTestId('ae-engagement-message')).toBeInTheDocument()
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('EngagementAudiencePicker — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.engagementPresets.mockRejectedValue(new Error('boom'))
+    render(<EngagementAudiencePicker />)
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

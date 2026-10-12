@@ -10,6 +10,8 @@ import {
   formatPercent, formatMAD, formatNumber, erreurServeur,
 } from './adsengine'
 import { useAdsPermissions } from './useAdsPermissions'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ENG39 — Écran « Expérimentations » (moteur bandit).
@@ -135,6 +137,7 @@ function MdeCalculator() {
 function ArmDailySeries({ armId }) {
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [seriesError, setSeriesError] = useState(false)
   // PACT110-FIX — `stats-bras/` est paginée et filtrée par bras CÔTÉ CLIENT
   // (ordre serveur `-date`) : au-delà d'une page, ce sont les jours les plus
   // ANCIENS de la série qui manquent. On garde le signal du serveur.
@@ -155,13 +158,17 @@ function ArmDailySeries({ armId }) {
       })
       .catch(() => {
         // En erreur on ne sait RIEN de la troncature : ne rien affirmer.
-        if (!cancelled) { setRows([]); setPage({ truncated: false, total: 0, recues: 0 }) }
+        if (!cancelled) { setRows([]); setPage({ truncated: false, total: 0, recues: 0 }); setSeriesError(true) }
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [armId])
 
   if (loading) return <p style={{ color: '#64748b', margin: '0.5rem 0 0' }}>Chargement…</p>
+  if (seriesError) {
+    return <p data-testid="ae-exp-arm-series-error" role="alert" style={{ color: '#dc2626', margin: '0.5rem 0 0' }}>
+      Impossible de charger la série quotidienne de ce bras.</p>
+  }
   // Le bandeau se montre AUSSI (et surtout) quand la série est vide : « aucune
   // statistique » n'est vrai que si le serveur a bien tout envoyé.
   const notice = page.truncated
@@ -208,6 +215,7 @@ function ArmDailySeries({ armId }) {
 }
 
 export default function ExperimentsScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   // WIR209 — clôture d'expérience + sync étude Meta : deux écritures gated
   // `adsengine_manage` côté backend (`ExperimentViewSet.conclure` /
   // `.sync_ad_study`). Fail-closed pendant le chargement des permissions.
@@ -236,7 +244,7 @@ export default function ExperimentsScreen() {
     setOpenArmId(null)
     adsengineApi.experiments.get(id)
       .then(r => setCurrent(normalizeExperiment(r.data)))
-      .catch(() => setCurrent(null))
+      .catch(() => { setCurrent(null); setLoadErrors(markLoadError("l'expérimentation")) })
     Promise.all([
       adsengineApi.experiments.decisionLog(id),
       adsengineApi.experiments.arms(),
@@ -261,6 +269,7 @@ export default function ExperimentsScreen() {
       .catch(() => {
         setLog([]); setArms([])
         setArmsPage({ truncated: false, total: 0, recues: 0 })
+        setLoadErrors(markLoadError("le journal et les bras"))
       })
   }, [])
 
@@ -272,7 +281,7 @@ export default function ExperimentsScreen() {
         setList(rows)
         if (rows.length) loadDetail(rows[0].id)
       })
-      .catch(() => setList([]))
+      .catch(() => { setList([]); setLoadErrors(markLoadError("les expérimentations")) })
       .finally(() => setLoading(false))
   }, [loadDetail])
 
@@ -293,6 +302,7 @@ export default function ExperimentsScreen() {
       .catch(() => {
         setAllDecisions([])
         setAllDecisionsPage({ truncated: false, total: 0, recues: 0 })
+        setLoadErrors(markLoadError("le journal des décisions"))
       })
       .finally(() => setAllDecisionsLoading(false))
   }, [])
@@ -381,6 +391,7 @@ export default function ExperimentsScreen() {
 
   return (
     <div className="page ae-experiments" data-testid="ae-experiments">
+      <LoadErrorNotice errors={loadErrors} />
       <div className="page-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <FlaskConical size={20} aria-hidden="true" /> Expérimentations

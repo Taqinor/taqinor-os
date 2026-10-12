@@ -25,7 +25,10 @@ class DataroomsConfig(AppConfig):
         'label': 'Salles de données',
         'icone': 'folder-lock',
         'depends': ['ged'],
-        'description': 'Salles de données sécurisées : une collection thématique de documents GED ouverte à des viewers nommés, avec lien et expiration par personne, filigrane par viewer et journal de consultation.',
+        'description': (
+            'Salles de données sécurisées : une collection thématique de documents GED ouverte à des viewers nommés, '
+            'avec lien et expiration par personne, filigrane par viewer et journal de consultation.'
+        ),
         'categorie': 'Services',
         'parked': True,
     }

@@ -25,7 +25,11 @@ class JuridiqueConfig(AppConfig):
         'label': 'Juridique',
         'icone': 'scale',
         'depends': [],
-        'description': "Dossiers juridiques (contentieux, précontentieux, consultatif, recouvrement) : parties, audiences, délais de prescription, cabinets d'avocats et honoraires, budget et provisions proposées.",
+        'description': (
+            "Dossiers juridiques (contentieux, précontentieux, consultatif, recouvrement) : "
+            "parties, audiences, délais de prescription, cabinets d'avocats et honoraires, "
+            "budget et provisions proposées."
+        ),
         'categorie': 'Services',
         'parked': True,
     }

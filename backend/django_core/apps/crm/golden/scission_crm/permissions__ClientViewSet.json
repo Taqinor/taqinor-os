@@ -152,30 +152,6 @@
   ]
  },
  {
-  "action": "engagement_bulk",
-  "methode": "GET",
-  "permissions": [
-   {
-    "classe": "OR",
-    "op1": {
-     "classe": "OR",
-     "op1": {
-      "attrs": {},
-      "classe": "HasPermissionOrLegacy_crm_voir"
-     },
-     "op2": {
-      "attrs": {},
-      "classe": "HasPermissionOrLegacy_sav_voir"
-     }
-    },
-    "op2": {
-     "attrs": {},
-     "classe": "HasPermissionOrLegacy_installation_voir"
-    }
-   }
-  ]
- },
- {
   "action": "export_xlsx",
   "methode": "POST",
   "permissions": [

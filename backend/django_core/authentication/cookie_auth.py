@@ -2,12 +2,16 @@
 Authentification JWT via httpOnly cookie.
 Remplace la lecture du token dans l'en-tete Authorization.
 """
+import logging
+
 from django.contrib.auth import get_user_model
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+
+logger = logging.getLogger(__name__)
 
 
 # AUD404 — nom du claim de session d'impersonation, MIROIR de
@@ -145,6 +149,7 @@ class CookieJWTAuthentication(BaseAuthentication):
         try:
             claimed = validated.get(ACTIVE_COMPANY_CLAIM)
         except Exception:  # noqa: BLE001 — jeton sans le claim (legacy/for_user)
+            logger.debug("cookie_auth : claim de société active illisible", exc_info=True)
             claimed = None
         if claimed is not None and claimed != user.company_id:
             active = resolve_active_company(user, claimed)

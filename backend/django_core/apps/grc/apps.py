@@ -26,7 +26,10 @@ class GrcConfig(AppConfig):
         'icone': 'shield-check',
         'depends': [],
         'installable': True,
-        'description': 'Gouvernance, risques et conformité : registre des risques, contrôles internes, RGPD/loi 09-08 outillé, rétention et journal de destruction.',
+        'description': (
+            'Gouvernance, risques et conformité : registre des risques, contrôles internes, RGPD/loi 09-08 outillé, '
+            'rétention et journal de destruction.'
+        ),
         'categorie': 'Technique',
         'parked': True,
     }

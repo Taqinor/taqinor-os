@@ -168,3 +168,13 @@ describe('ManualActionComposer — erreur serveur (AACQ73)', () => {
       .toHaveTextContent('Serveur injoignable.')
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('ManualActionComposer — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.tmplList.mockRejectedValue(new Error('boom'))
+    render(<ManualActionComposer descriptor={findAction('set_spend_cap', 'campaign')}
+      target={{ metaId: 'camp-1', scope: 'campaign' }} />)
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

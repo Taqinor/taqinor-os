@@ -887,9 +887,16 @@ class GardesEcriture(SimpleTestCase):
     def test_les_sites_spl72_sont_lus(self):
         """Les exemptions ERR-SPL72 viennent du fichier statique (même
         format) : un fichier introuvable viderait la liste en silence."""
-        sites = sites_spl72()
-        self.assertTrue(sites, 'scripts/fk_scoping_allow.txt introuvable')
-        self.assertTrue(all('::' in s for s in sites))
+        from pathlib import Path
+
+        from django.conf import settings
+
+        chemin = (Path(settings.BASE_DIR).resolve().parent.parent / 'scripts'
+                  / 'fk_scoping_allow.txt')
+        # ENF17 — la base peut être VIDÉE (dernier site fermé) : seul un
+        # fichier ABSENT viderait la liste en silence.
+        self.assertTrue(chemin.is_file(), 'scripts/fk_scoping_allow.txt introuvable')
+        self.assertTrue(all('::' in s for s in sites_spl72()))
 
     def test_les_apiview_a_ecriture_sont_decouvertes(self):
         apiviews = _apiviews_ecriture()

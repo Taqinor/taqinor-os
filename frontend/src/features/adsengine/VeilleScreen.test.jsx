@@ -104,3 +104,12 @@ describe('VeilleScreen', () => {
     expect(mocks.obsCreate.mock.calls[0][0].hook_text).toBe('Économisez')
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('VeilleScreen — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.couverture.mockRejectedValue(new Error('boom'))
+    renderScreen()
+    expect(await screen.findByTestId('ae-veille-couverture-error')).toHaveTextContent('Impossible de charger')
+  })
+})

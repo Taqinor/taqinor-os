@@ -415,3 +415,12 @@ describe('ExperimentsScreen — WIR209 clôture + étude native', () => {
     expect(mocks.conclude).not.toHaveBeenCalled()
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('ExperimentsScreen — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.allDecisions.mockRejectedValue(new Error('boom'))
+    renderScreen()
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

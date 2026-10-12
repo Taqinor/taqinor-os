@@ -469,6 +469,46 @@ export async function declarerProfilCi(page, { contrat = 'bt_patente', tailleKwc
   if (tailleKwc) await page.locator('#gen-ci-taille').fill(tailleKwc)
 }
 
+/** CAD177 — AGNR31 (3c555d045, `validate()` de usePersistanceDevis.js) : une
+ *  ligne « prix à renseigner » (sans produit) posée par Auto-remplir BLOQUE
+ *  désormais « Créer le devis » AVANT tout appel réseau (avant AGNR31, l'envoi
+ *  la retirait en silence). Le catalogue de la démo en porte toujours en C&I
+ *  (prestations sans `forfaits_ci`, articles D-CIQ-12) et en pompage (articles
+ *  du kit sans prix). Geste du vendeur sans prix : supprimer ces lignes (la
+ *  corbeille de la ligne) — le serveur reçoit exactement ce qu'il recevait
+ *  avant AGNR31 (seules les lignes à prix connu). */
+export async function retirerLignesPrixARenseigner(page) {
+  const designation = 'td[data-label="Désignation"] input'
+  const cles = await page.locator('table.lines-table tbody tr[data-line-key]').evaluateAll(
+    (lignes, sel) => lignes
+      .filter((tr) => /prix à renseigner/i.test(tr.querySelector(sel)?.value || ''))
+      .map((tr) => tr.getAttribute('data-line-key')),
+    designation)
+  for (const cle of cles) {
+    const ligne = page.locator(`table.lines-table tbody tr[data-line-key="${cle}"]`)
+    await ligne.getByRole('button', { name: 'Supprimer la ligne' }).click()
+    await expect(ligne).toHaveCount(0)
+  }
+  return cles.length
+}
+
+/** CAD177 — « Créer le devis » (bouton du formulaire) puis l'issue : la réponse
+ *  attendue (`attente`, un `page.waitForResponse` posé AVANT le clic), ou le
+ *  refus affiché sous le formulaire (`erreur-enregistrement`), dont le TEXTE fait
+ *  échouer le test — jamais plus un délai muet de 15 s quand `validate()` bloque
+ *  sans appel réseau (nocturnes 38041876480 → 38236408895). */
+export async function cliquerCreerDevis(page, attente) {
+  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
+  const refus = page.getByTestId('erreur-enregistrement')
+  const issue = await Promise.race([
+    attente.then((reponse) => ({ reponse })),
+    refus.waitFor({ state: 'visible', timeout: 15_000 })
+      .then(async () => ({ refus: (await refus.textContent()) || '' }), () => new Promise(() => {})),
+  ])
+  if (issue.refus !== undefined) throw new Error(`« Créer le devis » refusé à l'écran : ${issue.refus}`)
+  return issue.reponse
+}
+
 /** Crée un devis COMMERCIAL par le vrai générateur, depuis un lead : profil
  *  déclaré (12 mois, calendrier, contrat) → Auto-remplir (aperçu serveur) →
  *  « Créer le devis ». Le client est résolu côté serveur depuis le lead.
@@ -486,10 +526,10 @@ export async function creerDevisCommercialDepuisLead(page, leadId) {
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
   await page.getByTestId('btn-auto-remplir').click()
   await auto
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const cree = await (await creation).json()
+  const cree = await (await cliquerCreerDevis(page, creation)).json()
   const id = cree.id ?? cree.devis?.id
   expect(id, 'identifiant du devis créé').toBeTruthy()
   return id
@@ -606,10 +646,10 @@ export async function creerDevisIndustrielDepuisLead(page, leadId, { tension = '
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
   await page.getByTestId('btn-auto-remplir').click()
   await auto
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const cree = await (await creation).json()
+  const cree = await (await cliquerCreerDevis(page, creation)).json()
   const id = cree.id ?? cree.devis?.id
   expect(id, 'identifiant du devis créé').toBeTruthy()
   return id

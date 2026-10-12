@@ -182,17 +182,3 @@ def engagement_for_client(client, now=None) -> dict:
         'score': score,
         'label': engagement_label(score),
     }
-
-
-def engagement_bulk(clients, now=None) -> list[dict]:
-    """Résultat pour une liste de clients — consommé par `engagement-bulk/`."""
-    now = now or timezone.now()
-    clients = list(clients)
-    # APRF22 — tous les scores en lot, puis la même forme qu'avant.
-    scores = engagement_pour_clients(clients, now=now)
-    out = []
-    for c in clients:
-        score = scores.get(c.pk, 0)
-        out.append({'client_id': c.id, 'score': score,
-                    'label': engagement_label(score)})
-    return out

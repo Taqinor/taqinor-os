@@ -14,6 +14,8 @@ import EngagementAudiencePicker from './EngagementAudiencePicker'
 // (FlightPlanViewSet.validate/simulate) ; les griser sans la permission évite
 // une découverte en 403.
 import { useAdsPermissions } from './useAdsPermissions'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ENG40 — Éditeur de plan de vol + panneau préflight (l'écran-amiral P7).
@@ -51,6 +53,7 @@ const EMPTY_VAR = { cle: '', valeur: '' }
 const BASE_TARGETING_SPEC = { geo_locations: { countries: ['MA'] } }
 
 export default function FlightPlanScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   // PUB10 — permission de composition (valider/simuler un plan).
   const { has } = useAdsPermissions()
   const canManage = has('adsengine_manage')
@@ -121,13 +124,13 @@ export default function FlightPlanScreen() {
     adsengineApi.flightplan.templates()
       .then(r => setTemplates((Array.isArray(r.data) ? r.data : (r.data?.results || []))
         .map(normalizeFlightTemplate)))
-      .catch(() => setTemplates([]))
+      .catch(() => { setTemplates([]); setLoadErrors(markLoadError("les gabarits")) })
     adsengineApi.flightplan.backlogArms()
       .then(r => setArms(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setArms([]))
+      .catch(() => { setArms([]); setLoadErrors(markLoadError("les bras")) })
     adsengineApi.flightplan.preflight()
       .then(r => setPreflight(normalizePreflight(r.data)))
-      .catch(() => setPreflight({ pret: false, portes: [], manquantes: [] }))
+      .catch(() => { setPreflight({ pret: false, portes: [], manquantes: [] }); setLoadErrors(markLoadError("le contrôle préalable")) })
       .finally(() => setLoading(false))
     loadSavedPlan()
   }, [loadSavedPlan])
@@ -275,6 +278,7 @@ export default function FlightPlanScreen() {
 
   return (
     <div className="page ae-flightplan" data-testid="ae-flightplan">
+      <LoadErrorNotice errors={loadErrors} />
       <div className="page-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <Route size={20} aria-hidden="true" /> Plan de vol
