@@ -97,3 +97,13 @@ class TestFG290Registre(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['totaux']['equipements'], 0)
         self.assertEqual(r.data['parcs'], [])
+
+    def test_jours_demesure_ou_illisible_repond_400_pas_500(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : `?jours=1152921504606846977` faisait
+        # déborder `timedelta` (500) ; la valeur est bornée comme le schéma
+        # (0..36500) et nomme le paramètre fautif.
+        for brut in ('1152921504606846977', '36501', '-1', 'abc', 'null'):
+            r = self.api.get(URL, {'jours': brut})
+            self.assertEqual(r.status_code, 400, (brut, r.content))
+            self.assertIn('jours', r.data)
+        self.assertEqual(self.api.get(URL, {'jours': 36500}).status_code, 200)

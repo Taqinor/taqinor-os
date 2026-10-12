@@ -269,6 +269,15 @@ class TestFiltersAndScoping(TestCase):
         codes = [a['code'] for a in rows]
         self.assertEqual(codes, ['C1'])
 
+    def test_patch_vide_rend_equipement_produit_a_null(self):
+        # Alarme sans équipement : la clé `equipement_produit` reste servie
+        # (null) sur un PATCH, comme sur un GET (api-fuzz ERR-ENF11-FUZZ-SAV).
+        alarme = make_alarme(self.company, None, code='SANS-EQ')
+        resp = self.api.patch(f'{BASE}{alarme.id}/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('equipement_produit', resp.data)
+        self.assertIsNone(resp.data['equipement_produit'])
+
     def test_filtre_equipement_illisible_repond_400(self):
         for brut in ('abc', '0', 'null'):
             resp = self.api.get(f'{BASE}?equipement={brut}')

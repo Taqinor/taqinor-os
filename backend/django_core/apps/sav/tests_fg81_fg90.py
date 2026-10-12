@@ -510,6 +510,18 @@ class TestKbArticle(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['count'], 0)
 
+    def test_patch_vide_rend_les_libelles_lies_a_null(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : sur un PATCH (sérialiseur partiel) DRF
+        # SAUTAIT un champ `source='produit.nom'` dont le lien est vide dès qu'il
+        # portait un `default` — la clé manquait alors que le schéma l'exige.
+        art = KbArticle.objects.create(
+            company=self.co, titre='Sans produit', corps='Texte', actif=True)
+        r = self.api.patch(
+            f'/api/django/sav/kb-articles/{art.pk}/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('produit_nom', r.data)
+        self.assertIsNone(r.data['produit_nom'])
+
     def test_filtre_produit_illisible_repond_400(self):
         for brut in ('abc', '0', 'null'):
             r = self.api.get(f'/api/django/sav/kb-articles/?produit={brut}')
