@@ -27,6 +27,13 @@
     "detail": "Invitation introuvable, déjà utilisée, révoquée ou expirée."
   },
   "exemple_champs_manquants": {
-    "detail": "Le token et le mot de passe sont requis."
+    "token": [
+      "Ce champ est obligatoire."
+    ]
+  },
+  "statuts": {
+    "200": "compte créé (`exemple`)",
+    "400": "corps hors schéma : non objet, `token`/`mot_de_passe` absent, non-chaîne ou blanc (erreurs par champ) ; ou mot de passe refusé par la politique (`exemple_mot_de_passe_refuse`)",
+    "404": "ERR-ENF11-FUZZ-PORTAIL — jeton sans invitation ouverte : inconnu, déjà utilisé, révoqué ou expiré, réponse UNIQUE (`exemple_jeton_invalide`)"
   }
 }

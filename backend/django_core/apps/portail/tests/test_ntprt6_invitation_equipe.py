@@ -365,7 +365,32 @@ class PublicAcceptationEndpointTests(TestCase):
         self.assertEqual(res.status_code, 400)
 
     def test_token_invalide_refuse(self):
+        # ERR-ENF11-FUZZ-PORTAIL — un jeton conforme au schéma sans invitation
+        # ouverte est INTROUVABLE (404, plus 400) ; message unique inchangé.
         res = self.api.post('/api/django/public/portail/invitations/accepter/', {
             'token': 'invalide', 'mot_de_passe': 'x' * 12,
         }, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(
+            res.data['detail'],
+            'Invitation introuvable, déjà utilisée, révoquée ou expirée.')
+
+    def test_corps_hors_schema_400(self):
+        """ERR-ENF11-FUZZ-PORTAIL — corps non objet, champ non-chaîne ou blanc
+        → 400 nommant le champ ; rien n'est accepté."""
+        url = '/api/django/public/portail/invitations/accepter/'
+        for corps, champ in (
+                ({'token': 123, 'mot_de_passe': 'x' * 12}, 'token'),
+                ({'token': '   ', 'mot_de_passe': 'x' * 12}, 'token'),
+                ({'token': self.invitation.token_invitation,
+                  'mot_de_passe': '   '}, 'mot_de_passe'),
+                ({'token': self.invitation.token_invitation,
+                  'mot_de_passe': 12345678}, 'mot_de_passe')):
+            with self.subTest(corps=corps):
+                res = self.api.post(url, corps, format='json')
+                self.assertEqual(res.status_code, 400, res.content)
+                self.assertIn(champ, res.data)
+        res = self.api.post(url, ['token'], format='json')
+        self.assertEqual(res.status_code, 400, res.content)
+        self.invitation.refresh_from_db()
+        self.assertIsNone(self.invitation.utilisateur_cree_id)
