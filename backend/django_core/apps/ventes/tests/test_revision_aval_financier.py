@@ -201,5 +201,103 @@ class AvenantDeSurDevisAccepted(TestCase):
     def test_v2_d_un_refuse_avenant_de_none(self, *_):
         self._v2_apres(Devis.Statut.REFUSE)
 
+
+#: Panier RÉEL du devis 367 (V1 Kharbachi) : 9 600 @10 + 36 643,50 @20, N=1.
+PANIER_367 = [('Main d oeuvre', '1', '9600', '10'),
+              ('Materiel', '1', '36643.50', '20')]
+
+
+@mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
+@mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
+class ApercuPrixNegocie(TestCase):
+    """VNT58 — ``apercu_prix_negocie`` : lecture PURE (rien n'est écrit),
+    solveur 54 500 → 49 000 = 10,00 %, effets lus sur ``etat_vente``."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead 1594')
+        v1 = make_devis(self.company, self.user, self.client_obj, PANIER_367,
+                        reference='DEV-VNT58-0367')
+        Devis.objects.filter(pk=v1.pk).update(
+            statut=Devis.Statut.ENVOYE, lead=self.lead)
+        v1.refresh_from_db()
+        self.v1 = accept_devis(devis=v1, user=self.user, nom='Client 367',
+                               date_acceptation=date.today(),
+                               option='sans_batterie')
+        self.assertEqual(_ttc(self.v1), Decimal('54500.00'))
+
+    def _tranche(self):
+        return creer_facture_tranche(Devis.objects.get(pk=self.v1.pk),
+                                     self.user, self.company,
+                                     create_with_reference)
+
+    def _apercu(self, **saisie):
+        from apps.ventes.domain.negociation import apercu_prix_negocie
+        return apercu_prix_negocie(
+            Devis.objects.get(pk=self.v1.pk), user=self.user, **saisie)
+
+    def _code(self, **saisie):
+        from apps.ventes.domain.negociation import PrixNegocieErreur
+        with self.assertRaises(PrixNegocieErreur) as ctx:
+            self._apercu(**saisie)
+        return ctx.exception.code
+
+    def test_apercu_49000_remise_10_effets_rien_ecrit(self, *_):
+        acompte = self._tranche()
+        Facture.objects.filter(pk=acompte.pk).update(
+            statut=Facture.Statut.PAYEE, reference='FAC-VNT58-0001')
+        materiel = self._tranche()
+        Facture.objects.filter(pk=materiel.pk).update(
+            statut=Facture.Statut.BROUILLON)
+        materiel.refresh_from_db()
+        acompte.refresh_from_db()
+        nb_devis, nb_factures = Devis.objects.count(), Facture.objects.count()
+
+        a = self._apercu(prix_ttc='49000')
+
+        self.assertEqual(a['remise_pct'], '10.00')
+        self.assertEqual(a['total_ttc'], '49000.00')
+        self.assertEqual(a['ecart_ttc'], '-5500.00')
+        self.assertEqual(a['devis_v2'], {'id': None, 'reference': None,
+                                         'version': 2})
+        self.assertEqual(a['factures_annulees'],
+                         [{'reference': materiel.reference}])
+        self.assertEqual([f['reference'] for f in a['factures_reprises']],
+                         ['FAC-VNT58-0001'])
+        self.assertEqual(Decimal(a['reste_a_facturer']),
+                         Decimal('49000.00') - Decimal(str(acompte.total_ttc)))
+        self.assertEqual(a['regularisation'],
+                         {'type': 'aucune', 'montant': '0.00'})
+        # Lecture PURE.
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.assertEqual(Facture.objects.count(), nb_factures)
+        self.v1.refresh_from_db()
+        self.assertEqual(self.v1.remise_globale, Decimal('0'))
+        materiel.refresh_from_db()
+        self.assertEqual(materiel.statut, Facture.Statut.BROUILLON)
+
+    def test_remise_10_rend_le_meme_apercu(self, *_):
+        self.assertEqual(self._apercu(remise_pct='10')['total_ttc'],
+                         '49000.00')
+
+    def test_refus_d_entree(self, *_):
+        self.assertEqual(self._code(prix_ttc='48950'), 'prix_non_rond')
+        self.assertEqual(self._code(prix_ttc='60000'), 'prix_superieur')
+        self.assertEqual(self._code(prix_ttc='54500'), 'prix_identique')
+        self.assertEqual(self._code(), 'saisie_vide')
+        self.assertEqual(self._code(prix_ttc='49000', remise_pct='10'),
+                         'saisie_double')
+
+    def test_version_remplacee_409(self, *_):
+        from apps.ventes.domain.negociation import PrixNegocieErreur
+        v2 = reviser_devis(self.v1, user=self.user)
+        with self.assertRaises(PrixNegocieErreur) as ctx:
+            self._apercu(prix_ttc='49000')
+        self.assertEqual(ctx.exception.statut_http, 409)
+        self.assertEqual(ctx.exception.corps['code'], 'version_remplacee')
+        self.assertEqual(ctx.exception.corps['successeur']['id'], v2.pk)
+
     def test_v2_d_un_expire_avenant_de_none(self, *_):
         self._v2_apres(Devis.Statut.EXPIRE)
