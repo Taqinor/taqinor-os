@@ -5,6 +5,7 @@ fichier ne grossit pas). VNT67 y pose ``montant-tranche`` ; VNT97 y déplace
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -13,6 +14,16 @@ from authentication.permissions import (
 
 from . import openapi_docs as D
 from ..serializers_facturation import FactureSerializer
+
+
+def refuser_devis_du_corps(donnees, facture=None):
+    """VNT89 — la porte MANUELLE (création / modification d'une facture) est
+    fermée aux devis : 400 ``facture_de_devis`` (« passez par Facturer la
+    vente ») ; règle : ``facturation_vente.devis_impose_au_corps``."""
+    from ..domain.facturation_vente import (
+        FACTURE_DE_DEVIS_REFUSE, devis_impose_au_corps)
+    if devis_impose_au_corps(donnees, facture):
+        raise ValidationError(FACTURE_DE_DEVIS_REFUSE)
 
 
 class FactureCycleActionsMixin:

@@ -5,8 +5,7 @@ from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
-from .facture_cycle import FactureCycleActionsMixin
-from ..domain.facturation_vente import FACTURE_DE_DEVIS_REFUSE, devis_impose_au_corps
+from .facture_cycle import FactureCycleActionsMixin, refuser_devis_du_corps
 from . import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers as drf_serializers
@@ -249,8 +248,7 @@ class FactureViewSet(FactureCycleActionsMixin, EntiteScopeMixin, CompanyScopedMo
                     bon_commande.company_id != company.id:
                 raise ValidationError(
                     {'bon_commande': 'Bon de commande inconnu.'})
-        if devis_impose_au_corps(serializer.validated_data):
-            raise ValidationError(FACTURE_DE_DEVIS_REFUSE)
+        refuser_devis_du_corps(serializer.validated_data)
         # AFAC66 (C-AFAC-057) — la cinquième porte est FERMÉE : une facture
         # liée au BC d'un devis ne naît QUE par `bons-commande/<id>/
         # creer-facture/` (copie fidèle du devis signé, garde ATOT2).
@@ -361,8 +359,7 @@ class FactureViewSet(FactureCycleActionsMixin, EntiteScopeMixin, CompanyScopedMo
         if bc_corps is not None and bc_corps.devis_id \
                 and bc_corps.pk != facture.bon_commande_id:
             raise ValidationError({'bon_commande': BC_DE_DEVIS_REFUSE, 'code': 'bon_commande_de_devis'})
-        if devis_impose_au_corps(serializer.validated_data, facture):
-            raise ValidationError(FACTURE_DE_DEVIS_REFUSE)
+        refuser_devis_du_corps(serializer.validated_data, facture)
         from ..domain.facturation_ops import argent_modifie  # ATOT35
         argent_touche = argent_modifie(
             facture, serializer.validated_data, FACTURE_CHAMPS_ARGENT)
