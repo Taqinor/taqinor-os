@@ -136,7 +136,7 @@ def montants_au_prorata(devis, plan, ttc):
     q(HT convenu × TTC / TTC convenu), TVA = TTC − HT, ventilation par taux
     au centime (``ventilation_document_fige``, None à un seul taux)."""
     prix = plan['prix_convenu_ttc']
-    ht = _q(plan['prix_convenu_ht'] * ttc / prix) if prix > 0 else ttc
+    ht = _q(plan['prix_convenu_ht'] * (ttc / prix)) if prix > 0 else ttc
     tva = ttc - ht
     paniers = _paniers(devis)
     if len(paniers) < 2:
@@ -265,6 +265,174 @@ def _facturer_tranche(devis, plan, nature, *, user, montant, cle_attendue,
     return creer_brouillon_tranche(devis, tranche, user, libelle)
 
 
+# ── VNT28 — l'acompte libre (D-VNT-3, arbitrage 9) ───────────────────────────
+
+def _entrees_echeancier(devis):
+    """Les entrées STOCKÉES de l'échéancier (copies) ; à défaut (aucun
+    échéancier propre exploitable) celles des conditions du jour, à la forme
+    de ``figer_echeancier``."""
+    from apps.ventes.utils.echeancier import (
+        UNITE_PCT, EcheancierInvalide, tranches_normalisees,
+        valider_echeancier)
+    propre = devis.echeancier
+    if isinstance(propre, list) and propre:
+        try:
+            if valider_echeancier(propre, controler_somme=False):
+                return [dict(e) for e in propre]
+        except EcheancierInvalide:
+            pass
+    entrees = []
+    for t in tranches_normalisees(devis):
+        entree = {'type': t['key'], 'libelle': t['libelle'],
+                  'pct_or_montant': float(t['valeur']),
+                  'unite': t.get('unite') or UNITE_PCT}
+        if t.get('jalon'):
+            entree['jalon'] = t['jalon']
+        entrees.append(entree)
+    return entrees
+
+
+def _placer_acompte(entrees, plan, montant, cle_attendue):
+    """Pose l'acompte ``montant`` (MAD) dans ``entrees`` ; rend son rang.
+    Acompte à faire / en brouillon : sa tranche passe en MAD. Acompte ÉMIS :
+    une tranche ``acompte#n`` est insérée après lui, seulement si
+    ``cle_attendue`` la nomme (jamais tant que l'acompte n'est pas émis)."""
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, cles_tranches, valider_echeancier)
+    acomptes = [i for i, t in enumerate(plan['tranches'])
+                if str(t['type']) == 'acompte']
+    k = acomptes[-1] if acomptes else None
+    neuve = {'type': 'acompte', 'libelle': 'Acompte',
+             'unite': UNITE_MONTANT, 'pct_or_montant': float(montant)}
+    if k is None or plan['tranches'][k]['statut'] == 'emise':
+        rang = 0 if k is None else k + 1
+        entrees.insert(rang, neuve)
+        cle = cles_tranches(valider_echeancier(
+            entrees, controler_somme=False))[rang]
+        if k is not None and cle_attendue != cle:
+            raise _conflit(
+                'tranche_deja_creee',
+                "L'acompte est déjà émis : un acompte supplémentaire se "
+                f'demande sous la clé « {cle} ».')
+    else:
+        rang = k
+        if cle_attendue and cle_attendue != plan['tranches'][k]['cle']:
+            raise _conflit('cle_inattendue',
+                           'Le plan a changé : rechargez avant de facturer.',
+                           cle_attendue=plan['tranches'][k]['cle'])
+        entrees[k] = dict(entrees[k], unite=UNITE_MONTANT,
+                          pct_or_montant=float(montant))
+    if rang == len(entrees) - 1:
+        entrees.append({'type': 'solde', 'libelle': 'Solde',
+                        'unite': UNITE_MONTANT, 'pct_or_montant': 0})
+    return rang
+
+
+def ecrire_echeancier_depuis_acompte(devis, montant, *, user=None,
+                                     plan=None, cle_attendue=None):
+    """L'ÉCRIVAIN UNIQUE de l'échéancier par l'acompte libre (D-VNT-3,
+    arbitrage 9 ; VNT67 le réutilise) : [acompte A en MAD, intermédiaires
+    en % inchangées, dernière = reste en MAD] (Σ = TTC), même sur un devis
+    ACCEPTÉ, contrôlé par ``controler_echeancier_vente`` (VNT25 : tranches
+    émises intouchées) et tracé « Corrigé après acceptation ». Rend la clé
+    de la tranche d'acompte."""
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.echeancier import cles_tranches, valider_echeancier
+    from apps.ventes.vente_facturation import plan_facturation
+    from .modifiabilite import (
+        EcheancierRefuse, consigner_correction_apres_envoi,
+        controler_echeancier_vente)
+    plan = plan or plan_facturation(devis)
+    avant = devis.echeancier
+    entrees = _entrees_echeancier(devis)
+    rang = _placer_acompte(entrees, plan, montant, cle_attendue)
+    try:
+        entrees = controler_echeancier_vente(devis, entrees,
+                                             figer_brouillons=False)
+    except EcheancierRefuse as exc:
+        corps = exc.corps()
+        raise FacturationVenteRefusee(corps.pop('detail'), status=exc.status,
+                                      **corps)
+    if entrees != avant:
+        Devis.objects.filter(pk=devis.pk, company_id=devis.company_id
+                             ).update(echeancier=entrees)
+        devis.echeancier = entrees
+        consigner_correction_apres_envoi(
+            devis, user=user, objet='echeancier',
+            resume=f'échéancier — acompte {_q(montant)} MAD',
+            apres_acceptation=True)
+    return cles_tranches(valider_echeancier(
+        entrees, controler_somme=False))[rang]
+
+
+def _editer_brouillon(facture, tranche, user, libelle):
+    """Le brouillon d'acompte existant prend le nouveau montant (AMET4 :
+    jamais un second brouillon) ; chatter « Montant modifié »."""
+    from apps.ventes.models import FactureActivity
+    from apps.ventes.utils.echeancier import libelle_tranche
+    from .facturation_ops import entete_facture_depuis_devis
+    if facture.lignes.exists():
+        raise _conflit(
+            'tranche_en_brouillon',
+            "Le brouillon d'acompte porte des lignes : modifiez-le depuis "
+            'la facture.',
+            facture={'id': facture.pk, 'reference': facture.reference})
+    ancien = facture.total_ttc
+    entete = entete_facture_depuis_devis(facture.devis,
+                                         ttc=tranche['montant_ttc'])
+    for champ in ('retenue_garantie_mad', 'conditions_paiement'):
+        if champ in entete:
+            setattr(facture, champ, entete[champ])
+    facture.montant_ttc = tranche['montant_ttc']
+    facture.montant_ht, facture.montant_tva = tranche['ht'], tranche['tva']
+    facture.ventilation_tva = tranche['ventilation_tva']
+    facture.pourcentage = tranche['pourcentage']
+    facture.libelle = libelle or libelle_tranche(tranche)
+    facture.cle_tranche = tranche['cle']
+    facture.save()
+    if ancien == tranche['montant_ttc']:
+        return facture
+    FactureActivity.objects.create(
+        company_id=facture.company_id, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION, field='montant_ttc',
+        field_label='montant_ttc', old_value=str(ancien),
+        new_value=str(tranche['montant_ttc']),
+        body=(f'Montant modifié sur le brouillon : montant_ttc {ancien} '
+              f"-> {tranche['montant_ttc']}."))
+    return facture
+
+
+def _facturer_acompte(devis, plan, *, user, montant, cle_attendue, libelle):
+    """Nature ``acompte`` : l'échéancier est réécrit par l'acompte tapé,
+    puis le brouillon d'acompte est MODIFIÉ (sinon créé) au même montant."""
+    from apps.ventes.vente_facturation import plan_facturation
+    prix = plan['prix_convenu_ttc']
+    if montant is None:
+        premiere = next((t for t in plan['tranches']
+                         if str(t['type']) == 'acompte'
+                         and t['statut'] != 'emise'), None)
+        if premiere is None or premiere['montant_ttc'] <= 0:
+            raise FacturationVenteRefusee('Montant invalide.',
+                                          code='montant_invalide')
+        montant = premiere['montant_ttc']
+    if montant >= prix:
+        raise FacturationVenteRefusee(
+            'Le montant dépasse le reste à facturer.',
+            code='montant_depasse_reste')
+    cle = ecrire_echeancier_depuis_acompte(
+        devis, montant, user=user, plan=plan, cle_attendue=cle_attendue)
+    plan = plan_facturation(devis)
+    tranche = next(t for t in plan['tranches'] if t['cle'] == cle)
+    ht, tva, vent = montants_au_prorata(devis, plan, montant)
+    tranche = dict(tranche, montant_ttc=montant, ht=ht, tva=tva,
+                   ventilation_tva=vent, pourcentage=_q(montant / prix * 100))
+    if tranche['statut'] == 'brouillon':
+        return _editer_brouillon(
+            _facture_du_plan(plan, tranche['facture_id']), tranche, user,
+            libelle)
+    return creer_brouillon_tranche(devis, tranche, user, libelle)
+
+
 def facturer_vente(devis, *, nature, user, montant_ttc=None,
                    pourcentage=None, cle_attendue=None, libelle=None,
                    emettre=False, paiements=None, remplacer_brouillons=False,
@@ -283,10 +451,13 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
         plan = plan_facturation(devis)
         montant = _montant_demande(plan['prix_convenu_ttc'], montant_ttc,
                                    pourcentage)
-        if nature not in ('intermediaire', 'solde'):
+        options = {'user': user, 'montant': montant,
+                   'cle_attendue': cle_attendue, 'libelle': libelle}
+        if nature == 'acompte':
+            facture = _facturer_acompte(devis, plan, **options)
+        elif nature == 'complete':
             raise FacturationVenteRefusee(
-                f'La nature « {nature} » arrive avec VNT28/VNT29.')
-        facture = _facturer_tranche(
-            devis, plan, nature, user=user, montant=montant,
-            cle_attendue=cle_attendue, libelle=libelle)
+                'La nature « complete » arrive avec VNT29.')
+        else:
+            facture = _facturer_tranche(devis, plan, nature, **options)
     return facture, []

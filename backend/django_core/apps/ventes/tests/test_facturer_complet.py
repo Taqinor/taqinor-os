@@ -394,3 +394,113 @@ class FacturerVenteVerrouVNT27(_BaseVente):
         v2.refresh_from_db()
         verrous = verrouiller_vente(v2)
         self.assertEqual([d.pk for d in verrous], [v1.pk, v2.pk])
+
+
+class FacturerVenteAcompteVNT28(_BaseVente):
+    """VNT28 (D-VNT-3, arbitrage 9) — nature ``acompte`` : le montant tapé
+    réécrit l'échéancier [acompte A en MAD, intermédiaires en %, dernière =
+    reste en MAD] et le brouillon d'acompte existant est MODIFIÉ (sinon
+    créé) ; jamais un second brouillon ; ``acompte#n`` seulement après
+    l'émission du premier. Goldens du 388."""
+
+    def _echeancier(self, devis):
+        devis.refresh_from_db()
+        return [(e['type'], e['unite'], Decimal(str(e['pct_or_montant'])))
+                for e in devis.echeancier]
+
+    def _acomptes(self, devis):
+        return Facture.objects.filter(
+            devis=devis, type_facture='acompte').exclude(statut='annulee')
+
+    def test_acompte_libre_15000_ecrit_l_echeancier(self):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            VENT_ACOMPTE_15000)
+        devis = self._388('DEV-VNT28-15K')
+        facture, _p = self._facturer(devis, nature='acompte',
+                                     montant_ttc='15000.00',
+                                     cle_attendue='acompte')
+        self.assertEqual(self._echeancier(devis), [
+            ('acompte', 'montant', Decimal('15000')),
+            ('materiel', 'pct', Decimal('60')),
+            ('solde', 'montant', Decimal('4600'))])
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+        self.assertEqual(facture.libelle, 'Acompte')
+        self.assertEqual(facture.cle_tranche, 'acompte')
+        self.assertEqual(facture.montant_ttc, Decimal('15000.00'))
+        self.assertEqual(facture.montant_ht, Decimal('12720.41'))
+        self.assertEqual(facture.montant_tva, Decimal('2279.59'))
+        self.assertEqual(facture.ventilation_tva, VENT_ACOMPTE_15000)
+        # Le plan suit l'échéancier écrit : 29 400 puis 4 600.
+        from apps.ventes.vente_facturation import plan_facturation
+        a_faire = [t['montant_ttc'] for t in plan_facturation(devis)[
+            'tranches'] if t['statut'] == 'a_faire']
+        self.assertEqual(a_faire, [Decimal('29400.00'), Decimal('4600.00')])
+
+    def test_double_clic_un_seul_brouillon(self):
+        devis = self._388('DEV-VNT28-DBL')
+        premiere, _p = self._facturer(devis, nature='acompte',
+                                      montant_ttc='15000.00')
+        seconde, _p = self._facturer(devis, nature='acompte',
+                                     montant_ttc='15000.00')
+        self.assertEqual(premiere.pk, seconde.pk)
+        self.assertEqual(self._acomptes(devis).count(), 1)
+
+    def test_trente_pour_cent_vaut_14700(self):
+        devis = self._388('DEV-VNT28-30')
+        facture, _p = self._facturer(devis, nature='acompte',
+                                     pourcentage='30')
+        facture.refresh_from_db()
+        self.assertEqual(facture.montant_ttc, Decimal('14700.00'))
+        self.assertEqual(facture.montant_ht, Decimal('12466.00'))
+        self.assertEqual(facture.montant_tva, Decimal('2234.00'))
+
+    def test_retaper_un_montant_modifie_le_meme_brouillon(self):
+        devis = self._388('DEV-VNT28-RETAPE')
+        premiere, _p = self._facturer(devis, nature='acompte',
+                                      montant_ttc='15000.00')
+        seconde, _p = self._facturer(devis, nature='acompte',
+                                     montant_ttc='14700.00')
+        self.assertEqual(premiere.pk, seconde.pk)
+        seconde.refresh_from_db()
+        self.assertEqual(seconde.montant_ttc, Decimal('14700.00'))
+        self.assertEqual(seconde.montant_ht, Decimal('12466.00'))
+        self.assertEqual(self._acomptes(devis).count(), 1)
+
+    def test_brouillon_preexistant_edite_jamais_double(self):
+        devis = self._388('DEV-VNT28-AMET4')
+        existant = self._acompte_14700(devis, statut='brouillon',
+                                       reference='')
+        facture, _p = self._facturer(devis, nature='acompte',
+                                     montant_ttc='15000.00')
+        self.assertEqual(facture.pk, existant.pk)
+        existant.refresh_from_db()
+        self.assertEqual(existant.montant_ttc, Decimal('15000.00'))
+        self.assertEqual(existant.montant_ht, Decimal('12720.41'))
+        self.assertEqual(self._acomptes(devis).count(), 1)
+
+    def test_acompte_supplementaire_seulement_apres_emission(self):
+        devis = self._388('DEV-VNT28-SUP')
+        self._acompte_14700(devis)
+        refus = self._refus(devis, nature='acompte', montant_ttc='300.00')
+        self.assertEqual(refus.status, 409)
+        self.assertEqual(refus.corps['code'], 'tranche_deja_creee')
+        facture, _p = self._facturer(devis, nature='acompte',
+                                     montant_ttc='300.00',
+                                     cle_attendue='acompte#2')
+        facture.refresh_from_db()
+        self.assertEqual(facture.cle_tranche, 'acompte#2')
+        self.assertEqual(facture.montant_ttc, Decimal('300.00'))
+        # L'acompte émis (30 %) est intouché ; la dernière vaut le reste.
+        self.assertEqual(self._echeancier(devis), [
+            ('acompte', 'pct', Decimal('30')),
+            ('acompte', 'montant', Decimal('300')),
+            ('materiel', 'pct', Decimal('60')),
+            ('solde', 'montant', Decimal('4600'))])
+
+    def test_trace_corrige_apres_acceptation(self):
+        from apps.ventes.models import DevisActivity
+        devis = self._388('DEV-VNT28-TRACE')
+        self._facturer(devis, nature='acompte', montant_ttc='15000.00')
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=devis, field='correction_apres_acceptation').exists())
