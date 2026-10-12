@@ -45,6 +45,20 @@ class ConfirmationActionSerializer(drf_serializers.Serializer):
     preuve = drf_serializers.CharField(required=False)
 
 
+def sans_nul(valeur):
+    """Copie de ``valeur`` (JSON) sans octet NUL (NUL) dans les chaînes
+    ni les clés : PostgreSQL le refuse dans un ``jsonb`` / un ``varchar`` (500)
+    alors que le schéma l'annonce valide ; il n'a aucun sens métier."""
+    if isinstance(valeur, str):
+        return valeur.replace(chr(0), '')
+    if isinstance(valeur, list):
+        return [sans_nul(element) for element in valeur]
+    if isinstance(valeur, dict):
+        return {sans_nul(cle): sans_nul(element)
+                for cle, element in valeur.items()}
+    return valeur
+
+
 class BrouillonAutomationSerializer(drf_serializers.Serializer):
     # ``nom`` : au moins un caractère non blanc (le service refuse un nom vide
     # après ``strip``), 255 au plus (``AutomationRule.nom``).
@@ -287,7 +301,7 @@ class AutomationDraftView(APIView):
 
         # ERR-ENF11-FUZZ-AGENT — le corps est validé contre le schéma publié
         # (400 par champ) ; le service re-valide le catalogue fermé.
-        brouillon = BrouillonAutomationSerializer(data=request.data)
+        brouillon = BrouillonAutomationSerializer(data=sans_nul(request.data))
         brouillon.is_valid(raise_exception=True)
         data = brouillon.validated_data
         try:

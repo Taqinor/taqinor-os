@@ -139,3 +139,17 @@ class AutomationDraftEndpointTest(TestCase):
                          ('action_type', 'action_types')):
             schema = get_override(champs[nom], 'field')
             self.assertEqual(schema['allOf'][0]['enum'], catalogue[cle])
+
+    def test_octet_nul_nettoye_sans_500(self):
+        # jsonb et varchar refusent l'octet NUL (500) alors que le schéma
+        # l'annonce valide : il est retiré avant validation.
+        resp = _auth(self.user).post(URL, {
+            'nom': 'Br\x00ouillon', 'trigger_type': 'devis_accepted',
+            'action_type': 'create_activity',
+            'trigger_config': {'a\x00': 'b\x00c', 'liste': ['\x00x']},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['nom'], 'Brouillon')
+        from apps.automation.models import AutomationRule
+        regle = AutomationRule.objects.get(pk=resp.data['id'])
+        self.assertEqual(regle.trigger_config, {'a': 'bc', 'liste': ['x']})
