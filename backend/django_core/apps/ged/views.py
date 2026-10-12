@@ -45,7 +45,9 @@ from apps.records.openapi import (
 from apps.records.serializers import CibleIntrouvable, resolve_target
 
 from . import openapi as oa, selectors, services
-from .corps_requete import _date_iso, _pk, _pks, _txt
+from .corps_requete import (
+    _date_iso, _entier_borne, _id_filtre, _pk, _pks, _txt,
+)
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
@@ -137,6 +139,14 @@ class _CsvOrJSONRenderer(JSONRenderer):
     comportement par défaut sans `?format=csv`)."""
     format = 'csv'
     media_type = 'text/csv'
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        # ``?format=csv`` sélectionne ce moteur AVANT la vue : une erreur
+        # (404, 403…) est un corps JSON et doit le dire (Content-Type).
+        reponse = (renderer_context or {}).get('response')
+        if reponse is not None and reponse.status_code >= 400:
+            reponse['Content-Type'] = 'application/json'
+        return super().render(data, accepted_media_type, renderer_context)
 
 
 class CorpsObjetMixin:
@@ -253,13 +263,13 @@ class FolderViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
-        cabinet = params.get('cabinet')
-        if cabinet:
+        cabinet = _id_filtre(params, 'cabinet')
+        if cabinet is not None:
             qs = qs.filter(cabinet_id=cabinet)
-        parent = params.get('parent')
+        parent = _id_filtre(params, 'parent', null_ok=True)
         if parent == 'null':
             qs = qs.filter(parent__isnull=True)
-        elif parent:
+        elif parent is not None:
             qs = qs.filter(parent_id=parent)
         # ADOC5 — l'arbre ne montre que les dossiers lisibles (ACL GED19).
         return selectors.folders_visibles(qs, self.request.user)
@@ -522,28 +532,29 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                           versions.values('version')[:1]),
                       derniere_mime_annotee=Subquery(
                           versions.values('mime')[:1])))
-        folder = self.request.query_params.get('folder')
-        if folder:
+        params = self.request.query_params
+        folder = _id_filtre(params, 'folder')
+        if folder is not None:
             qs = qs.filter(folder_id=folder)
-        coffre = self.request.query_params.get('coffre')
+        coffre = _id_filtre(params, 'coffre', null_ok=True)
         if coffre == 'null':
             qs = qs.filter(coffre__isnull=True)
-        elif coffre:
+        elif coffre is not None:
             qs = qs.filter(coffre_id=coffre)
         # GED9 — filtre par tag de la taxonomie (?tag=<id>).
-        tag = self.request.query_params.get('tag')
-        if tag:
+        tag = _id_filtre(params, 'tag')
+        if tag is not None:
             qs = qs.filter(tag_assignments__tag_id=tag).distinct()
         # GED17 — filtre par statut du cycle de vie documentaire (?statut=…).
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
         # ZGED5 — filtres par propriétaire/contact assigné.
-        proprietaire = self.request.query_params.get('proprietaire')
-        if proprietaire:
+        proprietaire = _id_filtre(params, 'proprietaire')
+        if proprietaire is not None:
             qs = qs.filter(proprietaire_id=proprietaire)
-        contact = self.request.query_params.get('contact')
-        if contact:
+        contact = _id_filtre(params, 'contact')
+        if contact is not None:
             qs = qs.filter(contact_id=contact)
         return qs
 
@@ -1149,7 +1160,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
     @extend_schema(
-        parameters=[oa.Q_Q, oa.P('k', oa.ID, description='Nombre de fragments.')],
+        parameters=[oa.Q_Q, oa.Q_K],
         responses=oa.DOCQA_REPONSE)
     @action(detail=False, methods=['get'], url_path='docqa')
     def docqa(self, request):
@@ -1168,10 +1179,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         solaire). Les résultats gardent leur clé `source` (toujours `'ged'`
         aujourd'hui) : la forme de la réponse est inchangée pour l'écran."""
         query = request.query_params.get('q', '')
-        try:
-            k = int(request.query_params.get('k', 5))
-        except (TypeError, ValueError):
-            k = 5
+        k = _entier_borne(request.query_params, 'k', defaut=5, mini=1, maxi=50)
         chunks = selectors.retrieve_chunks(request.user, query, limit=k)
         results = [{
             'source': 'ged',
@@ -2196,17 +2204,13 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
 
 def _parametre_date(request, nom):
     """ENF7 — date ISO d'un paramètre de requête : ``(date|None, erreur)``.
-    Absent ou vide : ``(None, None)`` ; mal formé ou impossible : 400 nommé
+    Absent : ``(None, None)`` ; vide, mal formé ou impossible : 400 nommé
     (jamais une 500)."""
-    from django.utils.dateparse import parse_date
-
-    brut = request.query_params.get(nom) or ''
-    if not brut:
+    brut = request.query_params.get(nom)
+    if brut is None:
         return None, None
-    try:
-        valeur = parse_date(brut)
-    except ValueError:
-        valeur = None
+    # Le schéma déclare ``format: date`` : un paramètre VIDE n'en est pas une.
+    valeur = _date_iso(brut)
     if valeur is None:
         return None, Response(
             {nom: 'Date invalide (format attendu : AAAA-MM-JJ).'},
@@ -2594,10 +2598,10 @@ class DocumentTagViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        parent = self.request.query_params.get('parent')
+        parent = _id_filtre(self.request.query_params, 'parent', null_ok=True)
         if parent == 'null':
             qs = qs.filter(parent__isnull=True)
-        elif parent:
+        elif parent is not None:
             qs = qs.filter(parent_id=parent)
         return qs
 
@@ -4602,7 +4606,7 @@ class PlanificationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelV
             company=self.request.user.company, created_by=self.request.user)
 
 
-@extend_schema(parameters=[oa.P('limit', oa.ID, description='Au plus 50.')],
+@extend_schema(parameters=[oa.Q_LIMITE],
                responses=oa.RECENTS)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
@@ -4613,10 +4617,8 @@ def mes_recents(request):
     `GET ged/mes-recents/?limit=<n>` — dérivé de `JournalAcces` (GED35) et
     `DocumentVersion.uploaded_by`, dédupliqués par document, hors
     corbeille/ACL refusée. Renvoie `{"consultes": [...], "deposes": [...]}`."""
-    try:
-        limit = min(int(request.query_params.get('limit', 10)), 50)
-    except (TypeError, ValueError):
-        limit = 10
+    limit = _entier_borne(
+        request.query_params, 'limit', defaut=10, mini=1, maxi=50)
     consultes = selectors.mes_recents(request.user, limit=limit)
     deposes = selectors.mes_derniers_depots(request.user, limit=limit)
     return Response({

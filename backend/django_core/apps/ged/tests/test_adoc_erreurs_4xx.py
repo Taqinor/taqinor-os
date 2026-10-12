@@ -344,3 +344,77 @@ class Enf7ContratGedTests(TestCase):
         liste = chemins['/api/django/ged/documents/']['get']
         noms = {p['name'] for p in liste['parameters']}
         self.assertTrue({'folder', 'coffre', 'tag', 'statut'} <= noms, noms)
+
+
+class Enf11FuzzGedParametresTests(TestCase):
+    """ERR-ENF11-FUZZ-GED — paramètres de requête stricts (api-fuzz « accepted
+    schema-violating request ») : vide / illisible / hors bornes = 400."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='enf11-ged-q', defaults={'nom': 'ENF11 GED Q'})[0]
+        self.admin = User.objects.create_user(
+            username='enf11-ged-q-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.api = auth(self.admin)
+
+    def test_dates_vides_400(self):
+        for route in ('analytique/', 'demandes-signature/tableau-bord/'):
+            for param in ('date_debut', 'date_fin'):
+                resp = self.api.get(f'{BASE}{route}?{param}=')
+                self.assertEqual(resp.status_code, 400, (route, resp.content))
+            resp = self.api.get(f'{BASE}{route}?date_fin=2026-01-31')
+            self.assertEqual(resp.status_code, 200, (route, resp.content))
+
+    def test_filtres_identifiant_vides_ou_illisibles_400(self):
+        for route, param in (
+                ('dossiers/', 'parent'), ('dossiers/', 'cabinet'),
+                ('tags/', 'parent'), ('documents/', 'folder'),
+                ('documents/', 'coffre'), ('documents/', 'tag'),
+                ('documents/', 'proprietaire'), ('documents/', 'contact')):
+            for valeur in ('', 'abc'):
+                resp = self.api.get(f'{BASE}{route}?{param}={valeur}')
+                self.assertEqual(
+                    resp.status_code, 400, (route, param, valeur, resp.content))
+
+    def test_filtres_identifiant_valides(self):
+        resp = self.api.get(f'{BASE}dossiers/?parent=null')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['count'], 1)
+        resp = self.api.get(f'{BASE}dossiers/?cabinet={self.cab.pk}')
+        self.assertEqual(resp.data['count'], 1)
+        # Un entier hors plage 32 bits n'existe pas : liste vide, jamais 500.
+        resp = self.api.get(f'{BASE}dossiers/?cabinet=99999999999999999999')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['count'], 0)
+        resp = self.api.get(f'{BASE}tags/?parent=null')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_limites_k_et_limit_bornees(self):
+        for route, param in (('documents/docqa/', 'k'),
+                             ('mes-recents/', 'limit')):
+            for valeur in ('', 'null', '0', '51', '-1'):
+                resp = self.api.get(f'{BASE}{route}?{param}={valeur}')
+                self.assertEqual(
+                    resp.status_code, 400, (route, valeur, resp.content))
+            resp = self.api.get(f'{BASE}{route}?{param}=5')
+            self.assertEqual(resp.status_code, 200, (route, resp.content))
+
+    def test_permissions_effectives_csv_erreur_en_json(self):
+        # `?format=csv` choisit le moteur CSV avant la vue : l'erreur 404 est
+        # un corps JSON et l'annonce (Content-Type documenté application/json).
+        for route in ('dossiers/999999/permissions-effectives/',
+                      'documents/999999/permissions-effectives/'):
+            resp = self.api.get(f'{BASE}{route}?format=csv')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            self.assertTrue(
+                resp['Content-Type'].startswith('application/json'),
+                resp['Content-Type'])
+        resp = self.api.get(
+            f'{BASE}dossiers/{self.folder.pk}/permissions-effectives/'
+            '?format=csv')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp['Content-Type'].startswith('text/csv'))

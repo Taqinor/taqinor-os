@@ -41,6 +41,11 @@ Q_Q = P('q', description='Texte recherché.')
 Q_FORMAT_CSV = P('format', enum=['csv'],
                  description="``csv`` : export CSV d'audit.")
 
+Q_K = P('k', {'type': 'integer', 'minimum': 1, 'maximum': 50},
+        description='Nombre de fragments (1 à 50).')
+Q_LIMITE = P('limit', {'type': 'integer', 'minimum': 1, 'maximum': 50},
+             description='Au plus 50 (1 à 50).')
+
 Q_FOLDERS = [
     P('cabinet', ID, description='Cabinet (armoire) du dossier.'),
     P('parent', ID_OU_NULL, description="Dossier parent, ou ``null`` (racines)."),
