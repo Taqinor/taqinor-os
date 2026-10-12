@@ -1,6 +1,11 @@
-APDF11 — /proposal?langue=ar du résidentiel 3 p. : mise en page en miroir (titre « مرحبًا Karim، » à droite, badges et cartes inversés,
-pied inversé), vue rendue contrôlée ; 3 pages comme en fr.
-APDF47 — `ls /app/apps/ventes/quote_engine/assets/fonts/` dans le conteneur django_core : aucun fichier NotoSansArabic ; aucun gabarit ne
-référence NotoSansArabic ; le PDF arabe embarque Noto-Sans-Arabic / Noto-Kufi-Arabic (polices système) et les glyphes arabes sont lisibles.
-Hors de cet enregistrement (écart, ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR) : APDF8, APDF9, APDF46 — libellés de gabarit français restants en en/ar.
-Hors de cet enregistrement (écart, ERR-APDF-CI-PIED-TAQINOR-MA) : APDF45 — pied « taqinor.ma » des C&I d'une autre société.
+Pile locale à 9b6c4edcb (tête dev-all-laptop, vague 3 #959), demo_admin. /proposal (= téléchargement écran, équivalence vérifiée
+le 11/10 sur e380f019a) des devis démo DEV-202609-0005 (résidentiel), DEV-202610-0003 (commercial), DEV-202610-0004 (industriel),
+formats complet et une-page, langue=en et langue=ar : texte extrait comparé à une liste de 34 libellés de gabarit français (les 13
+d'APDF8 + ceux relevés le 11/10 : « Production estimée », « Et pour la planète », « MAD/kWc · TTC », « Résidentielle », « Spécifique à
+l'option », « RECOMMANDÉ », « COMMENT NOUS CALCULONS », « Estimations non contractuelles », « (indicatif) », « autres lignes d'… »,
+« Ce document chiffre », jalons « Livraison du matériel / Mise en service / Réception définitive / Commande : / Acompte : / Solde : »…)
+⇒ AUCUN présent, sur 12 rendus, au premier et au second passage. Seule chaîne française restante : « 7-14 jours ouvrés », valeur SAISIE
+du réglage société `delai_installation` (donnée, pas un gabarit). Marqueur {echeancier} des CGV C&I en anglais :
+« Order: 40 % ; Equipment delivery: 50 % ; Commissioning: 10 % » (industriel : « … ; Final acceptance: 10 % »).
+Note : au premier passage, deux rendus froids (industriel complet en, commercial include_etude en) ont répondu 504 (gunicorn
+WORKER TIMEOUT > 120 s, machine à 100 % CPU) ; rejoués 200 en 12-15 s ; le second passage complet (57 rendus) n'a eu AUCUNE réponse 5xx.

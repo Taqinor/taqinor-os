@@ -1,0 +1,61 @@
+{
+  "sha": "9b6c4edcb75e44c74eb508184f5d82f13e2d8444",
+  "date": "2026-10-11",
+  "groupe": "APDF",
+  "verdict": "PASS",
+  "couvre": [
+    "APDF8",
+    "APDF9",
+    "APDF46",
+    "APDF45"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P2.3",
+      "taches": [
+        "APDF8",
+        "APDF9",
+        "APDF46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-11/APDF-P2.3.txt",
+      "notes": []
+    },
+    {
+      "id": "P6",
+      "taches": [
+        "APDF45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-11/APDF-P6.txt",
+      "notes": []
+    }
+  ]
+}
