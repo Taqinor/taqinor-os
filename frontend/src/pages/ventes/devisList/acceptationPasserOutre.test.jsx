@@ -36,6 +36,7 @@ vi.mock('../../../api/uxviewsApi', async () =>
 import DevisList from '../DevisList'
 import ventesApi from '../../../api/ventesApi'
 import { renderListeVentes } from '../../../test/devisListRender.jsx'
+import { documentContrat } from '../../../test/fixtures/contractSamples'
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../../ui/dealSignedBus'
 
 const DEVIS = [{
@@ -117,5 +118,37 @@ describe('ADEV15 — « Passer outre » à l\'acceptation', () => {
     await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
     expect(await screen.findByText(/client litigieux/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Passer outre/ })).toBeNull()
+  })
+})
+
+/* VNT80 — un 409 `vente_active_existante` (une seule vente en vigueur par lead,
+   VNT54) NOMME l'autre devis : la modale rouvre avec le message, sans « Passer
+   outre » (un drapeau n'y change rien), et « Ouvrir <réf> » mène à ce devis
+   (?devis=<id>, ligne surlignée). Corps tiré du contrat committé. */
+describe('VNT80 — acceptation : 409 qui nomme le devis de la vente active', () => {
+  const CORPS = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.vente_active_existante
+  const VENTE_ACTIVE = {
+    id: 410, reference: 'DEV-202610-0009', client_nom: 'ACME', statut: 'accepte',
+    date_creation: '2026-10-01', total_ttc: 9000, nb_options: 1, version: 1, is_active: true,
+  }
+
+  it('message nommé + « Ouvrir <réf> » (pas de Passer outre), le clic surligne ce devis', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: CORPS },
+    }))
+    renderListeVentes(DevisList, {
+      devis: [...DEVIS, VENTE_ACTIVE],
+      auth: { role: 'admin', role_nom: 'admin', permissions: ['ventes_valider'] },
+    })
+    fireEvent.click(within(screen.getByText('DEV-A15').closest('tr')).getByRole('button', { name: /Accepter/ }))
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), 'Sami')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+    expect(await screen.findByText(CORPS.detail)).toBeTruthy()
+    expect(effacerAffaireSignee).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: /Passer outre/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Ouvrir DEV-202610-0009' }))
+    await waitFor(() => expect(screen.queryByLabelText('Nom de la personne qui accepte')).toBeNull())
+    expect(document.getElementById('devis-row-410').style.outline).toContain('2px solid')
   })
 })

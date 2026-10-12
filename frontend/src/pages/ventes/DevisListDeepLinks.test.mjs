@@ -20,10 +20,10 @@ test('QX12 : statutFilter se pré-règle depuis ?statut= au montage', () => {
   assert.match(block, /return s && \(s === 'tous' \|\| STATUT_DISPLAY\[s\]\) \? s : 'tous'/)
 })
 
-test('QX12 : highlightId se lit depuis ?devis= au montage', () => {
+test('QX12 : highlightId se lit depuis ?devis= au montage (puis suit l URL — VNT80)', () => {
   const block = SRC.slice(
-    SRC.indexOf('const [highlightId] = useState('),
-    SRC.indexOf('const [highlightId] = useState(') + 400)
+    SRC.indexOf('const [highlightId, setHighlightId] = useState('),
+    SRC.indexOf('const [highlightId, setHighlightId] = useState(') + 400)
   assert.match(block, /searchParams\.get\('devis'\)/)
   assert.match(block, /Number\(v\)/)
 })

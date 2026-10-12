@@ -11,6 +11,7 @@ import {
   convertirDevisEnBC,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi, { acceptationDejaFaite } from '../../api/ventesApi'
+import { lireConflit } from '../../features/ventes/reviserDevis'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -323,10 +324,17 @@ export default function DevisList() {
   // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
   // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
   // route inexistante /devis/{pk} — le producteur redirige maintenant ici).
-  const [highlightId] = useState(() => {
+  const [highlightId, setHighlightId] = useState(() => {
     const v = searchParams.get('devis')
     return v ? Number(v) : null
   })
+  // VNT80 — « Ouvrir <réf> » d'un 409 qui nomme un autre devis change `?devis=`
+  // sur cette même page (sans remontage) : la surbrillance suit l'URL.
+  useEffect(() => {
+    const v = searchParams.get('devis')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- l'URL pilote la surbrillance
+    if (v) setHighlightId(Number(v))
+  }, [searchParams])
   // U7 — masque par défaut les révisions remplacées (is_active=False) pour
   // qu'un devis révisé n'apparaisse plus comme un doublon « vivant ». Un
   // bouton « voir les versions remplacées » les réaffiche, toujours badgées
@@ -636,6 +644,12 @@ export default function DevisList() {
             detail: data.detail || 'Acceptation bloquée.',
           })
           setAcceptTarget(d)
+        } else if (lireConflit(err)) {
+          // VNT80 — 409 qui NOMME le devis de la vente active (`vente_active_existante`) :
+          // la modale rouvre avec le message et « Ouvrir <réf> », sans « Passer outre ».
+          const c = lireConflit(err)
+          setAcceptBlocage({ nature: 'conflit', detail: c.message, ouvrir: c.successeur })
+          setAcceptTarget(d)
         } else {
           toast.error(frenchError(err, 'Acceptation impossible.'))
         }
@@ -917,7 +931,7 @@ export default function DevisList() {
         footer={(
           <>
             <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
-            {acceptBlocage && peutNoter && (
+            {acceptBlocage && peutNoter && acceptBlocage.nature !== 'conflit' && (
               <Button
                 variant="outline"
                 loading={acceptBusy}
@@ -937,6 +951,18 @@ export default function DevisList() {
             {acceptBlocage && (
               <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                 {acceptBlocage.detail}
+                {acceptBlocage.ouvrir?.reference && (
+                  <Button
+                    variant="outline" size="sm" className="mt-2"
+                    onClick={() => {
+                      setAcceptTarget(null)
+                      setAcceptBlocage(null)
+                      setSearchParams((p) => { const n = new URLSearchParams(p); n.set('devis', String(acceptBlocage.ouvrir.id)); return n })
+                    }}
+                  >
+                    Ouvrir {acceptBlocage.ouvrir.reference}
+                  </Button>
+                )}
               </div>
             )}
             <div className="grid gap-1.5">

@@ -1459,3 +1459,33 @@ describe('VNT78 — « Prix négocié » dans le panneau de vente', () => {
     expect(screen.queryByTestId('vente-prix-negocie-501')).toBeNull()
   })
 })
+
+/* VNT80 — « Réviser » refusé par un 409 qui NOMME la tête (contrat
+   devis_prix_negocie.json, erreurs_409.version_remplacee) : l'erreur reste SOUS
+   la carte (role=alert) avec « Ouvrir <réf> » qui fait défiler jusqu'à la tête. */
+describe('VNT80 — 409 nommant la tête : erreur sous la carte + « Ouvrir <réf> »', () => {
+  const carte = (extra = {}) => ({
+    ...exempleContrat('ventes', 'devis_modifiabilite', 'exemple_accepte'),
+    total_ttc: '15000', date_creation: '2026-01-05', chantier: null, ...extra,
+  })
+  const CORPS = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.version_remplacee
+
+  it('alerte sous CETTE carte, « Ouvrir DEV-… » défile jusqu à la tête, aucun toast', async () => {
+    const user = userEvent.setup()
+    const err = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const defiler = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
+    reviserDevis.mockRejectedValueOnce({ response: { status: 409, data: CORPS } })
+    renderTab({
+      state: leadState({ devis: [carte(), carte({ id: 503, reference: 'DEV-202610-0022' })] }),
+    })
+    const carteBasse = document.getElementById('devis-card-414')
+    await user.click(within(carteBasse).getByRole('button', { name: /Réviser/ }))
+    const alerte = await within(carteBasse).findByRole('alert')
+    expect(alerte).toHaveTextContent(CORPS.detail)
+    expect(err).not.toHaveBeenCalled()
+    await user.click(within(alerte).getByRole('button', { name: 'Ouvrir DEV-202610-0022' }))
+    expect(defiler).toHaveBeenCalled()
+    expect(defiler.mock.contexts.at(-1).id).toBe('devis-card-503')
+    defiler.mockRestore()
+  })
+})
