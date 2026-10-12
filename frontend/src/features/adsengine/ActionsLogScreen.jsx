@@ -131,11 +131,11 @@ export default function ActionsLogScreen() {
       <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
-      <LoadErrorNotice errors={loadErrors} />
       <SyncStatusBanner />
 
       {/* PUB40 — sélecteur de période + comparaison. */}
       <DateRangeBar value={range} onChange={setRange} />
+      <LoadErrorNotice errors={loadErrors} />
       {compareDelta && (
         <p className="card" data-testid="ae-log-compare-summary"
           style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
