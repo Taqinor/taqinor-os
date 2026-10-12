@@ -204,9 +204,10 @@ class DevisCycleActionsMixin:
         ``CompanyProfile.variante_pct`` (défaut 20 → échelles 0.8 / 1.0 / 1.2),
         scopé société. Retourne la liste des devis créés.
         """
+        from ..selectors import racine_groupe
         source = self.get_object()
         company = source.company
-        root = source.version_parent or source
+        root = racine_groupe(source)
 
         # QG9 — échelles depuis un pourcentage : override requête ``scales``
         # (rétro-compat) > override requête ``variante_pct`` > config société
@@ -348,8 +349,9 @@ class DevisCycleActionsMixin:
     def variantes(self, request, pk=None):
         """QJ15 — Liste les variantes liées à ce devis (même version_parent,
         toutes actives). Utilisé par la proposal côte-à-côte."""
+        from ..selectors import racine_groupe
         devis = self.get_object()
-        root = devis.version_parent or devis
+        root = racine_groupe(devis)
         siblings = (
             Devis.objects
             .filter(company=devis.company, version_parent=root, is_active=True)
