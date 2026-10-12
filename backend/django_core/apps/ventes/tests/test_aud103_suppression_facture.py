@@ -172,7 +172,7 @@ class TestSuppressionFacture(TestCase):
     # ── ProtectedError traduit, plus une 500 ──────────────────────────────
 
     def test_facture_avec_avoir_repond_400_francais(self):
-        facture = self._facture()
+        facture = self._facture(reference='')  # VNT14 : brouillon provisoire
         Avoir.objects.create(
             company=self.company, reference=f'AV-AUD103-{_nxt()}',
             facture=facture, client=self.client_obj,
@@ -187,10 +187,32 @@ class TestSuppressionFacture(TestCase):
     # ── Le cas légitime reste possible ────────────────────────────────────
 
     def test_brouillon_nu_reste_supprimable_par_le_superutilisateur(self):
-        facture = self._facture(avec_ligne=False)
+        facture = self._facture(reference='', avec_ligne=False)
         resp = self.api_su.delete(self._url(facture))
         self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
         self.assertFalse(Facture.objects.filter(pk=facture.pk).exists())
+
+    # ── VNT14 (D-VNT-1) — seul un « BROUILLON-<id> » se supprime : une
+    # référence légale remise en brouillon s'ANNULE (jamais de trou ni de
+    # réutilisation du numéro par « plus-haut-utilisé + 1 »). ────────────
+
+    def test_vnt14_seul_un_brouillon_provisoire_se_supprime(self):
+        provisoire = self._facture(reference='', avec_ligne=False)
+        self.assertTrue(provisoire.reference.startswith('BROUILLON-'))
+        resp = self.api_su.delete(self._url(provisoire))
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
+        self.assertFalse(Facture.objects.filter(pk=provisoire.pk).exists())
+
+        legale = self._facture(reference='FAC-0012', avec_ligne=False)
+        resp = self.api_su.delete(self._url(legale))
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.data['code'], 'reference_legale')
+        self.assertIn('FAC-0012', str(resp.data['detail']))
+        self.assertIn('annulez-la', str(resp.data['detail']))
+        # Le numéro reste porté : la série « plus-haut-utilisé + 1 » ne
+        # peut ni le réutiliser ni laisser de trou.
+        self.assertEqual(
+            Facture.objects.get(pk=legale.pk).reference, 'FAC-0012')
 
 
 class TestPaiementProtege(TestCase):

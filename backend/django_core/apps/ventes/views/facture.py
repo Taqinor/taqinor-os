@@ -302,28 +302,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     def perform_destroy(self, instance):
         """AUD103 (FICHE-DEL) — la suppression d'une facture cesse d'emporter
-        les encaissements en cascade.
+        les encaissements en cascade (DRF appelait ``instance.delete()`` nu :
+        une facture émise/payée partait avec ses ``Paiement``, l'écriture au
+        grand livre survivait en orphelin).
 
-        Le viewset ne surchargeait NI ``destroy`` NI ``perform_destroy`` : DRF
-        appelait donc ``instance.delete()`` nu. Une facture ÉMISE, EN_RETARD ou
-        PAYÉE se supprimait aussi bien qu'un brouillon — alors que ``annuler``
-        REFUSE explicitement une facture payée : la suppression contournait la
-        garde métier de l'annulation. Aucun verrou de période non plus (la
-        garde YLEDG3 était câblée en sept points, jamais sur ``destroy``). Et
-        la cascade emportait ``Paiement`` : des MAD réellement encaissés
-        partaient en silence, pendant que l'écriture au grand livre — qui
-        n'est PAS liée par FK (compta la retrouve par ``source_type``/
-        ``source_id``) — SURVIVAIT en orphelin, faisant diverger le GL du
-        registre des ventes définitivement.
-
-        Trois gardes, plus une traduction :
+        Gardes, plus une traduction :
           1. seul un BROUILLON est supprimable (tout le reste s'ANNULE) ;
+          1 bis. VNT14 (D-VNT-1) — seul un « BROUILLON-<id> » : une référence
+             LÉGALE remise en brouillon s'annule (400 ``reference_legale``),
+             sinon « plus-haut-utilisé + 1 » réutiliserait le numéro ;
           2. aucun paiement, même rejeté (piste d'audit) ;
           3. verrou de période comptable ;
           4. ``ProtectedError`` (avoir, note de débit, intention de paiement
              portail) devient un 400 français, plus une 500 non traduite.
         """
         from django.db.models import ProtectedError
+        from core.numbering import est_reference_provisoire
 
         if instance.statut != Facture.Statut.BROUILLON:
             raise ValidationError({'detail': (
@@ -331,6 +325,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'émise, en retard ou payée s\'ANNULE (elle porte un numéro '
                 'légal et, le cas échéant, des encaissements).'
             )})
+        if not est_reference_provisoire(instance.reference):
+            raise ValidationError({'code': 'reference_legale', 'detail': (
+                f'Cette facture porte le numéro {instance.reference} : '
+                'annulez-la (un numéro légal ne se supprime jamais).')})
         if instance.paiements.exists():
             raise ValidationError({'detail': (
                 'Cette facture porte au moins un paiement : la supprimer '

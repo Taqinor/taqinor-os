@@ -146,7 +146,7 @@ class ProtectedFactureDeleteTests(TestCase):
         return facture
 
     def test_delete_facture_with_avoir_is_refused_cleanly_not_500(self):
-        facture = self._make_facture()
+        facture = self._make_facture(reference='')  # VNT14 : provisoire
         avoir = Avoir.objects.create(
             company=self.company, reference='AV-PROT-0001', facture=facture,
             client=self.client_obj, taux_tva=Decimal('20.00'),
@@ -179,8 +179,7 @@ class ProtectedFactureDeleteTests(TestCase):
     def test_delete_unreferenced_facture_still_succeeds(self):
         """La protection reste SCOPÉE : un brouillon nu, sans avoir ni
         paiement, se supprime toujours (pas un blocage général)."""
-        facture = self._make_facture(
-            reference='FAC-PROT-0002', avec_ligne=False)
+        facture = self._make_facture(reference='', avec_ligne=False)
         api = auth(self.superuser)
         resp = api.delete(f'/api/django/ventes/factures/{facture.id}/')
 
