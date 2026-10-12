@@ -272,21 +272,31 @@ def facturation_depasse_devis(r, devis, ctx):
     ``utils.echeancier.next_tranche``) et la facture de BC recopie les seules
     lignes de l'option (``option_lines``, ERR16) avec la remise globale.
     Un avoir actif réduit le facturé (``Facture.avoirs_total``) — une
-    facture rectificative après avoir reste donc légitime."""
+    facture rectificative après avoir reste donc légitime.
+
+    VNT64 — LECTURE UNIQUE : les factures de la VENTE (toute la chaîne de
+    versions ``superseded_by``, les quatre portes, part des consolidées) sont
+    celles de ``vente_facturation.plan_facturation`` ; la règle est jugée UNE
+    fois, sur la tête de la vente (une chaîne n'est plus vue comme deux
+    ventes), brouillons compris comme PRÉVU."""
     factures = list(ctx.factures_actives_du_devis(devis.pk))
-    # ATOT33 — la QUATRIÈME porte : une facture CONSOLIDÉE (``FactureSource``,
-    # ``devis=None``) facture aussi ce devis ; seule SA part (sous-total HT
-    # de la source, rapporté au TTC de la facture) lui est imputée.
     consolidees = _parts_consolidees(devis, {f.pk for f in factures})
-    if not factures and not consolidees:
+    if not (factures or consolidees or devis.superseded_by_id
+            or devis.version_parent_id):
         return []
-    from apps.ventes.utils.options import option_totaux
-    total_devis = _f(option_totaux(devis)['ttc'])
-    facture_ttc = (sum(_f(f.total_ttc) for f in factures)
-                   + sum(part for _f_c, part, _a in consolidees))
-    avoirs = (sum(_f(f.avoirs_total) for f in factures)
-              + sum(av for _f_c, _p, av in consolidees))
-    factures = factures + [fc for fc, _p, _a in consolidees]
+    from apps.ventes.vente_facturation import (
+        _tete_de_vente, chaine_vente, plan_facturation)
+    tete, _revision = _tete_de_vente(chaine_vente(devis))
+    if tete.pk != devis.pk:
+        return []
+    plan = plan_facturation(devis)
+    parts = plan['factures_parts']
+    if not parts:
+        return []
+    total_devis = _f(plan['prix_convenu_ttc'])
+    facture_ttc = sum(_f(f.total_ttc) * _f(r) for f, r in parts)
+    avoirs = sum(_f(f.avoirs_total) * _f(r) for f, r in parts)
+    factures = [f for f, _r in parts]
     net = facture_ttc - avoirs
     if net <= total_devis + TOLERANCES['facturation_devis_mad']:
         return []

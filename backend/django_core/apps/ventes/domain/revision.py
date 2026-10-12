@@ -286,7 +286,8 @@ def _paniers_ecart_par_taux(precedent, devis, reste):
     return paniers
 
 
-def rattacher_aval_financier_revision(devis, *, user=None):
+def rattacher_aval_financier_revision(devis, *, user=None,
+                                      confirmer_avoir=False):
     """QJR560 / D-QJR5-11 — V2 d'un devis signé acceptée : l'aval FINANCIER
     de la version remplacée passe à la V2, seul l'écart est régularisé.
 
@@ -311,6 +312,14 @@ def rattacher_aval_financier_revision(devis, *, user=None):
     La commission apporteur encore À_PAYER est recalculée par ``crm`` sur
     l'option acceptée de la V2 (``crm/receivers.py``, même événement).
 
+    VNT64 — LECTURE UNIQUE : le reste se lit sur ``plan_facturation`` (toute
+    la chaîne, les quatre portes, brouillons repris comme PRÉVU, jamais comme
+    ÉMIS) ; seules les factures VIVANTES (non annulées) changent de version ;
+    l'AVOIR d'écart n'est émis que confirmé (``confirmer_avoir`` — l'aperçu
+    « Prix négocié » le fait confirmer, ``avoir_a_confirmer``), sur une
+    facture ÉMISE, à hauteur de l'émis qui dépasse le nouveau prix ; sinon une
+    note le dit.
+
     Rend un dict ``{bc, factures, sources, ecart_ttc, document}`` ou ``None``
     quand aucun prédécesseur accepté n'existe."""
     from decimal import Decimal
@@ -321,9 +330,9 @@ def rattacher_aval_financier_revision(devis, *, user=None):
     from apps.ventes.selectors import predecesseurs_acceptes
     from apps.ventes.utils.company_settings import (
         create_numbered, create_provisoire)
-    from apps.ventes.utils.echeancier import (
-        blended_tva_pct, factures_actives, next_tranche)
+    from apps.ventes.utils.echeancier import blended_tva_pct
     from apps.ventes.utils.options import option_totaux
+    from apps.ventes.vente_facturation import STATUTS_EMIS, plan_facturation
 
     # VNT51 — LA lecture du prédécesseur accepté (le plus proche d'abord).
     acceptes = predecesseurs_acceptes(devis)
@@ -347,9 +356,10 @@ def rattacher_aval_financier_revision(devis, *, user=None):
                 f'Bon de commande {bc.reference} repris de {ancien} '
                 f'(révision acceptée) — document émis inchangé.')
     # (1) Factures d'échéancier et sources de facture consolidée.
-    factures = list(Facture.objects.filter(devis_id__in=ids)
-                    .values_list('reference', flat=True))
-    Facture.objects.filter(devis_id__in=ids).update(devis=devis)
+    vivantes = Facture.objects.filter(devis_id__in=ids).exclude(
+        statut=Facture.Statut.ANNULEE)  # VNT64 — l'annulée reste à sa version
+    factures = list(vivantes.values_list('reference', flat=True))
+    vivantes.update(devis=devis)
     sources = 0
     for src in FactureSource.objects.filter(devis_id__in=ids):
         if FactureSource.objects.filter(
@@ -370,35 +380,39 @@ def rattacher_aval_financier_revision(devis, *, user=None):
     # Relecture sur une instance FRAÎCHE (celle de l'appelant garde ses caches).
     devis = Devis.objects.select_related('client', 'lead', 'company').get(
         pk=devis.pk)
-    actives = {f.pk: f for f in factures_actives(devis)}
-    from apps.ventes.selectors import factures_via_bon_commande
-    via_bc = {f.pk: f for f in factures_via_bon_commande(devis)}
-    actives.update(via_bc)
+    # VNT64 — LA lecture : ``plan_facturation`` (émis net des avoirs de
+    # CORRECTION — ATOT36 — et brouillons = PRÉVU), jamais une 9e somme.
+    plan = plan_facturation(devis)
+    parts = plan['factures_parts']
     document = None
-    if not actives:
-        # Rien de facturé : l'échéancier de la V2 facturera la V2.
-        return {'bc': bc, 'factures': factures, 'sources': sources,
+    resultat = {'bc': bc, 'factures': factures, 'sources': sources,
                 'ecart_ttc': ecart, 'document': None}
-    facture_ttc = sum((Decimal(str(f.total_ttc)) for f in actives.values()),
-                      Decimal('0'))
-    # ATOT36 (décision fondateur 10/10) : seuls les avoirs de CORRECTION sont
-    # remis au reste (même règle que ``next_tranche``) ; un geste commercial
-    # a déjà réduit le dû de sa facture — jamais compté deux fois.
-    from apps.ventes.utils.echeancier import avoirs_correction
-    avoirs_ttc = sum((Decimal(str(a.montant_ttc))
-                      for a in avoirs_correction(actives.values())),
-                     Decimal('0'))
+    if not parts:
+        # Rien de facturé : l'échéancier de la V2 facturera la V2.
+        return resultat
     from core.money import quantize_mad
-    reste = quantize_mad(Decimal(str(option_totaux(devis)['ttc']))
-                         - facture_ttc + avoirs_ttc)
-    encore_une_tranche = (not via_bc) and next_tranche(devis) is not None
+    prix = plan['prix_convenu_ttc']
+    reste = quantize_mad(prix - plan['prevu'])
+    via_bc = any(f.bon_commande_id for f, _r in parts)
+    encore_une_tranche = (not via_bc) and plan['prochaine'] is not None
     if reste == 0 or (encore_une_tranche and reste > 0):
         activity.log_devis_note(
             devis, user,
             f'Écart de révision {ecart:.2f} MAD TTC porté par la suite de '
             f"l'échéancier (reste à facturer {reste:.2f} MAD).")
-        return {'bc': bc, 'factures': factures, 'sources': sources,
-                'ecart_ttc': ecart, 'document': None}
+        return resultat
+    emises = {f.pk: f for f, _r in parts if f.statut in STATUTS_EMIS}
+    if reste < 0:
+        # L'avoir ne corrige que l'ÉMIS au-delà du nouveau prix ; un excès dû
+        # aux seuls brouillons se corrige en les ajustant, jamais par avoir.
+        reste = -quantize_mad(max(plan['emis_net'] - prix, Decimal('0')))
+        if reste == 0 or not confirmer_avoir or not emises:
+            activity.log_devis_note(
+                devis, user,
+                f'Écart de révision {ecart:.2f} MAD TTC : '
+                + (f'avoir de {-reste:.2f} MAD TTC à confirmer.' if reste
+                   else 'brouillons à ajuster, aucun avoir.'))
+            return resultat
 
     # ATOT22 (C-ATOT-004) — la TVA du document est celle de l'ÉCART RÉEL des
     # bases par taux entre la version facturée et la V2 (jamais un « taux
@@ -451,7 +465,7 @@ def rattacher_aval_financier_revision(devis, *, user=None):
     else:
         # La facture qui peut le plus porter l'avoir (plafond AUD126 : jamais
         # au-delà du reste créditable) ; à reste égal, la plus récente.
-        cible = max(actives.values(), key=lambda f: (
+        cible = max(emises.values(), key=lambda f: (
             Decimal(str(f.total_ttc)) - Decimal(str(f.avoirs_total)), f.pk))
 
         def _avoir(ref):

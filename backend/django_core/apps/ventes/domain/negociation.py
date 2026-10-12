@@ -373,7 +373,8 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
         v2 = _accepter_avenant(v2, devis, user)
         annulees = retirer_brouillons_de_la_vente(
             v2, user=user, motif=f'Prix négocié — remplacé par {v2.reference}')
-        rattacher_aval_financier_revision(v2, user=user)
+        rattacher_aval_financier_revision(v2, user=user,
+                                          confirmer_avoir=confirmer_avoir)
     return dict(apercu, devis_v2={'id': v2.pk, 'reference': v2.reference,
                                   'version': v2.version},
                 remise_pct=_txt(remise),
