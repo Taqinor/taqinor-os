@@ -446,6 +446,11 @@ const ventesApi = {
   // VNT46 (D-VNT-1) — suppression d'un brouillon `BROUILLON-<id>` SEUL (le serveur
   // répond 409 `reference_legale` pour tout autre numéro : on annule, on ne supprime pas).
   supprimerFacture: (id) => api.delete(`/ventes/factures/${id}/`),
+  // VNT77/VNT67 — nouveau TTC d'un BROUILLON de tranche : corps `{montant_ttc}`, 200 =
+  // la Facture complète ; 409 facture_emise ; 400 pas_une_tranche / montant_invalide /
+  // montant_depasse_reste (apps/ventes/views/facture_cycle.py ; aucun exemple contrat).
+  modifierMontantTranche: (id, montantTtc) => api.post(
+    `/ventes/factures/${id}/montant-tranche/`, { montant_ttc: montantTtc }),
   // VNT43/VNT46 — quittance PDF d'UN paiement (fichier Quittance_<numero_recu>.pdf).
   recuPdfPaiement: (id) => api.get(`/ventes/paiements/${id}/recu-pdf/`, { responseType: 'blob' }),
   // Paiements : enregistrement manuel + liste par facture.
