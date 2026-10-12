@@ -273,3 +273,41 @@ class TrancheParCleTests(TestCase):
         self.assertIn('Montant figé', str(r.data))
         facture.refresh_from_db()
         self.assertEqual(facture.remise_globale, Decimal('0'))
+
+    def _tranche_brute(self, devis, cle, statut='emise'):
+        from apps.ventes.models import Facture
+        return Facture.objects.create(
+            company=self.company, reference=f'FAC-VNT15-{_nxt()}',
+            client=self.client_obj, devis=devis, statut=statut,
+            cle_tranche=cle, taux_tva=Decimal('20.00'),
+            montant_ht=Decimal('100.00'), montant_tva=Decimal('20.00'),
+            montant_ttc=Decimal('120.00'))
+
+    def test_vnt15_une_tranche_vivante_par_cle(self):
+        """VNT15 — ``uq_facture_tranche_vivante`` : deux tranches VIVANTES de
+        même clé sur un devis → IntegrityError (double clic = deux acomptes,
+        prod 12/10) ; annulée + vivante, ou clé vide ×2 → admis."""
+        from django.db import IntegrityError, transaction
+        devis = self._devis()
+        self._tranche_brute(devis, 'acompte', statut='brouillon')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._tranche_brute(devis, 'acompte')
+        autre = self._devis()
+        self._tranche_brute(autre, 'acompte', statut='annulee')
+        self._tranche_brute(autre, 'acompte')
+        self._tranche_brute(autre, '')
+        self._tranche_brute(autre, '')
+
+    def test_vnt15_instantanes_objet_vente_garanties(self):
+        """VNT15 — ``objet_vente`` / ``garanties`` : JSON NULL par défaut
+        (brouillon = blocs vivants), relus tels qu'écrits."""
+        from apps.ventes.models import Facture
+        facture = self._tranche_brute(self._devis(), 'acompte')
+        self.assertIsNone(facture.objet_vente)
+        self.assertIsNone(facture.garanties)
+        Facture.objects.filter(pk=facture.pk).update(
+            objet_vente={'lignes': []}, garanties=[{'libelle': 'Panneaux'}])
+        facture.refresh_from_db()
+        self.assertEqual(facture.objet_vente, {'lignes': []})
+        self.assertEqual(facture.garanties, [{'libelle': 'Panneaux'}])
