@@ -10,6 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from .query_params import date_param
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
@@ -34,10 +35,22 @@ _SAV_PIVOT_SAV_TICKETS_PIVOT_REPONSE = inline_serializer('SavPivotSavTicketsPivo
 })
 
 
+# ENF11 — champs interrogeables du dataset `sav_tickets` (miroir de
+# `apps.sav.bi_datasets.FIELDS`, gardé identique par un test : reporting ne
+# l'importe pas, frontière cross-app). Un autre champ répond 400.
+PIVOT_CHAMPS = [
+    'id', 'statut', 'priorite', 'type', 'technicien_responsable_id',
+    'technicien_responsable__username', 'mois_ouverture', 'cout',
+    'delai_resolution_jours',
+]
+
+
 @extend_schema(
     parameters=[
-        OpenApiParameter('rows', OpenApiTypes.STR, required=False),
-        OpenApiParameter('columns', OpenApiTypes.STR, required=False),
+        OpenApiParameter('rows', OpenApiTypes.STR, required=False,
+                         enum=PIVOT_CHAMPS),
+        OpenApiParameter('columns', OpenApiTypes.STR, required=False,
+                         enum=PIVOT_CHAMPS),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): _SAV_PIVOT_SAV_TICKETS_PIVOT_REPONSE,
@@ -137,8 +150,8 @@ _SAV_PIVOT_SAV_TAUX_ATTACHE_REPONSE = inline_serializer('SavPivotSavTauxAttacheR
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('date_debut', OpenApiTypes.STR, required=False),
-        OpenApiParameter('date_fin', OpenApiTypes.STR, required=False),
+        OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
     ],
     responses={200: _SAV_PIVOT_SAV_TAUX_ATTACHE_REPONSE})
 @api_view(['GET'])
@@ -155,7 +168,7 @@ def sav_taux_attache(request):
 
     from apps.sav.selectors import taux_attache
 
-    date_debut = request.query_params.get('date_debut') or None
-    date_fin = request.query_params.get('date_fin') or None
+    date_debut = date_param(request, 'date_debut')
+    date_fin = date_param(request, 'date_fin')
     result = taux_attache(company, date_debut=date_debut, date_fin=date_fin)
     return Response(result)

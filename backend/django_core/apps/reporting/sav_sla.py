@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from .query_params import date_param
 from apps.crm.exports import build_xlsx_response
 from core.dates import aujourd_hui_local, maintenant_local
 from drf_spectacular.types import OpenApiTypes
@@ -64,8 +65,8 @@ _SAV_SLA_SAV_SLA_INSIGHT_REPONSE = inline_serializer('SavSlaSavSlaInsightReponse
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('from', OpenApiTypes.STR, required=False),
-        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('from', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('to', OpenApiTypes.DATE, required=False),
         OpenApiParameter('technicien', OpenApiTypes.INT, required=False),
         OpenApiParameter('priorite', OpenApiTypes.STR, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
@@ -93,8 +94,8 @@ def sav_sla_insight(request):
 
     qs = Ticket.objects.filter(**co, annule=False)
 
-    start = request.query_params.get('from')
-    end = request.query_params.get('to')
+    start = date_param(request, 'from')
+    end = date_param(request, 'to')
     if start:
         qs = qs.filter(date_creation__date__gte=start)
     if end:

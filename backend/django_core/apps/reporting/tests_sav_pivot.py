@@ -111,3 +111,19 @@ class TestSavTicketsCoutGating(SavPivotBase):
         resp = api.get(
             '/api/django/reporting/insights/sav-tickets-cout-moyen/')
         self.assertEqual(resp.status_code, 200)
+
+
+class TestSavPivotSchemaEtDates(SavPivotBase):
+    def test_enum_des_champs_identique_au_dataset(self):
+        from apps.sav.bi_datasets import FIELDS
+        from .sav_pivot import PIVOT_CHAMPS
+        self.assertEqual(PIVOT_CHAMPS, FIELDS)
+
+    def test_date_invalide_repond_400(self):
+        for url in (
+                '/api/django/reporting/insights/sav-taux-attache/'
+                '?date_debut=pas-une-date',
+                '/api/django/reporting/insights/sav-sla/?from=2026-13-45',
+                '/api/django/reporting/reports/field/?to=20261005'):
+            resp = self.api.get(url)
+            self.assertEqual(resp.status_code, 400, url)

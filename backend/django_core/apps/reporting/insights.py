@@ -1091,7 +1091,8 @@ _INSIGHTS_PROFITABILITY_REPONSE = inline_serializer('InsightsProfitabilityRepons
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
-        OpenApiParameter('segment', OpenApiTypes.STR, required=False),
+        OpenApiParameter('segment', OpenApiTypes.STR, required=False,
+                         enum=['type_installation', 'canal']),
     ],
     responses={200: _INSIGHTS_PROFITABILITY_REPONSE})
 @api_view(['GET'])
