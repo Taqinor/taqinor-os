@@ -1,0 +1,5 @@
+Client de test « TEST AFAC14 Délai30 » (delai_paiement_jours 30). Facture brouillon BROUILLON-286 (1 ligne 1 000 HT) datée de la veille
+(date_emission posée au 10/10 en shell local, comme le dit la clause). POST /ventes/factures/286/emettre/ (route du bouton « Émettre »)
+⇒ FAC-202610-0003, date_emission 2026-10-11 (jour d'émission, Casablanca), date_echeance 2026-11-10 (+30 j du délai client).
+Liste (GET /ventes/factures/) : même date. PDF facture (generer-pdf puis telecharger-pdf) : « DATE D'ÉMISSION 11/10/2026 »,
+« ÉCHÉANCE 10/11/2026 ».
