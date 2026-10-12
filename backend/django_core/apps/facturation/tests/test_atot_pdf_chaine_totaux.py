@@ -106,6 +106,8 @@ class PdfChaineTotauxTests(TestCase):
         from apps.ventes.utils.pdf import generate_facture_pdf
         texte = self._texte(generate_facture_pdf, self.facture.id)
         self._verifier_chaine(texte, 'Total TTC')
+        # VNT35 — facture complète sans devis : aucun « Objet de la vente ».
+        self.assertNotIn('Objet de la vente', texte)
 
     def test_avoir(self, _dl):
         from apps.ventes.utils.pdf import generate_avoir_pdf
@@ -132,3 +134,93 @@ class PdfChaineTotauxTests(TestCase):
             taux_tva=Decimal('20.00'))
         texte = self._texte(generate_note_debit_pdf, note.id)
         self._verifier_chaine(texte, 'Total dû en supplément (TTC)')
+
+
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class ObjetDeLaVenteTests(TestCase):
+    """VNT35 — facture de TRANCHE (sans ligne) : bloc « Objet de la vente »
+    (matériel de l'option retenue + chaîne de prix du devis 388), figé à
+    l'émission, vivant en brouillon ; jamais ``prix_achat`` ; la chaîne
+    d'argent de la facture elle-même est inchangée (aucune ligne créée)."""
+
+    def setUp(self):
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            ECHEANCIER_LIBRE, creer_devis_388)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.v1 = creer_devis_388(self.company, self.user, self.client_obj,
+                                  'DEV-VNT35-V1', ECHEANCIER_LIBRE)
+        Produit.objects.filter(company=self.company).update(
+            prix_achat=Decimal('7777.77'))
+        Produit.objects.filter(company=self.company,
+                               nom='Panneau 600 W').update(marque='SolarMarque')
+
+    def _tranche(self, devis, reference, statut='brouillon'):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            VENT_ACOMPTE_15000, facture_tranche)
+        return facture_tranche(devis, reference, 'acompte', '15000.00',
+                               '12720.41', '2279.59', statut=statut,
+                               ventilation=VENT_ACOMPTE_15000)
+
+    def _texte(self, facture):
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        patcheur, boite = _capturer_pdf()
+        with patcheur:
+            generate_facture_pdf(facture.pk)
+        return _texte_pdf(boite['pdf'])
+
+    def _reviser(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.tests._quote_engine_common import make_devis
+        v2 = make_devis(self.company, self.user, self.client_obj,
+                        [('Panneau 710 W', '10', '1200', '10'),
+                         ('Onduleur + structure + pose', '1', '36643.50',
+                          '20')],
+                        remise_globale='10', reference='DEV-VNT35-V2')
+        Devis.objects.filter(pk=v2.pk).update(
+            statut='accepte', version=2, version_parent=self.v1)
+        Devis.objects.filter(pk=self.v1.pk).update(is_active=False,
+                                                   superseded_by=v2)
+        return Devis.objects.get(pk=v2.pk)
+
+    def test_golden_388_fige_a_l_emission(self, _dl):
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        facture = self._tranche(self.v1, 'FAC-VNT35-0001')
+        texte = self._texte(facture)
+        self.assertIn('Objet de la vente', texte)
+        self.assertIn('DEV-VNT35-V1', texte)
+        for montant in ('46243.50', '4624.35', '65.82', '41553.33',
+                        '49000.00'):
+            self.assertIn(f'{montant} MAD', texte)
+        self.assertIn('Panneau 600 W', texte)
+        self.assertIn('SolarMarque', texte)
+        self.assertNotIn('7777', texte)
+        emettre_facture(facture, source='test_vnt35')
+        facture.refresh_from_db()
+        self.assertEqual(facture.objet_vente['total_ttc'], '49000.00')
+        self.assertEqual(facture.objet_vente['devis_reference'],
+                         'DEV-VNT35-V1')
+        self.assertNotIn('7777', repr(facture.objet_vente))
+        avant = self._texte(facture)
+        v2 = self._reviser()
+        apres = self._texte(facture)
+        # L'émise garde la V1 (8 panneaux 600 W), jamais la V2 (10 × 710 W).
+        for texte in (avant, apres):
+            self.assertIn('Panneau 600 W', texte)
+            self.assertNotIn('Panneau 710 W', texte)
+            self.assertIn('46243.50 MAD', texte)
+        # La facture elle-même : aucune ligne, argent et ventilation intacts.
+        facture.refresh_from_db()
+        self.assertEqual(facture.lignes.count(), 0)
+        self.assertEqual(facture.total_ttc, Decimal('15000.00'))
+        self.assertEqual(facture.ventilation_tva[0]['base_ht'], '2644.90')
+        # Un brouillon suit la version qui fait foi (V2).
+        brouillon = self._tranche(v2, 'FAC-VNT35-0002')
+        texte_v2 = self._texte(brouillon)
+        self.assertIn('Panneau 710 W', texte_v2)
+        self.assertIn('DEV-VNT35-V2', texte_v2)
+        self.assertIn('48643.50 MAD', texte_v2)
+        self.assertNotIn('7777', texte_v2)

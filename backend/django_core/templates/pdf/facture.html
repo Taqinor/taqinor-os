@@ -30,6 +30,14 @@
   'page': 'Page',
   'filigrane_brouillon': 'BROUILLON',
   'filigrane_sans_valeur': 'Sans valeur comptable',
+  'objet_vente': 'Objet de la vente', 'devis': 'devis', 'version': 'version',
+  'pour_information': 'pour information, non refacturé', 'marque': 'Marque',
+  'prix_devis_lignes': 'Prix du devis : lignes',
+  'prix_devis_remise': 'Prix du devis : remise',
+  'prix_devis_arrondi': 'Prix du devis : arrondi',
+  'prix_devis_ht': 'Prix du devis hors taxes',
+  'prix_devis_tva': 'Prix du devis : TVA',
+  'prix_devis_ttc': 'Prix du devis toutes taxes comprises',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -96,6 +104,12 @@
     }
     .filigrane-brouillon .filigrane-sous { display: block; font-size: 26px; }
 
+    /* VNT35 — « Objet de la vente » (facture de tranche, pour information). */
+    .objet-vente { margin-bottom: 24px; }
+    .objet-vente-titre { font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 8px; }
+    .objet-vente table { margin-bottom: 8px; }
+    .objet-vente-prix { margin-left: auto; width: 340px; font-size: 11px; color: #4b5563; }
+    .objet-vente-prix div { display: flex; justify-content: space-between; padding: 3px 0; }
     .note-block { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 12px 14px; margin-bottom: 24px; font-size: 11px; line-height: 1.5; }
 
     .rib-block { margin-top: 20px; background: #f0fdf4; border-radius: 6px; padding: 14px 16px; font-size: 11px; line-height: 1.7; border-left: 3px solid {{ couleur_principale }}; }
@@ -300,6 +314,48 @@
   <!-- Note -->
   {% if facture.note %}
   <div class="note-block"><strong>{{ _L('note') }} :</strong> {{ facture.note }}</div>
+  {% endif %}
+
+  {# VNT35 — facture de TRANCHE : le matériel de la vente, POUR INFORMATION
+     (non refacturé). Figé à l'émission, vivant en brouillon (``objet_vente``
+     calculé par ``utils/pdf.objet_vente_pdf``). Libellés « Prix du devis… »
+     hors de la fenêtre des lecteurs de la chaîne (jamais « Sous-total HT »,
+     « Total TTC » ni un libellé commençant par « TVA ») ; montants en texte
+     serveur, aucune arithmétique ici. #}
+  {% if objet_vente %}
+  <div class="objet-vente">
+    <div class="objet-vente-titre">{{ _L('objet_vente') }} — {{ _L('devis') }} {{ objet_vente.devis_reference }} ({{ _L('version') }} {{ objet_vente.devis_version }}), {{ _L('pour_information') }}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ _L('designation') }}</th>
+          <th>{{ _L('marque') }}</th>
+          <th class="text-right">{{ _L('qte') }}</th>
+          <th class="text-right">{{ _L('pu_ht') }}</th>
+          <th class="text-right">{{ _L('total_ht') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in objet_vente.lignes %}
+        <tr>
+          <td>{{ l.designation }}</td>
+          <td>{{ l.marque }}</td>
+          <td class="text-right">{{ l.quantite }}</td>
+          <td class="text-right">{{ l.prix_unitaire_ht }} MAD</td>
+          <td class="text-right">{{ l.total_ht }} MAD</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="objet-vente-prix">
+      <div><span>{{ _L('prix_devis_lignes') }}</span><span>{{ objet_vente.sous_total_ht }} MAD</span></div>
+      {% if objet_vente.remise_montant != '0.00' %}<div><span>{{ _L('prix_devis_remise') }} ({{ objet_vente.remise_pct }} %)</span><span>−{{ objet_vente.remise_montant }} MAD</span></div>{% endif %}
+      {% if objet_vente.arrondi != '0.00' %}<div><span>{{ _L('prix_devis_arrondi') }}</span><span>−{{ objet_vente.arrondi }} MAD</span></div>{% endif %}
+      <div><span>{{ _L('prix_devis_ht') }}</span><span>{{ objet_vente.total_ht }} MAD</span></div>
+      {% for b in objet_vente.tva_par_taux %}<div><span>{{ _L('prix_devis_tva') }} {{ b.taux }} %</span><span>{{ b.tva }} MAD</span></div>{% endfor %}
+      <div><span>{{ _L('prix_devis_ttc') }}</span><span>{{ objet_vente.total_ttc }} MAD</span></div>
+    </div>
+  </div>
   {% endif %}
 
   <!-- Totaux -->

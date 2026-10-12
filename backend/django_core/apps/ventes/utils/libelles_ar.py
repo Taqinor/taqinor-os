@@ -68,6 +68,18 @@ LIBELLES = {
         # VNT33 — filigrane d'une facture brouillon.
         'filigrane_brouillon': 'BROUILLON',
         'filigrane_sans_valeur': 'Sans valeur comptable',
+        # VNT35 — « Objet de la vente » d'une facture de tranche.
+        'objet_vente': 'Objet de la vente',
+        'devis': 'devis',
+        'version': 'version',
+        'pour_information': 'pour information, non refacturé',
+        'marque': 'Marque',
+        'prix_devis_lignes': 'Prix du devis : lignes',
+        'prix_devis_remise': 'Prix du devis : remise',
+        'prix_devis_arrondi': 'Prix du devis : arrondi',
+        'prix_devis_ht': 'Prix du devis hors taxes',
+        'prix_devis_tva': 'Prix du devis : TVA',
+        'prix_devis_ttc': 'Prix du devis toutes taxes comprises',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -108,6 +120,17 @@ LIBELLES = {
         'page': 'صفحة',
         'filigrane_brouillon': 'مسودة',
         'filigrane_sans_valeur': 'بدون قيمة محاسبية',
+        'objet_vente': 'موضوع البيع',
+        'devis': 'عرض الأسعار',
+        'version': 'النسخة',
+        'pour_information': 'للعلم، لا تتم فوترته مرة أخرى',
+        'marque': 'العلامة',
+        'prix_devis_lignes': 'ثمن العرض: البنود',
+        'prix_devis_remise': 'ثمن العرض: الخصم',
+        'prix_devis_arrondi': 'ثمن العرض: التقريب',
+        'prix_devis_ht': 'ثمن العرض دون احتساب الضريبة',
+        'prix_devis_tva': 'ثمن العرض: الضريبة على القيمة المضافة',
+        'prix_devis_ttc': 'ثمن العرض شامل الضريبة',
     },
 }
 

@@ -427,6 +427,9 @@ def generate_facture_pdf(facture_id):
     # Fondateur 05/10/2026 — bloc « Déjà payé / Reste à payer » après le
     # Total TTC. None (aucun règlement) → rien d'imprimé, PDF inchangé.
     context['reglements'] = reglements_facture_pdf(facture)
+    # Groupe VNT — la vente sur la facture (objet, garanties, situation,
+    # prochaines échéances) ; clés absentes = blocs omis (gabarit inchangé).
+    context.update(contexte_vente_facture(facture, langue))
 
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)
@@ -556,6 +559,36 @@ def reglements_facture_pdf(facture):
         'reste_a_payer': reste,
         'soldee': reste <= 0,
     }
+
+
+# ── Groupe VNT — la vente sur la facture (« facture qui fait confiance ») ──
+
+def _est_tranche_de_vente(facture):
+    """Une facture de TRANCHE rattachée à un devis : aucune ligne (une
+    facture complète montre déjà son matériel)."""
+    return bool(facture.devis_id) and not list(facture.lignes.all())
+
+
+def objet_vente_pdf(facture):
+    """VNT35 — bloc « Objet de la vente » d'une facture de tranche : l'
+    instantané figé à l'émission (``Facture.objet_vente``) pour une facture
+    émise, sinon (brouillon, émise antérieure sans instantané) la vente
+    VIVANTE (version qui fait foi). ``None`` sans devis ou avec lignes."""
+    if not _est_tranche_de_vente(facture):
+        return None
+    if facture.statut != 'brouillon' and facture.objet_vente:
+        return facture.objet_vente
+    from apps.ventes.domain.instantanes_facture import (
+        devis_de_la_vente, objet_vente_du_devis)
+    return objet_vente_du_devis(devis_de_la_vente(facture.devis))
+
+
+def contexte_vente_facture(facture, langue='fr'):
+    """Les blocs de la vente du PDF facture (dict à fusionner dans le
+    contexte du gabarit) ; une facture sans devis n'en porte aucun."""
+    if not facture.devis_id:
+        return {}
+    return {'objet_vente': objet_vente_pdf(facture)}
 
 
 def _facture_render_data(facture) -> dict:
