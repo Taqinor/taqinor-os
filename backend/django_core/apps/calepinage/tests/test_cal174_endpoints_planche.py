@@ -73,7 +73,7 @@ class EndpointsPlancheTest(BaseApiCalepinage):
 
     def test_un_calepinage_sans_conception_refuse_en_nommant_le_champ(self):
         reponse = self.api.get(url_planche(self.sans_conception.pk, 'svg'))
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('roof_layout', reponse.data)
 
     # ── PDF ────────────────────────────────────────────────────────────────

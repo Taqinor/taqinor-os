@@ -1116,7 +1116,8 @@ def _valider(gabarit):
     if doublon:
         raise GabaritRefuse({'code': (
             f"Un gabarit « {gabarit.code} » existe déjà pour ce pays dans la "
-            "société : modifiez-le plutôt que d'en déposer un second.")})
+            "société : modifiez-le plutôt que d'en déposer un second.")},
+            statut=HTTPStatus.CONFLICT)
 
 
 def _appliquer(gabarit, donnees):

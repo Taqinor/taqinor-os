@@ -30,7 +30,6 @@ Rattachée au ``CalepinageViewSet`` par AFFECTATION D'ATTRIBUT (patron
 from __future__ import annotations
 
 from django.http import QueryDict
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
@@ -109,8 +108,11 @@ REMISE_SCHEMA = inline_serializer('CalepinageRemiseDocument', {
 })
 
 
-@extend_schema(request=OpenApiTypes.OBJECT,
-               responses={201: REMISE_SCHEMA, 200: REMISE_SCHEMA})
+@extend_schema(
+    request=inline_serializer('CalepinageRemettreDocumentCorps', {
+        'code': drf_serializers.ChoiceField(choices=list(REGISTRE_REMISE)),
+        'langue': drf_serializers.CharField(required=False)}),
+    responses={201: REMISE_SCHEMA, 200: REMISE_SCHEMA})
 @action(detail=True, methods=['post'], url_path='remettre-document',
         url_name='remettre-document', permission_classes=[PeutGererCalepinage])
 def remettre_document(self, request, pk=None):

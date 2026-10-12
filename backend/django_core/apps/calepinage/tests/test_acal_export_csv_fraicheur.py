@@ -89,7 +89,7 @@ class ExportFraicheurTest(TestCase):
         for quoi in ('horaire', 'mensuel'):
             with self.subTest(quoi=quoi):
                 reponse = self._lire(quoi=quoi)
-                self.assertEqual(reponse.status_code, 400,
+                self.assertEqual(reponse.status_code, 409,
                                  getattr(reponse, 'data', reponse.content[:200]))
                 # Le MÊME motif que GET resultat/, sous la clé ``production``.
                 self.assertEqual(reponse.data['production'], [servi['motif']])

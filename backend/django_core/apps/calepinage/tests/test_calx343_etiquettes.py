@@ -211,14 +211,14 @@ class EtiquettesApiEnBaseTest(BaseApiCalepinage):
     def test_une_etiquette_d_une_autre_societe_est_refusee_nommee(self):
         reponse = self.api.post(self.url, {'tag_id': self.etranger.pk},
                                 format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         self.assertIn('tag_id', reponse.data)
         self.assertEqual(self._poses().count(), 0)
 
     def test_un_nom_inconnu_n_est_jamais_cree(self):
         avant = Tag.objects.count()
         reponse = self.api.post(self.url, {'nom': 'Urgent'}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         self.assertIn('nom', reponse.data)
         self.assertEqual(Tag.objects.count(), avant)
 
