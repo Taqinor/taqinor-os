@@ -4,6 +4,8 @@ TenantMixin scope déjà par société ; on RESTREINT en plus au destinataire
 courant pour que personne ne voie les notifications d'autrui. La société ET le
 destinataire/utilisateur sont posés côté serveur, jamais lus du corps.
 """
+import re as _re
+
 from django.utils import timezone
 
 from drf_spectacular.types import OpenApiTypes
@@ -20,7 +22,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, entier_ou_400
+from core.parametres_requete import choix_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
@@ -46,7 +49,7 @@ from .serializers import (
 )
 from .services import (
     acknowledge_annonce, annonce_compliance_report, merged_preferences,
-    publish_annonce, resolve_vapid_keys, set_template_approval_status,
+    publish_annonce, resolve_vapid_keys, EVENEMENTS_ROUTABLES, set_template_approval_status,
     submit_template_for_approval,
 )
 
@@ -89,12 +92,31 @@ _PREFERENCE_ID = OpenApiParameter(
     'id', OpenApiTypes.STR, OpenApiParameter.PATH,
     enum=list(EventType.values), description="Clé du type d'événement.")
 _BOOL_01 = ['0', '1', 'true', 'false']
+# Corps d'écriture d'une règle de routage : seuls les événements ROUTABLES
+# (APAR21) sont acceptés ; le schéma de la réponse garde l'énumération complète
+# (d'anciennes règles peuvent viser un événement devenu non routable).
+_REGLE_ROUTAGE_ECRITURE = inline_serializer('RegleRoutageEcriture', {
+    'event_type': serializers.ChoiceField(
+        choices=sorted(str(e.value) for e in EVENEMENTS_ROUTABLES)),
+    'target_role': serializers.ChoiceField(
+        choices=[r for r, _ in NotificationRoutingRule.ROLE_CHOICES],
+        required=False, allow_null=True,
+        help_text='Rôle ciblé — ou ``target_user`` : au moins un des deux.'),
+    'target_user': serializers.IntegerField(
+        required=False, allow_null=True,
+        help_text='Utilisateur ciblé — ou ``target_role``.'),
+    'enabled': serializers.BooleanField(required=False),
+})
+_UNREAD_VALEURS = ['1', 'true', 'True']
+# Le cloche de l'écran envoie ``unread=0`` pour « toutes » : valeurs « non »
+# publiées au schéma, sans filtre (au lieu d'un 400 qui casserait l'écran).
+_UNREAD_ENUM = [*_UNREAD_VALEURS, '0', 'false', 'False']
 
 
 @extend_schema_view(
     list=extend_schema(parameters=[_q(
-        'unread', OpenApiTypes.STR, 'Ne garder que les non lues.',
-        enum=['1', 'true', 'True'])]),
+        'unread', OpenApiTypes.STR, 'Ne garder que les non lues '
+        '(``0`` / ``false`` : toutes).', enum=_UNREAD_ENUM)]),
 )
 class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Mes notifications in-app : liste (filtre `unread`), détail, comptage,
@@ -114,8 +136,8 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         # ni compteur, ni « tout marquer comme lu ». Elle apparaît quand le
         # balayage `notifications.livrer_differees` remet ce champ à NULL.
         qs = qs.filter(programmee_pour__isnull=True)
-        params = self.request.query_params
-        unread = params.get('unread')
+        # Énumération publiée : toute autre valeur -> 400 (lue comme « non »).
+        unread = choix_ou_400(self.request, 'unread', _UNREAD_ENUM)
         if unread in ('1', 'true', 'True'):
             qs = qs.filter(read=False)
         if self.action == 'list':
@@ -236,8 +258,11 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
     _q('event_type', OpenApiTypes.STR, "Type d'événement."),
     _q('enabled', OpenApiTypes.STR, 'Règles actives ou non.',
        enum=_BOOL_01)]),
-    create=extend_schema(responses={
-        201: NotificationRoutingRuleSerializer, 400: OpenApiTypes.OBJECT}))
+    create=extend_schema(
+        request=_REGLE_ROUTAGE_ECRITURE,
+        responses={201: NotificationRoutingRuleSerializer}),
+    update=extend_schema(request=_REGLE_ROUTAGE_ECRITURE),
+    partial_update=extend_schema(request=_REGLE_ROUTAGE_ECRITURE))
 class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG4 — CRUD des règles de routage de notifications (admin uniquement).
 
@@ -259,8 +284,8 @@ class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         event_type = self.request.query_params.get('event_type')
         if event_type:
             qs = qs.filter(event_type=event_type)
-        enabled = self.request.query_params.get('enabled')
-        if enabled in ('0', '1', 'true', 'false'):
+        enabled = choix_ou_400(self.request, 'enabled', _BOOL_01)
+        if enabled in _BOOL_01:
             qs = qs.filter(enabled=enabled in ('1', 'true'))
         return qs
 
@@ -355,16 +380,13 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        year = self.request.query_params.get('year')
-        if year:
-            try:
-                yr = int(year)
-            except (ValueError, TypeError):
-                yr = None
+        # ``year`` est un entier au schéma : illisible -> 400 (ignoré avant).
+        yr = entier_ou_400(self.request.query_params.get('year'), 'year')
+        if yr is not None:
             # ERR-ENF11-FUZZ-NOTIFICATIONS — une année hors 1..9999 (ex.
             # 10**20) faisait lever OverflowError (500) : traitée comme un
             # paramètre illisible, c'est-à-dire ignorée.
-            if yr is not None and 1 <= yr <= 9999:
+            if 1 <= yr <= 9999:
                 from django.db.models import Q
                 qs = qs.filter(Q(date__year=yr) | Q(recurrent_annuel=True))
         return qs
@@ -405,7 +427,9 @@ class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        statut = self.request.query_params.get('statut_approbation')
+        statut = choix_ou_400(
+            self.request, 'statut_approbation',
+            list(WhatsAppTemplate.StatutApprobation.values))
         if statut:
             qs = qs.filter(statut_approbation=statut)
         groupe = self.request.query_params.get('groupe')
@@ -492,13 +516,13 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.request.query_params.get('active') in ('1', 'true', 'True'):
+        if choix_ou_400(self.request, 'active', _UNREAD_VALEURS):
             now = timezone.now()
             from django.db.models import Q
             qs = qs.filter(publiee=True).filter(
                 Q(date_expiration__isnull=True) | Q(date_expiration__gt=now))
-        epinglee = self.request.query_params.get('epinglee')
-        if epinglee in ('0', '1', 'true', 'false'):
+        epinglee = choix_ou_400(self.request, 'epinglee', _BOOL_01)
+        if epinglee in _BOOL_01:
             qs = qs.filter(epinglee=epinglee in ('1', 'true'))
         return qs
 
@@ -661,6 +685,10 @@ def calendar_check(request):
     from .calendar_utils import is_jour_ouvre, prochain_jour_ouvre
     date_str = request.query_params.get('date', '')
     try:
+        # ``fromisoformat`` lit aussi « 20250101 » ou « 2025-W01-1 » : le schéma
+        # (``format: date``) n'accepte que AAAA-MM-JJ.
+        if date_str and not _re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', date_str):
+            raise ValueError(date_str)
         d = _date.fromisoformat(date_str) if date_str else _date.today()
     except ValueError:
         return Response({'detail': 'Format de date invalide. Utilisez YYYY-MM-DD.'},
@@ -701,8 +729,8 @@ class RegexField(ChaineStricte, serializers.RegexField):
 
 
 class _PushKeysSerializer(serializers.Serializer):
-    p256dh = RegexField(_NON_VIDE)
-    auth = RegexField(_NON_VIDE)
+    p256dh = RegexField(_NON_VIDE, max_length=255)
+    auth = RegexField(_NON_VIDE, max_length=255)
 
 
 class _PushSubscribeSerializer(serializers.Serializer):
@@ -710,10 +738,10 @@ class _PushSubscribeSerializer(serializers.Serializer):
     remplacé par ``p256dh``/``auth`` à plat (compat. historique). Un corps qui
     n'est pas un objet, ou des champs non-chaînes, répondent 400 (ils
     levaient AttributeError → 500)."""
-    endpoint = RegexField(_NON_VIDE)
+    endpoint = RegexField(_NON_VIDE, max_length=1000)
     keys = _PushKeysSerializer(required=False)
-    p256dh = RegexField(_NON_VIDE, required=False)
-    auth = RegexField(_NON_VIDE, required=False)
+    p256dh = RegexField(_NON_VIDE, required=False, max_length=255)
+    auth = RegexField(_NON_VIDE, required=False, max_length=255)
 
     def validate(self, attrs):
         keys = attrs.get('keys') or {}
@@ -725,14 +753,14 @@ class _PushSubscribeSerializer(serializers.Serializer):
 
 
 class _PushUnsubscribeSerializer(serializers.Serializer):
-    endpoint = RegexField(_NON_VIDE)
+    endpoint = RegexField(_NON_VIDE, max_length=1000)
 
 
 _PUSH_SUBSCRIBE = inline_serializer('PushSubscribeRequest', {
-    'endpoint': RegexField(_NON_VIDE),
+    'endpoint': RegexField(_NON_VIDE, max_length=1000),
     'keys': inline_serializer('PushSubscribeKeys', {
-        'p256dh': RegexField(_NON_VIDE),
-        'auth': RegexField(_NON_VIDE),
+        'p256dh': RegexField(_NON_VIDE, max_length=255),
+        'auth': RegexField(_NON_VIDE, max_length=255),
     }),
 })
 
@@ -845,7 +873,7 @@ def attention_summary(request):
 
 @extend_schema(
     request=inline_serializer('PushUnsubscribeRequest', {
-        'endpoint': RegexField(r'\S'),
+        'endpoint': RegexField(r'\S', max_length=1000),
     }),
     responses={200: inline_serializer(
         'PushUnsubscribed', {'deleted': serializers.IntegerField()}),
