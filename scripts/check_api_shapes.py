@@ -1329,6 +1329,15 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "ACHT66 la produit (InstallationSerializer.divergence_devis) mais le "
         "detail n'est pas lisible statiquement — ACHT67 (ecran) s'appuie "
         "sur CET exemple (ACHT40)",
+    "ventes/vente_etat.json":
+        "GET ventes/devis/<pk>/ — cle ADDITIVE `vente` (etat de la vente dit "
+        "par le serveur) : servie par un ModelViewSet (forme non lisible "
+        "statiquement) ; le producteur et l'ecran s'appuient sur CET "
+        "exemple (VNT7)",
+    "crm/lead_devis_ligne.json":
+        "GET crm/leads/<id>/ — cles ADDITIVES `solde` et `vente` de chaque "
+        "element de `devis[]` : servie par un ModelViewSet (forme non lisible "
+        "statiquement) ; DevisTab s'appuie sur CET exemple (VNT7)",
 }
 
 

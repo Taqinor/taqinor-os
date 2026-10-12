@@ -37,7 +37,8 @@
       },
       "version_remplacee": {
         "detail": "Cette version du devis a été remplacée par une révision : refusez la version en cours.",
-        "code": "version_remplacee"
+        "code": "version_remplacee",
+        "successeur": {"id": 414, "reference": "DEV-202610-0013"}
       }
     }
   }

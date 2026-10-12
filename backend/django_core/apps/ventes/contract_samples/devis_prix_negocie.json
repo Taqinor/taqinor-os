@@ -1,0 +1,79 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/prix-negocie/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VNT1 (PACT10, Groupe VNT, P0) — « Prix négocié » : le client accepte un devis, puis négocie un prix TTC rond ; le serveur convertit ce prix en remise (%), crée la version V2 et reprend la facturation. Contrat posé SEUL sur main AVANT la vue et l'écran. Aperçu (mode « apercu », aucun effet, 200) et application (mode « appliquer », 201) rendent la MÊME forme. Exemple chiffré sur le panier réel : 54 500,00 TTC négocié à 49 000,00 TTC, bases de facturation 8 640,00 / 32 913,33. Contient aussi la forme unique du 409 « version_remplacee » (avec `successeur`) et la section `demander_signature`.",
+  "requete": {
+    "regle": "exactement UN de `prix_ttc` ou `remise_pct` (jamais les deux, jamais aucun) ; `mode` = 'apercu' (simulation, aucun effet) ou 'appliquer' (crée la V2).",
+    "prix_ttc": "49000.00",
+    "remise_pct": null,
+    "mode": "appliquer"
+  },
+  "exemple": {
+    "devis_v2": {"id": 502, "reference": "DEV-202610-0021", "version": 2},
+    "remise_pct": "10.09",
+    "total_ttc": "49000.00",
+    "factures_annulees": [{"reference": "BROUILLON-318"}],
+    "factures_reprises": [{"reference": "FAC-202610-0044", "base_ht": "32913.33"}],
+    "ecart_ttc": "-5500.00",
+    "regularisation": {"type": "aucune", "montant": "0.00"},
+    "reste_a_facturer": "40800.00"
+  },
+  "reponse_apercu_200": {
+    "devis_v2": {"id": null, "reference": null, "version": 2},
+    "remise_pct": "10.09",
+    "total_ttc": "49000.00",
+    "factures_annulees": [{"reference": "BROUILLON-318"}],
+    "factures_reprises": [{"reference": "FAC-202610-0044", "base_ht": "32913.33"}],
+    "ecart_ttc": "-5500.00",
+    "regularisation": {"type": "aucune", "montant": "0.00"},
+    "reste_a_facturer": "40800.00"
+  },
+  "reponse_appliquer_201": {
+    "devis_v2": {"id": 502, "reference": "DEV-202610-0021", "version": 2},
+    "remise_pct": "10.09",
+    "total_ttc": "49000.00",
+    "factures_annulees": [{"reference": "BROUILLON-318"}],
+    "factures_reprises": [{"reference": "FAC-202610-0044", "base_ht": "32913.33"}],
+    "ecart_ttc": "-5500.00",
+    "regularisation": {"type": "aucune", "montant": "0.00"},
+    "reste_a_facturer": "40800.00"
+  },
+  "notes": {
+    "types": "montants et pourcentages en TEXTE décimal à 2 décimales ; regularisation.type vaut 'complement' (le client doit un complément), 'avoir' (un avoir est émis) ou 'aucune'.",
+    "bases_reelles": "panier réel : 54 500,00 TTC → 49 000,00 TTC ; bases de facturation 8 640,00 et 32 913,33.",
+    "regularisation": "type 'avoir' : le serveur répond 400 `avoir_a_confirmer` tant que l'avoir n'est pas confirmé."
+  },
+  "erreurs_400": {
+    "saisie_vide": {"detail": "Indiquez un prix TTC ou une remise.", "code": "saisie_vide"},
+    "saisie_double": {"detail": "Indiquez le prix TTC OU la remise, pas les deux.", "code": "saisie_double"},
+    "prix_non_rond": {"detail": "Le prix négocié doit être un montant rond.", "code": "prix_non_rond"},
+    "prix_superieur": {"detail": "Le prix négocié dépasse le prix actuel du devis.", "code": "prix_superieur"},
+    "prix_identique": {"detail": "Le prix négocié est identique au prix actuel.", "code": "prix_identique"},
+    "prix_inatteignable": {
+      "detail": "Ce prix ne peut pas être atteint exactement.",
+      "code": "prix_inatteignable",
+      "prix_atteignables": ["48999.00", "49001.00"]
+    },
+    "approbation_requise": {"detail": "Cette remise demande l'approbation d'un responsable.", "code": "approbation_requise"},
+    "avoir_a_confirmer": {"detail": "Un avoir sera émis : confirmez pour continuer.", "code": "avoir_a_confirmer"}
+  },
+  "erreurs_409": {
+    "version_remplacee": {
+      "detail": "Cette version du devis a été remplacée par une révision.",
+      "code": "version_remplacee",
+      "successeur": {"id": 503, "reference": "DEV-202610-0022"}
+    },
+    "pas_une_vente_active": {"detail": "Ce devis n'est pas une vente active.", "code": "pas_une_vente_active"},
+    "vente_active_existante": {
+      "detail": "Une vente active existe déjà pour ce client.",
+      "code": "vente_active_existante",
+      "vente_active": {"id": 410, "reference": "DEV-202610-0009"}
+    }
+  },
+  "effets_non_rejoues": ["CAPI", "webhook", "notification", "automatisation", "parrainage", "chantier", "SAV", "commission"],
+  "demander_signature": {
+    "endpoint": "POST /api/django/ventes/devis/<int:pk>/avenant/demander-signature/",
+    "idempotent": true,
+    "exemple": {"share_link": "https://taqinor.ma/proposition/Xk3p9Qz2Lm", "tache_id": 207}
+  }
+}

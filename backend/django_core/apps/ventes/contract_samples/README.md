@@ -109,3 +109,15 @@ rougit pas tant que la route n'existe pas.
 | Fichier | Endpoint / ce qu'il apparie |
 | --- | --- |
 | `prix_applicable.json` | GET ventes/prix-applicable/ : `produit`, `quantite`, `prix` (texte, HT), NOUVELLE clé `unite: "HT"`, `source` standard/liste/regle, `liste_nom`, `remise_volume` (NTCPQ17) — AGNR1 ; consommateurs AGNR15 (écran générateur) et AGNR10 (page des listes) |
+
+## Groupe VNT — M0 contrats posés SEULS (12/10/2026)
+
+| Fichier | Endpoint / ce qu'il apparie |
+| --- | --- |
+| `devis_prix_negocie.json` | POST ventes/devis/<pk>/prix-negocie/ : aperçu / appliquer, erreurs 400/409, `demander_signature` (VNT1) |
+| `devis_refuser.json` (étendu) | 409 `version_remplacee` + `successeur` (VNT1) |
+| `proposal_accept.json` / `proposal_data.json` (+ copies `apps/web/src/contract_samples/`) | 409 `vente_active_existante`, `avenant_signe`, clé `avenant` (VNT2) |
+| `devis_facturer.json` | POST/GET ventes/devis/<pk>/facturer/ : natures, montant libre, aperçu, erreurs nommées (VNT3) |
+| `devis_solde.json` (étendu) | `solde` : scalaires `emis`, `brouillons`, `reste_a_facturer` (VNT5) |
+| `devis_echeancier.json` | PUT ventes/devis/<pk>/echeancier/ sur devis accepté (VNT6) |
+| `vente_etat.json` | GET ventes/devis/<pk>/ : bloc `vente` (état de la vente), 6 variantes (VNT7) |
