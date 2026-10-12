@@ -1050,8 +1050,17 @@ class LeadClientsActionsMixin:
         """ZSAL4 — assistant de conversion EXPLICITE lead → client (body
         {mode: nouveau|lier|aucun, client_id?}). Journalisé dans le chatter."""
         lead = self.get_object()
-        mode = (request.data.get('mode') or '').strip()
+        mode = request.data.get('mode')
         client_id = request.data.get('client_id')
+        # ENF11 (api-fuzz) — types du schéma : `mode` texte, `client_id`
+        # entier s'il est fourni (un objet passait en mode « nouveau »).
+        if mode is not None and not isinstance(mode, str):
+            raise DRFValidationError({'mode': ['Texte attendu.']})
+        if 'client_id' in request.data and (
+                isinstance(client_id, bool) or not isinstance(client_id, int)):
+            raise DRFValidationError(
+                {'client_id': ['Identifiant de client (entier) attendu.']})
+        mode = (mode or '').strip()
         from .clients_identite import ClientIntrouvable, convertir_lead_en_client
         try:
             # ACRM7 — le client à lier est cherché dans la PORTÉE de

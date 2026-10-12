@@ -352,6 +352,11 @@ class LeadIntakeActionsMixin:
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'Aucun lead à fusionner.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 (api-fuzz) — `others` = liste d'ENTIERS (schéma) : un objet ou
+        # une chaîne cassait le filtre `pk__in` en 500.
+        if any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
+            raise serializers.ValidationError(
+                {'others': ["Liste d'identifiants de leads (entiers) attendue."]})
         others = list(self.get_queryset().filter(pk__in=ids).exclude(pk=survivor.pk))
         if not others:
             return Response({'detail': 'Leads à fusionner introuvables.'},
