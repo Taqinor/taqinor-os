@@ -56,7 +56,8 @@ export default function CommentsInboxScreen() {
   const load = useCallback(() => {
     adsengineApi.comments.list()
       .then(r => {
-        setComments(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        // CommentListView (APIView, non paginée) renvoie une liste nue.
+        setComments(Array.isArray(r.data) ? r.data : [])
         setLoadError(false)
       })
       .catch(() => setLoadError(true))

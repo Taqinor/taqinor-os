@@ -130,8 +130,13 @@ def period_bounds(params):
     start = params.get('start')
     end = params.get('end')
     if start and end:
-        return (date.fromisoformat(start),
-                date.fromisoformat(end) + timedelta(days=1))
+        try:
+            return (date.fromisoformat(start),
+                    date.fromisoformat(end) + timedelta(days=1))
+        except OverflowError:
+            # ENF11 — ``end=9999-12-31`` + 1 jour : dépassement du calendrier,
+            # donc une période invalide (400 côté vues), pas un 500.
+            raise ValueError('Période hors calendrier.') from None
     if month:
         y, m = (int(x) for x in month.split('-'))
         debut = date(y, m, 1)

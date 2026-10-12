@@ -4,6 +4,7 @@ NTSEC11 — CRUD de la politique réseau (allowlist IP/CIDR), réservé au
 Directeur (rôle Administrateur). Tout est scopé société côté serveur : la
 société n'est jamais lue du corps de requête.
 """
+import logging
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
@@ -16,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole
+from core.champs_stricts import ChaineStricte
 from core.mixins import TenantMixin
 from core.throttling import LoginBannerThrottle
 from core.viewsets import CompanyScopedModelViewSet
@@ -29,6 +31,8 @@ from .serializers import (
 )
 from rest_framework import serializers as drf_serializers
 
+logger = logging.getLogger(__name__)
+
 
 class PolitiqueReseauExistante(APIException):
     """ENF10 — conflit d'état (une politique par société) : 409, pas 400."""
@@ -39,13 +43,14 @@ class PolitiqueReseauExistante(APIException):
 
 class BreakGlassSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
-    motif = serializers.CharField()
+    motif = ChaineStricte()
     duree_minutes = serializers.IntegerField(
         required=False, min_value=1, max_value=1440, default=60)
 
 
 class LoginBannerAckSerializer(serializers.Serializer):
-    username = serializers.CharField(required=False, allow_blank=True)
+    username = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True)
 
 
 class NetworkPolicyViewSet(CompanyScopedModelViewSet):
@@ -154,6 +159,7 @@ def _banner_profile(request):
         from apps.portail.branding import company_pour_hote
         company = company_pour_hote(request.get_host())
     except Exception:  # noqa: BLE001 — hôte refusé/illisible → neutre
+        logger.warning("views._banner_profile : erreur ignorée (mode dégradé)", exc_info=True)
         company = None
     if company is None:
         return None
@@ -192,8 +198,9 @@ class LoginBannerView(APIView):
                    responses=inline_serializer('LoginBannerAck', {
                        'acknowledged': serializers.BooleanField()}))
     def post(self, request):
-        username = (request.data.get('username') if hasattr(request, 'data')
-                    else None) or ''
+        entree = LoginBannerAckSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        username = entree.validated_data.get('username') or ''
         profile = _banner_profile(request)
         text = getattr(profile, 'login_banner_text', '') if profile else ''
         if not text:
@@ -212,6 +219,7 @@ class LoginBannerView(APIView):
         try:
             premiere = cache.add(cle, 1, timeout=3600)
         except Exception:  # noqa: BLE001 - cache indisponible
+            logger.warning("views.LoginBannerView.post : erreur ignorée (mode dégradé)", exc_info=True)
             premiere = None
         if premiere is False:
             return Response({'acknowledged': True})
@@ -228,7 +236,7 @@ class LoginBannerView(APIView):
                         f'{_client_ip(request)} (UA: {ua}).'),
             )
         except Exception:  # noqa: BLE001 - journalisation best-effort
-            pass
+            logger.warning("views.LoginBannerView.post : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'acknowledged': True})
 
 
@@ -318,7 +326,9 @@ class BreakGlassView(APIView):
 
         from .breakglass import acting_user_has_mfa, grant_break_glass
 
-        motif = (request.data.get('motif') or '').strip()
+        entree = BreakGlassSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        motif = entree.validated_data['motif'].strip()
         if not motif:
             raise DRFValidationError({'motif': 'Le motif est obligatoire.'})
         # Exige une MFA active côté Directeur agissant (proxy NTSEC9).
@@ -326,16 +336,10 @@ class BreakGlassView(APIView):
             return Response(
                 {'detail': 'MFA requise pour un accès break-glass.'},
                 status=403)
-        try:
-            duree = int(request.data.get('duree_minutes') or 60)
-        except (TypeError, ValueError):
-            raise DRFValidationError({'duree_minutes': 'Durée invalide.'})
-        if duree <= 0 or duree > 24 * 60:
-            raise DRFValidationError(
-                {'duree_minutes': 'Durée hors bornes (1–1440 min).'})
+        duree = entree.validated_data['duree_minutes']
         # Cible STRICTEMENT dans la société de l'appelant (jamais cross-tenant).
         target = CustomUser.objects.filter(
-            pk=request.data.get('user_id'),
+            pk=entree.validated_data['user_id'],
             company=request.user.company).first()
         if target is None:
             raise DRFValidationError({'user_id': 'Compte inconnu.'})

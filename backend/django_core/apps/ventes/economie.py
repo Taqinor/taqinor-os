@@ -66,6 +66,9 @@ import math
 from decimal import ROUND_HALF_UP, Decimal
 
 from .solar_finance import _irr, _npv
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     'AMORTISSEMENT_MODES', 'EconomieInvalide', 'HYPOTHESES_FINANCIERES',
@@ -1453,6 +1456,7 @@ def _donnees_du_devis(devis):
     try:
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
     except Exception:  # noqa: BLE001 — un devis illisible s'OMET, jamais 500
+        logger.warning("economie._donnees_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return {}, [], [_omission(
             'devis', f"devis {reference} : le moteur de devis n'a pas pu en "
                      f"lire les montants — aucune donnée économique publiée")]

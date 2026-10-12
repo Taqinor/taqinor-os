@@ -4,9 +4,10 @@ Authentifiés par session/JWT normaux, palier admin. La clé en clair et le
 secret webhook ne sont JAMAIS renvoyés en lecture — uniquement une fois, à la
 création, par les vues dédiées.
 """
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
+from core.champs_stricts import ChaineStricte
 from core.mixins import SameCompanyFKSerializerMixin
 from core.models import ApiUsagePlan
 
@@ -46,7 +47,7 @@ class ApiKeySerializer(SameCompanyFKSerializerMixin,
 
 class ApiKeyCreateSerializer(serializers.Serializer):
     """Entrée de création : libellé + scopes. Renvoie la clé en clair UNE fois."""
-    label = serializers.CharField(max_length=120)
+    label = ChaineStricte(max_length=120)  # ENF11 — 0 / null refusés (400)
     scopes = serializers.ListField(
         child=serializers.ChoiceField(choices=ALL_SCOPES),
         allow_empty=True, default=list)
@@ -64,6 +65,12 @@ class ApiKeyCreateSerializer(serializers.Serializer):
 
 class WebhookSerializer(serializers.ModelSerializer):
     """Représentation en lecture d'un webhook (jamais le secret en clair)."""
+    # ENF11 — la règle « https uniquement » est exprimée dans le schéma
+    # (``pattern``) ; l'hôte public/résolvable reste contrôlé par
+    # ``validate_target_url`` (DNS, anti-SSRF), non exprimable.
+    target_url = serializers.RegexField(
+        r'^https://\S+$', max_length=500,
+        error_messages={'invalid': "L'URL du webhook doit utiliser https."})
 
     class Meta:
         model = Webhook
@@ -134,6 +141,9 @@ class WebhookDeliverySerializer(SameCompanyFKSerializerMixin,
         read_only_fields = fields
 
 
+# ENF11 — `core.serializers` porte aussi un `ApiUsagePlanSerializer` : un nom de
+# composant distinct evite la collision « identical names » du generateur.
+@extend_schema_serializer(component_name='PublicApiUsagePlan')
 class ApiUsagePlanSerializer(serializers.ModelSerializer):
     """NTAPI7 — plan d'API nommé de la société (gratuit/pro/entreprise).
 
@@ -152,6 +162,9 @@ class ApiUsagePlanSerializer(serializers.ModelSerializer):
 
 class ServiceAccountSerializer(serializers.ModelSerializer):
     """NTSEC24 — compte de service (jeton renvoyé UNE fois à la création)."""
+    # ENF11 — liste de textes (le JSONField générique laissait passer ``null``
+    # et des entiers : schéma « any », refus 400 inattendu sur ``scopes: null``).
+    scopes = serializers.ListField(child=ChaineStricte(), required=False)
 
     class Meta:
         model = ServiceAccount

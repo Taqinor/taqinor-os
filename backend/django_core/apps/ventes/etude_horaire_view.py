@@ -526,7 +526,7 @@ def _localisation(corps, devis, lead=None):
             lat = lat if lat is not None else loc.get('gps_lat')
             lon = lon if lon is not None else loc.get('gps_lng')
         except Exception:  # noqa: BLE001 — lead illisible ⇒ pas de localisation
-            pass
+            logger.warning("etude_horaire_view._localisation : erreur ignorée (mode dégradé)", exc_info=True)
     return ville, lat, lon
 
 

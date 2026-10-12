@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { Button, FormField, Input } from '../../ui'
 
 /* ============================================================================
@@ -64,8 +65,8 @@ export default function ProfilsSaisonniersSection({ produit, canWrite = false })
 
   const recharger = useCallback(async () => {
     try {
-      const r = await stockApi.getProfilsSaisonniers({ produit: produit.id })
-      setProfils(r.data?.results ?? r.data ?? [])
+      const rows = await fetchAllPages((page) => stockApi.getProfilsSaisonniers({ produit: produit.id, page }).then((r) => r.data), { concurrency: 3 })
+      setProfils(Array.isArray(rows) ? rows : (rows?.results ?? []))
     } catch {
       setProfils([])
     } finally {
@@ -75,8 +76,8 @@ export default function ProfilsSaisonniersSection({ produit, canWrite = false })
 
   useEffect(() => {
     let actif = true
-    stockApi.getProfilsSaisonniers({ produit: produit.id })
-      .then((r) => { if (actif) setProfils(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getProfilsSaisonniers({ produit: produit.id, page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (actif) setProfils(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => { if (actif) setProfils([]) })
       .finally(() => { if (actif) setCharge(true) })
     return () => { actif = false }

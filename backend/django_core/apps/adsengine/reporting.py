@@ -30,6 +30,9 @@ import statistics
 from decimal import Decimal, ROUND_HALF_UP
 
 from . import allocation, metrics
+import logging
+
+logger = logging.getLogger(__name__)
 
 # PUB88 — un bras est un « gagnant confirmé » quand sa probabilité d'être le
 # meilleur atteint le seuil de maturité de phase (dd-science-core §4 : P ≥ 80 %).
@@ -679,6 +682,7 @@ def _account_currency_label(company):
         from .rules_engine import account_currency
         return account_currency(company) or 'MAD'
     except Exception:  # pragma: no cover - lecture best-effort
+        logger.warning("reporting._account_currency_label : erreur ignorée (mode dégradé)", exc_info=True)
         return 'MAD'
 
 

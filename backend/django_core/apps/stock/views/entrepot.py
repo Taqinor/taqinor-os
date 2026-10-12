@@ -14,6 +14,7 @@ Toutes les vues sont en LECTURE : aucune n'écrit, aucune ne réserve.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from ..openapi_helpers import INT, P, STR
+from ..utils.params import decimal_ou_400, entier_ou_400
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -21,17 +22,24 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 
-def _int_param(value, defaut=None):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return defaut
+# ENF11 — borne commune des seuils du cockpit (jours ou heures) : bornée,
+# jamais de débordement de date ; au-delà ou illisible = 400.
+HORIZON_MAX = 87600
 
 
-@extend_schema(parameters=[P('emplacement', INT), P('horizon_peremption', INT, False,
-                                                    'Horizon de péremption (jours, défaut 30)'), P('retard_heures',
-                                                                                                   INT, False,
-                                                                                                   'Seuil de retard (heures, défaut 24)')], responses={
+def _int_param(value, defaut=None, nom='parametre'):
+    """Entier de requête STRICT (400 si illisible) — ENF11."""
+    return entier_ou_400(value, nom, defaut)
+
+
+@extend_schema(parameters=[
+    P('emplacement', INT),
+    P('horizon_peremption', INT, False,
+      'Horizon de péremption (jours, défaut 30, 0-87600 ; hors plage ou illisible = 400)',
+      mini=0, maxi=HORIZON_MAX),
+    P('retard_heures', INT, False,
+      'Seuil de retard (heures, défaut 24, 0-87600 ; hors plage ou illisible = 400)',
+      mini=0, maxi=HORIZON_MAX)], responses={
     200: inline_serializer('StockEntrepotCockpit', {
         'date': serializers.CharField(),
         'zones': serializers.ListField(child=serializers.DictField()),
@@ -64,11 +72,14 @@ def entrepot_cockpit_view(request):
 
     return Response(cockpit_entrepot(
         request.user.company,
-        emplacement_id=_int_param(request.query_params.get('emplacement')),
-        horizon_peremption_jours=_int_param(
-            request.query_params.get('horizon_peremption'), 30),
-        retard_vague_heures=_int_param(
-            request.query_params.get('retard_heures'), 24),
+        emplacement_id=entier_ou_400(
+            request.query_params.get('emplacement'), 'emplacement'),
+        horizon_peremption_jours=entier_ou_400(
+            request.query_params.get('horizon_peremption'),
+            'horizon_peremption', 30, 0, HORIZON_MAX),
+        retard_vague_heures=entier_ou_400(
+            request.query_params.get('retard_heures'), 'retard_heures',
+            24, 0, HORIZON_MAX),
     ))
 
 
@@ -106,9 +117,10 @@ def simuler_capacite_view(request):
             request.user.company,
             zone=request.query_params.get('zone'),
             quantite_supplementaire=_int_param(
-                request.query_params.get('quantite'), 0),
-            produit_id=_int_param(request.query_params.get('produit')),
-            emplacement_id=_int_param(request.query_params.get('emplacement')),
+                request.query_params.get('quantite'), 0, 'quantite'),
+            produit_id=_int_param(request.query_params.get('produit'), None, 'produit'),
+            emplacement_id=_int_param(
+                request.query_params.get('emplacement'), None, 'emplacement'),
         )
     except ValueError as exc:
         return Response({'detail': str(exc)},
@@ -132,10 +144,11 @@ def zones_surcapacite_view(request):
         SEUIL_SURCAPACITE_PCT, _fmt_dec, zones_en_surcapacite,
     )
 
-    seuil = request.query_params.get('seuil')
+    seuil = decimal_ou_400(request.query_params.get('seuil'), 'seuil')
     zones = zones_en_surcapacite(
         request.user.company, seuil_pct=seuil,
-        emplacement_id=_int_param(request.query_params.get('emplacement')))
+        emplacement_id=_int_param(
+                request.query_params.get('emplacement'), None, 'emplacement'))
     return Response({
         'seuil_pct': (zones[0]['seuil_pct'] if zones
                       else _fmt_dec(seuil or SEUIL_SURCAPACITE_PCT)),
@@ -207,5 +220,6 @@ def tache_retour_view(request):
         'suggestions': suggerer_tache_retour(
             request.user.company, zone_courante=zone,
             operateur=request.user,
-            limite=_int_param(request.query_params.get('limite'), 1)),
+            limite=entier_ou_400(
+                request.query_params.get('limite'), 'limite', 1, 1, 100)),
     })

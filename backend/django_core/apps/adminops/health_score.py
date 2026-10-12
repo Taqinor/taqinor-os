@@ -10,6 +10,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _score_completude(company):
@@ -23,13 +26,13 @@ def _score_completude(company):
         if profile and (getattr(profile, 'nom', '') or getattr(profile, 'raison_sociale', '')):
             score += 40
     except Exception:
-        pass
+        logger.warning("health_score._score_completude : erreur ignorée (mode dégradé)", exc_info=True)
     try:
         from apps.roles.models import Role
         if Role.objects.filter(company=company, est_systeme=False).exists():
             score += 30
     except Exception:
-        pass
+        logger.warning("health_score._score_completude : erreur ignorée (mode dégradé)", exc_info=True)
     try:
         from apps.parametres.models_messages import MessageTemplate
         if MessageTemplate.objects.filter(company=company).exists():
@@ -39,7 +42,7 @@ def _score_completude(company):
             if EmailTemplate.objects.filter(company=company).exists():
                 score += 30
     except Exception:
-        pass
+        logger.warning("health_score._score_completude : erreur ignorée (mode dégradé)", exc_info=True)
     return min(score, 100)
 
 
@@ -53,6 +56,7 @@ def _score_usage(company, jours=30):
             company=company, created_at__gte=depuis).count()
         return min(int(n / 50 * 100), 100)
     except Exception:
+        logger.warning("health_score._score_usage : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
 
 
@@ -71,6 +75,7 @@ def _score_qualite(company):
             score += 50
         return score
     except Exception:
+        logger.warning("health_score._score_qualite : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
 
 

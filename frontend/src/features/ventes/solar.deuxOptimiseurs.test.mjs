@@ -20,6 +20,7 @@ import {
   batteryCapaciteInconnue, totauxCanoniquesTtc,
 } from './solar.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
+import { lignesFusionSansAvec } from './solarLignesFusionFixture.mjs'
 
 // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — un panier se chiffre par la chaîne
 // canonique du noyau (HT persisté → TVA), jamais par Σ TTC saisis : les
@@ -140,14 +141,7 @@ test('optionTotalsTTC : lignes SANS champ `variante` — comportement historique
 })
 
 test('optionTotalsTTC : une fusion sans/avec calcule les BONS totaux (sans double-compte, sans fuite)', () => {
-  const lignes = [
-    { designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: 1, prix_unit_ttc: 20000, variante: '' },
-    { designation: 'Onduleur hybride Deye 10kW Triphasé', quantite: 1, prix_unit_ttc: 28000, variante: '' },
-    { designation: 'Batterie Dyness 10 kWh', quantite: 1, prix_unit_ttc: 17000, variante: '' },
-    { designation: 'Panneau Canadien Solar 710W', quantite: 10, prix_unit_ttc: 1400, variante: 'sans' },
-    { designation: 'Panneau Canadien Solar 710W', quantite: 17, prix_unit_ttc: 1400, variante: 'avec' },
-    { designation: 'Transport', quantite: 1, prix_unit_ttc: 1000, variante: '' },
-  ]
+  const lignes = lignesFusionSansAvec()
   const { totalSans, totalAvec } = optionTotalsTTC(lignes, 0)
   // sans = réseau (commun) + panneau 'sans' (10) + transport (commun) ;
   // batterie/hybride (commun, mais mot-clé) + panneau 'avec' exclus.

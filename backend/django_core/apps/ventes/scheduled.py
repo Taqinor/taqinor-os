@@ -41,6 +41,7 @@ def casablanca_today():
         from zoneinfo import ZoneInfo
         return timezone.now().astimezone(ZoneInfo(CASABLANCA_TZ)).date()
     except Exception:  # pragma: no cover - zoneinfo absent (très improbable)
+        logger.warning("scheduled.casablanca_today : erreur ignorée (mode dégradé)", exc_info=True)
         return timezone.localdate()
 
 
@@ -280,7 +281,7 @@ def _reporter_relance(facture, today):
         from apps.notifications.calendar_utils import prochain_jour_ouvre
         cible = prochain_jour_ouvre(cible, facture.company)
     except Exception:  # noqa: BLE001 — calendrier absent → date brute
-        pass
+        logger.warning("scheduled._reporter_relance : erreur ignorée (mode dégradé)", exc_info=True)
     facture.prochaine_relance = cible
     facture.save(update_fields=['prochaine_relance'])
 
@@ -414,7 +415,7 @@ def relance_reminders():
                 from apps.notifications.calendar_utils import prochain_jour_ouvre
                 cible = prochain_jour_ouvre(cible, facture.company)
             except Exception:  # noqa: BLE001 — calendrier absent → date brute
-                pass
+                logger.warning("scheduled.relance_reminders : erreur ignorée (mode dégradé)", exc_info=True)
             facture.prochaine_relance = cible
         else:
             facture.prochaine_relance = None
@@ -596,6 +597,7 @@ def releve_mensuel_reminders():
         try:
             solde_du = Decimal(data['totaux']['du'])
         except Exception:  # noqa: BLE001 — repli prudent si format inattendu
+            logger.warning("scheduled.releve_mensuel_reminders : erreur ignorée (mode dégradé)", exc_info=True)
             solde_du = Decimal('0')
         if solde_du <= 0:
             continue
@@ -794,6 +796,7 @@ def _post_engagement_notification(devis, vendeur, key, label):
             token = ShareLink.for_devis(devis).token
             url = proposition_url(token)
         except Exception:  # noqa: BLE001
+            logger.warning("scheduled._post_engagement_notification : erreur ignorée (mode dégradé)", exc_info=True)
             url = ''
         notify(
             vendeur, EventType.DEVIS_NUDGE_DUE,

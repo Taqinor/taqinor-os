@@ -59,7 +59,6 @@ CORPS_NON_GARDE_PUBLIC = {
     "ged/views.py::public_depot",
     "ged/views.py::public_signature",
     "ged/views.py::public_signataire",
-    "identity/views.py::LoginBannerView",
     "portail/public_views.py::accepter_invitation_portail_public",
     "reporting/approbations.py::decider_approbation_via_push",
     "sav/public_views.py::ticket_public_satisfaction",

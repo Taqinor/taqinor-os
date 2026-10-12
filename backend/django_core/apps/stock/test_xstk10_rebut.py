@@ -162,6 +162,22 @@ class TestEndpoints(Xstk10Base):
             {'quantite': 1}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_endpoint_rebuter_entrees_malformees_400_jamais_500(self):
+        # ENF11 : corps non objet, motif non texte, emplacement illisible,
+        # référence de plus de 100 caractères = 400 (avant : 500).
+        url = f'/api/django/stock/produits/{self.produit.id}/rebuter/'
+        for corps in (
+                [1, 2], {'quantite': 1, 'motif': 123},
+                {'quantite': 1, 'motif': 'casse', 'emplacement': 'abc'},
+                {'quantite': 1, 'motif': 'casse', 'emplacement': [1]},
+                {'quantite': 1, 'motif': 'casse',
+                 'reference_chantier': 'x' * 101},
+                {'quantite': 1, 'motif': 'casse', 'reference_chantier': 5}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 10)
+
     def test_endpoint_rebuter_stock_insuffisant_400(self):
         resp = self.api.post(
             f'/api/django/stock/produits/{self.produit.id}/rebuter/',

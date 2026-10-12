@@ -636,6 +636,7 @@ def lire_catalogue_ci(company):
             try:
                 specs = specs_for_produit(produit) or {}
             except Exception:  # fiche illisible : candidat sans spécifs
+                logger.warning("etude_ci.lire_catalogue_ci : erreur ignorée (mode dégradé)", exc_info=True)
                 specs = {}
         onduleurs.append({
             'produit': element['id'], 'nom': element.get('nom'),
@@ -657,6 +658,7 @@ def lire_catalogue_ci(company):
         try:
             specs = specs_for_produit(produit) or {}
         except Exception:  # fiche illisible
+            logger.warning("etude_ci.lire_catalogue_ci : erreur ignorée (mode dégradé)", exc_info=True)
             specs = {}
         pmax = _num(specs.get('pmax_wc'))
         prix = bool(produit.prix_vente and produit.prix_vente > 0)

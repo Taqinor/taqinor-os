@@ -9,6 +9,8 @@ import {
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { errMessage, CIBLES_LIEN, toutesLesPages } from './shared.js'
+import { ChampDocument } from './ChampsGed.jsx'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
    UX47 — Tags & liens transverses.
@@ -218,38 +220,29 @@ function TagDialog({ tags, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouveau tag</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Nom</Label>
-            <Input value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div>
-            <Label>Parent (optionnel)</Label>
-            <Select value={parent} onValueChange={setParent}>
-              <SelectTrigger><SelectValue placeholder="Aucun (racine)" /></SelectTrigger>
-              <SelectContent>
-                {tags.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.chemin || t.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Couleur</Label>
-            <Input type="color" value={couleur} onChange={(e) => setCouleur(e.target.value)} className="h-10 w-20" />
-          </div>
-          <div>
-            <Label>Description (optionnel)</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouveau tag" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Nom</Label>
+        <Input value={nom} onChange={(e) => setNom(e.target.value)} />
+      </div>
+      <div>
+        <Label>Parent (optionnel)</Label>
+        <Select value={parent} onValueChange={setParent}>
+          <SelectTrigger><SelectValue placeholder="Aucun (racine)" /></SelectTrigger>
+          <SelectContent>
+            {tags.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.chemin || t.nom}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Couleur</Label>
+        <Input type="color" value={couleur} onChange={(e) => setCouleur(e.target.value)} className="h-10 w-20" />
+      </div>
+      <div>
+        <Label>Description (optionnel)</Label>
+        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -269,35 +262,18 @@ function AssignDialog({ documents, tags, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Affecter un tag</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Tag</Label>
-            <Select value={tagId} onValueChange={setTagId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un tag…" /></SelectTrigger>
-              <SelectContent>
-                {tags.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.chemin || t.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Affectation…' : 'Affecter'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Affecter un tag" onClose={onClose} submit={submit} saving={saving} libelle="Affecter" libelleEnCours="Affectation…">
+      <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} />
+      <div>
+        <Label>Tag</Label>
+        <Select value={tagId} onValueChange={setTagId}>
+          <SelectTrigger><SelectValue placeholder="Choisir un tag…" /></SelectTrigger>
+          <SelectContent>
+            {tags.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.chemin || t.nom}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -318,38 +294,21 @@ function LienDialog({ documents, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouveau lien transverse</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Type d'objet</Label>
-            <Select value={model} onValueChange={setModel}>
-              <SelectTrigger><SelectValue placeholder="Choisir un type…" /></SelectTrigger>
-              <SelectContent>
-                {CIBLES_LIEN.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Identifiant de l'objet</Label>
-            <Input type="number" min="1" step="1" value={objectId} onChange={(e) => setObjectId(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer le lien'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaire titre="Nouveau lien transverse" onClose={onClose} submit={submit} saving={saving} libelle="Créer le lien">
+      <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} />
+      <div>
+        <Label>Type d'objet</Label>
+        <Select value={model} onValueChange={setModel}>
+          <SelectTrigger><SelectValue placeholder="Choisir un type…" /></SelectTrigger>
+          <SelectContent>
+            {CIBLES_LIEN.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Identifiant de l'objet</Label>
+        <Input type="number" min="1" step="1" value={objectId} onChange={(e) => setObjectId(e.target.value)} />
+      </div>
+    </DialogueFormulaire>
   )
 }

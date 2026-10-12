@@ -150,6 +150,7 @@ def _substitute_variables(body, context):
     try:
         return body.format_map(_SafeDict(**context))
     except Exception:  # pragma: no cover - défensif
+        logger.warning("actions._substitute_variables : erreur ignorée (mode dégradé)", exc_info=True)
         return body
 
 
@@ -179,6 +180,7 @@ def _nom_entreprise(company):
         from apps.parametres.selectors import company_identity
         nom = (company_identity(company) or {}).get('nom') or ''
     except Exception:  # pragma: no cover - défensif
+        logger.warning("actions._nom_entreprise : erreur ignorée (mode dégradé)", exc_info=True)
         nom = ''
     return nom or str(getattr(company, 'nom', '') or '')
 
@@ -248,6 +250,7 @@ def rendre_texte(texte, instance, company, context=None):
     try:
         return texte.format_map(valeurs), []
     except Exception:  # pragma: no cover - défensif (spécificateur invalide)
+        logger.warning("actions.rendre_texte : erreur ignorée (mode dégradé)", exc_info=True)
         return texte, ['format invalide']
 
 
@@ -274,6 +277,7 @@ def _texte_brut(rule, company):
             return MessageTemplate.get_corps(
                 company, template_key, cfg.get('langue', 'fr')) or ''
         except Exception:
+            logger.warning("actions._texte_brut : erreur ignorée (mode dégradé)", exc_info=True)
             return ''
     return ''
 
@@ -316,6 +320,7 @@ def reporter_hors_fenetre(rule, instance, company, context):
         from apps.notifications.selectors import fenetre_notifications
         fenetre = fenetre_notifications(company)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("actions.reporter_hors_fenetre : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if fenetre.ouverte:
         return None
@@ -363,6 +368,7 @@ def preparer_whatsapp(rule, instance, company, context):
         from apps.ventes.utils.whatsapp import build_wa_url
         url = build_wa_url(phone, body or '')
     except Exception:
+        logger.warning("actions.preparer_whatsapp : erreur ignorée (mode dégradé)", exc_info=True)
         url = None
     if not url:
         return ('Numéro WhatsApp inexploitable : envoi ignoré.', phone, None,
@@ -414,6 +420,7 @@ def _send_whatsapp(rule, instance, company, context, user):
         _creer_tache(instance, company, user, RESUME_TACHE_WHATSAPP,
                      f'{body}\n\n{url}' if body else url)
     except Exception as exc:
+        logger.warning("actions._send_whatsapp : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Tâche WhatsApp non créée : {exc}'
     return Status.SUCCESS, (
         f'Tâche « {RESUME_TACHE_WHATSAPP} » créée (lien pour {phone}).')
@@ -458,6 +465,7 @@ def _send_email(rule, instance, company, context, user):
         sent = send_mail(
             subject, body or '', from_email, [to], fail_silently=False)
     except Exception as exc:
+        logger.warning("actions._send_email : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Email non envoyé : {exc}'
     if not sent:
         return Status.FAILED, f'Email non remis à {to}.'
@@ -500,6 +508,7 @@ def _create_activity(rule, instance, company, context, user):
             log_note(instance, user, body, company=company)
             return Status.SUCCESS, 'Activité (note) créée sur la fiche.'
         except Exception as exc:
+            logger.warning("actions._create_activity : erreur ignorée (mode dégradé)", exc_info=True)
             return Status.FAILED, f'Activité non créée : {exc}'
     if label == 'lead':
         try:
@@ -509,6 +518,7 @@ def _create_activity(rule, instance, company, context, user):
                 kind=LeadActivity.Kind.NOTE, body=body, user=user)
             return Status.SUCCESS, 'Activité (note) créée sur le lead.'
         except Exception as exc:
+            logger.warning("actions._create_activity : erreur ignorée (mode dégradé)", exc_info=True)
             return Status.FAILED, f'Activité non créée : {exc}'
     return Status.NOOP, 'Aucun chatter pour ce modèle : activité ignorée.'
 
@@ -544,6 +554,7 @@ def _assign_record(rule, instance, company, context, user):
         instance.save(update_fields=[f'{field}_id'])
         return Status.SUCCESS, f'Assigné à {target} via « {field} ».'
     except Exception as exc:
+        logger.warning("actions._assign_record : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Assignation échouée : {exc}'
 
 
@@ -577,6 +588,7 @@ def _set_field(rule, instance, company, context, user):
     except Exception as exc:
         # APAR10 — l'écriture est annulée (point de sauvegarde du moteur) :
         # l'instance de l'émetteur ne garde pas la valeur refusée en mémoire.
+        logger.warning("actions._set_field : erreur ignorée (mode dégradé)", exc_info=True)
         setattr(instance, field, ancienne)
         return Status.FAILED, f'Mise à jour échouée : {exc}'
 
@@ -604,6 +616,7 @@ def _server_action_context(instance, context):
             try:
                 out[f.attname] = getattr(instance, f.attname)
             except Exception:  # pragma: no cover - défensif
+                logger.warning("actions._server_action_context : erreur ignorée (mode dégradé)", exc_info=True)
                 continue
     custom_data = getattr(instance, 'custom_data', None)
     if isinstance(custom_data, dict):
@@ -674,6 +687,7 @@ def _server_action(rule, instance, company, context, user):
         return Status.SUCCESS, (
             f"Champ(s) calculé(s) : {', '.join(sorted(updates))}.")
     except Exception as exc:
+        logger.warning("actions._server_action : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Action serveur échouée : {exc}'
 
 
@@ -729,6 +743,7 @@ def _create_sav_ticket(rule, instance, company, context, user):
                 poser_sla_due_at(ticket)
         return Status.SUCCESS, f'Ticket SAV {ticket.reference} créé.'
     except Exception as exc:
+        logger.warning("actions._create_sav_ticket : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Ticket SAV non créé : {exc}'
 
 
@@ -767,12 +782,14 @@ def _create_custom_record(rule, instance, company, context, user):
         from apps.customfields.serializers import validate_custom_data
         clean = validate_custom_data(objet.field_module, company, resolved)
     except Exception as exc:
+        logger.warning("actions._create_custom_record : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Enregistrement non créé : {exc}'
     try:
         CustomRecord.objects.create(
             company=company, objet=objet, data=clean, created_by=user)
         return Status.SUCCESS, f'Enregistrement « {objet.libelle} » créé.'
     except Exception as exc:
+        logger.warning("actions._create_custom_record : erreur ignorée (mode dégradé)", exc_info=True)
         return Status.FAILED, f'Enregistrement non créé : {exc}'
 
 
@@ -941,6 +958,7 @@ def _resolve_client(instance):
             from apps.crm.services import resolve_client_for_lead
             return resolve_client_for_lead(instance)
         except Exception:
+            logger.warning("actions._resolve_client : erreur ignorée (mode dégradé)", exc_info=True)
             return None
     return None
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Table2, Send, Pencil, Trash2, Plus } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { diffFactEntries, erreurServeur } from './adsengine'
 
 /* ============================================================================
@@ -41,11 +42,11 @@ export default function FactTableScreen() {
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
-      adsengineApi.factTables.list()
-        .then(r => Array.isArray(r.data) ? r.data : (r.data?.results || []))
+      fetchAllPages((page) => adsengineApi.factTables.list({ page }).then(r => r.data), { concurrency: 3 })
+        .then(rows => Array.isArray(rows) ? rows : (rows?.results || []))
         .catch(() => []),
-      adsengineApi.factEntries.list()
-        .then(r => Array.isArray(r.data) ? r.data : (r.data?.results || []))
+      fetchAllPages((page) => adsengineApi.factEntries.list({ page }).then(r => r.data), { concurrency: 3 })
+        .then(rows => Array.isArray(rows) ? rows : (rows?.results || []))
         .catch(() => []),
     ]).then(([tbls, ents]) => {
       // Le back trie déjà par version décroissante (Meta.ordering) ; on ne

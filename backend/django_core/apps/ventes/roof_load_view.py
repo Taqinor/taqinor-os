@@ -8,13 +8,16 @@ Calcul PUR (aucune écriture base, aucun statut changé) ; jamais de prix ;
 résultat interne, jamais imprimé au client. Les anciennes capacités par type
 de toit (GET) ont disparu avec CIQ114.
 """
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from . import openapi_shapes as SH
 from .roof_load import ChargeNonSourcee, verifier_charge_toiture
 
 
+@extend_schema(request=SH.RoofLoadRequest, responses=SH.RoofLoadResponse)
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def roof_load_check(request):

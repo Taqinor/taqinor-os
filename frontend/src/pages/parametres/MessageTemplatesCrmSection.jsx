@@ -12,6 +12,7 @@ import {
 import { SectionTitle, Field, ChargementErreur } from './peComponents'
 import crmApi from '../../api/crmApi'
 import { useConfirmDialog } from '../../ui/confirm'
+import toutesLesPages from './toutesLesPages'
 
 // Placeholders disponibles au rendu (render_template, apps/crm/views.py) :
 // {prenom}/{ville}/{lien} toujours substituables ; {lien_rdv} (XSAL17) exige
@@ -33,8 +34,8 @@ export default function MessageTemplatesCrmSection() {
 
   const load = () => {
     setLoading(true)
-    crmApi.getMessageTemplates()
-      .then((r) => setTemplates(r.data.results ?? r.data))
+    toutesLesPages((params) => crmApi.getMessageTemplates(params))
+      .then((rows) => setTemplates(rows))
       .catch(() => setError('Impossible de charger les modèles.'))
       .finally(() => setLoading(false))
   }

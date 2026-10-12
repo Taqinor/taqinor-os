@@ -13,6 +13,10 @@ Tout est scopé société ; aucune app métier n'est importée.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Jeu standard finance/ventes. WIR11 — les codes doivent EXISTER dans le
 # catalogue `roles.ALL_PERMISSIONS` (codes UNDERSCORE) : les anciens codes
 # POINTÉS (`facture.saisir`…) n'y figuraient pas, si bien que `sod_violations`
@@ -106,6 +110,7 @@ def would_cumulate_critical(user, role):
                 return True
         return False
     except Exception:
+        logger.warning("sod.would_cumulate_critical : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -125,7 +130,7 @@ def raise_sod_alerts(company):
                        v['permission_a'], v['permission_b'])))
             n += 1
         except Exception:
-            pass
+            logger.warning("sod.raise_sod_alerts : erreur ignorée (mode dégradé)", exc_info=True)
     return n
 
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
+from . import openapi_docs as D
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
@@ -62,6 +63,8 @@ def _refus(refus):
 
 # api-only: AGR206 — lecture interne du bloc (contrat AGR3) ; /proposition
 # et le PDF le lisent côté serveur (selectors), aucun écran ne l'appelle encore.
+@extend_schema(responses={200: D.EconomiePompageResponse,
+                          400: D.ErreurEconomie})
 @action(detail=True, methods=['get'], url_path='economie-pompage',
         permission_classes=[IsAnyRole])
 def economie_pompage(self, request, pk=None):

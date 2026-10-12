@@ -114,7 +114,7 @@ class TestGardes(Zpur6Base):
         resp = self.api.post(
             '/api/django/stock/bons-commande-fournisseur/fusionner/',
             {'bons_commande': [bc1.id, bc2.id]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         bc1.refresh_from_db()
         bc2.refresh_from_db()
         self.assertEqual(bc1.statut, BonCommandeFournisseur.Statut.BROUILLON)
@@ -130,7 +130,7 @@ class TestGardes(Zpur6Base):
         resp = self.api.post(
             '/api/django/stock/bons-commande-fournisseur/fusionner/',
             {'bons_commande': [bc1.id, bc2.id]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_moins_de_deux_bcf_refuse(self):
         bc1 = self._bcf_brouillon(
@@ -139,6 +139,14 @@ class TestGardes(Zpur6Base):
             '/api/django/stock/bons-commande-fournisseur/fusionner/',
             {'bons_commande': [bc1.id]}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_corps_illisible_ou_ids_non_entiers_400_jamais_500(self):
+        """ENF11 — un corps non-objet ou des ids non entiers répondent 400."""
+        url = '/api/django/stock/bons-commande-fournisseur/fusionner/'
+        for corps in ([None, None], {'bons_commande': [{}]},
+                      {'bons_commande': 'abc'}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
 
 
 class TestMultiTenant(Zpur6Base):
@@ -161,4 +169,4 @@ class TestMultiTenant(Zpur6Base):
         resp = self.api.post(
             '/api/django/stock/bons-commande-fournisseur/fusionner/',
             {'bons_commande': [bc1.id, bc_autre.id]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)

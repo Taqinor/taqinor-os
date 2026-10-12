@@ -50,6 +50,8 @@ test('ProductTour : setActiveKey/setStep/setOpen posés SYNCHRONEMENT dans l\'ef
 
 test('ProductTour : le lint react-hooks/set-state-in-effect reste explicitement couvert (même convention que le reste du dépôt)', () => {
   const occurrences = (PT.match(/react-hooks\/set-state-in-effect/g) || []).length
-  assert.ok(occurrences >= 3,
-    'chacun des 3 setState synchrones (activeKey/step/open) doit porter son propre eslint-disable, comme Avatar.jsx/FollowToggle.jsx')
+  // ENF22 (11/10/2026) : la règle ne signale que le PREMIER setState de l'effet ; un seul
+  // eslint-disable couvre donc le bloc (les deux suivants étaient des directives inutilisées).
+  assert.ok(occurrences >= 1,
+    'le bloc des setState synchrones (activeKey/step/open) doit porter un eslint-disable explicite, comme Avatar.jsx/FollowToggle.jsx')
 })

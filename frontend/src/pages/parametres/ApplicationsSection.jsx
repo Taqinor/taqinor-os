@@ -37,15 +37,16 @@ import {
 import { toast } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
 import {
-  Card, CardContent, Badge, Spinner, EmptyState, Switch, Input,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Card, CardContent, Badge, EmptyState, Switch, Input, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem, AlertDialog, AlertDialogContent,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
 import AppIcon from '../../ui/AppIcon'
 import { iconNodeForApp, accentForApp } from '../../lib/apps/appIcon'
 import { normalise } from '../../lib/apps/appSearch'
 import { SectionTitle } from './peComponents'
+import { ChargementTexte, ErreurChargementListe } from './EtatsSection'
 
 // Résolution icône par manifest (`module_manifest.icone`, kebab-case côté
 // backend) — mapping VOLONTAIREMENT restreint aux icônes déjà utilisées et
@@ -316,16 +317,9 @@ export default function ApplicationsSection() {
     )
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
+  if (loading) return <ChargementTexte />
   if (loadError) {
-    return (
-      <EmptyState title="Impossible de charger le catalogue des modules"
-        description="Une erreur est survenue lors du chargement." className="py-6" />
-    )
+    return <ErreurChargementListe title="Impossible de charger le catalogue des modules" />
   }
 
   const installer = cascadeConfirm?.mode === 'installer'

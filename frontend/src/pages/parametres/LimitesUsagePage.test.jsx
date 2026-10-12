@@ -1,17 +1,8 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import { declarerResizeObserver, renderPage } from './pageThemee.testHelpers.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
-
-function renderPage(ui) {
-  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
-}
+declarerResizeObserver()
 
 /* NTOBS8 — page « Limites & usage » unifiée (lecture seule). */
 

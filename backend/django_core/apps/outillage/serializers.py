@@ -1,6 +1,8 @@
+from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import BooleenStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Outillage, KitOutillage, KitOutillageItem
@@ -10,7 +12,8 @@ class OutillageSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     emplacement_nom = serializers.CharField(
-        source='emplacement.nom', read_only=True, allow_null=True, default=None)
+        source='emplacement.nom', read_only=True, allow_null=True, default=None,
+        required=False)  # ENF11 — absent d'une réponse PATCH (default + partial)
 
     # FG80 — badge « à calibrer » : intervalle > 0 ET date dépassée.
     a_calibrer = serializers.SerializerMethodField()
@@ -65,6 +68,11 @@ class KitOutillageItemSerializer(SameCompanyFKSerializerMixin,
 
 
 class KitOutillageSerializer(serializers.ModelSerializer):
+    # ENF11 — `actif` strictement booléen (0 / "oui" étaient coercés en silence).
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.BooleanField: BooleenStrict,
+    }
     items = KitOutillageItemSerializer(many=True, read_only=True)
     type_intervention_label = serializers.SerializerMethodField()
 

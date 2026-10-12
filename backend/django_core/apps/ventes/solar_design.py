@@ -2357,13 +2357,21 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
 # (partagé par ventes et calepinage, sans base de données). Ce module garde des
 # RÉ-EXPORTS pour que ses appelants restent inchangés (comportement
 # octet-identique).
-from core.pompage.volumes import (  # noqa: E402,F401
+from core.pompage.volumes import (  # noqa: E402
     _CLEARSKY_HOURLY_SHAPE,
     _DAYS_IN_MONTH,
     _PUMP_START_IRRADIANCE_FRACTION,
     clearsky_hourly_irradiance,
     pumping_cycle_yield,
 )
+
+__all__ = [
+    "_CLEARSKY_HOURLY_SHAPE",
+    "_DAYS_IN_MONTH",
+    "_PUMP_START_IRRADIANCE_FRACTION",
+    "clearsky_hourly_irradiance",
+    "pumping_cycle_yield",
+]
 
 
 def _safe_float(value, default=0.0):

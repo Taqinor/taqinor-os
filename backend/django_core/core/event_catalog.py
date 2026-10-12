@@ -179,7 +179,8 @@ CATALOG = {
         'Une facture fournisseur est créée.',
         ['instance', 'company', 'user']),
     'paiement_fournisseur_enregistre': _e(
-        'Un paiement fournisseur est enregistré.',
+        'Un paiement fournisseur est enregistré. Abonné : aucun (réservé — '
+        'aucun abonné tant que compta est parquée).',
         ['instance', 'company']),
     'chantier_annule': _e(
         'Un chantier est annulé.',
@@ -229,12 +230,13 @@ CATALOG = {
         ['cycle', 'company', 'user']),
     # WIR85 / XACC6 — émis par ``stock.services.record_stock_movement`` (le
     # SEUL point de création d'un ``MouvementStock``), synchroniquement et en
-    # best-effort juste après l'écriture du mouvement. Abonné : compta
-    # (inventaire permanent), doublement gated (COMPTA_AUTO_ECRITURES +
-    # PlanComptable.inventaire_permanent, OFF par défaut).
+    # best-effort juste après l'écriture du mouvement. Futur abonné visé :
+    # compta (inventaire permanent, gated COMPTA_AUTO_ECRITURES +
+    # PlanComptable.inventaire_permanent) — app parquée, 0 receiver vivant.
     'mouvement_stock_enregistre': _e(
         "Un mouvement de stock (stock.MouvementStock) vient d'être "
-        "enregistré — entrée, sortie ou ajustement.",
+        "enregistré — entrée, sortie ou ajustement. Abonné : aucun (réservé "
+        "— aucun abonné tant que compta est parquée).",
         ['instance', 'company']),
     # PVSYNC — émis par ``stock.views.produit.ProduitViewSet.perform_update``
     # (le seul point de mise à jour REST d'une référence), jamais par un

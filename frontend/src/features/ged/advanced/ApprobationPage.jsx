@@ -17,6 +17,8 @@ import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { StatutApprobation, StatutSignature, errMessage, toutesLesPages } from './shared.js'
+import { ChampDocument, ChampCommentaire } from './ChampsGed.jsx'
+import DecisionDialogue from './DecisionDialogue.jsx'
 
 /* ============================================================================
    UX45 — Approbation & signature électronique.
@@ -474,21 +476,8 @@ function DemanderRevueDialog({ documents, onClose, onDone }) {
       <DialogContent>
         <DialogHeader><DialogTitle>Demander une revue</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
-              <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {documents.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Commentaire (optionnel)</Label>
-            <Textarea value={commentaire} onChange={(e) => setCommentaire(e.target.value)} rows={3} />
-          </div>
+          <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} />
+          <ChampCommentaire commentaire={commentaire} setCommentaire={setCommentaire} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Annuler</Button>
@@ -500,43 +489,16 @@ function DemanderRevueDialog({ documents, onClose, onDone }) {
 }
 
 function DecisionDialog({ decision, onClose, onDone }) {
-  const [commentaire, setCommentaire] = useState('')
-  const [saving, setSaving] = useState(false)
-  const approuver = decision.type === 'approuver'
-
-  const submit = async () => {
-    setSaving(true)
-    try {
-      if (approuver) await gedApi.approuverDemande(decision.demande.id, { commentaire })
-      else await gedApi.rejeterDemande(decision.demande.id, { commentaire })
-      toast.success(approuver ? 'Demande approuvée.' : 'Demande rejetée.')
-      onDone()
-    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
-  }
-
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{approuver ? 'Approuver la demande' : 'Rejeter la demande'}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">
-            Document : <strong>{decision.demande.document_nom || `#${decision.demande.document}`}</strong>
-          </p>
-          <div>
-            <Label>Commentaire (optionnel)</Label>
-            <Textarea value={commentaire} onChange={(e) => setCommentaire(e.target.value)} rows={3} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button variant={approuver ? 'default' : 'destructive'} onClick={submit} disabled={saving}>
-            {saving ? '…' : (approuver ? 'Approuver' : 'Rejeter')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DecisionDialogue
+      decision={decision} onClose={onClose} onDone={onDone} objet="la demande"
+      appels={{
+        approuver: (id, corps) => gedApi.approuverDemande(id, corps),
+        rejeter: (id, corps) => gedApi.rejeterDemande(id, corps),
+      }}
+    >
+      Document : <strong>{decision.demande.document_nom || `#${decision.demande.document}`}</strong>
+    </DecisionDialogue>
   )
 }
 
@@ -639,17 +601,7 @@ function DemanderSignatureDialog({ documents, preselect, onClose, onDone }) {
       <DialogContent>
         <DialogHeader><DialogTitle>Demander une signature</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
-          <div>
-            <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId} disabled={!!preselect}>
-              <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-              <SelectContent>
-                {(preselect ? [{ id: preselect.id, nom: preselect.nom }] : documents).map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <ChampDocument documents={preselect ? [{ id: preselect.id, nom: preselect.nom }] : documents} documentId={documentId} setDocumentId={setDocumentId} disabled={!!preselect} />
           <div>
             <Label>Nom du signataire</Label>
             <Input value={nom} onChange={(e) => setNom(e.target.value)} />
@@ -800,17 +752,7 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
 
         {etape === 1 ? (
           <div className="flex flex-col gap-3">
-            <div>
-              <Label>Document</Label>
-              <Select value={documentId} onValueChange={setDocumentId}>
-                <SelectTrigger><SelectValue placeholder="Choisir un document…" /></SelectTrigger>
-                <SelectContent>
-                  {documents.map((d) => (
-                    <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <ChampDocument documents={documents} documentId={documentId} setDocumentId={setDocumentId} />
             <div>
               <Label>Ordre de signature</Label>
               <Select value={routage} onValueChange={setRoutage}>

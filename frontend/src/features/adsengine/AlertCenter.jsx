@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, Clock3, X } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 
 /* ============================================================================
@@ -39,7 +40,7 @@ function readLastSeen() {
   try { return localStorage.getItem(LAST_SEEN_KEY) || '' } catch { return '' }
 }
 function writeLastSeen(iso) {
-  try { localStorage.setItem(LAST_SEEN_KEY, iso) } catch { /* best-effort */ }
+  try { localStorage.setItem(LAST_SEEN_KEY, iso) } catch { console.warn('Alertes : localStorage indisponible, dernière lecture non mémorisée.') }
 }
 
 function defaultSnoozeDate() {
@@ -59,9 +60,10 @@ export default function AlertCenter() {
 
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.alerts.history()
-      .then(r => {
-        setItems(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+    // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => adsengineApi.alerts.history({ page }).then(r => r.data), { concurrency: 3 })
+      .then(rows => {
+        setItems(Array.isArray(rows) ? rows : (rows?.results || []))
         setLoadError(false)
       })
       // AACQ74 — une panne n'est JAMAIS « Aucune alerte » (état d'erreur distinct).

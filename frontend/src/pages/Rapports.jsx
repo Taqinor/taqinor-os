@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom'
 import { Download, BarChart3, BookmarkPlus, Trash2, Pin, PinOff, Mail } from 'lucide-react'
 import api from '../api/axios'
 import reportingApi from '../api/reportingApi'
+import fetchAllPages from '../utils/fetchAllPages'
 import crmApi from '../api/crmApi'
 import { downloadXlsx } from '../api/importApi'
 import { downloadBlobInGesture } from '../utils/downloadBlob'
@@ -257,11 +258,9 @@ function MesRapports() {
 
   const load = useCallback(() => {
     setLoading(true)
-    reportingApi.listSavedReports()
-      .then(r => {
-        const data = r.data
-        setReports(Array.isArray(data) ? data : (data.results || []))
-      })
+    // Toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page, extra) => reportingApi.listSavedReports({ page, ...extra }).then(r => r.data))
+      .then(rows => setReports(Array.isArray(rows) ? rows : (rows?.results || [])))
       .catch(() => setReports([]))
       .finally(() => setLoading(false))
   }, [])

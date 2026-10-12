@@ -2,12 +2,15 @@
 âgée, relevé de compte client. VUE / CONSIGNE / IMPRESSION uniquement — aucun
 envoi (email/SMS/courrier). L'envoi reste pour une session future.
 """
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
+from . import openapi_shapes as SH
 from .openapi_params import qstr
 import re
 from decimal import Decimal
 
 from django.http import HttpResponse
+from rest_framework.parsers import JSONParser
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -26,6 +29,9 @@ from .serializers_facturation import (
     ParametrageRelanceClientSerializer,
     PromessePaiementSerializer,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _s(x):
@@ -66,6 +72,7 @@ def variables_relance(facture):
         # non libérée exclue).
         montant = quantize_mad(montant_exigible(facture) or 0)
     except Exception:  # pragma: no cover — facture sans montant exploitable
+        logger.warning("recouvrement.variables_relance : erreur ignorée (mode dégradé)", exc_info=True)
         montant = Decimal('0.00')
     jours = getattr(facture, 'jours_retard', 0) or 0
     return {
@@ -138,7 +145,7 @@ def facture_relancable(facture):
         try:
             libelle = facture.get_statut_display()
         except Exception:  # pragma: no cover — objet non-modèle
-            pass
+            logger.warning("recouvrement.facture_relancable : erreur ignorée (mode dégradé)", exc_info=True)
         return False, (
             f'Statut {libelle} : la relance ne concerne qu\'une facture '
             f'ouverte et due.')
@@ -295,6 +302,10 @@ def _niveau_suivant_ligne(facture, niveaux):
 class FollowupLevelViewSet(viewsets.ModelViewSet):
     """Configuration des niveaux de relance (Paramètres). Lecture tout rôle,
     écriture admin."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
+    # ENF11 — type du paramètre de chemin ``id`` pour le schéma (le vrai
+    # queryset, borné société, est celui de ``get_queryset``).
+    queryset = FollowupLevel.objects.all()
     serializer_class = FollowupLevelSerializer
 
     def get_permissions(self):
@@ -341,6 +352,8 @@ class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
     """ZFAC8 — réglage par client du responsable/mode de relance. Lecture
     tout rôle, écriture responsable/admin (même tier que les autres réglages
     de recouvrement)."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
+    queryset = ParametrageRelanceClient.objects.all()  # type de ``id`` (schéma)
     serializer_class = ParametrageRelanceClientSerializer
 
     def get_permissions(self):
@@ -415,7 +428,9 @@ def _facture_due_rows(user):
     return [f for f in qs if facture_relancable(f)[0]]
 
 
-@extend_schema(parameters=[qstr('mes_relances', desc='1/true : seulement mes relances.')])
+@extend_schema(
+    parameters=[qstr('mes_relances', desc='1/true : seulement mes relances.')],
+    responses=SH.RelancesListResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def relances_list(request):
@@ -498,6 +513,7 @@ def relances_list(request):
     return Response(rows)
 
 
+@extend_schema(responses=SH.BalanceAgeeResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def balance_agee(request):
@@ -683,6 +699,8 @@ def _releve_data(client, user=None):
     }
 
 
+@extend_schema(responses={200: SH.ReleveClientResponse,
+                          404: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve(request, client_id):
@@ -694,6 +712,8 @@ def client_releve(request, client_id):
     return Response(_releve_data(client, request.user))
 
 
+@extend_schema(responses={200: SH.ScoreComportementResponse,
+                          404: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_score_comportement(request, client_id):
@@ -710,6 +730,9 @@ def client_score_comportement(request, client_id):
     return Response(comportement_paiement(client))
 
 
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          404: SH.DetailResponse,
+                          500: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve_pdf(request, client_id):
@@ -722,6 +745,7 @@ def client_releve_pdf(request, client_id):
     try:
         pdf_bytes = generate_releve_pdf(client, _releve_data(client, request.user))
     except Exception as exc:
+        logger.warning("recouvrement.client_releve_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -730,6 +754,10 @@ def client_releve_pdf(request, client_id):
     return resp
 
 
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          400: SH.DetailResponse,
+                          404: SH.DetailResponse,
+                          500: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def lettre_relance_pdf(request, facture_id):
@@ -759,6 +787,7 @@ def lettre_relance_pdf(request, facture_id):
     try:
         pdf_bytes = generate_lettre_relance_pdf(facture, niveau, message)
     except Exception as exc:
+        logger.warning("recouvrement.lettre_relance_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -788,6 +817,8 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
     authentifié. La branche d'écriture applique désormais réellement
     ``IsResponsableOrAdmin`` ; la LECTURE reste ouverte à tout rôle.
     """
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
+    queryset = PromessePaiement.objects.all()  # type de ``id`` (schéma)
     serializer_class = PromessePaiementSerializer
     http_method_names = ['get', 'post', 'head', 'options']
 

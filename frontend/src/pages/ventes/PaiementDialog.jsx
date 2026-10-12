@@ -44,8 +44,9 @@ function lireCreerUnAutrePaiement() {
 function ecrireCreerUnAutrePaiement(v) {
   try {
     window.localStorage.setItem(PAY_CREER_UN_AUTRE_KEY, v ? '1' : '0')
-  } catch {
-    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
+  } catch (err) {
+    // localStorage indisponible (navigation privée, quota) : préférence non mémorisée.
+    console.warn('PaiementDialog.ecrireCreerUnAutrePaiement : préférence non mémorisée', err)
   }
 }
 
@@ -62,8 +63,9 @@ function lireDernierMode() {
 function ecrireDernierMode(v) {
   try {
     if (v) window.localStorage.setItem(PAY_MODE_KEY, v)
-  } catch {
-    // no-op silencieux.
+  } catch (err) {
+    // localStorage indisponible : dernier mode non mémorisé.
+    console.warn('PaiementDialog.ecrireDernierMode : dernier mode non mémorisé', err)
   }
 }
 

@@ -201,7 +201,7 @@ BASELINE_PATH = ROOT / "scripts" / "ecrans_atteignables_allow.txt"
 EXTENSIONS = (".jsx", ".tsx", ".js", ".mjs")
 
 # Un fichier de test n'est JAMAIS un chemin d'acces utilisateur.
-TEST_MARKERS = (".test.", ".spec.")
+TEST_MARKERS = (".test.", ".spec.", ".testHelpers.")  # ENF19 : helpers de test partagés (jamais des écrans)
 TEST_DIRS = {"__tests__", "__mocks__"}
 
 # Dossiers techniques : leur nom ne designe pas un « sujet metier », donc il ne

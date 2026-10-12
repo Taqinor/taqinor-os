@@ -24,6 +24,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
+from core.champs_stricts import entier_ou_400
 
 from .models import AuditLog
 from .selectors import reconstruct_as_of
@@ -57,7 +58,9 @@ FILTRES_AUDIT = [
     OpenApiParameter('to', OpenApiTypes.STR, required=False),
     OpenApiParameter('search', OpenApiTypes.STR, required=False),
 ]
-LIMITE = OpenApiParameter('limit', OpenApiTypes.INT, required=False)
+LIMITE = OpenApiParameter(
+    'limit', {'type': 'integer', 'minimum': 1}, required=False,
+    description='1 à 500 (défaut 100) ; au-delà de 500, plafonné à 500.')
 
 
 def _company_qs(request):
@@ -315,10 +318,8 @@ def security_events(request):
         qs = qs.filter(action__in=[a for a in requested if a in allowed])
     else:
         qs = qs.filter(action__in=list(allowed))
-    try:
-        limit = min(int(request.query_params.get('limit', 100)), 500)
-    except (TypeError, ValueError):
-        limit = 100
+    limit = entier_ou_400(
+        request.query_params.get('limit'), 'limit', 100, 1, 500)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 
@@ -348,10 +349,8 @@ def portal_access_events(request):
     sécurité."""
     qs = _apply_filters(_company_qs(request), request.query_params)
     qs = qs.filter(via_portail=True)
-    try:
-        limit = min(int(request.query_params.get('limit', 100)), 500)
-    except (TypeError, ValueError):
-        limit = 100
+    limit = entier_ou_400(
+        request.query_params.get('limit'), 'limit', 100, 1, 500)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 
@@ -420,10 +419,8 @@ def object_history(request, content_type, object_id):
     qs = (_company_qs(request)
           .filter(content_type=ct, object_id=str(object_id))
           .order_by('-timestamp'))
-    try:
-        limit = min(int(request.query_params.get('limit', 100)), 500)
-    except (TypeError, ValueError):
-        limit = 100
+    limit = entier_ou_400(
+        request.query_params.get('limit'), 'limit', 100, 1, 500)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 

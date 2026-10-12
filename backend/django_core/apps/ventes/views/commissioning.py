@@ -8,6 +8,7 @@ de devis (RULE #4).
 """
 from drf_spectacular.utils import extend_schema_view, extend_schema
 from ..openapi_params import qint, qstr
+from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -75,6 +76,7 @@ class CommissioningTestViewSet(CompanyScopedModelViewSet):
     get_permissions SURCHARGENT la base (scoping direct sur `company`) : scoping
     et matrice 401/403/404 INCHANGÉS (règle #4 : aucun prix, aucun statut de
     devis touché)."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = CommissioningTest.objects.select_related(
         'chantier', 'devis', 'created_by').prefetch_related(
@@ -146,6 +148,7 @@ class CommissioningTestViewSet(CompanyScopedModelViewSet):
     parameters=[qint('recette'), qint('defaut')]))
 class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG275 — CRUD courbes I-V ; écart & défaut dérivés serveur."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = IVCurveCapture.objects.select_related('recette').all()
     serializer_class = IVCurveCaptureSerializer
@@ -250,6 +253,7 @@ def _resolve_company_from_links(user, *objects):
     parameters=[qint('chantier')]))
 class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG276 — CRUD pack documentaire as-built ; ``company`` forcée serveur."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = AsBuiltPack.objects.select_related(
         'chantier', 'devis', 'recette', 'created_by').all()
@@ -294,6 +298,7 @@ class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessu
     parameters=[qint('chantier'), qstr('statut')]))
 class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG277 — CRUD attestation de conformité électrique."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = AttestationConformite.objects.select_related(
         'chantier', 'recette', 'created_by').all()
@@ -340,6 +345,7 @@ class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir not
     parameters=[qint('chantier'), qstr('verdict')]))
 class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG278 — CRUD test PR de réception ; pr/ecart/verdict dérivés serveur."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = TestPerformanceReception.objects.select_related(
         'chantier', 'recette', 'created_by').all()
@@ -421,6 +427,7 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
     parameters=[qint('chantier'), qstr('statut')]))
 class AttestationREViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG287 — CRUD attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = AttestationRE.objects.select_related(
         'chantier', 'created_by').all()

@@ -372,6 +372,7 @@ def _specs_module(produit):
     try:
         specs = specs_for_produit(produit) or {}
     except Exception:  # fiche illisible : le panneau reste sans spécifs
+        logger.warning("pompage._specs_module : erreur ignorée (mode dégradé)", exc_info=True)
         specs = {}
     return {c: _num(specs.get(c)) for c in (
         'vmp_v', 'voc_v', 'isc_a', 'imp_a', 'pmax_wc',

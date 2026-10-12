@@ -30,6 +30,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Textarea, Label,
 } from '../../ui'
+import { OngletCompteur, SelectClient } from './ElementsListeVentes'
 import { formatMAD } from '../../lib/format'
 import { ouvrirPdfBlob } from '../../utils/pdfBlob'
 // APX15(d) — plus jamais de JSON brut dans un message d'erreur.
@@ -243,12 +244,7 @@ export default function BonCommandeList() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-1">
         <TabsList className="flex-wrap">
           {TABS.map(t => (
-            <TabsTrigger key={t.key} value={t.key}>
-              {t.label}
-              {counts[t.key] > 0 && (
-                <span className="ml-1.5 rounded bg-muted px-1.5 text-xs text-muted-foreground">{counts[t.key]}</span>
-              )}
-            </TabsTrigger>
+            <OngletCompteur key={t.key} value={t.key} label={t.label} count={counts[t.key]} />
           ))}
         </TabsList>
       </Tabs>
@@ -460,8 +456,8 @@ function BCForm({ bc = null, onClose, onSaved }) {
       }
       onSaved()
     } catch (err) {
-      // APX15(d) — le repli jetait du JSON BRUT à l'écran (« {"client":["Ce
-      // champ est obligatoire."]} ») : message français, jamais de jargon.
+      // APX15(d) — le repli jetait du JSON BRUT à l'écran (un objet champ → liste
+      // de messages) : message français, jamais de jargon.
       setErrors(prev => ({ ...prev, submit: frenchError(err, 'Enregistrement impossible. Réessayez.') }))
     } finally {
       setSaving(false)
@@ -476,20 +472,9 @@ function BCForm({ bc = null, onClose, onSaved }) {
         </DialogHeader>
         <Form onSubmit={handleSubmit} className="gap-4">
           <FormField label="Client" required htmlFor="bc-client" error={errors.client} fullWidth>
-            <Select value={fields.client || undefined}
-                    onValueChange={v => setField('client', v)}
-                    disabled={isEdit}>
-              <SelectTrigger id="bc-client" invalid={!!errors.client}>
-                <SelectValue placeholder="— Sélectionner un client —" />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map(c => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SelectClient clients={clients} value={fields.client || undefined}
+                          onValueChange={v => setField('client', v)}
+                          disabled={isEdit} id="bc-client" invalid={!!errors.client} />
           </FormField>
 
           <FormField label="Date de livraison prévue" htmlFor="bc-livraison" fullWidth>

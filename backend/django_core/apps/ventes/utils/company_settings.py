@@ -7,6 +7,9 @@ renvoient EXACTEMENT les valeurs d'avant — comportement identique, tests de
 régression inchangés.
 """
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PREFIXES = {
     'devis': 'DEV', 'facture': 'FAC', 'avoir': 'AVO', 'bon_commande': 'BC',
@@ -23,6 +26,7 @@ def _profile(company):
             from apps.parametres.models import CompanyProfile
             return CompanyProfile.get(company=company)
         except Exception:
+            logger.warning("company_settings._profile._load : erreur ignorée (mode dégradé)", exc_info=True)
             return None
 
     # SCA43 / NTPLT16 — mémo PAR REQUÊTE : le profil société est constant le temps
@@ -231,6 +235,7 @@ def tva_standard(company):
     try:
         return Decimal(str(val)) if val is not None else Decimal('20')
     except Exception:
+        logger.warning("company_settings.tva_standard : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('20')
 
 
@@ -249,4 +254,5 @@ def tva_panneaux(company):
     try:
         return Decimal(str(val)) if val is not None else Decimal('10')
     except Exception:
+        logger.warning("company_settings.tva_panneaux : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('10')

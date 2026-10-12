@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, History, CheckCircle2, XCircle } from 'lucide-react'
+import { Plus, Trash2, History } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, StatusPill, toast,
+  Button, Dialog, DialogContent, DialogHeader, DialogTitle, Label, Input,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, StatusPill,
+  toast,
 } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { errMessage, toutesLesPages } from './shared.js'
+import {
+  errMessage, toutesLesPages, unpage, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+} from './shared.js'
+import { PiedFermer } from './ChampsGed.jsx'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
+import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
 
 /* ============================================================================
    PACT132 — Règles de dossier : action automatique au dépôt (XGED19).
@@ -43,25 +48,8 @@ const TYPES_ACTION = [
   { value: 'demander_signature', label: 'Demander une signature' },
 ]
 
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
-
-function operateurLabel(op) {
-  return OPERATEURS.find((o) => o.value === op)?.label || op
-}
-
 function actionLabel(type) {
   return TYPES_ACTION.find((t) => t.value === type)?.label || type
-}
-
-function resumeCondition(conditionGroup) {
-  const leaf = conditionGroup?.conditions?.[0]
-  if (!leaf?.field) return '—'
-  if (leaf.operator === 'exists') return `${leaf.field} existe`
-  const val = Array.isArray(leaf.value) ? leaf.value.join(', ') : leaf.value
-  return `${leaf.field} ${operateurLabel(leaf.operator)} ${val ?? ''}`.trim()
 }
 
 export default function ReglesDossierPage() {
@@ -69,42 +57,27 @@ export default function ReglesDossierPage() {
   const [dossiers, setDossiers] = useState([])
   const [tags, setTags] = useState([])
   const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [journalFor, setJournalFor] = useState(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [r, d, t, u] = await Promise.all([
-        // ADOC31 — toutes les pages, jamais la seule première.
-        toutesLesPages(gedApi.getReglesDossier),
-        toutesLesPages(gedApi.getDossiers),
-        toutesLesPages(gedApi.getTags),
-        gedApi.getUsers(),
-      ])
-      setRegles(unpage(r.data))
-      setDossiers(unpage(d.data))
-      setTags(unpage(t.data))
-      setUsers(unpage(u.data))
-    } catch (err) {
-      setError(errMessage(err, 'Impossible de charger les règles de dossier.'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
-    load()
-  }, [])
+  const { loading, error, load } = useChargementGed(async () => {
+    const [r, d, t, u] = await Promise.all([
+      // ADOC31 — toutes les pages, jamais la seule première.
+      toutesLesPages(gedApi.getReglesDossier),
+      toutesLesPages(gedApi.getDossiers),
+      toutesLesPages(gedApi.getTags),
+      gedApi.getUsers(),
+    ])
+    setRegles(unpage(r.data))
+    setDossiers(unpage(d.data))
+    setTags(unpage(t.data))
+    setUsers(unpage(u.data))
+  }, 'Impossible de charger les règles de dossier.')
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Règle', accessor: (r) => r.nom },
     { id: 'folder', header: 'Dossier', accessor: (r) => r.folder_nom, width: 160 },
-    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group) },
+    { id: 'condition', header: 'Condition', accessor: (r) => resumeCondition(r.condition_group, OPERATEURS) },
     {
       id: 'actions_count', header: 'Actions', width: 90, align: 'right',
       accessor: (r) => r.actions?.length ?? 0,
@@ -117,26 +90,16 @@ export default function ReglesDossierPage() {
     },
   ], [])
 
-  const toggleActif = async (r) => {
-    try {
-      await gedApi.updateRegleDossier(r.id, { actif: !r.actif })
-      toast.success(r.actif ? 'Règle désactivée.' : 'Règle activée.')
-      load()
-    } catch (err) { toast.error(errMessage(err)) }
-  }
+  const toggleActif = (r) => actionAvecToast(
+    () => gedApi.updateRegleDossier(r.id, { actif: !r.actif }),
+    r.actif ? 'Règle désactivée.' : 'Règle activée.', load)
+
+  const supprimer = (r) => actionAvecToast(
+    () => gedApi.deleteRegleDossier(r.id), 'Règle supprimée.', load)
 
   const rowActions = (r) => [
     { id: 'journal', label: 'Journal d’exécution', icon: History, onClick: () => setJournalFor(r) },
-    r.actif
-      ? { id: 'desactiver', label: 'Désactiver', icon: XCircle, onClick: () => toggleActif(r) }
-      : { id: 'activer', label: 'Activer', icon: CheckCircle2, onClick: () => toggleActif(r) },
-    {
-      id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: async () => {
-        try { await gedApi.deleteRegleDossier(r.id); toast.success('Règle supprimée.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
-      },
-    },
+    ...actionsActivation(r, toggleActif, supprimer),
   ]
 
   return (
@@ -226,121 +189,97 @@ function CreateRegleDialog({ dossiers, tags, users, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouvelle règle de dossier</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Dossier</Label>
-            <Select value={folderId} onValueChange={setFolderId}>
-              <SelectTrigger aria-label="Choisir un dossier"><SelectValue placeholder="Choisir un dossier…" /></SelectTrigger>
-              <SelectContent>
-                {dossiers.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Nom de la règle</Label>
-            <Input aria-label="Nom de la règle" value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div>
-            <Label>Ordre d'exécution</Label>
-            <Input type="number" step="1" value={ordre} onChange={(e) => setOrdre(e.target.value)} />
-          </div>
+    <DialogueFormulaire titre="Nouvelle règle de dossier" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Dossier</Label>
+        <Select value={folderId} onValueChange={setFolderId}>
+          <SelectTrigger aria-label="Choisir un dossier"><SelectValue placeholder="Choisir un dossier…" /></SelectTrigger>
+          <SelectContent>
+            {dossiers.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Nom de la règle</Label>
+        <Input aria-label="Nom de la règle" value={nom} onChange={(e) => setNom(e.target.value)} />
+      </div>
+      <div>
+        <Label>Ordre d'exécution</Label>
+        <Input type="number" step="1" value={ordre} onChange={(e) => setOrdre(e.target.value)} />
+      </div>
 
-          <p className="text-sm font-medium text-foreground">Condition (déclenche la règle si vraie)</p>
-          <div className="flex flex-wrap items-end gap-2">
-            <div>
-              <Label>Champ</Label>
-              <Input aria-label="Champ de la condition" placeholder="Ex. nom, tags, custom_data.type"
-                value={champ} onChange={(e) => setChamp(e.target.value)} className="w-48" />
-            </div>
-            <div>
-              <Label>Opérateur</Label>
-              <Select value={operateur} onValueChange={setOperateur}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {OPERATEURS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {operateur !== 'exists' && (
-              <div>
-                <Label>Valeur</Label>
-                <Input aria-label="Valeur de la condition" value={valeur} onChange={(e) => setValeur(e.target.value)} className="w-40" />
-              </div>
-            )}
-          </div>
+      <p className="text-sm font-medium text-foreground">Condition (déclenche la règle si vraie)</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <ConditionOperateurValeur
+          champ={champ} setChamp={setChamp} placeholder="Ex. nom, tags, custom_data.type" champClassName="w-48"
+          operateurs={OPERATEURS} operateur={operateur} setOperateur={setOperateur}
+          valeur={valeur} setValeur={setValeur}
+        />
+      </div>
 
-          <p className="text-sm font-medium text-foreground">Actions (exécutées en séquence)</p>
-          {actions.length > 0 && (
-            <ul className="flex flex-col gap-1">
-              {actions.map((a, i) => (
-                <li key={i} className="flex items-center justify-between text-sm">
-                  <span>{i + 1}. {actionLabel(a.type)}
-                    {a.type === 'tag' && ` — ${tags.find((t) => t.slug === a.params.tag)?.nom || a.params.tag}`}
-                    {a.type === 'deplacer' && ` — ${dossiers.find((d) => String(d.id) === String(a.params.folder))?.nom || a.params.folder}`}
-                    {a.type === 'proprietaire' && ` — ${users.find((u) => String(u.id) === String(a.params.user))?.username || a.params.user}`}
-                    {a.type === 'demander_signature' && ` — ${a.params.signataire_nom}`}
-                  </span>
-                  <Button variant="ghost" size="icon" type="button" aria-label={`Retirer l'action ${i + 1}`} onClick={() => retirerAction(i)}>
-                    <Trash2 />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex flex-wrap items-end gap-2">
-            <div>
-              <Label>Type d'action</Label>
-              <Select value={typeAction} onValueChange={setTypeAction}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TYPES_ACTION.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {typeAction === 'tag' && (
-              <Select value={paramTag} onValueChange={setParamTag}>
-                <SelectTrigger aria-label="Choisir un tag" className="w-40"><SelectValue placeholder="Tag…" /></SelectTrigger>
-                <SelectContent>
-                  {tags.map((t) => <SelectItem key={t.id} value={t.slug}>{t.nom}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            {typeAction === 'deplacer' && (
-              <Select value={paramFolder} onValueChange={setParamFolder}>
-                <SelectTrigger aria-label="Choisir un dossier cible" className="w-40"><SelectValue placeholder="Dossier…" /></SelectTrigger>
-                <SelectContent>
-                  {dossiers.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            {typeAction === 'proprietaire' && (
-              <Select value={paramUser} onValueChange={setParamUser}>
-                <SelectTrigger aria-label="Choisir un utilisateur" className="w-40"><SelectValue placeholder="Utilisateur…" /></SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            {typeAction === 'demander_signature' && (
-              <>
-                <Input placeholder="Nom du signataire" value={paramNom} className="w-40" onChange={(e) => setParamNom(e.target.value)} />
-                <Input placeholder="Email" type="email" value={paramEmail} className="w-44" onChange={(e) => setParamEmail(e.target.value)} />
-              </>
-            )}
-            <Button variant="outline" size="sm" type="button" onClick={ajouterAction}>
-              <Plus /> Ajouter l'action
-            </Button>
-          </div>
+      <p className="text-sm font-medium text-foreground">Actions (exécutées en séquence)</p>
+      {actions.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {actions.map((a, i) => (
+            <li key={i} className="flex items-center justify-between text-sm">
+              <span>{i + 1}. {actionLabel(a.type)}
+                {a.type === 'tag' && ` — ${tags.find((t) => t.slug === a.params.tag)?.nom || a.params.tag}`}
+                {a.type === 'deplacer' && ` — ${dossiers.find((d) => String(d.id) === String(a.params.folder))?.nom || a.params.folder}`}
+                {a.type === 'proprietaire' && ` — ${users.find((u) => String(u.id) === String(a.params.user))?.username || a.params.user}`}
+                {a.type === 'demander_signature' && ` — ${a.params.signataire_nom}`}
+              </span>
+              <Button variant="ghost" size="icon" type="button" aria-label={`Retirer l'action ${i + 1}`} onClick={() => retirerAction(i)}>
+                <Trash2 />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <Label>Type d'action</Label>
+          <Select value={typeAction} onValueChange={setTypeAction}>
+            <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {TYPES_ACTION.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {typeAction === 'tag' && (
+          <Select value={paramTag} onValueChange={setParamTag}>
+            <SelectTrigger aria-label="Choisir un tag" className="w-40"><SelectValue placeholder="Tag…" /></SelectTrigger>
+            <SelectContent>
+              {tags.map((t) => <SelectItem key={t.id} value={t.slug}>{t.nom}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {typeAction === 'deplacer' && (
+          <Select value={paramFolder} onValueChange={setParamFolder}>
+            <SelectTrigger aria-label="Choisir un dossier cible" className="w-40"><SelectValue placeholder="Dossier…" /></SelectTrigger>
+            <SelectContent>
+              {dossiers.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.nom}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {typeAction === 'proprietaire' && (
+          <Select value={paramUser} onValueChange={setParamUser}>
+            <SelectTrigger aria-label="Choisir un utilisateur" className="w-40"><SelectValue placeholder="Utilisateur…" /></SelectTrigger>
+            <SelectContent>
+              {users.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {typeAction === 'demander_signature' && (
+          <>
+            <Input placeholder="Nom du signataire" value={paramNom} className="w-40" onChange={(e) => setParamNom(e.target.value)} />
+            <Input placeholder="Email" type="email" value={paramEmail} className="w-44" onChange={(e) => setParamEmail(e.target.value)} />
+          </>
+        )}
+        <Button variant="outline" size="sm" type="button" onClick={ajouterAction}>
+          <Plus /> Ajouter l'action
+        </Button>
+      </div>
+    </DialogueFormulaire>
   )
 }
 
@@ -350,7 +289,6 @@ function JournalDialog({ regle, onClose }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     gedApi.getExecutionsRegleDossier(regle.id)
       .then((res) => setExecutions(unpage(res.data)))
       .catch((err) => setError(errMessage(err, 'Impossible de charger le journal.')))
@@ -381,9 +319,7 @@ function JournalDialog({ regle, onClose }) {
             ))}
           </ul>
         )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )

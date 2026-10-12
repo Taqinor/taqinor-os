@@ -4,6 +4,7 @@ import { Button, Input } from '../../ui'
 import NoIndex from '../../components/NoIndex'
 import publicStockApi from '../../features/stock/publicStockApi'
 import { erreurChamp, messageServeur } from '../../features/stock/api/erreurs'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 /* ASTK228 — portail fournisseur PAR LIEN (/fournisseur/lien/:token).
 
@@ -161,11 +162,7 @@ export default function PortailFournisseurLienPage() {
       <h1 className="text-2xl font-semibold">Portail fournisseur</h1>
       {portail && <p className="text-lg">{portail.fournisseur_nom}</p>}
 
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
+      <AlerteErreurStock error={erreur} />
 
       {portail && (
         <>

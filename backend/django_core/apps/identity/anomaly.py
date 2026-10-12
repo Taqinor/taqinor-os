@@ -40,6 +40,7 @@ def _geolocate(ip):
                 return None
             return (resp.location.latitude, resp.location.longitude)
     except Exception:
+        logger.warning("anomaly._geolocate : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -102,7 +103,7 @@ def detect_impossible_travel(user, ip, at=None):
             record(AuditLog.Action.SECURITY_ALERT, user=user, company=company,
                    detail=detail)
         except Exception:
-            pass
+            logger.warning("anomaly.detect_impossible_travel : erreur ignorée (mode dégradé)", exc_info=True)
         _notify_directeurs(company, user, detail)
         return {'distance_km': distance, 'hours': hours, 'speed_kmh': speed}
     except Exception:
@@ -122,4 +123,4 @@ def _notify_directeurs(company, user, detail):
                    body=f'{getattr(user, "username", "?")} : {detail}',
                    company=company, respect_quiet_hours=False)
     except Exception:
-        pass
+        logger.warning("anomaly._notify_directeurs : erreur ignorée (mode dégradé)", exc_info=True)

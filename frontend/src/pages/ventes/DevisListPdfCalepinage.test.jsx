@@ -60,14 +60,8 @@ vi.mock('../../api/crmApi', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: { id: 1, ecran: 'ventes.devis' } })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
+vi.mock('../../api/uxviewsApi', async () =>
+  (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide({ id: 1, ecran: 'ventes.devis' }))
 
 import DevisList from './DevisList'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'

@@ -29,8 +29,8 @@ class RendementBatterieTests(SimpleTestCase):
     def test_horaire_flux_an1_egal_economie(self):
         kwc = 6.0
         bloc = self._bloc(kwc)
-        if bloc is None:
-            self.skipTest('PVGIS non résolu dans cet environnement')
+        # Casablanca résout depuis la table PVGIS vendorisée : hors réseau.
+        self.assertIsNotNone(bloc)
         total_avec = 90000.0
         roi = calculate_savings_roi(kwc, 60000.0, total_avec,
                                     etude_horaire=bloc, battery_kwh=10.0)

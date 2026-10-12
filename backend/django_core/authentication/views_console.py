@@ -16,7 +16,8 @@ donnée d'un tenant n'est exposée ici au-delà des compteurs agrégés.
 """
 from __future__ import annotations
 
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -105,10 +106,40 @@ def _tenant_payload(company):
     }
 
 
+_USAGE_SCHEMA = inline_serializer('TenantConsoleUsage', {
+    'users': serializers.IntegerField(),
+    'devis': serializers.IntegerField(),
+    'factures': serializers.IntegerField(),
+})
+# Champs de ``_tenant_payload`` ; plan_code / sieges_utilises / health_score /
+# licences_* sont best-effort (clés absentes si le module l'est).
+_TENANT_SCHEMA_CHAMPS = {
+    'id': serializers.IntegerField(),
+    'nom': serializers.CharField(),
+    'slug': serializers.CharField(),
+    'statut': serializers.CharField(),
+    'statut_libelle': serializers.CharField(),
+    'actif': serializers.BooleanField(),
+    'plan_flag': serializers.CharField(allow_blank=True),
+    'benchmarking_opt_in': serializers.BooleanField(),
+    'date_creation': serializers.DateTimeField(),
+    'date_fermeture': serializers.DateTimeField(allow_null=True),
+    'usage': _USAGE_SCHEMA,
+    'plan_code': serializers.CharField(required=False),
+    'sieges_utilises': serializers.IntegerField(required=False),
+    'health_score': serializers.IntegerField(required=False, allow_null=True),
+    'licences_impayees': serializers.IntegerField(required=False),
+    'licences_du_ttc': serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False),
+}
+
+
 class TenantConsoleListView(APIView):
     """GET — liste toutes les sociétés + compteurs d'usage (superuser)."""
     permission_classes = [IsSuperuserConsole]
 
+    @extend_schema(responses=inline_serializer(
+        'TenantConsoleListeReponse', _TENANT_SCHEMA_CHAMPS, many=True))
     def get(self, request):
         companies = Company.objects.all().order_by('nom')
         return Response([_tenant_payload(c) for c in companies])
@@ -118,6 +149,11 @@ class TenantConsoleStatutView(APIView):
     """POST — change le statut d'une société (actif/suspendu/fermeture)."""
     permission_classes = [IsSuperuserConsole]
 
+    @extend_schema(
+        request=inline_serializer('TenantConsoleStatutRequete', {
+            'statut': serializers.CharField()}),
+        responses=inline_serializer(
+            'TenantConsoleStatutReponse', _TENANT_SCHEMA_CHAMPS))
     def post(self, request, pk):
         company = Company.objects.filter(pk=pk).first()
         if company is None:
@@ -149,6 +185,12 @@ class TenantConsoleNoteView(APIView):
     """POST — pose la note libre ``plan_flag`` (fondateur, sans billing)."""
     permission_classes = [IsSuperuserConsole]
 
+    @extend_schema(
+        request=inline_serializer('TenantConsoleNoteRequete', {
+            'plan_flag': serializers.CharField(
+                required=False, allow_blank=True)}),
+        responses=inline_serializer(
+            'TenantConsoleNoteReponse', _TENANT_SCHEMA_CHAMPS))
     def post(self, request, pk):
         company = Company.objects.filter(pk=pk).first()
         if company is None:

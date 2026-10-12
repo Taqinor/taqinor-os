@@ -9,11 +9,16 @@ Une note pondérée « prêt SOC 2 / ISO 27001 » synthétise l'ensemble.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _safe(fn, default):
     try:
         return fn()
     except Exception:
+        logger.warning("posture._safe : erreur ignorée (mode dégradé)", exc_info=True)
         return default
 
 
@@ -46,7 +51,7 @@ def _dormant_accounts(company):
         profile = CompanyProfile.objects.filter(company=company).first()
         seuil = (getattr(profile, 'dormant_days', 0) or 90)
     except Exception:
-        pass
+        logger.warning("posture._dormant_accounts : erreur ignorée (mode dégradé)", exc_info=True)
     return comptes_dormants(company, seuil).count()
 
 

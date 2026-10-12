@@ -19,16 +19,8 @@ vi.mock('../../api/stockApi', () => ({
 
 // ZSTK13 — `useStockFlags` (utilisé par `ReceptionDetail`) lit le profil
 // entreprise ; défaut True (lots/séries actives) = comportement inchangé.
-vi.mock('../../api/parametresApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getProfile: vi.fn(() => Promise.resolve({ data: {} })),
-    },
-  }
-})
+vi.mock('../../api/parametresApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).parametresApiProfil(await importOriginal(), {}))
 
 import stockApi from '../../api/stockApi'
 import { ReceptionDetail } from './ReceptionsFournisseur.jsx'

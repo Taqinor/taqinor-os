@@ -120,7 +120,7 @@ describe('ProductTour (NTDMO15)', () => {
     // Même classe de flake que le test « clic hors de la bulle » (8d3eed5cc) :
     // rendu à froid sous charge CI parallèle, le `waitFor` par défaut (1 s)
     // expire avant l'appel (PR #847, frontend-vitest-shard 4).
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'), { timeout: 5000 })
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'), { timeout: 15000 })
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
 
@@ -184,7 +184,7 @@ describe('ProductTour (NTDMO15)', () => {
     // même classe de flake « rendu à froid sous charge CI parallèle » déjà
     // documentée par `testTimeout: 20000` dans vitest.config.js — `waitFor`
     // a son propre délai, non couvert par ce réglage.
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'), { timeout: 5000 })
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'), { timeout: 15000 })
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
 

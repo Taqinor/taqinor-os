@@ -23,6 +23,9 @@ import time
 
 from .auth import API_KEY_STATE_ATTR
 from .constants import PUBLIC_API_LEGACY_BASE
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Préfixe surveillé : la racine NON versionnée, donc `/api/public/v1/...` ET
 # l'alias legacy 301 sont couverts par le même test (jamais deux préfixes à
@@ -88,4 +91,6 @@ class PublicApiCallLogMiddleware:
         try:
             return len(response.content)
         except Exception:  # noqa: BLE001 — statistique, jamais bloquante
+            logger.warning(
+                "middleware.PublicApiCallLogMiddleware._taille : erreur ignorée (mode dégradé)", exc_info=True)
             return 0

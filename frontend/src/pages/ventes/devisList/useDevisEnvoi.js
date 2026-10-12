@@ -60,7 +60,7 @@ export function useDevisEnvoi({
   // pointe vers l'ERP, à envoyer à un collègue (« regarde CE devis »).
   const copierLienInterne = async (d) => {
     const url = `${window.location.origin}/ventes/devis?devis=${d.id}`
-    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    try { await navigator.clipboard?.writeText(url) } catch (err) { console.warn('useDevisEnvoi.copierLienInterne : presse-papier indispo', err) }
     toast.success('Lien interne du devis copié.')
   }
 
@@ -78,7 +78,7 @@ export function useDevisEnvoi({
       const path = res?.data?.path_interne
       if (path) {
         const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
-        try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+        try { await navigator.clipboard?.writeText(url) } catch (err) { console.warn('useDevisEnvoi.handleCopierApercuInterne : presse-papier indispo', err) }
         toast.success('Aperçu interne copié — ne l’envoyez jamais au client (aucune notification).')
       } else {
         toast.error('Aperçu interne indisponible.')
@@ -109,7 +109,7 @@ export function useDevisEnvoi({
       const path = res?.data?.path || (res?.data?.token ? `/proposition/${res.data.token}` : null)
       if (path) {
         const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
-        try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+        try { await navigator.clipboard?.writeText(url) } catch (err) { console.warn('useDevisEnvoi.handleCopierLienProposition : presse-papier indispo', err) }
         toast.success('Lien copié — devis marqué envoyé.')
       } else {
         toast.error('Lien de proposition indisponible.')
@@ -236,8 +236,9 @@ export function useDevisEnvoi({
     try {
       const res = await ventesApi.superiorContactStatus(devisId)
       setSuperieurStatus((prev) => ({ ...prev, [devisId]: res.data }))
-    } catch {
+    } catch (err) {
       // Best-effort — un sondage manqué n'affiche simplement rien de nouveau.
+      console.warn('useDevisEnvoi.refreshSuperieurStatus : sondage manqué', err)
     }
   }
   const pendingSuperieurIds = useMemo(

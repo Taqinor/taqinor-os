@@ -192,3 +192,13 @@ class Ntwms29EndpointTests(Ntwms29Base):
 
     def test_endpoint_refuse_lanonyme(self):
         self.assertEqual(APIClient().get(self.URL).status_code, 401)
+
+    def test_parametres_aberrants_400_ou_bornes_jamais_500(self):
+        """ENF11 — seuil de retard gigantesque : plafonné ; texte : 400."""
+        api = auth(self.admin)
+        res = api.get(self.URL + '?retard_heures=999999999999')
+        self.assertEqual(res.status_code, 400, res.content)
+        res = api.get(self.URL + '?retard_heures=null')
+        self.assertEqual(res.status_code, 400, res.content)
+        res = api.get(self.URL + '?horizon_peremption=87600')
+        self.assertEqual(res.status_code, 200, res.content)

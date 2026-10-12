@@ -18,6 +18,11 @@ import io
 
 from django.db.models import Q
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers as drf_serializers
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -133,6 +138,13 @@ class PublicExportCreateView(_BulkPostAPIView):
     voir `bulk._export_registry()`.
     """
 
+    @extend_schema(
+        request=inline_serializer('PublicExportCreateRequete', {
+            'entite': drf_serializers.ChoiceField(
+                choices=sorted(EXPORT_SCOPE_BY_ENTITY)),
+            'format': drf_serializers.CharField(required=False),
+            'filtres': drf_serializers.DictField(required=False)}),
+        responses={202: BulkJobSerializer})
     def post(self, request):
         api_key = self._api_key(request)
         entite = (request.data.get('entite') or '').strip()
@@ -156,6 +168,15 @@ class PublicImportCreateView(_BulkPostAPIView):
     Mode ``upsert`` : ``dedup_key`` (``email``/``telephone``) — un rejeu du
     même fichier NE duplique jamais (recherche l'existant avant de créer)."""
 
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer(
+            'PublicImportCreateRequete', {
+                'file': drf_serializers.FileField(),
+                'entite': drf_serializers.ChoiceField(
+                    choices=sorted(IMPORT_SCOPE_BY_ENTITY)),
+                'mode': drf_serializers.CharField(required=False),
+                'dedup_key': drf_serializers.CharField(required=False)})},
+        responses={202: BulkJobSerializer})
     def post(self, request):
         api_key = self._api_key(request)
         entite = (request.data.get('entite') or '').strip()
@@ -241,6 +262,11 @@ class PublicCsvPullExportView(PublicApiResponseMixin, APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ApiKeyRateThrottle]
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'entite', OpenApiTypes.STR, OpenApiParameter.PATH,
+            enum=sorted(EXPORT_SCOPE_BY_ENTITY))],
+        responses={(200, 'text/csv'): OpenApiTypes.STR})
     def get(self, request, entite):
         api_key = request.auth
         if not isinstance(api_key, ApiKey):

@@ -31,6 +31,9 @@ LA RÈGLE.
 Fonction PURE : aucun accès base, aucun réseau.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Ordre d'affichage et libellés client (le nombre est ajouté à la fin).
 COMPOSANTS = (
@@ -76,6 +79,7 @@ def _est_panneau(it):
     try:
         from apps.ventes.solar_classification import is_panel
     except Exception:  # noqa: BLE001 — jamais casser un rendu
+        logger.warning("garanties._est_panneau : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     return is_panel(it.get("designation", "") or "",
                     it.get("_produit_nom", "") or "")

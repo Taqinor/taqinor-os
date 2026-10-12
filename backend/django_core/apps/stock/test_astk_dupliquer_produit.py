@@ -148,3 +148,10 @@ class HomonymeTests(TestCase):
         self.assertEqual(reponse.status_code, 400, reponse.content)
         self.assertIn('nom', reponse.json())
         self.assertEqual(Produit.objects.count(), avant)
+
+    def test_dupliquer_nom_non_texte_400_jamais_500(self):
+        """ENF11 — ``nom`` liste / corps liste : 400, plus d'AttributeError."""
+        url = f'/api/django/stock/produits/{self.source.pk}/dupliquer/'
+        for corps in ({'nom': [None, None]}, [None, None]):
+            reponse = self.api.post(url, corps, format='json')
+            self.assertEqual(reponse.status_code, 400, reponse.content)

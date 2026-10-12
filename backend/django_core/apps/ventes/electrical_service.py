@@ -185,6 +185,7 @@ def _lignes_du_devis(devis):
     try:
         return list(devis.lignes.all())
     except Exception:      # pragma: no cover - devis non persisté
+        logger.warning("electrical_service._lignes_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
 

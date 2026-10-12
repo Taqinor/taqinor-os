@@ -204,6 +204,15 @@ class TestConfigurationSnapshot(_Base):
         self.assertEqual(resp.data['diff']['modifiees'][0]['champs']
                          ['quantite'], ['1.00', '5.00'])
 
+    def test_parametres_a_b_non_entiers_400(self):
+        # ENF11 — ``a`` / ``b`` présents mais illisibles : 400 (ignorés en
+        # silence quand l'un des deux manquait).
+        url = (f'/api/django/ventes/devis/{self.devis.id}/'
+               'historique-configuration/')
+        for suite in ('?b=abc', '?a=x&b=1', '?a=1&b=null'):
+            resp = self.api.get(url + suite)
+            self.assertEqual(resp.status_code, 400, (suite, resp.data))
+
     def test_reponse_conforme_au_contrat_qjr513(self):
         """QJR553 — la réponse lue par l'écran d'historique a la forme du
         contrat committé ``devis_historique_configuration.json``."""

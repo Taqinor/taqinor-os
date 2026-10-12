@@ -31,7 +31,7 @@ from .models import Entite
 
 
 def _parse_csv(file_bytes, filename):
-    text = file_bytes.decode('utf-8-sig') if isinstance(file_bytes, bytes) else file_bytes
+    text = file_bytes.decode('utf-8-sig', errors='replace') if isinstance(file_bytes, bytes) else file_bytes
     reader = csv.DictReader(io.StringIO(text))
     rows = []
     for i, raw in enumerate(reader, start=2):  # ligne 1 = en-têtes
@@ -45,6 +45,11 @@ def _valider(rows):
     {ligne, motif}. Vérifie code présent, unicité intra-fichier, et que tout
     `code_parent` existe (dans le fichier OU déjà en base — vérifié au commit)."""
     erreurs = []
+    if not rows:
+        # ENF11 — fichier vide ou illisible (non UTF-8 lu avec remplacement) :
+        # l'aperçu le DIT au lieu d'annoncer « 0 erreur ».
+        erreurs.append({'ligne': 1, 'motif': (
+            'Aucune ligne lisible (en-têtes attendus : code, nom).')})
     codes_fichier = set()
     valides = []
     for ligne, row in rows:

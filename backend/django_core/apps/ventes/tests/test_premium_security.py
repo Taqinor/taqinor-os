@@ -112,8 +112,9 @@ class TestPremiumEngineSecurity(WideTeardownTimeoutMixin, TransactionTestCase):
             return str(out)  # skip the real render — only hold the lock
 
         G._render_premium_pdf = slow
+        # WOW15 — chemin unique (pas de /tmp fixe partagé entre workers --parallel)
         out_path = tempfile.NamedTemporaryFile(
-            suffix='.pdf', delete=False).name  # WOW15 — chemin unique (pas de /tmp fixe partagé entre workers --parallel)
+            suffix='.pdf', delete=False).name
         try:
             data = self._data()
             t = threading.Thread(

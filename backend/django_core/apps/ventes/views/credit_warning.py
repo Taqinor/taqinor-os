@@ -5,8 +5,11 @@ pour afficher un warning doux quand l'encours du client dépasse son plafond.
 Jamais un blocage dur : l'encours est calculé à la volée depuis les factures
 ouvertes et renvoyé avec un message prêt à l'affichage.
 """
+from decimal import Decimal, InvalidOperation
+
 from drf_spectacular.utils import extend_schema
 from ..openapi_params import qstr
+from . import openapi_docs as D
 from django.http import Http404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -16,7 +19,7 @@ from authentication.permissions import IsAnyRole
 from core.selectors import get_company_object
 
 
-@extend_schema(parameters=[qstr('montant_ttc')])
+@extend_schema(parameters=[qstr('montant_ttc')], responses=D.CreditWarningResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_credit_warning(request, client_id):
@@ -53,7 +56,18 @@ def client_credit_warning(request, client_id):
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
 
-    montant_ttc = request.query_params.get('montant_ttc')
+    # ENF11 — ``?montant_ttc=`` vide = absent ; une valeur non numérique
+    # (ou NaN/Infinity) répond 400 au lieu du 500 ``InvalidOperation``.
+    montant_ttc = request.query_params.get('montant_ttc') or None
+    if montant_ttc is not None:
+        try:
+            valeur = Decimal(str(montant_ttc).strip())
+        except (InvalidOperation, ValueError):
+            valeur = None
+        if valeur is None or not valeur.is_finite():
+            return Response(
+                {'montant_ttc': 'Montant invalide : un nombre est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
     result = _warning(client, montant_ttc_nouveau=montant_ttc)
     recouvrement = etat_recouvrement_client(company, client_id)
 

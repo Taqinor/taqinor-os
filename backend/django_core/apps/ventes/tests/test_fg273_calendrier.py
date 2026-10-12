@@ -96,6 +96,19 @@ class CalendrierReglementaireTest(TestCase):
             e['statut_alerte'] == 'expire' for e in resp.data['echeances']))
         self.assertEqual(len(resp.data['echeances']), 1)
 
+    def test_parametres_mal_formes_400(self):
+        # ENF11 — seuil / validite / statut illisibles : 400 nommé (ils
+        # étaient ignorés en silence au profit du défaut).
+        for params in ({'seuil': 'abc'}, {'seuil': '-1'},
+                       {'validite': 'x'}, {'validite': '-3'},
+                       {'validite': '99999999999999999999'},
+                       {'statut': 'nimporte'}):
+            resp = self.api.get(self.url, params)
+            self.assertEqual(resp.status_code, 400, (params, resp.data))
+        resp = self.api.get(self.url, {'seuil': '10', 'validite': '30',
+                                       'statut': 'expire'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_completed_pieces_excluded(self):
         d = make_dossier(self.company, self.user, 'DEV-CAL-4')
         self._checklist(d, -5, code='done', libelle='Fournie',

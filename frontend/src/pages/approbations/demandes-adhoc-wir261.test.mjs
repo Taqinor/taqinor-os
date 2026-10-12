@@ -17,8 +17,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const PAGE = readFileSync(join(HERE, 'ApprobationsPage.jsx'), 'utf8')
 
 test('charge aussi les demandes info_requested (pas seulement pending)', () => {
-  assert.match(PAGE, /getApprovalRequests\(\{ status: 'pending' \}\)/)
-  assert.match(PAGE, /getApprovalRequests\(\{ status: 'info_requested' \}\)/)
+  // ENF15 — toutes les pages : l'appel porte page/page_size (`{ ...p, status }`).
+  assert.match(PAGE, /getApprovalRequests\(\{ \.\.\.p, status: 'pending' \}\)/)
+  assert.match(PAGE, /getApprovalRequests\(\{ \.\.\.p, status: 'info_requested' \}\)/)
   // Les deux listes sont fusionnées, jamais l'une au détriment de l'autre.
   assert.match(PAGE, /setDemandes\(\[\.\.\.pending, \.\.\.infoRequested\]\)/)
 })

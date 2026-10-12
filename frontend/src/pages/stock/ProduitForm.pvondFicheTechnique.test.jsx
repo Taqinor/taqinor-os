@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
    PVOND (fondateur 18/08) — section « Fiche technique » de ProduitForm.jsx.
@@ -26,96 +22,12 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    (pvondFicheTechnique.js) EST exécutée par pvondFicheTechnique.test.mjs
    (node --test, sans dépendance). */
 
-const { apiPost, apiGet } = vi.hoisted(() => ({
-  apiPost: vi.fn(),
-  apiGet: vi.fn(() => Promise.resolve({ data: [] })),
-}))
-
-vi.mock('../../api/axios', () => ({
-  default: { get: (...args) => apiGet(...args), post: (...args) => apiPost(...args) },
-}))
-
-// Radix Select ne s'ouvre pas de façon fiable sous jsdom (portail + pointer
-// events) — pattern établi (pages/ventes/ListesPrixPage.test.jsx,
-// pages/monitoring/ClientPortalPage.test.jsx) : remplacer les primitives
-// Select par un <select> natif. ProduitForm.jsx pose toujours l'`id` sur
-// <SelectTrigger> (jamais sur <Select> lui-même — Radix Select.Root ne rend
-// aucun nœud DOM propre) ; on le repêche depuis les enfants pour que
-// `getByLabelText` (association <label htmlFor>, posée par FormField)
-// continue de fonctionner SANS toucher au code de production.
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  const Select = ({ value, onValueChange, children }) => {
-    const kids = Array.isArray(children) ? children : [children]
-    const trigger = kids.find((k) => k?.props?.id)
-    return (
-      <select
-        id={trigger?.props?.id}
-        value={value}
-        onChange={(e) => onValueChange(e.target.value)}
-      >
-        {kids}
-      </select>
-    )
-  }
-  return {
-    ...actual,
-    Select,
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
-
-const {
-  getFichesTechniques, createFicheTechnique, updateFicheTechnique,
-  createProduitApi, updateProduitApi,
-} = vi.hoisted(() => ({
-  getFichesTechniques: vi.fn(() => Promise.resolve({ data: [] })),
-  createFicheTechnique: vi.fn(() => Promise.resolve({ data: { id: 501 } })),
-  updateFicheTechnique: vi.fn(() => Promise.resolve({ data: {} })),
-  // `stockSlice.createProduit`/`updateProduit` (createAsyncThunk RÉELS, non
-  // mockés) appellent `stockApi.createProduit`/`stockApi.updateProduit` — les
-  // stubber ICI suffit, pas besoin de mocker le slice.
-  createProduitApi: vi.fn((data) => Promise.resolve({ data: { id: 42, ...data } })),
-  updateProduitApi: vi.fn((id, data) => Promise.resolve({ data: { id, ...data } })),
-}))
-
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduitPrixFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerTcoFournisseurs: () => Promise.resolve({ data: { fournisseurs: [] } }),
-    createPrixFournisseur: () => Promise.resolve({ data: {} }),
-    updatePrixFournisseur: () => Promise.resolve({ data: {} }),
-    deletePrixFournisseur: () => Promise.resolve({ data: {} }),
-    uploadProduitImage: () => Promise.resolve({ data: {} }),
-    getFichesTechniques: (...args) => getFichesTechniques(...args),
-    createFicheTechnique: (...args) => createFicheTechnique(...args),
-    updateFicheTechnique: (...args) => updateFicheTechnique(...args),
-    createProduit: (...args) => createProduitApi(...args),
-    updateProduit: (...args) => updateProduitApi(...args),
-  },
-}))
+vi.mock('../../api/axios', async () => (await import('./ProduitForm.testHelpers.jsx')).axiosMock)
+vi.mock('../../ui', async (importActual) => (await import('./ProduitForm.testHelpers.jsx')).uiMock(await importActual()))
+vi.mock('../../api/stockApi', async () => (await import('./ProduitForm.testHelpers.jsx')).stockApiMock)
 
 import ProduitForm from './ProduitForm.jsx'
-
-const store = configureStore({
-  reducer: {
-    auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
-    stock: (s = { categories: [], fournisseurs: [], produits: [] }) => s,
-  },
-})
-
-function wrapper({ children }) {
-  return (
-    <Provider store={store}>
-      <MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter>
-    </Provider>
-  )
-}
+import { getFichesTechniques, createFicheTechnique, updateFicheTechnique, updateProduitApi, wrapper, resetFicheMocks } from './ProduitForm.testHelpers.jsx'
 
 const ONDULEUR = {
   id: 7, nom: 'Onduleur hybride Deye 8kW', sku: 'OND-DEYE-8K', marque: 'Deye',
@@ -137,10 +49,7 @@ function renderCreate() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  apiGet.mockResolvedValue({ data: [] })
-  getFichesTechniques.mockResolvedValue({ data: [] })
-  createFicheTechnique.mockResolvedValue({ data: { id: 501 } })
-  updateFicheTechnique.mockResolvedValue({ data: {} })
+  resetFicheMocks()
 })
 
 describe('ProduitForm — section « Fiche technique » (PVOND)', () => {

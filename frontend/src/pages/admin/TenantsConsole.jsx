@@ -74,7 +74,8 @@ export default function TenantsConsole() {
   // parquée, auquel cas il n'y a simplement aucune demande).
   const chargerDemandes = useCallback(() => (
     api.get('/adminops/demandes-inscription/?statut=en_attente')
-      .then(({ data }) => setDemandes(data?.results ?? []))
+      // DemandeInscriptionListView (APIView, non paginée) : enveloppe {results, en_attente}.
+      .then(({ data }) => { const { results: lignes = [] } = data ?? {}; setDemandes(lignes) })
       .catch(() => setDemandes([]))
   ), [])
 
@@ -85,7 +86,9 @@ export default function TenantsConsole() {
       statutFiltre ? { statut: statutFiltre } : undefined,
     )
       .then(({ data }) => {
-        setFacturesLicence(data?.results ?? [])
+        // FactureLicenceListView (APIView, non paginée) : enveloppe {results, total_du_ttc}.
+        const { results: lignes = [] } = data ?? {}
+        setFacturesLicence(lignes)
         setTotalDuTtc(data?.total_du_ttc ?? 0)
         setErreurFacturation('')
       })

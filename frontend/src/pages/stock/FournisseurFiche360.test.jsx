@@ -3,9 +3,8 @@ import { render, screen, waitFor, within, fireEvent } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import authReducer from '../../features/auth/store/authSlice'
+import { makeAuthStore } from './stockPage.testHelpers.jsx'
 
 /* ============================================================================
    XPUR25 — Fiche fournisseur 360. L'agrégat `fournisseurs/{id}/vue-360/` est
@@ -68,17 +67,7 @@ import stockApi from '../../api/stockApi'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 import FournisseurFiche360 from './FournisseurFiche360.jsx'
 
-function makeStore({ role = 'admin', permissions = [] } = {}) {
-  return configureStore({
-    reducer: { auth: authReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role, role_nom: role, permissions,
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const makeStore = (o) => makeAuthStore({ permissions: [], ...o })
 
 function renderPage({ authState, fournisseurId = '7' } = {}) {
   return render(
@@ -180,11 +169,11 @@ describe('ASTK178 — onglets BCF / retours filtrés côté serveur', () => {
     const panel = await screen.findByTestId('f360-tab-bcf')
     expect(await within(panel).findByText('BCF-2026-10-0031')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/stock/bons-commande-fournisseur/',
-      { params: { fournisseur: '7' } })
+      expect.objectContaining({ params: expect.objectContaining({ fournisseur: '7' }) }))
     await userEvent.click(screen.getByRole('tab', { name: /Retours/ }))
     expect(await screen.findByText('RF-2026-10-0004')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/stock/retours-fournisseur/',
-      { params: { fournisseur: '7' } })
+      expect.objectContaining({ params: expect.objectContaining({ fournisseur: '7' }) }))
   })
 })
 
@@ -267,7 +256,7 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
     await userEvent.click(await screen.findByRole('tab', { name: /Retours/ }))
     const panel = await screen.findByTestId('f360-tab-retours')
     expect(within(panel).getByText('RET-1')).toBeInTheDocument()
-    expect(stockApi.getRetoursFournisseurDe).toHaveBeenCalledWith('7')
+    expect(stockApi.getRetoursFournisseurDe).toHaveBeenCalledWith('7', expect.anything())
   })
 })
 

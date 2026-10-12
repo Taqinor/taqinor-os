@@ -23,15 +23,18 @@
 // les commandes. `company` n'est JAMAIS envoyée : elle est imposée côté
 // serveur (TenantMixin).
 import { useMemo, useState } from 'react'
-import { FileText, Mail, MessageCircle, Plus, Trash2, Eye, Save } from 'lucide-react'
+import { FileText, Mail, MessageCircle, Plus, Eye, Save } from 'lucide-react'
 import api from '../../api/axios'
 import { toast } from '../../ui/confirm'
 import useSectionListeAdmin from './useSectionListeAdmin'
 import {
-  Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
-  EmptyState, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Card, CardContent, Input, Textarea, Button, Badge, EmptyState, Select,
+  SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import {
+  ChargementTexte, ErreurChargementListe, BoutonSupprimerLigne, ZoneCreation, LigneChamps,
+} from './EtatsSection'
 
 // Canaux du modèle (miroir de BrandedTemplate.KIND_CHOICES).
 // source-choix: core.BrandedTemplate.kind
@@ -52,11 +55,14 @@ const CONTEXTE_EXEMPLE = {
 
 const VIDE = { kind: 'email', code: '', nom: '', sujet: '', corps: '' }
 
+// BrandedTemplateViewSet : pagination_class = None (core/views.py) — lecture simple, tableau servi.
+const lireModeles = () => api.get('/core/branded-templates/').then((r) => (Array.isArray(r.data) ? r.data : []))
+
 export default function ModelesBrandesSection() {
   // APAR41 — confirmation MAISON + droit + état de liste : useSectionListeAdmin.
   const {
     confirmerSuppression, canManage, rows, loading, loadError, busy, setBusy, charger,
-  } = useSectionListeAdmin('/core/branded-templates/')
+  } = useSectionListeAdmin(lireModeles)
 
   const [draft, setDraft] = useState(VIDE)
   const [selectedId, setSelectedId] = useState(null)
@@ -169,16 +175,9 @@ export default function ModelesBrandesSection() {
     }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
+  if (loading) return <ChargementTexte />
   if (loadError) {
-    return (
-      <EmptyState title="Impossible de charger les modèles brandés"
-        description="Une erreur est survenue lors du chargement." className="py-6" />
-    )
+    return <ErreurChargementListe title="Impossible de charger les modèles brandés" />
   }
 
   const selection = rows.find((r) => r.id === selectedId) ?? null
@@ -231,11 +230,8 @@ export default function ModelesBrandesSection() {
                           <Eye className="size-4" aria-hidden="true" /> Aperçu
                         </Button>
                         {canManage && (
-                          <IconButton size="sm" variant="outline" label="Supprimer le modèle"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => supprimer(row)}>
-                            <Trash2 className="size-4" aria-hidden="true" />
-                          </IconButton>
+                          <BoutonSupprimerLigne label="Supprimer le modèle"
+                            onClick={() => supprimer(row)} />
                         )}
                       </div>
                     </div>
@@ -246,9 +242,8 @@ export default function ModelesBrandesSection() {
           </div>
 
           {/* ── Création (admin/responsable) ──────────────────────────────── */}
-          {canManage && (
-            <div className="mt-3 rounded-lg border border-dashed border-border p-3">
-              <div className="flex flex-wrap gap-1.5">
+          <ZoneCreation visible={canManage}>
+              <LigneChamps>
                 <div className="min-w-[140px] flex-1">
                   <Select value={draft.kind}
                     onValueChange={(v) => setDraft((d) => ({ ...d, kind: v }))}>
@@ -268,7 +263,7 @@ export default function ModelesBrandesSection() {
                   placeholder="Nom (ex. Relance de devis)"
                   value={draft.nom}
                   onChange={(e) => setDraft((d) => ({ ...d, nom: e.target.value }))} />
-              </div>
+              </LigneChamps>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <Input className="min-w-[200px] flex-1"
                   placeholder="Sujet / titre (variables autorisées)"
@@ -284,8 +279,7 @@ export default function ModelesBrandesSection() {
                   <Plus className="size-4" aria-hidden="true" /> Créer le modèle
                 </Button>
               </div>
-            </div>
-          )}
+            </ZoneCreation>
         </CardContent>
       </Card>
 

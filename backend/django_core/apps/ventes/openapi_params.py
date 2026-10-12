@@ -22,9 +22,20 @@ def qstr(name, enum=None, required=False, desc=None):
 
 
 ENTITE = qint('entite', desc="Filtre optionnel par entité juridique.")
+#: ENF11 — ``?month=YYYY-MM`` (mois 01-12, année > 0) et ``?quarter=YYYY-Qn``
+#: (n de 1 à 4 ; le serveur accepte aussi ``q`` minuscule) : le schéma dit
+#: exactement ce que ``exports.period_bounds`` sait lire (sinon 400 « Période
+#: invalide »).
+MOIS = r'^(?!0000)\d{4}-(0[1-9]|1[0-2])$'
+TRIMESTRE = r'^(?!0000)\d{4}-[Qq][1-4]$'
+
 PERIODE = [
-    qstr('month', desc='YYYY-MM'),
-    qstr('quarter', desc='YYYY-Q'),
-    qstr('start', desc='Date de début (ISO), avec `end`.'),
-    qstr('end', desc='Date de fin incluse (ISO), avec `start`.'),
+    OpenApiParameter('month', OpenApiTypes.STR, required=False,
+                     description='YYYY-MM', pattern=MOIS),
+    OpenApiParameter('quarter', OpenApiTypes.STR, required=False,
+                     description='YYYY-Qn (n de 1 à 4)', pattern=TRIMESTRE),
+    OpenApiParameter('start', OpenApiTypes.DATE, required=False,
+                     description='Date de début (ISO), avec `end`.'),
+    OpenApiParameter('end', OpenApiTypes.DATE, required=False,
+                     description='Date de fin incluse (ISO), avec `start`.'),
 ]

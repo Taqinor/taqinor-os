@@ -363,6 +363,7 @@ def _photos_count(chantier):
         from apps.installations.selectors import chantier_photos
         return chantier_photos(chantier.company, chantier.id).count()
     except Exception:
+        logger.warning("builders._photos_count : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
 
 
@@ -382,6 +383,7 @@ def _checklist_summary(chantier):
         try:
             rows = list(manager.all())
         except Exception:
+            logger.warning("builders._checklist_summary : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if not rows:
             continue
@@ -626,7 +628,8 @@ def generate_bon_livraison(chantier):
     rendu FR par défaut passe par le gabarit HISTORIQUE, intégralement
     inchangé (`document_bon_livraison.html`) → byte-identique. Un client
     `langue_document='ar'` passe par le NOUVEAU gabarit dédié
-    (`document_bon_livraison_ar.html`, RTL, police système — APDF50) — jamais de traduction automatique, libellés fixes traduits.
+    (`document_bon_livraison_ar.html`, RTL, police système — APDF50) — jamais de traduction
+    automatique, libellés fixes traduits.
     """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
@@ -827,6 +830,7 @@ def _client_forme(chantier):
         return chantier.checklist.filter(cle='client_forme',
                                          fait=True).exists()
     except Exception:
+        logger.warning("builders._client_forme : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 

@@ -42,7 +42,7 @@ function write(key, value) {
   try {
     if (value === null || value === undefined || value === '') storage()?.removeItem(key)
     else storage()?.setItem(key, String(value))
-  } catch { /* stockage indisponible : réglage non persisté sur cet appareil */ }
+  } catch (err) { console.warn('appLock.write : stockage indisponible : réglage non persisté sur cet appareil', err) }
 }
 
 // ── Réglage ────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import MicDicteeButton from '../../components/MicDicteeButton'
 import { formatDateTime } from '../../lib/format'
+import toutesLesPages from '../../pages/parametres/toutesLesPages'
 
 /* MSGACC1 — Écran d'envoi des messages d'accueil (Paramètres, réservé
    Responsable/Admin — reflète IsAdminOrResponsableTier côté serveur).
@@ -55,17 +56,20 @@ export default function MessagesAccueilPage() {
     [users],
   )
 
-  const recharger = () => notificationsApi.getMessagesAccueil()
-    .then((r) => setMessages(r.data?.results ?? r.data ?? []))
+  const recharger = () => toutesLesPages((params) => notificationsApi.getMessagesAccueil(params))
+    .then((rows) => setMessages(rows))
     .catch(() => setMessages([]))
 
   useEffect(() => {
     let active = true
-    Promise.all([api.get('/users/'), notificationsApi.getMessagesAccueil()])
-      .then(([u, m]) => {
+    Promise.all([
+      toutesLesPages((params) => api.get('/users/', { params })),
+      toutesLesPages((params) => notificationsApi.getMessagesAccueil(params)),
+    ])
+      .then(([utilisateurs, messagesAccueil]) => {
         if (!active) return
-        setUsers(u.data?.results ?? u.data ?? [])
-        setMessages(m.data?.results ?? m.data ?? [])
+        setUsers(utilisateurs)
+        setMessages(messagesAccueil)
       })
       .catch(() => { if (active) { setUsers([]); setMessages([]) } })
       .finally(() => { if (active) setLoading(false) })

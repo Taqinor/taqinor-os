@@ -100,8 +100,9 @@ class PeseeLigneActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_pesee_payload(ligne, pesee))
 
-    @extend_schema(request=inline_serializer('RapprocherPeseesCorps', {'note': serializers.CharField(required=False,
-                                                                                                     allow_blank=True)}), responses={
+    @extend_schema(request=inline_serializer('RapprocherPeseesCorps',
+                                             {'note': serializers.CharField(required=False, allow_blank=True)}),
+                   responses={
         200: inline_serializer('StockReceptionPeseeRapprochement', {
             'ajustes': serializers.IntegerField(),
             'inchanges': serializers.IntegerField(),

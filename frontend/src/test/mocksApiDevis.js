@@ -109,3 +109,12 @@ export function generateurSimule(enfants = (props) => `editId=${String(props.edi
     },
   }
 }
+
+// Variantes à une ligne des doubles d'Édition complète (lead espionné, devis vide, prix non posé).
+export const crmApiAvecLead = () => crmApiMock({ getLead: vi.fn() })
+export const ventesApiEdition = (extra = {}) => ventesApiMock({
+  getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
+  getPrixApplicable: vi.fn(),
+  ...extra,
+})
+export const stockApiDuplication = () => stockApiMock({ dupliquerProduit: vi.fn() })

@@ -877,7 +877,7 @@ def capacite_toit_du_devis(devis):
         setattr(devis, _MEMO_CAPACITE, (layout, capacite))
     except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le
         # mémo, jamais le résultat.
-        pass
+        logger.warning("calepinage_options.capacite_toit_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
     return capacite
 
 
@@ -890,6 +890,7 @@ def _contraintes_site_du_devis(devis):
         calepinage = calepinage_du_devis(getattr(devis, 'pk', None),
                                          getattr(devis, 'company', None))
     except Exception:  # noqa: BLE001 — pas de calepinage = pas de contrainte
+        logger.warning("calepinage_options._contraintes_site_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     if calepinage is None:
         return {}
@@ -1014,6 +1015,7 @@ def _design_stocke(devis):
         from .electrical_service import conception_electrique_stockee
         design = conception_electrique_stockee(devis)
     except Exception:  # noqa: BLE001 — pas de conception ⇒ pas de pointeur
+        logger.warning("calepinage_options._design_stocke : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     return design if isinstance(design, dict) else None
 

@@ -111,6 +111,7 @@ def is_dgi_transmission_enabled(company):
                    .first())
         return bool(profile and profile.dgi_transmission_actif)
     except Exception:  # pragma: no cover - lecture best-effort, OFF si échec
+        logger.warning("transmission.is_dgi_transmission_enabled : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -123,6 +124,7 @@ def _provider_key_for(company):
                    .first())
         return (profile and profile.dgi_transmission_provider) or 'noop'
     except Exception:  # pragma: no cover
+        logger.warning("transmission._provider_key_for : erreur ignorée (mode dégradé)", exc_info=True)
         return 'noop'
 
 

@@ -59,7 +59,7 @@ class _PanneDealEnregistre:
         APPROUVE = 'approuve'
         A_PAYER = 'a_payer'
 
-    class objects:  # noqa: N801 — imite le gestionnaire du modèle
+    class objects:  # imite le gestionnaire du modèle
         filter = staticmethod(_panne_sql)
 
 

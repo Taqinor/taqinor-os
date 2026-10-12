@@ -3,20 +3,24 @@ import { ReceiptText, Plus, FileText, AlertTriangle, ShieldCheck,
   Wallet, CalendarClock,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { usePermissionAchats, useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import {
-  Button, StatusPill, DataTable, Badge,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, StatusPill, Badge, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, Input, Textarea, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { TableauStock, SelectFournisseur } from './ComposantsStock'
+
+import { EnteteStock } from './EnteteStock'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { frErrForm } from '../../lib/frErr'
+
+const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
 // G5 — Factures fournisseur / comptes à payer (AP).
 // Le solde dû = TTC − Σ paiements ; le statut de règlement est recalculé à
@@ -37,19 +41,6 @@ const MODES = {
   carte: 'Carte',
   effet: 'Effet / traite',
   autre: 'Autre',
-}
-
-function frError(err, fallback = 'Une erreur est survenue. Réessayez.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) return data.non_field_errors[0]
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
 }
 
 const fmtMad = (v) => formatMAD(v)
@@ -123,14 +114,8 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="ff-fou">Fournisseur</label>
-            <Select value={fournisseur ? String(fournisseur) : '__none'}
-                    onValueChange={(v) => setFournisseur(v === '__none' ? '' : v)}>
-              <SelectTrigger id="ff-fou"><SelectValue placeholder="— Choisir —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Choisir un fournisseur —</SelectItem>
-                {fournisseurs.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SelectFournisseur id="ff-fou" value={fournisseur} onChange={setFournisseur}
+                               fournisseurs={fournisseurs} placeholder="— Choisir —" />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="ff-bon">Bon de commande (optionnel)</label>
@@ -508,8 +493,8 @@ export default function FacturesFournisseur() {
           setTotalDu(r.data?.total_du ?? null)
           return r.data?.results ?? []
         })
-      : stockApi.getFacturesFournisseur({ ordering: '-date_creation' })
-          .then((r) => { setTotalDu(null); return r.data?.results ?? r.data ?? [] })
+      : fetchAllPages((page) => stockApi.getFacturesFournisseur({ ordering: '-date_creation', page }).then((r) => r.data), { concurrency: 3 })
+          .then((rows) => { setTotalDu(null); return Array.isArray(rows) ? rows : (rows?.results ?? []) })
     fetch
       .then((rows) => setItems(rows))
       .catch(() => setError('Chargement des factures impossible.'))
@@ -522,8 +507,8 @@ export default function FacturesFournisseur() {
   useEffect(() => {
     stockApi.getAllFournisseurs()
       .then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
-    stockApi.getBonsCommandeFournisseur({ page_size: 1000 })
-      .then((r) => setBons(r.data?.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setBons(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
     stockApi.acomptesFournisseurOuverts()
       .then((r) => setAcomptesOuverts(r.data ?? [])).catch(() => {})
   }, [])
@@ -573,10 +558,7 @@ export default function FacturesFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={ReceiptText}
         title="Factures fournisseur"
         subtitle={`${items.length} facture(s)${aPayerSeul && totalDu != null ? ` — ${fmtMad(totalDu)} à payer` : ''}`}
@@ -656,11 +638,7 @@ export default function FacturesFournisseur() {
         </div>
       )}
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(f) => f.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (référence, fournisseur)…"
         globalColumns={['reference', 'fournisseur_nom', 'ref_fournisseur']}
         onRowClick={openFacture}

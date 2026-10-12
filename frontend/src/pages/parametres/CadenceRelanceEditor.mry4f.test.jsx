@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 
 /* MRY28 — éditeur des trois cadences de relance (contact / après devis /
    réveil), Paramètres → Référentiels → « Cadences de relance ». Ce module
@@ -43,24 +43,12 @@ vi.mock('../../api/parametresApi', () => ({
 }))
 
 import parametresApi from '../../api/parametresApi'
-import { ThemeProvider } from '../../design/ThemeProvider'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
+import { monterEditeur, declarerHooksCadence } from './cadenceRelance.testHelpers.jsx'
 
-beforeEach(() => {
-  parametresApi.getCadenceRelance.mockClear()
-  parametresApi.updateCadenceRelanceEtape.mockClear()
-})
-afterEach(() => cleanup())
+declarerHooksCadence(parametresApi)
 
-const renderEditor = async () => {
-  await act(async () => {
-    render(
-      <ThemeProvider>
-        <CadenceRelanceEditor />
-      </ThemeProvider>,
-    )
-  })
-}
+const renderEditor = () => monterEditeur(CadenceRelanceEditor)
 
 describe('MRY28 CadenceRelanceEditor', () => {
   it('charge la cadence « contact » par défaut et affiche ses étapes', async () => {

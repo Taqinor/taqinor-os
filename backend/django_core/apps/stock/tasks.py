@@ -40,6 +40,7 @@ def _deja_notifie_aujourdhui(event_type, link, company):
             company=company, event_type=event_type, link=link,
             created_at__date=today).exists()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("tasks._deja_notifie_aujourdhui : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -192,6 +193,7 @@ def _deja_notifie_aujourdhui_societe(event_type, company):
             event_type=event_type, company=company,
             created_at__date=today).exists()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("tasks._deja_notifie_aujourdhui_societe : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 

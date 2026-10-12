@@ -6,26 +6,26 @@ import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutG
   RotateCcw, UserCheck, Check, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import tiersApi from '../../api/tiersApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
 import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import {
-  Button, IconButton, DataTable, Spinner,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormField,
-  Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Badge, EmptyState,
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Button, IconButton, DataTable, Spinner, Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription, DialogFooter, Form, FormField, Input,
+  Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Badge, EmptyState, AlertDialog,
 } from '../../ui'
+import DialogueSuppressionDefinitive from './DialogueSuppressionDefinitive'
+import { EnteteStock } from './EnteteStock'
 // ASTK184 — confirmation maison (AlertDialog) : plus aucune boîte native.
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { frErrChamps as frErr } from '../../lib/frErr'
+import { AlerteErreurStock } from './BandeauxListeStock'
+import PiedDialogueFermer from './PiedDialogueFermer'
 
 // XPUR4 — les 4 statuts fournisseur (miroir de `Fournisseur.Statut` côté
 // serveur — le blocage est déjà appliqué et testé serveur, cf.
@@ -70,18 +70,6 @@ const STATUT_VALIDATION_TONE = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 function emailValide(email) {
   return !email || EMAIL_RE.test(email.trim())
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  for (const v of Object.values(data)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return fallback
 }
 
 // ── WIR108 — gestion des catégories fournisseur (XPUR5, référentiel léger) ──
@@ -145,11 +133,7 @@ function CategorieFournisseurManager({ categories, onClose, onChanged, isAdmin }
           </Button>
         </form>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
 
         {categories.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucune catégorie.</p>
@@ -407,11 +391,7 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
                       onChange={(e) => setField('motif_blocage', e.target.value)} />
           </FormField>
 
-          {errors.submit && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {errors.submit}
-            </div>
-          )}
+          <AlerteErreurStock error={errors.submit} enForm />
 
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
@@ -474,11 +454,7 @@ function ScorecardModal({ fournisseur, onClose }) {
           </DialogDescription>
         </DialogHeader>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
         {!data && !error && (
           <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
             <Spinner /> Chargement…
@@ -495,9 +471,7 @@ function ScorecardModal({ fournisseur, onClose }) {
           </div>
         )}
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedDialogueFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )
@@ -505,46 +479,23 @@ function ScorecardModal({ fournisseur, onClose }) {
 
 // ── WIR190 — confirmation de suppression définitive (patron StockList) ──────
 function ForceDeleteFournisseurModal({ fournisseur, onCancel, onConfirm, loading }) {
-  const [typed, setTyped] = useState('')
-  const expected = fournisseur.nom
-  const isValid = typed.trim() === expected.trim()
-
   return (
-    <AlertDialog open onOpenChange={(o) => { if (!o) onCancel() }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="text-destructive">Suppression définitive</AlertDialogTitle>
-          <AlertDialogDescription>
-            Cette action supprimera le fournisseur et son historique. Elle est{' '}
-            <strong>irréversible</strong>.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm leading-relaxed">
+    <DialogueSuppressionDefinitive
+      description={(
+        <>
+          Cette action supprimera le fournisseur et son historique. Elle est{' '}
+          <strong>irréversible</strong>.
+        </>
+      )}
+      resume={(
+        <>
           <div><span className="inline-block min-w-32 text-muted-foreground">Fournisseur</span><strong>{fournisseur.nom}</strong></div>
           <div><span className="inline-block min-w-32 text-muted-foreground">Produits liés</span>{fournisseur.nb_produits ?? 0}</div>
           <div><span className="inline-block min-w-32 text-muted-foreground">Bons de commande</span>{fournisseur.nb_bons_commande ?? 0}</div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor="fdf-confirm">
-            Tapez <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">{expected}</code> pour confirmer
-          </label>
-          <Input id="fdf-confirm" value={typed} onChange={(e) => setTyped(e.target.value)}
-                 placeholder={`Saisir : ${expected}`} autoFocus />
-        </div>
-
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Annuler</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={!isValid || loading}
-            onClick={(e) => { e.preventDefault(); onConfirm(fournisseur) }}
-          >
-            {loading ? 'Suppression…' : 'Supprimer définitivement'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+        </>
+      )}
+      expected={fournisseur.nom} idChamp="fdf-confirm" loading={loading}
+      onCancel={onCancel} onConfirm={() => onConfirm(fournisseur)} />
   )
 }
 
@@ -588,8 +539,9 @@ export default function FournisseursStock() {
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
+    // getAllFournisseurs lit déjà toutes les pages (ASTK185, `{ data: [...] }`).
     stockApi.getAllFournisseurs({ ordering: 'nom' })
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .then(({ data: lignes }) => setItems(Array.isArray(lignes) ? lignes : (lignes?.results ?? [])))
       .catch(() => setError('Chargement des fournisseurs impossible.'))
       .finally(() => setLoading(false))
   }
@@ -598,9 +550,10 @@ export default function FournisseursStock() {
   // endpoint. Dégrade proprement (catégories vides) plutôt que de planter
   // tout l'écran sur `undefined(...) is not a function`.
   const reloadCategories = () => {
-    stockApi.getCategoriesFournisseur?.({ ordering: 'nom' })
-      ?.then((r) => setCategories(r.data?.results ?? r.data ?? []))
-      ?.catch(() => {})
+    if (typeof stockApi.getCategoriesFournisseur !== 'function') return
+    fetchAllPages((page) => stockApi.getCategoriesFournisseur({ ordering: 'nom', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setCategories(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      .catch(() => {})
   }
   const reloadArchived = () => {
     // Fable review (fix WIR190) — react-hooks/set-state-in-effect : ce
@@ -608,8 +561,9 @@ export default function FournisseursStock() {
     // ci-dessous ; poser `setLoadingArchived(true)` en microtask (jamais
     // synchrone dans l'appel) évite le cascading update détecté par la règle.
     Promise.resolve().then(() => setLoadingArchived(true))
+    // lecture complète déjà faite par le wrapper (ASTK185).
     stockApi.getAllFournisseursArchived()
-      .then((r) => setItemsArchived(r.data?.results ?? r.data ?? []))
+      .then(({ data: lignes }) => setItemsArchived(Array.isArray(lignes) ? lignes : (lignes?.results ?? [])))
       .catch(() => toastError('Chargement des fournisseurs archivés impossible.'))
       .finally(() => setLoadingArchived(false))
   }
@@ -832,10 +786,7 @@ export default function FournisseursStock() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Truck}
         title="Fournisseurs"
         subtitle={`${items.length} fournisseur(s)`}
@@ -880,11 +831,7 @@ export default function FournisseursStock() {
                      onDone={reload} />
       )}
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <AlerteErreurStock error={error} />
       {avertissementNom && (
         <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
           {avertissementNom}

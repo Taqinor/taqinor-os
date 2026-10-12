@@ -7,8 +7,10 @@ Agrégation LECTURE SEULE, scopée société, sans aucune écriture. Renvoie :
   - Encaissé vs facturé (mois en cours ou période paramétrée)
   - Pipeline par commercial (décompte + valeur totale des devis actifs)
 """
-from drf_spectacular.utils import extend_schema
-from .openapi_params import qstr
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from . import openapi_shapes as SH
+from .openapi_params import MOIS
 from decimal import Decimal
 
 from django.db.models import Count, Q
@@ -17,6 +19,26 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+
+
+def _periode_invalide(params):
+    """ENF11 — ``{champ: message}`` si ``start``/``end``/``month`` sont mal
+    formés, sinon ``None``."""
+    import re
+    from datetime import date
+    for champ in ('start', 'end'):
+        brut = params.get(champ)
+        if brut:
+            try:
+                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', brut):
+                    raise ValueError(brut)
+                date.fromisoformat(brut)
+            except ValueError:
+                return {champ: 'Date invalide (attendu AAAA-MM-JJ).'}
+    mois = params.get('month')
+    if mois and not re.fullmatch(r'(?!0000)\d{4}-(0[1-9]|1[0-2])', mois):
+        return {'month': 'Mois invalide (attendu AAAA-MM).'}
+    return None
 
 
 def _period_filter(request):
@@ -93,7 +115,13 @@ def _cle_commercial(devis):
             (auteur.last_name or '').strip())
 
 
-@extend_schema(parameters=[qstr('start'), qstr('end'), qstr('month')])
+@extend_schema(
+    parameters=[
+        OpenApiParameter('start', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('end', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('month', OpenApiTypes.STR, required=False,
+                         description='YYYY-MM', pattern=MOIS)],
+    responses={200: SH.DashboardQuoteToCashResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def dashboard_quote_to_cash(request):
@@ -144,6 +172,11 @@ def dashboard_quote_to_cash(request):
     """
     from .models import Devis, Facture
     from .selectors import devis_en_jeu
+    # ENF11 — une période mal formée répond 400 (elle finissait en 500 :
+    # ``date_creation__date__range=['abc', …]``).
+    invalide = _periode_invalide(request.query_params)
+    if invalide:
+        return Response(invalide, status=400)
     company = request.user.company
     periode = _period_filter(request)
 

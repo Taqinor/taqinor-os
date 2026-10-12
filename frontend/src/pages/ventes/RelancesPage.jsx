@@ -15,6 +15,7 @@ import api from '../../api/axios'
 import PaiementDialog from './PaiementDialog'
 import RelanceApercu from '../../features/ventes/RelanceApercu'
 import { openPdfBlob } from '../../utils/pdfBlob'
+import fetchAllPages from '../../utils/fetchAllPages'
 // AFAC61 — chaque refus serveur est AFFICHÉ (raison réelle), jamais avalé.
 import { frenchError } from '../../lib/frenchError'
 import {
@@ -25,6 +26,8 @@ import {
   DropdownMenuLabel,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
+import { preparerApercuWhatsApp } from './whatsappFacture'
+import { LangueWhatsApp } from './ElementsListeVentes'
 import { formatMAD, formatDateTime, toNumber, normalizePhoneE164 } from '../../lib/format'
 // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
 import { toast, useConfirmDialog } from '../../ui/confirm'
@@ -116,16 +119,16 @@ export default function RelancesPage() {
       .catch(() => {}).finally(() => setLoading(false))
   }
 
-  const loadParametrages = () => api.get('/ventes/parametrages-relance-client/')
-    .then(r => {
-      const data = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+  const loadParametrages = () => fetchAllPages((page, extra) => api.get('/ventes/parametrages-relance-client/', { params: { page, ...extra } }).then(r => r.data))
+    .then(rows => {
+      const data = Array.isArray(rows) ? rows : (rows?.results || [])
       const map = {}
       data.forEach(p => { map[p.client] = p })
       setParametrages(map)
     })
     .catch(() => { /* file lisible même sans paramétrage */ })
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load(); loadParametrages() }, [])
 
   const changerFile = (v) => { setFileFilter(v); load(v) }
@@ -150,8 +153,8 @@ export default function RelancesPage() {
     setParamProchaine(p?.prochaine_relance_manuelle || '')
     if (users.length === 0) {
       try {
-        const res = await api.get('/users/')
-        setUsers(Array.isArray(res.data) ? res.data : (res.data?.results || []))
+        const rows = await fetchAllPages((page, extra) => api.get('/users/', { params: { page, ...extra } }).then((r) => r.data))
+        setUsers(Array.isArray(rows) ? rows : (rows?.results || []))
       } catch (err) {
         // Sans liste, le mode reste réglable (responsable inchangé) — mais la raison s'affiche.
         setParamErreur(frenchError(err, 'Liste des responsables indisponible : le responsable reste inchangé.'))
@@ -432,24 +435,10 @@ export default function RelancesPage() {
   // Rappel de paiement par WhatsApp : construit le message « relance » côté
   // serveur (FR/Darija) puis montre un aperçu (message + lien public) avant
   // d'ouvrir wa.me ; le POST consigne aussi l'action au chatter (L856).
-  const whatsapp = async (r) => {
-    setWaBusy(prev => ({ ...prev, [r.id]: true }))
-    try {
-      const res = await ventesApi.whatsappFacture(r.id, {
-        modele: 'relance', langue: waLangue,
-      })
-      setWaPreview({
-        reference: r.reference,
-        message: res.data?.message ?? '',
-        url: res.data?.url ?? '',
-        wa_url: res.data?.wa_url ?? '',
-      })
-    } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
-    } finally {
-      setWaBusy(prev => ({ ...prev, [r.id]: false }))
-    }
-  }
+  const whatsapp = (r) => preparerApercuWhatsApp({
+    facture: r, params: { modele: 'relance', langue: waLangue },
+    setWaBusy, setWaPreview, notifier: toast,
+  })
 
   // Ouvre wa.me après confirmation de l'aperçu. En file (VX116), avance vers le
   // client suivant ; sinon ferme simplement l'aperçu.
@@ -837,19 +826,10 @@ export default function RelancesPage() {
             </DropdownMenu>
           )}
           {/* L851 — langue des rappels WhatsApp (FR par défaut). */}
-          <div role="group" aria-label="Langue des rappels WhatsApp"
-               className="ml-auto inline-flex items-center gap-1"
-               title="Langue du rappel « WhatsApp »">
-            <MessageCircle className="size-4 text-muted-foreground" />
-            {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
-              <Button key={val} size="sm"
-                      variant={waLangue === val ? 'default' : 'outline'}
-                      aria-pressed={waLangue === val}
-                      onClick={() => setWaLangue(val)}>
-                {label}
-              </Button>
-            ))}
-          </div>
+          <LangueWhatsApp waLangue={waLangue} setWaLangue={setWaLangue}
+            ariaLabel="Langue des rappels WhatsApp"
+            className="ml-auto inline-flex items-center gap-1"
+            title="Langue du rappel « WhatsApp »" />
         </div>
       )}
 

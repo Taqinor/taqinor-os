@@ -1588,6 +1588,7 @@ def _dispatch_hide_comment(client, action):
         observed = bool(fresh.get('is_hidden'))
         verified = (observed == hidden)
     except Exception:  # noqa: BLE001 — read-back en échec ⇒ non vérifié (jamais un faux vert)
+        logger.warning("services._dispatch_hide_comment : erreur ignorée (mode dégradé)", exc_info=True)
         observed = None
         verified = False
     CommentMirror.objects.filter(
@@ -2478,6 +2479,7 @@ def apply_batch(actions, *, connection=None, client=None):
                     f"Kind non batchable pour le lot ADSDEEP33 : {action.kind}")
             op = _build_batch_op(client, action)
         except Exception as exc:
+            logger.warning("services.apply_batch : erreur ignorée (mode dégradé)", exc_info=True)
             action.status = EngineAction.Statut.ECHOUEE
             action.error = str(exc)
             action.save(update_fields=['status', 'error', 'updated_at'])
@@ -2493,6 +2495,7 @@ def apply_batch(actions, *, connection=None, client=None):
     except Exception as exc:
         # Panne du lot ENTIER (réseau/HTTP) — repasse toutes les opérations
         # encore en jeu en échec (jamais laissées faussement « appliquee »).
+        logger.warning("services.apply_batch : erreur ignorée (mode dégradé)", exc_info=True)
         for action in batchable:
             action.status = EngineAction.Statut.ECHOUEE
             action.error = str(exc)

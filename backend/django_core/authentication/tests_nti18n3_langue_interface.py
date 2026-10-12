@@ -56,6 +56,13 @@ class LangueInterfaceApiTests(TestCase):
         self.alice.refresh_from_db()
         self.assertEqual(self.alice.langue_interface, 'fr')
 
+    def test_enf11_corps_vide_ou_non_objet_400(self):
+        """ENF11 — `{}` (champ obligatoire) et un corps liste/null = 400."""
+        for corps in ({}, [None, None], {'langue_interface': {}}):
+            res = self.client.patch(
+                '/api/django/auth/me/langue/', corps, format='json')
+            self.assertEqual(res.status_code, 400, (corps, res.content))
+
     def test_only_affects_current_user(self):
         self.client.patch(
             '/api/django/auth/me/langue/',

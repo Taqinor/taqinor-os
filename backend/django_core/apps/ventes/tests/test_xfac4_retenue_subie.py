@@ -110,6 +110,32 @@ class XFAC4RetenueSubieTests(TestCase):
         self.assertEqual(retenue.attestation_fichier, 'minio-key/attestation.pdf')
         self.assertIsNotNone(retenue.attestation_date)
 
+    def test_entrees_invalides_ne_font_pas_planter(self):
+        # ENF11 — id de facture / de retenue non entier : 404 (ValueError →
+        # 500 avant) ; date d'attestation illisible ou justificatif trop long :
+        # 400, la retenue reste « en attente ».
+        base = '/api/django/ventes/paiements/'
+        corps = {'montant': '10', 'date_paiement': '2026-01-01',
+                 'taux': '5'}
+        r = self.api.post(base + 'factures/abc/paiement-avec-retenue/',
+                          corps, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = self.api.post(base + 'retenues/abc/attestation-recue/', {},
+                          format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        self.api.post(self._url(), {
+            'montant': '9000', 'date_paiement': timezone.now().date().isoformat(),
+            'mode': 'virement', 'type_retenue': 'ras_tva', 'taux': '7.5',
+        }, format='json')
+        retenue = RetenueSubie.objects.get(facture=self.facture)
+        url = f'{base}retenues/{retenue.id}/attestation-recue/'
+        for envoi in ({'attestation_date': 'pas-une-date'},
+                      {'attestation_fichier': 'x' * 501}):
+            r = self.api.post(url, envoi, format='json')
+            self.assertEqual(r.status_code, 400, (envoi, r.data))
+        retenue.refresh_from_db()
+        self.assertFalse(retenue.attestation_recue)
+
     def test_cross_company_facture_404(self):
         other_company = make_company(slug='xfac4-other', nom='Other Co')
         other_admin = User.objects.create_user(

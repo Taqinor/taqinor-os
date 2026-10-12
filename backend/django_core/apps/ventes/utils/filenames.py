@@ -13,6 +13,9 @@ dégrade proprement vers ``Facture_FAC-202607-0001.pdf`` puis ``document.pdf``.
 """
 import re
 import unicodedata
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _slug(value, keep_case=True):
@@ -45,6 +48,7 @@ def _company_slug(company):
         profile = CompanyProfile.get(company=company)
         nom = getattr(profile, 'nom', '') or ''
     except Exception:  # noqa: BLE001 — repli sur le nom brut de la société
+        logger.warning("filenames._company_slug : erreur ignorée (mode dégradé)", exc_info=True)
         nom = ''
     if not nom:
         nom = getattr(company, 'nom', '') or ''

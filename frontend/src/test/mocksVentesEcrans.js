@@ -44,3 +44,35 @@ export const ventesApiFormFacture = () => ({
 export const stockApiVide = () => ({
   default: { getProduits: vi.fn().mockResolvedValue({ data: { results: [], next: null } }) },
 })
+
+// `parametresApi` réel + `getProfile` espionné (profil société posé par l'écran testé).
+// Usage : vi.mock('../../api/parametresApi', async (importOriginal) =>
+//   (await import('../../test/mocksVentesEcrans.js')).parametresApiProfil(await importOriginal(), {}))
+export const parametresApiProfil = (actual, profil = {}) => ({
+  ...actual,
+  default: {
+    ...actual.default,
+    getProfile: vi.fn(() => Promise.resolve({ data: profil })),
+  },
+})
+
+// `uxviewsApi` : aucune vue sauvegardée ; `creee` = réponse de createSavedView.
+export const uxviewsApiVide = (creee = {}) => ({
+  default: {
+    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    createSavedView: vi.fn(() => Promise.resolve({ data: creee })),
+    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteSavedView: vi.fn(() => Promise.resolve({})),
+  },
+})
+
+// `ventesSlice` réel dont `fetchDevis` ne fait rien (la liste est pilotée par le store du test).
+export const ventesSliceSansFetch = (actual) => ({
+  ...actual, fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }),
+})
+
+// `crmApi` réel + `getMotifsPerte` vide.
+export const crmApiMotifsPerteVide = (actual) => ({
+  ...actual,
+  default: { ...actual.default, getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })) },
+})

@@ -318,7 +318,7 @@ def _idempotent_cached_key(devis_id, pdf_options):
         if key and _pdf_exists(key):
             return key
     except Exception:
-        pass
+        logger.warning("tasks._idempotent_cached_key : erreur ignorée (mode dégradé)", exc_info=True)
     return None
 
 
@@ -328,7 +328,7 @@ def _remember_render(devis_id, pdf_options, key):
         from django.core.cache import cache
         cache.set(_render_signature(devis_id, pdf_options), key, 3600)
     except Exception:
-        pass
+        logger.warning("tasks._remember_render : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _pdf_exists(key):
@@ -340,6 +340,7 @@ def _pdf_exists(key):
             Bucket=settings.MINIO_BUCKET_PDF, Key=key)
         return True
     except Exception:
+        logger.warning("tasks._pdf_exists : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 

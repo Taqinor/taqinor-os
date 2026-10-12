@@ -8,7 +8,10 @@ session (``apps/roles`` appartient à la plateforme, NTADM39 non construit
 ici) — le repli de palier ``is_admin_role`` garantit l'enforcement dès
 aujourd'hui, indépendamment de ce futur enregistrement.
 """
+import logging
 from rest_framework.permissions import BasePermission
+
+logger = logging.getLogger(__name__)
 
 ENTITES_ADMINISTRER = 'entites_administrer'
 
@@ -28,4 +31,7 @@ class IsAdministrateur(BasePermission):
         try:
             return bool(user.has_erp_permission(ENTITES_ADMINISTRER))
         except Exception:
+            logger.warning(
+                "permissions.IsAdministrateur.has_permission : erreur ignorée (mode dégradé)",
+                exc_info=True)
             return False

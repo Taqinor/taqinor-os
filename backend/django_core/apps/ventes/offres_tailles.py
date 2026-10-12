@@ -374,6 +374,7 @@ def _role_de_la_ligne(designation):
     try:
         role = classer_produit(designation)
     except Exception:  # noqa: BLE001 — un libellé exotique n'est pas une panne
+        logger.warning("offres_tailles._role_de_la_ligne : erreur ignorée (mode dégradé)", exc_info=True)
         role = None
     if role:
         return role
@@ -385,6 +386,7 @@ def _role_de_la_ligne(designation):
             if detecteur(designation):
                 return role_repli
         except Exception:  # noqa: BLE001
+            logger.warning("offres_tailles._role_de_la_ligne : erreur ignorée (mode dégradé)", exc_info=True)
             continue
     return None
 
@@ -546,6 +548,7 @@ def _horizon_et_escalade():
         from .quote_engine.pricing import CASHFLOW_YEARS, TARIFF_ESCALATION
         return int(CASHFLOW_YEARS), round(float(TARIFF_ESCALATION) * 100.0, 2)
     except Exception:  # noqa: BLE001
+        logger.warning("offres_tailles._horizon_et_escalade : erreur ignorée (mode dégradé)", exc_info=True)
         return None, None
 
 
@@ -917,6 +920,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             }
         except Exception:  # noqa: BLE001 — sans bornes lues, le moteur
             # retombe sur son régime établi : jamais une borne inventée.
+            logger.warning("offres_tailles._carte_moteur : erreur ignorée (mode dégradé)", exc_info=True)
             bornes = {}
         # AMOT30 — le RENDEMENT de la fiche des batteries composées, comme le
         # devis (``rendement_batterie_du_devis``) : jamais l'hypothèse muette
@@ -930,7 +934,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                 bornes['batterie_rendement'] = _rdt['rendement']
                 bornes['batterie_rendement_source'] = _rdt['source']
             except Exception:  # noqa: BLE001 — hypothèse déclarée par le moteur
-                pass
+                logger.warning("offres_tailles._carte_moteur : erreur ignorée (mode dégradé)", exc_info=True)
 
     try:
         _source = ({'source_conso': contexte.entrees.get('source_conso')}
@@ -2032,6 +2036,7 @@ def _porter_modules_batterie(devis, modules):
     from decimal import Decimal as _Decimal
 
     from apps.ventes.domain.dimensionnement_devis import lignes_vendues
+    from apps.ventes.domain.lignes import porter_quantite
     from apps.ventes.services import _is_battery
 
     if not modules:
@@ -2046,8 +2051,7 @@ def _porter_modules_batterie(devis, modules):
     dominante = max(candidats, key=lambda li: _num(getattr(li, 'quantite', 0)))
     if int(_num(getattr(dominante, 'quantite', 0))) == int(modules):
         return int(modules)
-    dominante.quantite = _Decimal(str(int(modules)))
-    dominante.save(update_fields=['quantite'])
+    porter_quantite(dominante, _Decimal(str(int(modules))))
     return int(modules)
 
 
@@ -2074,6 +2078,7 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
     from decimal import Decimal as _Decimal
 
     from apps.ventes.domain.dimensionnement_devis import lignes_vendues
+    from apps.ventes.domain.lignes import poser_prix_unitaire
     from apps.ventes.services import _est_au_prix_catalogue
 
     if not equipements:
@@ -2112,8 +2117,8 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
             ligne.designation = (getattr(produit, 'nom', '')
                                  or ligne.designation)
             prix = getattr(produit, 'prix_vente', None)
-            if prix is not None:
-                ligne.prix_unitaire = _Decimal(str(prix))
+            poser_prix_unitaire(
+                ligne, None if prix is None else _Decimal(str(prix)))
             tva = getattr(produit, 'tva', None)
             if tva is not None:
                 ligne.taux_tva = _Decimal(str(tva))

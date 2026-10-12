@@ -7,6 +7,9 @@ directement. Symétrique de ``apps.crm.selectors`` que ce module (adsengine) lit
 pour l'attribution (ADSENG6). Lecture seule ; toujours borné à la société.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Version de l'API Marketing utilisée par le repli de résolution paresseux
 # (aligné sur ``meta_client.GRAPH_VERSION`` — v25, la version courante ; jamais
@@ -85,6 +88,7 @@ def resolve_meta_ad_names(company, *, ad_id='', adgroup_id='', access_token=''):
             data = _fetch_ad_lineage(ad_id, access_token)
         except Exception:  # noqa: BLE001 — la résolution ne casse jamais la
             # création du lead ; sans nom résolu, seuls les ids stables restent.
+            logger.warning("selectors.resolve_meta_ad_names : erreur ignorée (mode dégradé)", exc_info=True)
             data = None
         if isinstance(data, dict):
             adset = data.get('adset') or {}

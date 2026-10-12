@@ -1,7 +1,7 @@
 {
   "endpoint": "POST /api/django/public/proposal/<token>/accept/",
   "forme_serveur": "partielle",
-  "pourquoi": "ADEV2 (C-ADEV-015 à C-ADEV-019, action de classe PACT10 de la page publique, 08/10/2026) — CONTRAT D'ABORD, posé SEUL sur main, backend + copie jumelle `apps/web/src/contract_samples/proposal_accept.json` (JSON-égales : `scripts/check_api_shapes.py` et `apps/web/tests/contractSamplesParite.test.ts`). Aujourd'hui `apps/web/src/lib/proposition.ts::normalizeAcceptResponse` traite TOUT 409 comme un succès et l'acceptation n'a aucun contrat : ce fichier fige le corps (`exemple`), la réponse 200 (`reponse_200`, avec `paiement`) et les réponses 409 `{detail, code}` aux codes FERMÉS (`codes_409`), plus le 409 `aucun_canal` des demandes d'OTP (`otp`). Même vue sous le mount `ventes/` (`/api/django/ventes/proposal/<token>/accept/`) — jamais de logique dupliquée. Le bloc `entreprise` (C&I) est celui de `acceptation_entreprise.json` (CIW305) : référencé, jamais redéfini ici. Moitiés : serveur ADEV49-ADEV53 et ADEV20 (OTP), page web ADEV48-ADEV53 — toutes `@after: ADEV2` (PACT11). AUCUN statut nouveau (règle #4 : brouillon/envoye/accepte/refuse/expire restent 1:1). Valeurs ILLUSTRATIVES.",
+  "pourquoi": "ADEV2 (C-ADEV-015 à C-ADEV-019, action de classe PACT10 de la page publique, 08/10/2026) — CONTRAT D'ABORD, posé SEUL sur main, backend + copie jumelle `apps/web/src/contract_samples/proposal_accept.json` (JSON-égales : `scripts/check_api_shapes.py` et `apps/web/tests/contractSamplesParite.test.ts`). Aujourd'hui `apps/web/src/lib/proposition.ts::normalizeAcceptResponse` traite TOUT 409 comme un succès et l'acceptation n'a aucun contrat : ce fichier fige le corps (`exemple`), la réponse 200 (`reponse_200`, avec `paiement`) et les réponses 409 `{detail, code}` aux codes FERMÉS (`codes_409`), plus le 409 `aucun_canal` des demandes d'OTP (`otp`). Même vue sous le mount `ventes/` (`/api/django/ventes/proposal/<token>/accept/`) — jamais de logique dupliquée. Le bloc `entreprise` (C&I) est celui de `acceptation_entreprise.json` (CIW305) : référencé, jamais redéfini ici. Moitiés : serveur ADEV49-ADEV53 et ADEV20 (OTP), page web ADEV48-ADEV53 — toutes `@after: ADEV2` (PACT11). ADEV53 — `paiement` = sortie RÉELLE de `public/paiement_views._deposit_success_payload` (mêmes clés, prouvé par `test_qx33_deposit_success`) : plus de `card_payment_url` (aucune route `pay-card`) ; `rib` vide quand la société n'en a aucun (jamais un numéro de repli) ; `declare_url` = POST `/virement/`, gardé par l'OTP de lecture comme la lecture (403 `otp_required`). AUCUN statut nouveau (règle #4 : brouillon/envoye/accepte/refuse/expire restent 1:1). Valeurs ILLUSTRATIVES.",
   "exemple": {
     "nom": "Karim Exemple",
     "option": "sans",
@@ -24,11 +24,10 @@
     "accepte_par_nom": "Karim Exemple",
     "paiement": {
       "acompte_ttc": "12000.00",
-      "pourcentage": 30,
+      "pourcentage": "30.00",
       "rib": "",
       "message": "",
-      "declare_url": "/api/django/public/proposal/<token>/virement/",
-      "card_payment_url": null
+      "declare_url": "/api/django/public/proposal/<token>/virement/"
     },
     "entreprise": null
   },

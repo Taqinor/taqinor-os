@@ -23,6 +23,9 @@ import time
 from django.core.management.base import BaseCommand
 
 from apps.adsengine.tasks import AD_INSIGHT_FIELDS
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Champs demandés à l'edge compte, niveau ad — colonnes ADSDEEP1 + l'id d'ad.
 BACKFILL_FIELDS = AD_INSIGHT_FIELDS + ('ad_id',)
@@ -203,6 +206,7 @@ class Command(BaseCommand):
                     warn=lambda msg: self.stdout.write(
                         self.style.WARNING(f"  {msg}")))
             except Exception as exc:  # noqa: BLE001 — isolation société
+                logger.warning("insights_backfill.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 self.stdout.write(self.style.ERROR(
                     f"  échec : {exc}"))
                 continue

@@ -66,7 +66,8 @@ class ApiDeprecationHeadersMixin:
                         annonce.message[:300].encode('latin-1', 'replace')
                         .decode('latin-1'))
                 except Exception:  # noqa: BLE001 — jamais bloquant
-                    pass
+                    logger.warning(
+                        "deprecation.ApiDeprecationHeadersMixin.poser_entetes_deprecation : erreur ignorée (mode dégradé)", exc_info=True)
         except Exception:  # noqa: BLE001 — jamais bloquant
             logger.exception('Résolution de dépréciation API échouée')
         return response

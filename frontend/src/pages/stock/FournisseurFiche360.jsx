@@ -9,26 +9,29 @@ import {
   Pencil, Trash2, Check, X, Download, Upload,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatDate, formatMAD } from '../../lib/format'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { telHref } from '../../lib/contactLinks'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
-  Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
-  Card, CardHeader, CardTitle, CardContent, Stat, RelationCounters,
-  Button, IconButton, Dialog, DialogContent, DialogHeader, DialogTitle,
-  DialogDescription, DialogFooter, Form, FormField, Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Badge,
-  Checkbox, FileUpload,
+  Spinner, Tabs, TabsList, TabsTrigger, TabsContent, Card, CardHeader,
+  CardTitle, CardContent, Stat, RelationCounters, Button, IconButton,
+  FormField, Input, Textarea, Select, SelectTrigger, SelectValue,
+  SelectContent, SelectItem, Badge, Checkbox, FileUpload,
 } from '../../ui'
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import OnboardingFournisseurWizard from '../../components/OnboardingFournisseurWizard'
 import ScoreRisqueFournisseurBadge from '../../components/ScoreRisqueFournisseurBadge'
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { frErrDetail as frErr } from '../../lib/frErr'
+import { toastError } from '../../lib/toast'
+import DialogueFormulaireStock from './DialogueFormulaireStock'
+import { soumettreDialogue } from './dialogueStock'
+import { BoutonsModifierSupprimer } from './ComposantsStock'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -50,14 +53,6 @@ const fmtMad = (v) => formatMAD(v)
 const fmtDate = (v) => {
   if (!v) return '—'
   try { return new Date(v).toLocaleDateString('fr-FR') } catch { return '—' }
-}
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
 }
 
 function Indisponible({ message }) {
@@ -141,8 +136,8 @@ function OngletBcf({ fournisseurId }) {
 
   useEffect(() => {
     let active = true
-    stockApi.getBonsCommandeFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch((e) => { if (active) setError(frErr(e, 'Bons de commande indisponibles.')) })
     return () => { active = false }
   }, [fournisseurId])
@@ -170,8 +165,8 @@ function OngletFactures({ fournisseurId }) {
 
   useEffect(() => {
     let active = true
-    stockApi.getFacturesFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getFacturesFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch((e) => { if (active) setError(frErr(e, 'Factures indisponibles.')) })
     return () => { active = false }
   }, [fournisseurId])
@@ -215,8 +210,8 @@ function OngletRetours({ fournisseurId, canWrite }) {
 
   useEffect(() => {
     let active = true
-    stockApi.getRetoursFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getRetoursFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch((e) => { if (active) setError(frErr(e, 'Retours indisponibles.')) })
     return () => { active = false }
   }, [fournisseurId])
@@ -282,80 +277,66 @@ function AcompteForm({ bcfs, onClose, onSaved }) {
     if (!fields.bon_commande) { setError('Un bon de commande est requis.'); return }
     const montant = Number(fields.montant)
     if (!montant || montant <= 0) { setError('Le montant doit être positif.'); return }
-    setSaving(true)
-    setError(null)
-    try {
-      await stockApi.createAcompteFournisseur({
-        bon_commande: Number(fields.bon_commande),
-        montant,
-        date_versement: fields.date_versement || null,
-        mode: fields.mode,
-        note: fields.note.trim() || null,
-      })
-      onSaved?.()
-      onClose()
-    } catch (err) {
-      setError(frErr(err, "L'enregistrement a échoué."))
-    } finally { setSaving(false) }
+    await soumettreDialogue({
+      setSaving, setError, onSaved, onClose,
+      erreur: (err) => frErr(err, "L'enregistrement a échoué."),
+      action: async () => {
+        await stockApi.createAcompteFournisseur({
+          bon_commande: Number(fields.bon_commande),
+          montant,
+          date_versement: fields.date_versement || null,
+          mode: fields.mode,
+          note: fields.note.trim() || null,
+        })
+      },
+    })
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Nouvel acompte fournisseur</DialogTitle>
-          <DialogDescription>Avance versée sur un bon de commande. Donnée interne.</DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Bon de commande" required htmlFor="acpt-bcf" fullWidth>
-            <Select value={fields.bon_commande} onValueChange={(v) => setField('bon_commande', v)}>
-              <SelectTrigger id="acpt-bcf"><SelectValue placeholder="Choisir un BCF…" /></SelectTrigger>
-              <SelectContent>
-                {bcfs.map((b) => (
-                  <SelectItem key={b.id} value={String(b.id)}>
-                    {b.reference ?? `BCF #${b.id}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Montant (MAD)" required htmlFor="acpt-montant">
-            <Input id="acpt-montant" type="number" step="any" value={fields.montant}
-                   onChange={(e) => setField('montant', e.target.value)} />
-          </FormField>
-          <FormField label="Date de versement" htmlFor="acpt-date">
-            <Input id="acpt-date" type="date" value={fields.date_versement}
-                   onChange={(e) => setField('date_versement', e.target.value)} />
-          </FormField>
-          <FormField label="Mode de paiement" htmlFor="acpt-mode">
-            <Select value={fields.mode} onValueChange={(v) => setField('mode', v)}>
-              <SelectTrigger id="acpt-mode"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="virement">Virement</SelectItem>
-                <SelectItem value="cheque">Chèque</SelectItem>
-                <SelectItem value="especes">Espèces</SelectItem>
-                <SelectItem value="carte">Carte</SelectItem>
-                <SelectItem value="effet">Effet / traite</SelectItem>
-                <SelectItem value="autre">Autre</SelectItem>
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Note" htmlFor="acpt-note" fullWidth>
-            <Textarea id="acpt-note" rows={2} value={fields.note}
-                      onChange={(e) => setField('note', e.target.value)} />
-          </FormField>
-          {error && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaireStock title="Nouvel acompte fournisseur"
+      description="Avance versée sur un bon de commande. Donnée interne."
+      onClose={onClose}
+      onSubmit={submit}
+      error={error}
+      saving={saving}>
+        <FormField label="Bon de commande" required htmlFor="acpt-bcf" fullWidth>
+          <Select value={fields.bon_commande} onValueChange={(v) => setField('bon_commande', v)}>
+            <SelectTrigger id="acpt-bcf"><SelectValue placeholder="Choisir un BCF…" /></SelectTrigger>
+            <SelectContent>
+              {bcfs.map((b) => (
+                <SelectItem key={b.id} value={String(b.id)}>
+                  {b.reference ?? `BCF #${b.id}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Montant (MAD)" required htmlFor="acpt-montant">
+          <Input id="acpt-montant" type="number" step="any" value={fields.montant}
+                 onChange={(e) => setField('montant', e.target.value)} />
+        </FormField>
+        <FormField label="Date de versement" htmlFor="acpt-date">
+          <Input id="acpt-date" type="date" value={fields.date_versement}
+                 onChange={(e) => setField('date_versement', e.target.value)} />
+        </FormField>
+        <FormField label="Mode de paiement" htmlFor="acpt-mode">
+          <Select value={fields.mode} onValueChange={(v) => setField('mode', v)}>
+            <SelectTrigger id="acpt-mode"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="virement">Virement</SelectItem>
+              <SelectItem value="cheque">Chèque</SelectItem>
+              <SelectItem value="especes">Espèces</SelectItem>
+              <SelectItem value="carte">Carte</SelectItem>
+              <SelectItem value="effet">Effet / traite</SelectItem>
+              <SelectItem value="autre">Autre</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Note" htmlFor="acpt-note" fullWidth>
+          <Textarea id="acpt-note" rows={2} value={fields.note}
+                    onChange={(e) => setField('note', e.target.value)} />
+        </FormField>
+    </DialogueFormulaireStock>
   )
 }
 
@@ -374,8 +355,8 @@ function OngletAcomptes({ fournisseurId, canWrite }) {
   useEffect(() => {
     let active = true
     reload()
-    stockApi.getBonsCommandeFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setBcfs(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setBcfs(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => {})
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -431,59 +412,45 @@ function AvoirForm({ fournisseurId, onClose, onSaved }) {
     ev.preventDefault()
     const ttc = Number(fields.montant_ttc)
     if (!ttc || ttc <= 0) { setError('Le montant TTC doit être positif.'); return }
-    setSaving(true)
-    setError(null)
-    try {
-      await stockApi.createAvoirFournisseur({
-        fournisseur: Number(fournisseurId),
-        montant_ht: Number(fields.montant_ht) || 0,
-        montant_tva: Number(fields.montant_tva) || 0,
-        montant_ttc: ttc,
-        note: fields.note.trim() || null,
-      })
-      onSaved?.()
-      onClose()
-    } catch (err) {
-      setError(frErr(err, "L'enregistrement a échoué."))
-    } finally { setSaving(false) }
+    await soumettreDialogue({
+      setSaving, setError, onSaved, onClose,
+      erreur: (err) => frErr(err, "L'enregistrement a échoué."),
+      action: async () => {
+        await stockApi.createAvoirFournisseur({
+          fournisseur: Number(fournisseurId),
+          montant_ht: Number(fields.montant_ht) || 0,
+          montant_tva: Number(fields.montant_tva) || 0,
+          montant_ttc: ttc,
+          note: fields.note.trim() || null,
+        })
+      },
+    })
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Nouvel avoir fournisseur</DialogTitle>
-          <DialogDescription>Note de crédit AP. Donnée interne, jamais client-facing.</DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Montant HT (MAD)" htmlFor="avf-ht">
-            <Input id="avf-ht" type="number" step="any" value={fields.montant_ht}
-                   onChange={(e) => setField('montant_ht', e.target.value)} />
-          </FormField>
-          <FormField label="TVA (MAD)" htmlFor="avf-tva">
-            <Input id="avf-tva" type="number" step="any" value={fields.montant_tva}
-                   onChange={(e) => setField('montant_tva', e.target.value)} />
-          </FormField>
-          <FormField label="Montant TTC (MAD)" required htmlFor="avf-ttc">
-            <Input id="avf-ttc" type="number" step="any" value={fields.montant_ttc}
-                   onChange={(e) => setField('montant_ttc', e.target.value)} />
-          </FormField>
-          <FormField label="Note" htmlFor="avf-note" fullWidth>
-            <Textarea id="avf-note" rows={2} value={fields.note}
-                      onChange={(e) => setField('note', e.target.value)} />
-          </FormField>
-          {error && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaireStock title="Nouvel avoir fournisseur"
+      description="Note de crédit AP. Donnée interne, jamais client-facing."
+      onClose={onClose}
+      onSubmit={submit}
+      error={error}
+      saving={saving}>
+        <FormField label="Montant HT (MAD)" htmlFor="avf-ht">
+          <Input id="avf-ht" type="number" step="any" value={fields.montant_ht}
+                 onChange={(e) => setField('montant_ht', e.target.value)} />
+        </FormField>
+        <FormField label="TVA (MAD)" htmlFor="avf-tva">
+          <Input id="avf-tva" type="number" step="any" value={fields.montant_tva}
+                 onChange={(e) => setField('montant_tva', e.target.value)} />
+        </FormField>
+        <FormField label="Montant TTC (MAD)" required htmlFor="avf-ttc">
+          <Input id="avf-ttc" type="number" step="any" value={fields.montant_ttc}
+                 onChange={(e) => setField('montant_ttc', e.target.value)} />
+        </FormField>
+        <FormField label="Note" htmlFor="avf-note" fullWidth>
+          <Textarea id="avf-note" rows={2} value={fields.note}
+                    onChange={(e) => setField('note', e.target.value)} />
+        </FormField>
+    </DialogueFormulaireStock>
   )
 }
 
@@ -498,58 +465,46 @@ function ImputerAvoirForm({ avoir, factures, onClose, onSaved }) {
   const submit = async (ev) => {
     ev.preventDefault()
     if (!factureId) { setError('Une facture est requise.'); return }
-    setSaving(true)
-    setError(null)
-    try {
-      await stockApi.imputerAvoirFournisseur(avoir.id, {
-        facture: Number(factureId),
-        ...(montant ? { montant: Number(montant) } : {}),
-      })
-      onSaved?.()
-      onClose()
-    } catch (err) {
-      setError(frErr(err, "L'imputation a échoué."))
-    } finally { setSaving(false) }
+    await soumettreDialogue({
+      setSaving, setError, onSaved, onClose,
+      erreur: (err) => frErr(err, "L'imputation a échoué."),
+      action: async () => {
+        await stockApi.imputerAvoirFournisseur(avoir.id, {
+          facture: Number(factureId),
+          ...(montant ? { montant: Number(montant) } : {}),
+        })
+      },
+    })
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Imputer l&apos;avoir {avoir.reference}</DialogTitle>
-          <DialogDescription>
+    <DialogueFormulaireStock title={<>Imputer l&apos;avoir {avoir.reference}</>}
+      description={<>
             Réduit le solde dû de la facture choisie (disponible : {fmtMad(avoir.montant_disponible)}).
-          </DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Facture" required htmlFor="imp-facture" fullWidth>
-            <Select value={factureId} onValueChange={setFactureId}>
-              <SelectTrigger id="imp-facture"><SelectValue placeholder="Choisir une facture…" /></SelectTrigger>
-              <SelectContent>
-                {factures.map((f) => (
-                  <SelectItem key={f.id} value={String(f.id)}>
-                    {f.reference ?? `Facture #${f.id}`} — dû {fmtMad(f.solde_du)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Montant (vide = maximum possible)" htmlFor="imp-montant">
-            <Input id="imp-montant" type="number" step="any" value={montant}
-                   onChange={(e) => setMontant(e.target.value)} />
-          </FormField>
-          {error && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>{saving ? 'Imputation…' : 'Imputer'}</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+          </>}
+      onClose={onClose}
+      onSubmit={submit}
+      error={error}
+      saving={saving}
+      libelle="Imputer"
+      libelleEnCours="Imputation…">
+        <FormField label="Facture" required htmlFor="imp-facture" fullWidth>
+          <Select value={factureId} onValueChange={setFactureId}>
+            <SelectTrigger id="imp-facture"><SelectValue placeholder="Choisir une facture…" /></SelectTrigger>
+            <SelectContent>
+              {factures.map((f) => (
+                <SelectItem key={f.id} value={String(f.id)}>
+                  {f.reference ?? `Facture #${f.id}`} — dû {fmtMad(f.solde_du)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Montant (vide = maximum possible)" htmlFor="imp-montant">
+          <Input id="imp-montant" type="number" step="any" value={montant}
+                 onChange={(e) => setMontant(e.target.value)} />
+        </FormField>
+    </DialogueFormulaireStock>
   )
 }
 
@@ -580,7 +535,7 @@ function OngletAvoirs({ fournisseurId, canWrite }) {
   }, [fournisseurId])
 
   const valider = async (avoir) => {
-    try { await stockApi.validerAvoirFournisseur(avoir.id); reload() } catch { /* affiché via reload */ }
+    try { await stockApi.validerAvoirFournisseur(avoir.id); reload() } catch (e) { toastError(frErr(e, 'Validation de l\'avoir impossible.')) }
   }
 
   if (error) return <Indisponible message={error} />
@@ -646,59 +601,43 @@ function ContactForm({ fournisseurId, contact, onClose, onSaved }) {
   const submit = async (ev) => {
     ev.preventDefault()
     if (!fields.nom.trim()) { setError('Le nom est requis.'); return }
-    setSaving(true)
-    setError(null)
-    try {
-      const payload = {
-        fournisseur: Number(fournisseurId),
-        nom: fields.nom.trim(),
-        fonction: fields.fonction.trim(),
-        email: fields.email.trim() || null,
-        telephone: fields.telephone.trim() || null,
-      }
-      if (isNew) await stockApi.createContactFournisseur(payload)
-      else await stockApi.updateContactFournisseur(contact.id, payload)
-      onSaved?.()
-      onClose()
-    } catch (err) {
-      setError(frErr(err, "L'enregistrement a échoué."))
-    } finally { setSaving(false) }
+    await soumettreDialogue({
+      setSaving, setError, onSaved, onClose,
+      erreur: (err) => frErr(err, "L'enregistrement a échoué."),
+      action: async () => {
+        const payload = {
+          fournisseur: Number(fournisseurId),
+          nom: fields.nom.trim(),
+          fonction: fields.fonction.trim(),
+          email: fields.email.trim() || null,
+          telephone: fields.telephone.trim() || null,
+        }
+        if (isNew) await stockApi.createContactFournisseur(payload)
+        else await stockApi.updateContactFournisseur(contact.id, payload)
+      },
+    })
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{isNew ? 'Nouveau contact' : `Contact — ${contact.nom}`}</DialogTitle>
-          <DialogDescription>
-            Contact secondaire du fournisseur (le contact principal reste sur la fiche).
-          </DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Nom" required htmlFor="ctf-nom" fullWidth>
-            <Input id="ctf-nom" value={fields.nom} onChange={(e) => setField('nom', e.target.value)} />
-          </FormField>
-          <FormField label="Fonction" htmlFor="ctf-fonction">
-            <Input id="ctf-fonction" value={fields.fonction} onChange={(e) => setField('fonction', e.target.value)} />
-          </FormField>
-          <FormField label="Email" htmlFor="ctf-email">
-            <Input id="ctf-email" type="email" value={fields.email} onChange={(e) => setField('email', e.target.value)} />
-          </FormField>
-          <FormField label="Téléphone" htmlFor="ctf-tel">
-            <Input id="ctf-tel" value={fields.telephone} onChange={(e) => setField('telephone', e.target.value)} />
-          </FormField>
-          {error && (
-            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaireStock title={isNew ? 'Nouveau contact' : `Contact — ${contact.nom}`}
+      description="Contact secondaire du fournisseur (le contact principal reste sur la fiche)."
+      onClose={onClose}
+      onSubmit={submit}
+      error={error}
+      saving={saving}>
+        <FormField label="Nom" required htmlFor="ctf-nom" fullWidth>
+          <Input id="ctf-nom" value={fields.nom} onChange={(e) => setField('nom', e.target.value)} />
+        </FormField>
+        <FormField label="Fonction" htmlFor="ctf-fonction">
+          <Input id="ctf-fonction" value={fields.fonction} onChange={(e) => setField('fonction', e.target.value)} />
+        </FormField>
+        <FormField label="Email" htmlFor="ctf-email">
+          <Input id="ctf-email" type="email" value={fields.email} onChange={(e) => setField('email', e.target.value)} />
+        </FormField>
+        <FormField label="Téléphone" htmlFor="ctf-tel">
+          <Input id="ctf-tel" value={fields.telephone} onChange={(e) => setField('telephone', e.target.value)} />
+        </FormField>
+    </DialogueFormulaireStock>
   )
 }
 
@@ -720,7 +659,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
 
   const supprimer = async (c) => {
     if (!(await confirmer({ title: `Supprimer le contact « ${c.nom} » ?`, confirmLabel: 'Supprimer' }))) return
-    try { await stockApi.deleteContactFournisseur(c.id); reload() } catch { /* affiché via reload */ }
+    try { await stockApi.deleteContactFournisseur(c.id); reload() } catch (e) { toastError(frErr(e, 'Suppression du contact impossible.')) }
   }
 
   if (error) return <Indisponible message={error} />
@@ -747,14 +686,8 @@ function OngletContacts({ fournisseurId, canWrite }) {
               </span>
               {canWrite && (
                 <span className="flex items-center gap-1">
-                  <IconButton size="sm" variant="ghost" label="Modifier" onClick={() => setEditing(c)}>
-                    <Pencil className="size-4" aria-hidden="true" />
-                  </IconButton>
-                  <IconButton size="sm" variant="ghost" label="Supprimer"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => supprimer(c)}>
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </IconButton>
+                  <BoutonsModifierSupprimer onModifier={() => setEditing(c)}
+                                            onSupprimer={() => supprimer(c)} />
                 </span>
               )}
             </li>
@@ -841,44 +774,38 @@ function DocumentConformiteForm({ fournisseurId, document, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{isNew ? 'Nouvelle pièce de conformité' : 'Modifier la pièce'}</DialogTitle>
-          <DialogDescription>Pièce légale du fournisseur (donnée interne).</DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Type de pièce" htmlFor="conf-type" error={errors.type_document}>
-            <Select value={fields.type_document} onValueChange={(v) => setField('type_document', v)}>
-              <SelectTrigger id="conf-type"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {TYPES_CONFORMITE.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Référence" htmlFor="conf-ref" error={errors.reference}>
-            <Input id="conf-ref" value={fields.reference} onChange={(e) => setField('reference', e.target.value)} />
-          </FormField>
-          <FormField label="Date d'émission" htmlFor="conf-emission" error={errors.date_emission}>
-            <Input id="conf-emission" type="date" value={fields.date_emission}
-                   onChange={(e) => setField('date_emission', e.target.value)} />
-          </FormField>
-          <FormField label="Date d'expiration" htmlFor="conf-expiration" error={errors.date_expiration}>
-            <Input id="conf-expiration" type="date" value={fields.date_expiration}
-                   onChange={(e) => setField('date_expiration', e.target.value)} />
-          </FormField>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <Checkbox checked={!!fields.obligatoire} onCheckedChange={(v) => setField('obligatoire', !!v)} />
-            Pièce obligatoire
-          </label>
-          {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>Enregistrer</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaireStock title={isNew ? 'Nouvelle pièce de conformité' : 'Modifier la pièce'}
+      description="Pièce légale du fournisseur (donnée interne)."
+      onClose={onClose}
+      onSubmit={submit}
+      saving={saving}
+      libelle="Enregistrer"
+      libelleEnCours={null}>
+        <FormField label="Type de pièce" htmlFor="conf-type" error={errors.type_document}>
+          <Select value={fields.type_document} onValueChange={(v) => setField('type_document', v)}>
+            <SelectTrigger id="conf-type"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {TYPES_CONFORMITE.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Référence" htmlFor="conf-ref" error={errors.reference}>
+          <Input id="conf-ref" value={fields.reference} onChange={(e) => setField('reference', e.target.value)} />
+        </FormField>
+        <FormField label="Date d'émission" htmlFor="conf-emission" error={errors.date_emission}>
+          <Input id="conf-emission" type="date" value={fields.date_emission}
+                 onChange={(e) => setField('date_emission', e.target.value)} />
+        </FormField>
+        <FormField label="Date d'expiration" htmlFor="conf-expiration" error={errors.date_expiration}>
+          <Input id="conf-expiration" type="date" value={fields.date_expiration}
+                 onChange={(e) => setField('date_expiration', e.target.value)} />
+        </FormField>
+        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+          <Checkbox checked={!!fields.obligatoire} onCheckedChange={(v) => setField('obligatoire', !!v)} />
+          Pièce obligatoire
+        </label>
+        {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
+    </DialogueFormulaireStock>
   )
 }
 
@@ -1044,49 +971,43 @@ function IncidentForm({ fournisseurId, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Déclarer un incident qualité</DialogTitle>
-          <DialogDescription>Incident imputable au fournisseur (donnée interne).</DialogDescription>
-        </DialogHeader>
-        <Form onSubmit={submit} className="gap-4">
-          <FormField label="Type d'incident" htmlFor="inc-type" error={errors.type_incident}>
-            <Select value={fields.type_incident} onValueChange={(v) => setField('type_incident', v)}>
-              <SelectTrigger id="inc-type"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {TYPES_INCIDENT.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Gravité" htmlFor="inc-gravite" error={errors.gravite}>
-            <Select value={fields.gravite} onValueChange={(v) => setField('gravite', v)}>
-              <SelectTrigger id="inc-gravite"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {GRAVITES_INCIDENT.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Date de l'incident" htmlFor="inc-date" error={errors.date_incident}>
-            <Input id="inc-date" type="date" value={fields.date_incident}
-                   onChange={(e) => setField('date_incident', e.target.value)} />
-          </FormField>
-          <FormField label="Quantité affectée" htmlFor="inc-qte" error={errors.quantite_affectee}>
-            <Input id="inc-qte" type="number" step="any" value={fields.quantite_affectee}
-                   onChange={(e) => setField('quantite_affectee', e.target.value)} />
-          </FormField>
-          <FormField label="Description" htmlFor="inc-desc" error={errors.description} fullWidth>
-            <Textarea id="inc-desc" rows={2} value={fields.description}
-                      onChange={(e) => setField('description', e.target.value)} />
-          </FormField>
-          {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>Déclarer</Button>
-          </DialogFooter>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <DialogueFormulaireStock title="Déclarer un incident qualité"
+      description="Incident imputable au fournisseur (donnée interne)."
+      onClose={onClose}
+      onSubmit={submit}
+      saving={saving}
+      libelle="Déclarer"
+      libelleEnCours={null}>
+        <FormField label="Type d'incident" htmlFor="inc-type" error={errors.type_incident}>
+          <Select value={fields.type_incident} onValueChange={(v) => setField('type_incident', v)}>
+            <SelectTrigger id="inc-type"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {TYPES_INCIDENT.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Gravité" htmlFor="inc-gravite" error={errors.gravite}>
+          <Select value={fields.gravite} onValueChange={(v) => setField('gravite', v)}>
+            <SelectTrigger id="inc-gravite"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {GRAVITES_INCIDENT.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Date de l'incident" htmlFor="inc-date" error={errors.date_incident}>
+          <Input id="inc-date" type="date" value={fields.date_incident}
+                 onChange={(e) => setField('date_incident', e.target.value)} />
+        </FormField>
+        <FormField label="Quantité affectée" htmlFor="inc-qte" error={errors.quantite_affectee}>
+          <Input id="inc-qte" type="number" step="any" value={fields.quantite_affectee}
+                 onChange={(e) => setField('quantite_affectee', e.target.value)} />
+        </FormField>
+        <FormField label="Description" htmlFor="inc-desc" error={errors.description} fullWidth>
+          <Textarea id="inc-desc" rows={2} value={fields.description}
+                    onChange={(e) => setField('description', e.target.value)} />
+        </FormField>
+        {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
+    </DialogueFormulaireStock>
   )
 }
 
@@ -1601,10 +1522,7 @@ export default function FournisseurFiche360({
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
       {/* APX24 — en-tête UNIQUE de l'app (VX28) + icône et accent de la
           famille inventaire ; le niveau de titre (h1) est conservé. */}
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Wallet}
         title={`Fiche fournisseur 360${fournisseurNom ? ` — ${fournisseurNom}` : ''}`}
         subtitle="Vue d'ensemble achats — donnée interne, jamais client-facing."
@@ -1660,7 +1578,7 @@ export default function FournisseurFiche360({
             ]}
           />
         )}
-      </PageHeader>
+      </EnteteStock>
 
       <Card>
         <CardHeader>

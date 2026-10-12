@@ -5,6 +5,7 @@ import {
   Pencil, BadgeCheck, History, AlertTriangle, BarChart3,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import coreApi from '../../api/coreApi'
 import { formatMAD } from '../../lib/format'
 import BcfProduitPicker from './BcfProduitPicker'
@@ -19,6 +20,8 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { SelectFournisseur } from './ComposantsStock'
+import { EnteteStock } from './EnteteStock'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import {
   BCF_STATUTS,
@@ -33,10 +36,9 @@ import {
 } from '../../features/stock/procurement'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
@@ -214,11 +216,7 @@ export function MotifAnnulationModal({ onClose, onConfirm, busy }) {
                     onChange={(e) => setMotif(e.target.value)}
                     placeholder="ex. commande passée par erreur, fournisseur indisponible…" />
         </div>
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           <Button type="button" variant="destructive" loading={busy} onClick={confirmer}>
@@ -753,14 +751,8 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="bcf-fou">Fournisseur</label>
-            <Select value={fournisseur ? String(fournisseur) : '__none'} disabled={!editableLignes}
-                    onValueChange={(v) => setFournisseur(v === '__none' ? '' : v)}>
-              <SelectTrigger id="bcf-fou"><SelectValue placeholder="— Choisir un fournisseur —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Choisir un fournisseur —</SelectItem>
-                {fournisseurs.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SelectFournisseur id="bcf-fou" value={fournisseur} onChange={setFournisseur}
+                               fournisseurs={fournisseurs} disabled={!editableLignes} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="bcf-date">Date de commande</label>
@@ -1260,11 +1252,7 @@ function AchatsHorsContratModal({ fournisseurs, onClose }) {
           <Button type="button" loading={busy} onClick={generer}>{busy ? '…' : 'Générer'}</Button>
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
 
         {rows !== null && (
           rows.length === 0 ? (
@@ -1364,8 +1352,9 @@ export default function BonsCommandeFournisseur() {
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
-    stockApi.getBonsCommandeFournisseur()
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }
@@ -1384,8 +1373,10 @@ export default function BonsCommandeFournisseur() {
     reload()
     reloadEnRetard()
     reloadSuggestions()
-    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
-    stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    // getAllFournisseurs lit déjà toutes les pages (ASTK185) ; produits : fetchAllPages.
+    stockApi.getAllFournisseurs().then((r) => setFournisseurs(Array.isArray(r.data) ? r.data : (r.data?.results ?? []))).catch(() => {})
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }, [])
 
   // NTP2P21 — fusionne directement une suggestion (mêmes garanties serveur
@@ -1458,10 +1449,7 @@ export default function BonsCommandeFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={ClipboardList}
         title="Bons de commande fournisseur"
         subtitle={`${rows.length} bon(s) de commande`}
@@ -1486,16 +1474,7 @@ export default function BonsCommandeFournisseur() {
         )}
       />
 
-      {fusionError && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {fusionError}
-        </div>
-      )}
-      {fusionInfo && (
-        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-          {fusionInfo}
-        </div>
-      )}
+      <MessagesStock error={fusionError} info={fusionInfo} />
 
       {/* NTP2P21 — suggestions de consolidation : ≥ 2 BCF brouillon du même
           fournisseur créés la même semaine. Lecture seule tant que l'acheteur

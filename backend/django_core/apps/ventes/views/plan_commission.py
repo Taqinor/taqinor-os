@@ -29,6 +29,7 @@ from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
+from rest_framework.parsers import JSONParser
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -54,6 +55,7 @@ class PlanCommissionViewSet(CompanyScopedModelViewSet):
     ``owner`` nul = plan PAR DÉFAUT de la société. La société est TOUJOURS
     forcée côté serveur (jamais acceptée du corps) et le queryset est scopé à
     celle du demandeur."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     queryset = PlanCommission.objects.select_related('owner').all()
     serializer_class = PlanCommissionSerializer
     permission_classes = [PLAN_COMMISSION_PERMISSION]
@@ -99,7 +101,9 @@ class PlanCommissionViewSet(CompanyScopedModelViewSet):
         self._check_owner_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(parameters=[OpenApiParameter('owner', OpenApiTypes.INT, required=False)], responses=D.ResoudrePlanResponse)
+    @extend_schema(
+        parameters=[OpenApiParameter('owner', OpenApiTypes.INT, required=False)],
+        responses=D.ResoudrePlanResponse)
     @action(detail=False, methods=['get'], url_path='resoudre')
     def resoudre(self, request):
         """XSAL6 — plan RÉELLEMENT appliqué à un commercial.

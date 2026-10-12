@@ -14,17 +14,23 @@ from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from . import openapi_docs as D
 from ..models import Devis
 from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin,
 )
 from ..utils.references import create_with_reference
+from ..utils.corps import valider_corps
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DevisFacturationActionsMixin:
     """SPL141 — actions de facturation de ``DevisViewSet`` (mixin, aucune base)."""
 
+    @extend_schema(request=None, responses={201: BonCommandeSerializer})
     @action(
         detail=True,
         methods=['post'],
@@ -54,6 +60,8 @@ class DevisFacturationActionsMixin:
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.GenererFactureRequest,
+                   responses={201: FactureSerializer, 403: D.ErreurGarde})
     @action(
         detail=True,
         methods=['post'],
@@ -130,6 +138,9 @@ class DevisFacturationActionsMixin:
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(request=D.FacturerCompletRequest,
+                   responses={201: D.FacturerCompletResponse,
+                              403: D.ErreurGarde})
     @action(
         detail=True,
         methods=['post'],
@@ -149,6 +160,7 @@ class DevisFacturationActionsMixin:
         marge dans la réponse.
         """
         devis = self.get_object()
+        valider_corps(request, D.FacturerCompletRequest)
         from ..models import Facture
         from ..domain.encaissements import EncaissementRefuse
         from ..domain.facturation_ops import (
@@ -273,6 +285,9 @@ class DevisFacturationActionsMixin:
                 ProformaDocument, 'PF', company, _rendre_puis_creer,
                 period='monthly')
         except Exception as exc:
+            logger.warning(
+                "devis_facturation.DevisFacturationActionsMixin.proforma_pdf "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': f'PDF indisponible : {exc}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         pdf_bytes = rendu['pdf']

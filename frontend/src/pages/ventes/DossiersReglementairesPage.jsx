@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Badge, Button, Card, CardContent, EmptyState, Input, Label, Segmented,
@@ -448,10 +449,10 @@ export default function DossiersReglementairesPage() {
     latestRef.current = v
     setLoading(true)
     setError(false)
-    ventesApi.getReglementaire(v)
-      .then((r) => {
+    // Toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page, extra) => ventesApi.getReglementaire(v, { page, ...extra }).then((r) => r.data))
+      .then((data) => {
         if (latestRef.current !== v) return
-        const data = r.data
         setRows(Array.isArray(data) ? data : (data?.results || []))
       })
       .catch(() => { if (latestRef.current === v) { setRows([]); setError(true) } })
@@ -464,10 +465,9 @@ export default function DossiersReglementairesPage() {
   // les changements ultérieurs passent par `changerRessource` ci-dessus.
   useEffect(() => {
     const v = RESSOURCES[0].value
-    ventesApi.getReglementaire(v)
-      .then((r) => {
+    fetchAllPages((page, extra) => ventesApi.getReglementaire(v, { page, ...extra }).then((r) => r.data))
+      .then((data) => {
         if (latestRef.current !== v) return
-        const data = r.data
         const liste = Array.isArray(data) ? data : (data?.results || [])
         setRows(liste)
         // CHT26 — `v` est déjà `dossiers-reglementaires` : même réponse,

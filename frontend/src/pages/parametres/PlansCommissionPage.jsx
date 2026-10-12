@@ -5,6 +5,7 @@ import coreApi from '../../api/coreApi'
 import {
   Card, CardContent, Button, Input, Label, Badge, EmptyState, Spinner, toast,
 } from '../../ui'
+import toutesLesPages from './toutesLesPages'
 
 /* ============================================================================
    WIR282/XSAL6 — Écran « Plans de commission » (Paramètres).
@@ -80,11 +81,8 @@ export default function PlansCommissionPage() {
   const charger = useCallback(() => {
     setLoading(true)
     setErreur(null)
-    ventesApi.getPlansCommission()
-      .then((r) => {
-        const data = r.data
-        setPlans(Array.isArray(data) ? data : (data?.results ?? []))
-      })
+    toutesLesPages((params) => ventesApi.getPlansCommission(params))
+      .then((rows) => setPlans(rows))
       .catch((err) => setErreur(
         messageErreur(err, 'Plans de commission indisponibles.')))
       .finally(() => setLoading(false))

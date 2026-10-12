@@ -18,7 +18,9 @@ import {
   Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
   EmptyState, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
-import { SectionTitle } from './peComponents'
+import { SectionTitle, CarteSection } from './peComponents'
+import { BoutonSupprimerLigne } from './EtatsSection'
+import toutesLesPages from './toutesLesPages'
 
 // Déclencheurs (événements internes) — libellés FR, clés EN alignées sur le
 // backend (apps.automation.models.TriggerType).
@@ -83,8 +85,8 @@ function IncomingWebhookPanel({ rules }) {
   const [secret, setSecret] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = () => automationApi.getWebhooks()
-    .then((r) => setHooks(r.data.results ?? r.data)).catch(() => {})
+  const load = () => toutesLesPages((params) => automationApi.getWebhooks(params))
+    .then((rows) => setHooks(rows)).catch(() => {})
   useEffect(() => { load() }, [])
 
   // Seules les règles de type `webhook_inbound` peuvent porter un webhook.
@@ -115,8 +117,7 @@ function IncomingWebhookPanel({ rules }) {
   }
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5" data-testid="webhook-panel">
+    <CarteSection data-testid="webhook-panel">
         <SectionTitle label="Webhooks entrants"
           icon={<><path d="M18 16.98h-5.99c-1.66 0-3.01-1.34-3.01-3s1.34-3 3.01-3H18"/><path d="m21 12-3-3v6z"/><circle cx="6" cy="18" r="3"/></>}/>
         <p className="mb-3.5 text-[11.5px] text-muted-foreground">
@@ -172,8 +173,7 @@ function IncomingWebhookPanel({ rules }) {
             </div>
           ))}
         </div>
-      </CardContent>
-    </Card>
+    </CarteSection>
   )
 }
 
@@ -205,12 +205,12 @@ export default function AutomatisationsSection() {
     requires_approval: false, approval_threshold: '',
   })
 
-  const loadRules = () => automationApi.getRules()
-    .then((r) => setRules(r.data.results ?? r.data)).catch(() => {})
-  const loadRuns = () => automationApi.getRuns({ ordering: '-timestamp' })
-    .then((r) => setRuns((r.data.results ?? r.data).slice(0, 30))).catch(() => {})
-  const loadApprovals = () => automationApi.getApprovals({ status: 'pending' })
-    .then((r) => setApprovals(r.data.results ?? r.data)).catch(() => {})
+  const loadRules = () => toutesLesPages((params) => automationApi.getRules(params))
+    .then((rows) => setRules(rows)).catch(() => {})
+  const loadRuns = () => toutesLesPages((params) => automationApi.getRuns(params), { ordering: '-timestamp' })
+    .then((rows) => setRuns(rows.slice(0, 30))).catch(() => {})
+  const loadApprovals = () => toutesLesPages((params) => automationApi.getApprovals(params), { status: 'pending' })
+    .then((rows) => setApprovals(rows)).catch(() => {})
 
   useEffect(() => {
     Promise.all([loadRules(), loadRuns(), loadApprovals()])
@@ -302,7 +302,7 @@ export default function AutomatisationsSection() {
   }
 
   const toggle = async (r) => {
-    try { await automationApi.toggleRule(r.id); loadRules() } catch { /* */ }
+    try { await automationApi.toggleRule(r.id); loadRules() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const delRule = async (r) => {
     if (!(await confirmerSuppression({ title: `Supprimer la règle « ${r.nom} » ?` }))) return
@@ -327,8 +327,7 @@ export default function AutomatisationsSection() {
   return (
     <div className="flex flex-col gap-4">
       {/* ── Règles (N72) ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Automatisations"
             icon={<><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><circle cx="12" cy="12" r="4"/></>}/>
           <p className="mb-3.5 text-[11.5px] text-muted-foreground">
@@ -365,11 +364,8 @@ export default function AutomatisationsSection() {
                       onClick={() => toggle(r)}>
                       {r.enabled ? 'Activée' : 'Désactivée'}
                     </Button>
-                    <IconButton size="sm" variant="outline" label="Supprimer la règle"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => delRule(r)}>
-                      <Trash2 className="size-4" aria-hidden="true" />
-                    </IconButton>
+                    <BoutonSupprimerLigne label="Supprimer la règle"
+                      onClick={() => delRule(r)} />
                   </div>
                 </div>
               </div>
@@ -534,12 +530,10 @@ export default function AutomatisationsSection() {
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* ── Approbations en attente (N73) ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Approbations en attente"
             icon={<><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></>}/>
           {approvals.length === 0 ? (
@@ -565,12 +559,10 @@ export default function AutomatisationsSection() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* ── Journal d'exécutions (N72) ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <div className="flex items-center justify-between">
             <SectionTitle label="Journal d'exécutions"
               icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></>}/>
@@ -596,8 +588,7 @@ export default function AutomatisationsSection() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* WIR61 / XPLT4 — Webhooks entrants tokenisés (par règle webhook_inbound). */}
       <IncomingWebhookPanel rules={rules} />

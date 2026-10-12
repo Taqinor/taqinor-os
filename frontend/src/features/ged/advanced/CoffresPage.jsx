@@ -3,12 +3,14 @@ import { Plus, Trash2, FileText } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, toast,
+  Label, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  toast,
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { errMessage, toutesLesPages } from './shared.js'
+import { ChampDescription, PiedFermer } from './ChampsGed.jsx'
+import DialogueFormulaire from './DialogueFormulaire.jsx'
 
 /* ============================================================================
    PACT131 — Coffres-forts documentaires (GED8).
@@ -76,6 +78,7 @@ export default function CoffresPage() {
       id: 'documents', header: 'Documents', width: 110, align: 'right',
       accessor: (r) => r.document_count ?? 0,
     },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [clients])
 
   // ADOC4 — un coffre non vide est refusé (409) : le motif serveur est
@@ -167,60 +170,48 @@ function CreateCoffreDialog({ clients, users, onClose, onDone }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Nouveau coffre</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label>Nom</Label>
-            <Input aria-label="Nom du coffre" value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div>
-            <Label>Description (optionnelle)</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-          </div>
-          <div>
-            <Label>Propriétaire</Label>
-            <Select value={type} onValueChange={(v) => { setType(v); setProprietaireId(''); setClientId('') }}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="employe">Employé</SelectItem>
-                <SelectItem value="client">Client</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {type === 'employe' ? (
-            <div>
-              <Label>Employé</Label>
-              <Select value={proprietaireId} onValueChange={setProprietaireId}>
-                <SelectTrigger aria-label="Choisir un employé"><SelectValue placeholder="Choisir un employé…" /></SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email || `#${u.id}`}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <div>
-              <Label>Client</Label>
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger aria-label="Choisir un client"><SelectValue placeholder="Choisir un client…" /></SelectTrigger>
-                <SelectContent>
-                  {clients.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+    <DialogueFormulaire titre="Nouveau coffre" onClose={onClose} submit={submit} saving={saving}>
+      <div>
+        <Label>Nom</Label>
+        <Input aria-label="Nom du coffre" value={nom} onChange={(e) => setNom(e.target.value)} />
+      </div>
+      <ChampDescription description={description} setDescription={setDescription} />
+      <div>
+        <Label>Propriétaire</Label>
+        <Select value={type} onValueChange={(v) => { setType(v); setProprietaireId(''); setClientId('') }}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="employe">Employé</SelectItem>
+            <SelectItem value="client">Client</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {type === 'employe' ? (
+        <div>
+          <Label>Employé</Label>
+          <Select value={proprietaireId} onValueChange={setProprietaireId}>
+            <SelectTrigger aria-label="Choisir un employé"><SelectValue placeholder="Choisir un employé…" /></SelectTrigger>
+            <SelectContent>
+              {users.map((u) => (
+                <SelectItem key={u.id} value={String(u.id)}>{u.username || u.email || `#${u.id}`}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ) : (
+        <div>
+          <Label>Client</Label>
+          <Select value={clientId} onValueChange={setClientId}>
+            <SelectTrigger aria-label="Choisir un client"><SelectValue placeholder="Choisir un client…" /></SelectTrigger>
+            <SelectContent>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </DialogueFormulaire>
   )
 }
 
@@ -230,7 +221,6 @@ function CoffreDocumentsDialog({ coffre, onClose }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     gedApi.getCoffreDocuments(coffre.id)
       .then((res) => setDocuments(unpage(res.data)))
       .catch((err) => setError(errMessage(err, 'Impossible de charger les documents.')))
@@ -251,9 +241,7 @@ function CoffreDocumentsDialog({ coffre, onClose }) {
             {documents.map((d) => <li key={d.id} className="text-sm">{d.nom}</li>)}
           </ul>
         )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedFermer onClose={onClose} />
       </DialogContent>
     </Dialog>
   )

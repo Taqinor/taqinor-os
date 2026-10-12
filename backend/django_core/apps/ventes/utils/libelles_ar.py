@@ -11,6 +11,9 @@ appellent `libelle(cle, langue)` qui renvoie le FR d'origine par défaut).
 """
 from pathlib import Path
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Police Noto Sans Arabic déjà vendue localement pour le moteur premium
 # (apps/ventes/quote_engine/assets/fonts/) — RÉFÉRENCÉE en lecture seule ici,
@@ -254,6 +257,7 @@ def _load_font_base64(filename):
     try:
         return base64.b64encode(path.read_bytes()).decode()
     except Exception:  # pragma: no cover - défensif, jamais de crash PDF
+        logger.warning("libelles_ar._load_font_base64 : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

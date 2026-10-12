@@ -8,11 +8,8 @@
 // dialogue affirmait « Le devis est marqué « Envoyé » » et l'info-bulle du
 // bouton « marque le devis « Envoyé » ».
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
 
 vi.mock('../../lib/monitoring.js', () => ({
   sentryDsn: () => '', isMonitoringEnabled: () => false,
@@ -47,36 +44,11 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
+vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
 
 import DevisList from '../../pages/ventes/DevisList'
 import ventesApi from '../../api/ventesApi'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-
-function renderList(devis) {
-  const store = configureStore({
-    reducer: {
-      ventes: (state = { devis, loading: false, error: null }) => state,
-      auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
-    },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider>
-          <DevisList />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+import { renderList } from '../../pages/ventes/devisList.testHelpers.jsx'
 
 const brouillon = () => ([{
   id: 31, reference: 'DEV-QAH-ENV', client_nom: 'Alaoui', statut: 'brouillon',

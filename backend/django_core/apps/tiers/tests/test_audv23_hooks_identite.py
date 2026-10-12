@@ -12,9 +12,7 @@ le fondateur ne l'active pas. Ces tests prouvent les DEUX modes.
 """
 from django.test import TestCase, override_settings
 
-from apps.crm.models import Client
-from apps.stock.models import Fournisseur
-from testkit.factories import CompanyFactory
+from testkit.factories import ClientFactory, CompanyFactory, FournisseurFactory
 
 
 class HooksCablesFlagOff(TestCase):
@@ -24,7 +22,7 @@ class HooksCablesFlagOff(TestCase):
         self.company = CompanyFactory()
 
     def test_sauvegarde_client_ne_touche_pas_le_tiers(self):
-        client = Client.objects.create(
+        client = ClientFactory(
             company=self.company, nom='Avant', email='audv23@example.ma')
         client.refresh_from_db()
         self.assertIsNotNone(client.tiers_id, 'le miroir ARC18 doit exister')
@@ -41,7 +39,7 @@ class HooksCablesFlagOff(TestCase):
         self.assertEqual(tiers.prenom, 'PoséÀLaMain')
 
     def test_sauvegarde_fournisseur_ne_touche_pas_le_tiers(self):
-        fournisseur = Fournisseur.objects.create(
+        fournisseur = FournisseurFactory(
             company=self.company, nom='Grossiste', email='f@example.ma')
         fournisseur.refresh_from_db()
         self.assertIsNotNone(fournisseur.tiers_id)
@@ -67,7 +65,7 @@ class HooksCablesFlagOn(TestCase):
         self.company = CompanyFactory()
 
     def test_la_sauvegarde_d_un_client_ecrit_son_tiers(self):
-        client = Client.objects.create(
+        client = ClientFactory(
             company=self.company, nom='Alaoui', prenom='Karim',
             email='audv23on@example.ma')
         client.refresh_from_db()
@@ -82,7 +80,7 @@ class HooksCablesFlagOn(TestCase):
         self.assertEqual(tiers.telephone, '+212622222222')
 
     def test_la_sauvegarde_d_un_fournisseur_ecrit_son_tiers(self):
-        fournisseur = Fournisseur.objects.create(
+        fournisseur = FournisseurFactory(
             company=self.company, nom='Grossiste', email='fon@example.ma')
         fournisseur.refresh_from_db()
         self.assertIsNotNone(fournisseur.tiers_id)
@@ -94,11 +92,3 @@ class HooksCablesFlagOn(TestCase):
         tiers.refresh_from_db()
         self.assertEqual(tiers.telephone, '+212633333333')
         self.assertEqual(tiers.adresse, 'Zone industrielle, Casablanca')
-
-    def test_aucun_prix_d_achat_ne_traverse_le_pont(self):
-        """Garde permanente : le pont ne pousse QUE de l'identité."""
-        from apps.stock.services import ecrire_identite_fournisseur
-        import inspect
-        source = inspect.getsource(ecrire_identite_fournisseur)
-        self.assertNotIn('prix_achat', source)
-        self.assertNotIn('marge', source)

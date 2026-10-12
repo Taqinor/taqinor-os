@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { wrapper } from './__tests__/WrapperRouterTheme.jsx'
+import { produitStockBase, propsCatalogueBase } from './catalogue.testHelpers.js'
 import { CatalogueTable } from './CatalogueTable.jsx'
 import {
   completudeFiche, FICHE_ABSENTE, FICHE_PARTIELLE, FICHE_COMPLETE,
@@ -16,28 +16,8 @@ import { severiteStock, jaugeStock } from '../../features/stock/catalogue'
    Le moteur a besoin d'un <Router> (useSearchParams) et d'un <ThemeProvider>
    (useDensity). On les fournit via `wrapper`.
    ========================================================================== */
-function wrapper({ children }) {
-  return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
-  )
-}
-
 const baseProduit = (over = {}) => ({
-  id: 1,
-  nom: 'Panneau 550 Wc',
-  sku: 'PAN-550',
-  marque: 'JA Solar',
-  prix_vente: '1000',
-  prix_achat: '700',
-  tva: 20,
-  quantite_stock: 12,
-  quantite_reservee: 0,
-  quantite_disponible: 12,
-  seuil_alerte: 5,
-  is_low_stock: false,
-  is_archived: false,
+  ...produitStockBase,
   categorie: { id: 3, nom: 'Panneaux', ordre: 1 },
   ...over,
 })
@@ -47,13 +27,7 @@ function renderTable(props = {}) {
     <CatalogueTable
       produits={[baseProduit()]}
       categories={[{ id: 3, nom: 'Panneaux' }]}
-      loading={false}
-      canWrite
-      canDelete
-      onEdit={() => {}}
-      onDelete={() => {}}
-      onHistorique={() => {}}
-      onReapprovisionner={() => {}}
+      {...propsCatalogueBase}
       onInlineSave={vi.fn().mockResolvedValue({})}
       selected={new Set()}
       onToggleSelect={() => {}}

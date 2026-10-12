@@ -6,11 +6,13 @@ from drf_spectacular.utils import (extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
+from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
 
+from .erreurs_achats import ConflitEtat
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -30,9 +32,12 @@ from .models import (
     NomenclatureCodeBarres, RegleCodeBarres,
     ToleranceRapprochementCategorie,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class MarqueSerializer(serializers.ModelSerializer):
+class MarqueSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     en_usage = serializers.SerializerMethodField()
 
     class Meta:
@@ -44,7 +49,7 @@ class MarqueSerializer(serializers.ModelSerializer):
         return Produit.objects.filter(company=obj.company, marque=obj.nom).count()
 
 
-class CategorieSerializer(serializers.ModelSerializer):
+class CategorieSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ERR-QAH-STOCK-CATEGORIE-CREATION-400-COMPANY — `company` doit être
     # LECTURE SEULE et force-assigné côté serveur (TenantMixin.perform_create,
     # jamais accepté du corps — règle multi-tenant CLAUDE.md). Sans
@@ -116,7 +121,7 @@ class ContactFournisseurSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class CategorieFournisseurSerializer(serializers.ModelSerializer):
+class CategorieFournisseurSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     class Meta:
         model = CategorieFournisseur
         fields = ['id', 'nom', 'archived']
@@ -335,7 +340,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         required=False,
         allow_null=True,
     )
-    fournisseur = FournisseurSerializer(read_only=True)
+    fournisseur = FournisseurSerializer(read_only=True, allow_null=True)
     fournisseur_id = serializers.PrimaryKeyRelatedField(
         queryset=Fournisseur.objects.none(),
         source='fournisseur',
@@ -1280,11 +1285,13 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             libelle = self._unite_libelle_map(
                 getattr(obj, 'company', None)).get(code)
         except Exception:
+            logger.warning(
+                "serializers.ProduitSerializer.get_unite_stock_display : erreur ignorée (mode dégradé)", exc_info=True)
             libelle = None
         return libelle or code
 
 
-class EmplacementStockSerializer(serializers.ModelSerializer):
+class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """N15 — emplacement de stock. `company` est posé côté serveur."""
 
     class Meta:
@@ -1330,7 +1337,7 @@ class TransfertStockSerializer(CompanyScopedRelationsMixin,
     destination_nom = serializers.CharField(
         source='destination.nom', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
 
     # NTRET7 — cycle en deux temps. Tous LECTURE SEULE : le statut n'avance
     # que par les actions dédiées (demander/expedier/receptionner), jamais par
@@ -1383,9 +1390,9 @@ class RetourFournisseurSerializer(SameCompanyFKSerializerMixin,
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     bon_commande_reference = serializers.CharField(
-        source='bon_commande.reference', read_only=True)
+        source='bon_commande.reference', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
 
     class Meta:
         model = RetourFournisseur
@@ -1456,6 +1463,23 @@ class PrixFournisseurSerializer(CompanyScopedRelationsMixin,
             'ref_produit_fournisseur', 'date_debut', 'date_fin', 'paliers',
         ]
         # company posé côté serveur.
+
+    def get_unique_together_validators(self):
+        return []  # ENF11 — le doublon (produit, fournisseur) est un 409, voir validate()
+
+    def validate(self, attrs):
+        produit = attrs.get('produit', getattr(self.instance, 'produit', None))
+        fournisseur = attrs.get(
+            'fournisseur', getattr(self.instance, 'fournisseur', None))
+        doublons = PrixFournisseur.objects.filter(
+            produit=produit, fournisseur=fournisseur)
+        if self.instance is not None:
+            doublons = doublons.exclude(pk=self.instance.pk)
+        if doublons.exists():
+            raise ConflitUnicite(
+                'Un prix existe déjà pour ce produit chez ce fournisseur.',
+                champs=['produit', 'fournisseur'])
+        return attrs
 
 
 def _peut_voir_montants_achat(user):
@@ -1561,7 +1585,7 @@ class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     total_achat = serializers.DecimalField(
@@ -1799,9 +1823,9 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     recu_par_username = serializers.CharField(
-        source='recu_par.username', read_only=True)
+        source='recu_par.username', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     total_recu = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -1823,14 +1847,14 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
     def validate_bon_commande(self, value):
+        # ENF11 — état du BCF (annulé / pas encore envoyé) = 409, pas un 400.
         if value.statut == BonCommandeFournisseur.Statut.ANNULE:
-            raise serializers.ValidationError(
-                'Ce bon de commande est annulé.')
+            raise ConflitEtat('Ce bon de commande est annulé.')
         # ASTK22 — une réception ne se crée que sur un BCF envoyé.
         from .services import bcf_refuse_reception
         motif = bcf_refuse_reception(value)
         if motif:
-            raise serializers.ValidationError(motif)
+            raise ConflitEtat(motif)
         return value
 
     def create(self, validated_data):
@@ -1851,8 +1875,8 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         for ligne in lignes_data:
             ligne_cmd = bcf_lignes.get(ligne['ligne_commande'].id)
             if ligne_cmd is None:
-                raise serializers.ValidationError(
-                    {'lignes': 'Ligne de commande hors de ce bon de commande.'})
+                raise ConflitEtat(
+                    'Ligne de commande hors de ce bon de commande.')
             demande[ligne_cmd.id] = (
                 demande.get(ligne_cmd.id, 0) + ligne['quantite'])
             reste = reste_du_net_ligne_bcf(ligne_cmd)
@@ -1861,9 +1885,9 @@ class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
                     reste < reste_brut or reste <= 0):
                 libelle = (getattr(ligne_cmd.produit, 'nom', None)
                            or ligne_cmd.designation or 'ligne')
-                raise serializers.ValidationError({'lignes': (
+                raise ConflitEtat(
                     f'La quantité reçue pour « {libelle} » dépasse le reste '
-                    f'dû ({reste}, réceptions en brouillon déduites).')})
+                    f'dû ({reste}, réceptions en brouillon déduites).')
         reception = ReceptionFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             ligne_cmd = bcf_lignes.get(ligne['ligne_commande'].id)
@@ -1904,7 +1928,7 @@ class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
     # produit est optionnel (ligne libre/service, XPUR16) — default=None
     # évite une AttributeError DRF quand produit est vide.
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, default=None, allow_null=True)
     total_ht = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
     # XPUR17 — TVA par ligne (taux marocains). total_tva = 0 si taux_tva vide
@@ -1938,7 +1962,7 @@ class PaiementFournisseurSerializer(CompanyScopedRelationsMixin,
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     # XPUR2 — RAS-TVA : calculée côté serveur (jamais depuis le corps de
     # requête), exposée en lecture pour affichage du net payé.
     montant_net_paye = serializers.DecimalField(
@@ -1962,39 +1986,20 @@ class PaiementFournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
     def validate(self, attrs):
-        # ZACC9 — garde de SUR-PAIEMENT : un règlement ne doit jamais dépasser
-        # le solde dû de la facture (validate_montant refusait déjà un
-        # montant <= 0, mais n'empêchait PAS de payer plus que ce qui reste
-        # dû). Comparaison faite ici (object-level) car elle a besoin à la
-        # fois de `facture` et de `montant`.
-        #
-        # AUD208 — cette lecture de `facture.solde_du` tourne HORS verrou,
-        # AVANT même que la vue n'ouvre sa transaction : c'est un refus
-        # RAPIDE (feedback immédiat, un seul paiement) mais PAS l'autorité
-        # finale — deux paiements concurrents, chacun inférieur au solde dû
-        # pris ISOLÉMENT mais dont la SOMME le dépasse, passeraient tous les
-        # deux cette garde (chacun lit le même solde dû de départ). L'AUTORITÉ
-        # réelle est `apps.stock.services.
-        # verrouiller_facture_fournisseur_et_verifier_solde` (select_for_update
-        # + re-vérification), appelée DANS la transaction.atomic() de
-        # `PaiementFournisseurViewSet.perform_create` et de l'action
-        # `FactureFournisseurViewSet.paiements` — ne pas supprimer ce contrôle
-        # ici en pensant qu'il fait double emploi.
+        # ZACC9 — garde de SUR-PAIEMENT : refus RAPIDE hors verrou (409, ENF11 :
+        # le solde est un ÉTAT, pas une erreur de saisie). AUD208 : l'autorité
+        # réelle est `verrouiller_facture_fournisseur_et_verifier_solde`
+        # (select_for_update), appelée dans la transaction de la vue et de
+        # l'action `FactureFournisseurViewSet.paiements` — ne pas supprimer ce
+        # contrôle en pensant qu'il fait double emploi.
         facture = attrs.get('facture')
         montant = attrs.get('montant')
         if facture is not None and montant is not None:
             if montant > facture.solde_du:
-                raise serializers.ValidationError({
-                    'montant': (
-                        'Le montant dépasse le solde dû '
-                        f'({facture.solde_du}).'),
-                })
-        # ZACC9 — `date_paiement` reste nullable (saisie « date à confirmer »
-        # tolérée historiquement), mais l'événement `paiement_fournisseur_
-        # enregistre` (YLEDG2) peut poser une écriture comptable AUTO
-        # (COMPTA_AUTO_ECRITURES) qui exige une date non NULL. Défaut serveur
-        # = aujourd'hui quand omis, jamais None — pas de régression pour un
-        # appelant qui fournit déjà la date.
+                raise ConflitEtat(
+                    f'Le montant dépasse le solde dû ({facture.solde_du}).')
+        # ZACC9 — `date_paiement` nullable, mais l'écriture comptable AUTO
+        # (YLEDG2) exige une date : défaut serveur = aujourd'hui quand omise.
         if not attrs.get('date_paiement'):
             from django.utils import timezone
             attrs['date_paiement'] = timezone.localdate()
@@ -2026,11 +2031,11 @@ class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     bon_commande_reference = serializers.CharField(
-        source='bon_commande.reference', read_only=True)
+        source='bon_commande.reference', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
     total_paye = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
     solde_du = serializers.DecimalField(
@@ -2045,7 +2050,7 @@ class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
     statut_controle_display = serializers.CharField(
         source='get_statut_controle_display', read_only=True)
     resolu_par_username = serializers.CharField(
-        source='resolu_par.username', read_only=True)
+        source='resolu_par.username', read_only=True, allow_null=True)
     # XPUR17 — sous-totaux HT/TVA PAR TAUX (20/14/10/7 %/exonéré), dérivés des
     # lignes. Vide si la facture n'a pas de lignes ventilées (comportement
     # historique inchangé : montant_tva global reste la source de vérité).
@@ -2268,7 +2273,7 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True)
+        source='created_by.username', read_only=True, allow_null=True)
 
     class Meta:
         model = InventaireSession
@@ -2567,8 +2572,7 @@ class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
     # refusée comme un id absent (« objet inexistant » de DRF).
     """NTP2P9 — grille éditable Paramètres → Achats (override par catégorie
     des tolérances 3 voies XPUR10)."""
-    categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True)
+    categorie_nom = serializers.CharField(source='categorie.nom', read_only=True, allow_null=True)
 
     # SCA4 — le modèle a rejoint TenantModel (created_at/updated_at) ; l'API
     # continue d'exposer les clés historiques via source=.
@@ -2597,7 +2601,7 @@ class AcompteFournisseurSerializer(SameCompanyFKSerializerMixin,
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     bon_commande_reference = serializers.CharField(
-        source='bon_commande.reference', read_only=True)
+        source='bon_commande.reference', read_only=True, allow_null=True)
     montant_non_consomme = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
 
@@ -2652,7 +2656,7 @@ class AvoirFournisseurSerializer(CompanyScopedRelationsMixin,
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     retour_reference = serializers.CharField(
-        source='retour.reference', read_only=True)
+        source='retour.reference', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     montant_disponible = serializers.DecimalField(
@@ -2802,7 +2806,7 @@ class ModeleBonCommandeFournisseurSerializer(
     same_company_fields = ('fournisseur',)
     lignes = ModeleBonCommandeFournisseurLigneSerializer(many=True, required=False)
     fournisseur_nom = serializers.CharField(
-        source='fournisseur.nom', read_only=True)
+        source='fournisseur.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = ModeleBonCommandeFournisseur
@@ -2845,7 +2849,7 @@ class RegleCodeBarresSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class NomenclatureCodeBarresSerializer(CompanyScopedRelationsMixin,
+class NomenclatureCodeBarresSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                        serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

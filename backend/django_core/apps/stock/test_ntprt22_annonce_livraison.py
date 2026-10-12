@@ -389,15 +389,19 @@ class AnnonceVisibleCoteInterneTests(TestCase):
 
     def test_le_champ_est_en_lecture_seule_sur_le_document_interne(self):
         """Une annonce se dépose au PORTAIL : un PATCH interne ne l'invente
-        jamais (le champ est calculé, il n'est pas écrit)."""
+        jamais (le champ est calculé, il n'est pas écrit). Un BCF ENVOYÉ est
+        figé (409, XPUR18/ENF11) : le PATCH vise donc un BROUILLON, seul
+        document où le sérialiseur est réellement exercé."""
+        brouillon = make_bcf(self.company, self.fournisseur, self.produit,
+                             statut=BonCommandeFournisseur.Statut.BROUILLON)
         res = self.api.patch(
-            f'{URL_BCF}{self.bcf.id}/',
+            f'{URL_BCF}{brouillon.id}/',
             {'livraisons_annoncees': [{'transporteur': 'Faux'}]},
             format='json')
         self.assertIn(res.status_code, (200, 400), res.data)
         self.assertEqual(
             AnnonceLivraisonFournisseur.objects.filter(
-                bon_commande_fournisseur=self.bcf).count(), 0)
+                bon_commande_fournisseur=brouillon).count(), 0)
 
     def test_aucun_prix_d_achat_dans_la_charge_utile_de_l_annonce(self):
         annoncer_livraison_fournisseur(

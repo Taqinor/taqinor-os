@@ -276,8 +276,11 @@ export default function Journal() {
         ])
         if (cancelled) return
         setStats(s.data)
-        setEntries(e.data.results ?? e.data)
-        setCount(e.data.count ?? (e.data.results ?? e.data).length)
+        // Liste paginée côté serveur ET côté écran (paramètre `page` + compteur) :
+        // une page à la fois, volontairement — jamais l'historique entier.
+        const { results: pageEntries, count: total } = e.data
+        setEntries(pageEntries ?? e.data)
+        setCount(total ?? (pageEntries ?? e.data).length)
       } catch {
         if (!cancelled) setError('Impossible de charger le journal.')
       } finally {

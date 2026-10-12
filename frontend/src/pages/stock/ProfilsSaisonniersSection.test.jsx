@@ -125,7 +125,7 @@ describe('AGR623 — liste, modification, suppression', () => {
     const ligne = await screen.findByTestId(`profil-saisonnier-${EXEMPLE.id}`)
     expect(ligne).toHaveTextContent(EXEMPLE.nom)
     expect(ligne).toHaveTextContent(`mois ${EXEMPLE.mois_debut} → ${EXEMPLE.mois_fin}`)
-    expect(getProfils).toHaveBeenCalledWith({ produit: EXEMPLE.produit })
+    expect(getProfils).toHaveBeenCalledWith(expect.objectContaining({ produit: EXEMPLE.produit }))
   })
 
   it('enregistrer → rouvrir → enregistrer sans toucher = le même PATCH', async () => {

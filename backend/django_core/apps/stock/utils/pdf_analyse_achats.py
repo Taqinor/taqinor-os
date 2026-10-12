@@ -13,6 +13,19 @@ PDF de devis CLIENT (règle #4 du CLAUDE.md)."""
 from apps.ventes.utils.pdf import _company_context, _render_html, _html_to_pdf
 
 
+def _en_date(valeur):
+    """``date`` ISO (AAAA-MM-JJ) ou ``None`` si absente / illisible."""
+    import datetime
+    if isinstance(valeur, datetime.datetime):
+        return valeur.date()
+    if isinstance(valeur, datetime.date):
+        return valeur
+    try:
+        return datetime.date.fromisoformat(str(valeur)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
 def build_analyse_achats_context(
         company, *, date_debut=None, date_fin=None, nb_mois=6):
     """Contexte de rendu du rapport imprimable — réutilise
@@ -24,8 +37,10 @@ def build_analyse_achats_context(
         company, date_debut=date_debut, date_fin=date_fin, nb_mois=nb_mois)
     context = _company_context(company=company)
     context['data'] = data
-    context['date_debut'] = date_debut
-    context['date_fin'] = date_fin
+    # Le gabarit formate la période avec ``strftime`` : il lui faut des dates,
+    # pas les chaînes brutes de la requête.
+    context['date_debut'] = _en_date(date_debut)
+    context['date_fin'] = _en_date(date_fin)
     context['genere_le'] = timezone.now()
     return context
 

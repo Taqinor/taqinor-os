@@ -26,7 +26,10 @@ import httpx
 # ADSENG2 l'a extraite dans ``api_version`` (plain-constant, sans dépendance)
 # pour que l'émetteur CAPI côté ventes partage EXACTEMENT la même version — plus
 # jamais deux littéraux divergents. Ré-exportée ici pour les importeurs existants.
-from .api_version import GRAPH_BASE_URL, GRAPH_VERSION  # noqa: F401
+from .api_version import GRAPH_BASE_URL, GRAPH_VERSION  # noqa: F401  (source unique de la version Graph, tests adseng2)
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Statut FORCÉ de toute création — codé en dur, jamais surchargeable.
 FORCED_STATUS = 'PAUSED'
@@ -206,6 +209,7 @@ def rate_limit_status(ad_account_id):
         from django.core.cache import cache
         state = cache.get(f'{THROTTLE_CACHE_PREFIX}:{ad_account_id}')
     except Exception:  # noqa: BLE001 — cache indisponible
+        logger.warning("meta_client.rate_limit_status : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if not state:
         return None
@@ -343,6 +347,7 @@ class MetaClient:
         try:
             state = parse_usage_headers(getattr(resp, 'headers', {}) or {})
         except Exception:  # noqa: BLE001 — l'usage n'empêche jamais la requête
+            logger.warning("meta_client.MetaClient._record_usage : erreur ignorée (mode dégradé)", exc_info=True)
             return
         if state.get('usage_pct') is None and not state.get('insights_throttle'):
             return
@@ -355,7 +360,7 @@ class MetaClient:
                 f'{THROTTLE_CACHE_PREFIX}:{self.ad_account_id}',
                 state, THROTTLE_CACHE_TTL)
         except Exception:  # noqa: BLE001 — cache indisponible : no-op
-            pass
+            logger.warning("meta_client.MetaClient._record_usage : erreur ignorée (mode dégradé)", exc_info=True)
 
     # AACQ17 — l'API Graph n'a AUCUNE idempotence : rejouer un POST dont la
     # réponse s'est perdue (timeout de lecture, 5xx) peut créer DEUX objets /

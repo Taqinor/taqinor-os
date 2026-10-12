@@ -15,7 +15,8 @@ import {
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../lib/format'
-import { SectionTitle } from './peComponents'
+import { SectionTitle, CarteSection, ChargementCarte } from './peComponents'
+import toutesLesPages from './toutesLesPages'
 
 // Bloc « copier une fois » : affiche un secret généré avec un bouton copier.
 function RevealOnce({ label, value, onDismiss }) {
@@ -64,15 +65,14 @@ function ChangelogFeed() {
 
   useEffect(() => {
     let alive = true
-    publicapiApi.getChangelog()
-      .then((r) => { if (alive) setEntries(r.data?.results ?? []) })
+    toutesLesPages((params) => publicapiApi.getChangelog(params))
+      .then((rows) => { if (alive) setEntries(rows) })
       .catch(() => { if (alive) setError(true) })
     return () => { alive = false }
   }, [])
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
+    <CarteSection>
         <SectionTitle icon={<Sparkles className="size-4" />} label="Nouveautés" />
         <p className="mb-3 text-sm text-muted-foreground">
           Dernières notes de version publiées (changelog API public).
@@ -118,8 +118,7 @@ function ChangelogFeed() {
             })}
           </ul>
         )}
-      </CardContent>
-    </Card>
+    </CarteSection>
   )
 }
 
@@ -139,8 +138,7 @@ function DocsReference() {
   }
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
+    <CarteSection>
         <div className="flex items-center justify-between gap-2">
           <SectionTitle icon={<BookOpen className="size-4" />} label="Référence de l'API" />
           <Button type="button" size="sm" variant="outline" onClick={toggle}>
@@ -233,8 +231,7 @@ function DocsReference() {
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </CarteSection>
   )
 }
 
@@ -277,8 +274,7 @@ function InteractiveConsole() {
   const paths = schema ? Object.entries(schema.paths || {}) : []
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
+    <CarteSection>
         <div className="flex items-center justify-between gap-2">
           <SectionTitle icon={<BookOpen className="size-4" />} label="Console de documentation interactive" />
           <Button type="button" size="sm" variant="outline" onClick={toggle}>
@@ -331,8 +327,7 @@ function InteractiveConsole() {
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </CarteSection>
   )
 }
 
@@ -367,8 +362,7 @@ function MonitoringDashboard() {
   }, [jours])
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
+    <CarteSection>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <SectionTitle icon={<Activity className="size-4" />} label="Monitoring des intégrations" />
           <Segmented options={FENETRE_OPTIONS} value={jours} onChange={setJours} size="sm" />
@@ -461,8 +455,7 @@ function MonitoringDashboard() {
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+    </CarteSection>
   )
 }
 
@@ -583,7 +576,7 @@ export default function ApiWebhooksSection() {
     title: `Désactiver la clé « ${k.label} » ?`,
     description: 'La clé cessera immédiatement de fonctionner pour tout système externe qui l’utilise. Réversible (réactivable ensuite).',
     confirmLabel: 'Désactiver',
-    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch { /* */ } },
+    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Révocation impossible.') } },
   })
   const deleteKey = (k) => setPendingAction({
     severity: 'high',
@@ -591,7 +584,7 @@ export default function ApiWebhooksSection() {
     description: `La clé « ${k.label} » sera supprimée définitivement. Tout système externe qui l’utilise cessera de fonctionner.`,
     confirmText: k.label,
     confirmLabel: 'Supprimer définitivement',
-    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch { /* */ } },
+    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') } },
   })
 
   const createWebhook = async () => {
@@ -607,7 +600,7 @@ export default function ApiWebhooksSection() {
   }
   const toggleWebhook = async (h) => {
     try { await publicapiApi.updateWebhook(h.id, { enabled: !h.enabled }); loadAll() }
-    catch { /* */ }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const rotateSecret = (h) => setPendingAction({
     severity: 'high',
@@ -617,7 +610,7 @@ export default function ApiWebhooksSection() {
     confirmLabel: 'Régénérer le secret',
     run: async () => {
       try { const r = await publicapiApi.rotateWebhookSecret(h.id); setRevealedSecret(r.data.secret) }
-      catch { /* */ }
+      catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation du secret impossible.') }
     },
   })
   const deleteWebhook = (h) => setPendingAction({
@@ -626,22 +619,17 @@ export default function ApiWebhooksSection() {
     description: `« ${h.label || h.target_url} » sera définitivement supprimé — les notifications sortantes vers cette URL cesseront.`,
     confirmText: 'SUPPRIMER',
     confirmLabel: 'Supprimer',
-    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch { /* */ } },
+    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') } },
   })
 
   if (loading) {
-    return (
-      <Card><CardContent className="pt-4 sm:pt-5">
-        <Spinner /> <span className="text-xs text-muted-foreground">Chargement…</span>
-      </CardContent></Card>
-    )
+    return <ChargementCarte />
   }
 
   return (
     <>
       {/* ── Clés API ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle icon={<KeyRound className="size-4" />} label="Clés d'API" />
           <p className="mb-3 text-sm text-muted-foreground">
             Les clés permettent à un système externe de lire vos données via l'API
@@ -736,12 +724,10 @@ export default function ApiWebhooksSection() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* ── Webhooks ── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle icon={<WebhookIcon className="size-4" />} label="Webhooks" />
           <p className="mb-3 text-sm text-muted-foreground">
             Recevez une notification HTTP signée (HMAC-SHA256) sur vos évènements
@@ -836,8 +822,7 @@ export default function ApiWebhooksSection() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
 
       {/* ── Monitoring des intégrations (NTAPI39/40) ── */}
       <MonitoringDashboard />

@@ -21,6 +21,7 @@ import {
   Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { SelectClient } from './ElementsListeVentes'
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
@@ -416,7 +417,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) : chaque
+      // VX171 — mapping DRF générique (detail / objet champ → liste / array) : chaque
       // champ en erreur vire rouge, plus un toast anonyme.
       setFromResponse(err)
     } finally {
@@ -480,23 +481,14 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             <FormField label="Client" required htmlFor="fc-client" error={errors.client}>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <Select value={fields.client ? String(fields.client) : undefined}
-                          disabled={horsBrouillon}
-                          onValueChange={v => setField('client', v)}>
-                    {/* VX240(a) — la modale s'ouvrait SANS aucun autofocus (le
-                        vendeur devait cliquer avant de pouvoir taper/choisir) ;
-                        premier champ utile focalisé à l'ouverture. */}
-                    <SelectTrigger id="fc-client" invalid={!!errors.client} autoFocus>
-                      <SelectValue placeholder="— Sélectionner un client —" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map(c => (
-                        <SelectItem key={c.id} value={String(c.id)}>
-                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {/* VX240(a) — la modale s'ouvrait SANS aucun autofocus (le
+                      vendeur devait cliquer avant de pouvoir taper/choisir) ;
+                      premier champ utile focalisé à l'ouverture. */}
+                  <SelectClient clients={clients}
+                                value={fields.client ? String(fields.client) : undefined}
+                                disabled={horsBrouillon}
+                                onValueChange={v => setField('client', v)}
+                                id="fc-client" invalid={!!errors.client} autoFocus />
                 </div>
                 {/* VX91 — création rapide client (QG3), sans quitter la facture */}
                 <Button type="button" variant="outline" disabled={horsBrouillon}

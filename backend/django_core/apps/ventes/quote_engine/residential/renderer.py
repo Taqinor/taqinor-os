@@ -15,6 +15,9 @@ import hashlib
 import json
 from collections import OrderedDict
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Unsupported(Exception):
@@ -341,6 +344,7 @@ def _measure_page_slack(pdf_bytes: bytes) -> dict:
     try:
         import fitz
     except Exception:
+        logger.warning("renderer._measure_page_slack : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     out = {}
     try:
@@ -363,6 +367,7 @@ def _measure_page_slack(pdf_bytes: bytes) -> dict:
                 out[i + 1] = round(min(slack, 68.0), 1)
         doc.close()
     except Exception:
+        logger.warning("renderer._measure_page_slack : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     return out
 

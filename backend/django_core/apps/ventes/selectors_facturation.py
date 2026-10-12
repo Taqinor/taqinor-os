@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """Sélecteurs LECTURE SEULE de la facturation (factures, paiements, encours,
 recouvrement, références) — sortis de ``apps/ventes/selectors.py`` par SPL143
 (déplacement pur, corps inchangés ; propriétaire : facturation).
@@ -443,7 +446,8 @@ def ca_devis_factures_par_clients(company, client_ids):
         try:
             entry['ca_devis'] += Decimal(str(devis.total_ttc or 0))
         except Exception:  # noqa: BLE001 — jamais casser la consolidation
-            pass
+            logger.warning(
+                "selectors_facturation.ca_devis_factures_par_clients : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_devis'] += 1
 
     facture_qs = factures_avec_montant_du(
@@ -459,7 +463,8 @@ def ca_devis_factures_par_clients(company, client_ids):
         try:
             entry['ca_factures'] += Decimal(str(facture.total_ttc or 0))
         except Exception:  # noqa: BLE001 — jamais casser la consolidation
-            pass
+            logger.warning(
+                "selectors_facturation.ca_devis_factures_par_clients : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_factures'] += 1
 
     return out
@@ -673,7 +678,8 @@ def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
             entry['ht'] += Decimal(str(facture.total_ht or 0))
             entry['ttc'] += Decimal(str(facture.total_ttc or 0))
         except Exception:  # noqa: BLE001 — jamais casser l'agrégat
-            pass
+            logger.warning(
+                "selectors_facturation.montants_factures_par_devis : erreur ignorée (mode dégradé)", exc_info=True)
     return out
 
 
@@ -712,6 +718,8 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
         try:
             montant = Decimal(str(devis.total_ttc or 0))
         except Exception:
+            logger.warning(
+                "selectors_facturation.carnet_commande_par_mois : erreur ignorée (mode dégradé)", exc_info=True)
             montant = Decimal('0')
         par_mois[cle] = par_mois.get(cle, Decimal('0')) + montant
     return par_mois

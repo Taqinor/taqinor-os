@@ -6,6 +6,7 @@ import {
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import tiersApi from '../../api/tiersApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /* ============================================================================
    WIR152 — Écran « Tiers » (`/tiers`) : répertoire unifié.
@@ -228,10 +229,9 @@ export default function TiersPage() {
   const load = () => {
     setLoading(true)
     setError(null)
-    return tiersApi.tiers.list()
-      .then((r) => {
-        const data = r?.data
-        setRows(Array.isArray(data) ? data : (data?.results ?? []))
+    return fetchAllPages((page) => tiersApi.tiers.list({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => {
+        setRows(Array.isArray(rows) ? rows : (rows?.results ?? []))
       })
       .catch(() => setError('Chargement impossible.'))
       .finally(() => setLoading(false))
@@ -243,10 +243,9 @@ export default function TiersPage() {
   // PatrimoineTree.jsx, pages/immobilier). Les rechargements ultérieurs
   // passent par `load` ci-dessus, jamais par cet effet.
   useEffect(() => {
-    tiersApi.tiers.list()
-      .then((r) => {
-        const data = r?.data
-        setRows(Array.isArray(data) ? data : (data?.results ?? []))
+    fetchAllPages((page) => tiersApi.tiers.list({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => {
+        setRows(Array.isArray(rows) ? rows : (rows?.results ?? []))
       })
       .catch(() => setError('Chargement impossible.'))
       .finally(() => setLoading(false))

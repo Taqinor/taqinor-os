@@ -22,3 +22,6 @@ class AuthenticationConfig(AppConfig):
         # RegisterCompanyView. Import local : jamais d'effet de bord à l'import.
         from .signup_seeds import register_authentication_signup_hooks
         register_authentication_signup_hooks()
+        # ENF10 — schéma OpenAPI des APIView de views.py (fichier gelé C20).
+        from .openapi_declarations import declarer_schemas_apiview
+        declarer_schemas_apiview()

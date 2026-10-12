@@ -142,7 +142,8 @@ class TestDevisSignatureCreated(TestCase):
             f"lignes={lignes_str}"
         )
         self.assertNotIn('prix_achat', payload)
-        self.assertNotIn('73951', payload)  # prix_achat value not in hash (distinctive: avoids ISO-timestamp substring flake)
+        # prix_achat value not in hash (distinctive: avoids ISO-timestamp substring flake)
+        self.assertNotIn('73951', payload)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

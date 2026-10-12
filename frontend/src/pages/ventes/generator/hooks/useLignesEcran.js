@@ -176,6 +176,7 @@ export function useLignesEcran(ctx) {
     if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
     setRenameError(null)
     setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRenameLine, lines, produits])
 
   // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
@@ -277,6 +278,7 @@ export function useLignesEcran(ctx) {
   // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
   // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
   // aucune dépendance réelle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const onProduitCreated = useCallback((p) => setProduits(ps => [...ps, p]), [])
 
   // VX90 — quand une ligne vient d'être ajoutée, focaliser son ProduitPicker et
@@ -297,8 +299,8 @@ export function useLignesEcran(ctx) {
       ;(designation || picker)?.focus()
       row.scrollIntoView({ block: 'nearest' })
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
     setPendingFocusKey(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingFocusKey, lines])
 
   // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 
 /* CAD113 — dans l'éditeur de cadence, un refus serveur ne part plus en toast
    générique.
@@ -36,6 +36,7 @@ import parametresApi from '../../api/parametresApi'
 import { toast } from '../../ui/confirm'
 import { ThemeProvider } from '../../design/ThemeProvider'
 import CadenceRelanceEditor from './CadenceRelanceEditor'
+import { monterEditeur } from './cadenceRelance.testHelpers.jsx'
 
 /** Le message EXACT du sérialiseur (validate_delai_minutes). */
 const MESSAGE_SERVEUR = (
@@ -63,13 +64,7 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 const renderEditor = async () => {
-  await act(async () => {
-    render(
-      <ThemeProvider>
-        <CadenceRelanceEditor />
-      </ThemeProvider>,
-    )
-  })
+  await monterEditeur(CadenceRelanceEditor)
   await screen.findByDisplayValue("Appel d'ouverture")
 }
 

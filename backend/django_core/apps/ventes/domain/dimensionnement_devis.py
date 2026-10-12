@@ -121,10 +121,12 @@ def plafond_toit_du_devis(devis):
     try:
         toiture = extract_roof_config(layout) or {}
     except Exception:  # noqa: BLE001 — un layout illisible n'est pas un plafond
+        logger.warning("dimensionnement_devis.plafond_toit_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         toiture = {}
     try:
         cible = int(_cible_panneaux_du_layout(layout, toiture) or 0)
     except Exception:  # noqa: BLE001
+        logger.warning("dimensionnement_devis.plafond_toit_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     return cible if cible > 0 else None
 
@@ -218,7 +220,8 @@ def plafond_physique_du_devis(devis):
         setattr(devis, _MEMO_PLAFOND_PHYSIQUE, (plafond,))
     except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le
         # mémo, jamais le résultat.
-        pass
+        logger.warning(
+            "dimensionnement_devis.plafond_physique_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
     return plafond
 
 
@@ -361,6 +364,7 @@ def lignes_vendues(devis, option=None):
     try:
         lignes = list(devis.lignes.all())
     except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+        logger.warning("dimensionnement_devis.lignes_vendues : erreur ignorée (mode dégradé)", exc_info=True)
         return []
     from apps.ventes.domain.regles_calcul import calcul_corrige
     # Décision fondateur 08/10/2026 — devis envoyé avant AMOT31
@@ -424,6 +428,8 @@ def comptes_panneaux_valides(devis, option=None):
     try:
         lignes = list(devis.lignes.all())
     except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+        logger.warning(
+            "dimensionnement_devis.comptes_panneaux_valides : erreur ignorée (mode dégradé)", exc_info=True)
         return set()
     comptes = {'sans': 0, 'avec': 0}
     for ligne in lignes:
@@ -1069,6 +1075,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
             cout_onduleur_ttc=(round(onduleur, 2) if onduleur > 0
                                else None))['payback_years']
     except Exception:  # noqa: BLE001 — un payback indisponible s'omet
+        logger.warning("dimensionnement_devis._payback_publie_palier : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

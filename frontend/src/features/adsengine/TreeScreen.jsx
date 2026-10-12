@@ -178,7 +178,7 @@ export default function TreeScreen() {
     setLeads([])
     setLeadsError(false)
     adsengineApi.assumptions.testLeads(testId)
-      .then(r => setLeads(Array.isArray(r.data) ? r.data : (r.data?.results || r.data?.leads || [])))
+      .then(r => setLeads(Array.isArray(r.data) ? r.data : []))
       .catch(() => { setLeads([]); setLeadsError(true) })
       .finally(() => setLeadsLoading(false))
   }

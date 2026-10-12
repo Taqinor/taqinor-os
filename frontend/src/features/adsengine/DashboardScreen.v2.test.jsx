@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, waitFor } from '@testing-library/react'
 
 /* ADSDEEP61 — Dashboard v2 : tuiles ADDITIVES conversations WhatsApp réelles +
    MER mixte (dépense Meta vs CA signé Odoo, DEUX devises JAMAIS fusionnées),
@@ -26,8 +25,9 @@ vi.mock('./adsengineApi', () => ({
 }))
 
 import DashboardScreen from './DashboardScreen'
+import { renderDashboard, seedDashboardBase } from './DashboardScreen.testHelpers.jsx'
 
-const renderScreen = () => render(<MemoryRouter><DashboardScreen /></MemoryRouter>)
+const renderScreen = () => renderDashboard(DashboardScreen)
 
 const sparkline14 = (base) => Array.from({ length: 14 }, (_, i) => ({
   date: `2026-07-${String(i + 1).padStart(2, '0')}`, value: base + i,
@@ -35,10 +35,7 @@ const sparkline14 = (base) => Array.from({ length: 14 }, (_, i) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.dashboard.mockResolvedValue({ data: {
-    cost_per_signature: 1850, spend: 4200, cpl: 95, frequency: 1.8 } })
-  mocks.alerts.mockResolvedValue({ data: { alerts: [] } })
-  mocks.leads.mockResolvedValue({ data: [] })
+  seedDashboardBase(mocks)
   mocks.dashboardV2.mockResolvedValue({ data: {
     window_days: 14,
     conversations: { total: 37, sparkline: sparkline14(1) },

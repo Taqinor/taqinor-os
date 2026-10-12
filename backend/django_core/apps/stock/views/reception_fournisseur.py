@@ -1,35 +1,14 @@
-from django.db import transaction  # noqa: F401
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework.parsers import JSONParser
-from rest_framework import viewsets, filters, serializers, status  # noqa: F401
+from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..openapi_helpers import BINARY, INT, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
-)
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
-)
+from ..models import Produit, ReceptionFournisseur
+from ..serializers import ReceptionFournisseurSerializer, FactureFournisseurSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
@@ -123,8 +102,10 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
 
     def get_queryset(self):
         qs = super().get_queryset()
-        bon_id = self.request.query_params.get('bon_commande')
-        if bon_id:
+        from ..utils.params import entier_ou_400
+        bon_id = entier_ou_400(
+            self.request.query_params.get('bon_commande'), 'bon_commande')
+        if bon_id is not None:
             qs = qs.filter(bon_commande_id=bon_id)
         statut = self.request.query_params.get('statut')
         if statut:
@@ -141,7 +122,9 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
 
-    @extend_schema(parameters=[P('code', STR, True, 'Code GS1-128 / DataMatrix')],
+    @extend_schema(parameters=[P('code', STR, True,
+                                 'Code GS1-128 / DataMatrix (AI 01 + GTIN 14 chiffres en tête)',
+                                 pattern=r'^01[0-9]{14}')],
                    responses=corps('ReceptionScanGs1Reponse', produit_id=serializers.IntegerField(),
                                    produit_nom=serializers.CharField(),
                                    numeros_serie=serializers.ListField(child=serializers.CharField(), allow_null=True),
@@ -188,8 +171,9 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 if parsed.get('date_peremption') else None),
         })
 
-    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False,
-                                                                                              'html pour la version HTML', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
+    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
+                               P('sortie', STR, False, 'html pour la version HTML', ['html', 'pdf'])],
+                   responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes')
     def etiquettes(self, request, pk=None):
         """ZSTK6 — planche d'étiquettes lot/série depuis les lignes de CETTE

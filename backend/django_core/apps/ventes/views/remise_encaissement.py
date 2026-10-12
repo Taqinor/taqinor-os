@@ -15,6 +15,7 @@ from ..openapi_params import qint
 from django.db import transaction
 from django.utils import timezone
 from django.http import HttpResponse
+from rest_framework.parsers import JSONParser
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -23,6 +24,9 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
 from ..serializers_facturation import RemiseEncaissementSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -44,6 +48,7 @@ def paiements_remisables(qs):
 @extend_schema_view(list=extend_schema(
     parameters=[qint('technicien')]))
 class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. get_queryset /
     # perform_create / get_permissions SURCHARGENT la base (scoping direct sur
     # `company`) : scoping et matrice 401/403/404 INCHANGÉS (règle #4).
@@ -205,7 +210,8 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             generate_bordereau_remise_pdf(remise.id)
             remise.refresh_from_db()
         except Exception:  # noqa: BLE001 — best-effort, la clôture reste valide
-            pass
+            logger.warning(
+                "remise_encaissement.RemiseEncaissementViewSet.cloturer : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
             **RemiseEncaissementSerializer(remise).data,
             'ecart_non_nul': remise.ecart != 0,

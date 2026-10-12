@@ -126,7 +126,7 @@ class BcfStatutTests(TestCase):
             'bon_commande': self.brouillon.pk,
             'lignes': [{'ligne_commande': self.ligne.pk, 'quantite': 1}],
         }, format='json')
-        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertEqual(rep.status_code, 409, rep.data)
         self.assertIn('BCF non envoyé', str(rep.data))
         self.assertFalse(ReceptionFournisseur.objects.filter(
             bon_commande=self.brouillon).exists())

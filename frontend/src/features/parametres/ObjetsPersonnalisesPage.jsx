@@ -23,6 +23,7 @@ import {
   Button, IconButton, Input, Badge, Spinner, EmptyState, Card, CardContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import toutesLesPages from '../../pages/parametres/toutesLesPages'
 
 // Types de champ supportés par le moteur EXISTANT (CustomFieldDef.type).
 const TYPES_CHAMP = [
@@ -64,8 +65,8 @@ export default function ObjetsPersonnalisesPage() {
     libelle: '', type: 'text', options: '', obligatoire: false, visible_liste: true,
   })
 
-  const charger = useCallback(() => api.get('/custom-fields/objects/')
-    .then((res) => setObjets(res.data?.results ?? res.data ?? []))
+  const charger = useCallback(() => toutesLesPages((params) => api.get('/custom-fields/objects/', { params }))
+    .then((rows) => setObjets(rows))
     .catch(() => toast.error('Impossible de charger les objets personnalisés.'))
     .finally(() => setLoading(false)), [])
 

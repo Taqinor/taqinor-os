@@ -181,7 +181,7 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
     from ..activity import (
         log_devis_catalogue_envoye_conserve, log_devis_prix_negocie_conserve,
         log_devis_resynchronisation)
-    from .lignes import prix_negocie
+    from .lignes import poser_prix_unitaire, prix_negocie
 
     ancien_nom, nouveau_nom = _valeurs_champ(champs, 'nom')
     ancien_prix_txt, nouveau_prix_txt = _valeurs_champ(champs, 'prix_vente')
@@ -284,7 +284,7 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
                     if envoye:
                         suivrait['prix'] = True
                     else:
-                        ligne.prix_unitaire = nouveau_prix
+                        poser_prix_unitaire(ligne, nouveau_prix)
                         champs_ecrits.append('prix_unitaire')
                 elif (getattr(ligne, 'prix_manuel', False)
                       or _decimal_ou_none(ligne.prix_unitaire)

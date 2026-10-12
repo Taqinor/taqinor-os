@@ -15,6 +15,9 @@ transaction annulée d'office, et rien n'est jamais réparé ici.
 """
 from django.core.management.base import BaseCommand
 from django.db import transaction
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Figures client comparées (clés du dict de rendu).
 FIGURES = (
@@ -72,6 +75,8 @@ class Command(BaseCommand):
                 try:
                     ecarts = ecarts_du_devis(devis)
                 except Exception as exc:  # noqa: BLE001 — devis illisible signalé
+                    logger.warning(
+                        "regles_calcul_ecarts_dryrun.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                     erreurs.append((devis.reference, type(exc).__name__))
                     continue
                 if ecarts:

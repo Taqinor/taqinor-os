@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional  # PLAN_VEILLE (ajout)
 
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -94,7 +95,7 @@ class MetaConnectionSerializer(serializers.ModelSerializer):
             'token_invalid_at', 'created_at', 'updated_at',
         ]
 
-    def get_has_credentials(self, obj):
+    def get_has_credentials(self, obj) -> bool:
         return bool(obj.credentials)
 
     def _apply_token_state(self, instance, credentials):
@@ -268,15 +269,16 @@ class EngineAlertSerializer(serializers.ModelSerializer):
             'resolved',
         ]
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_wa_links(self, obj):
         from .alerts import wa_links
         return wa_links(obj.message)
 
-    def get_link(self, obj):
+    def get_link(self, obj) -> str:
         from .alerts import deep_link_for_alert
         return deep_link_for_alert(obj)
 
-    def get_snoozed_until(self, obj):
+    def get_snoozed_until(self, obj) -> Optional[str]:
         return (obj.detail or {}).get('snoozed_until')
 
 
@@ -348,12 +350,16 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
 
+    @extend_schema_field(inline_serializer(
+        'AdsChecklistWarning',
+        {'key': serializers.CharField(), 'label': serializers.CharField()},
+        many=True))
     def get_checklist_warnings(self, obj):
         """PUB83 — Avertissements non bloquants de la check-list policy."""
         from .policy import asset_warnings
         return asset_warnings(obj)
 
-    def get_preview_url(self, obj):
+    def get_preview_url(self, obj) -> Optional[str]:
         """ADSDEEP15 — URL présignée MinIO depuis ``file_key`` (None si vide/
         stockage indisponible). Jamais un secret : c'est une URL de lecture
         temporaire signée, patron ``records.storage.presign_attachment``."""
@@ -362,18 +368,28 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         from apps.records.storage import presign_attachment
         return presign_attachment(obj.file_key)
 
-    def get_is_video(self, obj):
+    def get_is_video(self, obj) -> bool:
         """Un reel / explainer se rend en ``<video>`` (les statiques en ``<img>``)."""
         return obj.asset_type in (
             CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
 
+    @extend_schema_field(inline_serializer('AdsAssetProvenance', {
+        'asset_id': serializers.IntegerField(),
+        'batch_id': serializers.IntegerField(allow_null=True),
+        'fact_table_version': serializers.JSONField(allow_null=True),
+        'claim_verdicts': serializers.DictField(),
+        'template_quarantined': serializers.BooleanField(),
+        'human_decision': serializers.JSONField(allow_null=True),
+        'meta_status': serializers.JSONField(allow_null=True),
+        'policy_stamp': serializers.DictField(),
+    }))
     def get_provenance(self, obj):
         """PUB84 — Piste d'audit durable (``generation_audit.asset_provenance``,
         AGEN9) : lecture seule, jamais recalculée ici."""
         from .generation_audit import asset_provenance
         return asset_provenance(obj)
 
-    def get_consent_block(self, obj):
+    def get_consent_block(self, obj) -> Optional[str]:
         """PUB75 — Raison de blocage consentement (CNDP) lisible, ou ``None``."""
         return obj.consent_block_reason()
 
@@ -738,19 +754,19 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
             obj._ae_insights = cached
         return cached
 
-    def get_statut_display(self, obj):
+    def get_statut_display(self, obj) -> str:
         return _META_STATUT_FR.get(obj.status, obj.status or '—')
 
-    def get_budget_quotidien_mad(self, obj):
+    def get_budget_quotidien_mad(self, obj) -> Optional[str]:
         if obj.budget is None:
             return None
         # Budget Meta en unités mineures (centimes) → MAD (unités majeures).
         return str((obj.budget / Decimal('100')).quantize(Decimal('0.01')))
 
-    def get_depense_mad(self, obj):
+    def get_depense_mad(self, obj) -> str:
         return str(self._insights(obj)['spend'] or Decimal('0'))
 
-    def get_nb_leads(self, obj):
+    def get_nb_leads(self, obj) -> int:
         return int(self._insights(obj)['results'] or 0)
 
 
@@ -824,19 +840,19 @@ class AdSetMirrorSerializer(SameCompanyFKSerializerMixin,
                               if obj.last_sig_edit else None),
         }
 
-    def get_statut_display(self, obj):
+    def get_statut_display(self, obj) -> str:
         return _META_STATUT_FR.get(obj.status, obj.status or '—')
 
-    def get_budget_quotidien_mad(self, obj):
+    def get_budget_quotidien_mad(self, obj) -> Optional[str]:
         if obj.budget is None:
             return None
         # Budget Meta en unités mineures (centimes) → MAD (unités majeures).
         return str((obj.budget / Decimal('100')).quantize(Decimal('0.01')))
 
-    def get_depense_mad(self, obj):
+    def get_depense_mad(self, obj) -> str:
         return str(_spend_results_for(AdSetMirror, obj)['spend'] or Decimal('0'))
 
-    def get_nb_leads(self, obj):
+    def get_nb_leads(self, obj) -> int:
         return int(_spend_results_for(AdSetMirror, obj)['results'] or 0)
 
 
@@ -863,13 +879,13 @@ class AdMirrorSerializer(SameCompanyFKSerializerMixin,
         ]
         read_only_fields = fields
 
-    def get_statut_display(self, obj):
+    def get_statut_display(self, obj) -> str:
         return _META_STATUT_FR.get(obj.status, obj.status or '—')
 
-    def get_depense_mad(self, obj):
+    def get_depense_mad(self, obj) -> str:
         return str(_spend_results_for(AdMirror, obj)['spend'] or Decimal('0'))
 
-    def get_nb_leads(self, obj):
+    def get_nb_leads(self, obj) -> int:
         return int(_spend_results_for(AdMirror, obj)['results'] or 0)
 
 
@@ -914,7 +930,7 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_ad_meta_id(self, obj):
+    def get_ad_meta_id(self, obj) -> Optional[str]:
         if obj.source != CommentMirror.Source.AD:
             return None
         return self.context.get('story_to_ad', {}).get(obj.object_meta_id)
@@ -992,7 +1008,7 @@ class AssumptionNodeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
 
-    def get_dead_branch(self, obj):
+    def get_dead_branch(self, obj) -> bool:
         """PUB94 — Vrai si le nœud est figé sur son prior depuis ≥ N semaines."""
         from .posterior_drift import is_dead_branch
         return is_dead_branch(obj)
@@ -1080,7 +1096,7 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
                 "Le client d'un consentement ne peut plus être modifié.")
         return value
 
-    def get_is_active(self, obj):
+    def get_is_active(self, obj) -> bool:
         return obj.is_active()
 
 
@@ -1099,7 +1115,7 @@ class CompetitorPageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
 
-    def get_ad_library_url(self, obj):
+    def get_ad_library_url(self, obj) -> str:
         return obj.ad_library_url()
 
 

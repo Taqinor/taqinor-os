@@ -2,6 +2,9 @@
 apps/entites/permissions.py et apps/fpa/permissions.py — code fin lisible via
 has_erp_permission, enregistrement UI dans apps.roles = NTADM39, hors périmètre)."""
 from rest_framework.permissions import BasePermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 ADMINOPS_ADMINISTRER = 'adminops_administrer'
 
@@ -18,6 +21,8 @@ class IsAdministrateur(BasePermission):
         try:
             return bool(user.has_erp_permission(ADMINOPS_ADMINISTRER))
         except Exception:
+            logger.warning(
+                "permissions.IsAdministrateur.has_permission : erreur ignorée (mode dégradé)", exc_info=True)
             return False
 
 

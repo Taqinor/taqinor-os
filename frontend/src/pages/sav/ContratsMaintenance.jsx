@@ -299,9 +299,9 @@ export function Component() {
       .finally(() => setRentabiliteLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (vue === 'tournee') loadTournee() }, [vue])
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (vue === 'rentabilite' && canSeeCouts) loadRentabilite() }, [vue, canSeeCouts])
   useEffect(() => {
     // Best-effort (réservé admin) — sinon dropdown technicien vide, comme

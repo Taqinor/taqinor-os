@@ -13,11 +13,8 @@
    FactureList.test.jsx (ventesSlice, ventesApi, parametresApi, uxviewsApi) +
    l'axios partagé et les sorties navigateur (jamais la source testée). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { screen, within, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
 
 const T0 = '2026-07-15T10:00:00.000Z'
 
@@ -75,25 +72,11 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/parametresApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getProfile: vi.fn(() => Promise.resolve({ data: { dgi_export_actif: false } })),
-    },
-  }
-})
+vi.mock('../../api/parametresApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).parametresApiProfil(await importOriginal(), { dgi_export_actif: false }))
 
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
+vi.mock('../../api/uxviewsApi', async () =>
+  (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
 
 // Réseau axios partagé (export comptable + historique du dialogue de paiement).
 vi.mock('../../api/axios', () => ({
@@ -115,6 +98,7 @@ vi.mock('../../ui/Toaster', async (importOriginal) => {
 })
 
 import FactureList from './FactureList'
+import { renderFactureList } from './factureList.testHelpers.jsx'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 const GOLDEN = './factureList/__golden__/'
@@ -129,21 +113,7 @@ const normaliser = (html) => html
 
 const snap = () => normaliser(document.body.innerHTML)
 
-function renderList({ factures = [], role = 'admin' } = {}) {
-  const store = configureStore({
-    reducer: {
-      ventes: (s = { factures, loading: false, error: null }) => s,
-      auth: (s = { role }) => s,
-    },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/factures']}>
-        <ThemeProvider><FactureList /></ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderList = (opts) => renderFactureList(FactureList, opts)
 
 const base = {
   client: 9, client_nom: 'ACME', client_telephone: '+212600000000', date_emission: '2026-07-01',

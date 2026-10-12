@@ -50,7 +50,7 @@ describe('RemisesEncaissementPage (PACT46)', () => {
   it('affiche l\'écart de chaque remise sans jamais le masquer', async () => {
     render(<RemisesEncaissementPage />)
     await waitFor(() => expect(api.get)
-      .toHaveBeenCalledWith('/ventes/remises-encaissement/'))
+      .toHaveBeenCalledWith('/ventes/remises-encaissement/', expect.anything()))
     expect(await screen.findByText('REM-2026-0003')).toBeInTheDocument()
     expect(screen.getByText('youssef')).toBeInTheDocument()
     // 150,00 MAD d'écart, rendu tel quel sur la ligne.

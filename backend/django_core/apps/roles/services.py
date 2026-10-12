@@ -7,6 +7,10 @@ un rôle n'est jamais appliqué s'il n'appartient pas à la société du compte.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def role_for_company(role_id, company_id):
     """Renvoie le ``Role`` d'id ``role_id`` s'il appartient à ``company_id``.
@@ -41,7 +45,7 @@ def apply_role_to_user(user, role_id) -> bool:
         if would_cumulate_critical(user, role):
             return False
     except Exception:
-        pass
+        logger.warning("services.apply_role_to_user : erreur ignorée (mode dégradé)", exc_info=True)
     user.role = role
     user.save(update_fields=['role'])
     return True

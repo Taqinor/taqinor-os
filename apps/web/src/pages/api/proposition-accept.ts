@@ -28,6 +28,7 @@ import {
   type SignFormState,
 } from '../../lib/proposition';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
+import { lirePaiementAcceptation } from '../../lib/paiementAcceptation';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -158,7 +159,10 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   const result = normalizeAcceptResponse(upstreamStatus, upstreamPayload);
+  // ADEV53 — le succès relaie `paiement` (contrat `proposal_accept.json`) : acompte, RIB et
+  // déclaration de virement de l'écran de succès. Jamais sur un refus.
+  const paiement = result.ok ? lirePaiementAcceptation(upstreamPayload) : null;
   // On relaie le statut backend (200 / 400 / 409 / 404) et l'objet normalisé,
   // ce qui permet au client d'afficher le message `detail` exact inline.
-  return json(result, upstreamStatus >= 200 && upstreamStatus < 600 ? upstreamStatus : 502);
+  return json(paiement ? { ...result, paiement } : result, upstreamStatus >= 200 && upstreamStatus < 600 ? upstreamStatus : 502);
 };

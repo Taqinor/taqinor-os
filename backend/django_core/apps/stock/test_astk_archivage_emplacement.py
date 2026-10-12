@@ -97,6 +97,13 @@ class ArchivageTests(TestCase):
         self.assertEqual(rep.status_code, 409, rep.content)
         self.assertFalse(self._archived(self.camionnette))
 
+    def test_booleen_et_texte_stricts_400_ENF11(self):
+        """``archived: 1`` / ``nom: 5`` ne sont plus convertis en silence."""
+        for corps in ({'archived': 1}, {'archived': 'true'}, {'nom': 5}):
+            rep = self.api.patch(f'{URL}{self.vide.id}/', corps, format='json')
+            self.assertEqual(rep.status_code, 400, (corps, rep.content))
+        self.assertFalse(self._archived(self.vide))
+
     def test_principal_400(self):
         rep = self.api.patch(f'{URL}{self.principal.id}/',
                              {'archived': True}, format='json')
@@ -108,7 +115,7 @@ class ArchivageTests(TestCase):
     def test_de_tiers_non_vide_409(self):
         avant = self._etat()
         rep = self.api.patch(f'{URL}{self.de_tiers.id}/',
-                             {'archived': 'true'}, format='json')
+                             {'archived': True}, format='json')
         self.assertEqual(rep.status_code, 409, rep.content)
         self.assertFalse(self._archived(self.de_tiers))
         self.assertEqual(self._etat(), avant)

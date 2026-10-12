@@ -9,12 +9,14 @@
 // on regroupe des techniciens (utilisateurs), on désigne un chef optionnel, on
 // archive sans supprimer. La liste des utilisateurs assignables est passée par
 // le parent (déjà chargée pour l'onglet).
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import useEquipesAdmin from './useEquipesAdmin'
 import { useConfirmDialog } from '../../ui/confirm'
 import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import EquipesAdminPanel from './EquipesAdminPanel'
 import installationsApi from '../../api/installationsApi'
 import { apiErrorMessage } from '../../lib/apiError'
+import toutesLesPages from './toutesLesPages'
 
 // Ajoute ou retire `userId` de la liste des membres (bascule).
 const basculerMembre = (membres, userId) => (membres.includes(userId)
@@ -23,21 +25,17 @@ const basculerMembre = (membres, userId) => (membres.includes(userId)
 
 export default function EquipeTerrainSection({ assignables = [] }) {
   const { confirmDelete } = useConfirmDialog()
-  const [equipes, setEquipes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [newNom, setNewNom] = useState('')
-  const [busyId, setBusyId] = useState(null)
+  const { equipes, setEquipes, loading, setLoading, error, setError, newNom, setNewNom, busyId, setBusyId } = useEquipesAdmin()
 
   const load = () => {
     setLoading(true)
-    installationsApi.getEquipesTerrain()
-      .then((r) => setEquipes(r.data.results ?? r.data))
+    toutesLesPages((params) => installationsApi.getEquipesTerrain(params))
+      .then((rows) => setEquipes(rows))
       .catch(() => setError('Impossible de charger les équipes terrain.'))
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [])
 
   const addEquipe = async () => {

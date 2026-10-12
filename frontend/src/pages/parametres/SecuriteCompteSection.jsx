@@ -12,7 +12,8 @@ import api from '../../api/axios'
 import { formatDateTime } from '../../lib/format'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { Card, CardContent, Button, Input, Spinner } from '../../ui'
-import { SectionTitle } from './peComponents'
+import { toast } from '../../ui/confirm'
+import { SectionTitle, CarteSection, ChargementCarte } from './peComponents'
 
 // ── Sessions actives (N96) — liste des appareils connectés + révocation ──────
 function SessionsActives() {
@@ -47,8 +48,7 @@ function SessionsActives() {
   const fmt = (iso) => formatDateTime(iso)
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
+    <CarteSection>
         <SectionTitle
           label="Sessions actives"
           icon={<><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>}
@@ -104,8 +104,7 @@ function SessionsActives() {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+    </CarteSection>
   )
 }
 
@@ -138,8 +137,7 @@ function MotDePasse() {
   }
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
+    <CarteSection>
         <SectionTitle
           label="Mot de passe"
           icon={<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>}
@@ -189,8 +187,7 @@ function MotDePasse() {
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+    </CarteSection>
   )
 }
 
@@ -279,23 +276,20 @@ export default function SecuriteCompteSection() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
       setTimeout(() => {
-        try { navigator.clipboard?.writeText('') } catch { /* ignore */ }
+        try { navigator.clipboard?.writeText('') } catch (e) { console.warn('Effacement du presse-papiers impossible', e) } // best-effort cosmétique
       }, 60000)
-    } catch { /* clipboard indisponible : l'utilisateur recopie à la main */ }
+    } catch {
+      toast.error('Copie impossible — copiez les codes manuellement.')
+    }
   }
 
   if (loading) {
-    return (
-      <Card><CardContent className="pt-4 sm:pt-5">
-        <Spinner /> <span className="text-xs text-muted-foreground">Chargement…</span>
-      </CardContent></Card>
-    )
+    return <ChargementCarte />
   }
 
   return (
     <div className="flex flex-col gap-4">
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
+    <CarteSection>
         <SectionTitle
           label="Double authentification (2FA)"
           icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>}
@@ -459,8 +453,7 @@ export default function SecuriteCompteSection() {
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </CarteSection>
 
     {/* Sessions actives & révocation (N96) */}
     <SessionsActives />

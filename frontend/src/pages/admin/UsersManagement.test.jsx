@@ -58,6 +58,7 @@ import { MemoryRouter } from 'react-router-dom'
 import UsersManagement from './UsersManagement'
 import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { ThemeProvider } from '../../design/ThemeProvider'
+import { confirmerSuppression } from './confirmation.testHelpers.js'
 import { toast } from '../../ui/confirm'
 
 const ROLES = [
@@ -314,13 +315,7 @@ describe('UsersManagement — DataTable (J145)', () => {
 
     // Confirmation maison (AlertDialog), JAMAIS window.confirm. On clique
     // « Supprimer » dans la boîte portée dans le body.
-    const confirmBtn = await waitFor(() => {
-      const btn = [...document.querySelectorAll('[role="alertdialog"] button')]
-        .find((b) => b.textContent.trim() === 'Supprimer')
-      expect(btn).toBeTruthy()
-      return btn
-    })
-    await user.click(confirmBtn)
+    await confirmerSuppression(user)
 
     await waitFor(() =>
       expect(apiMock.delete).toHaveBeenCalledWith(expect.stringMatching(/^\/users\/\d+\/$/)),

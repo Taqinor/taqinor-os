@@ -100,8 +100,9 @@ class CoherenceCalepinageTests(TestCase):
         nouveau['zones'][0]['inclinaison_deg'] = 30
         nouveau['zones'][0]['azimut_deg'] = 200
         self._calepinage(devis, nouveau)
-        if layout_hash(nouveau) == layout_hash(ancien):
-            self.skipTest("l'empreinte imprimée ignore ces clés")
+        # ``zones`` entre en entier dans l'empreinte imprimée : inclinaison et
+        # azimut d'un pan la font bouger.
+        self.assertNotEqual(layout_hash(nouveau), layout_hash(ancien))
         v = self._violations(devis)
         self.assertEqual(len(v['CAL_EMPREINTE_IMPRIMEE_PERIMEE']), 1)
 

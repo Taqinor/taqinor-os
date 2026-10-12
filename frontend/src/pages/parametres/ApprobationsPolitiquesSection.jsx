@@ -19,15 +19,19 @@
 // SERVEUR re-vérifie (IsAdminOrResponsableTier). `company` n'est JAMAIS
 // envoyée : imposée côté serveur (TenantMixin).
 import { useMemo, useState } from 'react'
-import { ShieldAlert, Plus, Trash2 } from 'lucide-react'
+import { ShieldAlert, Plus } from 'lucide-react'
 import api from '../../api/axios'
 import { toast } from '../../ui/confirm'
 import useSectionListeAdmin from './useSectionListeAdmin'
+import toutesLesPages from './toutesLesPages'
 import {
-  Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Card, CardContent, Input, Button, Badge, EmptyState, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import {
+  ChargementTexte, ErreurChargementListe, BoutonSupprimerLigne,
+} from './EtatsSection'
 import SettingsAuditFeed from './SettingsAuditFeed'
 
 // Miroir de ApprovalPolicy.ActionType / ApproverTier (backend). Le serveur
@@ -51,11 +55,14 @@ const TIER_LABELS = Object.fromEntries(APPROVER_TIERS)
 
 const VIDE = { action_type: '', seuil: '', approver_tier: 'admin', note: '' }
 
+// ADOC38 — liste paginée : toutes les pages.
+const lirePolitiques = () => toutesLesPages((params) => api.get('/parametres/approbations/', { params }))
+
 export default function ApprobationsPolitiquesSection() {
   // APAR41 — confirmation MAISON + droit + état de liste : useSectionListeAdmin.
   const {
     confirmerSuppression, canManage, rows, loading, loadError, busy, setBusy, charger,
-  } = useSectionListeAdmin('/parametres/approbations/')
+  } = useSectionListeAdmin(lirePolitiques)
   const [draft, setDraft] = useState(VIDE)
   const [erreur, setErreur] = useState('')
 
@@ -109,16 +116,9 @@ export default function ApprobationsPolitiquesSection() {
     }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
+  if (loading) return <ChargementTexte />
   if (loadError) {
-    return (
-      <EmptyState title="Impossible de charger les politiques d'approbation"
-        description="Une erreur est survenue lors du chargement." className="py-6" />
-    )
+    return <ErreurChargementListe title="Impossible de charger les politiques d'approbation" />
   }
 
   return (
@@ -170,12 +170,8 @@ export default function ApprobationsPolitiquesSection() {
                       </Button>
                     )}
                     {canManage && (
-                      <IconButton size="sm" variant="outline"
-                        label="Supprimer la politique"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => supprimer(row)}>
-                        <Trash2 className="size-4" aria-hidden="true" />
-                      </IconButton>
+                      <BoutonSupprimerLigne label="Supprimer la politique"
+                        onClick={() => supprimer(row)} />
                     )}
                   </div>
                 </div>

@@ -13,11 +13,13 @@ queryset scopé (404 hors société, jamais 403) ; LECTURE SEULE — aucune
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 
+from . import openapi_docs as D
 from ..economie_ci import SaisieEconomieCiInvalide, economie_ci_pour_devis
 from ..economie_ci_view import refus_saisie
 from .devis import DevisViewSet
@@ -27,6 +29,7 @@ __all__ = ['economie_ci']
 
 # api-only: CIQ210 — lecture interne du bloc (contrat CIQ3) ; le PDF et
 # /proposition le lisent côté serveur, l'écran C&I le branchera (D3).
+@extend_schema(responses=D.EconomieCiResponse)
 @action(detail=True, methods=['get'], url_path='economie-ci',
         permission_classes=[IsAnyRole])
 def economie_ci(self, request, pk=None):

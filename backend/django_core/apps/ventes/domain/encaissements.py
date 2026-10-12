@@ -19,9 +19,12 @@ NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom
 précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
 """
+import logging
 from decimal import Decimal
 
 from apps.stock.services import qr_svg_for
+
+logger = logging.getLogger("apps.ventes.services")
 
 # Tolérance d'arrondi partagée par toutes les gardes d'argent de ce module :
 # un centime, exactement comme le chemin unitaire (ERR72, `views/facture.py`)
@@ -807,6 +810,14 @@ def _public_url(path, request=None):
     return ''
 
 
+def public_url(path, request=None):
+    """Lien client PUBLIC : absolu quand ``PUBLIC_BASE_URL`` ou la requête le
+    permettent (``_public_url``), sinon le chemin relatif tel quel (jobs sans
+    requête, serializers sans contexte) — le constructeur UNIQUE reconnu par
+    ``scripts/check_liens_client_absolus.py`` (AFAC94)."""
+    return _public_url(path, request) or path
+
+
 def url_page_paiement(token, request=None):
     """AFAC21 — l'URL de la page CLIENT « Payer » ``/payer/<token>``
     (contrat ``lien_paiement.json``), absolue ou ``''``."""
@@ -840,8 +851,9 @@ def qr_svg_for_facture_pdf(facture):
            if active_link is not None else '')
     if not url:
         share = ShareLink.for_facture(facture)
+        # jamais relatif : jamais un chemin relatif dans un QR client
         url = _public_url(  # AFAC94
-            f'/api/django/public/document/{share.token}/')  # jamais relatif : jamais un chemin relatif dans un QR client
+            f'/api/django/public/document/{share.token}/')
 
     if not url:
         return None
@@ -1382,6 +1394,7 @@ def _verifier_delai_acompte_domicile(facture, date_paiement=None):
     except AcompteAvantDelaiLegal:
         raise
     except Exception:  # noqa: BLE001 — une chaîne incomplète ne bloque rien
+        logger.warning("encaissements._verifier_delai_acompte_domicile : erreur ignorée (mode dégradé)", exc_info=True)
         return
     bon.verifier_encaissement_acompte(a_la_date=date_paiement)
 
@@ -1390,7 +1403,7 @@ def _verifier_delai_acompte_domicile(facture, date_paiement=None):
 # Import EN BAS DE FICHIER : il s'exécute après toutes les définitions de ce
 # module, donc un import croisé ne peut jamais lire un module à moitié
 # construit, quel que soit celui qui est chargé le premier.
-from apps.ventes.domain.recouvrement import reset_relance_escalation  # noqa: E402,F401
+from apps.ventes.domain.recouvrement import reset_relance_escalation  # noqa: E402
 
 
 # ── AFAC17 (C-AFAC-013, D-AFAC-C2 a) — corriger un paiement mal saisi ──────

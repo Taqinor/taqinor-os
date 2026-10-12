@@ -7,6 +7,11 @@ dupliqué : ce fil est le SOUS-ENSEMBLE des notes de version marquées
 GLOBAL (comme `openapi.json`, NTAPI20) — aucune donnée de société, donc
 aucune authentification par clé requise.
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -50,6 +55,18 @@ class PublicChangelogView(APIView):
     # ApiKeyRateThrottle) plutôt que d'élargir l'allowlist THROTTLE_EXEMPT.
     throttle_classes = [ApiKeyRateThrottle]
 
+    @extend_schema(
+        parameters=[OpenApiParameter('version', OpenApiTypes.STR, required=False)],
+        responses=inline_serializer('PublicChangelog', {
+            'results': inline_serializer('PublicChangelogEntree', {
+                'id': serializers.IntegerField(),
+                'titre': serializers.CharField(),
+                'corps': serializers.CharField(),
+                'version': serializers.CharField(allow_blank=True),
+                'type': serializers.CharField(),
+                'breaking': serializers.BooleanField(),
+                'date': serializers.CharField(allow_null=True)},
+                many=True)}))
     def get(self, request):
         qs = ChangelogEntry.objects.filter(publie=True).order_by(
             '-publie_le', '-id')

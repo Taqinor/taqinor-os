@@ -61,8 +61,9 @@ export default function EtudeBancable({ devis, onRefresh }) {
             toast.error("L'étude bancable a échoué.")
             return
           }
-        } catch {
+        } catch (err) {
           // Sondage manqué — on continue, comme le polling PDF existant (QG1).
+          console.warn('EtudeBancable.poll : sondage manqué, on réessaie', err)
         }
         if (mountedRef.current) {
           timerRef.current = setTimeout(poll, POLL_INTERVAL_MS)

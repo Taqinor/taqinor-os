@@ -82,7 +82,7 @@ class FusionBcfTests(TestCase):
         bc2 = self._bcf(chantier_origine=self.ch80)
         resp = self.api.post(
             URL, {'bons_commande': [bc1.id, bc2.id]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF11 : refus d'état
         self.assertIn('rattachements différents (chantier)', str(resp.data))
         for bc in (bc1, bc2):
             bc.refresh_from_db()
@@ -119,7 +119,7 @@ class FusionBcfTests(TestCase):
         bc2 = self._bcf()
         resp = self.api.post(
             URL, {'bons_commande': [bc1.id, bc2.id]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF11 : refus d'état
 
     def test_dupliquer_porte_les_memes_champs(self):
         bc = self._bcf(chantier_origine=self.ch80,

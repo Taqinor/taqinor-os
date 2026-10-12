@@ -14,6 +14,7 @@ import {
 } from '../../ui/charts'
 import useStockFlags from '../../features/parametres/useStockFlags'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 /* ============================================================================
    WR3 — « Pilotage stock » : les analytics stock déjà prêtes côté backend
@@ -501,11 +502,7 @@ export default function PilotageStock({ onBcfGenere }) {
           </Button>
         </div>
       </div>
-      {analyseErr && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {analyseErr}
-        </div>
-      )}
+      <AlerteErreurStock error={analyseErr} />
       <ModuleDashboard stats={stats} charts={charts} />
     </section>
   )

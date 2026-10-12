@@ -21,10 +21,13 @@ Exemple d'usage sur une vue à risque (paie run, création IdP, break-glass…) 
 Sécurité : DEFAULT-DENY. Un utilisateur non authentifié, une action listée sans
 MFA récente, ou une session introuvable ⇒ refus. Jamais d'élargissement d'accès.
 """
+import logging
 from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework.permissions import BasePermission
+
+logger = logging.getLogger(__name__)
 
 
 def _current_session_mfa_at(request):
@@ -59,6 +62,7 @@ def _current_session_mfa_at(request):
         )
         return getattr(session, 'last_mfa_at', None) if session else None
     except Exception:  # noqa: BLE001 - jamais casser le pipeline permission
+        logger.warning("stepup._current_session_mfa_at : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -77,6 +81,7 @@ def _step_up_actions(company):
         actions = getattr(profile, 'step_up_actions', None) if profile else None
         return actions if isinstance(actions, (list, tuple)) else []
     except Exception:  # noqa: BLE001
+        logger.warning("stepup._step_up_actions : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
 

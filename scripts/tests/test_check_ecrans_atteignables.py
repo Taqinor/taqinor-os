@@ -147,6 +147,13 @@ class AtteignabiliteTests(BaseDepot):
         self.assertEqual(self.orphelins(),
                          ["frontend/src/features/x/Orphelin.jsx"])
 
+    def test_un_helper_de_test_n_est_pas_un_ecran(self):
+        """ENF19 : un `*.testHelpers.jsx` (banc partage par des tests) n'est
+        ni un ecran ni un chemin d'acces : il ne doit jamais etre signale."""
+        self._config("x", "const config = { key:'x', routes: [] }\nexport default config\n")
+        self.depot.fichier("features/x/Ecran.testHelpers.jsx", "export const banc = 1\n")
+        self.assertEqual(self.orphelins(), [])
+
     def test_un_test_n_est_pas_un_chemin_d_acces(self):
         """Un ecran importe SEULEMENT par son test reste inatteignable.
 

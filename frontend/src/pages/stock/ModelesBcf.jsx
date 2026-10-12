@@ -3,33 +3,30 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, LayoutTemplate, Trash2, PlayCircle,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import BcfProduitPicker from './BcfProduitPicker'
 import {
-  Button, IconButton, DataTable,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, IconButton, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, Input, Textarea, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { TableauStock, SelectFournisseur } from './ComposantsStock'
+
+import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
+import { frErrDetail } from '../../lib/frErr'
+import { AlerteErreurStock } from './BandeauxListeStock'
+
+const frErr = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrDetail(err, fallback)
 
 // ZPUR3 — Modèles de bon de commande fournisseur (« purchase templates ») :
 // un nom + fournisseur optionnel + lignes produit/quantité par défaut.
 // L'action « Générer » matérialise un BCF BROUILLON pré-rempli, éditable
 // avant envoi. Le modèle lui-même ne bouge jamais aucun stock/mouvement.
-
-function frErr(err, fallback = 'Une erreur est survenue. Réessayez.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
-}
 
 // ── Modal de création / édition d'un modèle ─────────────────────────────────
 export function ModeleDetail({ modele, fournisseurs, produits, onClose, onSaved }) {
@@ -200,20 +197,10 @@ function GenererModal({ modele, fournisseurs, onClose, onGenere }) {
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium" htmlFor="gen-fou">Fournisseur</label>
-          <Select value={fournisseur ? String(fournisseur) : '__none'}
-                  onValueChange={(v) => setFournisseur(v === '__none' ? '' : v)}>
-            <SelectTrigger id="gen-fou"><SelectValue placeholder="— Choisir un fournisseur —" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none">— Choisir un fournisseur —</SelectItem>
-              {fournisseurs.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SelectFournisseur id="gen-fou" value={fournisseur} onChange={setFournisseur}
+                             fournisseurs={fournisseurs} />
         </div>
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreurStock error={error} />
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
           <Button type="button" loading={busy} onClick={generer}>
@@ -240,16 +227,17 @@ export default function ModelesBcf() {
   const [info, setInfo] = useState(null)
 
   const reload = () => {
-    stockApi.getModelesBcf()
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getModelesBcf({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     reload()
-    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
-    stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    stockApi.getAllFournisseurs().then(({ data: lignes }) => setFournisseurs(Array.isArray(lignes) ? lignes : (lignes?.results ?? []))).catch(() => {})
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }, [])
 
   const openModele = async (m) => {
@@ -296,10 +284,7 @@ export default function ModelesBcf() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={LayoutTemplate}
         title="Modèles de bon de commande"
         subtitle={`${items.length} modèle(s)`}
@@ -323,11 +308,7 @@ export default function ModelesBcf() {
         </div>
       )}
 
-      <DataTable
-        data={items}
-        columns={columns}
-        loading={loading}
-        getRowId={(m) => m.id}
+      <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (nom, fournisseur)…"
         globalColumns={['nom', 'fournisseur_nom']}
         onRowClick={openModele}

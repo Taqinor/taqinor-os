@@ -29,6 +29,9 @@ Chemin de jointure (dd-attribution §a/§e) ::
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _q2(value):
@@ -184,6 +187,7 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             odoo_res = odoo_signatures_by_ad(company)
             odoo_by_ad = {a['ad_id']: a for a in odoo_res.get('ads', [])}
     except Exception:  # noqa: BLE001 — l'attribution CRM ne dépend jamais d'Odoo
+        logger.warning("attribution.variant_attribution : erreur ignorée (mode dégradé)", exc_info=True)
         odoo_by_ad = {}
 
     variant_rows = []

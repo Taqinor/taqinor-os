@@ -148,6 +148,26 @@ class VarianteConfigEndpointTests(TestCase):
         resp = self._put(self.directeur, 150)
         self.assertEqual(resp.status_code, 400)
 
+    def test_pct_non_fini_ou_illisible_400(self):
+        # ENF11 — « NaN » passait Decimal() puis levait InvalidOperation à la
+        # comparaison (500) : tout non-nombre / non-fini répond 400.
+        for brut in ('NaN', 'Infinity', 'abc', None, 0, 100):
+            resp = self._put(self.directeur, brut)
+            self.assertEqual(resp.status_code, 400, (brut, resp.data))
+
+    def test_corps_non_objet_ou_trop_precis_400(self):
+        # ENF11 (api-fuzz) — corps null / liste / texte : ``request.data.get``
+        # levait AttributeError (500) ; 3 décimales : 400 aussi (schéma : 2).
+        url = '/api/django/ventes/devis/variante-config/'
+        for corps in (None, [], [1], 'abc', 25):
+            resp = _api(self.directeur).put(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn('variante_pct', resp.data['detail'])
+        self.assertEqual(self._put(self.directeur, '12.345').status_code, 400)
+        self.assertEqual(
+            CompanyProfile.get(company=self.company).variante_pct,
+            Decimal('20'))  # rien écrit
+
     def test_company_scoped(self):
         other = _company('qg9-autre')
         other_role = Role.objects.create(

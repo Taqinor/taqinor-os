@@ -173,3 +173,11 @@ class TestEndpoint(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(resp.data), 1)
         self.assertEqual(resp.data[0]['fournisseur_id'], fournisseur.id)
+
+    def test_within_gigantesque_ou_illisible_jamais_500(self):
+        """ENF11 — horizon hors plage / texte : 400 nommé, plus de 500."""
+        api = _api(_user(_company(), role='responsable'))
+        base = '/api/django/stock/fournisseurs/documents-expirants/'
+        for valeur in ('1152921504606846977', 'null'):
+            resp = api.get(base + '?within=' + valeur)
+            self.assertEqual(resp.status_code, 400, resp.content)

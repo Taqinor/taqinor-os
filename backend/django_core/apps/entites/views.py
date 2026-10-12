@@ -1,18 +1,21 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view,
+    inline_serializer,
 )
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import import_service, selectors, services
 from .models import Entite
+from .services import CycleEntiteError
 from .permissions import IsAdministrateur
 from .serializers import EntiteSerializer
 from rest_framework import serializers as drf_serializers
@@ -24,8 +27,29 @@ from rest_framework import serializers as drf_serializers
 _JETONS_VRAI = ('1', 'true', 'True', 'oui', 'Oui', True)
 
 
-def _est_vrai(valeur):
-    return valeur in _JETONS_VRAI
+_JETONS_FAUX = (None, '', '0', 'false', 'False', 'non', 'Non', False)
+
+
+def _est_vrai(valeur, nom='parametre'):
+    """Booléen de corps STRICT (ENF11) : jeton vrai/faux connu, sinon 400 —
+    `ecraser={}` n'est plus pris pour « faux » en silence."""
+    if valeur in _JETONS_VRAI:
+        return True
+    if valeur in _JETONS_FAUX:
+        return False
+    raise serializers.ValidationError({nom: ['Booléen attendu.']})
+
+
+class ConflitCycleEntite(APIException):
+    """ENF11 — rattachement refusé car il créerait une boucle : conflit d'état
+    (409), plus un 400 de « donnée invalide »."""
+    status_code = 409
+    default_detail = "Rattachement impossible : boucle dans l'arbre des entités."
+    default_code = 'conflict'
+
+
+class EntiteNoterRequeteSerializer(serializers.Serializer):
+    body = ChaineStricte(required=False, allow_blank=True)
 
 
 _VIEWS_ENTITE_VIEW_SET_GROUPE_REPONSE = inline_serializer('ViewsEntiteViewSetGroupeReponse', {
@@ -48,6 +72,15 @@ _VIEWS_ENTITE_VIEW_SET_IMPORTER_REPONSE = inline_serializer('ViewsEntiteViewSetI
 })
 
 
+_REPONSE_CYCLE = OpenApiResponse(
+    description="Conflit : le parent choisi créerait une boucle (409).")
+
+
+@extend_schema_view(
+    update=extend_schema(responses={200: EntiteSerializer, 409: _REPONSE_CYCLE}),
+    partial_update=extend_schema(
+        responses={200: EntiteSerializer, 409: _REPONSE_CYCLE}),
+)
 class EntiteViewSet(CompanyScopedModelViewSet):
     """NTADM1 — CRUD `Entite` (Administrateur only) + arbre (`?tree=1`) +
     chatter générique (NTADM47) via `records`."""
@@ -102,7 +135,10 @@ class EntiteViewSet(CompanyScopedModelViewSet):
 
         nouveau_parent = serializer.validated_data.get('parent', ancien_parent)
         if nouveau_parent != ancien_parent:
-            services.valider_non_cycle(entite, nouveau_parent)
+            try:
+                services.valider_non_cycle(entite, nouveau_parent)
+            except CycleEntiteError as exc:
+                raise ConflitCycleEntite(' '.join(exc.messages))
 
         instance = serializer.save()
 
@@ -139,7 +175,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         'created_by': serializers.CharField(allow_null=True),
         'created_at': serializers.DateTimeField(),
     }, many=True))
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], pagination_class=None)
     def historique(self, request, pk=None):
         """NTADM47 — fil d'activité (chatter générique `records`)."""
         entite = self.get_object()
@@ -158,15 +194,16 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     @extend_schema(
-        request=inline_serializer('EntiteNoterRequete', {
-            'body': serializers.CharField(required=False, allow_blank=True)}),
+        request=EntiteNoterRequeteSerializer,
         responses=inline_serializer('EntiteNoterReponse', {
             'ok': serializers.BooleanField()}))
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
         """NTADM47 — note manuelle de chatter."""
         entite = self.get_object()
-        body = request.data.get('body', '')
+        entree = EntiteNoterRequeteSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        body = entree.validated_data.get('body', '')
         from apps.records.services import log_note
         log_note(entite, request.user, body)
         return Response({'ok': True})
@@ -177,7 +214,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         'nom': serializers.CharField(),
     }, many=True))
     @action(detail=False, methods=['get'], url_path='mes-entites',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def mes_entites(self, request):
         """NTADM26 — entités ACTIVES accessibles à l'appelant (id/code/nom).
 
@@ -255,8 +292,8 @@ class EntiteViewSet(CompanyScopedModelViewSet):
             return Response({'detail': 'Fichier requis.'}, status=400)
         file_bytes = fichier.read()
         filename = fichier.name
-        commit = _est_vrai(request.data.get('commit'))
-        ecraser = _est_vrai(request.data.get('ecraser'))
+        commit = _est_vrai(request.data.get('commit'), 'commit')
+        ecraser = _est_vrai(request.data.get('ecraser'), 'ecraser')
         try:
             if commit:
                 result = import_service.commit(

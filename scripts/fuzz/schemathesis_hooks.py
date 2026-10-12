@@ -12,7 +12,7 @@ fichier). Trois responsabilités, toutes du HARNAIS (aucun code produit) :
    repartait avec le Bearer et passait. Ici un fournisseur
    ``@schemathesis.auth`` se connecte avec le compte dédié ``fuzz_admin`` et
    pose le jeton dans le cookie DÉCLARÉ ; il se reconnecte toutes les 10 min
-   et sur tout 401 (``retry_on`` par défaut de Schemathesis).
+   (ENF11 : plus de rejeu sur 401 — voir ``_REJOUER_SUR``).
 
 2. **Désérialiseurs** ``text/csv``, ``text/html`` et binaires : sans eux,
    Schemathesis sautait la validation de ces réponses (avertissement
@@ -49,7 +49,9 @@ from __future__ import annotations
 
 import json
 import os
+import atexit
 import re
+import zlib
 
 import requests
 import schemathesis
@@ -60,6 +62,13 @@ BASE_URL = BASE_URL.rstrip('/')
 USERNAME = os.environ.get('FUZZ_USERNAME', 'fuzz_admin')
 PASSWORD = os.environ.get('FUZZ_PASSWORD', '')
 STATE_FILE = os.environ.get('FUZZ_STATE_FILE', '')
+
+# ENF11 — inventaire d'ids de chemin ({préfixe de collection: [ids]}), écrit
+# par inventorier_ids_chemin.py ; fichier absent => aucune substitution.
+IDS_FILE = os.environ.get('FUZZ_IDS_FILE', '')
+IDS_SEED = os.environ.get('FUZZ_IDS_SEED', 'enf11')
+# 1 cas positif sur N garde son id aléatoire : la classe « 404 » reste fuzzée.
+PART_INVALIDE = 4
 
 # Id garanti inexistant (borne haute d'un entier PostgreSQL).
 ID_INEXISTANT = 2147483647
@@ -84,8 +93,31 @@ FK_IDS = {
 _FK_IDS_SET = {nom: set(ids) for nom, ids in FK_IDS.items()}
 
 
+def _charger_ids_chemin():
+    if not IDS_FILE or not os.path.exists(IDS_FILE):
+        return {}
+    with open(IDS_FILE, encoding='utf-8') as fh:
+        brut = json.load(fh)
+    return {p: list(ids) for p, ids in brut.items() if ids}
+
+
+IDS_CHEMIN = _charger_ids_chemin()
+
+
 # ── 1. Authentification ────────────────────────────────────────────────
-@schemathesis.auth(refresh_interval=600)
+# ENF11 — `retry_on=[]` : AUCUN rejeu « re-login puis renvoi » sur 401. Le run
+# 38129616897 (11/10) l'a mesuré : `reauth_count: 0` (aucun rejeu n'a jamais
+# rendu un 2xx) et `reauth_broke: true` (« Authentication stopped working
+# mid-run »). Ces 401 sont SÉMANTIQUES, pas une expiration : jeton SCIM
+# (`identity/scim/`), signature de webhook, lien public à jeton, refresh sans
+# cookie de rafraîchissement. L'expiration, elle, est couverte par le
+# rafraîchissement PROACTIF (600 s < 30 min de durée de vie du JWT) ; la
+# révocation par le fuzzeur lui-même est exclue (schemathesis.toml, 1a).
+_RAFRAICHISSEMENT_S = 600
+_REJOUER_SUR = []
+
+
+@schemathesis.auth(refresh_interval=_RAFRAICHISSEMENT_S, retry_on=_REJOUER_SUR)
 class FuzzAdminCookieAuth:
     """Connexion ``fuzz_admin`` → cookie ``access_token`` (cookieJWT)."""
 
@@ -181,6 +213,25 @@ def _id_connu(nom, valeur):
     return ids[valeur % len(ids)]
 
 
+def _remplacer_ids_fk(objet):
+    """Remplace, dans ``objet`` (dict), les FK inconnues par des ids réels.
+
+    ENF11 (achats) — récursif dans les listes d'objets : ``lignes[].produit``
+    d'un BCF, ``lignes[].ligne_commande`` d'une réception… sont des FK comme
+    les champs de premier niveau, et sans cela chaque création à lignes
+    imbriquées partait avec « Clé primaire 0 non valide »."""
+    for nom, valeur in list(objet.items()):
+        if nom in FK_IDS and not isinstance(valeur, dict):
+            if isinstance(valeur, list):
+                objet[nom] = [_id_connu(nom, v) for v in valeur]
+            else:
+                objet[nom] = _id_connu(nom, valeur)
+        elif isinstance(valeur, list):
+            for element in valeur:
+                if isinstance(element, dict):
+                    _remplacer_ids_fk(element)
+
+
 def _ids_fk_connus(case):
     meta = case.meta
     if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
@@ -188,17 +239,62 @@ def _ids_fk_connus(case):
     corps = case.body
     if not isinstance(corps, dict):
         return
-    for nom, valeur in list(corps.items()):
-        if nom not in FK_IDS:
-            continue
-        if isinstance(valeur, list):
-            corps[nom] = [_id_connu(nom, v) for v in valeur]
-        else:
-            corps[nom] = _id_connu(nom, valeur)
+    _remplacer_ids_fk(corps)
+
+
+# ── 4. Ids RÉELS pour les paramètres de chemin (ENF11) ─────────────────
+# Seul le PREMIER paramètre, nommé id/pk, est substitué : `{token}`,
+# `{jeton}`, `{slug}`, `{key}`… et les ids imbriqués restent intacts.
+_PREMIER_ID = re.compile(r'^(.*?/)\{(id|pk)\}(?:/|$)')
+_COUVERTURE = {'reel': set(), 'aleatoire': set(), 'sans_inventaire': set()}
+
+
+def _bucket(cle, ids):
+    return ids[zlib.crc32(f'{IDS_SEED}|{cle}'.encode()) % len(ids)]
+
+
+def _ids_chemin_reels(case):
+    meta = case.meta
+    if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
+        return
+    gabarit = case.operation.path
+    m = _PREMIER_ID.match(gabarit)
+    if not m or m.group(2) not in (case.path_parameters or {}):
+        return
+    ops = f'{case.operation.method.upper()} {gabarit}'
+    ids = IDS_CHEMIN.get(m.group(1))
+    if not ids:
+        _COUVERTURE['sans_inventaire'].add(ops)
+        return
+    nom = m.group(2)
+    valeur = case.path_parameters[nom]
+    cle = f'{ops}|{valeur}'
+    if zlib.crc32(f'{IDS_SEED}#{cle}'.encode()) % PART_INVALIDE == 0:
+        _COUVERTURE['aleatoire'].add(ops)
+        return
+    choisi = _bucket(cle, ids)
+    if isinstance(choisi, int) != isinstance(valeur, int):
+        _COUVERTURE['aleatoire'].add(ops)
+        return
+    case.path_parameters[nom] = choisi
+    _COUVERTURE['reel'].add(ops)
+
+
+def _journal_couverture():
+    if not IDS_CHEMIN and not any(_COUVERTURE.values()):
+        return
+    reel, sans = _COUVERTURE['reel'], _COUVERTURE['sans_inventaire']
+    print(f'ENF11 ids de chemin : {len(reel)} opérations avec id réel, '
+          f'{len(sans)} sans inventaire, '
+          f'{len(_COUVERTURE["aleatoire"])} avec id aléatoire conservé')
+
+
+atexit.register(_journal_couverture)
 
 
 @schemathesis.hook
 def before_call(context, case, kwargs):
+    _ids_chemin_reels(case)
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)

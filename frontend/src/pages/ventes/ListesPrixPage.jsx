@@ -13,6 +13,8 @@ import { Table } from '../reporting/Table'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+import { AlerteErreur } from '../../ui/AlertesServeur'
+import PiedDialogueFermer from '../stock/PiedDialogueFermer'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -48,7 +50,9 @@ export default function ListesPrixPage() {
 
   useEffect(() => {
     fetchListes()
-    stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages(page => stockApi.getProduits({ page }).then(r => r.data))
+      .then(rows => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      .catch(() => {})
   }, [])
 
   const openDetail = (liste) => setDetail(liste)
@@ -223,11 +227,7 @@ function CreateListeDialog({ onClose, onCreated }) {
         </DialogHeader>
         <form onSubmit={handleSubmit} noValidate className="grid gap-4">
           <ChampsListe prefixe="lp" valeurs={valeurs} setValeur={setValeur} />
-          {error && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
+          <AlerteErreur error={error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
             <Button type="submit" loading={busy}>{busy ? 'Création…' : 'Créer'}</Button>
@@ -339,11 +339,7 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged, onDeleted }) {
                   Supprimer
                 </Button>
               </div>
-              {erreur && (
-                <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                  {erreur}
-                </div>
-              )}
+              <AlerteErreur error={erreur} />
             </div>
           </div>
 
@@ -395,9 +391,7 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged, onDeleted }) {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
-        </DialogFooter>
+        <PiedDialogueFermer onClose={onClose} />
       </DialogContent>
 
       {addLigneOpen && (
@@ -486,11 +480,7 @@ function AddLigneDialog({ liste, produits, onClose, onSaved }) {
                    value={prixUnitaire} onChange={(e) => setPrixUnitaire(e.target.value)} placeholder="0" />
             <p className="text-xs text-muted-foreground">Le générateur le convertit au taux de chaque ligne.</p>
           </div>
-          {error && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
+          <AlerteErreur error={error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
             <Button type="submit" loading={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>

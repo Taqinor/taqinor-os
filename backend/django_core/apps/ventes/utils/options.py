@@ -24,6 +24,9 @@ from apps.ventes.quote_engine.lignes_classement import (
     _is_battery, _is_hybrid_inverter, _is_inverter, _is_offgrid_inverter,
     _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 SANS_BATTERIE = 'sans_batterie'
 AVEC_BATTERIE = 'avec_batterie'
@@ -415,9 +418,10 @@ def _totaux_canoniques(devis, lignes) -> dict:
     PDF. Échéancier, solde, acompte public, BC, pro-forma, CA et commission
     héritent de ce seul point. N=1 → inchangé."""
     from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
-    from apps.ventes.selectors import (
-        _canonical_totaux, nombre_proprietes, totaux_multi_proprietes,
+    from apps.ventes.domain.noyau_totaux import (
+        _canonical_totaux, totaux_multi_proprietes,
     )
+    from apps.ventes.multivilla import nombre_proprietes
     # ARRONDI-100 — le palier de 100 MAD inférieur, par villa (avant le ×N),
     # exactement comme ``domain.argent`` : échéancier, solde, acompte public,
     # BC, pro-forma et commission héritent du même total rond.
@@ -547,6 +551,7 @@ def deux_options_declarees(devis) -> bool:
         lignes = [li for li in lignes_avec_produit(devis)
                   if li.compte_dans_totaux]
     except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+        logger.warning("options.deux_options_declarees : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     scenario = scenario_declare(devis)
     familles = familles_des_lignes(lignes)
@@ -588,12 +593,12 @@ def scenario_declare(devis):
     """
     stocke = (getattr(devis, 'etude_params', None) or {}).get('scenario')
     try:
-        from apps.ventes.domain.overrides import effectif
+        from apps.ventes.domain.lecture_overrides import effectif
         impose, source = effectif(devis, 'scenario', stocke)
         if source != 'auto' and impose:
             return impose
     except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
-        pass
+        logger.warning("options.scenario_declare : erreur ignorée (mode dégradé)", exc_info=True)
     return stocke
 
 

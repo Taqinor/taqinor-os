@@ -36,9 +36,23 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..models import Produit
         from ..services import creer_revalorisation
+        # ENF11 : corps illisible ou identifiant mal formé = 400 (validation,
+        # comme une FK de corps) ; seul un identifiant entier inconnu de la
+        # société est un 404.
+        if not isinstance(request.data, dict):
+            return Response(
+                {'detail': 'Corps illisible : un objet JSON est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        donnees = request.data
+        try:
+            produit_id = int(donnees.get('produit'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Le champ « produit » doit être un identifiant '
+                           'entier.', 'champ': 'produit'},
+                status=status.HTTP_400_BAD_REQUEST)
         produit = Produit.objects.filter(
-            company=request.user.company,
-            id=request.data.get('produit')).first()
+            company=request.user.company, id=produit_id).first()
         if produit is None:
             return Response(
                 {'detail': 'Produit introuvable.'},
@@ -46,9 +60,9 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
         try:
             revalorisation = creer_revalorisation(
                 company=request.user.company, produit=produit,
-                nouveau_cout=request.data.get('nouveau_cout'),
-                motif=request.data.get('motif'), user=request.user)
-        except (ValueError, TypeError) as exc:
+                nouveau_cout=donnees.get('nouveau_cout'),
+                motif=donnees.get('motif'), user=request.user)
+        except (ValueError, TypeError, ArithmeticError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(

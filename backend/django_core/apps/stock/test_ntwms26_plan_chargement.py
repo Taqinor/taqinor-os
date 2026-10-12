@@ -146,6 +146,12 @@ class TestEndpointsPlanChargement(Ntwms26Base):
         self.assertEqual(second.status_code, 201)
         self.assertTrue(second.data['depassement'])
 
+    def test_texte_et_booleen_stricts_ENF11(self):
+        """Un entier dans un champ texte ne devient plus une chaîne (400)."""
+        reponse = self.api.post(self.URL, {'note': 12}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('note', reponse.json())
+
     def test_verifier_capacite_est_lecture_seule(self):
         plan = self._plan()
         ajouter_unite_plan_chargement(plan=plan, unite=self._palette('200'))

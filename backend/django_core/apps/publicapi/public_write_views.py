@@ -113,11 +113,20 @@ class PublicWriteAPIView(PublicApiResponseMixin, APIView):
             body=body_for_fingerprint, perform=perform)
 
 
+_LEAD_ECRITURE = {
+    nom: drf_serializers.CharField(required=(nom == 'nom'))
+    for nom in ('nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
+                'canal', 'priorite', 'type_installation', 'stage')}
+
+
 class PublicLeadCreateView(PublicWriteAPIView):
     """POST /api/public/v1/leads-write/ — crée un lead (scope `leads:write`)."""
     required_scope = SCOPE_WRITE_LEADS
     endpoint_name = 'leads-write:create'
 
+    @extend_schema(
+        request=inline_serializer('PublicLeadCreateRequete', _LEAD_ECRITURE),
+        responses={201: PublicLeadSerializer})
     def post(self, request):
         from apps.crm.services import create_lead_from_public_api
 
@@ -142,6 +151,11 @@ class PublicLeadUpdateView(PublicWriteAPIView):
     required_scope = SCOPE_WRITE_LEADS
     endpoint_name = 'leads-write:update'
 
+    @extend_schema(
+        request=inline_serializer('PublicLeadUpdateRequete', {
+            nom: drf_serializers.CharField(required=False)
+            for nom in _LEAD_ECRITURE}),
+        responses={200: PublicLeadSerializer})
     def patch(self, request, pk=None):
         from apps.crm.services import update_lead_from_public_api
 
@@ -171,6 +185,13 @@ class PublicActivityCreateView(PublicWriteAPIView):
     required_scope = SCOPE_WRITE_ACTIVITIES
     endpoint_name = 'activities-write:create'
 
+    @extend_schema(
+        request=inline_serializer('PublicActivityCreateRequete', {
+            'body': drf_serializers.CharField()}),
+        responses={201: inline_serializer('PublicActivityCreateReponse', {
+            'id': drf_serializers.IntegerField(),
+            'body': drf_serializers.CharField(),
+            'created_at': drf_serializers.DateTimeField()})})
     def post(self, request, pk=None):
         from apps.crm.services import create_activity_from_public_api
 

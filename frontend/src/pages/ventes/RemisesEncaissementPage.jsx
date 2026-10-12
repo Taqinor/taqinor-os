@@ -59,9 +59,8 @@ export default function RemisesEncaissementPage() {
   const [creationBusy, setCreationBusy] = useState(false)
   const [creationErreur, setCreationErreur] = useState('')
 
-  const charger = () => api.get('/ventes/remises-encaissement/')
-    .then((r) => {
-      const data = r.data
+  const charger = () => fetchAllPages((page, extra) => api.get('/ventes/remises-encaissement/', { params: { page, ...extra } }).then((r) => r.data))
+    .then((data) => {
       setRows(Array.isArray(data) ? data : (data?.results || []))
       setErreur(false)
     })

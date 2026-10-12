@@ -155,6 +155,7 @@ def derniere_verification():
     try:
         return cache.get(CLE_CACHE_VERIFICATION)
     except Exception:  # noqa: BLE001 — cache indisponible : pas de verdict
+        logger.warning("veille_acces.derniere_verification : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -253,5 +254,5 @@ def verifier(company, *, http_client=None):
     try:
         cache.set(CLE_CACHE_VERIFICATION, resultat, DUREE_CACHE_VERIFICATION)
     except Exception:  # noqa: BLE001 — cache indisponible : état immédiat
-        pass
+        logger.warning("veille_acces.verifier : erreur ignorée (mode dégradé)", exc_info=True)
     return etat(company, verification=resultat)

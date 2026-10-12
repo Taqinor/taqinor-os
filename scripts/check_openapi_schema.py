@@ -11,7 +11,11 @@ What it does (one pass, DB-free):
      (386 views without a resolvable serializer, un-hinted ``SerializerMethod``
      fields, enum/operationId collisions) that no single task can clear, but a
      NEW unresolved serializer or a NEW ``operationId`` collision turns the job
-     red — which is exactly the regression YAPIC6 is about;
+     red — which is exactly the regression YAPIC6 is about. ENF11 (11/10/2026,
+     regle fondateur « aucun controle advisory ») : le cliquet est EXACT — une
+     entree de la base que le generateur ne produit plus fait AUSSI echouer
+     (la base ne fait que retrecir, dans la PR qui corrige) ; ``--strict`` est
+     rouge sur TOUT avertissement (etat cible, base vide) ;
   3. FAILS when the freshly generated operation inventory differs from the
      committed snapshot ``docs/openapi-schema.yml`` (PACT6).
 
@@ -418,6 +422,9 @@ def main() -> int:
                         help="generer avec le generateur par defaut (les deux "
                              "montages reellement introspectes) au lieu du "
                              "raccourci WOW-CI3 ; implicite avec --write")
+    parser.add_argument("--strict", action="store_true",
+                        help="ENF11 : echec sur TOUT avertissement, base de "
+                             "reference ignoree (cible : base vide)")
     args = parser.parse_args()
 
     inventory = None
@@ -469,24 +476,52 @@ def main() -> int:
                       f"({len(_operation_lines(inventory))} operations).")
 
     baseline = load_baseline()
-    new_findings = sorted(found - baseline)
-    if new_findings:
-        print(f"\nECHEC : {len(new_findings)} avertissement(s) de schema NOUVEAU(x) "
-              f"(absent(s) de {BASELINE_PATH.relative_to(ROOT)}) :\n")
-        for sig in new_findings[:40]:
+    nouveaux, soldes = verdict_avertissements(found, baseline, strict=args.strict,
+                                              base_reecrite=args.write_baseline)
+    if nouveaux:
+        quoi = "avertissement(s) de schema" if args.strict else \
+            f"avertissement(s) de schema NOUVEAU(x) (absent(s) de scripts/{BASELINE_PATH.name})"
+        print(f"\nECHEC : {len(nouveaux)} {quoi} :\n")
+        for sig in nouveaux[:40]:
             print(f"  {sig}")
-        if len(new_findings) > 40:
-            print(f"  ... et {len(new_findings) - 40} autre(s).")
+        if len(nouveaux) > 40:
+            print(f"  ... et {len(nouveaux) - 40} autre(s).")
         print("\nCorriger la vue/le serializer signale (serializer_class, "
               "@extend_schema, @extend_schema_field, operationId unique).\n"
-              "Si le constat est deliberement accepte, l'ajouter a la base de\n"
-              "reference : python scripts/check_openapi_schema.py --write-baseline")
+              "ENF11 : la base de reference ne fait que RETRECIR — jamais d'ajout.")
+        return 1
+    if soldes:
+        print(f"\nECHEC : {len(soldes)} entree(s) de scripts/{BASELINE_PATH.name} "
+              f"desormais corrigee(s) — la base doit RETRECIR avec le code (ENF11) :\n")
+        for sig in soldes[:40]:
+            print(f"  {sig}")
+        print("\nRetirer ces lignes (ou regenerer : "
+              "python scripts/check_openapi_schema.py --write-baseline).")
         return 1
 
-    stale = len(baseline - found)
-    print(f"OK : aucun avertissement de schema nouveau "
-          f"({len(baseline)} en base de reference, dont {stale} desormais corrige(s)).")
+    print(f"OK : aucun avertissement de schema hors base "
+          f"({len(baseline)} en base de reference, toutes encore presentes).")
     return 1 if derive is not None else 0
+
+
+def verdict_avertissements(found: set, baseline: set, *, strict: bool = False,
+                           base_reecrite: bool = False) -> tuple[list, list]:
+    """ENF11 — (signatures ROUGES, entrees de base SOLDEES et encore listees).
+
+    * ``strict`` : tout avertissement est rouge, la base est ignoree — c'est
+      l'etat cible (« check_openapi_schema en echec sur tout avertissement »),
+      atteint des que la base est vide ;
+    * sinon cliquet EXACT : rouge sur toute signature absente de la base ET
+      sur toute entree de base que le generateur ne produit plus (la base ne
+      fait que retrecir — un constat corrige sort de la base dans la MEME PR).
+      Les deux comparent le meme generateur (raccourci WOW-CI3 en CI, garde par
+      les tests du miroir) ; ``--write-baseline`` vient de reecrire la base :
+      rien n'y est alors solde.
+    """
+    if strict:
+        return sorted(found), []
+    soldes = [] if base_reecrite else sorted(baseline - found)
+    return sorted(found - baseline), soldes
 
 
 if __name__ == "__main__":

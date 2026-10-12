@@ -152,6 +152,7 @@ def _executer_societe(company, regles, report, *, constructeur=None):
                 inconnus.add((REGLE_RENDU, obj_type, obj.pk))
                 _erreur(report, REGLE_RENDU, obj_type, obj, company, exc)
         except Exception as exc:  # noqa: BLE001 — isolé par objet
+            logger.warning("moteur._executer_societe._appliquer : erreur ignorée (mode dégradé)", exc_info=True)
             inconnus.add((r.id, obj_type, obj.pk))
             _erreur(report, r.id, obj_type, obj, company, exc)
 
@@ -170,6 +171,7 @@ def _executer_societe(company, regles, report, *, constructeur=None):
             with transaction.atomic():
                 violations.extend(r.check(r, company, ctx) or [])
         except Exception as exc:  # noqa: BLE001
+            logger.warning("moteur._executer_societe : erreur ignorée (mode dégradé)", exc_info=True)
             inconnus.add((r.id, '*', '*'))
             report.rule_errors.append({
                 'rule': r.id, 'object_type': 'societe',

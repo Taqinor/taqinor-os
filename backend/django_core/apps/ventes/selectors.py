@@ -14,6 +14,9 @@ from .domain.noyau_totaux import (  # noqa: F401 — ré-export (ENF20)
     _absorber_arrondi, ligne_compte_dans_totaux, totaux_multi_proprietes,
     tva_buckets,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def compter_devis(company):
@@ -332,7 +335,7 @@ def devis_card(devis_id, company):
     try:
         parts.append(devis.get_statut_display())
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("selectors.devis_card : erreur ignorée (mode dégradé)", exc_info=True)
     client = getattr(devis, 'client', None)
     if client is not None:
         parts.append(str(client))
@@ -473,6 +476,7 @@ def montants_devis(devis_ids, company):
             ht = Decimal(str(devis.total_ht or 0))
             ttc = Decimal(str(devis.total_ttc or 0))
         except Exception:  # noqa: BLE001 — jamais casser l'appelant
+            logger.warning("selectors.montants_devis : erreur ignorée (mode dégradé)", exc_info=True)
             ht = ttc = Decimal('0')
         out[devis.id] = {'ht': ht, 'ttc': ttc}
     return out
@@ -591,6 +595,7 @@ def devis_milestones(token):
         from apps.installations.selectors import installation_for_devis
         chantier = installation_for_devis(devis, company=devis.company)
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning("selectors.devis_milestones : erreur ignorée (mode dégradé)", exc_info=True)
         chantier = None
     jalons_phase = {}
     if chantier is not None and not getattr(chantier, 'annule', False):
@@ -600,6 +605,7 @@ def devis_milestones(token):
                 if j.cle_phase in ('appro', 'pose') and j.atteint:
                     jalons_phase.setdefault(j.cle_phase, j)
         except Exception:  # noqa: BLE001 — best-effort
+            logger.warning("selectors.devis_milestones : erreur ignorée (mode dégradé)", exc_info=True)
             jalons_phase = {}
     j_appro = jalons_phase.get('appro')
     j_pose = jalons_phase.get('pose')
@@ -808,7 +814,7 @@ def ca_par_entite(company, entite_ids):
         try:
             entry['ca_devis'] += Decimal(str(devis.total_ttc or 0))
         except Exception:  # noqa: BLE001 — jamais casser la consolidation
-            pass
+            logger.warning("selectors.ca_par_entite : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_devis'] += 1
 
     facture_qs = (Facture.objects
@@ -819,7 +825,7 @@ def ca_par_entite(company, entite_ids):
         try:
             entry['ca_factures'] += Decimal(str(facture.total_ttc or 0))
         except Exception:  # noqa: BLE001 — jamais casser la consolidation
-            pass
+            logger.warning("selectors.ca_par_entite : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_factures'] += 1
     return out
 
@@ -1359,6 +1365,7 @@ def date_validite_effective(devis):
     try:
         return date_expiration(devis)
     except Exception:  # noqa: BLE001 — jamais une date inventée en repli
+        logger.warning("selectors.date_validite_effective : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

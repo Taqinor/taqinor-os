@@ -14,7 +14,8 @@ import {
   EmptyState, Spinner,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
-import { SectionTitle } from './peComponents'
+import { SectionTitle, SelectTypeChamp } from './peComponents'
+import { BoutonSupprimerLigne } from './EtatsSection'
 
 const TYPE_LABELS = {
   text: 'Texte', number: 'Nombre', date: 'Date',
@@ -126,11 +127,8 @@ export default function ClientsSection() {
                 </span>
                 <Switch checked={!!d.actif} onCheckedChange={() => toggleActif(d)}
                         aria-label={d.actif ? 'Désactiver le champ' : 'Réactiver le champ'} />
-                <IconButton size="md" variant="outline" label="Supprimer le champ"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => delCf(d)}>
-                  <Trash2 className="size-4" aria-hidden="true" />
-                </IconButton>
+                <BoutonSupprimerLigne size="md" label="Supprimer le champ"
+                                      onClick={() => delCf(d)} />
               </div>
             ))}
           </div>
@@ -141,19 +139,8 @@ export default function ClientsSection() {
                  value={draft.libelle}
                  onChange={e => setDraft(c => ({ ...c, libelle: e.target.value }))}
                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCf() } }} />
-          <div className="w-[120px]">
-            <Select value={draft.type}
-                    onValueChange={v => setDraft(c => ({ ...c, type: v }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="text">Texte</SelectItem>
-                <SelectItem value="number">Nombre</SelectItem>
-                <SelectItem value="date">Date</SelectItem>
-                <SelectItem value="choice">Choix</SelectItem>
-                <SelectItem value="boolean">Oui/Non</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <SelectTypeChamp value={draft.type}
+                           onValueChange={v => setDraft(c => ({ ...c, type: v }))} />
           {draft.type === 'choice' && (
             <Input className="min-w-[160px] flex-[1_1_160px]" placeholder="Options (a, b, c)"
                    value={draft.options}

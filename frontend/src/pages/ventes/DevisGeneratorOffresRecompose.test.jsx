@@ -8,15 +8,10 @@
 // appels réseau — est couvert par DevisOffresTailles.test.jsx).
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorOffresRecompose.test.jsx
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois } from '../../features/ventes/solar'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -29,50 +24,20 @@ vi.mock('./DevisOffresTailles', () => ({
     </button>
   ),
 }))
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiAvecLead())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
 // QJR540 — le bloc calepinage de l'Édition complète lit lui-même le devis
 // (getDevisById) : neutralisé ici, ce test compte les RECHARGEMENTS de l'écran.
 vi.mock('../../features/ventes/BlocCalepinageDevis', () => ({ default: () => null }))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-    patchEtudeParams: vi.fn(),
-  },
-}))
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiEdition())
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { ONDULEUR, PANNEAU, bancEdition } from './devisGenerator.testHelpers.jsx'
 
-const PANNEAU = {
-  id: 101, nom: 'Panneau Canadien Solar 715W', prix_vente: 1200, tva: 10,
-  is_archived: false, prix_achat: 800,
-}
-const ONDULEUR = {
-  id: 102, nom: 'Onduleur réseau 5kW Monophasé', prix_vente: 9000, tva: 20,
-  is_archived: false, prix_achat: 6000,
-}
 const LEAD = {
   id: 77, nom: 'Khalid', prenom: 'Recompose', societe: '',
   facture_hiver: '3000', ete_differente: false, facture_ete: null,
@@ -101,51 +66,7 @@ function devis(nbPanneaux) {
   }
 }
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
-function renderEdition(id) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={[`/ventes/devis/nouveau?edit=${id}`]}>
-        <Routes>
-          <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
-          <Route path="*" element={<div>APRES-ENREGISTREMENT</div>} />
-        </Routes>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-  stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR] })
-  crmApi.getLead.mockResolvedValue({ data: LEAD })
-  ventesApi.patchDevis.mockResolvedValue({ data: {} })
-  ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
-  ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
-})
+const { renderEdition } = bancEdition({ DevisGenerator, stockApi, crmApi, ventesApi })
 
 describe('QJR548 — une taille appliquée recharge l\'écran depuis le devis recomposé', () => {
   it('10 panneaux, puis 12 après « appliquer » → l\'Enregistrer suivant envoie 12', async () => {

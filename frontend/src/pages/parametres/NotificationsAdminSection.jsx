@@ -7,6 +7,7 @@ import {
 } from '../../ui'
 import { estFerieFixeMa } from '../../lib/feriesMaroc'
 import { SectionTitle } from './peComponents'
+import toutesLesPages from './toutesLesPages'
 
 /* ============================================================================
    WIR154 — Administration Notifications (Paramètres > Notifications). Quatre
@@ -56,8 +57,8 @@ function RoutingRulesPanel() {
 
   const load = () => {
     setLoading(true)
-    notificationsApi.getRoutingRules()
-      .then((r) => setRules(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+    toutesLesPages((params) => notificationsApi.getRoutingRules(params))
+      .then((rows) => setRules(rows))
       .catch(() => toast.error('Chargement des règles impossible.'))
       .finally(() => setLoading(false))
   }
@@ -144,10 +145,10 @@ function CalendrierPanel() {
 
   const load = () => {
     setLoading(true)
-    Promise.all([notificationsApi.getWorkingHours(), notificationsApi.getHolidays()])
-      .then(([w, h]) => {
+    Promise.all([notificationsApi.getWorkingHours(), toutesLesPages((params) => notificationsApi.getHolidays(params))])
+      .then(([w, jours]) => {
         setWh(versEcran(w.data))
-        setHolidays(Array.isArray(h.data) ? h.data : (h.data?.results ?? []))
+        setHolidays(jours)
       })
       .catch(() => toast.error('Chargement du calendrier impossible.'))
       .finally(() => setLoading(false))
@@ -268,8 +269,8 @@ function AnnoncesPanel() {
 
   const load = () => {
     setLoading(true)
-    notificationsApi.getAnnonces()
-      .then((r) => setAnnonces(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+    toutesLesPages((params) => notificationsApi.getAnnonces(params))
+      .then((rows) => setAnnonces(rows))
       .catch(() => toast.error('Chargement des annonces impossible.'))
       .finally(() => setLoading(false))
   }
@@ -356,8 +357,8 @@ function WhatsAppTemplatesPanel() {
 
   const load = () => {
     setLoading(true)
-    notificationsApi.getWhatsAppTemplates()
-      .then((r) => setTemplates(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+    toutesLesPages((params) => notificationsApi.getWhatsAppTemplates(params))
+      .then((rows) => setTemplates(rows))
       .catch(() => toast.error('Chargement des gabarits impossible.'))
       .finally(() => setLoading(false))
   }

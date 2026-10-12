@@ -82,7 +82,7 @@ export default function ProblemesPage() {
       .catch(() => setErreur('Chargement impossible pour le moment.'))
       .finally(() => setChargement(false))
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { charger() }, [])
 
   const chargerTicketsLies = (id) => savApi.getProblemeTickets(id)

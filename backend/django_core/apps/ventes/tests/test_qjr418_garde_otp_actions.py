@@ -125,6 +125,9 @@ class InventaireDesActionsPubliquesTests(TestCase):
     #: Actions publiques (``@api_view(['POST'])``) qui DOIVENT consulter
     #: ``otp_lecture_verified``.
     GARDEES = {
+        'proposal_virement_declare':
+            'ADEV53 (C-ADEV-023) : la déclaration de virement applique la MÊME garde '
+            'OTP de lecture que la proposition.',
         'proposal_accept':
             'QJR132 — la signature électronique engage le client : elle est '
             'au moins aussi gardée que la lecture.',
@@ -148,10 +151,6 @@ class InventaireDesActionsPubliquesTests(TestCase):
             'Beacon d\'engagement par section (XSAL16) : aucune donnée '
             'personnelle, aucune mutation du devis, une section inconnue est '
             'simplement ignorée.',
-        'proposal_virement_declare':
-            'Déclaration de virement : ne change ni statut ni montant '
-            '(pose une note chatter, règle #4) et le client qui vient de '
-            'payer ne doit pas être bloqué par un code expiré.',
         'pay_webhook':
             'Webhook PSP, PAS une action cliente : authentifié par le jeton '
             'PaymentLink et la signature du prestataire, aucun ShareLink.',

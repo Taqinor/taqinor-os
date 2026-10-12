@@ -70,7 +70,7 @@ export async function migrateLocalSavedViewsForEcran(ecran, { create } = {}) {
 
   const localViews = readLocalViews(s, ecran)
   if (!localViews.length) {
-    try { s.setItem(flagKey, '1') } catch { /* best-effort */ }
+    try { s.setItem(flagKey, '1') } catch { console.warn('Migration des vues : drapeau non posé (stockage indisponible).') }
     return { migrated: 0 }
   }
 
@@ -78,7 +78,7 @@ export async function migrateLocalSavedViewsForEcran(ecran, { create } = {}) {
   for (const view of localViews) {
     if (!view || !view.name) continue
     try {
-      // eslint-disable-next-line no-await-in-loop -- migration séquentielle
+      // Migration séquentielle
       // ponctuelle (quelques vues au plus, une seule fois par écran) : la
       // parallélisation n'apporterait rien et compliquerait le rapport
       // migré/total en cas d'échec partiel.
@@ -91,13 +91,14 @@ export async function migrateLocalSavedViewsForEcran(ecran, { create } = {}) {
     } catch {
       // Best-effort — une vue en échec (réseau, doublon de nom…) ne bloque
       // jamais les autres : on continue la boucle.
+      console.warn('Migration des vues : une vue locale n\'a pas pu être migrée.')
     }
   }
   // Le drapeau n'est posé QUE si TOUTES les vues locales ont pu être migrées
   // — jamais après un échec partiel (une panne réseau ponctuelle ne doit pas
   // faire perdre silencieusement les vues restantes pour toujours).
   if (migrated === localViews.length) {
-    try { s.setItem(flagKey, '1') } catch { /* best-effort */ }
+    try { s.setItem(flagKey, '1') } catch { console.warn('Migration des vues : drapeau non posé (stockage indisponible).') }
   }
   return { migrated, total: localViews.length }
 }

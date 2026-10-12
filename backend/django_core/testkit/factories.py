@@ -71,6 +71,14 @@ class ClientFactory(DjangoModelFactory):
     telephone = '+212600000000'
 
 
+class FournisseurFactory(DjangoModelFactory):
+    class Meta:
+        model = 'stock.Fournisseur'
+
+    company = factory.SubFactory(CompanyFactory)
+    nom = factory.Sequence(lambda n: f'Fournisseur{n}')
+
+
 class ProduitFactory(DjangoModelFactory):
     class Meta:
         model = 'stock.Produit'

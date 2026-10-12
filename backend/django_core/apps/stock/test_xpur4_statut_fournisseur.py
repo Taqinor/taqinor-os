@@ -87,7 +87,7 @@ class TestBcfBlockedStatuses(Xpur4Base):
         resp = self.api.post(
             '/api/django/stock/bons-commande-fournisseur/',
             self._bcf_payload(f), format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('Litige qualité', resp.data['detail'])
 
     def test_bloque_total_refuses_bcf(self):
@@ -97,7 +97,7 @@ class TestBcfBlockedStatuses(Xpur4Base):
         resp = self.api.post(
             '/api/django/stock/bons-commande-fournisseur/',
             self._bcf_payload(f), format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_bloque_paiements_allows_bcf(self):
         f = Fournisseur.objects.create(
@@ -131,7 +131,7 @@ class TestPaiementBlockedStatuses(Xpur4Base):
         resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
             'facture': facture.id, 'montant': '1200',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_bloque_total_refuses_payment(self):
         f = Fournisseur.objects.create(
@@ -141,7 +141,7 @@ class TestPaiementBlockedStatuses(Xpur4Base):
         resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
             'facture': facture.id, 'montant': '1200',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_bloque_commandes_allows_payment(self):
         f = Fournisseur.objects.create(
