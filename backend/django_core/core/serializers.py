@@ -531,6 +531,8 @@ class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializ
     # ERR-ENF11-FUZZ-CORE — objet JSON publié et exigé (``null`` était
     # conforme au schéma ``{}`` puis refusé par le champ de modèle non nul).
     layout = ObjetJSON(required=False)
+    # api-fuzz #956 — booléen JSON réel (``0`` était converti en silence).
+    partage = BooleenStrict(required=False)
 
     class Meta:
         model = Dashboard
