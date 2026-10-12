@@ -43,13 +43,19 @@ class PrixFournisseur(models.Model):
     rédiger un bon de commande. La date du dernier achat est mise à jour
     automatiquement à la réception d'un BCF. Additif."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='prix_fournisseurs')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — porte un prix d'achat fournisseur NÉGOCIÉ (donnée réelle, non reconstructible) ; on refuse la suppression du produit plutôt que d'effacer silencieusement l'historique de prix
+        # on_delete: PROTECT — porte un prix d'achat fournisseur NÉGOCIÉ (donnée réelle, non reconstructible)
+        #   ; on refuse la suppression du produit plutôt que d'effacer silencieusement l'historique de prix
+        'stock.Produit', on_delete=models.PROTECT,
         related_name='prix_fournisseurs')
     fournisseur = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.PROTECT,  # on_delete: PROTECT — symétrique de `produit` ci-dessus : le tarif est un prix d'achat NÉGOCIÉ saisi à la main (donnée catalogue réelle, non reconstructible) ; on refuse la suppression du fournisseur plutôt que d'effacer silencieusement tous ses prix
+        # on_delete: PROTECT — symétrique de `produit` ci-dessus : le tarif est un prix d'achat NÉGOCIÉ saisi
+        #   à la main (donnée catalogue réelle, non reconstructible) ; on refuse la suppression du fournisseur
+        #   plutôt que d'effacer silencieusement tous ses prix
+        'stock.Fournisseur', on_delete=models.PROTECT,
         related_name='prix_produits')
     # Prix d'ACHAT — donnée INTERNE, jamais sur un document client.
     prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -384,7 +390,8 @@ class ReceptionFournisseur(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='receptions_fournisseur')
     reference = models.CharField(max_length=50)
     bon_commande = models.ForeignKey(
@@ -425,7 +432,8 @@ class LigneReceptionFournisseur(models.Model):
     et la quantité effectivement reçue lors de cette réception."""
 
     reception = models.ForeignKey(
-        ReceptionFournisseur, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de ReceptionFournisseur — n'existe pas sans son document parent
+        # on_delete: ligne de ReceptionFournisseur — n'existe pas sans son document parent
+        ReceptionFournisseur, on_delete=models.CASCADE, related_name='lignes')
     ligne_commande = models.ForeignKey(
         LigneBonCommandeFournisseur, on_delete=models.PROTECT,
         related_name='lignes_reception')
@@ -497,7 +505,8 @@ class FactureFournisseur(models.Model):
         SERVICES = 'services', 'Prestations de services'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='factures_fournisseur')
     reference = models.CharField(max_length=50)
     fournisseur = models.ForeignKey(
@@ -641,15 +650,21 @@ class ImputationAcompteFournisseur(TenantModel):
     (recopie des imputations héritées) et JAMAIS en cascade — une imputation
     est une trace financière."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.PROTECT,  # on_delete: PROTECT — trace financière (règlement d'une facture par acompte) : la suppression d'une société qui en porte est refusée, jamais une purge silencieuse
+        # on_delete: PROTECT — trace financière (règlement d'une facture par acompte) : la suppression d'une
+        #   société qui en porte est refusée, jamais une purge silencieuse
+        'authentication.Company', on_delete=models.PROTECT,
         null=True, blank=True,
         related_name='imputations_acompte_fournisseur',
         verbose_name='Société')
     acompte = models.ForeignKey(
-        'stock.AcompteFournisseur', on_delete=models.PROTECT,  # on_delete: PROTECT — un acompte imputé a réglé une facture : le supprimer effacerait ce règlement (montant_consomme) ; refusé (409)
+        # on_delete: PROTECT — un acompte imputé a réglé une facture : le supprimer effacerait ce règlement
+        #   (montant_consomme) ; refusé (409)
+        'stock.AcompteFournisseur', on_delete=models.PROTECT,
         related_name='imputations')
     facture = models.ForeignKey(
-        FactureFournisseur, on_delete=models.PROTECT,  # on_delete: PROTECT — même garde que la vue (ASTK85) : une facture portant un acompte imputé n'est jamais supprimée
+        # on_delete: PROTECT — même garde que la vue (ASTK85) : une facture portant un acompte imputé n'est
+        #   jamais supprimée
+        FactureFournisseur, on_delete=models.PROTECT,
         related_name='imputations_acompte')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
 
@@ -668,7 +683,8 @@ class LigneFactureFournisseur(models.Model):
     article. INTERNE."""
 
     facture = models.ForeignKey(
-        FactureFournisseur, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de FactureFournisseur — n'existe pas sans son document parent
+        # on_delete: ligne de FactureFournisseur — n'existe pas sans son document parent
+        FactureFournisseur, on_delete=models.CASCADE, related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_facture_fournisseur')
@@ -724,7 +740,8 @@ class PaiementFournisseur(models.Model):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='paiements_fournisseur')
     # AUD207 — PROTECT (était CASCADE) : une facture réellement réglée ne
     # doit jamais pouvoir effacer silencieusement ses paiements à sa
@@ -796,7 +813,8 @@ class RetourFournisseur(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='retours_fournisseur')
     reference = models.CharField(max_length=50)
     fournisseur = models.ForeignKey(
@@ -827,7 +845,8 @@ class RetourFournisseur(models.Model):
 class LigneRetourFournisseur(models.Model):
     """Ligne d'un retour fournisseur : SKU, quantité retournée, motif."""
     retour = models.ForeignKey(
-        RetourFournisseur, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de RetourFournisseur — n'existe pas sans son document parent
+        # on_delete: ligne de RetourFournisseur — n'existe pas sans son document parent
+        RetourFournisseur, on_delete=models.CASCADE, related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
         related_name='lignes_retour_fournisseur')

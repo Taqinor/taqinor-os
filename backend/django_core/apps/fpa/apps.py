@@ -25,7 +25,9 @@ class FpaConfig(AppConfig):
         'label': 'FP&A',
         'icone': 'line-chart',
         'depends': [],
-        'description': 'Cycles budgétaires par département, prévisions glissantes, scénarios what-if et analyse des écarts (variance).',
+        'description': (
+            'Cycles budgétaires par département, prévisions glissantes, scénarios what-if et analyse des '
+            'écarts (variance).'),
         'categorie': 'Finance',
         'parked': True,
     }
