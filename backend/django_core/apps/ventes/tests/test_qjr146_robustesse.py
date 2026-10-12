@@ -405,7 +405,7 @@ class TestAbc_ChemminsDeCopie(TestCase):
         renouvellement brouillon à zéro ligne dans la liste."""
         from apps.ventes.models import Devis
         from apps.ventes.services import renouveler_devis
-        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.statut = Devis.Statut.EXPIRE  # VNT106 : un accepté → 409
         self.devis.save(update_fields=['statut'])
         avant = Devis.objects.filter(company=self.company).count()
         with mock.patch('apps.ventes.domain.revision.cloner_lignes',
