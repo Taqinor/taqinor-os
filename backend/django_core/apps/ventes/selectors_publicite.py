@@ -160,8 +160,10 @@ def signed_clients_cross_sell_segments(company):
     ``{'email', 'telephone'}``)."""
     from .models import Devis
 
-    accepted = (Devis.objects
-                .filter(company=company, statut=Devis.Statut.ACCEPTE)
+    from .selectors import devis_signes_en_vigueur
+
+    # VNT84 : « devis d'origine » = la vente en vigueur (chaîne comptée une fois).
+    accepted = (devis_signes_en_vigueur(company)
                 .select_related('client')
                 .order_by('client_id', 'date_creation'))
 
@@ -197,15 +199,14 @@ def devis_accepted_totals_by_lead(company, lead_ids):
     (jamais un 0 fabriqué)."""
     from decimal import Decimal
 
-    from .models import Devis
+    from .selectors import devis_signes_en_vigueur
 
     lead_ids = list(lead_ids or [])
     if not lead_ids:
         return {}
     totals = {}
-    for devis in (Devis.objects
-                  .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                          lead_id__in=lead_ids)):
+    # VNT84 : la vente en vigueur par chaîne de révisions (une seule fois).
+    for devis in devis_signes_en_vigueur(company, lead_ids=lead_ids):
         try:
             amount = Decimal(str(devis.total_ttc or 0))
         except Exception:
@@ -230,12 +231,12 @@ def signature_velocity_by_month_and_mode(company):
     complet, règle checked-facts)."""
     from collections import defaultdict
 
-    from .models import Devis
+    from .selectors import devis_signes_en_vigueur
 
     counts = defaultdict(lambda: defaultdict(int))
     covered_year_months = set()
-    qs = (Devis.objects
-          .filter(company=company, statut=Devis.Statut.ACCEPTE)
+    # VNT84 : une signature par vente en vigueur, pas par version acceptée.
+    qs = (devis_signes_en_vigueur(company)
           .values_list('mode_installation', 'date_acceptation',
                        'date_creation'))
     for mode, date_acceptation, date_creation in qs:
