@@ -495,6 +495,32 @@ export async function creerDevisCommercialDepuisLead(page, leadId) {
   return id
 }
 
+/**
+ * VNT82 — MONTAGE PARTAGÉ d'un « devis accepté » par API (jamais par l'écran) :
+ * un lead joignable avec sa facture d'hiver, son devis automatique, son
+ * acceptation. Les budgets de clics (`parcours-budget.spec.js`) partent de CET
+ * état — chaque spec qui recopiait `request.post(.../accepter/)` peut l'appeler.
+ * Rend `{ leadId, devisId, nom }` ; l'appelant ouvre la fiche
+ * (`/crm/leads/<leadId>`).
+ */
+export async function monterVenteAcceptee(page, { nom, facture = 900, ville = 'Casablanca', telephone = '0612345678' } = {}) {
+  const requete = page.request
+  const lead = await lireJson(await requete.post(`${API_DJANGO}/crm/leads/`, {
+    data: { nom, telephone, ville, facture_hiver: facture },
+  }), 'création du lead')
+  const devis = await lireJson(await requete.post(`${API_DJANGO}/ventes/devis/auto/`, {
+    data: { lead: lead.id },
+  }), 'devis automatique')
+  const devisId = devis.id ?? devis.devis?.id
+  expect(devisId, 'identifiant du devis automatique').toBeTruthy()
+  // Deux options (sans / avec batterie) exigent un choix explicite à l'acceptation.
+  const fiche = await lireJson(await requete.get(`${API_DJANGO}/ventes/devis/${devisId}/`), 'lecture du devis')
+  const corps = { nom: 'Client E2E' }
+  if (fiche.nb_options === 2) corps.option = 'sans_batterie'
+  await lireJson(await requete.post(`${API_DJANGO}/ventes/devis/${devisId}/accepter/`, { data: corps }), 'acceptation du devis')
+  return { leadId: lead.id, devisId, nom }
+}
+
 // ── Parcours « site professionnel » (CIQ650, CIQ665) ────────────────────────
 // PNG 1×1 valide : une vraie photo de slot (magic-bytes contrôlés par le serveur).
 export const PNG_1PX = Buffer.from(

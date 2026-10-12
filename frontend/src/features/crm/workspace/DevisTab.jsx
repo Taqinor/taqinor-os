@@ -11,7 +11,8 @@ import {
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
-import FacturerVenteDialog from '../../ventes/vente/FacturerVenteDialog'
+import PanneauVente from '../../ventes/vente/PanneauVente'
+import ConflitNomme from '../../ventes/vente/ConflitNomme'
 import installationsApi from '../../../api/installationsApi'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -80,16 +81,6 @@ export const DEVIS_MINI_TRACK = [
   { key: 'facture', label: 'Facturé' },
   { key: 'chantier', label: 'Chantier' },
 ]
-
-/* ATOT31 — la porte de facturation encore ouverte est DITE par le serveur
-   (`solde.porte_facturation`, contrat ventes/contract_samples/devis_solde.json) :
-   'libre' (rien de facturé), 'tranche' (échéancier en cours), 'aucune' (tout
-   est facturé). Jamais redérivée des montants. Bloc absent → 'libre' (rien
-   n'est affirmé de plus que ce que l'écran savait avant). */
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
-export function porteFacturation(devis) {
-  return devis?.solde?.porte_facturation ?? 'libre'
-}
 
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
 export function devisTrackCurrent(d) {
@@ -232,12 +223,12 @@ function jumpToMissingField(champ) {
 
 // QJR534 — le bouton « Réviser » porte SON `useNavigate` (monté seulement sur
 // une carte révisable) : le reste de l'onglet n'exige aucun contexte Router.
-function BoutonReviser({ devis }) {
+function BoutonReviser({ devis, onConflit }) {
   const navigate = useNavigate()
   return (
     <Button
       type="button" size="sm" variant="outline"
-      onClick={() => reviserEtOuvrir({ devis, navigate })}
+      onClick={() => reviserEtOuvrir({ devis, navigate, onConflit })}
     >
       <Pencil size={14} aria-hidden="true" /> Réviser (nouvelle version)
     </Button>
@@ -537,19 +528,10 @@ export default function DevisTab({
     }
   }
 
-  const [facturerTarget, setFacturerTarget] = useState(null)
-  const genererFacture = (d) => {
-    setBusyAction(`f-${d.id}`)
-    setActionMsg(null)
-    ventesApi.genererFacture(d.id)
-      .then((res) => {
-        const f = res.data
-        setActionMsg(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
-        onAction?.('refresh')
-      })
-      .catch((err) => setActionMsg(errorMessageFrom(err, 'Génération de facture impossible.')))
-      .finally(() => setBusyAction(null))
-  }
+  // VNT80 — un 409 qui nomme un autre devis reste SOUS la carte ; « Ouvrir »
+  // fait défiler jusqu'à ce devis (la tête de la chaîne).
+  const [conflit, setConflit] = useState(null)
+  const ouvrirDevis = (id) => document.getElementById(`devis-card-${id}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
 
   const creerChantier = (d) => {
     setBusyAction(`c-${d.id}`)
@@ -678,7 +660,7 @@ export default function DevisTab({
           <p className="gen-hint">Aucun devis pour ce lead.</p>
         ) : (
           devisList.map((d) => (
-            <div key={d.id} className="lw-context-devis-card">
+            <div key={d.id} id={`devis-card-${d.id}`} className="lw-context-devis-card">
               <div className="lw-context-devis-card-head">
                 <Checkbox
                   checked={wa.selected.includes(d.id)}
@@ -771,7 +753,7 @@ export default function DevisTab({
                     <Pencil size={14} aria-hidden="true" /> Modifier
                   </Button>
                 )}
-                {peutReviserDevis(d) && <BoutonReviser devis={d} />}
+                {peutReviserDevis(d) && <BoutonReviser devis={d} onConflit={(c) => setConflit({ ...c, devisId: d.id })} />}
               </div>
               <Dialog
                 open={envoiOuvert === d.id}
@@ -1007,26 +989,9 @@ export default function DevisTab({
                     stages={DEVIS_MINI_TRACK}
                     current={devisTrackCurrent(d)}
                   />
+                  {/* VNT74 — panneau de vente (lecture de `d.vente`, GET détail). */}
+                  <PanneauVente devis={d} onAction={onAction} onOuvrirDevis={ouvrirDevis} />
                   <div className="lw-context-devis-actions">
-                    {porteFacturation(d) === 'libre' && (
-                      <Button
-                        type="button" size="sm"
-                        onClick={() => setFacturerTarget(d)}
-                      >
-                        🧾 Facturer (facture complète)
-                      </Button>
-                    )}
-                    {porteFacturation(d) !== 'aucune' && (
-                      <Button
-                        type="button" size="sm" variant="outline"
-                        disabled={busyAction === `f-${d.id}`}
-                        onClick={() => genererFacture(d)}
-                      >
-                        {busyAction === `f-${d.id}` ? '…'
-                          : porteFacturation(d) === 'tranche' ? '🧾 Générer la facture'
-                            : '🧾 Facturer par tranches (acompte…)'}
-                      </Button>
-                    )}
                     {d.chantier ? (
                       // CHT21(b) — span inerte devenu cliquable : deep-link
                       // réel vers la fiche chantier (patron ?id= déjà lu par
@@ -1050,6 +1015,7 @@ export default function DevisTab({
                   </div>
                 </>
               )}
+              {conflit?.devisId === d.id && <ConflitNomme conflit={conflit} onOuvrir={ouvrirDevis} />}
             </div>
           ))
         )}
@@ -1112,11 +1078,6 @@ export default function DevisTab({
           </div>
         </DialogContent>
       </Dialog>
-      <FacturerVenteDialog
-        devis={facturerTarget}
-        onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
-        onDone={() => onAction?.('refresh')}
-      />
     </div>
   )
 }

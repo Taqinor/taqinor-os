@@ -21,6 +21,7 @@ import { toastError } from '../../../lib/toast'
 import { useConfirmDialog } from '../../../ui/confirm'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
+import { lireConflit } from '../../../features/ventes/reviserDevis'
 import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
 // CIQ324 — identité d'entreprise facultative à l'acceptation d'un C&I.
 import IdentiteEntrepriseFields from '../../../features/ventes/quote/IdentiteEntrepriseFields'
@@ -278,6 +279,18 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
       // Vrai refus serveur : la fête s'arrête et le motif s'affiche.
       effacerAffaireSignee()
       onFailed?.()
+      // VNT80 — un 409 qui NOMME le devis de la vente active : message nommé +
+      // « Ouvrir <réf> » (la fenêtre est déjà fermée par la fête, d'où le toast).
+      const conflit = lireConflit(err)
+      if (conflit) {
+        toastError(conflit.message, conflit.successeur.reference ? {
+          action: {
+            label: `Ouvrir ${conflit.successeur.reference}`,
+            onClick: () => window.location.assign(`/ventes/devis?devis=${conflit.successeur.id}`),
+          },
+        } : {})
+        return
+      }
       toastError(err?.response?.data?.detail
         ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
     }

@@ -6,7 +6,7 @@ import {
   // CAD177 — ce projet tourne APRÈS `chromium` + `monkey` (~50 min) : la
   // session d'AUTH_FILE est revérifiée/rafraîchie avant chaque test.
   testSessionFraiche as test,
-  uniq, uiLogin, ADMIN, gotoLeads, createLead,
+  uniq, uiLogin, ADMIN, gotoLeads, createLead, monterVenteAcceptee,
   assertNoSeriousA11yViolations,
 } from './helpers'
 
@@ -491,4 +491,44 @@ test('VX190: un Sheet standalone respecte l\'inset haut (safe-top)', async ({ pa
   await expect(page.getByRole('heading', { name: 'Filtres' })).toBeVisible()
   const overlay = page.locator('.safe-top').first()
   await expect(overlay).toBeVisible()
+})
+
+// VNT81 — le PANNEAU DE VENTE à 375 px : une colonne, aucun défilement
+// horizontal, cibles ≥ 44 px, ≤ 2 boutons visibles par facture, et le dialogue
+// « Facturer l'acompte » est un tiroir bas (parcours onglet Devis → acompte).
+test('VNT81: onglet Devis → panneau de vente → dialogue acompte au téléphone', async ({ page }) => {
+  test.slow()
+  const { leadId } = await monterVenteAcceptee(page, { nom: uniq('VNT81 Mobile'), facture: 900 })
+  await page.goto(`/crm/leads/${leadId}`)
+  const onglet = page.getByRole('tab', { name: /^Devis/ })
+  await expect(onglet).toBeVisible({ timeout: 30_000 })
+  await onglet.click()
+
+  const panneau = page.locator('[data-testid^="panneau-vente-"]').first()
+  await expect(panneau).toBeVisible()
+  const debordement = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  expect(debordement, 'défilement horizontal sur la fiche lead').toBeLessThanOrEqual(1)
+
+  // Une colonne : chaque ligne du bilan tient dans la largeur du panneau.
+  const largeurPanneau = (await panneau.boundingBox()).width
+  for (const ligne of await panneau.locator('.vente-bilan-ligne').all()) {
+    expect((await ligne.boundingBox()).width).toBeLessThanOrEqual(largeurPanneau + 1)
+  }
+  // Cibles ≥ 44 px et ≤ 2 boutons visibles par facture.
+  for (const bouton of await panneau.locator('.vente-actions button').all()) {
+    expect((await bouton.boundingBox()).height).toBeGreaterThanOrEqual(44)
+  }
+  for (const facture of await panneau.locator('[data-testid^="vente-facture-"]').all()) {
+    expect(await facture.getByRole('button').count()).toBeLessThanOrEqual(2)
+  }
+
+  // Le dialogue d'acompte est un tiroir bas, sur toute la largeur.
+  await panneau.getByRole('button', { name: /Facturer l.acompte/ }).click()
+  const dialogue = page.getByRole('dialog')
+  await expect(dialogue).toBeVisible()
+  const boite = await dialogue.boundingBox()
+  const vue = page.viewportSize()
+  expect(boite.x).toBeLessThanOrEqual(1)
+  expect(Math.abs(boite.width - vue.width)).toBeLessThanOrEqual(2)
+  expect(Math.abs(boite.y + boite.height - vue.height)).toBeLessThanOrEqual(2)
 })

@@ -31,7 +31,10 @@ import EtudeBancable from '../../../features/ventes/EtudeBancable'
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 // APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
 import { DOC_STATUT_TRACK } from '../../../features/ventes/documentChain.js'
-import { peutEditerDevis, chantierEnCours } from '../../../features/ventes/devisStatuts.js'
+import { peutEditerDevis, peutReviserDevis, chantierEnCours } from '../../../features/ventes/devisStatuts.js'
+// VNT79 — la liste lit `d.vente` (VNT68) : puce de résumé + sous-ligne PanneauVente.
+import PanneauVente from '../../../features/ventes/vente/PanneauVente.jsx'
+import { peutFacturerAcompte, peutFacturerSolde, peutFacturerComplete } from '../../../features/ventes/vente/venteEtat.js'
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis.js'
 import { STATUT_DISPLAY } from './devisListConstants.js'
 import HistoriqueActivitesListe from '../HistoriqueActivitesListe'
@@ -92,13 +95,14 @@ export default function DevisRow({ d, ctx }) {
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId, setFacturerTarget,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, setFacturerTarget,
+    panneauVenteOpenId, setPanneauVenteOpenId,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleGenererFacture, handleRevoquerLienPublic,
+    handleChantier, handleRevoquerLienPublic,
   } = ctx
   // NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
   // remplacement, jamais stocké) : uniquement quand locale=ar ET la
@@ -312,6 +316,20 @@ export default function DevisRow({ d, ctx }) {
               </button>
             ))}
           </div>
+        )}
+        {/* VNT79 — puce de résumé de la vente (lue de `d.vente`) : ouvre la
+            sous-ligne PanneauVente. Absente sans `vente` (ancien serveur). */}
+        {d.vente && (
+          <button
+            type="button"
+            data-testid={`vente-puce-${d.id}`}
+            aria-expanded={panneauVenteOpenId === d.id}
+            onClick={() => setPanneauVenteOpenId(panneauVenteOpenId === d.id ? null : d.id)}
+            title="Voir la vente : factures, payé, reste"
+            className="mt-1 inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs font-medium hover:bg-muted"
+          >
+            Vente · payé {formatMAD(d.vente.paye_ttc, { decimals: 0 })} / {formatMAD(d.vente.prix_convenu_ttc, { decimals: 0 })}
+          </button>
         )}
         {/* VX216(a) — rend le seam devis↔chantier VISIBLE côté vendeur (avant,
             seul InstallationDetail.jsx le détectait). Un chantier en cours a
@@ -544,30 +562,16 @@ export default function DevisRow({ d, ctx }) {
                 Passez le devis en « Accepté » pour générer les factures.
               </span>
             </div>
-          ) : d.solde && d.solde.tranches_facturees >= d.solde.tranches_total ? (
-            <Button size="sm" variant="outline" disabled
-                    title="Toutes les tranches ont été facturées">
-              Échéancier complet
+          ) : d.is_active !== false && d.vente && d.vente.est_tete !== false
+            && d.vente.prochaine_action !== 'aucune'
+            && (peutFacturerAcompte(d) || peutFacturerSolde(d) || peutFacturerComplete(d)) ? (
+            // VNT79 — UN seul bouton, ouvert par `vente.peut` (serveur) ; le
+            // dialogue choisit acompte / tranche / solde / totalité.
+            <Button size="sm" onClick={() => setFacturerTarget(d)}
+                    title="Facturer la vente : acompte, tranche, solde ou totalité">
+              Facturer…
             </Button>
-          ) : (
-            <>
-              {!(d.solde?.tranches_facturees > 0) && (
-                <Button size="sm" onClick={() => setFacturerTarget(d)}
-                        title="Facture complète + paiements déjà reçus">
-                  Facturer (facture complète)
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant={d.solde?.tranches_facturees > 0 ? 'default' : 'outline'}
-                onClick={() => handleGenererFacture(d)}
-                loading={factureGenId === d.id}
-                title="Générer la prochaine tranche de facture"
-              >
-                {d.solde?.tranches_facturees > 0 ? 'Générer facture' : 'Facturer par tranches (acompte…)'}
-              </Button>
-            </>
-          )}
+          ) : null}
 
           {/* VX20 — menu « Plus » unique : regroupe TOUTES les actions
               secondaires (précédemment jusqu'à 10 boutons par ligne). */}
@@ -772,7 +776,7 @@ export default function DevisRow({ d, ctx }) {
               </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
-              {d.is_active && d.statut !== 'brouillon' && (
+              {peutReviserDevis(d) && (
                 <DropdownMenuItem onSelect={() => {
                   // QJR533 — UN seul geste (features/ventes/reviserDevis) :
                   // avertit si chantier en cours (VX216(a)), dit le résultat,
@@ -822,6 +826,13 @@ export default function DevisRow({ d, ctx }) {
         </div>
       </td>
     </tr>
+    {panneauVenteOpenId === d.id && d.vente && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <PanneauVente devis={d} onAction={() => dispatch(rafraichirDevis(d.id))} />
+        </td>
+      </tr>
+    )}
     {versionsOpenId === d.id && (
       <tr>
         <td colSpan={8} className="bg-muted/30">
