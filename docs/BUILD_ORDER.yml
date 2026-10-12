@@ -500,6 +500,10 @@ unmapped_ok:
   # 29/08/2026) : auto-ordonné par ses propres chaînes @after et son plan de
   # merge M0→M6 (en-tête du groupe) ; aucun prérequis de vague plateforme.
   - QJR
+  # VNT — La vente : du devis accepté à la facture (Groupe VNT de PLAN2, audit
+  # L3 du 12/10/2026) : auto-ordonné par ses chaînes @after et ses lots M0→M4
+  # (en-tête du groupe) ; aucun prérequis de vague plateforme.
+  - VNT
   # CRX/CRXB — Radiographie du CRM (Groupe CRX de PLAN2, audit L3 du
   # 02/09/2026) : auto-ordonné par ses chaînes @after (réconciliation QJR4
   # dans l'en-tête du groupe) ; CRXB gated sur le mot fondateur (D-CRX4) ;
