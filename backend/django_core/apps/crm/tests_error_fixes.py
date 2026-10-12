@@ -337,6 +337,17 @@ class TestEntreesTypeesEnf11(TestCase):
                              {'ids': [{}]}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_export_clients_ids_pas_une_liste_400(self):
+        # CI #956 (fuzz « accepted schema-violating ») : `ids` est un tableau
+        # au schéma ; un objet (même vide) ou null est refusé, pas « tout ».
+        for ids in ({}, None, 'a', 3):
+            resp = self.api.post('/api/django/crm/clients/export-xlsx/',
+                                 {'ids': ids}, format='json')
+            self.assertEqual(resp.status_code, 400, (ids, resp.content))
+        resp = self.api.post('/api/django/crm/clients/export-xlsx/', {},
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_jours_non_entier_refuse_et_entier_accepte(self):
         url = '/api/django/crm/leads/kpi-cadences/'
         for brut in ('null', 'abc', '2.5'):
