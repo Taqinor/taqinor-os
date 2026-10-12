@@ -100,6 +100,21 @@ class RetourClientAvoirTests(_Base, TestCase):
         self.assertEqual(facture.montant_du, Decimal('0'))
         self.assertEqual(self._retour(facture).status_code, 400)
 
+    def test_corps_fuzz_ligne_mal_typee_400(self):
+        """api-fuzz (ENF11) : ``produit`` non entier / ``quantite`` vide
+        levaient une 500 — le corps est validé par son sérialiseur déclaré
+        (400 ``validation_error``), aucun avoir n'est créé."""
+        from apps.ventes.models import Avoir
+        facture = self._facture(pu='10000')
+        r = self.api.post(
+            f'/api/django/facturation/factures/{facture.id}/retour-client/',
+            {'motif': '0', 'restocker': False,
+             'lignes': [{'produit': [None, None], 'quantite': ''}]},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['error']['code'], 'validation_error')
+        self.assertFalse(Avoir.objects.filter(facture=facture).exists())
+
     def test_retour_palier_arrondi(self):
         from apps.ventes.models import Avoir, Facture
         facture = self._facture(pu='10037', arrondi_pas=100)

@@ -506,7 +506,7 @@ export default function FactureRow({ f, ctx }) {
                   </DropdownMenuItem>
                 )}
                 {/* VNT46 — seul un BROUILLON-<id> se supprime (un numéro légal
-                    s'annule : le serveur répond 400 reference_legale sinon). */}
+                    s'annule : le serveur répond 409 reference_legale sinon). */}
                 {canManage && f.statut === 'brouillon'
                   && String(f.reference || '').startsWith('BROUILLON-') && (
                   <DropdownMenuItem
