@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import api from '../../api/axios'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { useConfirmDialog } from '../../ui/confirm'
 
@@ -9,7 +8,10 @@ import { useConfirmDialog } from '../../ui/confirm'
    et la confirmation de suppression MAISON (APAR41 — jamais window.confirm).
    Un seul endroit au lieu d'une copie par section (check_duplicats_litteraux).
    `charger()` relit la liste (après une création/suppression). */
-export default function useSectionListeAdmin(url) {
+/* `lire` : fonction sans argument qui renvoie une Promise de tableau de lignes — l'appelant
+   garde son URL et ses paramètres visibles (gardes ENF D1 / ADOC38) : toutesLesPages(...) pour
+   un endpoint paginé, api.get(url) pour un endpoint non paginé. */
+export default function useSectionListeAdmin(lire) {
   const { confirmDelete } = useConfirmDialog()
   const canManage = useIsAdminOrResponsable()
   const [rows, setRows] = useState([])
@@ -17,13 +19,13 @@ export default function useSectionListeAdmin(url) {
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const charger = useCallback(() => api.get(url)
-    .then((res) => {
-      setRows(res.data?.results ?? res.data ?? [])
+  const charger = useCallback(() => Promise.resolve().then(lire)
+    .then((rows) => {
+      setRows(rows)
       setLoadError(false)
     })
     .catch(() => setLoadError(true))
-    .finally(() => setLoading(false)), [url])
+    .finally(() => setLoading(false)), [lire])
 
   useEffect(() => { charger() }, [charger])
 

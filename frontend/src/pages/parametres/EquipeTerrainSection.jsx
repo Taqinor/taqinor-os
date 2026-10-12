@@ -16,6 +16,7 @@ import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import EquipesAdminPanel from './EquipesAdminPanel'
 import installationsApi from '../../api/installationsApi'
 import { apiErrorMessage } from '../../lib/apiError'
+import toutesLesPages from './toutesLesPages'
 
 // Ajoute ou retire `userId` de la liste des membres (bascule).
 const basculerMembre = (membres, userId) => (membres.includes(userId)
@@ -28,8 +29,8 @@ export default function EquipeTerrainSection({ assignables = [] }) {
 
   const load = () => {
     setLoading(true)
-    installationsApi.getEquipesTerrain()
-      .then((r) => setEquipes(r.data.results ?? r.data))
+    toutesLesPages((params) => installationsApi.getEquipesTerrain(params))
+      .then((rows) => setEquipes(rows))
       .catch(() => setError('Impossible de charger les équipes terrain.'))
       .finally(() => setLoading(false))
   }

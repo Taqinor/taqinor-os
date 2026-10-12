@@ -55,11 +55,14 @@ const CONTEXTE_EXEMPLE = {
 
 const VIDE = { kind: 'email', code: '', nom: '', sujet: '', corps: '' }
 
+// BrandedTemplateViewSet : pagination_class = None (core/views.py) — lecture simple, tableau servi.
+const lireModeles = () => api.get('/core/branded-templates/').then((r) => (Array.isArray(r.data) ? r.data : []))
+
 export default function ModelesBrandesSection() {
   // APAR41 — confirmation MAISON + droit + état de liste : useSectionListeAdmin.
   const {
     confirmerSuppression, canManage, rows, loading, loadError, busy, setBusy, charger,
-  } = useSectionListeAdmin('/core/branded-templates/')
+  } = useSectionListeAdmin(lireModeles)
 
   const [draft, setDraft] = useState(VIDE)
   const [selectedId, setSelectedId] = useState(null)

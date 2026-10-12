@@ -99,7 +99,7 @@ function loadSavedColumns() {
       const valid = arr.filter(k => ALL_COLUMNS.some(c => c.key === k))
       if (valid.length) return valid
     }
-  } catch { /* localStorage indispo/quota — repli sur le défaut */ }
+  } catch { console.warn('Colonnes du cockpit : localStorage indisponible, colonnes par défaut.') }
   return null
 }
 
@@ -249,7 +249,8 @@ export default function AdsCockpitScreen() {
     const params = { debut: range.debut || undefined, fin: range.fin || undefined }
     adsengineApi.metrics.adsCockpit(params)
       .then(r => {
-        setRows(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        // AdsCockpitView (APIView, non paginée) renvoie une liste nue.
+        setRows(Array.isArray(r.data) ? r.data : [])
         setLoadError(false)
       })
       .catch(() => setLoadError(true))
@@ -268,7 +269,7 @@ export default function AdsCockpitScreen() {
       const prev = previousRange(range)
       adsengineApi.metrics.adsCockpit({ debut: prev.debut, fin: prev.fin })
         .then(r => setPreviousTotal(
-          totalSpend(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
+          totalSpend(Array.isArray(r.data) ? r.data : [])))
         .catch(() => setPreviousTotal(null))
     } else {
       setPreviousTotal(null)
@@ -286,7 +287,7 @@ export default function AdsCockpitScreen() {
   useEffect(() => {
     try {
       window.localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(visibleKeys))
-    } catch { /* localStorage indispo/quota — ignoré */ }
+    } catch { console.warn('Colonnes du cockpit : localStorage indisponible, choix non mémorisé.') }
   }, [visibleKeys])
 
   // Colonnes affichées, dans l'ordre canonique d'ALL_COLUMNS (l'ordre stocké

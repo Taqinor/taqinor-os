@@ -79,7 +79,7 @@ export default function FacturerDevisDialog({ devis, onOpenChange, onDone }) {
                     const res = await ventesApi.telechargerPdfFacture(data.facture_id)
                     openPdfBlob(res.data, `${data.facture_reference}.pdf`)
                     return
-                  } catch { /* pas encore prêt */ }
+                  } catch (err) { console.warn('FacturerDevisDialog.submit : pas encore prêt', err) }
                 }
                 toast.error('PDF encore en préparation : ouvrez-le depuis Ventes → Factures.')
               } catch {

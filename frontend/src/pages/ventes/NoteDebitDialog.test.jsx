@@ -52,7 +52,7 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
   it('liste les notes de débit de la facture', async () => {
     render(<NoteDebitDialog facture={FACTURE} open onOpenChange={() => {}} />)
     await waitFor(() =>
-      expect(ventesApi.getNotesDebit).toHaveBeenCalledWith({ facture: 11 }))
+      expect(ventesApi.getNotesDebit).toHaveBeenCalledWith(expect.objectContaining({ facture: 11 })))
     expect(await screen.findByText('ND-202607-0001')).toBeInTheDocument()
   })
 

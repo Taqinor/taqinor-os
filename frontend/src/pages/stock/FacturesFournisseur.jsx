@@ -3,6 +3,7 @@ import { ReceiptText, Plus, FileText, AlertTriangle, ShieldCheck,
   Wallet, CalendarClock,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { usePermissionAchats, useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
@@ -492,8 +493,8 @@ export default function FacturesFournisseur() {
           setTotalDu(r.data?.total_du ?? null)
           return r.data?.results ?? []
         })
-      : stockApi.getFacturesFournisseur({ ordering: '-date_creation' })
-          .then((r) => { setTotalDu(null); return r.data?.results ?? r.data ?? [] })
+      : fetchAllPages((page) => stockApi.getFacturesFournisseur({ ordering: '-date_creation', page }).then((r) => r.data), { concurrency: 3 })
+          .then((rows) => { setTotalDu(null); return Array.isArray(rows) ? rows : (rows?.results ?? []) })
     fetch
       .then((rows) => setItems(rows))
       .catch(() => setError('Chargement des factures impossible.'))
@@ -506,8 +507,8 @@ export default function FacturesFournisseur() {
   useEffect(() => {
     stockApi.getAllFournisseurs()
       .then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
-    stockApi.getBonsCommandeFournisseur({ page_size: 1000 })
-      .then((r) => setBons(r.data?.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setBons(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
     stockApi.acomptesFournisseurOuverts()
       .then((r) => setAcomptesOuverts(r.data ?? [])).catch(() => {})
   }, [])

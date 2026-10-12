@@ -169,11 +169,11 @@ describe('ASTK178 — onglets BCF / retours filtrés côté serveur', () => {
     const panel = await screen.findByTestId('f360-tab-bcf')
     expect(await within(panel).findByText('BCF-2026-10-0031')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/stock/bons-commande-fournisseur/',
-      { params: { fournisseur: '7' } })
+      expect.objectContaining({ params: expect.objectContaining({ fournisseur: '7' }) }))
     await userEvent.click(screen.getByRole('tab', { name: /Retours/ }))
     expect(await screen.findByText('RF-2026-10-0004')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/stock/retours-fournisseur/',
-      { params: { fournisseur: '7' } })
+      expect.objectContaining({ params: expect.objectContaining({ fournisseur: '7' }) }))
   })
 })
 
@@ -256,7 +256,7 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
     await userEvent.click(await screen.findByRole('tab', { name: /Retours/ }))
     const panel = await screen.findByTestId('f360-tab-retours')
     expect(within(panel).getByText('RET-1')).toBeInTheDocument()
-    expect(stockApi.getRetoursFournisseurDe).toHaveBeenCalledWith('7')
+    expect(stockApi.getRetoursFournisseurDe).toHaveBeenCalledWith('7', expect.anything())
   })
 })
 

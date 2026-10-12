@@ -4,6 +4,7 @@ import { useIsAdmin } from '../../hooks/useHasPermission'
 import { Lock, Download, Snowflake,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import {
@@ -89,8 +90,8 @@ export default function InventairesAnnuels() {
   const [exportingId, setExportingId] = useState(null)
 
   const reload = () => {
-    stockApi.getInventairesAnnuels({ ordering: '-exercice' })
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getInventairesAnnuels({ ordering: '-exercice', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setError('Chargement des inventaires impossible.'))
   }
 

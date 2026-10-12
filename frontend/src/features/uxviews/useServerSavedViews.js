@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import uxviewsApi from '../../api/uxviewsApi'
 import rolesApi from '../../api/rolesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 // NTUX1 — migration BEST-EFFORT des vues localStorage historiques
 // (`hooks/useSavedViews.js`) vers l'API serveur, au premier montage d'un
 // écran qui adopte ce hook (jamais bloquant, jamais rejouée après succès).
@@ -36,6 +37,7 @@ function writePref(ecran, viewId) {
     else localStorage.setItem(prefKey(ecran), String(viewId))
   } catch {
     // localStorage indisponible (SSR/quota) — best-effort, jamais bloquant.
+    console.warn('Vue par défaut non mémorisée : stockage indisponible.')
   }
 }
 
@@ -149,8 +151,8 @@ export function useServerSavedViews(ecran) {
     refresh()
   }), [prefId, applyView, refresh])
 
-  const setDefaultForMyRole = useCallback((view) => rolesApi.getRoles().then((res) => {
-    const list = Array.isArray(res.data?.results) ? res.data.results : (res.data || [])
+  const setDefaultForMyRole = useCallback((view) => fetchAllPages((page) => rolesApi.getRoles({ page }).then((r) => r.data), { concurrency: 3 }).then((res) => {
+    const list = Array.isArray(res) ? res : (res?.results ?? [])
     const match = list.find((r) => r.nom === roleNom)
     if (!match) throw new Error('Rôle introuvable.')
     return uxviewsApi.definirParDefautRole(view.id, match.id).then((r) => { refresh(); return r.data })

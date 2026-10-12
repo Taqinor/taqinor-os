@@ -4,15 +4,6 @@
 # Un site liste ici est CONSTATE, pas approuve : ajouter un log nomme l'operation (ou resserrer
 # l'exception) puis retirer sa ligne. REGLE ABSOLUE : cette liste ne peut que DECROITRE ;
 # une cle morte fait echouer la garde.
-backend/django_core/apps/accessreview/sod.py::raise_sod_alerts
-backend/django_core/apps/accessreview/sod.py::would_cumulate_critical
-backend/django_core/apps/agent/services.py::log_confirmed_action
-backend/django_core/apps/audit/management/commands/purge_audit_log.py::Command._archive_best_effort
-backend/django_core/apps/audit/management/commands/purge_audit_log.py::Command.handle
-backend/django_core/apps/audit/recorder.py::record
-backend/django_core/apps/audit/signals.py::_on_pre_save
-backend/django_core/apps/audit/signals.py::_status_display
-backend/django_core/apps/audit/signals.py::connect
 backend/django_core/apps/calepinage/analyse_plan.py::_analyser_pdf_vectoriel
 backend/django_core/apps/calepinage/analyse_plan.py::_unite_document
 backend/django_core/apps/calepinage/management/commands/acal_dryrun_degagements.py::Command.handle
@@ -129,7 +120,6 @@ backend/django_core/apps/crm/visites_rdv.py::resoudre_lien_rdv
 backend/django_core/apps/crm/visites_rdv.py::send_due_appointment_reminders
 backend/django_core/apps/crm/visites_retour_lead.py::journaliser_visite
 backend/django_core/apps/crm/webhooks.py::_map_and_link_lead
-backend/django_core/apps/entites/permissions.py::IsAdministrateur.has_permission
 backend/django_core/apps/ged/management/commands/publier_documents_meryem.py::publier_documents
 backend/django_core/apps/ged/selectors.py::_acl_metadonnee_rank
 backend/django_core/apps/ged/selectors.py::analytique_approbations
@@ -185,22 +175,6 @@ backend/django_core/apps/ged/services.py::url_publique_signature
 backend/django_core/apps/ged/views.py::DocumentVersionViewSet.pages
 backend/django_core/apps/ged/views.py::DocumentViewSet.deposer_lot_scans_separe_action
 backend/django_core/apps/ged/views.py::LotEnvoiViewSet.envoi_masse
-backend/django_core/apps/identity/anomaly.py::_geolocate
-backend/django_core/apps/identity/anomaly.py::_notify_directeurs
-backend/django_core/apps/identity/anomaly.py::detect_impossible_travel
-backend/django_core/apps/identity/breakglass.py::_audit
-backend/django_core/apps/identity/breakglass.py::_notify_directeurs
-backend/django_core/apps/identity/middleware.py::NetworkPolicyMiddleware._resolve
-backend/django_core/apps/identity/posture.py::_dormant_accounts
-backend/django_core/apps/identity/posture.py::_safe
-backend/django_core/apps/identity/scim.py::ScimUserDetailView.delete
-backend/django_core/apps/identity/scim.py::ScimUsersView.post
-backend/django_core/apps/identity/selectors.py::is_break_glass_active
-backend/django_core/apps/identity/selectors.py::local_password_login_blocked
-backend/django_core/apps/identity/stepup.py::_current_session_mfa_at
-backend/django_core/apps/identity/stepup.py::_step_up_actions
-backend/django_core/apps/identity/views.py::LoginBannerView.post
-backend/django_core/apps/identity/views.py::_banner_profile
 backend/django_core/apps/installations/field_capture.py::overage_threshold_pct
 backend/django_core/apps/installations/field_capture.py::pousser_si_cloturee
 backend/django_core/apps/installations/field_services.py::signature_client_requise
@@ -312,22 +286,6 @@ backend/django_core/apps/portail/services.py::_envoyer_invitation_portail
 backend/django_core/apps/portail/views_client.py::_noter_connexion
 backend/django_core/apps/portail/views_client.py::contenu_diffusable
 backend/django_core/apps/portail/views_externes.py::RessourcesPartenairePortailViewSet.telecharger
-backend/django_core/apps/records/serializers.py::ActivitySerializer.get_target_phone
-backend/django_core/apps/records/services.py::_company_de_la_cible
-backend/django_core/apps/records/services.py::_notifier_reveil_activite
-backend/django_core/apps/records/services.py::_trigger_event_survenu
-backend/django_core/apps/records/services.py::notify_followers
-backend/django_core/apps/records/storage.py::delete_attachment
-backend/django_core/apps/records/storage.py::fetch_attachment
-backend/django_core/apps/records/storage.py::presign_attachment
-backend/django_core/apps/records/storage.py::presign_export_result
-backend/django_core/apps/records/views.py::ActivityViewSet.ma_file
-backend/django_core/apps/records/views.py::ActivityViewSet.marquer_fait
-backend/django_core/apps/records/views.py::_log_done_to_chatter
-backend/django_core/apps/records/views.py::_ma_file_mentions
-backend/django_core/apps/records/views.py::_notify_mentions
-backend/django_core/apps/records/views.py::_notify_reassignment
-backend/django_core/apps/records/views.py::attachments_all
 backend/django_core/apps/reporting/approbations.py::_decider_approbation_core
 backend/django_core/apps/reporting/calepinage_kpis.py::_compteurs_par_statut
 backend/django_core/apps/reporting/classeur.py::ClasseurViewSet.evaluer
@@ -357,8 +315,6 @@ backend/django_core/apps/reporting/reports.py::_maybe_pdf
 backend/django_core/apps/reporting/scheduled_reports.py::_casablanca_now
 backend/django_core/apps/reporting/scheduled_reports.py::_is_email_configured
 backend/django_core/apps/reporting/views.py::dashboard
-backend/django_core/apps/roles/management/commands/init_roles.py::Command._tracer_realignement
-backend/django_core/apps/roles/services.py::apply_role_to_user
 backend/django_core/apps/sav/models.py::ContratMaintenance.prochaine_visite
 backend/django_core/apps/sav/pdf.py::_pieces_payload
 backend/django_core/apps/sav/public_views.py::ticket_public_satisfaction
@@ -379,13 +335,6 @@ backend/django_core/apps/sav/views.py::TicketViewSet.creer_devis
 backend/django_core/apps/sav/views.py::WarrantyClaimViewSet._resolve_fournisseur
 backend/django_core/apps/sav/views.py::_qr_data_uri
 backend/django_core/apps/semantic/selectors.py::_nb_lignes_agregees
-backend/django_core/apps/statuspage/tasks.py::_accumuler_uptime_jour
-backend/django_core/apps/statuspage/tasks.py::_logger_changement_statut
-backend/django_core/apps/statuspage/tasks.py::_statut_ia_public
-backend/django_core/apps/statuspage/tasks.py::rafraichir_composants
-backend/django_core/apps/statuspage/views.py::_envoyer_email_confirmation
-backend/django_core/apps/trash/serializers.py::ElementSupprimeSerializer.get_avertissement_restauration
-backend/django_core/apps/uxviews/views.py::FavoriUtilisateurViewSet.importer
 backend/django_core/apps/visites/selectors.py::_visite_devis
 backend/django_core/apps/visites/services.py::_notifier_commercial_visite
 backend/django_core/apps/visites/services.py::emettre_visite_planifiee
@@ -511,7 +460,6 @@ backend/django_core/core/workflow.py::delegants_actifs_pour
 backend/django_core/apps/ventes/domain/cycle_vie.py::_acceptance_deposit_block
 backend/django_core/apps/ventes/domain/cycle_vie.py::_send_acceptance_emails
 backend/django_core/apps/ventes/domain/cycle_vie.py::accept_devis
-backend/django_core/apps/ventes/domain/cycle_vie.py::activate_optional_line
 backend/django_core/apps/ventes/domain/cycle_vie.py::signature_entreprise
 backend/django_core/apps/ventes/etude_horaire.py::_reglages_tarifaires
 backend/django_core/apps/ventes/public/noyau.py::PublicLinkRateThrottle.get_rate
@@ -520,7 +468,6 @@ backend/django_core/apps/ventes/public/paiement_views.py::_deposit_success_paylo
 backend/django_core/apps/ventes/public/paiement_views.py::proposal_virement_declare
 backend/django_core/apps/ventes/public/payload_conditions.py::_acompte_publique
 backend/django_core/apps/ventes/public/payload_conditions.py::_conditions_publiques
-backend/django_core/apps/ventes/public/payload_conditions.py::_conditions_titre_publique
 backend/django_core/apps/ventes/public/payload_conditions.py::_confirmation_email_publique
 backend/django_core/apps/ventes/public/payload_conditions.py::_date_validite_publique
 backend/django_core/apps/ventes/public/payload_horaire.py::_localisation_pour_moteur_horaire
@@ -531,11 +478,9 @@ backend/django_core/apps/ventes/public_views.py::proposal_pdf
 backend/django_core/apps/ventes/public_views.py::proposal_taille_detail
 backend/django_core/apps/ventes/public_views.py::public_bcf_document
 backend/django_core/apps/ventes/public_views.py::public_document
-backend/django_core/apps/ventes/domain/creation.py::devise_par_defaut
 backend/django_core/apps/ventes/domain/historique_config.py::_totaux_contenu
 backend/django_core/apps/ventes/horaire/ve_nocturne.py::_couche_ve_nocturne
 backend/django_core/apps/ventes/public/lecture_views.py::_lecture_equipe
-backend/django_core/apps/ventes/public/lecture_views.py::_noter_si_version_remplacee
 backend/django_core/apps/ventes/public/lecture_views.py::_notify_first_open
 backend/django_core/apps/ventes/public/lecture_views.py::_notify_open
 backend/django_core/apps/ventes/public/lecture_views.py::_remonter_signal_lecture_au_lead

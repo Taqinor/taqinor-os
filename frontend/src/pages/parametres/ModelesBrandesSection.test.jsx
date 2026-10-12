@@ -41,7 +41,7 @@ describe('ModelesBrandesSection (PACT117)', () => {
     get.mockResolvedValue({ data: MODELES })
     renderAvecRole('admin')
 
-    expect(get).toHaveBeenCalledWith('/core/branded-templates/')
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/core/branded-templates/'))
     const ligne = await screen.findByTestId('modele-brande-email-relance_devis')
     expect(within(ligne).getByText('Relance de devis')).toBeInTheDocument()
     expect(within(ligne).getByText('relance_devis')).toBeInTheDocument()

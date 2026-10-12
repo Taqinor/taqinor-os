@@ -235,7 +235,7 @@ export default function TarificationSection() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) {
-      // CALX72 — un 400 {champ: [message]} atterrit SOUS le champ nommé.
+      // CALX72 — un 400 (champ vers message) atterrit SOUS le champ nommé.
       const parChamp = e?.response?.status === 400
         ? erreursDuServeur(e.response.data) : {}
       if (Object.keys(parChamp).length) {

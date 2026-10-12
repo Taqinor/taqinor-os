@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, LayoutTemplate, Trash2, PlayCircle,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import BcfProduitPicker from './BcfProduitPicker'
 import {
   Button, IconButton, Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -226,16 +227,17 @@ export default function ModelesBcf() {
   const [info, setInfo] = useState(null)
 
   const reload = () => {
-    stockApi.getModelesBcf()
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getModelesBcf({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     reload()
-    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
-    stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    stockApi.getAllFournisseurs().then(({ data: lignes }) => setFournisseurs(Array.isArray(lignes) ? lignes : (lignes?.results ?? []))).catch(() => {})
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }, [])
 
   const openModele = async (m) => {

@@ -70,7 +70,8 @@ export function saveCockpitView(state) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   } catch {
-    // localStorage indisponible (mode privé, quota dépassé…) : dégradation
-    // silencieuse — la mémoire de vue n'est qu'un confort, jamais bloquant.
+    // localStorage indisponible (mode privé, quota dépassé…) : la mémoire de
+    // vue n'est qu'un confort, jamais bloquant.
+    console.warn('Vue du cockpit non mémorisée : localStorage indisponible.')
   }
 }

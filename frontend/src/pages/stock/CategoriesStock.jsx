@@ -4,6 +4,7 @@ import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hoo
 import { Plus, Trash2, Save, Boxes,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, IconButton, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -123,8 +124,8 @@ export default function CategoriesStock() {
   }, [produits])
 
   const loadCategories = () =>
-    stockApi.getCategories({ ordering: 'ordre' })
-      .then((r) => setCategories(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getCategories({ ordering: 'ordre', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setCategories(Array.isArray(rows) ? rows : (rows?.results ?? [])))
   const loadMarques = () =>
     stockApi.getMarques().then((r) => setMarques(r.data?.results ?? r.data ?? []))
 

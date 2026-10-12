@@ -50,7 +50,7 @@ describe('ApprobationsPolitiquesSection (PACT147)', () => {
     get.mockResolvedValue({ data: POLITIQUES })
     renderAvecRole('admin')
 
-    expect(get).toHaveBeenCalledWith('/parametres/approbations/')
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/parametres/approbations/', expect.anything()))
     const ligne = await screen.findByTestId('politique-discount')
     expect(within(ligne).getByText('Remise sur devis')).toBeInTheDocument()
     expect(within(ligne).getByText('Administrateur uniquement')).toBeInTheDocument()

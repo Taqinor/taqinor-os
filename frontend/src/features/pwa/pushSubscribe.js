@@ -69,7 +69,7 @@ export async function subscribeToPush() {
   //    On demande donc la permission avant tout appel asynchrone.
   let permission = Notification.permission
   if (permission === 'default') {
-    try { permission = await Notification.requestPermission() } catch { /* ignore */ }
+    try { permission = await Notification.requestPermission() } catch (err) { console.warn('pushSubscribe.subscribeToPush : ignore', err) }
   }
   if (permission !== 'granted') return { ok: false, reason: 'denied' }
 
@@ -112,8 +112,8 @@ export async function unsubscribeFromPush() {
     const subscription = await reg.pushManager.getSubscription()
     if (subscription) {
       const endpoint = subscription.endpoint
-      try { await subscription.unsubscribe() } catch { /* best-effort */ }
-      try { await notificationsApi.pushUnsubscribe(endpoint) } catch { /* best-effort */ }
+      try { await subscription.unsubscribe() } catch (err) { console.warn('pushSubscribe.unsubscribeFromPush : best-effort', err) }
+      try { await notificationsApi.pushUnsubscribe(endpoint) } catch (err) { console.warn('pushSubscribe.unsubscribeFromPush : best-effort', err) }
     }
     return { ok: true }
   } catch (error) {

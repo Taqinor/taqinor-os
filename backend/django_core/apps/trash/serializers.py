@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from rest_framework import serializers
@@ -5,6 +6,8 @@ from rest_framework import serializers
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import ElementSupprime
+
+logger = logging.getLogger(__name__)
 
 
 class ElementSupprimeSerializer(SameCompanyFKSerializerMixin,
@@ -62,6 +65,9 @@ class ElementSupprimeSerializer(SameCompanyFKSerializerMixin,
             from django.contrib.auth import get_user_model
             responsable = get_user_model().objects.filter(pk=responsable_id).first()
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                "serializers.ElementSupprimeSerializer.get_avertissement_restauration : erreur ignorée (mode dégradé)",
+                exc_info=True)
             return None
         if responsable is None:
             return "Le responsable d'origine n'existe plus."

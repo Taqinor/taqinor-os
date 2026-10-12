@@ -417,7 +417,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) : chaque
+      // VX171 — mapping DRF générique (detail / objet champ → liste / array) : chaque
       // champ en erreur vire rouge, plus un toast anonyme.
       setFromResponse(err)
     } finally {

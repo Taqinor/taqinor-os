@@ -8,6 +8,7 @@ import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import EquipesAdminPanel from './EquipesAdminPanel'
 import crmApi from '../../api/crmApi'
 import { useConfirmDialog } from '../../ui/confirm'
+import toutesLesPages from './toutesLesPages'
 
 export default function EquipesCommercialesSection({ assignables = [] }) {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
@@ -16,8 +17,8 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
 
   const load = () => {
     setLoading(true)
-    crmApi.getEquipes()
-      .then((r) => setEquipes(r.data.results ?? r.data))
+    toutesLesPages((params) => crmApi.getEquipes(params))
+      .then((rows) => setEquipes(rows))
       .catch(() => setError('Impossible de charger les équipes.'))
       .finally(() => setLoading(false))
   }

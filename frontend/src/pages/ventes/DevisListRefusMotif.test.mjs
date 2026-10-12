@@ -16,7 +16,8 @@ test('QX26 : plus aucun window.prompt pour le motif de refus', () => {
 
 test('QX26 : crmApi.getMotifsPerte alimente la liste des motifs (taxonomie partagée)', () => {
   assert.match(SRC, /import crmApi from '\.\.\/\.\.\/api\/crmApi'/)
-  assert.match(SRC, /crmApi\.getMotifsPerte\(\)/)
+  // ENF15 — toutes les pages : l'appel porte désormais page/page_size (fetchAllPages).
+  assert.match(SRC, /crmApi\.getMotifsPerte\(/)
 })
 
 test('QX26 : le bouton de confirmation reste désactivé sans motif sélectionné', () => {

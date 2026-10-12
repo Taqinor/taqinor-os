@@ -3,6 +3,7 @@ import { useIsAdmin } from '../../hooks/useHasPermission'
 import { Plus, CheckCircle2, Trash2, TrendingUp,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
   Button, IconButton, Badge, FormField, Input, Textarea, Select, SelectTrigger,
@@ -95,15 +96,15 @@ export default function RevalorisationsStock() {
   const [showForm, setShowForm] = useState(false)
 
   const reload = () => {
-    stockApi.getRevalorisationsStock({ ordering: '-date_creation' })
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getRevalorisationsStock({ ordering: '-date_creation', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setError('Chargement des revalorisations impossible.'))
   }
 
   useEffect(() => {
     reload()
-    stockApi.getProduits({ ordering: 'nom' })
-      .then((r) => setProduits(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getProduits({ ordering: 'nom', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
   }, [])
 

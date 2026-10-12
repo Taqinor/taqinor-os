@@ -229,7 +229,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
         if (!(d.echeancier || []).length) {
           try {
             effectifs = (await parametresApi.getProfile())?.data?.payment_terms_effectifs || null
-          } catch { /* profil indisponible : libellés seuls, valeurs vides */ }
+          } catch (err) { console.warn('useDevisPdf.genererUnPdf : profil indisponible : libellés seuls, valeurs vides', err) }
         }
         await ventesApi.patchDevis(d.id, {
           echeancier: echeancierAvecAcompte(
@@ -307,7 +307,10 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           } else {
             pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
           }
-        } catch { /* ignore poll errors — la boucle continue */ }
+        } catch (err) {
+          // Erreur de sondage ignorée : la boucle continue.
+          console.warn('useDevisPdf.poll : sondage manqué, on réessaie', err)
+        }
       }
       pollTimers.current[d.id] = setTimeout(poll, 2000)
       return true

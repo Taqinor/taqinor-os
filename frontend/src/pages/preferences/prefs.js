@@ -84,7 +84,7 @@ export function setLandingModule(value) {
   try {
     if (value) s.setItem(LANDING_KEY, value)
     else s.removeItem(LANDING_KEY)
-  } catch { /* stockage indisponible : on ignore, état non persisté */ }
+  } catch (err) { console.warn('prefs.setLandingModule : stockage indisponible : on ignore, état non persisté', err) }
 }
 
 /**
@@ -157,7 +157,7 @@ export function setAppResumePref(value) {
   try {
     if (value === APP_RESUME_ALWAYS || value === APP_RESUME_NEVER) s.setItem(APP_RESUME_KEY, value)
     else s.removeItem(APP_RESUME_KEY) // retour au défaut : on efface la clé.
-  } catch { /* stockage indisponible : réglage non persisté sur cet appareil */ }
+  } catch (err) { console.warn('prefs.setAppResumePref : stockage indisponible : réglage non persisté sur cet appareil', err) }
 }
 
 // ── NTMOB12 — Qualité photo (Standard compressé / Original) ─────────────────
@@ -179,7 +179,7 @@ export function setPhotoQualityPref(value) {
   try {
     if (value === 'original') s.setItem(PHOTO_QUALITY_KEY, 'original')
     else s.removeItem(PHOTO_QUALITY_KEY)
-  } catch { /* stockage indisponible : réglage non persisté sur cet appareil */ }
+  } catch (err) { console.warn('prefs.setPhotoQualityPref : stockage indisponible : réglage non persisté sur cet appareil', err) }
 }
 
 /**
@@ -216,10 +216,10 @@ export function setDataSaverPref(enabled) {
   try {
     if (enabled) s?.setItem(DATA_SAVER_KEY, '1')
     else s?.removeItem(DATA_SAVER_KEY)
-  } catch { /* stockage indisponible : appliqué quand même pour la session */ }
+  } catch (err) { console.warn('prefs.setDataSaverPref : stockage indisponible : appliqué quand même pour la session', err) }
   try {
     window.dispatchEvent(new CustomEvent(DATA_SAVER_EVENT, { detail: !!enabled }))
-  } catch { /* pas de window (SSR/test node pur) : rien à notifier */ }
+  } catch (err) { console.warn('prefs.setDataSaverPref : pas de window (SSR/test node pur) : rien à notifier', err) }
   return !!enabled
 }
 
@@ -277,7 +277,7 @@ export function setReducedMotionPref(enabled) {
   const s = storage()
   try {
     s?.setItem(REDUCED_MOTION_KEY, enabled ? '1' : '0')
-  } catch { /* stockage indisponible : préférence non persistée, appliquée quand même */ }
+  } catch (err) { console.warn('prefs.setReducedMotionPref : stockage indisponible : préférence non persistée, appliquée quand même', err) }
   applyReducedMotion(enabled)
 }
 
@@ -307,7 +307,7 @@ export function setSunlightPref(enabled) {
   const s = storage()
   try {
     s?.setItem(SUNLIGHT_KEY, enabled ? '1' : '0')
-  } catch { /* stockage indisponible : appliqué quand même pour la session */ }
+  } catch (err) { console.warn('prefs.setSunlightPref : stockage indisponible : appliqué quand même pour la session', err) }
   applySunlight(enabled)
   return enabled
 }
@@ -343,7 +343,7 @@ export function setOneHandPref(enabled) {
   const s = storage()
   try {
     s?.setItem(ONE_HAND_KEY, enabled ? '1' : '0')
-  } catch { /* stockage indisponible : appliqué quand même pour la session */ }
+  } catch (err) { console.warn('prefs.setOneHandPref : stockage indisponible : appliqué quand même pour la session', err) }
   applyOneHand(enabled)
   return !!enabled
 }

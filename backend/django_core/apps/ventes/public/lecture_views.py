@@ -8,6 +8,7 @@ notifications d'ouverture, et le beacon public ``proposal_engagement``
 Déplacement pur : corps octet-identiques (seule la profondeur des imports
 relatifs locaux change), prouvé par ``tests/golden/split_pv_lecture.json``.
 """
+import logging
 import datetime
 import ipaddress
 import re
@@ -27,6 +28,8 @@ from ..models import ShareLink
 from .noyau import (
     PublicLinkRateThrottle, _noindex, _not_found, _resolve_proposal_link,
 )
+
+logger = logging.getLogger(__name__)
 
 
 #: QJ-ROBOTS (fondateur 09/09/2026 — « quand Meryem ou moi cliquons le bouton
@@ -312,7 +315,7 @@ def _noter_si_version_remplacee(link):
             noter_version_remplacee_ouverte(
                 devis.reference, lead, remplacee_par=remplacee_par)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
-        pass
+        logger.warning("lecture_views._noter_si_version_remplacee : erreur ignorée (mode dégradé)", exc_info=True)
     return True
 
 

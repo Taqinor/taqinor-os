@@ -23,6 +23,7 @@ import { ShieldAlert, Plus } from 'lucide-react'
 import api from '../../api/axios'
 import { toast } from '../../ui/confirm'
 import useSectionListeAdmin from './useSectionListeAdmin'
+import toutesLesPages from './toutesLesPages'
 import {
   Card, CardContent, Input, Button, Badge, EmptyState, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem,
@@ -54,11 +55,14 @@ const TIER_LABELS = Object.fromEntries(APPROVER_TIERS)
 
 const VIDE = { action_type: '', seuil: '', approver_tier: 'admin', note: '' }
 
+// ADOC38 — liste paginée : toutes les pages.
+const lirePolitiques = () => toutesLesPages((params) => api.get('/parametres/approbations/', { params }))
+
 export default function ApprobationsPolitiquesSection() {
   // APAR41 — confirmation MAISON + droit + état de liste : useSectionListeAdmin.
   const {
     confirmerSuppression, canManage, rows, loading, loadError, busy, setBusy, charger,
-  } = useSectionListeAdmin('/parametres/approbations/')
+  } = useSectionListeAdmin(lirePolitiques)
   const [draft, setDraft] = useState(VIDE)
   const [erreur, setErreur] = useState('')
 

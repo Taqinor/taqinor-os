@@ -4,20 +4,12 @@
 # liste (nouveau serializer non resolu, nouvelle collision d'operationId,
 # nouveau type non resolu...). Une entree qui disparait est un progres :
 # elle peut etre retiree d'ici lors de la prochaine regeneration.
-Error|ChangePasswordView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|InterventionLienClientPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|InterventionRapportPdfPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|InterventionRapportPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|LogoutView|exception raised while getting serializer. Hint: Is get_serializer_class() returning None or is get_queryset() not worki
 Error|MesDevisPortailViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MesFacturesPortailViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|SessionRevokeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|TenantConsoleListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|TenantConsoleNoteView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|TenantConsoleStatutView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|TwoFactorSetupView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|TwoFactorStatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|audit_analytics|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|candidature_fournisseur|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|contact|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|get_chat_session|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base

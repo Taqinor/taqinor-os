@@ -50,7 +50,9 @@ export default function ListesPrixPage() {
 
   useEffect(() => {
     fetchListes()
-    stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages(page => stockApi.getProduits({ page }).then(r => r.data))
+      .then(rows => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      .catch(() => {})
   }, [])
 
   const openDetail = (liste) => setDetail(liste)

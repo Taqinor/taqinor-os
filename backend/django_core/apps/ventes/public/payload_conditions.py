@@ -7,6 +7,10 @@ ici. Déplacement pur : corps octet-identiques (seule la profondeur des imports
 relatifs locaux change), prouvé par ``tests/golden/split_pv_conditions.json``.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 #: PREVIEW-V3 (16/09/2026) — moyens de règlement PROPOSABLES au client avant
 #: signature. Constante, jamais dérivée d'une saisie : l'art. 193 du CGI
@@ -154,6 +158,7 @@ def _conditions_titre_publique(data):
         from ..quote_engine.clauses_cgv import cgv_imprimees
         return _html.unescape(str(cgv_imprimees(data or {})["titre"])).strip()
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning("payload_conditions._conditions_titre_publique : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
 

@@ -123,7 +123,7 @@ export default function CampaignsScreen() {
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
     adsengineApi.campaigns.creativeRanking()
-      .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
+      .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : [])))
       .catch(() => setRanking([]))
     // ADSDEEP19 — comptes de leads RÉELS (remplace le « Leads: 0 » des insights).
     const realLeadsFn = adsengineApi.metrics?.realLeads

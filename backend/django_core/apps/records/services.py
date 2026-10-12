@@ -11,7 +11,13 @@ restent des imports fonction-locaux et best-effort — jamais d'exception
 remontée à l'appelant — exactement comme le fait déjà `views._notify_mentions`
 pour les @mentions du chatter (FG7).
 """
+import logging
+
+from django.core.exceptions import FieldDoesNotExist
+
 from .models import Activity, Follower
+
+logger = logging.getLogger(__name__)
 
 
 def log_activity(target, kind, *, user=None, field='', field_label='',
@@ -174,7 +180,7 @@ def _company_de_la_cible(content_type, object_id):
         if model is None:
             return _SANS_CHAMP_SOCIETE
         model._meta.get_field('company')
-    except Exception:  # noqa: BLE001 — modèle sans société : rien à filtrer
+    except FieldDoesNotExist:  # modèle sans société : rien à filtrer
         return _SANS_CHAMP_SOCIETE
     return model._base_manager.filter(pk=object_id).values_list(
         'company_id', flat=True).first()
@@ -217,6 +223,7 @@ def notify_followers(*, content_type, object_id, title, body='',
         from apps.notifications.types_evenements import EventType as ET
         from apps.notifications.services import notify
     except Exception:  # pragma: no cover - défensif
+        logger.warning("services.notify_followers : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
 
     sent = 0
@@ -228,6 +235,7 @@ def notify_followers(*, content_type, object_id, title, body='',
                    link=link, company=f.company, reason='vous_suivez')
             sent += 1
         except Exception:  # pragma: no cover - défensif
+            logger.warning("services.notify_followers : erreur ignorée (mode dégradé)", exc_info=True)
             continue
     return sent
 
@@ -297,6 +305,7 @@ def _trigger_event_survenu(trigger_event, company, since):
             produit = stock_selectors.get_produit_scoped(company, target_id)
             return bool(produit and produit.quantite_stock > 0)
     except Exception:  # pragma: no cover - défensif, ne réveille jamais à tort
+        logger.warning("services._trigger_event_survenu : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     return False
 
@@ -326,7 +335,7 @@ def _notifier_reveil_activite(activity):
             f'⏰ De retour : {activity.summary or "Activité"}',
             link=link, company=activity.company)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("services._notifier_reveil_activite : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def snooze_activity(activity, snoozed_until, trigger_event=''):

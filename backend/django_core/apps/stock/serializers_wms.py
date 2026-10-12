@@ -334,7 +334,10 @@ class PortailTiersTokenSerializer(ChampsTexteBooleenStricts, CompanyScopedRelati
         read_only_fields = ['token', 'last_used_at', 'created_at']
 
     def get_lien_public(self, obj) -> str:
-        return f'/api/django/public/stock/tiers/{obj.token}/solde/'
+        from apps.ventes.services import public_url
+        return public_url(
+            f'/api/django/public/stock/tiers/{obj.token}/solde/',
+            self.context.get('request'))
 
     def validate_tiers_nom(self, value):
         if not (value or '').strip():

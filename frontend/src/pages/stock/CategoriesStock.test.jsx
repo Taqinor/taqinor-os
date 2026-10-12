@@ -60,7 +60,7 @@ describe('CategoriesStock — suppression d\'une catégorie utilisée (ASTK83)',
     fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
     expect(window.confirm).not.toHaveBeenCalled()
     await waitFor(() => expect(http.delete).toHaveBeenCalledWith('/stock/categories/4/'))
-    expect(http.get).toHaveBeenCalledWith('/stock/categories/', { params: { ordering: 'ordre' } })
+    expect(http.get).toHaveBeenCalledWith('/stock/categories/', { params: { ordering: 'ordre', page: 1 } })
     expect(await screen.findByText(DETAIL)).toBeInTheDocument()
     expect(screen.queryByText(/peut être protégée/)).toBeNull()
   })

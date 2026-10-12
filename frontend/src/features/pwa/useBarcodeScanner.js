@@ -39,6 +39,7 @@ export function useBarcodeScanner({ onDetected, formats } = {}) {
   const detectorRef = useRef(null)
   const rafRef = useRef(null)
   const stoppedRef = useRef(false)
+  const frameAvertie = useRef(false) // une seule trace console par session de scan
   // Garde la dernière valeur pour ne pas rappeler `onDetected` en rafale sur
   // le même code (la boucle tourne plusieurs fois par seconde).
   const lastValueRef = useRef(null)
@@ -54,11 +55,11 @@ export function useBarcodeScanner({ onDetected, formats } = {}) {
     }
     const stream = streamRef.current
     if (stream) {
-      stream.getTracks().forEach((t) => { try { t.stop() } catch { /* déjà coupé */ } })
+      stream.getTracks().forEach((t) => { try { t.stop() } catch (err) { console.warn('useBarcodeScanner.useBarcodeScanner : déjà coupé', err) } })
       streamRef.current = null
     }
     if (videoRef.current) {
-      try { videoRef.current.srcObject = null } catch { /* ignore */ }
+      try { videoRef.current.srcObject = null } catch (err) { console.warn('useBarcodeScanner.useBarcodeScanner : ignore', err) }
     }
     setActive(false)
   }, [])
@@ -107,7 +108,10 @@ export function useBarcodeScanner({ onDetected, formats } = {}) {
               onDetectedRef.current?.(value)
             }
           }
-        } catch { /* frame non prête : on réessaie */ }
+        } catch (err) {
+          // Frame non prête : on réessaie — une seule trace pour ne pas inonder la console (1 appel / image).
+          if (!frameAvertie.current) { frameAvertie.current = true; console.warn('useBarcodeScanner.tick : frame non prête', err) }
+        }
         if (!stoppedRef.current) rafRef.current = requestAnimationFrame(tick)
       }
       rafRef.current = requestAnimationFrame(tick)

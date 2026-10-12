@@ -6,6 +6,7 @@ société-spécifique (si un jour construit) ne doit JAMAIS fuiter ici.
 Throttlé par IP (best-effort, sans dépendance externe, même patron que
 ``apps.sav.public_views.SavPublicThrottle``).
 """
+import logging
 from datetime import timedelta
 
 from django.core.cache import cache
@@ -28,6 +29,8 @@ from .serializers import (
     ComponentStatusLogSerializer, ComponentStatusPublicSerializer,
     IncidentPublicSerializer, UptimeDayBucketSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 PUBLIC_STATUS_CACHE_KEY = 'statuspage:public:status'
 PUBLIC_STATUS_CACHE_SECONDS = 60
@@ -343,7 +346,7 @@ def _envoyer_email_confirmation(abonne, request):
             fail_silently=True,
         )
     except Exception:  # noqa: BLE001 — no-op silencieux, jamais bloquant
-        pass
+        logger.warning("views._envoyer_email_confirmation : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 @extend_schema(
