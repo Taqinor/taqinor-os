@@ -456,8 +456,8 @@ function BCForm({ bc = null, onClose, onSaved }) {
       }
       onSaved()
     } catch (err) {
-      // APX15(d) — le repli jetait du JSON BRUT à l'écran (« {"client":["Ce
-      // champ est obligatoire."]} ») : message français, jamais de jargon.
+      // APX15(d) — le repli jetait du JSON BRUT à l'écran (un objet champ → liste
+      // de messages) : message français, jamais de jargon.
       setErrors(prev => ({ ...prev, submit: frenchError(err, 'Enregistrement impossible. Réessayez.') }))
     } finally {
       setSaving(false)

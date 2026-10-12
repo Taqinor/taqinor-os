@@ -369,7 +369,10 @@ class IncomingWebhookTriggerSerializer(SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.CharField())
     def get_url_path(self, obj):
-        return f'/api/django/public/hooks/{obj.token}/'
+        from apps.ventes.services import public_url
+        return public_url(
+            f'/api/django/public/hooks/{obj.token}/',
+            self.context.get('request'))
 
     def validate_rule(self, rule):
         # APAR9 — un webhook entrant ne s'attache qu'à une règle WEBHOOK_INBOUND

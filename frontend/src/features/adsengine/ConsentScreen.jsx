@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { ShieldCheck, Plus, Ban, MessageCircle } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { erreurServeur } from './adsengine'
 
 /* ============================================================================
@@ -61,8 +62,8 @@ export default function ConsentScreen() {
 
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.consents.list()
-      .then(r => setRecords(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+    fetchAllPages((page) => adsengineApi.consents.list({ page }).then(r => r.data), { concurrency: 3 })
+      .then(rows => setRecords(Array.isArray(rows) ? rows : (rows?.results || [])))
       .catch(() => setErr('Chargement des consentements impossible.'))
       .finally(() => setLoading(false))
   }, [])

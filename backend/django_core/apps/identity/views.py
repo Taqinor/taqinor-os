@@ -4,6 +4,7 @@ NTSEC11 — CRUD de la politique réseau (allowlist IP/CIDR), réservé au
 Directeur (rôle Administrateur). Tout est scopé société côté serveur : la
 société n'est jamais lue du corps de requête.
 """
+import logging
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
@@ -29,6 +30,8 @@ from .serializers import (
     TrustedDeviceSerializer,
 )
 from rest_framework import serializers as drf_serializers
+
+logger = logging.getLogger(__name__)
 
 
 class PolitiqueReseauExistante(APIException):
@@ -156,6 +159,7 @@ def _banner_profile(request):
         from apps.portail.branding import company_pour_hote
         company = company_pour_hote(request.get_host())
     except Exception:  # noqa: BLE001 — hôte refusé/illisible → neutre
+        logger.warning("views._banner_profile : erreur ignorée (mode dégradé)", exc_info=True)
         company = None
     if company is None:
         return None
@@ -215,6 +219,7 @@ class LoginBannerView(APIView):
         try:
             premiere = cache.add(cle, 1, timeout=3600)
         except Exception:  # noqa: BLE001 - cache indisponible
+            logger.warning("views.LoginBannerView.post : erreur ignorée (mode dégradé)", exc_info=True)
             premiere = None
         if premiere is False:
             return Response({'acknowledged': True})
@@ -231,7 +236,7 @@ class LoginBannerView(APIView):
                         f'{_client_ip(request)} (UA: {ua}).'),
             )
         except Exception:  # noqa: BLE001 - journalisation best-effort
-            pass
+            logger.warning("views.LoginBannerView.post : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'acknowledged': True})
 
 

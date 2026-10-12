@@ -15,6 +15,7 @@ import api from '../../api/axios'
 import PaiementDialog from './PaiementDialog'
 import RelanceApercu from '../../features/ventes/RelanceApercu'
 import { openPdfBlob } from '../../utils/pdfBlob'
+import fetchAllPages from '../../utils/fetchAllPages'
 // AFAC61 — chaque refus serveur est AFFICHÉ (raison réelle), jamais avalé.
 import { frenchError } from '../../lib/frenchError'
 import {
@@ -118,9 +119,9 @@ export default function RelancesPage() {
       .catch(() => {}).finally(() => setLoading(false))
   }
 
-  const loadParametrages = () => api.get('/ventes/parametrages-relance-client/')
-    .then(r => {
-      const data = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+  const loadParametrages = () => fetchAllPages((page, extra) => api.get('/ventes/parametrages-relance-client/', { params: { page, ...extra } }).then(r => r.data))
+    .then(rows => {
+      const data = Array.isArray(rows) ? rows : (rows?.results || [])
       const map = {}
       data.forEach(p => { map[p.client] = p })
       setParametrages(map)
@@ -152,8 +153,8 @@ export default function RelancesPage() {
     setParamProchaine(p?.prochaine_relance_manuelle || '')
     if (users.length === 0) {
       try {
-        const res = await api.get('/users/')
-        setUsers(Array.isArray(res.data) ? res.data : (res.data?.results || []))
+        const rows = await fetchAllPages((page, extra) => api.get('/users/', { params: { page, ...extra } }).then((r) => r.data))
+        setUsers(Array.isArray(rows) ? rows : (rows?.results || []))
       } catch (err) {
         // Sans liste, le mode reste réglable (responsable inchangé) — mais la raison s'affiche.
         setParamErreur(frenchError(err, 'Liste des responsables indisponible : le responsable reste inchangé.'))

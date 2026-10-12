@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Upload, Wand2 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   policyPassed, formatMAD, formatNumber,
 } from './adsengine'
@@ -47,8 +48,8 @@ export default function CreativeLibraryScreen() {
 
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.creatives.list()
-      .then(r => setAssets(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+    fetchAllPages((page) => adsengineApi.creatives.list({ page }).then(r => r.data), { concurrency: 3 })
+      .then(rows => setAssets(Array.isArray(rows) ? rows : (rows?.results || [])))
       .catch(() => setAssets([]))
       .finally(() => setLoading(false))
   }, [])

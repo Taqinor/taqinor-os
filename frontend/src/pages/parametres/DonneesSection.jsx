@@ -59,8 +59,8 @@ function InventaireSessions() {
   const [busyId, setBusyId] = useState(null)
 
   const load = () => {
-    stockApi.getInventaireSessions({ ordering: '-date_creation' })
-      .then((r) => setSessions(r.data?.results ?? r.data ?? []))
+    toutesLesPages((params) => stockApi.getInventaireSessions({ ...params, ordering: '-date_creation' }))
+      .then((rows) => setSessions(rows))
       .catch((e) => setError(e?.response?.status === 403
         ? 'Réservé à l\'administrateur.'
         : 'Chargement des sessions impossible.'))
@@ -226,7 +226,7 @@ function KitExplosion() {
       try {
         const d = await stockApi.getKitDisponibilite(kitId)
         setDispo(d.data)
-      } catch { /* fiche sans disponibilité si le calcul échoue */ }
+      } catch (e) { console.warn('Disponibilité du kit indisponible', e) } // cosmétique : la fiche s'affiche sans disponibilité
     } catch (e) {
       setError(frErr(e, "L'explosion du kit a échoué."))
     } finally { setBusy(false) }

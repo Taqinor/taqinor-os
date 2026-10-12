@@ -4,6 +4,7 @@ import {
   History,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   normalizeRuleTemplate, normalizeDryRun, normalizeAnomalies, normalizeAlerts,
   alertTone, formatPercent, formatNumber,
@@ -114,8 +115,8 @@ export default function RulesScreen() {
   const [backtestBusyKey, setBacktestBusyKey] = useState(null)
 
   const reloadPolicies = useCallback(() => (
-    adsengineApi.rules.list()
-      .then(r => setPolicies(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+    fetchAllPages((page) => adsengineApi.rules.list({ page }).then(r => r.data), { concurrency: 3 })
+      .then(rows => setPolicies(Array.isArray(rows) ? rows : (rows?.results || [])))
       .catch(() => setPolicies([]))
   ), [])
 

@@ -897,6 +897,8 @@ class EngineAlertViewSet(AdsengineViewSet):
                 qs = qs.exclude(id__in=snoozed_ids)
         return qs
 
+    @extend_schema(parameters=[_qp('page', int, 'Page (liste paginée)'),
+                               _qp('page_size', int, 'Taille de page')])
     @action(detail=False, methods=['get'], url_path='history',
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def history(self, request):

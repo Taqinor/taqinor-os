@@ -26,6 +26,7 @@ export function writeOrder(ecran, ids) {
     localStorage.setItem(key(ecran), JSON.stringify(ids))
   } catch {
     // localStorage indisponible (SSR/quota) — best-effort, jamais bloquant.
+    console.warn('Ordre des vues non mémorisé : stockage indisponible.')
   }
 }
 

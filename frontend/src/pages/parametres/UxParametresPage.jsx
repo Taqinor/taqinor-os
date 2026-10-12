@@ -11,6 +11,7 @@ import {
 import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
+import toutesLesPages from './toutesLesPages'
 
 const emptyForm = {
   duree_hover_peek_ms: 400,
@@ -29,8 +30,8 @@ export default function UxParametresPage() {
 
   useEffect(() => {
     let active = true
-    Promise.all([api.get('/uxviews/parametres/'), rolesApi.getRoles()])
-      .then(([paramRes, rolesRes]) => {
+    Promise.all([api.get('/uxviews/parametres/'), toutesLesPages((params) => rolesApi.getRoles(params))])
+      .then(([paramRes, roles]) => {
         if (!active) return
         const data = paramRes.data ?? {}
         setForm({
@@ -41,7 +42,6 @@ export default function UxParametresPage() {
           max_vues_par_utilisateur: data.max_vues_par_utilisateur ?? 50,
           max_favoris_par_utilisateur: data.max_favoris_par_utilisateur ?? 30,
         })
-        const roles = Array.isArray(rolesRes.data?.results) ? rolesRes.data.results : (rolesRes.data || [])
         setRoleOptions(roles.map((r) => ({ value: r.id, label: r.nom })))
       })
       .catch(() => toast.error('Chargement des réglages UX impossible.'))

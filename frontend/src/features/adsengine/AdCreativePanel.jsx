@@ -60,7 +60,7 @@ export default function AdCreativePanel({ adMetaId, creative }) {
     const text = [c.title, c.body, c.description].filter(Boolean).join('\n\n')
     try {
       navigator.clipboard?.writeText(text)
-    } catch { /* clipboard indisponible : silencieux */ }
+    } catch { console.warn('Copie dans le presse-papiers indisponible.') }
     setCopied(true)
   }, [c.title, c.body, c.description])
 

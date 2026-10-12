@@ -74,7 +74,7 @@ function RegistreTraitements() {
     try {
       await coreApi.confidentialite.registreTraitements.update(row.id, { actif: !row.actif })
       load()
-    } catch { /* best-effort */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
 
   const delRow = async (row) => {
@@ -87,7 +87,7 @@ function RegistreTraitements() {
     try {
       const res = await coreApi.confidentialite.registreTraitements.exportCsv()
       downloadBlob(res.data, filenameFromResponse(res, 'registre-traitements-cndp.csv'))
-    } catch { /* best-effort */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Export impossible.') }
   }
 
   if (loading) return <ChargementTexte />
@@ -427,7 +427,7 @@ function BenchmarkingConsent() {
       const { default: parametresApi } = await import('../../api/parametresApi')
       await parametresApi.updateProfile({ benchmarking_opt_in: next })
       setOptIn(next)
-    } catch { /* best-effort : l'état affiché reste l'ancien */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
     finally { setBusy(false) }
   }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Palette, Save } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /* ============================================================================
    PUB83 — Écran « Kit de marque » (singleton par société).
@@ -44,9 +45,10 @@ export default function BrandKitScreen() {
 
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.brandKit.list()
-      .then(r => {
-        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => adsengineApi.brandKit.list({ page }).then(r => r.data), { concurrency: 3 })
+      .then(res => {
+        const rows = Array.isArray(res) ? res : (res?.results || [])
         if (rows.length > 0) {
           const rec = fromRecord(rows[0])
           setForm(rec)

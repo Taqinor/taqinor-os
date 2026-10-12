@@ -39,7 +39,7 @@ export default function SimulationScreen() {
     setLoading(true)
     adsengineApi.simulations.list()
       .then(r => {
-        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        const rows = Array.isArray(r.data) ? r.data : []
         setList(rows)
         setLoadError(false)
         if (rows.length) loadReport(rows[0].id)

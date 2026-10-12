@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutG
   RotateCcw, UserCheck, Check, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import tiersApi from '../../api/tiersApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
@@ -538,8 +539,9 @@ export default function FournisseursStock() {
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
+    // getAllFournisseurs lit déjà toutes les pages (ASTK185, `{ data: [...] }`).
     stockApi.getAllFournisseurs({ ordering: 'nom' })
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .then(({ data: lignes }) => setItems(Array.isArray(lignes) ? lignes : (lignes?.results ?? [])))
       .catch(() => setError('Chargement des fournisseurs impossible.'))
       .finally(() => setLoading(false))
   }
@@ -548,9 +550,10 @@ export default function FournisseursStock() {
   // endpoint. Dégrade proprement (catégories vides) plutôt que de planter
   // tout l'écran sur `undefined(...) is not a function`.
   const reloadCategories = () => {
-    stockApi.getCategoriesFournisseur?.({ ordering: 'nom' })
-      ?.then((r) => setCategories(r.data?.results ?? r.data ?? []))
-      ?.catch(() => {})
+    if (typeof stockApi.getCategoriesFournisseur !== 'function') return
+    fetchAllPages((page) => stockApi.getCategoriesFournisseur({ ordering: 'nom', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setCategories(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      .catch(() => {})
   }
   const reloadArchived = () => {
     // Fable review (fix WIR190) — react-hooks/set-state-in-effect : ce
@@ -558,8 +561,9 @@ export default function FournisseursStock() {
     // ci-dessous ; poser `setLoadingArchived(true)` en microtask (jamais
     // synchrone dans l'appel) évite le cascading update détecté par la règle.
     Promise.resolve().then(() => setLoadingArchived(true))
+    // lecture complète déjà faite par le wrapper (ASTK185).
     stockApi.getAllFournisseursArchived()
-      .then((r) => setItemsArchived(r.data?.results ?? r.data ?? []))
+      .then(({ data: lignes }) => setItemsArchived(Array.isArray(lignes) ? lignes : (lignes?.results ?? [])))
       .catch(() => toastError('Chargement des fournisseurs archivés impossible.'))
       .finally(() => setLoadingArchived(false))
   }

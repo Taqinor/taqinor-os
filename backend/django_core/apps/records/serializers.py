@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 
 from django.contrib.contenttypes.models import ContentType
@@ -11,6 +12,8 @@ from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
     ALLOWED_TARGETS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CibleIntrouvable(ValueError):
@@ -183,6 +186,9 @@ class ActivitySerializer(SameCompanyFKSerializerMixin,
                 if client is not None:
                     return (getattr(client, 'telephone', '') or None)
         except Exception:  # noqa: BLE001 — best-effort
+            logger.warning(
+                "serializers.ActivitySerializer.get_target_phone : erreur ignorée (mode dégradé)",
+                exc_info=True)
             return None
         return None
 

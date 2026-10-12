@@ -13,10 +13,13 @@ nobody loses access:
 Run after applying migrations:
   docker compose exec django_core python manage.py init_roles
 """
+import logging
 import json
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -51,6 +54,7 @@ class Command(BaseCommand):
                 old=old, new=new,
             )
         except Exception:  # noqa: BLE001 — traçabilité best-effort
+            logger.warning("init_roles.Command._tracer_realignement : erreur ignorée (mode dégradé)", exc_info=True)
             self.stdout.write(self.style.WARNING(
                 '    (journal des paramètres indisponible — trace non écrite)'))
 

@@ -18,7 +18,7 @@ test('{lien_rdv} figure dans la liste des placeholders documentés (XSAL17)', ()
 })
 
 test('utilise les méthodes crmApi déjà existantes (aucune nouvelle route front)', () => {
-  assert.match(SRC, /crmApi\.getMessageTemplates\(\)/)
+  assert.match(SRC, /crmApi\.getMessageTemplates\(params\)/)
   assert.match(SRC, /crmApi\.saveMessageTemplate\(/)
   assert.match(SRC, /crmApi\.deleteMessageTemplate\(/)
 })

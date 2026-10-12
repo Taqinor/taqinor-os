@@ -647,7 +647,6 @@ a684493b1035|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/p
 a6951343488c|frontend/src/features/ventes/devisEnvoyerWhatsappStatut.test.jsx,frontend/src/pages/ventes/DevisList.test.jsx,frontend/src/pages/ventes/DevisListConceptionElectrique.test.jsx,frontend/src/pages/ventes/DevisListPdfCalepinage.test.jsx,frontend/src/pages/ventes/FactureList.golden.test.jsx,frontend/src/pages/ventes/FactureList.test.jsx,frontend/src/pages/ventes/RoofViewerPage.test.jsx
 a69e392839b9|frontend/src/features/portail/client/PortailClientLivraisons.jsx,frontend/src/features/portail/partenaire/PortailPartenaireCommissions.jsx
 a6dc26efe1b9|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro
-a6e4742c2a51|frontend/src/features/pwa/CameraCapture.jsx,frontend/src/features/pwa/useBarcodeScanner.js
 a6f4cc618c11|frontend/src/features/adsengine/AdDetailScreen.jsx,frontend/src/features/adsengine/AdsCockpitScreen.jsx,frontend/src/features/adsengine/CampaignsScreen.jsx
 a7550784cda6|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
 a767f14328f2|frontend/src/pages/sav/TicketDetailFacturation.test.jsx,frontend/src/pages/sav/TicketDetailPiecesInstructions.test.jsx,frontend/src/pages/sav/TicketDetailPlanifier.test.jsx,frontend/src/pages/sav/TicketDetailResolvedBy.test.jsx,frontend/src/pages/sav/WIR117Picker.test.jsx

@@ -44,7 +44,7 @@ describe('DossiersReglementairesPage (WIR104)', () => {
   it('charge la première ressource et rend ses champs', async () => {
     render(<DossiersReglementairesPage />)
     await waitFor(() => expect(ventesApi.getReglementaire)
-      .toHaveBeenCalledWith('dossiers-reglementaires'))
+      .toHaveBeenCalledWith('dossiers-reglementaires', expect.anything()))
     expect(await screen.findByText('DR-2026-001')).toBeInTheDocument()
     expect(screen.getByText('ONEE')).toBeInTheDocument()
   })
@@ -56,7 +56,7 @@ describe('DossiersReglementairesPage (WIR104)', () => {
 
     await user.click(screen.getByRole('radio', { name: 'Checklists' }))
     await waitFor(() => expect(ventesApi.getReglementaire)
-      .toHaveBeenCalledWith('dossiers-checklist'))
+      .toHaveBeenCalledWith('dossiers-checklist', expect.anything()))
     expect(await screen.findByText('CK-2026-001')).toBeInTheDocument()
   })
 

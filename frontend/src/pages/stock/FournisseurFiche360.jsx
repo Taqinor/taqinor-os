@@ -9,6 +9,7 @@ import {
   Pencil, Trash2, Check, X, Download, Upload,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatDate, formatMAD } from '../../lib/format'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { telHref } from '../../lib/contactLinks'
@@ -27,6 +28,7 @@ import ScoreRisqueFournisseurBadge from '../../components/ScoreRisqueFournisseur
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { frErrDetail as frErr } from '../../lib/frErr'
+import { toastError } from '../../lib/toast'
 import DialogueFormulaireStock from './DialogueFormulaireStock'
 import { soumettreDialogue } from './dialogueStock'
 import { BoutonsModifierSupprimer } from './ComposantsStock'
@@ -134,8 +136,8 @@ function OngletBcf({ fournisseurId }) {
 
   useEffect(() => {
     let active = true
-    stockApi.getBonsCommandeFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch((e) => { if (active) setError(frErr(e, 'Bons de commande indisponibles.')) })
     return () => { active = false }
   }, [fournisseurId])
@@ -163,8 +165,8 @@ function OngletFactures({ fournisseurId }) {
 
   useEffect(() => {
     let active = true
-    stockApi.getFacturesFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getFacturesFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch((e) => { if (active) setError(frErr(e, 'Factures indisponibles.')) })
     return () => { active = false }
   }, [fournisseurId])
@@ -208,8 +210,8 @@ function OngletRetours({ fournisseurId, canWrite }) {
 
   useEffect(() => {
     let active = true
-    stockApi.getRetoursFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getRetoursFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch((e) => { if (active) setError(frErr(e, 'Retours indisponibles.')) })
     return () => { active = false }
   }, [fournisseurId])
@@ -353,8 +355,8 @@ function OngletAcomptes({ fournisseurId, canWrite }) {
   useEffect(() => {
     let active = true
     reload()
-    stockApi.getBonsCommandeFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setBcfs(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseurDe(fournisseurId, { page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => { if (active) setBcfs(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => {})
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -533,7 +535,7 @@ function OngletAvoirs({ fournisseurId, canWrite }) {
   }, [fournisseurId])
 
   const valider = async (avoir) => {
-    try { await stockApi.validerAvoirFournisseur(avoir.id); reload() } catch { /* affiché via reload */ }
+    try { await stockApi.validerAvoirFournisseur(avoir.id); reload() } catch (e) { toastError(frErr(e, 'Validation de l\'avoir impossible.')) }
   }
 
   if (error) return <Indisponible message={error} />
@@ -657,7 +659,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
 
   const supprimer = async (c) => {
     if (!(await confirmer({ title: `Supprimer le contact « ${c.nom} » ?`, confirmLabel: 'Supprimer' }))) return
-    try { await stockApi.deleteContactFournisseur(c.id); reload() } catch { /* affiché via reload */ }
+    try { await stockApi.deleteContactFournisseur(c.id); reload() } catch (e) { toastError(frErr(e, 'Suppression du contact impossible.')) }
   }
 
   if (error) return <Indisponible message={error} />

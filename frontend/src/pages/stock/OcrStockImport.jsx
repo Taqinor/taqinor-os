@@ -418,7 +418,7 @@ const cp = produitsRef.current
             if (!existingProd?.fournisseur) patchData.fournisseur_id = resolvedFournisseurId
           }
           if (Object.keys(patchData).length > 0) {
-            try { await stockApi.patchProduit(produitId, patchData) } catch { /* patch optionnel */ }
+            try { await stockApi.patchProduit(produitId, patchData) } catch { console.warn('Import OCR : mise à jour optionnelle du produit non appliquée.') }
           }
         } else {
           if (!ligne.nouveau_nom.trim()) { push({ ok: false, label, msg: 'Nom du produit requis' }); continue }

@@ -13,6 +13,7 @@ import {
 import ventesApi, { acceptationDejaFaite } from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, Card, EmptyState, Spinner,
   Skeleton,
@@ -408,7 +409,10 @@ export default function DevisList() {
         const n = Math.round(parseFloat(pct))
         if (Number.isFinite(n)) setVariantePct(String(n))
       }
-    } catch { /* repli : 20 % par défaut déjà posé */ } finally {
+    } catch (err) {
+      // Repli : 20 % par défaut déjà posé.
+      console.warn('DevisList.openVarianteModal : config de variante indisponible', err)
+    } finally {
       setVarianteLoadingCfg(false)
     }
   }
@@ -571,8 +575,8 @@ export default function DevisList() {
     setRefusMotifId('')
     setRefusNote('')
     setRefusBusy(false)
-    crmApi.getMotifsPerte()
-      .then(r => setMotifsPerte(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, extra) => crmApi.getMotifsPerte({ page, ...extra }).then(r => r.data))
+      .then(rows => setMotifsPerte(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setMotifsPerte([]))
   }
   const closeRefusModal = () => { setRefusTarget(null); setRefusBusy(false) }

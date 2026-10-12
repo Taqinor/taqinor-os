@@ -10,6 +10,7 @@ sont appliqués via ``apps.roles.services`` (NTSEC6), jamais via ``roles.models`
 """
 from __future__ import annotations
 
+import logging
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -25,6 +26,8 @@ from authentication.selectors import revoke_user_sessions
 from core.throttling import ScimThrottle
 
 from .models import ScimGroupMapping, ScimToken
+
+logger = logging.getLogger(__name__)
 
 USER_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User'
 LIST_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:ListResponse'
@@ -177,7 +180,7 @@ class ScimUsersView(APIView):
             record(AuditLog.Action.SECURITY_ALERT, user=None, company=company,
                    detail=f'SCIM: compte {username} provisionné')
         except Exception:
-            pass
+            logger.warning("scim.ScimUsersView.post : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(scim_user_repr(user, request),
                         status=status.HTTP_201_CREATED,
                         content_type='application/scim+json')
@@ -285,7 +288,7 @@ class ScimUserDetailView(APIView):
             record(AuditLog.Action.SECURITY_ALERT, user=None, company=company,
                    detail=f'SCIM: compte {user.username} déprovisionné')
         except Exception:
-            pass
+            logger.warning("scim.ScimUserDetailView.delete : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

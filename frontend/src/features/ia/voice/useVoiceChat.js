@@ -167,7 +167,7 @@ export function useVoiceChat(deps = {}) {
 
   const stopSpeaking = useCallback(() => {
     if (speechSupported) {
-      try { env.speechSynthesis.cancel() } catch { /* ignore */ }
+      try { env.speechSynthesis.cancel() } catch (err) { console.warn('useVoiceChat.useVoiceChat : ignore', err) }
     }
     setSpeaking(false)
   }, [env, speechSupported])
@@ -180,18 +180,18 @@ export function useVoiceChat(deps = {}) {
     rafRef.current = null
     if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
     if (turnTimeoutRef.current) { clearTimeout(turnTimeoutRef.current); turnTimeoutRef.current = null }
-    try { analyserRef.current?.disconnect?.() } catch { /* ignore */ }
+    try { analyserRef.current?.disconnect?.() } catch (err) { console.warn('useVoiceChat.useVoiceChat : ignore', err) }
     analyserRef.current = null
-    try { audioCtxRef.current?.close?.() } catch { /* ignore */ }
+    try { audioCtxRef.current?.close?.() } catch (err) { console.warn('useVoiceChat.useVoiceChat : ignore', err) }
     audioCtxRef.current = null
     const rec = mediaRecorderRef.current
     if (rec && rec.state && rec.state !== 'inactive') {
-      try { rec.stop() } catch { /* ignore */ }
+      try { rec.stop() } catch (err) { console.warn('useVoiceChat.useVoiceChat : ignore', err) }
     }
     mediaRecorderRef.current = null
     const stream = mediaStreamRef.current
     if (stream && stream.getTracks) {
-      stream.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+      stream.getTracks().forEach((t) => { try { t.stop() } catch (err) { console.warn('useVoiceChat.useVoiceChat : ignore', err) } })
     }
     mediaStreamRef.current = null
   }, [env])
@@ -250,7 +250,7 @@ export function useVoiceChat(deps = {}) {
           ? new BlobCtor(chunksRef.current, { type })
           : { _chunks: chunksRef.current, type }
         if (blob.name === undefined) {
-          try { blob.name = filenameForMime(type) } catch { /* certains Blob sont figés */ }
+          try { blob.name = filenameForMime(type) } catch (err) { console.warn('useVoiceChat.useVoiceChat : certains Blob sont figés', err) }
         }
         setRecording(false)
         const viaLoop = !!opts.detectSilence
@@ -322,7 +322,7 @@ export function useVoiceChat(deps = {}) {
     }
     const rec = mediaRecorderRef.current
     if (rec && rec.state !== 'inactive') {
-      try { rec.stop() } catch { /* ignore */ }
+      try { rec.stop() } catch (err) { console.warn('useVoiceChat.tick : ignore', err) }
     } else {
       setRecording(false)
     }
@@ -410,7 +410,7 @@ export function useVoiceChat(deps = {}) {
   // Nettoyage au démontage.
   useEffect(() => () => {
     teardownAudio()
-    if (speechSupported) { try { env.speechSynthesis.cancel() } catch { /* ignore */ } }
+    if (speechSupported) { try { env.speechSynthesis.cancel() } catch (err) { console.warn('useVoiceChat.tick : ignore', err) } }
   }, [teardownAudio, speechSupported, env])
 
   return {

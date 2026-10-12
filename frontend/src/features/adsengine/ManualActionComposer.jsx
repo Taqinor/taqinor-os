@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Send, BookmarkPlus, Wand2 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { erreurServeur } from './adsengine'
 // PUB4 — grille dayparting (ADSDEEP36) montée pour le kind set_schedule.
 import DaypartingGrid from './DaypartingGrid'
@@ -31,8 +32,8 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
   const [tmplMsg, setTmplMsg] = useState('')
 
   const loadTemplates = useCallback(() => {
-    adsengineApi.proposalTemplates.list({ kind: descriptor.kind })
-      .then(r => setTemplates(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+    fetchAllPages((page) => adsengineApi.proposalTemplates.list({ kind: descriptor.kind, page }).then(r => r.data), { concurrency: 3 })
+      .then(rows => setTemplates(Array.isArray(rows) ? rows : (rows?.results || [])))
       .catch(() => setTemplates([]))
   }, [descriptor.kind])
 

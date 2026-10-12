@@ -129,7 +129,7 @@ function InventaireModal({ produits, onClose, onDone }) {
       onDone?.(r.data)
       onClose()
     } catch (err) {
-      // 400 serveur {lignes: {"<index>": [msg]}} → sous le champ du produit.
+      // 400 serveur (lignes indexées par position → messages) → sous le champ du produit.
       const parIndex = err.response?.data?.lignes
       if (parIndex && typeof parIndex === 'object' && !Array.isArray(parIndex)) {
         const parProduit = {}
@@ -999,7 +999,7 @@ export default function StockList() {
     try {
       const res = await stockApi.exportProduitsXlsx(ids)
       pending.deliver(new Blob([res.data]), 'produits.xlsx')
-    } catch { /* ignore */ }
+    } catch { toastError('Export indisponible.') }
   }
   const exportCatalogueTable = (rows) => exportProduitsIds((rows ?? []).map(p => p.id))
   // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCatIds`.

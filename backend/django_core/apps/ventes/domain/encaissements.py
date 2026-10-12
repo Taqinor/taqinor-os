@@ -810,6 +810,14 @@ def _public_url(path, request=None):
     return ''
 
 
+def public_url(path, request=None):
+    """Lien client PUBLIC : absolu quand ``PUBLIC_BASE_URL`` ou la requête le
+    permettent (``_public_url``), sinon le chemin relatif tel quel (jobs sans
+    requête, serializers sans contexte) — le constructeur UNIQUE reconnu par
+    ``scripts/check_liens_client_absolus.py`` (AFAC94)."""
+    return _public_url(path, request) or path
+
+
 def url_page_paiement(token, request=None):
     """AFAC21 — l'URL de la page CLIENT « Payer » ``/payer/<token>``
     (contrat ``lien_paiement.json``), absolue ou ``''``."""

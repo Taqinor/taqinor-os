@@ -223,7 +223,7 @@ def activate_optional_line(*, devis, ligne_id, user=None):
             f'Option activée par le client : « {ligne.designation} » '
             '— désormais incluse dans le total.')
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("cycle_vie.activate_optional_line : erreur ignorée (mode dégradé)", exc_info=True)
     return ligne
 
 
@@ -2108,16 +2108,9 @@ def bcf_share_url(bcf, request=None):
     Réutilise la construction d'URL publique existante. Renvoie ``(url, token)``.
     Le lien reste imprévisible + expirant ; il est destiné au FOURNISSEUR et
     n'est jamais surfacé dans l'UI client."""
-    from django.conf import settings
+    from .encaissements import public_url
     link = share_link_for_bcf(bcf)
-    base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
-    path = f'/api/django/public/bcf/{link.token}/'
-    if base:
-        url = base.rstrip('/') + path
-    elif request is not None:
-        url = request.build_absolute_uri(path)
-    else:
-        url = path
+    url = public_url(f'/api/django/public/bcf/{link.token}/', request)
     return url, link.token
 
 

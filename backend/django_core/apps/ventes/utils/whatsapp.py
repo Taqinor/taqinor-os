@@ -51,12 +51,8 @@ def marque_societe(company):
 
 def public_document_url(request, token):
     """URL absolue publique vers le PDF (déduite de la requête, ou réglage)."""
-    from django.conf import settings
-    base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
-    path = f'/api/django/public/document/{token}/'
-    if base:
-        return base.rstrip('/') + path
-    return request.build_absolute_uri(path)
+    from apps.ventes.domain.encaissements import public_url
+    return public_url(f'/api/django/public/document/{token}/', request)
 
 
 def build_wa_url(phone_raw, message):
@@ -197,10 +193,8 @@ def build_facture_whatsapp_draft(facture, modele='relance', langue='fr'):
     chemin relatif (le message garde son sens, seul le lien est incomplet).
     Ne fait QU'ouvrir un brouillon wa.me — aucun envoi automatique."""
     def _url(token):
-        from django.conf import settings
-        base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
-        path = f'/api/django/public/document/{token}/'
-        return (base.rstrip('/') + path) if base else path
+        from apps.ventes.domain.encaissements import public_url
+        return public_url(f'/api/django/public/document/{token}/')
     return _build_facture_whatsapp_message(facture, modele, langue, _url)
 
 

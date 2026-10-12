@@ -6,9 +6,12 @@ s'auto-révoque à l'échéance (commande de nettoyage + check on-the-fly).
 """
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 def acting_user_has_mfa(user):
@@ -87,7 +90,7 @@ def _audit(company, target, actor, detail):
         record(AuditLog.Action.SECURITY_ALERT, user=actor, company=company,
                detail=f'{detail} (compte {getattr(target, "username", "?")})')
     except Exception:
-        pass
+        logger.warning("breakglass._audit : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _notify_directeurs(company, target, accorde_par):
@@ -103,4 +106,4 @@ def _notify_directeurs(company, target, accorde_par):
                    'Accès break-glass accordé', body=body,
                    company=company, respect_quiet_hours=False)
     except Exception:
-        pass
+        logger.warning("breakglass._notify_directeurs : erreur ignorée (mode dégradé)", exc_info=True)

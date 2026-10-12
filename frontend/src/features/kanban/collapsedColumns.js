@@ -35,8 +35,9 @@ export function writeCollapsedStages(stages) {
       COLLAPSED_STORAGE_KEY,
       JSON.stringify([...new Set((stages ?? []).filter((k) => PIPELINE_STAGES.includes(k)))]),
     )
-  } catch {
-    // Quota dépassé / navigation privée : perte silencieuse — le repli reste
-    // fonctionnel pour la session en cours, juste pas persisté.
+  } catch (err) {
+    // Quota dépassé / navigation privée : le repli reste fonctionnel pour la
+    // session en cours, juste pas persisté (trace console, rien à montrer).
+    console.warn('collapsedColumns.writeCollapsedStages : repli non persisté', err)
   }
 }

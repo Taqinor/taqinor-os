@@ -104,6 +104,7 @@ enregistrer_paiement = _encaissements.enregistrer_paiement
 facture_montant_du = _encaissements.facture_montant_du
 affecter_encaissement_groupe = _encaissements.affecter_encaissement_groupe
 create_payment_link = _encaissements.create_payment_link
+public_url = _encaissements.public_url
 # AUD136 — cycle de vie du lien de paiement (création bornée, expiration,
 # révocation) : réexportés sur la façade `services` comme leurs voisins.
 LinkError = _encaissements.LinkError
@@ -645,6 +646,7 @@ __all__ = [
     'produits_a_renseigner',
     'prix_applicable',
     'prix_forfait_ht',
+    'public_url',
     'puissance_kwc_du_devis',
     'qr_svg_for_facture_pdf',
     'rafraichir_dimensionnement_devis',

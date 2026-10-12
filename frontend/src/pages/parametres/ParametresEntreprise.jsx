@@ -348,7 +348,7 @@ export default function ParametresEntreprise() {
   const delCf = async (d) => {
     if (!(await confirmerSuppression({ title: `Supprimer le champ « ${d.libelle} » ?` }))) return
     try { await customFieldsApi.deleteDef(d.id); loadCfDefs(cfModule) }
-    catch { /* */ }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   const slugify = (s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 
@@ -398,18 +398,18 @@ export default function ParametresEntreprise() {
   }
   const renameEtape = async (et, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
-    try { await installationsApi.saveChecklistEtape(et.id, { libelle }); loadChecklistEtapes() } catch { /* */ }
+    try { await installationsApi.saveChecklistEtape(et.id, { libelle }); loadChecklistEtapes() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Renommage impossible.') }
   }
   const toggleEtapeActif = async (et) => {
     try { await installationsApi.saveChecklistEtape(et.id, { actif: !et.actif }); loadChecklistEtapes() }
-    catch { /* */ }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   // L785 — bascule capture_serie (saisie de n° de série) sur une étape.
   const toggleEtapeCapture = async (et) => {
     try {
       await installationsApi.saveChecklistEtape(et.id, { capture_serie: !et.capture_serie })
       loadChecklistEtapes()
-    } catch { /* */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   // L784 — réordonne une étape d'un cran (haut/bas) en échangeant les ordres.
   const moveEtape = async (et, dir) => {
@@ -423,7 +423,7 @@ export default function ParametresEntreprise() {
         installationsApi.saveChecklistEtape(b.id, { ordre: a.ordre }),
       ])
       loadChecklistEtapes()
-    } catch { /* */ }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Réordonnancement impossible.') }
   }
   const delEtape = async (et) => {
     if (!(await confirmerSuppression({ title: `Supprimer l'étape « ${et.libelle} » ?` }))) return
@@ -441,7 +441,7 @@ export default function ParametresEntreprise() {
   }
   const renameCanal = async (c, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
-    try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch { /* */ }
+    try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Renommage impossible.') }
   }
   const delCanal = async (c) => {
     if (!(await confirmerSuppression({ title: `Supprimer le canal « ${c.libelle} » ?` }))) return
@@ -463,7 +463,7 @@ export default function ParametresEntreprise() {
   }
   const renameType = async (t, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
-    try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch { /* */ }
+    try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Renommage impossible.') }
   }
   const delType = async (t) => {
     if (!(await confirmerSuppression({ title: `Supprimer le type « ${t.libelle} » ?` }))) return
@@ -512,16 +512,16 @@ export default function ParametresEntreprise() {
   const addTag = async () => {
     const nom = newTag.trim()
     if (!nom) return
-    try { await crmApi.saveTag(null, { nom }); setNewTag(''); loadTags() } catch { /* */ }
+    try { await crmApi.saveTag(null, { nom }); setNewTag(''); loadTags() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameTag = async (t, nom) => {
     // ERR102 — recharger pour refléter une normalisation serveur du nom.
-    try { await crmApi.saveTag(t.id, { nom }); loadTags() } catch { /* */ }
+    try { await crmApi.saveTag(t.id, { nom }); loadTags() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Renommage impossible.') }
   }
   // L781 — couleur d'une étiquette (color-picker), persistée immédiatement.
   const setTagColor = async (t, couleur) => {
     setTags(ts => ts.map(x => (x.id === t.id ? { ...x, couleur } : x)))
-    try { await crmApi.saveTag(t.id, { couleur }) } catch { /* */ }
+    try { await crmApi.saveTag(t.id, { couleur }) } catch (e) { toast.error(e?.response?.data?.detail ?? 'Changement de couleur impossible.') }
   }
   const delTag = async (t) => {
     if (!(await confirmerSuppression({ title: `Supprimer l'étiquette « ${t.nom} » ?` }))) return
@@ -538,11 +538,11 @@ export default function ParametresEntreprise() {
   const addMotif = async () => {
     const nom = newMotif.trim()
     if (!nom) return
-    try { await crmApi.saveMotifPerte(null, { nom }); setNewMotif(''); loadMotifs() } catch { /* */ }
+    try { await crmApi.saveMotifPerte(null, { nom }); setNewMotif(''); loadMotifs() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameMotif = async (m, nom) => {
     // ERR102 — recharger pour refléter une normalisation serveur du nom.
-    try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch { /* */ }
+    try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch (e) { toast.error(e?.response?.data?.detail ?? 'Renommage impossible.') }
   }
   const delMotif = async (m) => {
     if (!(await confirmerSuppression({ title: `Supprimer le motif « ${m.nom} » ?` }))) return

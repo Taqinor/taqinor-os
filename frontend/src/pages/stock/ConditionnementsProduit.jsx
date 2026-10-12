@@ -3,6 +3,7 @@ import {
   Plus, PackagePlus,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, FormField, Input, Select, SelectTrigger, SelectValue, SelectContent,
 } from '../../ui'
@@ -103,16 +104,16 @@ export default function ConditionnementsProduit() {
   const [selected, setSelected] = useState(null)
 
   const reload = () => {
-    stockApi.getConditionnementsProduit({ ordering: 'produit__nom' })
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getConditionnementsProduit({ ordering: 'produit__nom', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setError('Chargement des conditionnements impossible.'))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     reload()
-    stockApi.getProduits({ ordering: 'nom' })
-      .then((r) => setProduits(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getProduits({ ordering: 'nom', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
   }, [])
 

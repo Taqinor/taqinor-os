@@ -209,13 +209,13 @@ export function ReferentielBlock({ title, icon, items, onCreate, onUpdate, onDel
   const doCreate = async () => {
     const nom = newName.trim(); if (!nom) return
     setBusy(true)
-    try { await onCreate(nom); setNewName(''); setCreating(false) } catch { /* erreur affichée ailleurs */ } finally { setBusy(false) }
+    try { await onCreate(nom); setNewName(''); setCreating(false) } catch (e) { console.warn('Erreur déjà affichée par le parent', e) } finally { setBusy(false) } // l'appelant toast déjà l'erreur
   }
 
   const doUpdate = async () => {
     const nom = editName.trim(); if (!nom) return
     setBusy(true)
-    try { await onUpdate(editId, nom); setEditId(null) } catch { /* erreur affichée ailleurs */ } finally { setBusy(false) }
+    try { await onUpdate(editId, nom); setEditId(null) } catch (e) { console.warn('Erreur déjà affichée par le parent', e) } finally { setBusy(false) } // l'appelant toast déjà l'erreur
   }
 
   const doDelete = async (id) => {

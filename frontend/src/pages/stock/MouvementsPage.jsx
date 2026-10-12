@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Plus, ArrowDownUp, X, Download, LayoutGrid, List, ArrowLeftRight,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import {
   fetchMouvements,
@@ -121,8 +122,8 @@ export default function MouvementsPage() {
     const load = async () => {
       setTransfertsLoading(true)
       try {
-        const r = await stockApi.getTransferts({ ordering: '-date' })
-        if (!cancelled) setTransferts(r.data?.results ?? r.data ?? [])
+        const rows = await fetchAllPages((page) => stockApi.getTransferts({ ordering: '-date', page }).then((r) => r.data), { concurrency: 3 })
+        if (!cancelled) setTransferts(Array.isArray(rows) ? rows : (rows?.results ?? []))
       } catch {
         if (!cancelled) setTransferts([])
       } finally {

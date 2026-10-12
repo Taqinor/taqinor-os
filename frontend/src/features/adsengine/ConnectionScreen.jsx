@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck, ShieldAlert, PlugZap, ExternalLink, CircleHelp, RefreshCw, Check, X, Bot, Power } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { normalizeWiringStatuses, formatMoney, erreurServeur } from './adsengine'
 import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizard'
 
@@ -271,9 +272,9 @@ export default function ConnectionScreen() {
   // DEFAULT_POLICY_RULES) si aucune ligne n'existe encore.
   const loadPolicy = useCallback(() => {
     setPolicyLoading(true)
-    adsengineApi.creativePolicy.list()
-      .then(r => {
-        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    fetchAllPages((page) => adsengineApi.creativePolicy.list({ page }).then(r => r.data), { concurrency: 3 })
+      .then(res => {
+        const rows = Array.isArray(res) ? res : (res?.results || [])
         const p = rows[0]
         setPolicy(p ? {
           id: p.id,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import adminopsApi from './adminopsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import { Button, Card, EmptyState, Spinner } from '../../ui'
 import { formatDateTime } from '../../lib/format'
@@ -29,9 +30,9 @@ export default function ConfigPackagesPage() {
 
   const load = () => {
     setLoading(true)
-    adminopsApi
-      .listPackages()
-      .then((res) => setPackages(res.data?.results ?? res.data ?? []))
+    // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => adminopsApi.listPackages({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setPackages(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => toastError('Impossible de charger les packages.'))
       .finally(() => setLoading(false))
   }

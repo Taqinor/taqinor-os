@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Binoculars, Plus, ExternalLink } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import VeilleDecouverte from './VeilleDecouverte'
 import VeilleAnnonceurs from './VeilleAnnonceurs'
 import VeilleEtiquetage from './VeilleEtiquetage'
@@ -129,8 +130,8 @@ function SaisieManuelle() {
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
-      adsengineApi.competitors.list()
-        .then(r => Array.isArray(r.data) ? r.data : (r.data?.results || []))
+      fetchAllPages((page) => adsengineApi.competitors.list({ page }).then(r => r.data), { concurrency: 3 })
+        .then(rows => Array.isArray(rows) ? rows : (rows?.results || []))
         .catch(() => []),
       adsengineApi.competitors.veille().then(r => r.data).catch(() => null),
     ]).then(([pgs, v]) => {

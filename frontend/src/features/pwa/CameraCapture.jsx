@@ -119,11 +119,11 @@ export default function CameraCapture({
   const stopStream = useCallback(() => {
     const stream = streamRef.current
     if (stream) {
-      stream.getTracks().forEach((t) => { try { t.stop() } catch { /* déjà coupé */ } })
+      stream.getTracks().forEach((t) => { try { t.stop() } catch (err) { console.warn('CameraCapture.CameraCapture : déjà coupé', err) } })
       streamRef.current = null
     }
     if (videoRef.current) {
-      try { videoRef.current.srcObject = null } catch { /* ignore */ }
+      try { videoRef.current.srcObject = null } catch (err) { console.warn('CameraCapture.CameraCapture : ignore', err) }
     }
     setActive(false)
   }, [])
@@ -216,7 +216,7 @@ export default function CameraCapture({
   // Libère les URLs objet des miniatures de la pellicule (mode `multiple`).
   const releaseShots = useCallback(() => {
     setShots((prev) => {
-      prev.forEach((s) => { try { URL.revokeObjectURL(s.url) } catch { /* déjà libéré */ } })
+      prev.forEach((s) => { try { URL.revokeObjectURL(s.url) } catch (err) { console.warn('CameraCapture.CameraCapture : déjà libéré', err) } })
       return []
     })
   }, [])

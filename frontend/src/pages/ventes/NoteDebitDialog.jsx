@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download, Plus } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { formatMAD } from '../../lib/format'
 import { useIsAdmin } from '../../hooks/useHasPermission'
@@ -60,10 +61,9 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
   useEffect(() => {
     if (!open || !factureId) return
     let active = true
-    ventesApi.getNotesDebit({ facture: factureId })
-      .then((r) => {
+    fetchAllPages((page, extra) => ventesApi.getNotesDebit({ facture: factureId, page, ...extra }).then((r) => r.data))
+      .then((data) => {
         if (!active) return
-        const data = r.data
         setNotes(Array.isArray(data) ? data : (data?.results || []))
       })
       .catch(() => { if (active) setNotes([]) })
