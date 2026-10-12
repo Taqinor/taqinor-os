@@ -18,6 +18,8 @@ from datetime import date as date_cls, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -61,6 +63,35 @@ def _window(params):
     return start, end, actual_days
 
 
+_COMPTE_JOUR = {'date': serializers.CharField(),
+                'count': serializers.IntegerField()}
+
+
+@extend_schema(responses=inline_serializer('AuditAnalyticsReponse', {
+    'window_days': serializers.IntegerField(),
+    'from': serializers.CharField(),
+    'to': serializers.CharField(),
+    'total_entries': serializers.IntegerField(),
+    'top_users': inline_serializer('AuditTopUtilisateur', {
+        'actor_username': serializers.CharField(),
+        'count': serializers.IntegerField(),
+    }, many=True),
+    'action_mix': inline_serializer('AuditRepartitionAction', {
+        'action': serializers.CharField(),
+        'label': serializers.CharField(),
+        'count': serializers.IntegerField(),
+        'pct': serializers.FloatField(),
+    }, many=True),
+    'daily_counts': inline_serializer(
+        'AuditCompteJournalier', _COMPTE_JOUR, many=True),
+    'failed_logins': inline_serializer(
+        'AuditEchecConnexionJournalier', _COMPTE_JOUR, many=True),
+    'object_churn': inline_serializer('AuditChurnObjet', {
+        'content_type__app_label': serializers.CharField(),
+        'content_type__model': serializers.CharField(),
+        'count': serializers.IntegerField(),
+    }, many=True),
+}))
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def audit_analytics(request):
