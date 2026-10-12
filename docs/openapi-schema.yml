@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7570, components: 3351}
+counts: {paths: 4826, operations: 7590, components: 3369}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -916,7 +916,6 @@ operations:
 - post /api/django/crm/clients/export-xlsx/ -> django_crm_clients_export_xlsx_create
 - get /api/django/crm/clients/mon-portefeuille/ -> django_crm_clients_mon_portefeuille_retrieve
 - get /api/django/crm/clients/search/ -> django_crm_clients_search_retrieve
-- get /api/django/crm/clients/segments/ -> django_crm_clients_segments_retrieve
 - delete /api/django/crm/clients/{id}/ -> django_crm_clients_destroy
 - get /api/django/crm/clients/{id}/ -> django_crm_clients_retrieve
 - patch /api/django/crm/clients/{id}/ -> django_crm_clients_partial_update
@@ -950,7 +949,6 @@ operations:
 - patch /api/django/crm/defis/{id}/ -> django_crm_defis_partial_update
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
 - get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_retrieve
-- get /api/django/crm/defis/{id}/export-xlsx/ -> django_crm_defis_export_xlsx_retrieve
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
 - post /api/django/crm/equipes/ -> django_crm_equipes_create
 - get /api/django/crm/equipes/statistiques/ -> django_crm_equipes_statistiques_retrieve
@@ -1091,7 +1089,6 @@ operations:
 - put /api/django/crm/playbooks/{id}/ -> django_crm_playbooks_update
 - get /api/django/crm/points-contact/ -> django_crm_points_contact_list
 - post /api/django/crm/points-contact/ -> django_crm_points_contact_create
-- get /api/django/crm/points-contact/attribution/ -> django_crm_points_contact_attribution_retrieve
 - delete /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_destroy
 - get /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_retrieve
 - patch /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_partial_update
@@ -1112,8 +1109,6 @@ operations:
 - get /api/django/crm/relance-etapes/chaine-commerciale/ -> django_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/django/crm/relance-etapes/controle/ -> django_crm_relance_etapes_controle_retrieve
 - get /api/django/crm/relance-etapes/journal/ -> django_crm_relance_etapes_journal_retrieve
-- get /api/django/crm/relance-etapes/kpi-adherence/ -> django_crm_relance_etapes_kpi_adherence_retrieve
-- get /api/django/crm/relance-etapes/mes-stats/ -> django_crm_relance_etapes_mes_stats_retrieve
 - get /api/django/crm/relance-etapes/suivi/ -> django_crm_relance_etapes_suivi_retrieve
 - post /api/django/crm/relance-etapes/{id}/annuler/ -> django_crm_relance_etapes_annuler_create
 - post /api/django/crm/relance-etapes/{id}/appel-compose/ -> django_crm_relance_etapes_appel_compose_create
@@ -2221,6 +2216,13 @@ operations:
 - get /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_retrieve
 - patch /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_partial_update
 - put /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_update
+- get /api/django/monitoring/abonnements/ -> django_monitoring_abonnements_list
+- post /api/django/monitoring/abonnements/ -> django_monitoring_abonnements_create
+- get /api/django/monitoring/abonnements/{id}/ -> django_monitoring_abonnements_retrieve
+- post /api/django/monitoring/abonnements/{id}/resilier/ -> django_monitoring_abonnements_resilier_create
+- get /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_list
+- post /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_create
+- get /api/django/monitoring/certificats-carbone/{id}/ -> django_monitoring_certificats_carbone_retrieve
 - get /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_list
 - post /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_create
 - delete /api/django/monitoring/cleanings/{id}/ -> django_monitoring_cleanings_destroy
@@ -2246,6 +2248,7 @@ operations:
 - post /api/django/monitoring/configs/{id}/import-releves/ -> django_monitoring_configs_import_releves_create
 - get /api/django/monitoring/configs/{id}/om-metrics/ -> django_monitoring_configs_om_metrics_retrieve
 - get /api/django/monitoring/configs/{id}/om-report/ -> django_monitoring_configs_om_report_retrieve
+- get /api/django/monitoring/configs/{id}/pertes/ -> django_monitoring_configs_pertes_retrieve
 - get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/ -> django_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/django/monitoring/configs/{id}/soiling/ -> django_monitoring_configs_soiling_retrieve
 - post /api/django/monitoring/configs/{id}/sync-now/ -> django_monitoring_configs_sync_now_create
@@ -2261,6 +2264,13 @@ operations:
 - get /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_retrieve
 - patch /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_partial_update
 - put /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_update
+- get /api/django/monitoring/sla-disponibilite/ -> django_monitoring_sla_disponibilite_list
+- post /api/django/monitoring/sla-disponibilite/ -> django_monitoring_sla_disponibilite_create
+- delete /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_destroy
+- get /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_retrieve
+- patch /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_partial_update
+- put /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_update
+- get /api/django/monitoring/sla-disponibilite/{id}/ecart/ -> django_monitoring_sla_disponibilite_ecart_retrieve
 - get /api/django/monitoring/warranties/ -> django_monitoring_warranties_list
 - post /api/django/monitoring/warranties/ -> django_monitoring_warranties_create
 - delete /api/django/monitoring/warranties/{id}/ -> django_monitoring_warranties_destroy
@@ -4740,7 +4750,6 @@ operations:
 - post /api/v1/crm/clients/export-xlsx/ -> v1_crm_clients_export_xlsx_create
 - get /api/v1/crm/clients/mon-portefeuille/ -> v1_crm_clients_mon_portefeuille_retrieve
 - get /api/v1/crm/clients/search/ -> v1_crm_clients_search_retrieve
-- get /api/v1/crm/clients/segments/ -> v1_crm_clients_segments_retrieve
 - delete /api/v1/crm/clients/{id}/ -> v1_crm_clients_destroy
 - get /api/v1/crm/clients/{id}/ -> v1_crm_clients_retrieve
 - patch /api/v1/crm/clients/{id}/ -> v1_crm_clients_partial_update
@@ -4774,7 +4783,6 @@ operations:
 - patch /api/v1/crm/defis/{id}/ -> v1_crm_defis_partial_update
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
 - get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_retrieve
-- get /api/v1/crm/defis/{id}/export-xlsx/ -> v1_crm_defis_export_xlsx_retrieve
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
 - post /api/v1/crm/equipes/ -> v1_crm_equipes_create
 - get /api/v1/crm/equipes/statistiques/ -> v1_crm_equipes_statistiques_retrieve
@@ -4915,7 +4923,6 @@ operations:
 - put /api/v1/crm/playbooks/{id}/ -> v1_crm_playbooks_update
 - get /api/v1/crm/points-contact/ -> v1_crm_points_contact_list
 - post /api/v1/crm/points-contact/ -> v1_crm_points_contact_create
-- get /api/v1/crm/points-contact/attribution/ -> v1_crm_points_contact_attribution_retrieve
 - delete /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_destroy
 - get /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_retrieve
 - patch /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_partial_update
@@ -4936,8 +4943,6 @@ operations:
 - get /api/v1/crm/relance-etapes/chaine-commerciale/ -> v1_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/v1/crm/relance-etapes/controle/ -> v1_crm_relance_etapes_controle_retrieve
 - get /api/v1/crm/relance-etapes/journal/ -> v1_crm_relance_etapes_journal_retrieve
-- get /api/v1/crm/relance-etapes/kpi-adherence/ -> v1_crm_relance_etapes_kpi_adherence_retrieve
-- get /api/v1/crm/relance-etapes/mes-stats/ -> v1_crm_relance_etapes_mes_stats_retrieve
 - get /api/v1/crm/relance-etapes/suivi/ -> v1_crm_relance_etapes_suivi_retrieve
 - post /api/v1/crm/relance-etapes/{id}/annuler/ -> v1_crm_relance_etapes_annuler_create
 - post /api/v1/crm/relance-etapes/{id}/appel-compose/ -> v1_crm_relance_etapes_appel_compose_create
@@ -6045,6 +6050,13 @@ operations:
 - get /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_retrieve
 - patch /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_partial_update
 - put /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_update
+- get /api/v1/monitoring/abonnements/ -> v1_monitoring_abonnements_list
+- post /api/v1/monitoring/abonnements/ -> v1_monitoring_abonnements_create
+- get /api/v1/monitoring/abonnements/{id}/ -> v1_monitoring_abonnements_retrieve
+- post /api/v1/monitoring/abonnements/{id}/resilier/ -> v1_monitoring_abonnements_resilier_create
+- get /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_list
+- post /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_create
+- get /api/v1/monitoring/certificats-carbone/{id}/ -> v1_monitoring_certificats_carbone_retrieve
 - get /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_list
 - post /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_create
 - delete /api/v1/monitoring/cleanings/{id}/ -> v1_monitoring_cleanings_destroy
@@ -6070,6 +6082,7 @@ operations:
 - post /api/v1/monitoring/configs/{id}/import-releves/ -> v1_monitoring_configs_import_releves_create
 - get /api/v1/monitoring/configs/{id}/om-metrics/ -> v1_monitoring_configs_om_metrics_retrieve
 - get /api/v1/monitoring/configs/{id}/om-report/ -> v1_monitoring_configs_om_report_retrieve
+- get /api/v1/monitoring/configs/{id}/pertes/ -> v1_monitoring_configs_pertes_retrieve
 - get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/ -> v1_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/v1/monitoring/configs/{id}/soiling/ -> v1_monitoring_configs_soiling_retrieve
 - post /api/v1/monitoring/configs/{id}/sync-now/ -> v1_monitoring_configs_sync_now_create
@@ -6085,6 +6098,13 @@ operations:
 - get /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_retrieve
 - patch /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_partial_update
 - put /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_update
+- get /api/v1/monitoring/sla-disponibilite/ -> v1_monitoring_sla_disponibilite_list
+- post /api/v1/monitoring/sla-disponibilite/ -> v1_monitoring_sla_disponibilite_create
+- delete /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_destroy
+- get /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_retrieve
+- patch /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_partial_update
+- put /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_update
+- get /api/v1/monitoring/sla-disponibilite/{id}/ecart/ -> v1_monitoring_sla_disponibilite_ecart_retrieve
 - get /api/v1/monitoring/warranties/ -> v1_monitoring_warranties_list
 - post /api/v1/monitoring/warranties/ -> v1_monitoring_warranties_create
 - delete /api/v1/monitoring/warranties/{id}/ -> v1_monitoring_warranties_destroy
@@ -7758,7 +7778,6 @@ query_params:
   get /api/django/crm/clients/dormants/: seuil
   get /api/django/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/django/crm/clients/search/: q
-  get /api/django/crm/clients/segments/: segment
   get /api/django/crm/concurrents-perte/: lead ordering page page_size search
   get /api/django/crm/deals-enregistres/: ordering page page_size search
   get /api/django/crm/deals-enregistres/a-payer/: ordering page page_size search
@@ -7793,13 +7812,11 @@ query_params:
   get /api/django/crm/playbook-taches/: ordering page page_size search
   get /api/django/crm/playbooks/: ordering page page_size search
   get /api/django/crm/points-contact/: lead ordering page page_size search
-  get /api/django/crm/points-contact/attribution/: lead
   get /api/django/crm/rapports/attribution/: debut fin
   get /api/django/crm/relance-etapes/: lead owner scope
   get /api/django/crm/relance-etapes/cadences-echues/: jours
   get /api/django/crm/relance-etapes/controle/: jours owner segment
   get /api/django/crm/relance-etapes/journal/: lead
-  get /api/django/crm/relance-etapes/kpi-adherence/: jours
   get /api/django/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/django/crm/relance-etapes/{id}/message/: cle langue
   get /api/django/crm/revues-compte/: ordering page page_size search
@@ -8016,6 +8033,8 @@ query_params:
   get /api/django/installations/tournee-livraison/: depart_lat depart_lng jour
   get /api/django/installations/transporteurs/: active ordering page page_size search type_transporteur
   get /api/django/installations/types-intervention/: ordering page page_size search
+  get /api/django/monitoring/abonnements/: ordering page page_size search
+  get /api/django/monitoring/certificats-carbone/: ordering page page_size search
   get /api/django/monitoring/cleanings/: installation ordering page page_size search
   get /api/django/monitoring/configs/: installation ordering page page_size search
   get /api/django/monitoring/configs/attestation-carbone-client-pdf/: client since until
@@ -8029,10 +8048,13 @@ query_params:
   get /api/django/monitoring/configs/{id}/history/: export months
   get /api/django/monitoring/configs/{id}/om-metrics/: window_days
   get /api/django/monitoring/configs/{id}/om-report/: format period
+  get /api/django/monitoring/configs/{id}/pertes/: window_days
   get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/django/monitoring/configs/{id}/soiling/: window_days
   get /api/django/monitoring/readings/: installation ordering page page_size search
   get /api/django/monitoring/settings/: ordering search
+  get /api/django/monitoring/sla-disponibilite/: installation ordering page page_size search
+  get /api/django/monitoring/sla-disponibilite/{id}/ecart/: window_days
   get /api/django/monitoring/warranties/: installation ordering page page_size search
   get /api/django/monitoring/warranties/{id}/curve/: drift_threshold_pct years
   get /api/django/monitoring/warranties/{id}/status/: year
@@ -8535,7 +8557,6 @@ query_params:
   get /api/v1/crm/clients/dormants/: seuil
   get /api/v1/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/v1/crm/clients/search/: q
-  get /api/v1/crm/clients/segments/: segment
   get /api/v1/crm/concurrents-perte/: lead ordering page page_size search
   get /api/v1/crm/deals-enregistres/: ordering page page_size search
   get /api/v1/crm/deals-enregistres/a-payer/: ordering page page_size search
@@ -8570,13 +8591,11 @@ query_params:
   get /api/v1/crm/playbook-taches/: ordering page page_size search
   get /api/v1/crm/playbooks/: ordering page page_size search
   get /api/v1/crm/points-contact/: lead ordering page page_size search
-  get /api/v1/crm/points-contact/attribution/: lead
   get /api/v1/crm/rapports/attribution/: debut fin
   get /api/v1/crm/relance-etapes/: lead owner scope
   get /api/v1/crm/relance-etapes/cadences-echues/: jours
   get /api/v1/crm/relance-etapes/controle/: jours owner segment
   get /api/v1/crm/relance-etapes/journal/: lead
-  get /api/v1/crm/relance-etapes/kpi-adherence/: jours
   get /api/v1/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/v1/crm/relance-etapes/{id}/message/: cle langue
   get /api/v1/crm/revues-compte/: ordering page page_size search
@@ -8793,6 +8812,8 @@ query_params:
   get /api/v1/installations/tournee-livraison/: depart_lat depart_lng jour
   get /api/v1/installations/transporteurs/: active ordering page page_size search type_transporteur
   get /api/v1/installations/types-intervention/: ordering page page_size search
+  get /api/v1/monitoring/abonnements/: ordering page page_size search
+  get /api/v1/monitoring/certificats-carbone/: ordering page page_size search
   get /api/v1/monitoring/cleanings/: installation ordering page page_size search
   get /api/v1/monitoring/configs/: installation ordering page page_size search
   get /api/v1/monitoring/configs/attestation-carbone-client-pdf/: client since until
@@ -8806,10 +8827,13 @@ query_params:
   get /api/v1/monitoring/configs/{id}/history/: export months
   get /api/v1/monitoring/configs/{id}/om-metrics/: window_days
   get /api/v1/monitoring/configs/{id}/om-report/: format period
+  get /api/v1/monitoring/configs/{id}/pertes/: window_days
   get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/v1/monitoring/configs/{id}/soiling/: window_days
   get /api/v1/monitoring/readings/: installation ordering page page_size search
   get /api/v1/monitoring/settings/: ordering search
+  get /api/v1/monitoring/sla-disponibilite/: installation ordering page page_size search
+  get /api/v1/monitoring/sla-disponibilite/{id}/ecart/: window_days
   get /api/v1/monitoring/warranties/: installation ordering page page_size search
   get /api/v1/monitoring/warranties/{id}/curve/: drift_threshold_pct years
   get /api/v1/monitoring/warranties/{id}/status/: year
@@ -9130,6 +9154,10 @@ query_params:
   get /api/v1/visites/visites/: lead mine ordering page page_size search
 components:
 - AbandonMotifEnum
+- AbonnementMonitoring
+- AbonnementMonitoringPeriodiciteEnum
+- AbonnementMonitoringRequest
+- AbonnementMonitoringStatutEnum
 - AcceptationDevisPortail
 - AccepterInvitationPortailRequestRequest
 - AccepterInvitationPortailResponse
@@ -9601,6 +9629,8 @@ components:
 - CategorieTicketRequest
 - CauseDefaillance
 - CauseDefaillanceRequest
+- CertificatCarbone
+- CertificatCarboneRequest
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -9771,9 +9801,10 @@ components:
 - CrmControleSuivi
 - CrmConvertirClientRequestModeEnum
 - CrmConvertirClientRequestRequest
+- CrmEquipeStatistiques
+- CrmEquipesStatistiques
 - CrmInitialiserRelanceRequestRequest
 - CrmJournalRelance
-- CrmKpiAdherence
 - CrmKpiCadences
 - CrmKpiPremierContact
 - CrmLeadLocataire
@@ -9786,13 +9817,13 @@ components:
 - CrmLogInteractionRequestKindEnum
 - CrmLogInteractionRequestOutcomeEnum
 - CrmLogInteractionRequestRequest
-- CrmMesStatsRelance
 - CrmMessageRenderRequestRequest
 - CrmMessageVisiteOuvert
 - CrmMessageVisiteOuvertRequestRequest
 - CrmMesureCadence
 - CrmNoterMultipartRequestRequest
 - CrmNoterRequestRequest
+- CrmParrainageStats
 - CrmPieceRecueMultipartRequestRequest
 - CrmPieceRecueRequestRequest
 - CrmPlacementCadencesRequestRequest
@@ -10630,6 +10661,7 @@ components:
 - MonEquipePortailInviterRoleEnum
 - MonEquipePortailLigne
 - MonEquipePortailLigneRequest
+- MonitoringAbonnementResilierRequest
 - MonitoringConfig
 - MonitoringConfigRequest
 - MonitoringEmailOmReportReponse
@@ -10638,9 +10670,11 @@ components:
 - MonitoringImportReleves
 - MonitoringImportRelevesCsvRequest
 - MonitoringImportRelevesFichierRequest
+- MonitoringPertesCategorisees
 - MonitoringProvider
 - MonitoringSettings
 - MonitoringSettingsRequest
+- MonitoringSlaDisponibiliteEcart
 - MonitoringSyncNow
 - MotifPerte
 - MotifPerteRequest
@@ -10706,7 +10740,6 @@ components:
 - OrdreAssemblage
 - OrdreAssemblageActivity
 - OrdreAssemblageLigne
-- OrdreAssemblageLigneOrigineEnum
 - OrdreAssemblageLigneRequest
 - OrdreAssemblageRequest
 - OrdreDemontage
@@ -10714,6 +10747,7 @@ components:
 - OrdreDemontageLigneRequest
 - OrdreDemontageRequest
 - OrdreDemontageStatutEnum
+- OrdreLigneOrigineEnum
 - OrdresDepuisDevisRequeteRequest
 - OrientationEnum
 - OuiNonEnum
@@ -10725,6 +10759,7 @@ components:
 - OutillageStatutEnum
 - OutillageSuppressionRefusee
 - OwnershipEnum
+- PaginatedAbonnementMonitoringList
 - PaginatedAcceptationDevisPortailList
 - PaginatedAccessReviewCampaignList
 - PaginatedAccordRFAFournisseurList
@@ -10787,6 +10822,7 @@ components:
 - PaginatedCategorieStockageList
 - PaginatedCategorieTicketList
 - PaginatedCauseDefaillanceList
+- PaginatedCertificatCarboneList
 - PaginatedChampSignatureList
 - PaginatedChecklistEtapeModeleList
 - PaginatedChecklistTemplateList
@@ -11072,6 +11108,7 @@ components:
 - PaginatedShotListSlotList
 - PaginatedSignataireDemandeList
 - PaginatedSiteProfileList
+- PaginatedSlaDisponibiliteList
 - PaginatedSodRuleList
 - PaginatedStageModeleList
 - PaginatedStatutConfigList
@@ -11435,6 +11472,7 @@ components:
 - PatchedSeuilReapproCasierRequest
 - PatchedShotListSlotRequest
 - PatchedSiteProfileRequest
+- PatchedSlaDisponibiliteRequest
 - PatchedSodRuleRequest
 - PatchedSousTraitantRequest
 - PatchedStageModeleRequest
@@ -11548,7 +11586,9 @@ components:
 - PortailClientProchainJalon
 - PortailClientTableauDeBord
 - PortailCreerTicketReponse
+- PortailFournisseurTableauDeBord
 - PortailFournisseurToken
+- PortailPartenaireTableauDeBord
 - PortailRapprocherRequestRequest
 - PortailTicketIdOptionnelRequestRequest
 - PortailTicketIdRequestRequest
@@ -12088,6 +12128,8 @@ components:
 - SlaCreditDu
 - SlaCreditStatutRequeteRequest
 - SlaCreditStatutRequeteStatutEnum
+- SlaDisponibilite
+- SlaDisponibiliteRequest
 - SlaSnapshot
 - SodRule
 - SodRuleRequest
