@@ -36,7 +36,9 @@ d'autre :
 from __future__ import annotations
 
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    PolymorphicProxySerializer, extend_schema, inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -108,10 +110,20 @@ def _refus_designation(corps):
                             else status.HTTP_400_BAD_REQUEST))
 
 
-_CORPS_DOSSIER = {
-    'dossier': serializers.IntegerField(required=False),
-    'gabarit': serializers.IntegerField(required=False),
-}
+def _corps_designant_un_dossier(nom, **autres):
+    """Le corps désigne un dossier (``dossier``) OU un gabarit (``gabarit``) :
+    l'un des deux est OBLIGATOIRE (sinon 400 sous ``dossier``) — deux formes,
+    ``oneOf``."""
+    facultatif = serializers.IntegerField(required=False)
+    return PolymorphicProxySerializer(
+        component_name=nom, resource_type_field_name=None, serializers=[
+            inline_serializer(nom + 'ParDossier', {
+                'dossier': serializers.IntegerField(), 'gabarit': facultatif,
+                **autres}),
+            inline_serializer(nom + 'ParGabarit', {
+                'gabarit': serializers.IntegerField(), 'dossier': facultatif,
+                **autres}),
+        ])
 
 
 def _forme_generation():
@@ -167,9 +179,8 @@ def _dossier_en_base(calepinage, compose):
     return dossier
 
 
-@extend_schema(request=inline_serializer('CalepinageGenererDossierCorps',
-                                         _CORPS_DOSSIER),
-               responses={200: _forme_generation()})
+@extend_schema(request=_corps_designant_un_dossier(
+    'CalepinageGenererDossierCorps'), responses={200: _forme_generation()})
 @action(detail=True, methods=['post'], url_path='generer-dossier',
         permission_classes=[PeutGererCalepinage])
 def generer_dossier(self, request, pk=None):
@@ -228,9 +239,9 @@ def generer_dossier(self, request, pk=None):
 
 # ── CALX41 — ENREGISTRER LES CHAMPS À COMPLÉTER ───────────────────────────
 
-@extend_schema(request=inline_serializer(
+@extend_schema(request=_corps_designant_un_dossier(
     'CalepinageChampsDossierCorps',
-    {**_CORPS_DOSSIER, 'champs': serializers.DictField(required=False)}),
+    champs=serializers.DictField(required=False)),
     responses={200: _FORME_DOSSIERS})
 @action(detail=True, methods=['post'], url_path='champs-dossier',
         permission_classes=[PeutGererCalepinage])
@@ -290,11 +301,11 @@ _FORME_PIECE_JOINTE = _forme_piece_jointe()  # UNE instance : 200 et 201
 
 
 @extend_schema(
-    request=inline_serializer('CalepinageJoindrePieceCorps', {
-        **_CORPS_DOSSIER,
-        'piece': serializers.CharField(),
-        'fichier': serializers.FileField(required=False),
-        'retirer': serializers.BooleanField(required=False)}),
+    request=_corps_designant_un_dossier(
+        'CalepinageJoindrePieceCorps',
+        piece=serializers.CharField(),
+        fichier=serializers.FileField(required=False),
+        retirer=serializers.BooleanField(required=False)),
     responses={200: _FORME_PIECE_JOINTE, 201: _FORME_PIECE_JOINTE})
 @action(detail=True, methods=['post'], url_path='joindre-piece',
         permission_classes=[PeutGererCalepinage])

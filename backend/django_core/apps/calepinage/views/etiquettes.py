@@ -30,7 +30,9 @@ from __future__ import annotations
 from rest_framework import status
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, PolymorphicProxySerializer, inline_serializer,
+)
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -58,9 +60,13 @@ _FORME_ETIQUETTES = forme_du_contrat(
 @extend_schema(methods=['GET'], responses=_FORME_ETIQUETTES)
 @extend_schema(
     methods=['POST'],
-    request=inline_serializer('CalepinageEtiquetteCorps', {
-        'tag_id': serializers.IntegerField(required=False),
-        'nom': serializers.CharField(required=False)}),
+    request=PolymorphicProxySerializer(
+        component_name='CalepinageEtiquetteCorps',
+        resource_type_field_name=None, serializers=[
+            inline_serializer('CalepinageEtiquetteParId',
+                              {'tag_id': serializers.IntegerField()}),
+            inline_serializer('CalepinageEtiquetteParNom',
+                              {'nom': serializers.CharField()})]),
     responses=_FORME_ETIQUETTES)
 @extend_schema(
     methods=['DELETE'],

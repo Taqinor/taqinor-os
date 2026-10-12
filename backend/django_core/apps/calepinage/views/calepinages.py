@@ -713,7 +713,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                 journal=journal,
                 derogation_electrique=corps.get('derogation_electrique'))
         except DevisRefuse as refus:
-            return Response(_refus_devis(refus), status=refus.statut)
+            return Response(_refus_devis(refus),
+                            status=_statut_refus_devis(refus))
         return Response(
             {'devis': devis.pk, 'reference': devis.reference,
              'statut': devis.statut, 'layout_hash': devis.layout_hash or None,
@@ -755,7 +756,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                 calepinage, user=request.user,
                 derogation_electrique=corps.get('derogation_electrique'))
         except DevisRefuse as refus:
-            return Response(_refus_devis(refus), status=refus.statut)
+            return Response(_refus_devis(refus),
+                            status=_statut_refus_devis(refus))
         return Response(resultat)
 
     # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────
@@ -944,7 +946,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                              base_empreinte=_jeton_if_match(request))
         except DocumentModifie as conflit:
             return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
-        except (RepereRefuse, LayoutRefuse) as refus:
+        except RepereRefuse as refus:
+            # État du calepinage (pas de GPS de lead, pas d'épingle) : 409.
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_409_CONFLICT)
+        except LayoutRefuse as refus:
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_reponse_ecriture(calepinage, resultat))
@@ -1113,6 +1119,20 @@ def _refus_derogation_sans_droit(request, vue, corps):
         {'derogation_electrique': "Dérogation réservée aux approbateurs "
                                   "(calepinage_approuver)"},
         status=status.HTTP_403_FORBIDDEN)
+
+
+#: ERR-ENF11-FUZZ-CALEPINAGE — un refus 400 du service devis qui dit l'ÉTAT du
+#: calepinage (pas de conception, ni lead ni client, lead à la corbeille, aucun
+#: devis lié) est un 409 : la requête était bien formée. Les 422/409 du serveur
+#: ventes passent TELS QUELS (le service, lui, garde son 400 : ventes le relaie).
+CHAMPS_ETAT_DEVIS = frozenset({'roof_layout', 'lead', 'client', 'devis'})
+
+
+def _statut_refus_devis(refus):
+    if (refus.statut == status.HTTP_400_BAD_REQUEST
+            and refus.champ in CHAMPS_ETAT_DEVIS):
+        return status.HTTP_409_CONFLICT
+    return refus.statut
 
 
 def _refus_devis(refus):
