@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 769df3169092247b4d612a9f01932bfa098f4d47da9d26e0235133bc94a42614
-Plan fingerprint: 62998a3d235fd8d958aadde57f964324f245cbec82febe9a6454ef27052bece2
+Plan fingerprint: bb0c05be5c62bc279d6a7ddb24b0fb2a708fd853705b8d4347bcc4802b8be780
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1196)**
+**Done (1197)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1772,9 +1772,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT37` — Créer `apps/ventes/utils/garanties.py::garanties_de_la_vente(devis, langue)` : agricole…
 - `VNT43` — Nommer le fichier du reçu `Quittance_<numero_recu>.pdf` et ne plus recopier l'exception…
 - `VNT44` — Poser les helpers purs `venteEtat.js` et `erreursVente.js` (clés serveur → erreurs…
+- `VNT49` — Solveur pur `remise_pour_ttc` dans `noyau_totaux.py` : parmi les remises à 2 décimales…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (216)**
+**Open — to build (215)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1930,7 +1931,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT46` — Liste des factures : Annuler = confirmation « un avoir sera créé, la facture reste…
 - `VNT47` — Commande `reparer_vente_active` (dry-run par défaut dans un `atomic()` annulé…
 - `VNT48` — Acceptation en direct M1 (orchestrateur) : réplique du lead 1594 en démo locale →…
-- `VNT49` — Solveur pur `remise_pour_ttc` dans `noyau_totaux.py` : parmi les remises à 2 décimales…
 - `VNT50` — Extraire `_fire_capi_signed_quote` (`cycle_vie.py:1224-1410`, 187 l.) vers…
 - `VNT51` — Publier `devis_accepted` avec `avenant_de` = prédécesseur de révision ACCEPTÉ…
 - `VNT52` — Ne pas émettre de CAPI SignedQuote pour un avenant
