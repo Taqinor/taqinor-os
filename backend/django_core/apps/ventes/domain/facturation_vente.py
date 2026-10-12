@@ -751,3 +751,24 @@ def modifier_montant_tranche(facture, montant_ttc, *, user):
                      ventilation_tva=vent,
                      pourcentage=_q(montant / prix * 100))
         return _editer_brouillon(facture, neuve, user, None)
+
+
+# ── VNT89 — la porte MANUELLE (``FactureViewSet``) est fermée aux devis ─────
+
+#: Corps du refus 400 ``facture_de_devis`` (création / modification).
+FACTURE_DE_DEVIS_REFUSE = {
+    'devis': ("Une facture de devis se crée par « Facturer la vente » "
+              '(fiche du devis), jamais à la main.'),
+    'code': 'facture_de_devis'}
+
+
+def devis_impose_au_corps(donnees, facture=None) -> bool:
+    """VNT89 — le corps d'une facture MANUELLE désigne-t-il un devis
+    (création) ou change-t-il celui de ``facture`` (modification) ? Un corps
+    qui renvoie le devis actuel tel quel n'ouvre aucune porte."""
+    if 'devis' not in donnees:
+        return False
+    devis = donnees['devis']
+    if facture is None:
+        return devis is not None
+    return getattr(devis, 'pk', devis) != facture.devis_id
