@@ -139,11 +139,13 @@ class TestDevisAcceptation(TestCase):
     def test_acceptation_enables_chantier_creation(self):
         """L'acceptation est le déclencheur : creer-depuis-devis exige accepté."""
         devis = self._devis(num=6)
-        # Avant acceptation : refusé.
+        # Avant acceptation : refusé — 409 (conflit d'ÉTAT : le devis existe
+        # mais n'est pas accepté), le 400 étant réservé au corps mal formé et
+        # le 404 au devis inconnu (ERR-ENF11-FUZZ-INSTALLATIONS, 3160247c8).
         r0 = self.api.post(
             '/api/django/installations/chantiers/creer-depuis-devis/',
             {'devis': devis.id}, format='json')
-        self.assertEqual(r0.status_code, 400)
+        self.assertEqual(r0.status_code, 409, r0.data)
         # Après acceptation : autorisé.
         self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
                       {'nom': 'Client', 'date': '2026-06-05'}, format='json')
