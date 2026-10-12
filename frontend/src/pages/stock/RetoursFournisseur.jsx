@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Undo2, FileMinus2,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   StatusPill, Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, Button,
@@ -136,8 +137,8 @@ export default function RetoursFournisseur() {
   const [selected, setSelected] = useState(null)
 
   useEffect(() => {
-    stockApi.getRetoursFournisseur({ ordering: '-date_creation' })
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getRetoursFournisseur({ ordering: '-date_creation', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setError('Chargement des retours impossible.'))
       .finally(() => setLoading(false))
   }, [])

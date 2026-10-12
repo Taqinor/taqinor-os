@@ -145,7 +145,8 @@ function ecrireCreerUnAutre(v) {
   try {
     window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
   } catch {
-    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
+    // localStorage indisponible (navigation privée, quota) : confort non mémorisé.
+    console.warn('Préférence « créer un autre » non mémorisée : stockage indisponible.')
   }
 }
 
@@ -163,7 +164,8 @@ function ecrireLastTva(v) {
   try {
     if (v !== '' && v != null) window.localStorage.setItem(LAST_TVA_KEY, String(v))
   } catch {
-    // no-op silencieux.
+    // Dernier taux de TVA non mémorisé : simple confort.
+    console.warn('Dernier taux de TVA non mémorisé : stockage indisponible.')
   }
 }
 
@@ -1093,7 +1095,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         onClose()
       }
     } catch (err) {
-      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) ; le
+      // VX171 — mapping DRF générique (detail, champ → liste de messages ou array) ; le
       // message SKU (contrainte d'unicité) reste traduit en français lisible.
       const skuMsg = err && typeof err === 'object'
         ? (Array.isArray(err.sku) ? err.sku[0] : err.sku)

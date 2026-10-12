@@ -5,6 +5,7 @@ import {
   Pencil, BadgeCheck, History, AlertTriangle, BarChart3,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import coreApi from '../../api/coreApi'
 import { formatMAD } from '../../lib/format'
 import BcfProduitPicker from './BcfProduitPicker'
@@ -1351,8 +1352,9 @@ export default function BonsCommandeFournisseur() {
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
-    stockApi.getBonsCommandeFournisseur()
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }
@@ -1371,8 +1373,10 @@ export default function BonsCommandeFournisseur() {
     reload()
     reloadEnRetard()
     reloadSuggestions()
-    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
-    stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    // getAllFournisseurs lit déjà toutes les pages (ASTK185) ; produits : fetchAllPages.
+    stockApi.getAllFournisseurs().then((r) => setFournisseurs(Array.isArray(r.data) ? r.data : (r.data?.results ?? []))).catch(() => {})
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }, [])
 
   // NTP2P21 — fusionne directement une suggestion (mêmes garanties serveur

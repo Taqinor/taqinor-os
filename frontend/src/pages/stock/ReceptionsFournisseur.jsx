@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { PackageCheck, Plus, ReceiptText, Tags,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import useStockFlags from '../../features/parametres/useStockFlags'
@@ -413,16 +414,16 @@ export default function ReceptionsFournisseur() {
   const [creating, setCreating] = useState(false)
 
   const reload = () => {
-    stockApi.getReceptionsFournisseur({ ordering: '-date_creation' })
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getReceptionsFournisseur({ ordering: '-date_creation', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setError('Chargement des réceptions impossible.'))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     reload()
-    stockApi.getBonsCommandeFournisseur({ page_size: 1000 })
-      .then((r) => setBons(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setBons(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
   }, [])
 
