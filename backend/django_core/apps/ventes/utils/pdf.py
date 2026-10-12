@@ -787,7 +787,27 @@ def _facture_render_data(facture) -> dict:
         # seulement si présente : empreinte d'hier inchangée sans instantané).
         **({'identite_vendeur': facture.identite_vendeur}
            if getattr(facture, 'identite_vendeur', None) else {}),
+        # VNT42 — blocs de la vente et filigrane (clés posées seulement si
+        # présentes : empreinte d'une facture émise sans devis inchangée).
+        **_vente_empreinte(facture),
     }
+
+
+def _vente_empreinte(facture):
+    """VNT42 — ce que les blocs de la vente impriment entre dans l'empreinte
+    PVFRESH : un paiement sur une facture SŒUR (situation) ou le passage
+    brouillon → émise re-rend ; une révision de la tête ou une garantie
+    changée ne re-rend une ÉMISE que si son rendu change (instantanés
+    ``objet_vente``/``garanties`` figés), un brouillon toujours (vivant)."""
+    blocs = {}
+    if facture.statut == 'brouillon':
+        blocs['filigrane'] = True
+    if facture.devis_id:
+        from apps.ventes.domain.instantanes_facture import (
+            langue_de_la_facture)
+        blocs['vente'] = contexte_vente_facture(
+            facture, langue_de_la_facture(facture))
+    return blocs
 
 
 def _reglements_empreinte(facture):
