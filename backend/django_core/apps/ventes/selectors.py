@@ -1717,6 +1717,7 @@ from .selectors_stock import (  # noqa: E402,F401 — ré-export (SPL147)
 from .vente_facturation import (  # noqa: E402,F401 — ré-export (VNT23)
     etat_vente,
     etat_vente_map,
+    factures_de_la_vente,
 )
 
 

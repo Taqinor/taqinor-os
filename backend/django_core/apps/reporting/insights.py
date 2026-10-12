@@ -394,6 +394,21 @@ _INSIGHTS_JOB_COSTING_REPONSE = inline_serializer('InsightsJobCostingReponse', {
 })
 
 
+class _FacturesDeLaVente(dict):
+    """VNT109 — HT facturé d'une vente = factures ÉMISES de sa chaîne de
+    révision, lues par la façade ``apps.ventes.selectors`` (ni brouillon ni
+    annulée ; jamais un ``devis_id`` seul). ``.get(devis)``, mémoïsé."""
+
+    def get(self, devis):
+        if devis.pk not in self:
+            from apps.ventes.models import Facture
+            from apps.ventes.selectors import factures_de_la_vente
+            self[devis.pk] = sum(
+                (Decimal(f.total_ht) for f in factures_de_la_vente(devis)
+                 if f.statut != Facture.Statut.BROUILLON), Decimal('0'))
+        return self[devis.pk]
+
+
 @extend_schema(
     responses={200: _INSIGHTS_JOB_COSTING_REPONSE})
 @api_view(['GET'])
@@ -414,21 +429,13 @@ def job_costing(request):
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
     from apps.installations.models import Installation
-    from apps.ventes.models import Facture
-
     chantiers = (Installation.objects
                  .filter(**co)
                  .select_related('client', 'devis')
                  .prefetch_related('devis__lignes__produit'))
 
-    # Factures non annulées, indexées par devis_id (chemin devis→chantier).
-    factures = (Facture.objects.filter(**co)
-                .exclude(statut=Facture.Statut.ANNULEE)
-                .exclude(devis__isnull=True)
-                .prefetch_related('lignes'))
-    invoiced_by_devis = defaultdict(Decimal)
-    for f in factures:
-        invoiced_by_devis[f.devis_id] += Decimal(f.total_ht)
+    # VNT109 : facturé = factures ÉMISES de la chaîne de vente du chantier.
+    invoiced_by_devis = _FacturesDeLaVente()
 
     rows = []
     monthly = defaultdict(lambda: {'invoiced': Decimal('0'),
@@ -437,7 +444,7 @@ def job_costing(request):
     total_cost = Decimal('0')
 
     for ch in chantiers:
-        invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
+        invoiced = (invoiced_by_devis.get(ch.devis)
                     if ch.devis_id else Decimal('0'))
         cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
                 else Decimal('0'))
@@ -1120,7 +1127,6 @@ def profitability(request):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     from apps.installations.models import Installation
-    from apps.ventes.models import Facture
 
     segment_field = request.query_params.get('segment', 'type_installation')
     allowed = {'type_installation', 'canal'}
@@ -1139,14 +1145,7 @@ def profitability(request):
     if end:
         chantiers_qs = chantiers_qs.filter(date_creation__date__lte=end)
 
-    # Factures non annulées par devis_id.
-    factures = (Facture.objects.filter(**co)
-                .exclude(statut=Facture.Statut.ANNULEE)
-                .exclude(devis__isnull=True)
-                .prefetch_related('lignes'))
-    invoiced_by_devis = defaultdict(Decimal)
-    for f in factures:
-        invoiced_by_devis[f.devis_id] += Decimal(f.total_ht)
+    invoiced_by_devis = _FacturesDeLaVente()  # VNT109 : émises de la chaîne
 
     buckets: dict = defaultdict(lambda: {
         'count': 0, 'revenue': Decimal('0'), 'cost': Decimal('0')
@@ -1158,7 +1157,7 @@ def profitability(request):
         else:  # canal
             key = (ch.lead.canal if ch.lead_id and ch.lead else '') or '—'
 
-        invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
+        invoiced = (invoiced_by_devis.get(ch.devis)
                     if ch.devis_id else Decimal('0'))
         cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
                 else Decimal('0'))
