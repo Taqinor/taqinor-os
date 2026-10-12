@@ -453,6 +453,69 @@ class SituationVentePdfTests(TestCase):
         self.assertEqual(lues['ttc'], Decimal('34000.00'))
 
 
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class ProchainesEcheancesPdfTests(TestCase):
+    """VNT41 (D-VNT-6) — 388, échéancier [acompte 15 000 MAD, matériel 60 %,
+    solde 10 %] : l'acompte émis et payé imprime « Livraison du matériel :
+    29400.00 MAD TTC » puis « Solde : 4600.00 MAD TTC » (libellés de
+    l'échéancier, montants == ``etat_vente``) ; la tranche matériel ensuite
+    créée vaut EXACTEMENT 29400.00 ; bloc absent sur la dernière tranche."""
+
+    ECHEANCIER = [{'type': 'acompte', 'libelle': 'Acompte',
+                   'unite': 'montant', 'pct_or_montant': 15000},
+                  {'type': 'materiel', 'pct_or_montant': 60},
+                  {'type': 'solde', 'pct_or_montant': 10}]
+
+    setUp = SituationVentePdfTests.setUp
+
+    def _texte(self, facture):
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        patcheur, boite = _capturer_upload()
+        with patcheur:
+            generate_facture_pdf(facture.pk)
+        return _texte_pdf(boite['pdf'])
+
+    def test_acompte_annonce_materiel_puis_solde(self, _dl):
+        from datetime import date
+
+        from apps.ventes.domain.encaissements import (
+            recalculer_statut_paiement)
+        from apps.ventes.models import Paiement
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        from apps.ventes.vente_facturation import etat_vente
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                'DEV-VNT41-0388', self.ECHEANCIER)
+        acompte = creer_facture_tranche(devis, self.user, self.company, None)
+        self.assertEqual(acompte.total_ttc, Decimal('15000.00'))
+        Paiement.objects.create(
+            company=self.company, facture=acompte, montant=Decimal('15000'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        recalculer_statut_paiement(acompte)
+        texte = self._texte(acompte)
+        self.assertIn('Livraison du matériel : 29400.00 MAD TTC', texte)
+        self.assertIn('Solde : 4600.00 MAD TTC', texte)
+        self.assertNotIn('Mise en service', texte)
+        self.assertLess(texte.index('Livraison du matériel : 29400.00'),
+                        texte.index('Solde : 4600.00'))
+        lus = [Decimal(m) for m in re.findall(
+            r'(?:Livraison du matériel|Solde) : ([0-9]+\.[0-9]{2}) MAD TTC',
+            texte)]
+        attendus = [Decimal(e['montant_ttc'])
+                    for e in etat_vente(devis)['prochaines_echeances']]
+        self.assertEqual(lus, attendus)
+        self.assertEqual(Decimal('15000.00') + sum(lus), Decimal('49000.00'))
+        materiel = creer_facture_tranche(devis, self.user, self.company, None)
+        self.assertEqual(materiel.total_ttc, Decimal('29400.00'))
+        solde = creer_facture_tranche(devis, self.user, self.company, None)
+        self.assertEqual(solde.total_ttc, Decimal('4600.00'))
+        texte_solde = self._texte(solde)
+        self.assertNotIn('chaines échéances', texte_solde)
+        self.assertIn('Solde : 4600.00 MAD TTC (reste de la vente)',
+                      texte_solde)
+
+
 class FiguresLuesTests(SimpleTestCase):
     """Test-du-test du lecteur : une chaîne sans « Total HT » alors qu'une
     remise est imprimée est vue comme Total HT = Sous-total, et l'oracle

@@ -697,6 +697,19 @@ def situation_vente_pdf(tete, etat):
     }
 
 
+def prochaines_echeances_pdf(part, etat):
+    """VNT41 (D-VNT-6) — « Prochaines échéances » d'une facture de tranche
+    NON dernière : les tranches encore à facturer de la vente, libellé de
+    l'échéancier du devis qui fait foi et TTC projeté par le plan
+    (``etat_vente.prochaines_echeances`` ← ``tranches_a_venir``, la formule
+    de ``next_tranche``) — jamais une date ni un événement inventés. ``[]``
+    (bloc omis) sur la dernière tranche, une facture complète ou quand rien
+    ne reste."""
+    if not part or part['derniere']:
+        return []
+    return list(etat['prochaines_echeances'])
+
+
 def contexte_vente_facture(facture, langue='fr'):
     """Les blocs de la vente du PDF facture (dict à fusionner dans le
     contexte du gabarit) ; une facture sans devis n'en porte aucun. L'état
@@ -708,8 +721,10 @@ def contexte_vente_facture(facture, langue='fr'):
     from apps.ventes.vente_facturation import etat_vente
     tete = devis_de_la_vente(facture.devis)
     etat = etat_vente(tete)
+    part = part_vente_pdf(facture, tete, etat)
     return {'objet_vente': objet_vente_pdf(facture),
-            'part_vente': part_vente_pdf(facture, tete, etat),
+            'part_vente': part,
+            'prochaines_echeances': prochaines_echeances_pdf(part, etat),
             'garanties_vente': garanties_pdf(facture, langue),
             'situation_vente': situation_vente_pdf(tete, etat)}
 

@@ -46,6 +46,7 @@
   'total_facture': 'Total facturé', 'paye_sur_la_vente': 'Payé sur la vente',
   'reste_du_sur_la_vente': 'Reste dû sur la vente',
   'reste_a_facturer': 'Reste à facturer', 'reste_du': 'reste dû',
+  'prochaines_echeances': 'Prochaines échéances',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -499,6 +500,24 @@
       <span>{{ sv.reste_a_facturer_ttc }} MAD</span>
     </div>
     {% endif %}
+  </div>
+  {% endif %}
+
+  {# VNT41 (D-VNT-6) — « Prochaines échéances » d'une tranche NON dernière :
+     libellé de l'échéancier du devis et TTC projeté par le plan
+     (``utils/pdf.prochaines_echeances_pdf``) ; aucune date ni événement. #}
+  {% if prochaines_echeances %}
+  <div class="totaux prochaines-echeances" style="width: 360px;">
+    <div class="totaux-row deja-paye-titre">
+      <span>{{ _L('prochaines_echeances') }}</span>
+      <span></span>
+    </div>
+    {% for e in prochaines_echeances %}
+    <div class="totaux-row reglement">
+      <span>{{ _L(e.libelle) }} : {{ e.montant_ttc }} MAD {{ _L('ttc') }}</span>
+      <span></span>
+    </div>
+    {% endfor %}
   </div>
   {% endif %}
 

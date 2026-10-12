@@ -97,6 +97,8 @@ LIBELLES = {
         'reste_du_sur_la_vente': 'Reste dû sur la vente',
         'reste_a_facturer': 'Reste à facturer',
         'reste_du': 'reste dû',
+        # VNT41 — prochaines tranches de la vente.
+        'prochaines_echeances': 'Prochaines échéances',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -162,6 +164,7 @@ LIBELLES = {
         'reste_du_sur_la_vente': 'المتبقي المستحق من البيع',
         'reste_a_facturer': 'المتبقي للفوترة',
         'reste_du': 'المتبقي المستحق',
+        'prochaines_echeances': 'الدفعات المقبلة',
     },
 }
 
