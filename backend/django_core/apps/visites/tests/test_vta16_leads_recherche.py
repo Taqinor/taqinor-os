@@ -118,6 +118,13 @@ class LeadsRechercheTests(TestCase):
         resp = auth(self.bureau).get(URL, {'q': 'Zahra', 'limit': 3})
         self.assertEqual(len(resp.data['results']), 3)
 
+    def test_limite_non_entiere_refusee_en_400(self):
+        # ENF11 — ``limit=null`` était accepté en silence (200).
+        for brut in ('null', 'abc', '2.5'):
+            resp = auth(self.bureau).get(URL, {'q': 'Zahra', 'limit': brut})
+            self.assertEqual(resp.status_code, 400, (brut, resp.data))
+            self.assertIn('limit', resp.data)
+
     def test_lead_supprime_est_hors_resultat(self):
         supprime = Lead.objects.create(company=self.company, nom='Ben Corbeille')
         supprime.soft_delete(self.bureau)

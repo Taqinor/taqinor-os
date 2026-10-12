@@ -619,3 +619,22 @@ class ListeFiltreLeadTests(VisiteTerrainBase):
         resp = self.api.get('/api/django/visites/visites/', {'lead': 'abc'})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(resp.data), 1)
+
+
+class ModificationSansLeadTests(VisiteTerrainBase):
+    """ENF11 — le dossier (lead) d'une visite est figé : le PUT ne l'exige pas."""
+
+    def test_put_sans_lead_met_a_jour_les_notes(self):
+        visite_id = self.creer_visite()
+        resp = self.api.put(f'/api/django/visites/visites/{visite_id}/',
+                            {'notes': 'Portail vert'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['notes'], 'Portail vert')
+        self.assertEqual(resp.data['lead'], self.lead.id)
+
+    def test_put_avec_un_autre_lead_reste_refuse(self):
+        visite_id = self.creer_visite()
+        autre = Lead.objects.create(company=self.company, nom='Autre dossier')
+        resp = self.api.put(f'/api/django/visites/visites/{visite_id}/',
+                            {'lead': autre.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)

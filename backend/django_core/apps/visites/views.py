@@ -36,6 +36,7 @@ from authentication.permissions import HasPermissionOrLegacy
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
+from . import qualification as vocabulaire_qualification
 from . import selectors, services, visite_checklist as checklist
 from .models import VisiteMedia, VisiteTerrain
 from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
@@ -89,6 +90,39 @@ _VISITE_CONTEXTE = inline_serializer('VisiteTerrainContexte', {
 })
 
 
+def _schema_qualification():
+    """ENF11 — le corps RÉEL de ``qualification`` (vocabulaire fermé de
+    ``visites.qualification``, source unique) : les six champs à choix sont
+    obligatoires, ``devis_details`` l'est dès que le devis est « à modifier »
+    ou « nouveau ». Avant : ``OBJECT`` nu, donc ``{}`` « conforme » refusé."""
+    choix = vocabulaire_qualification.CHOIX
+    proprietes = {
+        champ: {'type': 'string', 'enum': list(valeurs)}
+        for champ, valeurs in choix.items()}
+    proprietes['devis_details'] = {
+        'type': 'string',
+        'maxLength': vocabulaire_qualification.MAX_DEVIS_DETAILS}
+    proprietes['conseil_closing'] = {
+        'type': 'string',
+        'maxLength': vocabulaire_qualification.MAX_CONSEIL}
+    a_reprendre = list(vocabulaire_qualification.DEVIS_A_REPRENDRE)
+    sans_reprise = [valeur for valeur in choix['devis']
+                    if valeur not in a_reprendre]
+    requis = list(choix)
+    return {
+        'type': 'object',
+        'properties': proprietes,
+        'required': requis,
+        'oneOf': [
+            {'properties': {'devis': {'enum': sans_reprise}}},
+            {'properties': {'devis': {'enum': a_reprendre},
+                            'devis_details': {'type': 'string',
+                                              'minLength': 1}},
+             'required': ['devis_details']},
+        ],
+    }
+
+
 class MesuresSerializer(serializers.Serializer):
     categorie = serializers.CharField()
     valeurs = serializers.DictField()
@@ -116,6 +150,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     queryset = VisiteTerrain.objects.select_related('lead', 'commercial').all()
     serializer_class = VisiteTerrainSerializer
     parser_classes = [JSONParser]
+    # ENF11 — `list` rend un tableau NU (``selectors.ligne_visite_terrain``),
+    # jamais l'enveloppe count/results : sans cette ligne le schéma annonçait
+    # PaginatedObjectList et chaque GET était un « Response violates schema ».
+    pagination_class = None
     read_permission = 'visites_voir'
 
     #: ALEA24 — code d'écriture EXPLICITE pour CHAQUE action d'écriture du
@@ -472,7 +510,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # la journée de son équipe, il ne qualifie pas un client qu'il n'a pas vu.
     # Gelée par VT3 comme toute autre écriture.
 
-    @extend_schema(request=OpenApiTypes.OBJECT, responses=_VISITE_CONTEXTE)
+    @extend_schema(request=_schema_qualification(),
+                   responses=_VISITE_CONTEXTE)
     @action(detail=True, methods=['post'], url_path='qualification')
     def qualification(self, request, pk=None):
         """Enregistre la qualification de fin de visite (vocabulaire fermé)."""
@@ -751,9 +790,18 @@ class LeadsRechercheView(APIView):
     def get(self, request):
         from apps.crm import selectors as crm_selectors
 
+        # ENF11 — ``limit`` est un entier : « null », « abc » → 400 nommant
+        # le paramètre (avant, la valeur était ignorée et la réponse 200).
+        limite = request.query_params.get('limit')
+        if limite not in (None, ''):
+            try:
+                int(limite)
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    {'limit': 'Un entier est attendu (1 à 50).'})
         # ACRM30 — bornée aux leads visibles de l'appelant.
         return Response({'results': crm_selectors.rechercher_leads_minimal(
             request.user.company,
             request.query_params.get('q'),
-            limit=request.query_params.get('limit') or 10,
+            limit=limite or 10,
             user=request.user)})
