@@ -1704,9 +1704,7 @@ from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
     jours_impaye_facture,
     montants_factures_par_devis,
     carnet_commande_par_mois,
-    factures_via_bon_commande,
     factures_du_devis,
-    devis_deja_facture,
     kpis_factures,
 )
 

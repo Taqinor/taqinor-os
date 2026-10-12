@@ -38,7 +38,7 @@ VENTES = Path(__file__).resolve().parent.parent
 
 #: Texte des tâches SPL143-SPL147 (se repérer par NOM de symbole).
 PAR_PROPRIETAIRE = {
-    # SPL143 → selectors_facturation.py (29 fonctions + _SCORE_BANDS)
+    # SPL143 → selectors_facturation.py (29 fonctions + _SCORE_BANDS ; VNT105 : −2)
     'facturation': [
         'compter_factures', 'factures_echues', 'get_facture_scoped',
         'releve_client_portail', 'releve_client_pdf_bytes',
@@ -51,8 +51,7 @@ PAR_PROPRIETAIRE = {
         'acompte_paye_pour_devis', 'etat_recouvrement_client',
         'analyse_facturation', 'devis_a_facturer', 'tranche_facturee',
         'jours_impaye_facture', 'montants_factures_par_devis',
-        'carnet_commande_par_mois', 'factures_via_bon_commande',
-        'factures_du_devis', 'devis_deja_facture', 'kpis_factures',
+        'carnet_commande_par_mois', 'factures_du_devis', 'kpis_factures',
     ],
     # SPL144 → selectors_calepinage.py (11 + 2 constantes)
     'calepinage': [
@@ -158,7 +157,8 @@ class SurfaceSelectorsVentes(SimpleTestCase):
     def test_comptes_par_proprietaire(self):
         comptes = {p: len(n) for p, n in PAR_PROPRIETAIRE.items()}
         self.assertEqual(comptes, {
-            'facturation': 30, 'calepinage': 13, 'cadence': 10,
+            # VNT105 : factures_via_bon_commande et devis_deja_facture retirés.
+            'facturation': 28, 'calepinage': 13, 'cadence': 10,
             'publicite': 9, 'portail': 8, 'stock': 6})
         tous = [n for noms in PAR_PROPRIETAIRE.values() for n in noms]
         self.assertEqual(len(tous), len(set(tous)))

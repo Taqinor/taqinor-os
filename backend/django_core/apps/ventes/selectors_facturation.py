@@ -755,20 +755,8 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
 # tranches via ``devis.factures``, qui ne voit AUCUNE facture de la chaîne BC.
 # Un devis converti en BC puis facturé pouvait donc être facturé une SECONDE
 # fois par l'échéancier — le client recevait deux fois la même facture, jusqu'à
-# 200 %. Ces trois selectors sont la source unique consultée par les deux
-# portes.
-
-def factures_via_bon_commande(devis, *, inclure_annulees=False):
-    """Factures de la chaîne BON DE COMMANDE de ce devis (queryset).
-
-    C'est le trou : que ``Facture.devis`` soit réservé à l'échéancier est
-    assumé — ce qui ne l'était pas, c'est que RIEN ne regardait
-    ``bon_commande__devis``."""
-    from .models import Facture
-    qs = Facture.objects.filter(bon_commande__devis=devis)
-    if not inclure_annulees:
-        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
-    return qs
+# 200 %. VNT105 — ``factures_du_devis`` (quatre portes) est la source unique
+# de la garde ATOT2 ; la vente se lit par ``vente_facturation``.
 
 
 def factures_du_devis(devis, *, inclure_annulees=False):
@@ -788,19 +776,6 @@ def factures_du_devis(devis, *, inclure_annulees=False):
     if not inclure_annulees:
         qs = qs.exclude(statut=Facture.Statut.ANNULEE)
     return qs.distinct()
-
-
-def devis_deja_facture(devis):
-    """LE prédicat partagé : ce devis est-il déjà (partiellement) facturé ?
-
-    Appelé depuis LES DEUX portes — ``bon_commande.creer_facture`` (qui refuse
-    en 400 si des tranches d'échéancier existent) et
-    ``utils.echeancier.creer_facture_tranche`` (qui refuse si la chaîne BC a
-    déjà facturé). Un devis sans facture active renvoie ``False`` : les deux
-    portes restent grandes ouvertes dans le cas normal."""
-    if devis is None:
-        return False
-    return factures_du_devis(devis).exists()
 
 
 class DevisDejaFacture(ValueError):
