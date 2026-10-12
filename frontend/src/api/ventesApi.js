@@ -113,6 +113,13 @@ const ventesApi = {
   // donnée. Contrat : apps/ventes/contract_samples/devis_facturer.json.
   apercuFacturerVente: (devisId) => api.get(`/ventes/devis/${devisId}/facturer/`),
   facturerVente: (devisId, body) => api.post(`/ventes/devis/${devisId}/facturer/`, body),
+  // VNT73 (D-VNT-2) — « Prix négocié » sur une vente acceptée : corps exactement UN de
+  // `prix_ttc` / `remise_pct` (TEXTE) + `mode` apercu|appliquer (+ `confirmer_avoir`).
+  // 200 aperçu / 201 application ; « Faire signer l'avenant » → { share_link, tache_id }.
+  // Contrat : apps/ventes/contract_samples/devis_prix_negocie.json.
+  prixNegocie: (devisId, body) => api.post(`/ventes/devis/${devisId}/prix-negocie/`, body),
+  demanderSignatureAvenant: (devisId) =>
+    api.post(`/ventes/devis/${devisId}/avenant/demander-signature/`),
   // ADOC131 (D-ADOC-4) — « Révoquer le lien client » : coupe immédiatement le
   // lien public (proposition ET suivi, même jeton). → { revoques, revoque_le }.
   revoquerLienPublic: (devisId) =>
