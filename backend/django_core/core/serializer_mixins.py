@@ -24,6 +24,8 @@ client ne puisse jamais forcer la société, le propriétaire ou un flag privil�
 """
 from __future__ import annotations
 
+from django.core.exceptions import FieldDoesNotExist
+
 
 def _user_may_see(user, permission_code) -> bool:
     """Vrai si ``user`` peut voir un champ gardé par ``permission_code``.
@@ -216,7 +218,7 @@ def _chaine_nullable(modele, source) -> bool:
             return False
         try:
             champ = courant._meta.get_field(partie)
-        except Exception:  # noqa: BLE001 - propriété / méthode : non résoluble
+        except FieldDoesNotExist:  # propriété / méthode : non résoluble
             return False
         if not getattr(champ, "concrete", False):
             return False

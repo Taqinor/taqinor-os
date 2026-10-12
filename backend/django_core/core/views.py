@@ -19,7 +19,8 @@ une couche de base (import-linter).
 """
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_serializer, extend_schema_view,
+    inline_serializer,
 )
 from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
@@ -1679,6 +1680,13 @@ class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(run).data)
 
 
+_ETAT_SYSTEME = extend_schema_serializer(many=False)(type(inline_serializer('EtatSysteme', {
+    'global': drf_serializers.CharField(),
+    'services': drf_serializers.ListField(child=drf_serializers.DictField()),
+    'incidents': drf_serializers.ListField(child=drf_serializers.DictField()),
+})))
+
+
 class SystemStatusViewSet(viewsets.ViewSet):
     """FG397 — page d'état / santé système (services + incidents récents).
 
@@ -1693,8 +1701,9 @@ class SystemStatusViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     # ERR-ENF11-FUZZ-CORE — UN objet (global/services/incidents) : un
-    # serializer sur l'action ``list`` était publié en TABLEAU de cet objet.
-    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    # serializer sur l'action ``list`` était publié en TABLEAU de cet objet ;
+    # ``many=False`` le publie tel quel (forme réelle, jamais OBJECT vide).
+    @extend_schema(responses={200: _ETAT_SYSTEME})
     def list(self, request):
         from . import health
         services = health.check_services()
