@@ -25,6 +25,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.champs_stricts import drapeau_ou_400
 from core.selectors import get_company_object
 
 from .models import (
@@ -322,17 +323,21 @@ class ActivityViewSet(viewsets.ModelViewSet):
         # même admin/superviseur : on l'exclut sauf pour son créateur.
         qs = qs.exclude(
             models.Q(personnelle=True) & ~models.Q(created_by=self.request.user))
-        model = self.request.query_params.get('model')
-        oid = self.request.query_params.get('id')
+        params = self.request.query_params
+        model, oid = params.get('model'), params.get('id')
+        # CI #956 (fuzz) — drapeaux déclarés ``enum=['1']`` : une autre valeur
+        # (``personnelle=AAA``) est un 400, plus un « non » silencieux.
+        personnelle = drapeau_ou_400(params.get('personnelle'), 'personnelle')
+        ouvertes = drapeau_ou_400(params.get('open'), 'open')
         if model and oid:
             try:
                 ct, _ = resolve_target(model, oid, _company(self.request))
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
-        elif self.request.query_params.get('personnelle') == '1':
+        elif personnelle:
             qs = qs.filter(personnelle=True, created_by=self.request.user)
-        if self.request.query_params.get('open') == '1':
+        if ouvertes:
             qs = qs.filter(done=False)
         return qs
 
@@ -1277,7 +1282,7 @@ class FollowerViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
-        if self.request.query_params.get('mine') == '1':
+        if drapeau_ou_400(self.request.query_params.get('mine'), 'mine'):
             qs = qs.filter(user=self.request.user)
         return qs
 
