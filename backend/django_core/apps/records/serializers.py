@@ -7,6 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
+from core.champs_stricts import ChampsStrictsSansDecimalMixin
 
 from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
@@ -87,7 +88,8 @@ def activity_state(due_date, done):
     return 'upcoming'
 
 
-class ActivityTypeSerializer(SameCompanyFKSerializerMixin,
+class ActivityTypeSerializer(ChampsStrictsSansDecimalMixin,
+                             SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC6 — l'enchaînement ne désigne jamais le type d'une autre société.
     same_company_fields = ('type_suivant',)
@@ -101,15 +103,20 @@ class ActivityTypeSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['est_systeme']
 
 
-class ActivitySerializer(SameCompanyFKSerializerMixin,
+class ActivitySerializer(ChampsStrictsSansDecimalMixin,
+                         SameCompanyFKSerializerMixin,
                          serializers.ModelSerializer):
     # ASEC6 — utilisateur assigné et type bornés à la société de la requête
     # (primitive AUD601/ACAL298 : un id étranger = « objet inexistant », 400).
     same_company_fields = ('assigned_to', 'activity_type')
+    # ERR-ENF11-FUZZ-RECORDS — ``activity_type`` est NULLABLE (entrées de
+    # chatter, ARC8) : sans ``allow_null`` DRF OMETTAIT ces deux clés (champ
+    # en lecture seule à source nulle) alors que le schéma les déclare
+    # requises -> « Response violates schema » sur toute liste en contenant.
     activity_type_nom = serializers.CharField(
-        source='activity_type.nom', read_only=True)
+        source='activity_type.nom', read_only=True, allow_null=True)
     activity_type_icone = serializers.CharField(
-        source='activity_type.icone', read_only=True)
+        source='activity_type.icone', read_only=True, allow_null=True)
     assigned_to_nom = serializers.CharField(
         source='assigned_to.username', read_only=True, default=None, allow_null=True)
     state = serializers.SerializerMethodField()
@@ -289,7 +296,7 @@ class AttachmentSerializer(serializers.ModelSerializer):
         return f'/api/django/records/attachments/{obj.id}/download/'
 
 
-class CommentSerializer(serializers.ModelSerializer):
+class CommentSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG7 — Commentaire générique avec @mentions."""
     author_username = serializers.CharField(
         source='author.username', read_only=True, default=None, allow_null=True)
@@ -321,7 +328,7 @@ class CommentSerializer(serializers.ModelSerializer):
         return f'{ct.app_label}.{ct.model}'
 
 
-class TagSerializer(serializers.ModelSerializer):
+class TagSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG9 — Tag du vocabulaire partagé."""
     class Meta:
         model = Tag
@@ -330,7 +337,8 @@ class TagSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
-class TaggedItemSerializer(SameCompanyFKSerializerMixin,
+class TaggedItemSerializer(ChampsStrictsSansDecimalMixin,
+                           SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """FG9 — Association tag ↔ enregistrement."""
     # ENF17 — la création passe par ``get_company_object`` (vue) ; le PUT/PATCH
@@ -345,7 +353,7 @@ class TaggedItemSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id', 'tag_nom', 'tag_couleur', 'object_id', 'created_at']
 
 
-class FollowerSerializer(serializers.ModelSerializer):
+class FollowerSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """XKB34 — abonnement d'un utilisateur à un enregistrement."""
     user_username = serializers.CharField(
         source='user.username', read_only=True, default=None, allow_null=True)

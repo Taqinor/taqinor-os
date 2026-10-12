@@ -60,6 +60,15 @@ class BooleenStrict(serializers.BooleanField):
         return data
 
 
+class EntierStrict(serializers.IntegerField):
+    """Entier JSON réel : ``"5"``, ``5.0`` et ``true`` sont refusés (400)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, int):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
 class ChampsStrictsMixin:
     """Mixin de ``ModelSerializer`` : les champs de modèle texte, booléens et
     décimaux sont générés en version STRICTE (un ``0`` pour un booléen ou un
@@ -72,4 +81,33 @@ class ChampsStrictsMixin:
         models.TextField: ChaineStricte,
         models.BooleanField: BooleenStrict,
         models.DecimalField: DecimalStricte,
+    }
+
+
+class ChampsStrictsSansDecimalMixin:
+    """Variante de ``ChampsStrictsMixin`` SANS les décimaux (lane GED/records/
+    notifications : leurs clients envoient encore des nombres JSON pour
+    ``x``/``y``/``largeur``…) — texte et booléens stricts seulement."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+    }
+
+
+class TypageStrictMixin:
+    """Variante (lane parametres/sav) : champs modèle texte / booléen / ENTIER
+    générés en version stricte (``"5"`` pour un entier → 400) ; ``TextField``
+    et décimaux inchangés. À poser en premier sur un ``ModelSerializer``."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+        models.IntegerField: EntierStrict,
+        models.PositiveIntegerField: EntierStrict,
+        models.SmallIntegerField: EntierStrict,
+        models.PositiveSmallIntegerField: EntierStrict,
     }
