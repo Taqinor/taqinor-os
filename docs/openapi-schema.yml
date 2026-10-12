@@ -8172,7 +8172,7 @@ query_params:
   get /api/django/sav/problemes/regroupements-suggeres/: fenetre_jours seuil
   get /api/django/sav/remedes-defaillance/: archived ordering page page_size search
   get /api/django/sav/reponses-type/: archived canal ordering page page_size search ticket
-  get /api/django/sav/sla-settings/: ordering page page_size search
+  get /api/django/sav/sla-settings/: ordering search
   get /api/django/sav/tickets/: annule categorie client equipe equipement installation ordering ouvert page page_size priorite search statut technicien type
   get /api/django/sav/tickets/{id}/activites/: ordering search
   get /api/django/sav/tickets/{id}/checklist/: ordering search
@@ -8951,7 +8951,7 @@ query_params:
   get /api/v1/sav/problemes/regroupements-suggeres/: fenetre_jours seuil
   get /api/v1/sav/remedes-defaillance/: archived ordering page page_size search
   get /api/v1/sav/reponses-type/: archived canal ordering page page_size search ticket
-  get /api/v1/sav/sla-settings/: ordering page page_size search
+  get /api/v1/sav/sla-settings/: ordering search
   get /api/v1/sav/tickets/: annule categorie client equipe equipement installation ordering ouvert page page_size priorite search statut technicien type
   get /api/v1/sav/tickets/{id}/activites/: ordering search
   get /api/v1/sav/tickets/{id}/checklist/: ordering search
