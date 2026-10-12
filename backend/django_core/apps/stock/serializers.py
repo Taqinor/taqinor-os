@@ -13,6 +13,7 @@ from core.product_roles import (
 )
 
 from .erreurs_achats import ConflitEtat
+from .serializers_retour_maj import RemplaceLignesRetourMixin
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -1378,11 +1379,10 @@ class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
         return value
 
 
-class RetourFournisseurSerializer(SameCompanyFKSerializerMixin,
+class RetourFournisseurSerializer(RemplaceLignesRetourMixin,
+                                  SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):
-    # ASTK2 — fournisseur et BCF d'origine bornés à la société, en création
-    # ET en modification (remplace l'ancien `_validate_company`, création
-    # seule et message propre = oracle d'existence).
+    # ASTK2 — fournisseur/BCF bornés à la société (création ET modification).
     same_company_fields = ('fournisseur', 'bon_commande')
     lignes = LigneRetourFournisseurSerializer(many=True)
     fournisseur_nom = serializers.CharField(
