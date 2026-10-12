@@ -243,10 +243,19 @@ class TestPermissions(TestCase):
         self.assertEqual(pay.status_code, 201, pay.data)
 
     def test_commerciale_cannot_void_invoice(self):
-        api = auth(self.meryem)
-        fid = api.post(
+        # VNT13 — annuler = palier responsable/admin ET un code ventes_* :
+        # le compte hérité « responsable » (meryem) passe désormais ; un vrai
+        # rôle Commercial (codes ventes, palier normal) reste refusé.
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        commerciale = User.objects.create_user(
+            username='commerciale_vnt13', password='x', role_legacy='normal',
+            company=self.company, role=Role.objects.create(
+                company=self.company, nom='Commercial VNT13',
+                permissions=list(COMMERCIAL_PERMISSIONS)))
+        fid = auth(self.meryem).post(
             f'/api/django/ventes/devis/{self.devis.id}/generer-facture/').data['id']
-        r = api.post(f'/api/django/ventes/factures/{fid}/annuler/')
+        r = auth(commerciale).post(f'/api/django/ventes/factures/{fid}/annuler/')
         self.assertEqual(r.status_code, 403)
 
     def test_owner_can_void_invoice(self):

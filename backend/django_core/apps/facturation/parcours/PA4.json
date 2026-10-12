@@ -660,7 +660,7 @@
     "etape": "PA4.11"
    },
    {
-    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.annuler",
+    "source": "backend/django_core/apps/ventes/domain/annulation_facture.py::annuler_facture",
     "etape": "PA4.07"
    }
   ]
