@@ -132,17 +132,26 @@ def desaccepter_devis_du_lead(lead, user, *, motif=''):
     )
     libelle = stages.STAGE_LABELS[stages.SIGNED]
     nb = 0
-    for devis in devis_acceptes_actifs(lead.company, lead_id=lead.pk):
-        try:
-            annuler_acceptation(
-                devis=devis, user=user,
-                motif=motif or f'lead sorti de « {libelle} »')
-        except AnnulationAcceptationBloquee as exc:
-            raise SortieSigneBloquee(
-                f'Impossible de sortir ce lead de « {libelle} » : '
-                f'{exc.message}') from exc
-        nb += 1
-    return nb
+    vus = set()
+    # VNT86 — on boucle : dés-accepter une version peut remettre en vigueur la
+    # précédente de la chaîne ; on s'arrête quand aucune vente n'est en vigueur
+    # (``vus`` borne la boucle si une dés-acceptation n'avait aucun effet).
+    while True:
+        restants = [d for d in devis_acceptes_actifs(
+            lead.company, lead_id=lead.pk) if d.pk not in vus]
+        if not restants:
+            return nb
+        for devis in restants:
+            vus.add(devis.pk)
+            try:
+                annuler_acceptation(
+                    devis=devis, user=user,
+                    motif=motif or f'lead sorti de « {libelle} »')
+            except AnnulationAcceptationBloquee as exc:
+                raise SortieSigneBloquee(
+                    f'Impossible de sortir ce lead de « {libelle} » : '
+                    f'{exc.message}') from exc
+            nb += 1
 
 
 def _playbook_correspond_au_lead(playbook, lead):
@@ -386,26 +395,16 @@ _DEVIS_STATUT_ACCEPTE = 'accepte'
 
 
 def lead_signe_sans_devis_actif(lead) -> bool:
-    """Drapeau DÉRIVÉ (lecture seule) : le lead est à SIGNED mais n'a plus aucun
-    devis accepté actif.
+    """Drapeau DÉRIVÉ (lecture seule) : le lead est à SIGNED mais n'a plus
+    aucune vente en vigueur (VNT86, D-ADEV-1 : le dernier accepté de chaque
+    chaîne de révision, via ``ventes.selectors.devis_signes_en_vigueur``).
 
-    « Actif » = un devis au statut DOCUMENT « accepté » qui n'est pas archivé.
-    Ne modifie RIEN (aucune écriture, aucune migration) : c'est un calcul que
-    l'UI peut badger pour repérer un « signé fantôme ». Renvoie ``False`` dès que
-    le lead n'est pas à SIGNED (rien à signaler hors de l'étape Signé).
-    """
-    if getattr(lead, 'stage', None) != 'SIGNED':
+    Ne modifie RIEN. Renvoie ``False`` dès que le lead n'est pas à SIGNED."""
+    if getattr(lead, 'stage', None) != stages.SIGNED:
         return False
-    qs = lead.devis.filter(statut=_DEVIS_STATUT_ACCEPTE)
-    # Certains devis peuvent être archivés (champ optionnel selon le schéma) —
-    # on les exclut s'il existe, sinon on compte tous les devis acceptés.
-    try:
-        Devis = lead.devis.model
-        if any(f.name == 'is_archived' for f in Devis._meta.get_fields()):
-            qs = qs.filter(is_archived=False)
-    except Exception:
-        pass
-    return not qs.exists()
+    from apps.ventes.selectors import devis_signes_en_vigueur
+    return not devis_signes_en_vigueur(
+        lead.company, lead_ids=[lead.pk]).exists()
 
 
 def signaler_mismatch_signe_sur_refus(devis, user):
