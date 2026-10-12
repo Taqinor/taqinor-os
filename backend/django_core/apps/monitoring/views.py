@@ -65,8 +65,13 @@ READ_ACTIONS = ['list', 'retrieve']
 _PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
 _WINDOW = OpenApiParameter(
     'window_days', OpenApiTypes.INT, required=False, default=365)
-_SINCE = OpenApiParameter('since', OpenApiTypes.DATE, required=False)
-_UNTIL = OpenApiParameter('until', OpenApiTypes.DATE, required=False)
+# ENF11 (api-fuzz) — ``query_params.date_iso`` lit « vide » comme « borne non
+# posée » : le schéma le dit (date ISO ou chaîne vide) au lieu d'annoncer une
+# date seule qu'un ``?until=`` contredit.
+_DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+_SINCE = OpenApiParameter('since', _DATE_OU_VIDE, required=False)
+_UNTIL = OpenApiParameter('until', _DATE_OU_VIDE, required=False)
 # ENF11 (api-fuzz) — ``query_params.identifiant`` refuse 0 et les négatifs :
 # le schéma le dit (``minimum: 1``) au lieu d'annoncer tout entier.
 _IDENTIFIANT = {'type': 'integer', 'minimum': 1}
