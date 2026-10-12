@@ -247,3 +247,14 @@ class GedOperationsLotCorps(drf_serializers.Serializer):
             sous.is_valid(raise_exception=True)
             attrs['params'] = dict(sous.validated_data)
         return attrs
+
+
+def conflit_archivage(document):
+    """Conflit d'ÉTAT de l'archivage légal (409), ou ``None`` : un document en
+    corbeille ou déjà archivé ne s'archive pas — la saisie, elle, est valide."""
+    from .models import ArchivageLegal
+    if document.supprime_le is not None:
+        return "Un document en corbeille ne peut pas être archivé légalement."
+    if ArchivageLegal.objects.filter(document=document).exists():
+        return "Ce document est déjà archivé légalement."
+    return None

@@ -521,3 +521,20 @@ class Enf11FuzzGedCorpsTests(TestCase):
             'libelle': 'x', 'action': 'archiver',
             'documents': [self.doc.pk + 1000]})
         self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_textes_trop_longs_ou_nuls_400_sans_stockage(self):
+        # `nom` > 255 / NUL faisaient lever DataError (500) APRÈS le stockage.
+        fichier = io.BytesIO(b'%PDF-1.4 x')
+        fichier.name = 'a.pdf'
+        for nom in ('x' * 256, 'a' + chr(0)):
+            fichier.seek(0)
+            with mock.patch('apps.ged.views.store_attachment') as stockage:
+                resp = self.api.post(
+                    f'{BASE}documents/televerser/',
+                    {'folder': self.folder.pk, 'nom': nom, 'file': fichier},
+                    format='multipart')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            stockage.assert_not_called()
+        resp = self._post(f'documents/{self.doc.pk}/planifier/', {
+            'libelle': 'x' * 201, 'echeance': '2030-01-01'})
+        self.assertEqual(resp.status_code, 400, resp.content)

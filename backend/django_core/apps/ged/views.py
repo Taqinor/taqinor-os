@@ -49,7 +49,7 @@ from .corps_requete import (
     GedArchiverLegalementCorps, GedClasserApresVenteCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
     GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
-    _pk, _pks, _txt, corps_valide,
+    _pk, _pks, _txt, conflit_archivage, corps_valide,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
@@ -740,6 +740,9 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         (numéro + uploaded_by posés côté serveur via `services.add_version`).
         Le dossier cible est borné à la société courante (404/400 sinon)."""
         company = request.user.company
+        # Textes validés AVANT tout stockage (pas de fichier orphelin sur un 400).
+        nom_saisi = _txt(request.data.get('nom'), 'nom', 255)
+        description = _txt(request.data.get('description'), 'description')
         # 1) dossier cible : borné à la société (jamais un dossier d'autrui).
         folder_id = request.data.get('folder')
         if not folder_id:
@@ -778,11 +781,10 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'file': err},
                             status=status.HTTP_400_BAD_REQUEST)
         # 3) document : nom = saisi ou nom de fichier ; company/créateur serveur.
-        nom = (request.data.get('nom') or meta['filename'] or 'Document').strip()
+        nom = nom_saisi or (meta['filename'] or 'Document').strip()[:255]
         document = Document.objects.create(
             company=company, folder=folder, nom=nom,
-            description=_txt(request.data.get('description'), 'description'),
-            created_by=request.user)
+            description=description, created_by=request.user)
         # GED16 — vérifie que le document n'est pas extrait par un autre
         # utilisateur avant d'ajouter la version (televerser crée doc+v1 en
         # même temps, donc le document n'est jamais verrouillé ici — garde
@@ -929,7 +931,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         try:
             document = services.deposer_photos_assemblees(
                 company=company, folder=folder, images_bytes=images_bytes,
-                nom=_txt(request.data.get('nom'), 'nom'),
+                nom=_txt(request.data.get('nom'), 'nom', 255),
                 description=_txt(request.data.get('description'), 'description'),
                 created_by=request.user)
         except ValueError as exc:
@@ -991,7 +993,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         documents = services.deposer_lot_scans_separe(
             company=company, folder=folder, images=images,
             created_by=request.user,
-            nom_base=(request.data.get('nom_base') or 'Scan').strip())
+            nom_base=_txt(request.data.get('nom_base'), 'nom_base', 200) or 'Scan')
         ser = DocumentSerializer(
             documents, many=True, context={'request': request})
         return Response({
@@ -1843,15 +1845,15 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         # `retain_until` optionnel — date du verrou objet (YYYY-MM-DD).
         corps = corps_valide(GedArchiverLegalementCorps, request)
+        conflit = conflit_archivage(document)
+        if conflit:
+            return Response(
+                {'detail': conflit}, status=status.HTTP_409_CONFLICT)
         try:
             archivage = services.archiver_legalement(
                 document, user=request.user,
                 motif=corps.get('motif', '').strip(),
                 retain_until=corps.get('retain_until'))
-        except services.ArchivageConflitError as exc:
-            # Déjà archivé / en corbeille : conflit d'ÉTAT, pas une saisie fausse.
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -2042,7 +2044,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             resultat = services.fusionner_pdf(
                 documents_ordonnes, cible=cible,
                 company=request.user.company,
-                nom=_txt(request.data.get('nom'), 'nom'),
+                nom=_txt(request.data.get('nom'), 'nom', 255),
                 created_by=request.user)
         except PermissionError as exc:
             # ADOC17 — cible extraite (check-out GED16) par un autre.
@@ -2135,7 +2137,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         Corps : `{"libelle": "<str>", "echeance": "AAAA-MM-JJ", "assigne_a": <id?>}`.
         `company`/`created_by` posés côté serveur. Écriture : responsable/admin."""
         document = self.get_object()
-        libelle = _txt(request.data.get('libelle'), 'libelle')
+        libelle = _txt(request.data.get('libelle'), 'libelle', 200)
         echeance = request.data.get('echeance')
         if not libelle or not echeance:
             return Response(
@@ -2953,14 +2955,15 @@ class ArchivageLegalViewSet(CorpsObjetMixin, TenantMixin,
             return Response(
                 {'document': 'Document inconnu.'},
                 status=status.HTTP_404_NOT_FOUND)
+        conflit = conflit_archivage(document)
+        if conflit:
+            return Response(
+                {'detail': conflit}, status=status.HTTP_409_CONFLICT)
         try:
             archivage = services.archiver_legalement(
                 document, user=request.user,
                 motif=(corps.validated_data.get('motif') or '').strip(),
                 retain_until=corps.validated_data.get('retain_until'))
-        except services.ArchivageConflitError as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -4537,7 +4540,7 @@ class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
         lot = services.creer_lot_envoi_signature(
             company=request.user.company, modele=modele,
             destinataires=destinataires,
-            libelle=_txt(request.data.get('libelle'), 'libelle'),
+            libelle=_txt(request.data.get('libelle'), 'libelle', 200),
             created_by=request.user)
         return Response(
             LotEnvoiSerializer(lot, context={'request': request}).data,
