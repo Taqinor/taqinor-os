@@ -1585,10 +1585,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # ADEV7 — la règle vit dans ``modifiabilite.geste_cycle_permis``
         # (partagée par refuser / envoyer / relancer).
         from apps.ventes.domain.modifiabilite import (
-            ACCEPTER, geste_cycle_permis)
+            ACCEPTER, CODE_VERSION_REMPLACEE, geste_cycle_permis)
         permis, message = geste_cycle_permis(devis, ACCEPTER)
-        if not permis:
-            raise AcceptError(message, conflict=True)
+        if not permis:  # VNT24 — code machine : la vue rend LA forme 409
+            raise AcceptError(message, conflict=True, code=CODE_VERSION_REMPLACEE)
 
         # ADEV11 (C-ADEV-004) — la signature PUBLIQUE (``user=None`` : le
         # jeton authentifie, aucun compte) ne peut jamais accepter un

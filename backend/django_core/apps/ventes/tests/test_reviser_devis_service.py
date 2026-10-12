@@ -157,3 +157,39 @@ class ReviserDevisService(TestCase):
         self.assertEqual(self._post(v1, api=_api(lecteur)).status_code, 403)
         v1.refresh_from_db()
         self.assertTrue(v1.is_active)
+
+    def test_vnt24_meme_409_successeur_tete_pour_les_quatre_gestes(self):
+        """VNT24 — V1 → V2 → V3 : un geste sur V2 (ou V1) rend LA forme 409
+        ``{detail, code: version_remplacee, successeur: {id, reference}}``
+        où ``successeur`` est la TÊTE (V3), jamais le successeur direct."""
+        v1 = self._devis()
+        r = self._post(v1)
+        self.assertEqual(r.status_code, 201, r.content)
+        v2 = Devis.objects.get(pk=r.data['id'])
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
+        r = self._post(v2)
+        self.assertEqual(r.status_code, 201, r.content)
+        v3 = Devis.objects.get(pk=r.data['id'])
+        tete = {'id': v3.id, 'reference': v3.reference}
+        for version in (v1, v2):
+            for action, corps in (('accepter', {'nom': 'Client'}),
+                                  ('reviser', None), ('refuser', None),
+                                  ('share-link', {'envoi': True})):
+                with self.subTest(version=version.version, action=action):
+                    r = self.api.post(
+                        f'/api/django/ventes/devis/{version.id}/{action}/',
+                        corps or {}, format='json')
+                    self.assertEqual(r.status_code, 409, r.content)
+                    corps_409 = r.json()
+                    self.assertEqual(corps_409['code'], 'version_remplacee')
+                    self.assertEqual(corps_409['successeur'], tete)
+                    self.assertIn(v3.reference, corps_409['detail'])
+        for version in (v1, v2):
+            version.refresh_from_db()
+            self.assertFalse(version.is_active)
+            self.assertNotEqual(version.statut, Devis.Statut.ACCEPTE)
+
+    def test_vnt24_brouillon_porte_un_code(self):
+        r = self._post(self._devis(Devis.Statut.BROUILLON))
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.data['code'], 'brouillon')
