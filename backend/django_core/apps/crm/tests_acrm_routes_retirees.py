@@ -91,6 +91,12 @@ class RoutesRetireesTests(TestCase):
             with self.subTest(segment=segment):
                 self._assert_404_pour_tous(f'clients/segments/?segment={segment}')
 
+    def test_engagement_bulk_404(self):
+        """Route sans écran retirée (D-ACRM-6) : ``clients/engagement-bulk/``
+        répond 404 à tous ; le score d'un client reste servi par
+        ``clients/<id>/engagement/``."""
+        self._assert_404_pour_tous('clients/engagement-bulk/')
+
     def test_les_survivants_repondent_comme_avant(self):
         """L'attribution d'un lead et les comptes dormants restent servis."""
         _defi, lead = self._fixture_iv()

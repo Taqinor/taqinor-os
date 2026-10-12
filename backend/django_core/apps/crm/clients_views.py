@@ -582,8 +582,7 @@ class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
 #: ACRM3 — les LECTURES de l'annuaire clients (en plus de ``READ_ACTIONS``) :
 #: elles exigent ``crm_voir`` ou le code de lecture d'un module consommateur.
 CLIENT_LECTURE_ACTIONS = [
-    'documents', 'search', 'dormants', 'engagement', 'engagement_bulk',
-    'mon_portefeuille',
+    'documents', 'search', 'dormants', 'engagement', 'mon_portefeuille',
 ]
 
 
@@ -672,7 +671,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         # données propres) : ouverte à tout rôle authentifié, comme `list`.
         # Ce get_permissions prime sur le permission_classes de l'action —
         # NTCRM14/15/16/29 : `dormants`/`relancer_dormance`/`engagement`/
-        # `engagement_bulk`/`mon_portefeuille` sont des LECTURES (ou une
+        # `mon_portefeuille` sont des LECTURES (ou une
         # relance légère) déjà ouvertes via `permission_classes=[IsAnyRole]`
         # sur leur @action, mais get_permissions() PRIME dessus — sans les
         # lister ICI elles retombaient sur le défaut `IsAdminRole` (403 pour
@@ -1012,15 +1011,6 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from .engagement import engagement_for_client
         client = self.get_object()
         return Response(engagement_for_client(client))
-
-    @extend_schema(responses=sd.liste('CrmEngagementClient'))
-    @action(detail=False, methods=['get'], url_path='engagement-bulk',
-            permission_classes=[IsAnyRole])
-    def engagement_bulk(self, request):
-        """NTCRM16 — Score d'engagement multi-signaux pour la liste (bulk)."""
-        from .engagement import engagement_bulk as _engagement_bulk
-        qs = self.get_queryset()
-        return Response(_engagement_bulk(list(qs)))
 
     @extend_schema(responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='mon-portefeuille',

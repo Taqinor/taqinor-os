@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4826, operations: 7586, components: 3383}
+counts: {paths: 4824, operations: 7584, components: 3383}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -910,7 +910,6 @@ operations:
 - get /api/django/crm/clients/ -> django_crm_clients_list
 - post /api/django/crm/clients/ -> django_crm_clients_create
 - get /api/django/crm/clients/dormants/ -> django_crm_clients_dormants_retrieve
-- get /api/django/crm/clients/engagement-bulk/ -> django_crm_clients_engagement_bulk_list
 - post /api/django/crm/clients/export-xlsx/ -> django_crm_clients_export_xlsx_create
 - get /api/django/crm/clients/mon-portefeuille/ -> django_crm_clients_mon_portefeuille_retrieve
 - get /api/django/crm/clients/search/ -> django_crm_clients_search_retrieve
@@ -4742,7 +4741,6 @@ operations:
 - get /api/v1/crm/clients/ -> v1_crm_clients_list
 - post /api/v1/crm/clients/ -> v1_crm_clients_create
 - get /api/v1/crm/clients/dormants/ -> v1_crm_clients_dormants_retrieve
-- get /api/v1/crm/clients/engagement-bulk/ -> v1_crm_clients_engagement_bulk_list
 - post /api/v1/crm/clients/export-xlsx/ -> v1_crm_clients_export_xlsx_create
 - get /api/v1/crm/clients/mon-portefeuille/ -> v1_crm_clients_mon_portefeuille_retrieve
 - get /api/v1/crm/clients/search/ -> v1_crm_clients_search_retrieve
@@ -7772,7 +7770,6 @@ query_params:
   get /api/django/crm/canaux/: ordering page page_size search
   get /api/django/crm/clients/: ordering page page_size search
   get /api/django/crm/clients/dormants/: seuil
-  get /api/django/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/django/crm/clients/search/: q
   get /api/django/crm/concurrents-perte/: lead ordering page page_size search
   get /api/django/crm/deals-enregistres/: ordering page page_size search
@@ -8553,7 +8550,6 @@ query_params:
   get /api/v1/crm/canaux/: ordering page page_size search
   get /api/v1/crm/clients/: ordering page page_size search
   get /api/v1/crm/clients/dormants/: seuil
-  get /api/v1/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/v1/crm/clients/search/: q
   get /api/v1/crm/concurrents-perte/: lead ordering page page_size search
   get /api/v1/crm/deals-enregistres/: ordering page page_size search
