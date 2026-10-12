@@ -153,3 +153,53 @@ class AvalFinancierRevision(TestCase):
         self.assertEqual(deal.montant_commission_du,
                          (ht_v2 * Decimal('5.00') / 100).quantize(
                              Decimal('0.01')))
+
+
+@mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
+@mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
+class AvenantDeSurDevisAccepted(TestCase):
+    """VNT51 — ``devis_accepted`` porte ``avenant_de`` = le prédécesseur de
+    révision ACCEPTÉ (sélecteur ``predecesseur_accepte``, LA lecture),
+    ``None`` pour une première vente ou la V2 d'un devis refusé/expiré."""
+
+    setUp = AvalFinancierRevision.setUp
+    _accepter = AvalFinancierRevision._accepter
+    _reviser_prix = AvalFinancierRevision._reviser_prix
+
+    def _capter(self):
+        from core.events import devis_accepted
+        recus = []
+
+        def _recepteur(sender, devis, **kwargs):
+            recus.append((devis.pk, kwargs.get('avenant_de', 'ABSENT')))
+        devis_accepted.connect(_recepteur, weak=False, dispatch_uid='vnt51')
+        self.addCleanup(devis_accepted.disconnect, dispatch_uid='vnt51')
+        return recus
+
+    def test_premiere_vente_avenant_de_none(self, *_):
+        recus = self._capter()
+        self._accepter(self.v1)
+        self.assertEqual(recus, [(self.v1.pk, None)])
+
+    def test_v2_d_un_accepte_avenant_de_v1(self, *_):
+        from apps.ventes.selectors import predecesseur_accepte
+        self.v1 = self._accepter(self.v1)
+        recus = self._capter()
+        v2 = self._accepter(self._reviser_prix('7000'))
+        self.assertEqual(recus, [(v2.pk, self.v1.pk)])
+        self.assertEqual(predecesseur_accepte(v2).pk, self.v1.pk)
+
+    def _v2_apres(self, statut):
+        from apps.ventes.selectors import predecesseur_accepte
+        Devis.objects.filter(pk=self.v1.pk).update(statut=statut)
+        self.v1.refresh_from_db()
+        recus = self._capter()
+        v2 = self._accepter(self._reviser_prix('7000'))
+        self.assertEqual(recus, [(v2.pk, None)])
+        self.assertIsNone(predecesseur_accepte(v2))
+
+    def test_v2_d_un_refuse_avenant_de_none(self, *_):
+        self._v2_apres(Devis.Statut.REFUSE)
+
+    def test_v2_d_un_expire_avenant_de_none(self, *_):
+        self._v2_apres(Devis.Statut.EXPIRE)

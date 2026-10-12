@@ -1274,8 +1274,11 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
         activity.log_devis_refusal(
             soeur, user, 'variante non retenue', date_acc)
 
-    devis_accepted.send(
-        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+    # VNT51 — ``avenant_de`` : le prédécesseur de révision accepté (ou None).
+    from apps.ventes.selectors import predecesseur_accepte
+    avenant = predecesseur_accepte(devis)
+    devis_accepted.send(sender=Devis, devis=devis, user=user, ancien_statut=ancien,
+                        avenant_de=getattr(avenant, 'pk', None))
 
 
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
