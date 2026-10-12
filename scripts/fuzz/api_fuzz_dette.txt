@@ -1716,3 +1716,5 @@ API rejected schema-compliant request|POST /api/django/reporting/saved-reports/
 Response violates schema|PATCH /api/django/reporting/kpi-alertes/{id}/
 Server error|POST /api/django/reporting/approbations-en-attente/decider/
 Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
+# VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
+API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
