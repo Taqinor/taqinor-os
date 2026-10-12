@@ -78,6 +78,16 @@ class LienPaiementTests(TestCase):
         from apps.ventes.models import PaymentLink
         return list(PaymentLink.objects.filter(facture=self.facture))
 
+    # ENF11 — constructeur unique des liens clients publics (AFAC94).
+    def test_public_url_absolu_ou_relatif_en_dernier_recours(self):
+        from apps.ventes.services import public_url
+        chemin = '/api/django/public/document/abc/'
+        with override_settings(PUBLIC_BASE_URL='https://erp.example.ma/'):
+            self.assertEqual(public_url(chemin),
+                             'https://erp.example.ma' + chemin)
+        with override_settings(PUBLIC_BASE_URL=''):
+            self.assertEqual(public_url(chemin), chemin)
+
     # (1) ─────────────────────────────────────────────────────────────────
     def test_pay_url_absolu(self):
         with override_settings(PUBLIC_BASE_URL='https://erp.example.ma'):
