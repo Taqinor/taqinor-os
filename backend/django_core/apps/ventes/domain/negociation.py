@@ -7,6 +7,15 @@ vigueur (``superseded_by`` — une variante, sœur du même groupe
 ``version_parent``, est une autre chaîne). Rien n'est écrit (règle #4) : la
 garde lève avant toute bascule de statut, sous le verrou d'``accept_devis``.
 
+VNT58 — ``apercu_prix_negocie`` (lecture PURE, rien n'est écrit) : contrôles
+d'entrée, solveur de remise (``noyau_totaux.remise_pour_ttc``, VNT49), effets
+financiers LUS sur ``vente_facturation.etat_vente`` (aucune 9e somme).
+
+VNT59 — ``appliquer_prix_negocie`` : V2 créée ET acceptée en un geste (canal
+``avenant_negocie`` : ni signature, ni PDF scellé, ni e-mail, ni CAPI —
+``effets_apres_acceptation``), brouillons de la vente retirés (annulés, jamais
+supprimés), rattachement STRICT (tout ou rien).
+
 Ordre de chargement : ce module importe ``cycle_vie`` (``AcceptError``) ;
 ``cycle_vie`` ne l'importe qu'à l'APPEL (import fonction-local), jamais au
 chargement — aucun cycle.
@@ -104,14 +113,15 @@ def _vide(valeur):
     return valeur is None or str(valeur).strip() == ''
 
 
-def _lignes_option(devis):
+def _lignes_option(devis, option=None):
     """Les lignes de l'option retenue (UNE villa) — celles que la chaîne
-    canonique (``option_totaux``) met en prix."""
+    canonique (``option_totaux``) met en prix ; ``option`` impose l'option
+    (la V2 d'un avenant suit l'option ACCEPTÉE de la V1)."""
     from apps.ventes.utils.options import (
         filter_lines_for_option, has_two_options, lignes_avec_produit,
         option_effective)
     lignes = list(lignes_avec_produit(devis))
-    option = option_effective(devis)
+    option = option if option is not None else option_effective(devis)
     if option and has_two_options(devis):
         lignes = filter_lines_for_option(lignes, option)
     return lignes
@@ -235,3 +245,127 @@ def apercu_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user=None,
                            'montant': _txt(avoir)},
         'reste_a_facturer': _txt(prix - emis if prix > emis else 0),
     }
+
+
+# ── VNT59 — appliquer « Prix négocié » (un geste, tout ou rien) ──────────────
+
+#: Canal d'acceptation de l'avenant négocié (D-VNT-2) : aucune signature,
+#: aucun PDF scellé, aucun e-mail, aucun CAPI.
+CANAL_AVENANT_NEGOCIE = 'avenant_negocie'
+
+
+def effets_apres_acceptation(devis, *, user, lignes=None, ip=None,
+                             user_agent='', canal=''):
+    """Les entrées-sorties d'APRÈS le commit d'``accept_devis`` (déplacées,
+    VNT59) : PDF scellé (QJ22), rafraîchissement ``fichier_pdf`` (QX9),
+    e-mails d'acceptation (QJ10), CAPI SignedQuote (QJ9/VNT52). Best-effort,
+    jamais bloquantes. Lues sur ``cycle_vie`` à l'appel : un ``mock.patch``
+    posé sur ``cycle_vie._store_signed_pdf`` / ``_send_acceptance_emails``
+    reste honoré. L'avenant négocié (``CANAL_AVENANT_NEGOCIE``) n'en a AUCUN."""
+    if canal == CANAL_AVENANT_NEGOCIE:
+        return
+    from apps.ventes.domain import capi_signee
+    _cycle_vie._store_signed_pdf(devis=devis)
+    try:
+        devis.refresh_from_db(fields=['fichier_pdf'])
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    try:
+        _cycle_vie._send_acceptance_emails(devis=devis, user=user,
+                                           lignes=lignes)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+    try:
+        capi_signee.emettre_signed_quote_vente(
+            devis=devis, ip=ip, user_agent=user_agent)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
+def _creer_v2(v1, user):
+    """« Réviser » sous le geste ; un double clic (V1 déjà remplacée) rend
+    LA forme 409 ``version_remplacee`` (VNT24, ``successeur`` = tête)."""
+    from apps.ventes.domain.revision import RevisionError, reviser_devis
+    try:
+        return reviser_devis(v1, user=user)
+    except RevisionError as exc:
+        extra = ({'successeur': exc.successeur}
+                 if exc.code == 'version_remplacee' else {})
+        raise PrixNegocieErreur(exc.code or 'statut', exc.message, 409,
+                                **extra) from exc
+
+
+def _poser_remise(v2, v1, prix, n):
+    """La remise la plus ronde qui rend ``prix`` sur les lignes de la V2
+    (option de la V1), écrite sur la V2 BROUILLON puis VÉRIFIÉE au centime
+    sur la chaîne canonique — jamais un prix approché."""
+    from decimal import Decimal
+    from apps.ventes.utils.options import option_totaux
+    option = v1.option_acceptee or ''
+    remise = _solveur(v2, _lignes_option(v2, option), prix, n)
+    v2.remise_globale = remise
+    v2.save(update_fields=['remise_globale'])
+    if Decimal(str(option_totaux(v2, option=option)['ttc'])) != prix:
+        raise PrixNegocieErreur(
+            'prix_inatteignable', 'Ce prix ne peut pas être atteint exactement.',
+            prix_atteignables=[])
+    return remise
+
+
+def _accepter_avenant(v2, v1, user):
+    """``accept_devis`` canal ``avenant_negocie`` ; ses refus deviennent des
+    ``PrixNegocieErreur`` (409 ``vente_active_existante`` avec la vente)."""
+    nom = (v1.accepte_par_nom or '').strip()
+    try:
+        return _cycle_vie.accept_devis(
+            devis=v2, user=user, idempotent_reaccept=False,
+            nom=f'{nom} — avenant négocié' if nom else 'Avenant négocié',
+            option=v1.option_acceptee or '', canal=CANAL_AVENANT_NEGOCIE)
+    except VenteActiveExistante as exc:
+        raise PrixNegocieErreur(exc.code, exc.message, 409,
+                                vente_active=exc.vente_active) from exc
+    except _cycle_vie.AcceptError as exc:
+        raise PrixNegocieErreur(exc.code or 'statut', exc.message,
+                                409 if exc.conflict else 400) from exc
+
+
+def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
+                           confirmer_avoir=False):
+    """VNT59 (D-VNT-2) — « Prix négocié » sur une vente ACCEPTÉE, en UN geste
+    et en UNE transaction (tout ou rien) : contrôles de l'aperçu (VNT58),
+    ``reviser_devis`` → remise (solveur VNT49, vérifiée) → ``accept_devis``
+    canal ``avenant_negocie`` (garde « une vente par lead » VNT54 comprise ;
+    ``accepte_par_nom`` « … — avenant négocié ») → brouillons de la vente
+    ANNULÉS par ``retirer_brouillons_de_la_vente`` (jamais supprimés) →
+    ``rattacher_aval_financier_revision`` STRICT (un incident annule tout).
+    Aucun statut écrit hors ``accept_devis`` (règle #4). Lève
+    ``PrixNegocieErreur`` (400/409, rien d'écrit) ; rend la forme
+    ``reponse_appliquer_201`` du contrat ``devis_prix_negocie.json``."""
+    from decimal import Decimal
+
+    from django.db import transaction
+
+    from apps.ventes.domain.annulation_facture import (
+        retirer_brouillons_de_la_vente)
+    from apps.ventes.domain.revision import rattacher_aval_financier_revision
+    from apps.ventes.multivilla import nombre_proprietes
+
+    apercu = apercu_prix_negocie(devis, prix_ttc=prix_ttc,
+                                 remise_pct=remise_pct, user=user,
+                                 confirmer_avoir=confirmer_avoir)
+    prix = Decimal(apercu['total_ttc'])
+    n = max(int(nombre_proprietes(devis) or 1), 1)
+    with transaction.atomic():
+        v2 = _creer_v2(devis, user)
+        remise = _poser_remise(v2, devis, prix, n)
+        v2 = _accepter_avenant(v2, devis, user)
+        annulees = retirer_brouillons_de_la_vente(
+            v2, user=user, motif=f'Prix négocié — remplacé par {v2.reference}')
+        rattacher_aval_financier_revision(v2, user=user)
+    return dict(apercu, devis_v2={'id': v2.pk, 'reference': v2.reference,
+                                  'version': v2.version},
+                remise_pct=_txt(remise),
+                factures_annulees=[{'reference': f.reference}
+                                   for f in annulees])

@@ -223,6 +223,10 @@ class ApercuPrixNegocie(TestCase):
         Devis.objects.filter(pk=v1.pk).update(
             statut=Devis.Statut.ENVOYE, lead=self.lead)
         v1.refresh_from_db()
+        for cible in ('_store_signed_pdf', '_send_acceptance_emails'):
+            patcher = mock.patch(f'apps.ventes.domain.cycle_vie.{cible}')
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.v1 = accept_devis(devis=v1, user=self.user, nom='Client 367',
                                date_acceptation=date.today(),
                                option='sans_batterie')
@@ -301,3 +305,111 @@ class ApercuPrixNegocie(TestCase):
 
     def test_v2_d_un_expire_avenant_de_none(self, *_):
         self._v2_apres(Devis.Statut.EXPIRE)
+
+
+@mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
+@mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
+class AppliquerPrixNegocie(TestCase):
+    """VNT59 (D-VNT-2) — « Prix négocié » : V2 créée ET acceptée en un geste
+    (canal ``avenant_negocie``), brouillons de la V1 ANNULÉS (jamais
+    supprimés), payé re-pointé, aucune signature / PDF / e-mail / CAPI, tout
+    ou rien."""
+
+    setUp = ApercuPrixNegocie.setUp
+    _tranche = ApercuPrixNegocie._tranche
+
+    def _acompte_paye_et_materiel_brouillon(self):
+        acompte = self._tranche()
+        Facture.objects.filter(pk=acompte.pk).update(
+            statut=Facture.Statut.PAYEE, reference='FAC-VNT59-0001')
+        materiel = self._tranche()
+        Facture.objects.filter(pk=materiel.pk).update(
+            statut=Facture.Statut.BROUILLON,
+            reference=f'BROUILLON-{materiel.pk}')
+        return acompte, materiel
+
+    def _appliquer(self, prix='49000'):
+        from apps.ventes.domain.negociation import appliquer_prix_negocie
+        return appliquer_prix_negocie(Devis.objects.get(pk=self.v1.pk),
+                                      prix_ttc=prix, user=self.user)
+
+    def _erreur(self, prix='49000'):
+        from apps.ventes.domain.negociation import PrixNegocieErreur
+        with self.assertRaises(PrixNegocieErreur) as ctx:
+            self._appliquer(prix)
+        return ctx.exception
+
+    def test_un_geste_v2_acceptee_brouillon_annule_paye_repointe(
+            self, store_pdf, envoyer_mails):
+        from django.core import mail
+        from django.db import transaction
+        from apps.ventes.models import DevisSignature
+        from apps.ventes.selectors import devis_signes_en_vigueur
+        acompte, materiel = self._acompte_paye_et_materiel_brouillon()
+        nb_avoirs = Avoir.objects.count()
+        mail.outbox = []
+        with transaction.atomic():  # appelant englobant : rien ne part
+            r = self._appliquer()
+        v2 = Devis.objects.get(pk=r['devis_v2']['id'])
+        self.assertEqual(r['remise_pct'], '10.00')
+        self.assertEqual(r['total_ttc'], '49000.00')
+        self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+        self.assertTrue(v2.is_active)
+        self.assertEqual(v2.remise_globale, Decimal('10.00'))
+        self.assertEqual(_ttc(v2), Decimal('49000.00'))
+        self.assertTrue(v2.accepte_par_nom.endswith('avenant négocié'))
+        self.v1.refresh_from_db()
+        self.assertFalse(self.v1.is_active)
+        self.assertEqual(self.v1.superseded_by_id, v2.pk)
+        self.assertEqual(self.v1.statut, Devis.Statut.ACCEPTE)  # règle #4
+        materiel.refresh_from_db()
+        self.assertEqual(materiel.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(r['factures_annulees'],
+                         [{'reference': materiel.reference}])
+        self.assertEqual(Avoir.objects.count(), nb_avoirs)
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.devis_id, v2.pk)
+        self.assertFalse(DevisSignature.objects.filter(devis=v2).exists())
+        store_pdf.assert_not_called()
+        envoyer_mails.assert_not_called()
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(
+            set(devis_signes_en_vigueur(self.company,
+                                        lead_ids=[self.lead.pk])
+                .values_list('pk', flat=True)), {v2.pk})
+
+    def test_incident_de_rattachement_tout_annule(self, *_):
+        acompte, materiel = self._acompte_paye_et_materiel_brouillon()
+        nb_devis = Devis.objects.count()
+        with mock.patch(
+                'apps.ventes.domain.revision.rattacher_aval_financier_revision',
+                side_effect=RuntimeError('panne')):
+            with self.assertRaises(RuntimeError):
+                self._appliquer()
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.v1.refresh_from_db()
+        self.assertTrue(self.v1.is_active)
+        self.assertIsNone(self.v1.superseded_by_id)
+        materiel.refresh_from_db()
+        self.assertEqual(materiel.statut, Facture.Statut.BROUILLON)
+
+    def test_double_clic_409_version_remplacee(self, *_):
+        r = self._appliquer()
+        exc = self._erreur()
+        self.assertEqual(exc.statut_http, 409)
+        self.assertEqual(exc.corps['code'], 'version_remplacee')
+        self.assertEqual(exc.corps['successeur']['id'], r['devis_v2']['id'])
+
+    def test_autre_vente_sur_le_lead_409(self, *_):
+        autre = make_devis(self.company, self.user, self.client_obj,
+                           PANIER_367, reference='DEV-VNT59-0389')
+        Devis.objects.filter(pk=autre.pk).update(
+            statut=Devis.Statut.ACCEPTE, lead=self.lead)
+        nb_devis = Devis.objects.count()
+        exc = self._erreur()
+        self.assertEqual(exc.statut_http, 409)
+        self.assertEqual(exc.corps['code'], 'vente_active_existante')
+        self.assertEqual(exc.corps['vente_active']['id'], autre.pk)
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.v1.refresh_from_db()
+        self.assertTrue(self.v1.is_active)

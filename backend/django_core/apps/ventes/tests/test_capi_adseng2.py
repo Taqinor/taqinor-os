@@ -95,7 +95,7 @@ class Adseng2CapiEmitterTests(TestCase):
         AUCUN SignedQuote (ROAS gonflé à chaque version) ; la première vente
         part comme avant (``emettre_signed_quote_vente`` = l'appel
         d'``accept_devis``)."""
-        from apps.ventes.domain.cycle_vie import emettre_signed_quote_vente
+        from apps.ventes.domain.capi_signee import emettre_signed_quote_vente
         v2 = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-AE2C02',
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,

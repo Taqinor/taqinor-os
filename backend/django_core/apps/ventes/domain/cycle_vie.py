@@ -1288,7 +1288,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
                  entreprise=None, override_credit=False,
-                 override_avertissement=False):
+                 override_avertissement=False, canal=''):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1572,15 +1572,19 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
         # on ne crée pas de second enregistrement — la signature d'origine fait
         # foi.
-        _create_esign_record(
-            devis=devis, nom=nom, ip=ip,
-            user_agent=user_agent, consentement=consentement,
-            signature_image=signature_image, signed_at_client=signed_at_client,
-            on_behalf_of=on_behalf_of, lignes=lignes_devis,
-            # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
-            # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
-            entreprise=entreprise,
-        )
+        # VNT59 — l'avenant négocié (canal ``avenant_negocie``) n'a AUCUNE
+        # signature : le client ne re-signe que sur demande (VNT61).
+        if canal != 'avenant_negocie':
+            _create_esign_record(
+                devis=devis, nom=nom, ip=ip,
+                user_agent=user_agent, consentement=consentement,
+                signature_image=signature_image,
+                signed_at_client=signed_at_client,
+                on_behalf_of=on_behalf_of, lignes=lignes_devis,
+                # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
+                # enregistrés AVEC la signature (aucun statut nouveau, #4).
+                entreprise=entreprise,
+            )
         # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
         # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE
         # différent déjà présent n'est jamais écrasé (``divergence_ice``).
@@ -1630,9 +1634,11 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # QJR560 / D-QJR5-11 — V2 d'un devis signé : BC et factures de la V1
         # passent à la V2, seul l'écart est régularisé. Point de sauvegarde :
         # un incident ici n'annule jamais la signature du client (journalisé).
+        # VNT59 — l'avenant négocié rattache STRICTEMENT chez son appelant.
         try:
             with transaction.atomic():
-                rattacher_aval_financier_revision(devis, user=user)
+                if canal != 'avenant_negocie':
+                    rattacher_aval_financier_revision(devis, user=user)
         except Exception:  # noqa: BLE001 — best-effort, journalisé
             logger.exception(
                 'QJR560 : aval financier de révision non rattaché (devis %s)',
@@ -1645,31 +1651,11 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             groupe=groupe)
 
     # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
-    # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
-    # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
-    _store_signed_pdf(devis=devis)
-    # QX9 — le PDF signé est persisté sur une AUTRE instance (via le moteur) ;
-    # on rafraîchit ``fichier_pdf`` sur l'instance courante pour que la pièce
-    # jointe de l'email ne parte pas sur un état périmé (bug de l'exemplaire
-    # signé manquant).
-    try:
-        devis.refresh_from_db(fields=['fichier_pdf'])
-    except Exception:  # noqa: BLE001 — best-effort
-        pass
-    # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
-    try:
-        _send_acceptance_emails(devis=devis, user=user, lignes=lignes_devis)
-    except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
-
-    # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
-    # ADSENG2 — thread ip/user_agent (EMQ) déjà reçus par accept_devis.
-    try:
-        emettre_signed_quote_vente(devis=devis, ip=ip, user_agent=user_agent)
-    except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
+    # PDF scellé, e-mails, CAPI : ``negociation.effets_apres_acceptation``
+    # (VNT59 : AUCUN pour l'avenant négocié) ; patchables ICI comme avant.
+    from apps.ventes.domain.negociation import effets_apres_acceptation
+    effets_apres_acceptation(devis, user=user, lignes=lignes_devis, ip=ip,
+                             user_agent=user_agent, canal=canal)
     return devis
 
 
@@ -1979,13 +1965,11 @@ from apps.ventes.domain.revision import (  # noqa: E402
     rattacher_aval_financier_revision,
 )
 # VNT50 — ``_fire_capi_signed_quote`` (CAPI SignedQuote) et
-# ``_ATTRIBUTION_FIELDS`` vivent dans ``domain/capi_signee.py`` ;
-# ``accept_devis`` appelle ``emettre_signed_quote_vente`` (VNT52 : rien pour
-# un avenant) lu ICI (patchable ici) ; ``_fire_capi_signed_quote`` reste
-# importable ici (tests, ``inspect.getsource``) — re-export du déplacement.
-from apps.ventes.domain.capi_signee import (  # noqa: E402
-    _ATTRIBUTION_FIELDS, emettre_signed_quote_vente,
-)
+# ``_ATTRIBUTION_FIELDS`` vivent dans ``domain/capi_signee.py`` ; l'acceptation
+# émet par ``capi_signee.emettre_signed_quote_vente`` (VNT52 : rien pour un
+# avenant) ; ``_fire_capi_signed_quote`` reste importable ici (tests,
+# ``inspect.getsource``) — re-export du déplacement.
+from apps.ventes.domain.capi_signee import _ATTRIBUTION_FIELDS  # noqa: E402
 from apps.ventes.domain.capi_signee import (  # noqa: E402,F401
     _fire_capi_signed_quote,
 )
