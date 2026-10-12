@@ -26,7 +26,10 @@ class VeilleAoConfig(AppConfig):
         'icone': 'radar',
         'depends': ['ao'],
         'installable': True,
-        'description': "Veille des avis de marché : le sas où atterrissent les avis collectés sur le portail public, signalés par un partenaire ou importés d'un fichier. Un humain trie ; les avis retenus deviennent des appels d'offres. Ne promet jamais l'exhaustivité.",
+        'description': (
+            "Veille des avis de marché : le sas où atterrissent les avis collectés sur le portail public, "
+            "signalés par un partenaire ou importés d'un fichier. Un humain trie ; les avis retenus "
+            "deviennent des appels d'offres. Ne promet jamais l'exhaustivité."),
         'categorie': 'Commercial',
         'parked': True,
     }
