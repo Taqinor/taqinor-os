@@ -26,6 +26,6 @@ def bas_avec_bloc_fin(bas_totaux, bas_fin, source, formes):
     composée : WeasyPrint l'a jeté sous le bord A4 et le « Total TTC » seul
     dirait à tort « tout tient » (constaté en arabe, interligne plus haut)."""
     if bas_fin is None:
-        texte = _html.unescape(source or "").replace(" ", " ")
+        texte = _html.unescape(source or "").replace("\xa0", " ")
         return None if any(f in texte for f in formes) else bas_totaux
     return None if bas_totaux is None else max(bas_totaux, bas_fin)
