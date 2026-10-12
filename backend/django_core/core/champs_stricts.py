@@ -7,6 +7,7 @@ request »). ``ChaineStricte`` répond 400 tant que la valeur n'est pas déjà u
 chaîne ; le comportement d'une requête valide est inchangé.
 """
 from django.db import models
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
 
@@ -48,6 +49,32 @@ class DecimalStricte(serializers.DecimalField):
         if data == '' and self.allow_null:
             return (True, None)
         return super().validate_empty_values(data)
+
+
+class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
+    r"""ENF11 (api-fuzz « rejected schema-compliant request ») — le motif que
+    drf-spectacular publie pour un décimal-chaîne (``^-?\d{0,N}(?:\.\d{0,M})?$``)
+    accepte la chaîne VIDE, que ``DecimalField`` refuse (400). Le schéma exige
+    désormais au moins un chiffre ; ``""`` n'est publié que pour une
+    ``DecimalStricte`` nullable, qui la lit comme « non renseigné »."""
+    target_class = 'rest_framework.fields.DecimalField'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        champ = self.target
+        schema = auto_schema._map_serializer_field(
+            champ, direction, bypass_extensions=True)
+        if 'pattern' not in schema or not champ.max_whole_digits:
+            return schema
+        schema = dict(schema)
+        entiers, decimales = champ.max_whole_digits, champ.decimal_places
+        schema['pattern'] = (
+            fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
+            fr'|\.\d{{1,{decimales}}})$')
+        if isinstance(champ, DecimalStricte) and champ.allow_null:
+            motif = schema.pop('pattern')
+            schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
+        return schema
 
 
 class BooleenStrict(serializers.BooleanField):

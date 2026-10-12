@@ -17,6 +17,7 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import RapportDefinition
@@ -26,7 +27,8 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
 
 
-class RapportDefinitionSerializer(serializers.ModelSerializer):
+class RapportDefinitionSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    # ENF11 (api-fuzz) — `titre`/`dataset` stricts : un nombre JSON → 400.
     partage_label = serializers.CharField(
         source='get_partage_display', read_only=True)
     owner_username = serializers.CharField(

@@ -21,7 +21,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
-from core.champs_stricts import BooleenStrict, entier_ou_400
+from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
 from core.parseurs import PARSEURS_JSON
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
@@ -112,6 +112,38 @@ class SavFacturerRequete(drf_serializers.Serializer):
 class SavPremierReponseRequete(drf_serializers.Serializer):
     """Corps de ``premier-reponse`` : ``at`` ISO 8601 ou absent."""
     at = drf_serializers.DateTimeField(required=False)
+
+
+# ENF11 (api-fuzz) — corps des actions ticket VALIDÉS par le sérialiseur
+# déclaré au schéma (un tableau/objet à la place d'un texte levait
+# ``.strip()``/``fromisoformat`` → 500 ; un objet pour ``equipe_id`` ou
+# ``destinataire`` était accepté puis ignoré).
+class SavResoudreRequete(drf_serializers.Serializer):
+    canal_resolution = drf_serializers.ChoiceField(
+        choices=Ticket.CanalResolution.choices, required=False,
+        allow_null=True, allow_blank=True)
+
+
+class SavReplanifierRequete(drf_serializers.Serializer):
+    date_tournee = drf_serializers.DateField()
+
+
+class SavReaffecterEquipeRequete(drf_serializers.Serializer):
+    equipe = drf_serializers.IntegerField(required=False, allow_null=True)
+    equipe_id = drf_serializers.IntegerField(required=False, allow_null=True)
+
+
+class SavRepondreEmailRequete(drf_serializers.Serializer):
+    corps = ChaineStricte()
+    sujet = ChaineStricte(required=False, allow_blank=True, allow_null=True)
+    destinataire = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True)
+
+
+class SavChecklistMajRequete(drf_serializers.Serializer):
+    cle = ChaineStricte()
+    coche = BooleenStrict(required=False)
+    note = ChaineStricte(required=False, allow_blank=True, allow_null=True)
 
 
 _CreerLeadReponse = _sch('SavCreerLeadReponse', {
@@ -1190,8 +1222,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=_sch('SavResoudreRequete', {
-        'canal_resolution': _CharF(required=False)}))
+    @extend_schema(request=SavResoudreRequete)
     @action(detail=True, methods=['post'], url_path='resoudre',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def resoudre(self, request, pk=None):
@@ -1201,12 +1232,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         explicitement AVANT la transition pour ne jamais être écrasé par la
         proposition automatique (même règle qu'avant YDOCF1)."""
         ticket = self.get_object()
-        canal = request.data.get('canal_resolution')
+        entree = SavResoudreRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        canal = entree.validated_data.get('canal_resolution')
         if canal:
-            valid = {c for c, _ in Ticket.CanalResolution.choices}
-            if canal not in valid:
-                return Response(
-                    {'canal_resolution': 'Valeur invalide.'}, status=400)
             ticket.canal_resolution = canal
         self._appliquer_transition_statut(ticket, Ticket.Statut.RESOLU)
         return Response(
@@ -1237,8 +1266,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=_sch('SavReplanifierRequete', {
-        'date_tournee': drf_serializers.DateField()}))
+    @extend_schema(request=SavReplanifierRequete)
     @action(detail=True, methods=['post'], url_path='replanifier',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def replanifier(self, request, pk=None):
@@ -1251,13 +1279,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``get_object`` (TenantMixin) ; jamais de PATCH direct (date_tournee
         reste read-only sur le serializer)."""
         ticket = self.get_object()
-        raw_date = (request.data.get('date_tournee') or '').strip()
-        try:
-            new_date = _date.fromisoformat(raw_date)
-        except (ValueError, TypeError):
-            return Response(
-                {'date_tournee': 'Date invalide (AAAA-MM-JJ).'}, status=400)
-        ticket.date_tournee = new_date
+        entree = SavReplanifierRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        ticket.date_tournee = entree.validated_data['date_tournee']
         ticket.save(update_fields=['date_tournee'])
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
@@ -1634,10 +1658,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=_sch('SavReaffecterEquipeRequete', {
-        'equipe': drf_serializers.IntegerField(required=False, allow_null=True),
-        'equipe_id': drf_serializers.IntegerField(required=False, allow_null=True),
-    }))
+    @extend_schema(request=SavReaffecterEquipeRequete)
     @action(detail=True, methods=['post'], url_path='reaffecter-equipe',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def reaffecter_equipe(self, request, pk=None):
@@ -1649,9 +1670,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         from .services import reaffecter_equipe as _reaffecter
 
-        equipe_id = request.data.get('equipe', request.data.get('equipe_id'))
+        entree = SavReaffecterEquipeRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        corps = entree.validated_data
+        equipe_id = corps.get('equipe', corps.get('equipe_id'))
         equipe = None
-        if equipe_id not in (None, ''):
+        if equipe_id is not None:
             equipe = EquipeMaintenance.objects.filter(
                 pk=equipe_id, company=request.user.company).first()
             if equipe is None:
@@ -1736,11 +1760,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         }, status=201)
 
     @extend_schema(
-        request=_sch('SavRepondreEmailRequete', {
-            'corps': _CharF(),
-            'sujet': _CharF(required=False, allow_blank=True),
-            'destinataire': _CharF(required=False, allow_blank=True),
-        }),
+        request=SavRepondreEmailRequete,
         responses={201: _sch('SavRepondreEmailReponse', {
             'id': drf_serializers.IntegerField(),
             'message_id': _CharF(allow_blank=True, allow_null=True),
@@ -1770,12 +1790,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         from .services import repondre_par_email
 
+        entree = SavRepondreEmailRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        corps = entree.validated_data
         try:
             ligne = repondre_par_email(
                 ticket,
-                corps=request.data.get('corps'),
-                sujet=(request.data.get('sujet') or '').strip(),
-                destinataire=(request.data.get('destinataire') or '').strip(),
+                corps=corps['corps'],
+                sujet=(corps.get('sujet') or '').strip(),
+                destinataire=(corps.get('destinataire') or '').strip(),
                 user=request.user)
         except ValueError as exc:
             champ, _, detail = str(exc).partition(': ')
@@ -2389,11 +2412,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             201: TicketChecklistItemSerializer(many=True)})
     @extend_schema(
         methods=['PATCH'],
-        request=_sch('SavChecklistMajRequete', {
-            'cle': _CharF(),
-            'coche': drf_serializers.BooleanField(required=False),
-            'note': _CharF(required=False, allow_blank=True, allow_null=True),
-        }),
+        request=SavChecklistMajRequete,
         responses=TicketChecklistItemSerializer)
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist', pagination_class=None,
@@ -2435,24 +2454,27 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return Response(TicketChecklistItemSerializer(items, many=True).data,
                             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
-        # PATCH — mise à jour d'un item
-        cle = request.data.get('cle')
+        # PATCH — mise à jour d'un item (corps validé : un tableau nu → 400).
+        entree = SavChecklistMajRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        corps = entree.validated_data
+        cle = corps.get('cle')
         if not cle:
             return Response({'detail': 'cle requis.'}, status=400)
         try:
             item = ticket.checklist_items.get(cle=cle)
         except TicketChecklistItem.DoesNotExist:
             return Response({'detail': 'Item introuvable.'}, status=404)
-        if 'coche' in request.data:
-            item.coche = bool(request.data['coche'])
+        if 'coche' in corps:
+            item.coche = corps['coche']
             if item.coche:
                 item.coche_par = request.user
                 item.date_coche = timezone.now()
             else:
                 item.coche_par = None
                 item.date_coche = None
-        if 'note' in request.data:
-            item.note = request.data['note'] or ''
+        if 'note' in corps:
+            item.note = corps['note'] or ''
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
 
@@ -3258,6 +3280,10 @@ class WorksheetMaintenanceModeleViewSet(CompanyScopedModelViewSet):
     dans Paramètres SAV). Lecture tout rôle, écriture responsable/admin."""
     queryset = WorksheetMaintenanceModele.objects.all()
     serializer_class = WorksheetMaintenanceModeleSerializer
+    # ENF11 (api-fuzz) — `champs` est un objet JSON : un corps multipart ne
+    # peut pas le porter (texte « None » → 400 sur une requête déclarée
+    # valide). Le schéma ne publie plus que application/json.
+    parser_classes = PARSEURS_JSON
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

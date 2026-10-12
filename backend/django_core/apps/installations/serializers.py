@@ -1753,7 +1753,7 @@ class LandedCostLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         return attrs
 
 
-class ReceptionNonFactureeSerializer(SameCompanyFKSerializerMixin,
+class ReceptionNonFactureeSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                      serializers.ModelSerializer):
     """FG317 — provision de dette latente (réceptionné-non-facturé). La société
     et `created_by` sont posés CÔTÉ SERVEUR ; `lettre`/`date_lettrage`/`facture`

@@ -19,6 +19,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import entier_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -310,7 +311,13 @@ def _check_tache_links_same_projet(serializer, instance=None):
                 {field: 'Doit appartenir au même programme.'})
 
 
-@oa.listing(p0=oa.qi('assigne'), p1=oa.qi('parent'), p2=oa.qi('projet'), p3=oa.qs('statut'))
+# ENF11 (api-fuzz) — `parent` : entier OU ''/null/none (= racines), publié tel quel.
+_PARENT_PARAM = {'oneOf': [
+    {'type': 'integer', 'minimum': 1},
+    {'type': 'string', 'enum': ['', 'null', 'none']}]}
+
+
+@oa.listing(p0=oa.qi('assigne'), p1=oa.q('parent', _PARENT_PARAM), p2=oa.qi('projet'), p3=oa.qs('statut'))
 class ProjetTacheViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG292 — tâches & sous-tâches de programme avec dépendances. Lecture tout
     rôle, écriture responsable/admin. Société posée côté serveur. Le programme,
@@ -328,7 +335,8 @@ class ProjetTacheViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, Comp
 
     def get_queryset(self):
         qs = super().get_queryset()
-        projet = self.request.query_params.get('projet')
+        projet = entier_ou_400(
+            self.request.query_params.get('projet'), 'projet', mini=1)
         if projet:
             qs = qs.filter(projet_id=projet)
         statut = self.request.query_params.get('statut')
@@ -339,8 +347,9 @@ class ProjetTacheViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, Comp
             if parent in ('', 'null', 'none'):
                 qs = qs.filter(parent__isnull=True)
             else:
-                qs = qs.filter(parent_id=parent)
-        assigne = self.request.query_params.get('assigne')
+                qs = qs.filter(parent_id=entier_ou_400(parent, 'parent', mini=1))
+        assigne = entier_ou_400(
+            self.request.query_params.get('assigne'), 'assigne', mini=1)
         if assigne:
             qs = qs.filter(assigne_id=assigne)
         return qs

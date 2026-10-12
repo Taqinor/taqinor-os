@@ -2037,7 +2037,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             request.user).filter(pk__in=_pks(ids))}
         try:
             documents_ordonnes = [qs[int(i)] for i in ids]
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
+            # TypeError : élément objet/liste (ENF11, api-fuzz : 500 -> 404).
             return Response(
                 {'documents': 'Un ou plusieurs documents sont inconnus.'},
                 status=status.HTTP_404_NOT_FOUND)

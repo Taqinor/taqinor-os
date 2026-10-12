@@ -393,7 +393,7 @@ class LeadIntakeActionsMixin:
         })
 
     # ── L-QUEST — Questionnaire envoyable au client ──────────────────────────
-    @extend_schema(request=sd.corps('CrmQuestionnaireLienRequest', questions=serializers.ListField(child=serializers.CharField(), required=False)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmQuestionnaireLienRequest', questions=serializers.DictField(child=serializers.BooleanField(), required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='questionnaire-lien',
             permission_classes=[IsResponsableOrAdmin])
     def questionnaire_lien(self, request, pk=None):

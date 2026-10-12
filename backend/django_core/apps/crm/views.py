@@ -1474,7 +1474,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         from .fiche_bulk import BULK_ACTIONS, BULK_ADMIN_ONLY, apply_bulk_action
         op = request.data.get('action')
         ids = request.data.get('ids') or []
-        if op not in BULK_ACTIONS:
+        # ENF11 (api-fuzz) — `action: {}` (non hachable) levait TypeError (500).
+        if not isinstance(op, str) or op not in BULK_ACTIONS:
             return Response({'detail': 'Action en masse inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(ids, list) or not ids:
