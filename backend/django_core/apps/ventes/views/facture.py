@@ -135,7 +135,10 @@ PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]))
+    parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]),
+    # VNT14 — seul un « BROUILLON-<id> » se supprime : 400 sinon.
+    destroy=extend_schema(
+        responses={204: None, 400: D.ErreurSuppressionFacture}))
 class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
@@ -607,25 +610,28 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         activity.log_facture_marquee_payee(facture, request.user, motif)
         return Response(FactureSerializer(facture).data)
 
-    @extend_schema(request=D.FactureAnnulerRequest, responses=FactureSerializer)
+    @extend_schema(request=D.FactureAnnulerRequest, responses=D.FactureAnnulee)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=PEUT_ANNULER)
     def annuler(self, request, pk=None):
         """Annule une facture — délégué mince (VNT10) : le corps vit dans
         ``domain/annulation_facture.annuler_facture`` (FG50, AFAC12, AFAC23,
         YEVNT6) ; un refus y lève ``AnnulationRefusee`` → 400, corps inchangé.
+        ENF11 : corps validé par son sérialiseur déclaré (400, jamais 500) ;
+        réponse = facture + ``avoir`` (contrat ``facture_annulation.json``).
         """
         from ..domain.annulation_facture import (
-            AnnulationRefusee, annuler_facture,
+            AnnulationRefusee, annuler_facture, avoir_annulation_corps,
         )
         facture = self.get_object()
         try:
             facture = annuler_facture(
-                facture, user=request.user,
-                directive=request.data.get('acompte'))
+                facture, user=request.user, directive=valider_corps(
+                    request, D.FactureAnnulerRequest).get('acompte'))
         except AnnulationRefusee as refus:
             return Response(refus.corps, status=status.HTTP_400_BAD_REQUEST)
-        return Response(FactureSerializer(facture).data)
+        return Response({**FactureSerializer(facture).data,
+                         'avoir': avoir_annulation_corps(facture)})
 
     @extend_schema(responses=PaiementSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='paiements',

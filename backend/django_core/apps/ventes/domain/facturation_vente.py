@@ -503,22 +503,31 @@ def _paiements_saisis(paiements):
         raise FacturationVenteRefusee(exc.motif, code='paiements_invalides')
 
 
-def _emettre(facture, user):
+def _emettre(facture, user, override_credit=False):
     """Numéro légal + sortie de stock U9 par LE service d'émission (AUD101,
-    VNT21) ; refus traduits (403 ``credit_hold``)."""
+    VNT21) ; refus traduits (403 ``credit_hold``). ``override_credit``
+    (responsable/admin, comme ``generer-facture``) : le blocage crédit
+    XFAC28 est passé outre ET journalisé (``verifier_credit_hold``)."""
     from .facturation_ops import (
         EmissionRefusee, StockInsuffisantError, emettre_facture)
-    from .recouvrement import CreditHoldError
+    from .recouvrement import CreditHoldError, verifier_credit_hold
     try:
-        emettre_facture(facture, user=user, source='facturer_vente')
+        if override_credit and facture.client_id:
+            verifier_credit_hold(
+                facture.client, override=True, user=user,
+                chatter_target=facture.devis if facture.devis_id else None,
+                contexte='facturer la vente')
+        emettre_facture(facture, user=user, source='facturer_vente',
+                        verifier_credit=not override_credit)
     except EmissionRefusee as exc:
         raise FacturationVenteRefusee(exc.motif)
     except StockInsuffisantError as exc:
         raise FacturationVenteRefusee(exc.message)
     except CreditHoldError as exc:
         raise FacturationVenteRefusee(
-            f'Le client est en blocage crédit : {exc.motif}.',
-            code='credit_hold', status=403)
+            f'Le client est en blocage crédit : {exc.motif}. Un '
+            'responsable/admin peut passer outre avec `override_credit: '
+            'true`.', code='credit_hold', status=403)
 
 
 def _motif(exc):
@@ -583,10 +592,11 @@ def _encaisser(facture, *, user, saisis, utiliser_avances):
 def facturer_vente(devis, *, nature, user, montant_ttc=None,
                    pourcentage=None, cle_attendue=None, libelle=None,
                    emettre=False, paiements=None, remplacer_brouillons=False,
-                   utiliser_avances=False):
+                   utiliser_avances=False, override_credit=False):
     """« Facturer la vente » de ``devis`` (D-VNT-1/3, contrat
     ``devis_facturer.json``). Renvoie ``(facture, [paiements créés])`` ;
-    lève :class:`FacturationVenteRefusee` (rien n'est écrit)."""
+    lève :class:`FacturationVenteRefusee` (rien n'est écrit).
+    ``override_credit`` : passe outre le blocage crédit à l'émission."""
     from apps.ventes.vente_facturation import plan_facturation
     if nature not in NATURES:
         raise FacturationVenteRefusee(
@@ -612,7 +622,7 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
         crees = []
         # VNT30 — des paiements ou des avances à utiliser ⇒ émission d'abord.
         if emettre or saisis or utiliser_avances:
-            _emettre(facture, user)
+            _emettre(facture, user, override_credit=bool(override_credit))
             crees = _encaisser(facture, user=user, saisis=saisis,
                                utiliser_avances=bool(utiliser_avances))
             facture.refresh_from_db()
