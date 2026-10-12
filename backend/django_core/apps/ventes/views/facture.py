@@ -2,7 +2,6 @@ from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import ENTITE, qint, qstr
 from datetime import date as _date
 from decimal import Decimal, InvalidOperation
-from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
@@ -10,33 +9,16 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from . import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers as drf_serializers
-from rest_framework import viewsets, status, filters  # noqa: F401
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework import status, filters
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, mouvement_type_entree, record_stock_movement,
+from ..models import (
+    Facture, Paiement, Avoir, RelanceLog, EmailLog, NoteDebit, LigneNoteDebit,
 )
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-    NoteDebit, LigneNoteDebit,
-)
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    LigneDevisSerializer,
-    DevisActivitySerializer,
-)
-from ..serializers_facturation import (  # noqa: F401
-    BonCommandeSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    NoteDebitSerializer,
-    RelanceLogSerializer,
+from ..serializers_facturation import (
+    FactureSerializer, FactureWriteSerializer, PaiementSerializer,
+    AvoirSerializer, NoteDebitSerializer, RelanceLogSerializer,
 )
 from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
 from ..serializers import EmailLogSerializer
@@ -50,13 +32,16 @@ from authentication.permissions import (
 )
 from core.permissions import declared_action_permissions
 
-from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
-from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
-from ..utils.references import create_with_reference  # noqa: F401
+# ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
+from ..domain.encaissements import arrondir_au_pas, proposer_arrondi_caisse
+from authentication.scoping import scope_queryset
+from core.viewsets import CompanyScopedModelViewSet
+from core.entite_scoping import EntiteScopeMixin
 from ..utils.company_settings import create_numbered, create_provisoire
 import logging
 
 logger = logging.getLogger(__name__)
+__all__ = ['arrondir_au_pas']  # ré-export ZFAC11
 #: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
 #: (Administrateur, Directeur, Commercial et Commercial responsable par
 #: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
@@ -87,18 +72,6 @@ FACTURE_CHAMPS_ARGENT = frozenset([
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
     '(ou remettez la facture en brouillon).')
-
-
-# ZFAC11 — `arrondir_au_pas` / `proposer_arrondi_caisse` vivent désormais dans
-# le service d'encaissement (`domain/encaissements.py`) ; ré-exportés ici
-# pour les appelants historiques (tests ZFAC11, action `arrondi-caisse`).
-from ..domain.encaissements import (  # noqa: E402,F401
-    arrondir_au_pas, proposer_arrondi_caisse,
-)
-
-
-from authentication.scoping import scope_queryset  # noqa: E402
-from core.mixins import company_qs  # noqa: E402,F401
 
 
 #: AFAC66 — refus nommé de la cinquième porte de facturation d'un devis.

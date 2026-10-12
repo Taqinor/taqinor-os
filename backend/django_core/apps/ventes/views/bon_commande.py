@@ -4,33 +4,16 @@ from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework import viewsets, status, filters  # noqa: F401
+from rest_framework import status, filters
 from . import openapi_docs as D
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.stock.services import (
     mouvement_type_sortie, record_stock_movement, verrouiller_produit,
     check_negative_stock_guard,
 )
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-)
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    LigneDevisSerializer,
-    DevisActivitySerializer,
-)
-from ..serializers_facturation import (  # noqa: F401
-    BonCommandeSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    RelanceLogSerializer,
-)
+from ..models import BonCommande, Facture
+from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -38,8 +21,6 @@ from authentication.permissions import (
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..domain.facturation_ops import StockInsuffisantError
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
 import logging
 
 logger = logging.getLogger(__name__)

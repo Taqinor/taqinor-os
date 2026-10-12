@@ -42,12 +42,10 @@ from .devis_pdf import DevisPdfActionsMixin  # SPL139
 from .devis_calepinage import DevisCalepinageActionsMixin  # SPL140
 from .devis_facturation import DevisFacturationActionsMixin  # SPL141
 from .devis_cadence import DevisCadenceActionsMixin  # SPL142
+from authentication.scoping import visible_user_ids
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
-
-
-from authentication.scoping import visible_user_ids  # noqa: E402
 
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe

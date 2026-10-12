@@ -3,52 +3,28 @@ from . import openapi_docs as D
 from ..openapi_params import qint
 from django.db import transaction
 from django.http import HttpResponse
-from django.utils import timezone  # noqa: F401
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.stock.services import (
     mouvement_type_sortie, record_stock_movement,
 )
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-    NoteDebit,
-)
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    LigneDevisSerializer,
-    DevisActivitySerializer,
-)
-from ..serializers_facturation import (  # noqa: F401
-    BonCommandeSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    NoteDebitSerializer,
-    RelanceLogSerializer,
-)
+from ..models import Facture, Avoir, NoteDebit
+from ..serializers_facturation import AvoirSerializer, NoteDebitSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from authentication.scoping import scope_queryset
+from core.mixins import company_qs
 import logging
 
 logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
-
-
-from authentication.scoping import scope_queryset  # noqa: E402
-from core.mixins import company_qs  # noqa: E402
 
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe

@@ -2,7 +2,6 @@ from datetime import date as _date
 
 from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import qstr
-from django.db import transaction  # noqa: F401
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -11,45 +10,20 @@ from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from core.mixins import company_qs
-from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, record_stock_movement,
-)
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    AffectationPaiement, RetenueSubie, Avoir, LigneAvoir, FollowupLevel,
-    RelanceLog, EmailLog,
-)
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    LigneDevisSerializer,
-    DevisActivitySerializer,
-)
-from ..serializers_facturation import (  # noqa: F401
-    BonCommandeSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AffectationPaiementSerializer,
+from ..models import Facture, Paiement, RetenueSubie
+from ..serializers_facturation import (
+    FactureSerializer, PaiementSerializer, AffectationPaiementSerializer,
     RetenueSubieSerializer,
-    AvoirSerializer,
-    RelanceLogSerializer,
 )
 from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsResponsableOrAdmin,
-    IsAdminRole,
-    HasPermissionOrLegacy,
+from authentication.permissions import (
+    IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
 from core.permissions import declared_action_permissions
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
 import logging
 
 logger = logging.getLogger(__name__)
