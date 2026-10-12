@@ -98,10 +98,9 @@ class DepotReelTests(unittest.TestCase):
         self.assertNotIn("crm/relance-etapes/kpi-adherence", noms)
         self.assertNotIn("crm/relance-etapes/mes-stats", noms)
         self.assertIn("crm/salles-vente", noms)
-        # ACRM69 : une action collection soeur d'un appel detail `clients/<pk>`
-        # n'est plus masquee (`clients/segments` retiree par ACRM64/67 ;
-        # `clients/engagement-bulk` reste servie sans appelant) -> FORCEE rouge.
-        self.assertIn("crm/clients/engagement-bulk", noms)
+        # ACRM69 : le cas « collection soeur d'un appel detail » est prouve par
+        # test_action_collection_soeur_non_masquee_par_detail (segments retiree
+        # par ACRM64/67, engagement-bulk par #984 : plus aucune sur le depot).
 
 
 if __name__ == "__main__":
