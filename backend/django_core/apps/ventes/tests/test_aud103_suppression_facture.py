@@ -73,10 +73,12 @@ class TestSuppressionFacture(TestCase):
             company=self.company, nom='Onduleur', sku=f'AUD103-{_nxt()}',
             prix_vente=Decimal('5000'), quantite_stock=10)
 
-    def _facture(self, statut=Facture.Statut.BROUILLON, avec_ligne=True):
+    def _facture(self, statut=Facture.Statut.BROUILLON, avec_ligne=True,
+                 reference=None):
         n = _nxt()
         facture = Facture.objects.create(
-            company=self.company, reference=f'FAC-AUD103-{n:04d}',
+            company=self.company,
+            reference=f'FAC-AUD103-{n:04d}' if reference is None else reference,
             client=self.client_obj, statut=statut, taux_tva=Decimal('20'))
         if avec_ligne:
             LigneFacture.objects.create(
@@ -116,15 +118,56 @@ class TestSuppressionFacture(TestCase):
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
 
-    # ── Permission : « admin » élargi ≠ superutilisateur ──────────────────
+    # ── VNT13 (D-VNT-1, arbitrage 5) — palier responsable/admin ET un code
+    # d'écriture ventes_* : le Directeur non superutilisateur et le
+    # Responsable annulent et suppriment un brouillon ; jamais un Commercial
+    # (codes ventes sans palier), un Technicien responsable ni un Admin RH
+    # (palier responsable sans aucun code ventes_*). ─────────────────────
 
-    def test_role_roles_gerer_non_superuser_refuse(self):
+    def _api_role(self, nom, permissions):
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom=f'{nom} {_nxt()}',
+            permissions=list(permissions))
+        return _auth(User.objects.create_user(
+            username=f'vnt13_{_nxt()}', password='x', role=role,
+            role_legacy='normal', company=self.company))
+
+    def test_vnt13_annuler_et_supprimer_palier_et_code_ventes(self):
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+            RESPONSABLE_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS,
+        )
         self.assertTrue(self.directeur.is_admin_role)
         self.assertFalse(self.directeur.is_superuser)
-        facture = self._facture()
-        resp = self.api_dir.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 403, getattr(resp, 'data', resp))
-        self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
+        cas = (
+            ('Directeur', self.api_dir, True),
+            ('Responsable', self._api_role(
+                'Responsable', RESPONSABLE_PERMISSIONS), True),
+            ('Commercial', self._api_role(
+                'Commercial', COMMERCIAL_PERMISSIONS), False),
+            ('Technicien responsable', self._api_role(
+                'Technicien responsable', TECHNICIEN_RESP_PERMISSIONS), False),
+            ('Admin RH', self._api_role('Admin RH', ADMIN_RH_PERMISSIONS),
+             False),
+        )
+        for nom, api, autorise in cas:
+            with self.subTest(role=nom):
+                # Référence vide → « BROUILLON-<id> » (hors série légale).
+                brouillon = self._facture(reference='', avec_ligne=False)
+                r = api.delete(self._url(brouillon))
+                self.assertEqual(r.status_code, 204 if autorise else 403,
+                                 getattr(r, 'data', r))
+                self.assertEqual(
+                    Facture.objects.filter(pk=brouillon.pk).exists(),
+                    not autorise)
+                emise = self._facture(statut=Facture.Statut.EMISE)
+                r = api.post(self._url(emise) + 'annuler/', {}, format='json')
+                self.assertEqual(r.status_code, 200 if autorise else 403,
+                                 getattr(r, 'data', r))
+                emise.refresh_from_db()
+                self.assertEqual(emise.statut == Facture.Statut.ANNULEE,
+                                 autorise)
 
     # ── ProtectedError traduit, plus une 500 ──────────────────────────────
 

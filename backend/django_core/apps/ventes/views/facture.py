@@ -23,11 +23,11 @@ from ..serializers_facturation import (
 from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
 from ..serializers import EmailLogSerializer
 from ..utils.corps import valider_corps
-from rest_framework.permissions import BasePermission
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    IsAdminOrResponsableTier,
     HasPermissionOrLegacy,
 )
 from core.permissions import declared_action_permissions
@@ -122,19 +122,12 @@ def _montants_ligne_corrective(i, ligne):
     return (qte, pu, remise, taux_tva), None
 
 
-class IsSuperuserOnly(BasePermission):
-    """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
-
-    ``IsAdminRole`` était trop large pour un geste destructeur : il passe pour
-    TOUT rôle portant la permission ``roles_gerer``
-    (``authentication/models.py`` ``is_admin_role``) — un « Directeur » ou un
-    « Admin adjoint » entrait donc, alors que la suppression d'une facture
-    emporte ses encaissements. Le texte « admin uniquement » était vrai au sens
-    du décorateur, faux au sens de qui peut réellement le faire."""
-
-    def has_permission(self, request, view):
-        user = request.user
-        return bool(user and user.is_authenticated and user.is_superuser)
+#: VNT13 (D-VNT-1, arbitrage 5) — annuler une facture / supprimer un
+#: brouillon : palier responsable/admin ET un code d'écriture ``ventes_*``.
+#: Jamais un Commercial (codes sans palier), ni un Technicien responsable ou
+#: un Admin RH (palier sans code ventes). Remplace IsSuperuserOnly (AUD103) :
+#: la garde destructive est désormais ``perform_destroy`` (brouillon seul).
+PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -229,18 +222,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'liberer_retenue',
         ]:
             return [IsResponsableOrAdmin()]
-        # AUD103 — SUPPRIMER une facture n'est PAS « annuler » : c'est le seul
-        # geste qui emporte les encaissements en cascade. Réservé au
-        # superutilisateur, jamais au palier « admin » élargi (tout rôle
-        # portant ``roles_gerer``).
+        # VNT13 — supprimer un brouillon : même garde qu'annuler.
         elif self.action == 'destroy':
-            return [IsSuperuserOnly()]
-        # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
-        # AUD124 — `marquer_payee` rejoint ce palier : faire disparaître une
-        # créance de la balance âgée sans encaissement est un geste comptable,
-        # pas de l'édition courante. (`destroy` reste sur IsSuperuserOnly —
-        # AUD103, plus strict.)
-        elif self.action in ['annuler', 'marquer_payee']:
+            return [p() for p in PEUT_ANNULER]
+        # AUD124 — `marquer_payee` : geste comptable, palier admin.
+        elif self.action == 'marquer_payee':
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
@@ -629,7 +615,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     @extend_schema(request=D.FactureAnnulerRequest, responses=FactureSerializer)
     @action(detail=True, methods=['post'], url_path='annuler',
-            permission_classes=[IsAdminRole])
+            permission_classes=PEUT_ANNULER)
     def annuler(self, request, pk=None):
         """Annule une facture — délégué mince (VNT10) : le corps vit dans
         ``domain/annulation_facture.annuler_facture`` (FG50, AFAC12, AFAC23,
