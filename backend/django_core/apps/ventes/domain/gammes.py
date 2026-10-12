@@ -96,16 +96,14 @@ def gamme_soeur(devis):
     Ne considère que les frères ACTIFS et encore vivants (brouillon/envoyé) de
     la même société : une gamme non retenue (auto-refusée à l'acceptation,
     YDOCF3) disparaît donc naturellement du choix."""
-    from django.db.models import Q
     from apps.ventes.models import Devis
+    from apps.ventes.selectors import groupe_proposition
     if not gamme_nom(devis):
         return None
-    root = devis.version_parent_id or devis.pk
     freres = (
-        Devis.objects
+        groupe_proposition(devis)
         .filter(company=devis.company, is_active=True,
                 statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE))
-        .filter(Q(pk=root) | Q(version_parent_id=root))
         .exclude(pk=devis.pk)
         .order_by('version', 'id')
     )
@@ -140,8 +138,9 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     nom_gamme = str(nom_gamme or '').strip()
     if not nom_gamme:
         raise ValueError('creer_variante_gamme exige un nom de gamme.')
+    from apps.ventes.selectors import racine_groupe
     company = devis.company
-    root = devis.version_parent or devis
+    root = racine_groupe(devis)
     holder = {}
 
     # etude_params est COPIÉ (jamais partagé) : la gamme sœur porte son propre
@@ -182,14 +181,9 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
             # avait été négocié — deux offres envoyées ENSEMBLE (défaut
             # ``GAMME_ENVOI_LES_DEUX``) avec deux acomptes différents, dont un
             # que personne n'a décidé.
-            # ``acompte_montant`` est délibérément EXCLU : c'est un MONTANT en
-            # MAD qui décrit le total du frère, et la docstring de cette
-            # fonction promet à la sœur « sa composition et SES prix propres ».
-            # Le pourcentage, lui, est une CONDITION : il suit.
             echeancier=(list(devis.echeancier)
                         if isinstance(devis.echeancier, list)
                         else devis.echeancier),
-            acompte_pct=devis.acompte_pct,
             entite=devis.entite,
             custom_data=(dict(devis.custom_data)
                          if isinstance(devis.custom_data, dict)

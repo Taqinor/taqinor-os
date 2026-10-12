@@ -21,6 +21,7 @@ import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
 // STRICTEMENT le même validateur que `courbes_journalieres.production`
 // (aucune seconde définition de « forme 24 h valide »).
 import { parseServedProductionEntry, parseServedProductionMap } from './dayProfiles';
+import { lireAvenant, type Avenant } from './avenant';
 
 /** Une ligne d'équipement telle que renvoyée par le backend (champs publics). */
 export interface ProposalItem {
@@ -391,6 +392,8 @@ export interface ProposalResponse {
    * version en vigueur (jamais une redirection).
    */
   remplace_par?: { reference?: string | null; url?: string | null } | null;
+  /** VNT72 — le bloc avenant (clé ABSENTE hors avenant), lu par `lib/avenant.ts`. */
+  avenant?: unknown;
   /**
    * QJR536 (D-QJR5-6) — le champ Notes du devis, texte CLIENT ('' si vide).
    * Servi par le backend ; son rendu sur la page viendra avec sa propre tâche.
@@ -5965,6 +5968,8 @@ export interface Proposal {
   annualAfter: number | null;
   coveragePct: number | null;
   coverageEstimated: boolean | null;
+  /** VNT72 — l'avenant à signer / signé (`avenant`, absent hors avenant). */
+  avenant: Avenant | null;
 }
 
 function objetLu(v: unknown): Record<string, unknown> | null {
@@ -6078,6 +6083,7 @@ export function lireProposal(payload: unknown): Proposal | null {
     annualAfter: finiteOrNull(p.annual_after),
     coveragePct: finiteOrNull(p.coverage_pct),
     coverageEstimated: booleenOuNull(p.coverage_estimated),
+    avenant: lireAvenant(p.avenant),
   };
 }
 

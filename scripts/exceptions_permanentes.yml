@@ -130,6 +130,11 @@ migration_safety:
     - "backend/django_core/apps/ventes/migrations/0037_fg245_rooflayout.py"
     - "backend/django_core/apps/dataimport/migrations/0001_initial.py"
     - "backend/django_core/apps/calepinage/migrations/0009_cal212_pose_reelle.py"
+    # 2026-10-12 (VNT103) : ventes/0110 nommait ck_devis_acompte_montant_positif,
+    # retiree par 0139_vnt103_retrait_acompte_devis (RemoveConstraint avant le
+    # RemoveField de Devis.acompte_montant) : le Meta ne peut plus declarer ce nom.
+    # Migration historique, revue.
+    - "backend/django_core/apps/ventes/migrations/0110_aud188_contraintes_argent.py"
 
 safe_migrations:
   raison: migrations historiques déjà appliquées en production — immuables (check_safe_migrations.py)
@@ -221,6 +226,13 @@ safe_migrations:
     # ParametresCalepinage.gabarits_dossier, jumelle dormante du modele
     # GabaritDossierReglementaire (aucune lecture hors serialisation). Reversible
     # (colonne recreee, defaut {}). Dry-run en lecture avant deploiement. Revue.
+    # VNT103 (Groupe VNT, 12/10/2026) — RemoveField de Devis.acompte_pct /
+    # acompte_montant (+ RemoveConstraint ck_devis_acompte_montant_positif) :
+    # D-VNT-3 fait de l'echeancier l'unique verite de l'acompte ; 0 lecteur
+    # (frontend, quote_engine, hash de payload — balayage du depot) et colonnes
+    # NULL sur toutes les lignes de prod (12/10, recompte en lecture seule par
+    # l'orchestrateur avant le merge). Reversible (`migrate ventes 0138` recree
+    # les colonnes null=True puis la contrainte). Revue, notee au DONE LOG.
     - "backend/django_core/authentication/migrations/0004_customuser_role_legacy.py"
     - "backend/django_core/authentication/migrations/0007_mark_owner_protected.py"
     - "backend/django_core/authentication/migrations/0013_customuser_poste_ref.py"
@@ -259,6 +271,7 @@ safe_migrations:
     - "backend/django_core/apps/crm/migrations/0119_agr401_pompe_actuelle_cv.py"
     - "backend/django_core/apps/stock/migrations/0162_agr104_roles_pompage.py"
     - "backend/django_core/apps/calepinage/migrations/0031_acal320_retrait_gabarits_dossier.py"
+    - "backend/django_core/apps/ventes/migrations/0139_vnt103_retrait_acompte_devis.py"
 
 tenant_exempt_models:
   raison: modèles globaux/inter-sociétés PAR CONCEPTION, sans société propriétaire (check_company_fk.py)

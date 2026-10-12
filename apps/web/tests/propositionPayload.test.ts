@@ -185,6 +185,11 @@ const CLES_LUES: ReadonlyArray<readonly [string, (p: Proposal) => unknown]> = [
   ['option_totals.avec_batterie.ttc', (x) => x.optionTotals?.avecBatterie?.ttc],
   ['option_totals.display_total', (x) => x.optionTotals?.displayTotal],
   ['option_totals.nb_options', (x) => x.optionTotals?.nbOptions],
+  // VNT72 — l'avenant (V2 d'un prix négocié) : `exemple` porte l'avenant À
+  // SIGNER (valeur du fragment `exemple_avenant_a_signer`) ; lu par `lib/avenant.ts`.
+  ['avenant', (x) => x.avenant],
+  ['avenant.a_signer', (x) => x.avenant?.aSigner],
+  ['avenant.remplace.reference', (x) => x.avenant?.remplaceReference],
 ];
 
 describe('QJW11 — un renommage de clé côté backend fait ROUGIR, pas une page vide', () => {
@@ -385,6 +390,7 @@ const LUES_HORS_RENOMMAGE: Readonly<Record<string, string>> = {
   'accepted': 'Lue (`p.accepted === true`), mais l’échantillon vaut `false` : même angle mort de la garde de renommage que `apercu_interne`.',
   'accepte_par_nom': 'Lue, mais l’échantillon porte la chaîne VIDE — que le lecteur rend `null`, exactement comme une clé absente : indiscernable par renommage.',
   'date_acceptation': 'Lue, mais l’échantillon porte la chaîne VIDE : `null` avant comme après un renommage, donc indiscernable par renommage.',
+  'avenant.signe_le': 'VNT72 — lue (`lireAvenant`, `signeLe`, date de la confirmation d’avenant), mais l’exemple porte `null` (avenant À SIGNER) : un renommage rend `null` lui aussi, indiscernable ; garde sur le fragment SIGNÉ dans `src/lib/avenant.test.ts`.',
   'note_client': 'QJR627 — lue (`resolveNoteClient`, `noteClient` de `lireProposal`, bloc « Note de votre conseiller » de la page), mais l’échantillon porte la chaîne VIDE : indiscernable par renommage. Garde propre : `tests/propositionNoteClient.test.ts`.',
 };
 
@@ -623,6 +629,15 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   // AGR4 (contrat d'abord PACT10, 03/10/2026)
   'notes.agricole_agr4': 'Note de contrat : pourquoi `exemple_agricole` est un FRAGMENT posé avant ses deux moitiés (AGR4, PACT10) — documentation.',
   // ACAL18 (contrat d'abord PACT10, 05/10/2026)
+  // VNT72 — les fragments de l'avenant, désormais CONSOMMÉS par la page :
+  // `lireAvenant` les lit (garde de renommage feuille par feuille dans
+  // `src/lib/avenant.test.ts`, qui charge ces deux fragments du contrat).
+  'exemple_avenant_a_signer.avenant.a_signer': 'Fragment VNT2 (avenant À SIGNER), lu par `lireAvenant` (`aSigner`) ; sa garde de renommage vit dans `src/lib/avenant.test.ts`, sur ce fragment même.',
+  'exemple_avenant_a_signer.avenant.remplace.reference': 'Fragment VNT2 (avenant À SIGNER), lu par `lireAvenant` (`remplaceReference`, « Avenant à <V1> — nouveau prix ») ; garde de renommage dans `src/lib/avenant.test.ts`.',
+  'exemple_avenant_a_signer.avenant.signe_le': 'Fragment VNT2 (avenant À SIGNER), `null` tant que non signé : lu par `lireAvenant` (`signeLe`) ; garde de renommage dans `src/lib/avenant.test.ts`.',
+  'exemple_avenant_signe.avenant.a_signer': 'Fragment VNT2 (avenant SIGNÉ), `false` : lu par `lireAvenant` (`aSigner`), ce qui bascule le bandeau en confirmation ; garde dans `src/lib/avenant.test.ts`.',
+  'exemple_avenant_signe.avenant.remplace.reference': 'Fragment VNT2 (avenant SIGNÉ), lu par `lireAvenant` (`remplaceReference`) pour la confirmation « L’avenant à <V1> a été signé » ; garde dans `src/lib/avenant.test.ts`.',
+  'exemple_avenant_signe.avenant.signe_le': 'Fragment VNT2 (avenant SIGNÉ), horodatage ISO : lu par `lireAvenant` (`signeLe`) et rendu en date longue dans la confirmation ; garde dans `src/lib/avenant.test.ts`.',
   'pourquoi_roof_layout_riche': 'Note de contrat : pourquoi `exemple_roof_layout_riche` est un FRAGMENT (géométrie seule, jamais un prix) posé avant son émetteur D08-T21/T22 (ACAL18, PACT10) — documentation.',
 };
 
@@ -645,12 +660,10 @@ const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
   // les lira et range alors chaque clé dans CLES_LUES / NON_LU.
   'exemple_adev2.': 'Fragment d’exemple ADEV2 : les cinq clés additives (cumul 25 ans par option, empreinte du contenu signable, offre expirée, date d’expiration, PDF disponible) posées seules sur main avant que le serveur les serve et que la page cesse de les recalculer.',
   'notes_adev2.': 'Notes de contrat ADEV2 : pourquoi le fragment `exemple_adev2` est posé avant ses deux moitiés et ce que veut dire chacune des cinq clés additives — documentation, jamais une valeur lue par la page.',
-  // VNT2 (contrat d'abord PACT10, 12/10/2026, Groupe VNT de PLAN2) — même patron
-  // que ADEV2 : la moitié serveur (VNT25, avenant négocié) servira `avenant`, la
-  // page /proposition (VNT72, WEB_PLAN) le lira et rangera chaque clé dans
-  // CLES_LUES / NON_LU.
-  'exemple_avenant_a_signer.': 'Fragment d’exemple VNT2 : la charge utile publique d’un avenant négocié encore À SIGNER (bloc `avenant` : a_signer, remplace.reference, signe_le null) posée seule sur main avant que le serveur la serve (VNT25) et que la page la lise (VNT72).',
-  'exemple_avenant_signe.': 'Fragment d’exemple VNT2 : la même charge utile une fois l’avenant SIGNÉ par le client (signe_le daté, a_signer false), posée avant ses deux moitiés (VNT25 serveur, VNT72 page).',
+  // VNT2 (contrat d'abord PACT10, 12/10/2026, Groupe VNT de PLAN2) — les deux
+  // fragments `exemple_avenant_*` ne sont PLUS ici : la page les lit (VNT72,
+  // `lib/avenant.ts`), leurs feuilles sont décidées une à une dans
+  // NON_LU_DOCUMENTATION. Reste la prose `notes_vnt2`.
   'notes_vnt2.': 'Notes de contrat VNT2 : pourquoi `avenant` est absent des exemples existants (clé posée seulement sur un avenant), le sens de chaque clé et la forme unique du 409 vente_active_existante — documentation, jamais une valeur lue par la page.',
   'exemple_roof_layout_riche.': 'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
 };
