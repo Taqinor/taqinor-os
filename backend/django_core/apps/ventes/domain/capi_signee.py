@@ -52,6 +52,17 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
             getattr(devis, 'reference', '?'))
         return
 
+    # VNT52 — un AVENANT (V2 qui remplace une vente déjà acceptée) n'est pas
+    # une nouvelle vente : aucun SignedQuote (le dédoublonnage par référence
+    # ne le voit pas, chaque version gonflait le ROAS). Journalisé, sans POST.
+    avenant_de = _avenant_de(devis)
+    if avenant_de is not None:
+        logger.info(
+            'VNT52: CAPI SignedQuote non émis pour devis %s — avenant de la '
+            'vente %s (déjà comptée).', getattr(devis, 'reference', '?'),
+            avenant_de)
+        return
+
     pixel_id = (
         getattr(settings, 'META_CAPI_PIXEL_ID', None)
         or os.environ.get('META_CAPI_PIXEL_ID', '')
@@ -205,3 +216,14 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     except Exception as exc:
         logger.warning('QJ9: CAPI SignedQuote HTTP échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
+
+
+def _avenant_de(devis):
+    """VNT52 — pk du prédécesseur de révision ACCEPTÉ (``predecesseur_accepte``,
+    LA lecture de VNT51), ``None`` pour une première vente. Un objet qui n'est
+    pas un ``Devis`` persisté (stub de test) n'est jamais un avenant."""
+    from apps.ventes.models import Devis
+    if not isinstance(devis, Devis) or devis.pk is None:
+        return None
+    from apps.ventes.selectors import predecesseur_accepte
+    return getattr(predecesseur_accepte(devis), 'pk', None)

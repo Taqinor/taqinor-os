@@ -90,6 +90,29 @@ class Adseng2CapiEmitterTests(TestCase):
         self.assertIn('10800', body)
         self.assertNotIn('12000', body)
 
+    def test_avenant_aucun_post_premiere_vente_inchangee(self):
+        """VNT52 — une V2 qui remplace une vente ACCEPTÉE (avenant) n'émet
+        AUCUN SignedQuote (ROAS gonflé à chaque version) ; la première vente
+        part comme avant."""
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
+        v2 = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-AE2C02',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'))
+        Devis.objects.filter(pk=self.devis.pk).update(
+            superseded_by=v2, is_active=False)
+        with override_settings(META_CAPI_ACCESS_TOKEN='T',
+                               META_CAPI_PIXEL_ID='999'):
+            with mock.patch('urllib.request.urlopen',
+                            return_value=_mock_resp()) as m:
+                with self.assertLogs('apps.ventes.services', 'INFO') as logs:
+                    _fire_capi_signed_quote(devis=v2)
+        m.assert_not_called()
+        self.assertTrue(any('avenant' in ligne for ligne in logs.output))
+        # La première vente (V1, sans prédécesseur) part toujours.
+        url, _body = self._fire()
+        self.assertIn('/999/events', url)
+
 
 class Adseng2SharedVersionTests(SimpleTestCase):
     def test_version_is_single_source(self):
