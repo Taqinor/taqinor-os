@@ -139,6 +139,9 @@ class DevisFacturationActionsMixin:
         l'unique mapping PAYMENT_TERMS_BY_MODE.
         """
         devis = self.get_object()
+        # ENF11 — corps validé par son sérialiseur déclaré : un corps non
+        # objet (liste, scalaire) ou un drapeau mal typé → 400, jamais 500.
+        corps = valider_corps(request, D.GenererFactureRequest)
         from ..utils.echeancier import creer_facture_tranche
         from ..services import (
             reserver_stock_devis_facture, StockInsuffisantError,
@@ -148,7 +151,7 @@ class DevisFacturationActionsMixin:
         company = request.user.company
         # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op.
         if devis.client_id is not None:
-            override = bool(request.data.get('override_credit'))
+            override = bool(corps.get('override_credit'))
             try:
                 verifier_credit_hold(
                     devis.client, override=override, user=request.user,
@@ -164,7 +167,7 @@ class DevisFacturationActionsMixin:
         # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide → no-op.
         try:
             verifier_sale_warnings(
-                devis, override=bool(request.data.get('override_avertissement')),
+                devis, override=bool(corps.get('override_avertissement')),
                 user=request.user, chatter_target=devis)
         except SaleWarningError as exc:
             return Response(

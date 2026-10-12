@@ -840,6 +840,11 @@ REFUS = {
     "frontend/src/pages/ventes/factureKanban.js": [
         ("solde partiel", "MIROIR_JS"),
         ("isOverdue", "MIROIR_JS")],
+    # ACAL345 : la « liste miroir de rowCtx » est la déstructuration des
+    # props passées par FactureList.jsx — un autre fichier frontend, aucun
+    # vocabulaire serveur à déclarer.
+    "frontend/src/pages/ventes/factureList/FactureRow.jsx": [
+        ("miroir de rowCtx", "MIROIR_JS")],
 }
 
 

@@ -189,7 +189,7 @@ describe('AFAC13 — annulation d’une facture qui porte de l’argent', () => 
   })
 
   it('Supprimer refusé par le serveur : message SOUS la facture (role=alert), aucun toast', async () => {
-    del.mockRejectedValue({ response: { status: 400, data: {
+    del.mockRejectedValue({ response: { status: 409, data: {
       code: 'reference_legale',
       detail: 'Cette facture porte le numéro FAC-2026-10-0009 : annulez-la.' } } })
     const user = userEvent.setup()

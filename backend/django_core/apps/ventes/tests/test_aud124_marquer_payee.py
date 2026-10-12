@@ -77,6 +77,17 @@ class TestAUD124MarquerPayee(TestCase):
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.EMISE)
 
+    def test_motif_non_chaine_400(self):
+        """api-fuzz (ENF11) : ``{"motif": [null, null]}`` levait une 500
+        (``list.strip``) — le corps est validé par son sérialiseur déclaré."""
+        facture = self._facture('FAC-AUD124-0009')
+        r = self.api.post(self._url(facture), {'motif': [None, None]},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['error']['code'], 'validation_error')
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.EMISE)
+
     def test_residuel_au_dessus_de_la_tolerance_redirige_vers_abandon(self):
         """Une créance de 40 000 MAD ne disparaît plus d'un clic."""
         facture = self._facture('FAC-AUD124-0003')
