@@ -17,6 +17,7 @@ import { normalizeSyncStatus, formatAge, formatSyncDateTime } from './syncStatus
 
 export default function SyncStatusBanner() {
   const [status, setStatus] = useState(null)
+  const [statusError, setStatusError] = useState(false)
 
   const load = useCallback(() => {
     // Endpoint optionnel côté test : les écrans qui mockent une API réduite
@@ -26,11 +27,19 @@ export default function SyncStatusBanner() {
     if (!fn) return
     fn()
       .then(r => setStatus(normalizeSyncStatus(r.data)))
-      .catch(() => setStatus(null))
+      .catch(() => { setStatus(null); setStatusError(true) })
   }, [])
 
   useEffect(() => { load() }, [load])
 
+  if (statusError) {
+    return (
+      <p className="ae-sync-banner" data-testid="ae-sync-banner-error" role="alert"
+        style={{ color: '#dc2626', margin: '0 0 1rem' }}>
+        Impossible de vérifier l&apos;état de synchronisation avec Meta.
+      </p>
+    )
+  }
   if (!status || !status.stale || !status.worst) return null
 
   const { worst } = status

@@ -13,6 +13,8 @@ import { formatDateTime } from '../../lib/format'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
 import { useAdsPermissions } from './useAdsPermissions'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    WIR209 — Boucle d'apprentissage des anomalies (PUB90), jusque-là sans UI.
@@ -85,6 +87,7 @@ function cadenceLabel(cadence) {
    ========================================================================== */
 
 export default function RulesScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   // WIR209 — voter sur une anomalie est une ÉCRITURE gated `adsengine_manage`
   // côté backend (`AnomalyEventViewSet.feedback`). Fail-closed au chargement.
   const { has } = useAdsPermissions()
@@ -117,7 +120,7 @@ export default function RulesScreen() {
   const reloadPolicies = useCallback(() => (
     fetchAllPages((page) => adsengineApi.rules.list({ page }).then(r => r.data), { concurrency: 3 })
       .then(rows => setPolicies(Array.isArray(rows) ? rows : (rows?.results || [])))
-      .catch(() => setPolicies([]))
+      .catch(() => { setPolicies([]); setLoadErrors(markLoadError("les politiques")) })
   ), [])
 
   const reloadDetectors = useCallback(() => {
@@ -126,7 +129,7 @@ export default function RulesScreen() {
     return req
       .then(r => setDetectors(
         Array.isArray(r?.data?.detecteurs) ? r.data.detecteurs : []))
-      .catch(() => setDetectors([]))
+      .catch(() => { setDetectors([]); setLoadErrors(markLoadError("les détecteurs")) })
   }, [])
 
   const load = useCallback(() => {
@@ -136,7 +139,7 @@ export default function RulesScreen() {
         // AACQ102 — gabarit à seuil monétaire (`*_mad` éditable, catalogue servi).
         .map(raw => ({ ...normalizeRuleTemplate(raw),
           monetaire: (raw?.editable_params || []).some(k => String(k).endsWith('_mad')) }))))
-      .catch(() => setTemplates([]))
+      .catch(() => { setTemplates([]); setLoadErrors(markLoadError("les gabarits")) })
     adsengineApi.anomalies.list()
       .then(r => {
         setAnomalies(normalizeAnomalies(r.data))
@@ -152,12 +155,12 @@ export default function RulesScreen() {
     reloadDetectors()
     adsengineApi.alerts.history()
       .then(r => setHistory(normalizeAlerts(r.data)))
-      .catch(() => setHistory([]))
+      .catch(() => { setHistory([]); setLoadErrors(markLoadError("l'historique")) })
       .finally(() => setLoading(false))
     // ADSDEEP43 — journal d'exécution enrichi (le « pourquoi » de chaque passe).
     adsengineApi.rules.journal()
       .then(r => setJournal(Array.isArray(r.data?.results) ? r.data.results : []))
-      .catch(() => setJournal([]))
+      .catch(() => { setJournal([]); setLoadErrors(markLoadError("le journal")) })
     reloadPolicies()
   }, [reloadPolicies, reloadDetectors])
 
@@ -258,6 +261,7 @@ export default function RulesScreen() {
 
   return (
     <div className="page ae-rules">
+      <LoadErrorNotice errors={loadErrors} />
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <SlidersHorizontal size={20} aria-hidden="true" /> Règles &amp; anomalies

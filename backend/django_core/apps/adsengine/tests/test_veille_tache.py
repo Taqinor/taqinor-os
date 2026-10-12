@@ -4,6 +4,7 @@ reprise au même curseur, plafonds obligatoires, aucune entrée au beat.
 Le transport HTTP est simulé (``httpx.MockTransport``) : aucune requête ne sort.
 """
 import datetime
+import importlib
 import json
 from unittest import mock
 
@@ -302,7 +303,7 @@ class AucunBeatTests(SimpleTestCase):
     def test_tache_enregistree_et_routee(self):
         from django.conf import settings
         from erp_agentique.celery import app
-        import apps.adsengine.tasks  # noqa: F401 — enregistre la tâche
+        importlib.import_module('apps.adsengine.tasks')  # enregistre la tâche
         self.assertIn('adsengine.veille_etape', app.tasks)
         self.assertIn('adsengine.veille_etape', settings.CELERY_TASK_ROUTES)
 

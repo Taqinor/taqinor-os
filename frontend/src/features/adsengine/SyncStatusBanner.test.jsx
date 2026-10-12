@@ -52,3 +52,12 @@ describe('SyncStatusBanner', () => {
     expect(screen.queryByTestId('ae-sync-banner')).toBeNull()
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('SyncStatusBanner — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.get.mockRejectedValue(new Error('boom'))
+    render(<SyncStatusBanner />)
+    expect(await screen.findByTestId('ae-sync-banner-error')).toHaveTextContent('Impossible de vérifier')
+  })
+})
