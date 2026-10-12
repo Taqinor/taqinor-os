@@ -125,8 +125,10 @@ _DETAIL = inline_serializer('CoreDetail', {
 })
 _OBJET = {'type': 'object', 'additionalProperties': True}
 _LISTE_OBJETS = {'type': 'array', 'items': _OBJET}
+# ERR-ENF11-FUZZ-CORE — année 0000 hors motif (aucune date possible : la vue
+# répondait 400 « Format de période invalide » à une valeur conforme).
 _PERIODE_TYPE = {
-    'type': 'string', 'pattern': r'^\d{4}-(0[1-9]|1[0-2])$'}
+    'type': 'string', 'pattern': r'^[1-9]\d{3}-(0[1-9]|1[0-2])$'}
 
 
 # ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré
