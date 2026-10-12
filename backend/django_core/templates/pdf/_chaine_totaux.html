@@ -20,10 +20,14 @@
                     total_ttc, base_ht
      ventilation  — CIQ215 : imprime « Base HT (x %) » avant chaque TVA
      tva_ventilee — False : une seule ligne « TVA » = t.tva (BC, pro-forma)
+     remise_negociee — VNT71 : facture d'un avenant négocié (prédécesseur de
+                    révision ACCEPTÉ) : la remise s'imprime
+                    « lib.remise_negociee » + montant, SANS « (x %) ». Absent
+                    (False) : rendu octet-identique.
 
    Chaque ligne garde la forme <span>libellé</span><span>montant</span> que
    lisent les tests de parité (aud108, ATOT16). #}
-{% macro chaine_totaux(t, remise_pct, lib, ventilation=False, tva_ventilee=True) %}
+{% macro chaine_totaux(t, remise_pct, lib, ventilation=False, tva_ventilee=True, remise_negociee=False) %}
 {% set remise = t.remise or 0 %}
 {% set arrondi = t.arrondi or 0 %}
 {% set ht_net = t.ht_net if t.ht_net is defined else t.ht %}
@@ -33,7 +37,7 @@
     </div>
     {% if remise > 0 %}
     <div class="totaux-row remise">
-      <span>{{ lib.remise_globale }} ({{ remise_pct }}%)</span>
+      <span>{% if remise_negociee %}{{ lib.remise_negociee }}{% else %}{{ lib.remise_globale }} ({{ remise_pct }}%){% endif %}</span>
       <span>−{{ "%.2f"|format(remise) }} MAD</span>
     </div>
     {% endif %}

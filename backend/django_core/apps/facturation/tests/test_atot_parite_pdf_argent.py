@@ -121,7 +121,8 @@ def figures_lues(texte, lib_sous_total, lib_ttc):
             break
         if libelle.startswith(lib_sous_total) and 'ht_brut' not in lues:
             lues['ht_brut'] = montant
-        elif libelle.startswith('Remise globale'):
+        elif libelle.startswith(('Remise globale', 'Remise négociée')):
+            # VNT71 — avenant négocié : même ligne, libellé sans « (x %) ».
             lues['remise'] = montant
         elif libelle == 'Arrondi commercial':
             lues['arrondi'] = montant
@@ -544,4 +545,18 @@ class FiguresLuesTests(SimpleTestCase):
         self.assertEqual(lues['ht_net'], Decimal('17000.00'))
         self.assertEqual(lues['remise'], Decimal('3000.00'))
         self.assertEqual(len(lues['tva_par_taux']), 2)
+        self.assertTrue(verifier_chaine_document(None, figures=lues))
+
+    def test_remise_negociee_lue(self):
+        """VNT71 — la remise d'un avenant négocié s'imprime « Remise
+        négociée » (montant, sans pourcentage) : le lecteur la lit comme la
+        remise globale, sinon l'oracle refuse la chaîne (remise lue = 0)."""
+        texte = ('Sous-total HT 46243.50 MAD Remise négociée −4624.35 MAD '
+                 'Arrondi commercial −65.82 MAD Total HT 41553.33 MAD '
+                 'TVA (10%) 864.00 MAD TVA (20%) 6582.67 MAD '
+                 'Total TTC 49000.00 MAD')
+        lues = figures_lues(texte, 'Sous-total HT', 'Total TTC')
+        self.assertEqual(lues['remise'], Decimal('4624.35'))
+        self.assertEqual(lues['arrondi'], Decimal('65.82'))
+        self.assertEqual(lues['ttc'], Decimal('49000.00'))
         self.assertTrue(verifier_chaine_document(None, figures=lues))

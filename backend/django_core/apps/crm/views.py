@@ -1031,7 +1031,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         serializer = self.get_serializer(
             instance, context={
                 **self.get_serializer_context(),
-                'include_chatter_recent': True,
+                'include_chatter_recent': True, 'include_vente': True,
             })
         return Response(serializer.data)
 

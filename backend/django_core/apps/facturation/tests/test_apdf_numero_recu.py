@@ -104,6 +104,74 @@ class NumeroRecuTests(TestCase):
         self.assertIn('n° REC-0002', self._rendre(p2))
 
 
+class ResteDuVenteRecuTests(TestCase):
+    """VNT92 — le reçu d'un paiement sur une facture de VENTE imprime, à
+    côté du solde de la facture, « Reste dû sur la vente : X MAD (devis
+    <réf>) » où X == ``etat_vente(...)['reste_a_payer_ttc']`` ; FR et AR
+    (``TEXTES_AR``). Golden 388 : acompte 15 000 payé ⇒ facture soldée
+    (0.00), vente 49 000 ⇒ reste 34000.00."""
+
+    def _vente_388(self, langue='fr'):
+        from apps.ventes.models import Paiement
+        from apps.ventes.tests._quote_engine_common import (
+            make_company, make_user)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            ECHEANCIER_LIBRE, VENT_ACOMPTE_15000, creer_devis_388,
+            facture_tranche)
+        from apps.crm.models import Client
+        company = make_company()
+        user = make_user(company)
+        n = _nxt()
+        client = Client.objects.create(
+            company=company, nom='Kharbachi', prenom='VNT92',
+            email=f'vnt92-{n}@example.invalid', langue_document=langue)
+        devis = creer_devis_388(company, user, client, f'DEV-VNT92-{n}',
+                                ECHEANCIER_LIBRE)
+        acompte = facture_tranche(devis, f'FAC-VNT92-{n}', 'acompte',
+                                  '15000.00', '12720.41', '2279.59',
+                                  ventilation=VENT_ACOMPTE_15000)
+        paiement = Paiement.objects.create(
+            company=company, facture=acompte, montant=Decimal('15000.00'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        return devis, acompte, paiement
+
+    def _html(self, paiement):
+        from unittest.mock import patch
+        from apps.ventes.models import Paiement
+        from apps.ventes.utils.pdf import generate_recu_pdf
+        frais = Paiement.objects.select_related(
+            'facture', 'facture__client', 'company').get(pk=paiement.pk)
+        with patch('apps.ventes.utils.pdf._html_to_pdf',
+                   side_effect=lambda html: html):
+            return ' '.join(generate_recu_pdf(frais).split())
+
+    def test_golden_388_acompte_paye(self):
+        from apps.ventes.vente_facturation import etat_vente
+        devis, acompte, paiement = self._vente_388()
+        texte = self._rendre(paiement)
+        self.assertIn(f'Solde restant dû sur {acompte.reference} : 0.00 MAD',
+                      texte)
+        self.assertIn('Reste dû sur la vente : 34000.00 MAD', texte)
+        self.assertIn(f'(devis {devis.reference})', texte)
+        self.assertEqual(etat_vente(devis)['reste_a_payer_ttc'], '34000.00')
+
+    def test_client_arabe(self):
+        from apps.ventes.utils.libelles_ar import TEXTES_AR, libelle
+        _devis, _acompte, paiement = self._vente_388('ar')
+        html = self._html(paiement)
+        self.assertIn(TEXTES_AR['Reste dû sur la vente'], html)
+        self.assertIn(libelle('devis', 'ar'), html)
+        self.assertIn('34000.00 MAD', html)
+        self.assertNotIn('Reste dû sur la vente', html)
+
+    def test_paiement_sans_devis_recu_inchange(self):
+        co, f = NumeroRecuTests._societe(self)
+        p = NumeroRecuTests._paiement(self, co, f)
+        self.assertNotIn('Reste dû sur la vente', self._html(p))
+
+    _rendre = NumeroRecuTests._rendre
+
+
 class RecuPdfVueTests(TestCase):
     """VNT43 — ``GET paiements/<id>/recu-pdf/`` nomme le fichier
     ``Quittance_<numero_recu>.pdf`` (comme l'e-mail), jamais par l'id ; un
