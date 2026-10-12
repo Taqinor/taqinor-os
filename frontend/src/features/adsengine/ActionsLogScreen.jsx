@@ -11,6 +11,8 @@ import { presetRange, previousRange, computeDelta, formatDeltaPct } from './date
 import SyncStatusBanner from './SyncStatusBanner'
 // FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
 import UpdateBanner from './UpdateBanner'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 // PUB44 — l'ad ciblée par une EngineAction, quand résoluble : 3 conventions
 // de clé cohabitent dans `payload` selon le `kind` (les mêmes que côté
@@ -49,6 +51,7 @@ const MODE_FILTERS = [
 ]
 
 export default function ActionsLogScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [actions, setActions] = useState([])
   const [loading, setLoading] = useState(true)
   const [statut, setStatut] = useState('')
@@ -87,7 +90,7 @@ export default function ActionsLogScreen() {
       fetchAllPages((page) => adsengineApi.actions.log({ debut: prev.debut, fin: prev.fin, page }).then(r => r.data), { concurrency: 3 })
         .then(rows => setPreviousCount(
           (Array.isArray(rows) ? rows : (rows?.results || [])).length))
-        .catch(() => setPreviousCount(null))
+        .catch(() => { setPreviousCount(null); setLoadErrors(markLoadError("la période précédente")) })
     } else {
       setPreviousCount(null)
     }
@@ -128,6 +131,7 @@ export default function ActionsLogScreen() {
       <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <LoadErrorNotice errors={loadErrors} />
       <SyncStatusBanner />
 
       {/* PUB40 — sélecteur de période + comparaison. */}
