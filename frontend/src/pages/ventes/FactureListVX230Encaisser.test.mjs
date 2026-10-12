@@ -8,10 +8,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DIALOG = readFileSync(join(HERE, 'PaiementDialog.jsx'), 'utf8')
-const FACTURE_LIST = readFileSync(join(HERE, 'FactureList.jsx'), 'utf8')
+// VNT102 — FactureList.jsx est découpé : la garde lit FactureList.jsx + factureList/*.
+const FACTURE_LIST = lireSourcesFactureList()
 const RELANCES = readFileSync(join(HERE, 'RelancesPage.jsx'), 'utf8')
 
 test('VX230 : PaiementDialog est un composant PARTAGÉ (props facture / onOpenChange / onSaved)', () => {
@@ -29,7 +31,7 @@ test('VX230 : PaiementDialog se (ré)initialise à chaque nouvelle facture cibl�
 })
 
 test('VX230 : FactureList monte le PaiementDialog partagé et rafraîchit la liste au save', () => {
-  assert.match(FACTURE_LIST, /import PaiementDialog from '\.\/PaiementDialog'/)
+  assert.match(FACTURE_LIST, /import PaiementDialog from '(?:\.\.?\/)+PaiementDialog'/)
   assert.match(FACTURE_LIST, /<PaiementDialog[\s\S]{0,160}facture=\{payTarget\}/)
   // EZ12 — le save rafraîchit TOUJOURS la liste ; il arme en plus le bandeau
   // « Voir l'encaissement » (l'action suivante offerte).

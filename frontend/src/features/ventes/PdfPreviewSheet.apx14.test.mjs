@@ -10,12 +10,17 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { lireSourcesDevisList } from '../../pages/ventes/devisList/lireSources.mjs'
+import { lireSourcesFactureList } from '../../pages/ventes/factureList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const sheet = readFileSync(path.join(__dirname, 'PdfPreviewSheet.jsx'), 'utf8')
 // QJR653 — le rendu canvas vit dans le corps partagé monté par le panneau.
 const body = readFileSync(path.join(__dirname, 'PdfPreviewBody.jsx'), 'utf8')
-const page = (f) => readFileSync(path.join(__dirname, '..', '..', 'pages', 'ventes', f), 'utf8')
+// VNT102 — FactureList.jsx est découpé (l'aperçu est monté par DialoguesFacture, le blob par
+// useFactureDocuments) : la garde lit FactureList.jsx + factureList/*.
+const page = (f) => (f === 'FactureList.jsx'
+  ? lireSourcesFactureList()
+  : readFileSync(path.join(__dirname, '..', '..', 'pages', 'ventes', f), 'utf8'))
 const css = readFileSync(path.join(__dirname, '..', '..', 'index.css'), 'utf8')
 
 test('le panneau rend le PDF INLINE (PdfCanvas), jamais un onglet', () => {
@@ -40,7 +45,7 @@ test('RÈGLE #4 — le panneau ne connaît AUCUNE URL de PDF', () => {
 test('les DEUX écrans montent l’aperçu inline', () => {
   for (const f of ['DevisList.jsx', 'FactureList.jsx']) {
     const src = page(f)
-    assert.match(src, /import PdfPreviewSheet from '\.\.\/\.\.\/features\/ventes\/PdfPreviewSheet'/, f)
+    assert.match(src, /import PdfPreviewSheet from '(?:\.\.\/)+features\/ventes\/PdfPreviewSheet'/, f)
     assert.match(src, /<PdfPreviewSheet\b/, f)
   }
 })
