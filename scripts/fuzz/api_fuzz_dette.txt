@@ -1668,3 +1668,15 @@ API rejected schema-compliant request|POST /api/django/core/dsr-requests/
 API rejected schema-compliant request|POST /api/django/core/formulaires/
 Response violates schema|PATCH /api/django/ventes/bons-commande/{id}/
 Response violates schema|PATCH /api/django/ventes/plans-commission/{id}/
+# VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
+# pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
+API accepted schema-violating request|GET /api/django/crm/objectifs/
+API accepted schema-violating request|GET /api/django/crm/relance-etapes/
+API accepted schema-violating request|PATCH /api/django/crm/clients/{id}/
+API accepted schema-violating request|PATCH /api/django/crm/vues-enregistrees/{id}/
+API accepted schema-violating request|POST /api/django/crm/leads/{id}/questionnaire-lien/
+API accepted schema-violating request|POST /api/django/crm/vues-enregistrees/
+API accepted schema-violating request|POST /api/django/ventes/economie-ci/preview/
+API accepted schema-violating request|PUT /api/django/crm/vues-enregistrees/{id}/
+Server error|POST /api/django/crm/leads/bulk/
+Server error|POST /api/django/crm/public/booking/{token}/reserve/
