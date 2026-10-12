@@ -202,7 +202,7 @@ class RejeuTests(unittest.TestCase):
 
     def test_fonction_de_domaine_resolue_par_la_vue_qui_l_appelle(self):
         m = object.__new__(rejouer_parcours._Moteur)
-        m.sources, m.objets = {}, {}
+        m.objets = {}
         m.routes = [("api/^factures/$", mock.Mock(actions={"post": "bulk"}), _VueFacture),
                     ("api/^factures/(?P<pk>[^/.]+)/emettre/$", mock.Mock(actions={"post": "emettre"}), _VueFacture)]
         motif, verbe, _ = m.route_de("backend/django_core/apps/v/domain/ops.py::emettre_facture")

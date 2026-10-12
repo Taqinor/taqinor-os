@@ -73,7 +73,7 @@ class _Moteur:
         if 'prod' in os.environ.get('DJANGO_SETTINGS_MODULE', '') + str(getattr(settings, 'SETTINGS_MODULE', '')):
             raise RuntimeError('rejouer_parcours refusé : réglages de production')
         self.apps, self.etapes, self.donnees = apps, etapes, donnees
-        self.routes, self.objets, self.sorties, self.instantane, self.sources = [], {}, [], {}, {}
+        self.routes, self.objets, self.sorties, self.instantane = [], {}, [], {}
         self._parcourir(get_resolver().url_patterns, '')
         racine = apps.get_model(modele) if modele else next(
             (self.modele_vue(r[2]) for e in etapes for r in [self.route_de(e.get('fonction_entree'))] if r), None)
@@ -116,16 +116,20 @@ class _Moteur:
             out += [(v, next((c for c in cellules if inspect.isfunction(c)), f))] if f else []
         return out
 
-    def appelle(self, f, nom):
-        """`f` appelle (ou importe sous alias) la fonction `nom` : appelant réel, pas une mention en docstring."""
-        if f not in self.sources:
-            try:
-                self.sources[f] = inspect.getsource(inspect.unwrap(f))
-            except (OSError, TypeError):
-                self.sources[f] = ''
-        src = self.sources[f]
-        return bool(re.search(rf'(?<!def )\b{nom}\s*\(|\b{nom}\s+as\s+\w', src) and (
-            nom in getattr(f, '__globals__', {}) or re.search(rf'import\s*\(?[^)]*?\b{nom}\b', src)))
+    @staticmethod
+    def appelle(f, nom):
+        """`f` (ou une fonction imbriquée) nomme `nom` dans son CODE (appel, import, alias) — jamais une docstring.
+        Lu sur `__code__.co_names`, sans source : `inspect.getsource` sur ~5 000 routes ne finit pas en conteneur."""
+        try:
+            pile = [getattr(inspect.unwrap(f), '__code__', None)]
+        except ValueError:
+            return False
+        while pile:
+            code = pile.pop()
+            if code is not None and nom in code.co_names:
+                return True
+            pile += [k for k in getattr(code, 'co_consts', ()) if inspect.iscode(k)]
+        return False
 
     def route_de(self, ref):
         """(motif, verbe, classe de vue) de la route qui joue `fichier::[Classe.]fonction`, ou None.
