@@ -1659,3 +1659,12 @@ Server error|POST /api/django/stock/kits/remplacer-composant/
 Server error|POST /api/django/stock/produits/inventaire/
 Server error|POST /api/django/ventes/factures/{id}/creer-note-debit/
 Server error|POST /api/django/ventes/paiements/import-releve/commit/
+API accepted schema-violating request|GET /api/django/stock/produits/analyse-achats/pdf/
+API accepted schema-violating request|PATCH /api/django/ventes/plans-commission/{id}/
+API accepted schema-violating request|PUT /api/django/records/activity-types/{id}/
+API accepted schema-violating request|PUT /api/django/ventes/plans-commission/{id}/
+API rejected schema-compliant request|PATCH /api/django/core/theme/courant/
+API rejected schema-compliant request|POST /api/django/core/dsr-requests/
+API rejected schema-compliant request|POST /api/django/core/formulaires/
+Response violates schema|PATCH /api/django/ventes/bons-commande/{id}/
+Response violates schema|PATCH /api/django/ventes/plans-commission/{id}/
