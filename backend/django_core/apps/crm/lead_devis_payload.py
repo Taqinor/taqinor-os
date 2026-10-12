@@ -79,6 +79,18 @@ def lignes_devis_du_lead(obj, context):
     # `apps.ventes.selectors.devis_modifiabilite` — la MÊME règle que le
     # détail du devis, jamais recopiée ici.
     from apps.ventes.selectors import devis_modifiabilite
+    # VNT70 — DÉTAIL seulement (drapeau ``include_vente`` posé par
+    # ``LeadViewSet.retrieve``) : ``solde`` + ``vente`` des devis ACCEPTÉS
+    # sous UN lot (``vente_et_solde_map``) ; null sur les autres. La liste
+    # garde ses 16 clés (budget de requêtes inchangé).
+    etats = {}
+    if context.get('include_vente'):
+        acceptes = [d for d in rows if d.statut == 'accepte']
+        if acceptes:
+            from apps.ventes.selectors import vente_et_solde_map
+            requete = context.get('request')
+            etats = vente_et_solde_map(
+                acceptes, getattr(requete, 'user', None))
     return [
         {
             'id': d.id,
@@ -104,9 +116,19 @@ def lignes_devis_du_lead(obj, context):
             # déjà chargée ; null si jamais corrigé. Le cockpit dit alors
             # « lu le X — avant la correction du Y ».
             'corrige_le': _corrige_le(d),
+            **_etat_vente(d, etats, context),
         }
         for d in rows
     ]
+
+
+def _etat_vente(devis, etats, context):
+    """VNT70 — ``{'solde', 'vente'}`` du devis (null si non accepté) ; ``{}``
+    hors détail (la liste ne porte pas ces deux clés)."""
+    if not context.get('include_vente'):
+        return {}
+    etat = etats.get(devis.pk) or {}
+    return {'solde': etat.get('solde'), 'vente': etat.get('vente')}
 
 
 def _corrige_le(devis):
