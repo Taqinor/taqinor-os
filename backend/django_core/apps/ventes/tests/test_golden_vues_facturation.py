@@ -16,12 +16,10 @@ Ce que le golden fige (``fixtures/golden_vues_facturation.json``) :
   ``POSES_PAR_AS_VIEW`` : un mixin oublié dans les bases rougit ;
 * ``permissions`` — ``type(p).__name__`` de ``get_permissions()`` pour
   chaque action (standard + ``@action``) ;
-* ``corps`` — section ÉPHÉMÈRE : sha256 de ``ast.dump`` (DÉCORATEURS
-  COMPRIS, ``ImportFrom.level`` ramené à 0) de chaque membre de
-  ``FactureViewSet`` et de toute ``Facture\\w*ActionsMixin``, et de chaque
-  symbole de niveau module de ``GROUPES`` ; prouvée identique à chaque
-  déplacement puis retirée par VNT101. Capturée sous Python 3.11 (``ast.dump``
-  diffère d'une version mineure à l'autre) : échec BRUYANT ailleurs.
+* (``corps`` — sha256 de ``ast.dump`` de chaque membre déplacé : section
+  ÉPHÉMÈRE, capturée sous Python 3.11, prouvée identique à chaque
+  déplacement VNT97-VNT100 puis retirée par VNT101, dernière tâche de la
+  piste, pour ne pas verrouiller les corrections futures de ces corps.)
 
 ``PLACE`` est rempli par chaque déplacement : ``groupe → fichier de views/``.
 Un groupe absent de ``PLACE`` vit dans ``views/facture.py`` ; un symbole
@@ -33,12 +31,9 @@ Run :
         -Modules "apps.ventes.tests.test_golden_vues_facturation"
 """
 import ast
-import copy
-import hashlib
 import inspect
 import json
 import re
-import sys
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -48,8 +43,6 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
     'golden_vues_facturation.json'
 MIXIN = re.compile(r'^Facture\w*ActionsMixin$')
 DEFAUT = 'facture.py'
-#: Version mineure de Python de la capture des ``corps`` (CI : 3.11).
-PYTHON_CAPTURE = '3.11'
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches
 #: VNT97-VNT100, se repérer par NOM).
@@ -135,41 +128,6 @@ def _symboles():
     return trouves
 
 
-def _empreinte(noeud):
-    """sha256 de ``ast.dump`` (décorateurs compris), imports relatifs
-    ramenés au niveau 0 (un déplacement d'un module voisin à l'autre ne
-    change rien)."""
-    noeud = copy.deepcopy(noeud)
-    for sous in ast.walk(noeud):
-        if isinstance(sous, ast.ImportFrom):
-            sous.level = 0
-    return hashlib.sha256(
-        ast.dump(noeud, include_attributes=False).encode('utf-8')).hexdigest()
-
-
-def _symboles_figes():
-    """Les noms dont le ``corps`` est figé : membres du viewset et des
-    mixins + symboles de niveau module des ``GROUPES``."""
-    noms = set()
-    for chemin in _fichiers_vues_facture():
-        arbre = ast.parse(chemin.read_text(encoding='utf-8'))
-        for noeud in arbre.body:
-            if isinstance(noeud, ast.ClassDef) and (
-                    noeud.name == 'FactureViewSet'
-                    or MIXIN.match(noeud.name)):
-                for membre in noeud.body:
-                    noms.update(_noms_definis(membre))
-    for groupe in GROUPES.values():
-        noms.update(groupe)
-    return sorted(noms)
-
-
-def capturer_corps():
-    trouves = _symboles()
-    return {nom: _empreinte(trouves[nom][0][1]) for nom in _symboles_figes()
-            if len(trouves.get(nom, [])) == 1}
-
-
 def capturer_routes():
     from apps.ventes.views.facture import FactureViewSet
     routes = [{
@@ -219,23 +177,6 @@ class GoldenVuesFacturation(SimpleTestCase):
 
     def test_permissions_identiques(self):
         self.assertEqual(capturer_permissions(), _golden()['permissions'])
-
-    def test_corps_identiques(self):
-        golden = _golden()
-        version = '%d.%d' % sys.version_info[:2]
-        if version != golden['python']:
-            self.fail(
-                f"corps capturés sous Python {golden['python']}, exécutés "
-                f'sous {version} : ast.dump diffère d\'une version mineure à '
-                "l'autre — rejouer dans l'image (3.11), jamais régénérer ici.")
-        trouves = _symboles()
-        for nom, empreinte in sorted(golden['corps'].items()):
-            with self.subTest(symbole=nom):
-                occurrences = trouves.get(nom, [])
-                self.assertEqual(len(occurrences), 1,
-                                 f'{nom} : {len(occurrences)} définition(s)')
-                self.assertEqual(_empreinte(occurrences[0][1]), empreinte,
-                                 f'{nom} : corps changé pendant le déplacement')
 
     def test_chaque_groupe_vit_a_sa_place(self):
         from apps.ventes.views.facture import FactureViewSet
