@@ -50,14 +50,21 @@ owners:
     titre: "Devis accepté → BC → facture → paiement → avoir → relances"
     paths:
       - backend/django_core/apps/facturation/**
+      - backend/django_core/apps/ventes/contract_samples/devis_echeancier.json
+      - backend/django_core/apps/ventes/contract_samples/devis_facturer.json
       - backend/django_core/apps/ventes/contract_samples/factures_kpis.json
+      - backend/django_core/apps/ventes/contract_samples/vente_etat.json
       - backend/django_core/apps/ventes/deposit.py
       - backend/django_core/apps/ventes/dgi/**
+      - backend/django_core/apps/ventes/domain/annulation_facture.py
       - backend/django_core/apps/ventes/domain/argent.py
       - backend/django_core/apps/ventes/domain/bordereau.py
       - backend/django_core/apps/ventes/domain/encaissements.py
       - backend/django_core/apps/ventes/domain/facturation_ops.py
+      - backend/django_core/apps/ventes/domain/facturation_vente.py
+      - backend/django_core/apps/ventes/domain/instantanes_facture.py
       - backend/django_core/apps/ventes/domain/recouvrement.py
+      - backend/django_core/apps/ventes/domain/reparation_vente.py
       - backend/django_core/apps/ventes/exports.py
       - backend/django_core/apps/ventes/extra_docs_views.py
       - backend/django_core/apps/ventes/insights_view.py
@@ -150,6 +157,7 @@ owners:
       - backend/django_core/apps/ventes/views/credit_warning.py
       - backend/django_core/apps/ventes/views/devis_facturation.py
       - backend/django_core/apps/ventes/views/facture.py
+      - backend/django_core/apps/ventes/views/facture_*.py
       - backend/django_core/apps/ventes/views/ligne_facture.py
       - backend/django_core/apps/ventes/views/mandat_paiement.py
       - backend/django_core/apps/ventes/views/paiement.py
@@ -173,6 +181,7 @@ owners:
       - frontend/e2e/receivables*
       - frontend/src/features/ventes/PaiementEnLigneDialog*
       - frontend/src/features/ventes/echeancierEdition*
+      - frontend/src/features/ventes/vente/**
       - frontend/src/pages/ventes/AvoirsPage*
       - frontend/src/pages/ventes/BonCommandeList*
       - frontend/src/pages/ventes/FactureForm*
