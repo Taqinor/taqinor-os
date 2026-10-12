@@ -169,6 +169,66 @@ class TestExemplaireSigneCleDediee(TestCase):
         self.assertEqual(contenu, b'%PDF-signe-v1')
         mock_gen.assert_not_called()
 
+    # ── VNT61 — l'avenant accepté en interne se signe par le lien client ───
+    def _avenant_a_signer(self):
+        v1, _ = self._devis('DEV-VNT61-V1', 'accepte', CLE_SIGNEE)
+        v2 = make_devis(self.company, self.user, self.client_obj,
+                        'DEV-VNT61-V2')
+        Devis.objects.filter(pk=v2.pk).update(
+            statut='accepte', version=2, version_parent=v1,
+            accepte_par_nom='Client — avenant négocié')
+        Devis.objects.filter(pk=v1.pk).update(superseded_by=v2,
+                                              is_active=False)
+        v2.refresh_from_db()
+        lien = ShareLink.objects.create(
+            company=self.company, devis=v2, token=str(uuid.uuid4()),
+            niveau=ShareLink.NIVEAU_CONFIANCE)
+        return v1, v2, lien
+
+    def _signer(self, v2, lien):
+        from apps.ventes.public.signature_views import empreinte_contenu
+        return DjangoClient().post(
+            f'/api/django/public/proposal/{lien.token}/accept/',
+            {'nom': 'Client Avenant', 'consent_esign': True,
+             'empreinte_contenu': empreinte_contenu(v2)},
+            content_type='application/json')
+
+    def test_vnt61_avenant_signe_sans_statut_ni_evenement(self):
+        from core.events import devis_accepted
+        from apps.ventes.public.lecture_views import avenant_public
+        v1, v2, lien = self._avenant_a_signer()
+        self.assertEqual(avenant_public(v2), {
+            'a_signer': True, 'remplace': {'reference': v1.reference},
+            'signe_le': None})
+        self.assertIsNone(avenant_public(v1))  # pas un avenant : clé absente
+        evenements = []
+        devis_accepted.connect(lambda sender, **kw: evenements.append(kw),
+                               weak=False, dispatch_uid='vnt61')
+        self.addCleanup(devis_accepted.disconnect, dispatch_uid='vnt61')
+        with patch('apps.ventes.domain.cycle_vie._store_signed_pdf') as pdf, \
+                patch('apps.ventes.domain.capi_signee._fire_capi_signed_quote'
+                      ) as capi, \
+                patch('apps.publicapi.signals.delivery.dispatch_event') as wh:
+            r = self._signer(v2, lien)
+            self.assertEqual(r.status_code, 200, r.content)
+            corps = r.json()
+            self.assertEqual(corps['detail'], 'Avenant accepté. Merci !')
+            self.assertEqual(corps['statut'], 'accepte')
+            self.assertTrue(corps['avenant_signe']['signe_le'])
+            self.assertEqual(DevisSignature.objects.filter(devis=v2).count(), 1)
+            pdf.assert_called_once()
+            # 2e soumission : rien n'est écrit.
+            r2 = self._signer(v2, lien)
+            self.assertEqual(r2.status_code, 200, r2.content)
+            self.assertEqual(DevisSignature.objects.filter(devis=v2).count(), 1)
+            pdf.assert_called_once()
+        capi.assert_not_called()
+        wh.assert_not_called()
+        self.assertEqual(evenements, [])
+        v2.refresh_from_db()
+        self.assertEqual(v2.statut, 'accepte')
+        self.assertIs(avenant_public(v2)['a_signer'], False)
+
     def test_aucune_cle_de_rendu_ne_vise_le_suffixe_signe(self):
         from apps.ventes.quote_engine.builder import VARIANTES_PDF, _pdf_key
         devis = make_devis(self.company, self.user, self.client_obj,

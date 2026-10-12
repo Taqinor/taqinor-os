@@ -65,6 +65,18 @@ class DevisAcceptedSurLeBusTests(TestCase):
             sender=Devis, devis=devis, user=None, ancien_statut='envoye')
         self.assertEqual(self._runs().count(), 1)
 
+    def test_un_avenant_ne_declenche_aucune_regle(self):
+        """VNT53 — ``avenant_de`` posé (V2 d'une vente déjà acceptée) ⇒ 0
+        règle ; la première vente déclenche comme avant."""
+        v1 = self._devis(reference='DEV-823-AV1', statut='accepte')
+        devis_accepted.send(sender=Devis, devis=v1, user=None,
+                            ancien_statut='envoye', avenant_de=None)
+        self.assertEqual(self._runs().count(), 1)
+        v2 = self._devis(reference='DEV-823-AV2', statut='accepte')
+        devis_accepted.send(sender=Devis, devis=v2, user=None,
+                            ancien_statut='envoye', avenant_de=v1.pk)
+        self.assertEqual(self._runs().count(), 1)
+
     def test_le_declencheur_est_abonne_au_bus_m6(self):
         # `Signal.receivers` : chaque entrée commence par sa lookup_key, dont
         # le premier élément est le `dispatch_uid` quand il est fourni (même

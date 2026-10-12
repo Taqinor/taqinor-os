@@ -1442,6 +1442,32 @@ def devis_predecesseurs_revision_ids(devis):
     return ordre
 
 
+def predecesseurs_acceptes(devis):
+    """VNT51 — les versions ACCEPTÉES que ``devis`` remplace par révision
+    (``superseded_by``, jamais ``version_parent``), même société, de la plus
+    proche à la plus ancienne. Liste vide pour une première vente ou la V2
+    d'un devis refusé/expiré."""
+    from .models import Devis
+
+    preds = devis_predecesseurs_revision_ids(devis)
+    if not preds:
+        return []
+    acceptes = list(Devis.objects.filter(
+        pk__in=preds, company_id=devis.company_id,
+        statut=Devis.Statut.ACCEPTE))
+    acceptes.sort(key=lambda d: preds.index(d.pk))
+    return acceptes
+
+
+def predecesseur_accepte(devis):
+    """VNT51 — LA lecture « ce devis est-il l'avenant d'une vente signée ? » :
+    le prédécesseur de révision ACCEPTÉ le plus proche, ou ``None``. Lue par
+    ``accept_devis`` (``devis_accepted(avenant_de=…)``), ``revision.py`` et
+    les abonnés post_save qui ne voient pas ce kwarg (VNT53)."""
+    acceptes = predecesseurs_acceptes(devis)
+    return acceptes[0] if acceptes else None
+
+
 def instantane_accepte_en_vigueur(devis_id, company):
     """ACAL107 (D-ACAL-23) — l'instantané FIGÉ de la version ACCEPTÉE en
     vigueur de la chaîne de révision de ``devis_id``, ou ``None``.

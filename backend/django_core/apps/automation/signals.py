@@ -120,7 +120,9 @@ def _on_devis_accepted(sender, devis, user=None, ancien_statut=None, **kwargs):
     puissent le lire (aucune règle existante n'en dépend : ajout pur).
     """
     company = getattr(devis, 'company', None)
-    if company is None:
+    # VNT53 — un avenant (``avenant_de`` posé par ``accept_devis`` depuis
+    # ``predecesseur_accepte``) n'est pas une nouvelle vente : aucune règle.
+    if company is None or kwargs.get('avenant_de'):
         return
     evaluate(TriggerType.DEVIS_ACCEPTED, devis, company, user=user,
              context={'ancien_statut': ancien_statut,

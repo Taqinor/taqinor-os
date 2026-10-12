@@ -30,7 +30,8 @@ from .public.noyau import (
     _resolve_proposal_link, _resolve_share_link_by_token, _sans_cles_internes,
     _section_servie, _strip_confidential_deep,
 )
-from .public.lecture_views import _notify_open, _stamp_view_si_public
+from .public.lecture_views import (  # VNT61 : avenant_public
+    _notify_open, _stamp_view_si_public, avenant_public)
 from .public.payload_batterie import (
     _balayage_stockage_publique, _batterie_regime_publique,
     _couverture_batterie_publique, _echelle_paliers_batterie_publique,
@@ -1812,12 +1813,14 @@ def proposal_data(request, token):
         # conditions générales, les moyens de règlement, et s'il recevra
         # vraiment une confirmation. Trois clés ADDITIVES (absentes quand
         # incalculables, jamais `null`) + deux clés de base constantes.
-        _acompte = _acompte_publique(devis)
-        if _acompte is not None:
+        if (_acompte := _acompte_publique(devis)) is not None:
             payload['acompte'] = _acompte
-        _date_validite = _date_validite_publique(devis)
-        if _date_validite is not None:
+        if (_date_validite := _date_validite_publique(devis)) is not None:
             payload['date_validite'] = _date_validite
+        # VNT61 — clé ADDITIVE ``avenant`` {a_signer, remplace, signe_le} :
+        # absente (jamais null) quand le devis n'est pas un avenant.
+        if (_avenant := avenant_public(devis)) is not None:
+            payload['avenant'] = _avenant
         # APDF19 — avec les puces, le titre que le PDF imprime au-dessus.
         if (_conditions := _conditions_publiques(data, devis)) is not None:
             payload['conditions'] = _conditions

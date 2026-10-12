@@ -33,7 +33,10 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.domain.lignes import creer_ligne
 from apps.ventes.models import Devis, EmailLog, ShareLink
-from apps.ventes.utils.echeancier import next_tranche
+# VNT63 — l'acompte ANNONCÉ est l'acompte PRÉVU (1re tranche du plan) : après
+# l'acceptation, le brouillon d'acompte (VNT62) fait sauter l'acompte à
+# ``next_tranche`` (première tranche À FAIRE).
+from apps.ventes.public.payload_conditions import _acompte_prevu
 from apps.ventes.utils.options import (
     AVEC_BATTERIE, SANS_BATTERIE, option_totaux,
 )
@@ -157,7 +160,7 @@ class LEcranPublicAnnonceCeQuiAEteSigne(_BaseDeuxOptions):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.option_acceptee, SANS_BATTERIE)
 
-        attendu = Decimal(str(next_tranche(self.devis)['ttc']))
+        attendu = Decimal(str(_acompte_prevu(self.devis)['ttc']))
         ecran = Decimal(resp.data['paiement']['acompte_ttc'])
         self.assertEqual(ecran, attendu)
         self.assertIn(_montant_email(attendu), self._corps_email(self.devis))
@@ -170,12 +173,12 @@ class LEcranPublicAnnonceCeQuiAEteSigne(_BaseDeuxOptions):
         ecran = Decimal(resp.data['paiement']['acompte_ttc'])
 
         self.devis.refresh_from_db()
-        signe = Decimal(str(next_tranche(self.devis)['ttc']))
+        signe = Decimal(str(_acompte_prevu(self.devis)['ttc']))
         perime = Devis.objects.get(pk=self.devis.pk)
         # L'état EXACT de l'objet que l'appelant gardait en main : accepté en
         # base, mais sans l'option — donc ``option_effective`` → AVEC_BATTERIE.
         perime.option_acceptee = ''
-        acompte_perime = Decimal(str(next_tranche(perime)['ttc']))
+        acompte_perime = Decimal(str(_acompte_prevu(perime)['ttc']))
 
         self.assertEqual(ecran, signe)
         self.assertNotEqual(

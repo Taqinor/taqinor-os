@@ -194,6 +194,18 @@ class CadenceAvenant(TestCase):
         self.assertEqual(self._taches_avenant().count(), 1)
         self.assertEqual(self._cadence().count(), 0)
 
+    def test_service_poser_tache_avenant_idempotent(self):
+        """VNT53 (D-ADEV-6) — ``apps.crm.services.poser_tache_avenant``
+        appelé 2× ⇒ UNE seule tâche « Faire signer l’avenant »."""
+        from apps.crm.services import poser_tache_avenant
+        Devis.objects.filter(pk=self.v1.pk).update(
+            statut=Devis.Statut.ACCEPTE)
+        self.v1.refresh_from_db()
+        v2 = reviser_devis(self.v1, user=self.acteur)
+        poser_tache_avenant(self.lead, v2, self.acteur)
+        poser_tache_avenant(self.lead, v2, self.acteur)
+        self.assertEqual(self._taches_avenant().count(), 1)
+
     def test_premier_devis_envoye_garde_sa_cadence_normale(self):
         self._envoyer(self.v1)
         self.assertGreater(self._cadence().filter(statut=A_FAIRE).count(), 0)

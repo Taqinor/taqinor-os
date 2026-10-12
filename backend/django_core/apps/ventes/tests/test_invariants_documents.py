@@ -281,8 +281,12 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
             BonCommande.Statut.CONFIRME, BonCommande.Statut.LIVRE)
         facture_bc_deja = Facture.objects.filter(
             bon_commande=self.bc).exists()
+        # VNT20/VNT62 — un BROUILLON (l'acompte automatique de l'acceptation)
+        # est PRÉVU, jamais facturé : il ne ferme pas la porte du BC.
         facture_devis_deja = Facture.objects.filter(
-            devis=self.devis).exclude(bon_commande=self.bc).exists()
+            devis=self.devis).exclude(bon_commande=self.bc).exclude(
+            statut__in=(Facture.Statut.BROUILLON,
+                        Facture.Statut.ANNULEE)).exists()
         resp = self.api.post(
             f'/api/django/ventes/bons-commande/{self.bc.id}/creer-facture/',
             {}, format='json')
@@ -344,7 +348,10 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
         self.devis.refresh_from_db()
         factures = list(Facture.objects.filter(devis=self.devis))
         via_bc = [f for f in factures if f.bon_commande_id is not None]
-        via_echeancier = [f for f in factures if f.bon_commande_id is None]
+        # VNT62 — le brouillon d'acompte automatique est PRÉVU, pas facturé.
+        via_echeancier = [f for f in factures if f.bon_commande_id is None
+                          and f.statut not in (Facture.Statut.BROUILLON,
+                                               Facture.Statut.ANNULEE)]
         assert not (via_bc and via_echeancier), (
             'AUD112 violé : facture(s) via bon de commande ET via '
             f'échéancier coexistent pour {self.devis.reference}.')

@@ -78,3 +78,23 @@ class CoherenceArgentTests(_Base):
                      montant_tva=Decimal('2000'), montant_ttc=Decimal('12000'))
         self.assertEqual(self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS', devis,
                                        _Ctx(self.company)), [])
+
+    def test_vnt64_une_chaine_jugee_comme_une_seule_vente(self):
+        """VNT64 — V1 (remplacée) et V2 (acceptée) forment UNE vente : la
+        règle lit ``plan_facturation`` de la tête et la juge UNE fois.
+        7 200 sur V1 + 7 200 sur V2 = 14 400 > 12 000 : signalé sur V2 seule
+        (hier : chaque version passait seule, 7 200 ≤ 12 000)."""
+        v1 = self.devis()
+        v2 = self.devis(version=2, version_parent=v1)
+        Devis.objects.filter(pk=v1.pk).update(superseded_by=v2,
+                                              is_active=False)
+        for devis in (v1, v2):
+            self._facture('7200', devis=devis, statut=Facture.Statut.EMISE)
+        v1, v2 = Devis.objects.get(pk=v1.pk), Devis.objects.get(pk=v2.pk)
+        ctx = _Ctx(self.company)
+        self.assertEqual(
+            self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS', v1, ctx), [])
+        out = self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS', v2, ctx)
+        self.assertEqual(len(out), 1)
+        self.assertAlmostEqual(out[0].valeurs['net_facture'], 14400.0,
+                               places=2)

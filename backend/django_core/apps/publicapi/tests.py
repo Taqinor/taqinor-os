@@ -35,7 +35,7 @@ from .constants import (
     EVENT_LEAD_STAGE_CHANGED, EVENT_DEVIS_SENT, EVENT_FACTURE_CREATED,
     EVENT_PAIEMENT_RECORDED, EVENT_INTERVENTION_COMPLETED,
     EVENT_TICKET_CREATED, EVENT_TICKET_RESOLVED, EVENT_STOCK_SEUIL_ATTEINT,
-    EVENT_LIVRAISON_LIVREE,
+    EVENT_LIVRAISON_LIVREE, EVENT_DEVIS_ACCEPTED,
 )
 from .models import ApiKey, Webhook, WebhookDelivery, hash_key
 from . import delivery
@@ -464,6 +464,26 @@ class ExtraEventTriggerTests(TestCase):
             devis.statut = Devis.Statut.ENVOYE
             devis.save()
         self.assertIn(EVENT_DEVIS_SENT, self._events(d))
+
+    def test_devis_accepted_avenant_aucune_livraison(self):
+        """VNT53 — la première vente livre ``devis.accepted`` ; la V2 qui
+        remplace une vente ACCEPTÉE (avenant) n'en livre aucun."""
+        v1 = Devis.objects.create(
+            company=self.co, reference='DV-AV1', client=self.client_obj,
+            statut=Devis.Statut.ENVOYE)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            v1.statut = Devis.Statut.ACCEPTE
+            v1.save()
+        self.assertIn(EVENT_DEVIS_ACCEPTED, self._events(d))
+        v2 = Devis.objects.create(
+            company=self.co, reference='DV-AV2', client=self.client_obj,
+            statut=Devis.Statut.ENVOYE)
+        Devis.objects.filter(pk=v1.pk).update(superseded_by=v2,
+                                              is_active=False)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            v2.statut = Devis.Statut.ACCEPTE
+            v2.save()
+        self.assertNotIn(EVENT_DEVIS_ACCEPTED, self._events(d))
 
     def test_lead_lost_dispatches(self):
         lead = Lead.objects.create(company=self.co, nom='Perdu')

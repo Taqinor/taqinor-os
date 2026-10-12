@@ -172,3 +172,12 @@ from .visites import (  # noqa: F401 — réexport public délibéré
 )
 
 logger = logging.getLogger(__name__)
+
+
+def poser_tache_avenant(lead, devis, user):
+    """VNT53 (D-ADEV-6) — UNE tâche « Faire signer l’avenant » sur le lead pour
+    la V2 ``devis`` d'une vente signée. Idempotente : une étape déjà ouverte
+    est déplacée, jamais doublée (étape de filet ADEV57). Porte d'écriture
+    CRM pour ``ventes`` (« Demander la signature » de l'avenant, VNT60)."""
+    from .receivers_cadence import _poser_tache_avenant
+    return _poser_tache_avenant(lead, devis, user)

@@ -55,6 +55,11 @@ def signable_au_jeton(devis):
     from ..domain.modifiabilite import ACCEPTER, geste_cycle_permis
     from ..models import Devis
     from ..utils.expiry import is_expired
+    if devis is not None and devis.statut == Devis.Statut.ACCEPTE:
+        # VNT61 — un avenant accepté en interne reste signable par le client.
+        from ..domain.negociation import etat_avenant
+        etat = etat_avenant(devis)
+        return bool(etat and etat['a_signer'])
     if devis is None or devis.statut != Devis.Statut.ENVOYE:
         return False
     if is_expired(devis):
@@ -440,6 +445,16 @@ def proposal_accept(request, token):
     refus = _refus_empreinte(request, devis)
     if refus is not None:
         return refus
+    # VNT61 — un AVENANT (déjà accepté en interne) : la signature seule —
+    # DevisSignature + PDF signé, aucun statut, aucun événement (règle #4).
+    from ..domain.negociation import etat_avenant, signer_avenant
+    if etat_avenant(devis) is not None:
+        return _noindex(Response(signer_avenant(
+            devis, nom=nom, ip=_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
+            consentement=consentement, signature_image=signature_image,
+            signed_at_client=signed_at_client, on_behalf_of=on_behalf_of,
+            entreprise=entreprise)))
     try:
         # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
         #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture

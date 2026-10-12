@@ -231,6 +231,16 @@ class DevisViewSet(DevisEditionActionsMixin,
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
 
+    def perform_destroy(self, instance):
+        """VNT55 (D-ADEV-1) — supprimer le brouillon V2 d'une vente signée
+        réactive la V1 acceptée (``abandonner_revision``), dans la même
+        transaction que la suppression."""
+        from django.db import transaction
+        from ..domain.revision import abandonner_revision
+        with transaction.atomic():
+            abandonner_revision(instance, self.request.user)
+            instance.delete()
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         from apps.crm.services import resolve_client_for_lead

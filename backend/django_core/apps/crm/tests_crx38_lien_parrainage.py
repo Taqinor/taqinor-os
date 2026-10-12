@@ -129,6 +129,22 @@ class LesCasOuRienNePart(_Base):
         self.assertEqual(self._notifs(), [])
         self.assertFalse(ShareLink.objects.filter(devis=devis).exists())
 
+    def test_un_avenant_ne_propose_aucun_lien(self):
+        """VNT53 — la V2 d'une vente déjà acceptée (``avenant_de`` posé) n'est
+        pas une nouvelle signature : aucun lien de parrainage."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Bennani', owner=self.commercial)
+        v1 = self._devis(lead=lead)
+        v2 = self._devis(lead=lead)
+        Notification.objects.all().delete()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            devis_accepted.send(sender=None, devis=v2, user=None,
+                                ancien_statut='envoye', avenant_de=v1.pk)
+
+        self.assertEqual(self._notifs(), [])
+        self.assertFalse(ShareLink.objects.filter(devis=v2).exists())
+
     def test_sans_destinataire_personne_n_est_notifie(self):
         """Ni propriétaire de lead ni créateur : on ne choisit pas au hasard."""
         devis = self._devis()

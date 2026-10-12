@@ -20,6 +20,7 @@
     "chaine_totaux_atot26": "ATOT26 (PACT10, C-ATOT-014) — `quote.totaux_sans` / `quote.totaux_avec` servent la CHAÎNE ENTIÈRE (quote_engine/builder.py `_canonical_totaux`, domain/argent.totaux, vue AFFICHAGE) et ce contrat la déclare : `ht_brut` (sous-total HT des lignes), `remise` (remise globale HT), `arrondi` (baisse de HT qui ramène le TTC au palier de 100 MAD inférieur, 0.0 quand déjà au palier ; survit à `_strip_confidential_deep`), `ht_net`, `tva` (somme), `tva_par_taux` [{taux, montant, ht_net}] (une entrée par taux réellement présent), `ttc`. L'exemple s'additionne : Sous-total HT − Remise − Arrondi = Total HT ; Total HT + Σ TVA = TTC ; Σ tva_par_taux.montant = tva ; Σ tva_par_taux.ht_net = ht_net. La page imprime la chaîne entière (Sous-total HT → Remise → Arrondi → Total HT → TVA par taux → Total TTC), comme le PDF — jamais seulement ht_net/tva/ttc. Les autres clés techniques du même dict (`ttc_exact`, `ttc_avant`) restent hors de ce contrat. Consommateur : ATOT34 (WEB_PLAN)."
   },
   "exemple": {
+    "avenant": {"a_signer": true, "remplace": {"reference": "DEV-202610-0012"}, "signe_le": null},
     "remplace_par": null,
     "note_client": "",
     "niveau": "confiance",
@@ -2244,7 +2245,7 @@
     "pdf_disponible": true
   },
   "notes_vnt2": {
-    "pourquoi": "VNT2 (PACT10, Groupe VNT) — clé ADDITIVE `avenant`, posée SEULE avant sa vue : un avenant (V2 issue d'un prix négocié) accepté en interne mais pas encore signé par le client. `a_signer` = vrai tant que le client n'a pas signé cet avenant ; `remplace.reference` = référence de la version qu'il remplace ; `signe_le` = horodatage ISO de la signature, null tant que non signé. Clé ABSENTE (jamais null) sur les propositions qui ne sont pas des avenants : les exemples existants ne la portent pas.",
+    "pourquoi": "VNT2 (PACT10, Groupe VNT) — clé ADDITIVE `avenant`, posée SEULE avant sa vue : un avenant (V2 issue d'un prix négocié) accepté en interne mais pas encore signé par le client. `a_signer` = vrai tant que le client n'a pas signé cet avenant ; `remplace.reference` = référence de la version qu'il remplace ; `signe_le` = horodatage ISO de la signature, null tant que non signé. Clé ABSENTE (jamais null) sur les propositions qui ne sont pas des avenants ; VNT61 la sert (`payload['avenant']`) : `exemple` la porte à titre d'illustration (valeur du fragment `exemple_avenant_a_signer`), les autres exemples ne la portent pas.",
     "avenant": "{a_signer: bool, remplace: {reference}, signe_le: ISO|null} — fragments `exemple_avenant_a_signer` et `exemple_avenant_signe`."
   },
   "exemple_avenant_a_signer": {
