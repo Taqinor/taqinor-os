@@ -14,8 +14,8 @@ from .portee_selectors import (  # noqa: F401
 from .cadence_selectors import (  # noqa: F401
     JOURS_OUVRES_JOINDRE, _minutes_ouvrees_de_5_jours, kpi_cadences,
     _STATUTS_CLOS_HUMAIN, LEADS_SANS_TOUCHE_MAX, _lundi, _pct, _mediane_decimale,
-    _a_lheure, _a_lheure_ou_excusee, kpi_adherence, _conversion_par_stage,
-    mes_stats_relance, CHAINE_COMMERCIALE_LIMITE, _chaine_bloc, _chaine_identite,
+    _a_lheure, _a_lheure_ou_excusee, _conversion_par_stage,
+    CHAINE_COMMERCIALE_LIMITE, _chaine_bloc, _chaine_identite,
     _chaine_devis_partis, chaine_commerciale, _assigne_de_la_visite, SERIE_JOURS_MAX,
     _serie_jours_sans_retard, _mediane, relances_du_jour, relance_etapes_dues,
     file_du_cockpit, STATUT_EN_RETARD, STATUTS_SUIVI, SUIVI_JOURS_MAX,

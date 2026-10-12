@@ -38,9 +38,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import EquipementsElectriques, {
-  TYPES_EQUIPEMENT, libelleType, libelleProduit,
-} from './EquipementsElectriques'
+import EquipementsElectriques from './EquipementsElectriques'
+import { TYPES_EQUIPEMENT, libelleType, libelleProduit } from './EquipementsElectriques.helpers'
 
 const servirLayout = (electrical) => {
   calepinageApi.calepinages.layout.mockResolvedValue({

@@ -67,6 +67,7 @@ Run (avec rendu réel, image prod dotée de WeasyPrint) :
     python manage.py test \
         apps.calepinage.tests.test_calx327_aucun_montant -v2
 """
+import importlib
 import copy
 import datetime
 import json
@@ -536,9 +537,9 @@ class AucunMontantDansLePdfReelTest(unittest.TestCase):
 
     def setUp(self):
         try:
-            import fitz  # noqa: F401
-            import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — bibliothèques natives absentes
+            importlib.import_module('fitz')
+            importlib.import_module('weasyprint')
+        except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 
     def _octets_par_code(self):

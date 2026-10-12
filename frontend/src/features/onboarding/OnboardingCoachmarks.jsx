@@ -8,7 +8,7 @@
 // `data-coach` : on mesure sa position et on dessine un halo + une bulle à côté.
 // Si la cible est absente de l'écran courant (rôle/onglet/mobile), l'étape
 // dégrade proprement en carte centrée — le guide n'échoue jamais.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSelector } from 'react-redux'
 import { X, ArrowRight, ArrowLeft, Check } from 'lucide-react'
@@ -133,17 +133,19 @@ export default function OnboardingCoachmarks() {
     }
   }, [measure])
 
-  // Navigation clavier : Échap ferme, flèches naviguent.
+  // Navigation clavier : Échap ferme, flèches naviguent. ENF28 — la touche est
+  // traitée par un effet-événement (finish/next/prev courants, sans directive).
+  const surTouche = useEffectEvent((e) => {
+    if (e.key === 'Escape') finish()
+    else if (e.key === 'ArrowRight') next()
+    else if (e.key === 'ArrowLeft') prev()
+  })
   useEffect(() => {
     if (!open) return
-    const onKey = (e) => {
-      if (e.key === 'Escape') finish()
-      else if (e.key === 'ArrowRight') next()
-      else if (e.key === 'ArrowLeft') prev()
-    }
+    const onKey = (e) => surTouche(e)
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, step]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, step])
 
   if (!open || !current) return null
 

@@ -43,7 +43,7 @@
    "required": false
   },
   {
-   "classe": "DateTimeField",
+   "classe": "DateHeureRfc3339",
    "nom": "date_contact",
    "read_only": false,
    "required": false

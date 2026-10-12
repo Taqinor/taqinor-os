@@ -48,3 +48,62 @@ class RechercheDepotsTests(TestCase):
         data = resp.data['results'] if isinstance(resp.data, dict) \
             and 'results' in resp.data else resp.data
         self.assertIn(document.pk, [d['id'] for d in data])
+
+    def _ids_recherche(self, q):
+        resp = auth(self.user).get(f'/api/django/ged/documents/recherche/?q={q}')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.data['results'] if isinstance(resp.data, dict) \
+            and 'results' in resp.data else resp.data
+        return [d['id'] for d in data]
+
+    def test_version_versionnee_trouvable(self):
+        """ADOC180 — un document créé hors `create_document` (ex.
+        `publier_documents_meryem`) puis versionné par `versionner_si_modifie`
+        devient trouvable ; une republication réindexe (mot ajouté)."""
+        cabinet = services.ensure_cabinet(self.co, 'Documentation')
+        dossier = services.ensure_root_folder(
+            self.co, cabinet=cabinet, nom='Guides')
+        document = Document.objects.create(
+            company=self.co, folder=dossier,
+            nom='Guide devis pompage solaire')
+        self.assertIsNone(Document.objects.get(pk=document.pk).search_vector)
+        stockage = {'file_key': 'attachments/g.pdf', 'filename': 'g.pdf',
+                    'size': 6, 'mime': 'application/pdf'}
+        version, cree = services.versionner_si_modifie(
+            document, b'%PDF-1', stocker=lambda: stockage)
+        self.assertTrue(cree)
+        self.assertIsNotNone(
+            Document.objects.get(pk=document.pk).search_vector)
+        self.assertIn(document.pk, self._ids_recherche('pompage'))
+        Document.objects.filter(pk=document.pk).update(
+            description='Forage immergé')
+        document.refresh_from_db()
+        services.versionner_si_modifie(
+            document, b'%PDF-2', stocker=lambda: stockage)
+        self.assertIn(document.pk, self._ids_recherche('forage'))
+
+    def test_migration_reindexe_les_vecteurs_nuls(self):
+        """ADOC181 — la migration indexe les documents à vecteur NULL, laisse
+        la corbeille et `updated_at` intacts, et se rejoue sans effet."""
+        import importlib
+        from django.apps import apps as registre
+        from django.utils import timezone
+        migration = importlib.import_module(
+            'apps.ged.migrations.0057_adoc181_reindexer_documents')
+        cabinet = services.ensure_cabinet(self.co, 'Documentation')
+        dossier = services.ensure_root_folder(
+            self.co, cabinet=cabinet, nom='Anciens')
+        actif = Document.objects.create(
+            company=self.co, folder=dossier, nom='Contrat Berrada')
+        corbeille = Document.objects.create(
+            company=self.co, folder=dossier, nom='Contrat Alaoui',
+            supprime_le=timezone.now())
+        avant = Document.objects.get(pk=actif.pk).updated_at
+        self.assertIsNone(Document.objects.get(pk=actif.pk).search_vector)
+        migration.reindexer_documents(registre, None)
+        self.assertIsNotNone(Document.objects.get(pk=actif.pk).search_vector)
+        self.assertIsNone(Document.objects.get(pk=corbeille.pk).search_vector)
+        self.assertEqual(Document.objects.get(pk=actif.pk).updated_at, avant)
+        self.assertIn(actif.pk, self._ids_recherche('Berrada'))
+        migration.reindexer_documents(registre, None)  # idempotent
+        self.assertIsNotNone(Document.objects.get(pk=actif.pk).search_vector)

@@ -139,7 +139,23 @@ MUTATIONS = (
 )
 
 
+def _tmy_rejoue(lat, lon):
+    """CI #956 (r13) — le fournisseur TMY REJOUÉ (année type PVGIS-SARAH3 de
+    Casablanca, relevée le 12/10/2026). Sans lui, ``apps.py`` branche le
+    fournisseur RÉEL et chaque ``resultat_calepinage`` du pivot interroge
+    PVGIS en direct : un premier appel en échec (repli froid du noyau) suivi
+    d'un second servi (4,18 °C) rendait deux lectures SANS GESTE différentes
+    (shard 4). La chaîne reste réelle : c'est la seam documentée de CAL136,
+    comme la météo rejouée par ``_ClientRejoue``."""
+    return {'temperature_min_c': 4.18, 'temperature_max_c': 41.34,
+            'base': 'PVGIS-SARAH3', 'fenetre_annees': '2005-2023'}
+
+
 class EmpreinteSimulationTest(SimpleTestCase):
+
+    def setUp(self):
+        precedent = enregistrer_fournisseur_temperatures(_tmy_rejoue)
+        self.addCleanup(enregistrer_fournisseur_temperatures, precedent)
 
     def test_chaque_entree_perime_la_simulation(self):
         for nom, geste, materiel, reglages in MUTATIONS:

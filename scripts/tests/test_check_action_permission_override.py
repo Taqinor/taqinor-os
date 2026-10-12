@@ -179,8 +179,9 @@ class DivergenceTests(unittest.TestCase):
             self.assertTrue(
                 len(raison) < guard.RAISON_MIN
                 or guard.RAISON_COLLECTIVE in raison.lower(), raison)
+        # ENF27/ENF28 : l'allowlist peut être vide (tous les écarts corrigés) ;
+        # chaque raison encore présente doit rester propre.
         raisons = guard._load_allowlist_raisons()
-        self.assertTrue(raisons)
         for cle, raison in raisons.items():
             self.assertGreaterEqual(len(raison), guard.RAISON_MIN, cle)
             self.assertNotIn(guard.RAISON_COLLECTIVE, raison.lower(), cle)
@@ -202,13 +203,12 @@ class PerimetreTests(unittest.TestCase):
 class AllowlistTests(unittest.TestCase):
     def test_la_ligne_de_base_du_sweep_est_gelee(self):
         allow = guard._load_allowlist()
-        self.assertGreaterEqual(
-            len(allow), 20,
-            'les écarts motivés (ACRM48) ont été vidés : la garde '
-            'échouerait sur des actions dont le repli est plus strict.')
-        self.assertIn(
-            'backend/django_core/apps/crm/views.py::DefiViewSet.export_xlsx',
-            allow)
+        # Ligne de base GELEE : la liste ne fait que RETRECIR (ENF15/ENF27/ENF28
+        # l'ont videe : 0 restante). Toute nouvelle entree = echec.
+        self.assertLessEqual(
+            len(allow), 0,
+            'la liste des ecarts motives ne doit jamais grossir : corriger la '
+            'classe plutot que l ajouter a l allowlist.')
 
     def test_le_patron_d_or_reel_est_detecte_sans_allowlist(self):
         """`ventes/views/paiement.py` passe par le PATRON, pas par la liste."""

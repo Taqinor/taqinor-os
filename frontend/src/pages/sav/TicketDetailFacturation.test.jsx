@@ -1,78 +1,36 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 /* XSAV3/XFSM1/XCTR4 — boutons « Créer un devis » / « Générer facture » /
    « Facturer » sur le détail du ticket SAV, gatés sur la garantie/couverture
    calculée côté serveur. savApi + api (axios direct) + installationsApi
    mockés — aucun réseau réel. */
 
-vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    updateTicket: () => {
-      const action = { type: 'sav/updateTicket/noop' }
-      action.unwrap = () => Promise.resolve({})
-      return action
-    },
-  }
-})
+vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) =>
+  (await import('./__tests__/ticketDetailTestKit')).ticketsSliceNoopMock(importOriginal))
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    creerDevisTicket: vi.fn(() => Promise.resolve({
-      data: { devis_id: 42, devis_reference: 'DEV-SAV-42' },
-    })),
-    facturerTicket: vi.fn(() => Promise.resolve({
-      data: { facture_id: 8, facture_reference: 'FACT-SAV-8', couverture: 'facturable' },
-    })),
-    rapportPdf: vi.fn(() => Promise.resolve({ data: new Blob() })),
-    // XSAV12/21/27/28, ZSAV8/9 — TicketAdvancedPanel (montée dans TicketDetail).
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    // WR11/FG82 — TicketChecklistPanel (montée dans TicketDetail).
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({
+  creerDevisTicket: vi.fn(() => Promise.resolve({
+    data: { devis_id: 42, devis_reference: 'DEV-SAV-42' },
+  })),
+  facturerTicket: vi.fn(() => Promise.resolve({
+    data: { facture_id: 8, facture_reference: 'FACT-SAV-8', couverture: 'facturable' },
+  })),
+  rapportPdf: vi.fn(() => Promise.resolve({ data: new Blob() })),
 }))
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailTestKit')).axiosVideMock())
 
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
+import { renderTicketDetail } from './__tests__/ticketDetailTestKit'
 import savApi from '../../api/savApi'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function makeStore() {
-  return configureStore({
-    reducer: {
-      tickets: (state = { items: [] }) => state,
-      auth: (state = { role: 'admin', permissions: [] }) => state,
-    },
-  })
-}
-
-function renderDetail(ticket, opts = {}) {
-  const store = makeStore()
-  return render(
-    <Provider store={store}>
-      <TicketDetail ticket={ticket} onClose={() => {}} onSaved={() => {}} {...opts} />
-    </Provider>,
-  )
-}
+const renderDetail = (ticket, opts) =>
+  renderTicketDetail(TicketDetail, ticket, opts, { routeur: false })
 
 const baseTicket = {
   id: 1, reference: 'SAV-1', statut: 'en_cours', type: 'correctif',

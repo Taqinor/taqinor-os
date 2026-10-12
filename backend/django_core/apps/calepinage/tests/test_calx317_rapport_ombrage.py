@@ -36,6 +36,8 @@ import unittest
 
 from apps.calepinage.services import rapport_ombrage
 from apps.calepinage.services.rapport import RapportRefuse
+from apps.calepinage.models import Calepinage
+from .test_api_liste import BaseApiCalepinage, url_detail
 
 MATRICE_12X24 = [[0.6] * 24 for _ in range(12)]
 
@@ -269,10 +271,6 @@ class AvertissementSansCourseDuSoleilTest(unittest.TestCase):
 
 
 # ── ORM/DB/HTTP — exécutés par le job backend-tests (WeasyPrint présent) ───
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
 
 LAYOUT_OMBRAGE = {
     'version': 2,

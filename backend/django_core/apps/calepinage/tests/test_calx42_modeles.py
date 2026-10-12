@@ -23,6 +23,7 @@ Deux étages de preuve, pour deux coûts très différents :
 Run :
     python manage.py test apps.calepinage.tests.test_calx42_modeles -v2
 """
+import importlib
 from django.test import SimpleTestCase, TestCase
 
 
@@ -33,7 +34,7 @@ def _actions():
     affectations d'attribut de classe : sans lui, la table serait celle du
     viewset nu et le test ne prouverait rien.
     """
-    from apps.calepinage import urls  # noqa: F401
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return CalepinageViewSet, {methode.__name__: methode

@@ -23,6 +23,7 @@ from ..services.io_layout import (
     ImportLayoutRefuse, exporter_layout, importer_layout,
 )
 from ..services.layout import LayoutRefuse
+from .calepinages import CalepinageViewSet
 
 __all__ = ['export_layout', 'import_layout']
 
@@ -60,7 +61,5 @@ def import_layout(self, request, pk=None):
         'inchange': resultat['inchange'],
     })
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 _attacher(CalepinageViewSet)

@@ -5,12 +5,16 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 from apps.crm.models import Client, SalleVente, SalleVenteVue
+from apps.parametres.models import CompanyProfile
 
 
 class SalleVenteVueTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM18', slug='taqinor-ntcrm18')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.client_obj = Client.objects.create(company=self.company, nom='Client SV18')
         self.salle = SalleVente.objects.create(
             company=self.company, client=self.client_obj, titre='Salle publique')

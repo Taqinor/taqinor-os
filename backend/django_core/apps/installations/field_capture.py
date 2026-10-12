@@ -84,7 +84,7 @@ def pousser_si_cloturee(intervention, user):
         from django.db import transaction
         with transaction.atomic():
             return push_serials_to_parc(intervention, user)
-    except Exception:  # noqa: BLE001
+    except Exception:
         import logging
         logging.getLogger(__name__).warning(
             'ACHT47: poussée immédiate au parc échouée (intervention %s)',

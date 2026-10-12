@@ -1,13 +1,9 @@
-/* eslint-disable react-refresh/only-export-components --
-   `resolveScanTarget` est un helper PUR importé par EquipementsPage.test.jsx :
-   l'exporter est volontaire (même précédent que ProductionPage/buildProductionChartData).
-   La règle ne concerne que le confort de fast-refresh, jamais la correction. */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Download, Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
-  Wrench, Pencil, ShieldCheck, Trash2, ChevronRight, Activity, QrCode,
+  Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
+  Wrench, Pencil, ShieldCheck, Trash2, Activity, QrCode,
   ScanLine,
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
@@ -16,15 +12,12 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { ROUTE } from '../../lib/search/entityRoutes'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
-import importApi from '../../api/importApi'
-import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import ExcelImport from '../../components/ExcelImport'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
 // NTMOB15 — scan QR/code-barres natif : ouvre directement la fiche
 // équipement au lieu d'une recherche manuelle par n° de série.
-import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import PartageQrDialog from '../../features/sav/PartageQrDialog'
 import {
   EMPTY_EQUIP_FILTERS,
@@ -35,14 +28,13 @@ import {
   filterEquipements,
   sortEquipements,
   garantieLabel,
+  resolveScanTarget,
 } from '../../features/sav/equipement'
 import {
   TooltipProvider,
   Button,
   StatusPill,
-  Card,
   EmptyState,
-  Skeleton,
   Spinner,
   Input,
   Textarea,
@@ -54,6 +46,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 
 const formatDateFR = (iso) => {
   if (!iso) return '—'
@@ -75,24 +68,6 @@ export function GarantiePill({ eq }) {
   return <StatusPill tone={GARANTIE_TONES[etat] ?? 'neutral'} label={garantieLabel(eq)} />
 }
 
-// NTMOB15 — décision PURE post-résolution d'un code scanné (stock/produits/
-// resolve/, N20) : que faire de la réponse `{type, id, ...}` compte tenu du
-// parc déjà chargé (`items`, non filtré). Extraite du composant pour rester
-// testable sans monter toute la page (même patron que cockpitProfile/
-// mobileHomeAction ailleurs dans le repo).
-//   * `{action:'error', message}` — le code ne désigne pas un équipement.
-//   * `{action:'select', equipement}` — déjà chargé localement, ouverture directe.
-//   * `{action:'fetch', id}` — appelant doit charger la fiche complète
-//     (savApi.getEquipement) avant de l'ouvrir.
-export function resolveScanTarget(resolveData, items) {
-  if (!resolveData || resolveData.type !== 'equipement') {
-    return { action: 'error', message: 'Ce code ne correspond pas à un équipement.' }
-  }
-  const found = (items ?? []).find((it) => it.id === resolveData.id)
-  if (found) return { action: 'select', equipement: found }
-  return { action: 'fetch', id: resolveData.id }
-}
-
 // L611/L11 — message d'erreur FR lisible mappé au champ (jamais de JSON brut).
 const FIELD_LABELS_EQ = {
   numero_serie: 'Numéro de série', date_pose: 'Date de pose',
@@ -111,20 +86,6 @@ function frError(data, fallback) {
     }
   }
   return fallback
-}
-
-// XSAV15/16/17 — section repliable (même patron que TicketsPage.CollapsibleSection).
-function CollapsibleSection({ icon: Icon, title, children }) {
-  return (
-    <details open className="group flex flex-col gap-3 [&[open]>summary>svg.chevron]:rotate-90">
-      <summary className="flex cursor-pointer list-none items-center gap-2 font-display text-base font-semibold text-foreground">
-        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-        <span className="flex-1">{title}</span>
-        <ChevronRight className="chevron size-4 rotate-0 text-muted-foreground transition-transform" aria-hidden="true" />
-      </summary>
-      <div className="flex flex-col gap-3 pt-2">{children}</div>
-    </details>
-  )
 }
 
 export function EquipementDetail({ equipement, onClose, onSaved }) {
@@ -174,7 +135,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
     ).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
     tout((p) => stockApi.getProduits(p)).then(setProduits).catch(() => {})
     tout((p) => installationsApi.getInstallations(p)).then(setInstallations).catch(() => {})
-  }, [correcting]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [correcting, produits.length])
 
   const dirty = useMemo(
     () => Object.keys(initial).some((k) => (fields[k] ?? '') !== (initial[k] ?? ''))
@@ -313,11 +274,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
                     <SelectTrigger><SelectValue placeholder="— Chantier —" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none">— Chantier —</SelectItem>
-                      {installations.map((i) => (
-                        <SelectItem key={i.id} value={String(i.id)}>
-                          {i.reference ?? `Chantier ${i.id}`}
-                        </SelectItem>
-                      ))}
+                      <OptionsChantier installations={installations} />
                     </SelectContent>
                   </Select>
                 </FormField>
@@ -481,7 +438,6 @@ export default function EquipementsPage() {
   const [showRegistre, setShowRegistre] = useState(false)
   // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
   // d'erreur ; ceci ajoute juste l'état chargement manquant).
-  const [xlsxBusy, setXlsxBusy] = useState(false)
   // VX109 — import Excel/CSV du parc d'équipements.
   const [showImport, setShowImport] = useState(false)
   // WIR116 — génération des étiquettes QR (lien public /e/<token>).
@@ -497,7 +453,9 @@ export default function EquipementsPage() {
   const [scannerOpen, setScannerOpen] = useState(false)
 
   const reload = () => dispatch(fetchEquipements())
-  useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ENF28 — l'effet-événement lit toujours la fonction courante (dépendances = déclencheurs).
+  const chargerAuMontage = useEffectEvent(reload)
+  useEffect(() => { chargerAuMontage() }, [])
 
   const setF = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
 
@@ -529,7 +487,9 @@ export default function EquipementsPage() {
   const hasFilters = filters.q || filters.produit || filters.marque || filters.garantie || filters.statut
 
   // L625 — clic sur un badge de ligne : pose le filtre garantie à cet état.
-  const filterByGarantie = (etat) => setF('garantie', filters.garantie === etat ? '' : etat)
+  const filterByGarantie = useCallback(
+    (etat) => setFilters((f) => ({ ...f, garantie: filters.garantie === etat ? '' : etat })),
+    [filters.garantie])
 
   // WIR116/FG85/XSAV19 — imprime les étiquettes QR du parc filtré. `pub=true`
   // encode le lien public « Signaler un problème » (/e/<token>) ; `pub=false`
@@ -637,7 +597,7 @@ export default function EquipementsPage() {
         </button>
       ),
     },
-  ], [filters.garantie]) // eslint-disable-line react-hooks/exhaustive-deps
+  ], [filterByGarantie])
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -682,17 +642,7 @@ export default function EquipementsPage() {
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload /> Importer
             </Button>
-            <Button variant="outline" size="sm" disabled={xlsxBusy}
-                    onClick={() => {
-                      const pending = downloadBlobInGesture()
-                      setXlsxBusy(true)
-                      importApi.exportList('equipements', rows.map((r) => r.id))
-                        .then((r) => pending.deliver(r.data, 'equipements.xlsx'))
-                        .catch(() => {})
-                        .finally(() => setXlsxBusy(false))
-                    }}>
-              {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-            </Button>
+            <BoutonExportExcel cible="equipements" ids={rows.map((r) => r.id)} />
           </div>
         </header>
 
@@ -704,18 +654,7 @@ export default function EquipementsPage() {
         {/* NTMOB15 — scan QR/code-barres natif : ouvre directement la fiche
             équipement au lieu d'une recherche manuelle par n° de série. */}
         {scannerOpen && (
-          <div
-            className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/60 p-4"
-            role="dialog" aria-modal="true"
-          >
-            <div className="w-full max-w-md">
-              <BarcodeScanner
-                formats={['qr_code']}
-                onDetected={handleScanned}
-                onClose={() => setScannerOpen(false)}
-              />
-            </div>
-          </div>
+          <ScannerQrPleinEcran onDetected={handleScanned} onClose={() => setScannerOpen(false)} />
         )}
 
         {/* ── Filtres ── */}
@@ -786,16 +725,9 @@ export default function EquipementsPage() {
         )}
 
         {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
+          <SqueletteListe lignes={6} />
         ) : error ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="Chargement impossible"
-            description="Le parc d'équipements n'a pas pu être chargé. Réessayez."
-            action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
-          />
+          <ErreurChargement description="Le parc d'équipements n'a pas pu être chargé. Réessayez." onRetry={reload} retryIcon={<RotateCcw />} />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={PackageSearch}

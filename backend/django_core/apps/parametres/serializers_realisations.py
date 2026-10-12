@@ -9,11 +9,16 @@ sous son nom métier : aucune colonne d'horodatage n'est dupliquée.
 """
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
+
 from .models_realisations import Realisation
 
 
-class RealisationSerializer(serializers.ModelSerializer):
-    """Une installation réelle de la société + sa page publique."""
+class RealisationSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    """Une installation réelle de la société + sa page publique.
+
+    ENF11 (api-fuzz) — ``actif``/textes stricts : un ``0`` pour le booléen ou un
+    nombre pour le titre → 400, comme le schéma le déclare."""
 
     date_creation = serializers.DateTimeField(
         source='created_at', read_only=True)

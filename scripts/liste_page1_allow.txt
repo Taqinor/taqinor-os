@@ -41,8 +41,6 @@ frontend/src/features/portail/client/PortailClientFactures.jsx::charger
 frontend/src/features/portail/client/PortailClientLivraisons.jsx::charger
 frontend/src/features/portail/client/PortailClientSav.jsx::charger
 frontend/src/features/portail/client/PortailClientSav.jsx::voirFil
-frontend/src/features/portail/fournisseur/PortailFournisseurBcf.jsx::charger
-frontend/src/features/portail/partenaire/PortailPartenaireLeads.jsx::charger
 frontend/src/pages/crm/ClientForm.jsx::ClientForm
 frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour
 frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget
@@ -52,7 +50,6 @@ frontend/src/pages/crm/RelancesSuiviPage.jsx::RelancesSuiviPage
 frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils
 frontend/src/pages/crm/VisiteursPage.jsx::chargerEquipe
 frontend/src/pages/crm/VisiteursPage.jsx::toggleDetail
-frontend/src/pages/crm/comptes/PlanComptePage.jsx::PlanComptePage
 frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget
 frontend/src/pages/crm/defis/DefisPage.jsx::DefisPage
 frontend/src/pages/crm/leads/AppointmentBooker.jsx::AppointmentBooker
@@ -138,5 +135,4 @@ frontend/src/pages/stock/StockList.jsx::loadTransferts
 frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage
 frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage
 frontend/src/pages/visites/VisiteHistoriquePanel.jsx::VisiteHistoriquePanel
-frontend/src/pages/visites/VisitesListPage.jsx::VisitesListPage
 # ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.

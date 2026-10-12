@@ -227,7 +227,7 @@ def _depuis_fournisseur(pin, fournisseur):
         return None
     try:
         reponse = fournisseur(lat, lon)
-    except Exception:  # noqa: BLE001 — cf. docstring
+    except Exception:  # cf. docstring
         return None
     if not isinstance(reponse, dict):
         return None
@@ -544,7 +544,7 @@ def _nom_auteur(user):
     if callable(obtenir):
         try:
             nom = (obtenir() or '').strip()
-        except Exception:  # noqa: BLE001 — un utilisateur exotique ne casse
+        except Exception:  # un utilisateur exotique ne casse
             nom = ''        # pas un enregistrement ; le repli suit.
         if nom:
             return nom
@@ -1357,6 +1357,15 @@ def entree_electrique_servie(calepinage, stockee):
             'fiche_complete': not manquants,
             'champs_manquants': manquants,
         }
+    # ACAL359 — le module RÉELLEMENT posé sur chaque pan (relu à chaque GET,
+    # jamais persisté) ; mêmes règles que l'alerte d'ACAL358.
+    from .modules_pans import modules_par_pan_servis
+
+    materiel['modules_par_pan'] = modules_par_pan_servis(
+        calepinage, materiel, resolu, _fiches_modules_du_document(
+            getattr(calepinage, 'company', None),
+            getattr(calepinage, 'roof_layout', None), resolu),
+        lambda specs: _champs_manquants('module', specs), _nombre)
     return {
         'calepinage': getattr(calepinage, 'pk', None),
         'entree': entree,
@@ -1422,19 +1431,11 @@ def _fiches_modules_du_document(company, document, materiel):
     introuvable n'est pas inventé : son pan garde la puissance que le
     document recopie (``modules[].pmaxWc``). Aucun prix n'est lu.
     """
-    from apps.ventes.services import pans_du_document
-
     if company is None or not isinstance(document, dict):
         return {}
-    defaut = ((materiel or {}).get('produits') or {}).get('module')
-    produits = []
-    for pan in pans_du_document(document):
-        produit_id = pan.get('produit_id')
-        if (produit_id in (None, '') or int(pan.get('modules') or 0) <= 0
-                or str(produit_id) == str(defaut)
-                or produit_id in produits):
-            continue
-        produits.append(produit_id)
+    from .modules_pans import produits_des_pans
+
+    produits = produits_des_pans(document, materiel)
     if not produits:
         return {}
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
@@ -1476,9 +1477,13 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     # par le sélecteur du stock (bornée société). Posée dans ``materiel``
     # seulement quand un pan porte un AUTRE produit que le module par
     # défaut : l'empreinte de simulation d'un champ mono-module ne bouge pas.
+    from .modules_pans import produits_sans_fiche
+
+    company = getattr(calepinage, 'company', None)
     fiches = (materiel.get('fiches_modules')
               if 'fiches_modules' in materiel else _fiches_modules_du_document(
-                  getattr(calepinage, 'company', None), document, materiel))
+                  company, document, materiel))
+    sans_fiche = produits_sans_fiche(company, document, materiel, fiches)
     if fiches:
         materiel = {**materiel, 'fiches_modules': fiches}
     # ACAL164 — la fiche module (``noct_c``) fait du chaud TMY une
@@ -1493,6 +1498,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
         fiches_modules=materiel.get('fiches_modules'),
+        produits_sans_fiche=sans_fiche,
         **_options_entree(donnees), **_options_batterie(
             calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)
@@ -2842,7 +2848,7 @@ def rejouer_apres_layout(calepinage, *, user=None):
 
     try:
         evaluation = evaluation_electrique(calepinage)
-    except Exception:  # noqa: BLE001 — cf. docstring
+    except Exception:  # cf. docstring
         logging.getLogger(__name__).exception(
             'CAL128 : verdict électrique en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
@@ -2858,7 +2864,7 @@ def rejouer_apres_layout(calepinage, *, user=None):
             calepinage)
         _journaliser_ecart_longueur(calepinage,
                                     _longueur_chaine_retenue(conception))
-    except Exception:  # noqa: BLE001 — cf. docstring
+    except Exception:  # cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
@@ -3050,7 +3056,7 @@ def _journaliser_ecart_longueur(calepinage, reconciliation):
         # ACAL57 — l'écrivain unique : le fil est prolongé sur le resultat
         # RELU sous verrou, jamais sur l'instantané du début du geste.
         return modifier_resultat(calepinage, prolonger)
-    except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+    except Exception:  # un journal ne casse jamais un geste
         logging.getLogger(__name__).exception(
             'CAL170 : journal d écart non enregistré (calepinage %s)',
             getattr(calepinage, 'pk', None))
@@ -3073,7 +3079,7 @@ def parametres_societe(calepinage):
         from ..selectors import parametres_de_societe
 
         return parametres_de_societe(company) or {}
-    except Exception:  # noqa: BLE001 — un réglage illisible ne casse pas un
+    except Exception:  # un réglage illisible ne casse pas un
         # calcul de tension ; il le laisse simplement sans borne société.
         return {}
 

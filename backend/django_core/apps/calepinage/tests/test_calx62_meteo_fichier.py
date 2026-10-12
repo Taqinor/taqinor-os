@@ -33,6 +33,7 @@ Run :
 """
 from __future__ import annotations
 
+import importlib
 import datetime
 import json
 import math
@@ -432,7 +433,7 @@ class RouteEnregistreeTest(SimpleTestCase):
     """La porte existe, et elle est gardée."""
 
     def test_laction_meteo_fichier_est_routee_en_post_multipart(self):
-        from apps.calepinage import urls  # noqa: F401
+        importlib.import_module('apps.calepinage.urls')
         from apps.calepinage.views.calepinages import CalepinageViewSet
 
         actions = {methode.__name__: methode

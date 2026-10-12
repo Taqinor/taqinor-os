@@ -5,6 +5,7 @@ et ajout de pièces jointes : Responsable (Commerciale) ou Admin. Suppression de
 pièce jointe et gestion des types d'activité : Admin.
 """
 import logging
+from collections.abc import Mapping
 from datetime import timedelta
 
 from django.db import models
@@ -24,6 +25,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.champs_stricts import drapeau_ou_400
 from core.selectors import get_company_object
 
 from .models import (
@@ -208,12 +210,8 @@ class ChatterViewSetMixin:
         from .models import Activity
         from .services import log_activity
         target = self.get_object()
-        if not isinstance(request.data, dict):
-            return Response(
-                {'detail': 'Corps illisible : un objet JSON est attendu.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        corps_brut = request.data.get('body')
-        body = corps_brut.strip() if isinstance(corps_brut, str) else ''
+        _exiger_objet(request)
+        body = (_texte_ou_400(request.data.get('body'), 'body') or '').strip()
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -246,6 +244,23 @@ _EFFORT_ESTIME_PAR_KIND = {
 
 def _company(request):
     return request.user.company if request.user.company_id else None
+
+
+def _exiger_objet(request):
+    """ERR-ENF11-FUZZ-RECORDS — un corps JSON qui n'est pas un objet (liste,
+    chaîne, ``null``) faisait lever ``AttributeError`` sur ``.get`` (500) :
+    400 explicite à la place."""
+    if not isinstance(request.data, Mapping):
+        raise drf.ValidationError({'detail': 'Objet JSON attendu.'})
+    return request.data
+
+
+def _texte_ou_400(valeur, nom):
+    """Valeur optionnelle qui doit être une vraie chaîne (400 nommant le
+    champ sinon) — ``.strip()`` sur un nombre/une liste levait un 500."""
+    if valeur is not None and not isinstance(valeur, str):
+        raise drf.ValidationError({nom: ['Chaîne attendue.']})
+    return valeur
 
 
 def _scoped(qs, user):
@@ -308,22 +323,27 @@ class ActivityViewSet(viewsets.ModelViewSet):
         # même admin/superviseur : on l'exclut sauf pour son créateur.
         qs = qs.exclude(
             models.Q(personnelle=True) & ~models.Q(created_by=self.request.user))
-        model = self.request.query_params.get('model')
-        oid = self.request.query_params.get('id')
+        params = self.request.query_params
+        model, oid = params.get('model'), params.get('id')
+        # CI #956 (fuzz) — drapeaux déclarés ``enum=['1']`` : une autre valeur
+        # (``personnelle=AAA``) est un 400, plus un « non » silencieux.
+        personnelle = drapeau_ou_400(params.get('personnelle'), 'personnelle')
+        ouvertes = drapeau_ou_400(params.get('open'), 'open')
         if model and oid:
             try:
                 ct, _ = resolve_target(model, oid, _company(self.request))
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
-        elif self.request.query_params.get('personnelle') == '1':
+        elif personnelle:
             qs = qs.filter(personnelle=True, created_by=self.request.user)
-        if self.request.query_params.get('open') == '1':
+        if ouvertes:
             qs = qs.filter(done=False)
         return qs
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
+        _exiger_objet(request)
         model = request.data.get('model')
         oid = request.data.get('id')
         # XKB4 — à-faire personnel : pas de cible métier (model/id absents).
@@ -555,6 +575,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def marquer_fait(self, request, pk=None):
         act = self.get_object()
+        _exiger_objet(request)
         chained = None
         suggestion = None
         first_close = not act.done
@@ -619,8 +640,11 @@ class ActivityViewSet(viewsets.ModelViewSet):
         deux gagne — cf. `services.reveiller_snoozes`)."""
         from .services import snooze_activity, valid_snooze_trigger_event
         act = self.get_object()
+        _exiger_objet(request)
         raw = request.data.get('snoozed_until')
-        trigger = (request.data.get('snooze_trigger_event') or '').strip()
+        trigger = (_texte_ou_400(
+            request.data.get('snooze_trigger_event'),
+            'snooze_trigger_event') or '').strip()
         if not valid_snooze_trigger_event(trigger):
             return Response({'snooze_trigger_event': 'Déclencheur invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -652,9 +676,12 @@ class ActivityViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Accès refusé.'},
                             status=status.HTTP_403_FORBIDDEN)
         from apps.reporting import approbations as appro
+        _exiger_objet(request)
         source = request.data.get('source')
         obj_id = request.data.get('id')
-        if source not in appro._SOURCE_LOADERS or not obj_id:
+        # ``source`` non hashable (liste/objet) levait TypeError au ``in`` (500).
+        if (not isinstance(source, str) or isinstance(obj_id, (dict, list))
+                or source not in appro._SOURCE_LOADERS or not obj_id):
             return Response({'detail': 'Source ou id invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         matches = [
@@ -971,6 +998,7 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
+        _exiger_objet(request)
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
@@ -1047,6 +1075,7 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
+        _exiger_objet(request)
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
@@ -1189,6 +1218,7 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
+        _exiger_objet(request)
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
@@ -1199,6 +1229,9 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         tag_id = request.data.get('tag')
+        if isinstance(tag_id, (dict, list, bool)):
+            return Response({'detail': 'tag invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         if not tag_id:
             return Response({'detail': 'tag requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1249,12 +1282,13 @@ class FollowerViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
-        if self.request.query_params.get('mine') == '1':
+        if drapeau_ou_400(self.request.query_params.get('mine'), 'mine'):
             qs = qs.filter(user=self.request.user)
         return qs
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
+        _exiger_objet(request)
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
@@ -1264,8 +1298,8 @@ class FollowerViewSet(viewsets.ModelViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        sous_type = (request.data.get('sous_type') or '')
-        if len(str(sous_type)) > 40:
+        sous_type = _texte_ou_400(request.data.get('sous_type'), 'sous_type') or ''
+        if len(sous_type) > 40:
             return Response({'sous_type': 'Au plus 40 caractères.'},
                             status=status.HTTP_400_BAD_REQUEST)
         from .services import follow
@@ -1326,6 +1360,10 @@ def attachments_all(request):
     ).order_by('-created_at', '-id')
 
     p = request.query_params
+    # Un octet NUL dans un filtre texte fait lever ValueError côté base (500) :
+    # aucun type MIME / phase ne peut en contenir -> liste vide.
+    if any('\x00' in (p.get(k) or '') for k in ('mime', 'mime_like', 'phase')):
+        qs = qs.none()
     mime = p.get('mime')
     if mime:
         qs = qs.filter(mime=mime)

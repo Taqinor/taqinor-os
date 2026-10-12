@@ -22,7 +22,7 @@ from authentication.models import Company
 
 from apps.crm.models import Client
 from apps.crm.selectors import consolidation_client
-from apps.crm.serializers import ClientSerializer
+from apps.crm.serializers_clients import ClientSerializer
 from apps.ventes.models import Devis
 
 User = get_user_model()

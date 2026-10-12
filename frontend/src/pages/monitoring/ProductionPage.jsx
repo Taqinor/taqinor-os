@@ -21,19 +21,9 @@ import { ModuleDashboard } from '../../ui/module'
 // voisins directs (PR mensuel, CO2, flotte…) en ont un.
 import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
 import MonitoringNav from './MonitoringNav'
+import { buildProductionChartData } from './ProductionPage.helpers'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
-
-// VX148 — dérive la tendance kWh (chronologique) des relevés bruts. Extrait
-// en fonction pure (nommée, exportée) pour un test unitaire direct, sans
-// dépendre du rendu Radix Select/ResizeObserver.
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
-export function buildProductionChartData(readings) {
-  return [...(readings || [])]
-    .filter((r) => r.date)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map((r) => ({ label: r.date, value: Number(r.energy_kwh) || 0 }))
-}
 
 export default function ProductionPage() {
   const { confirmDelete } = useConfirmDialog()

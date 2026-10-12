@@ -21,7 +21,7 @@ Run :
 """
 import unittest
 
-from apps.calepinage.services.pompage import couverture_besoin_eau
+from core.pompage.volumes import couverture_besoin_eau
 
 
 class CouvertureBesoinEauTest(unittest.TestCase):

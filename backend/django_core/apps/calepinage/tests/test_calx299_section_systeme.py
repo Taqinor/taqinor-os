@@ -52,7 +52,7 @@ try:
     from apps.ventes.models import Devis, LigneDevis
 
     from .test_api_liste import BaseApiCalepinage
-except Exception:  # noqa: BLE001 - Django non configuré (essais purs)
+except Exception:  # Django non configuré (essais purs)
     BaseApiCalepinage = None
 
 MOTIF = "motif de test — section systeme"

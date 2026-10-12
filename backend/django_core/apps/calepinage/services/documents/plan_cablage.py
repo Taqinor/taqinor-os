@@ -58,6 +58,7 @@ import re
 from html import escape
 
 from ..planche import PlancheRefusee
+from ..chaines import COULEUR_NON_AFFECTE, PALETTE_CHAINES
 
 __all__ = [
     'CODE_DOCUMENT', 'CHAMP_CHAINAGE', 'PALETTE_CHAINES',
@@ -77,7 +78,6 @@ CHAMP_CHAINAGE = 'electrique.chainage'
 #: La teinte des chaînes — ACAL285 : SOURCE UNIQUE ``services/chaines.py``,
 #: celle que ``electrique.affectation[]`` sert ligne par ligne (même palette,
 #: même ordre de première apparition : le PDF garde ses teintes).
-from ..chaines import COULEUR_NON_AFFECTE, PALETTE_CHAINES  # noqa: E402
 
 #: La ``source`` d'une ligne imposée par l'installateur (CAL234).
 SOURCE_MANUELLE = 'affectation manuelle'

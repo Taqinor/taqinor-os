@@ -58,9 +58,10 @@ class _Base(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
 
-    def _touche_appel(self, libelle="Appel d'ouverture", cadence='contact'):
+    def _touche_appel(self, libelle="Appel d'ouverture", cadence='contact',
+                      ordre=2):
         return RelanceEtape.objects.create(
-            company=self.company, lead=self.lead, cadence=cadence, ordre=2,
+            company=self.company, lead=self.lead, cadence=cadence, ordre=ordre,
             due_at=MARDI, due_date=MARDI.date(),
             canal=RelanceEtape.Canal.APPEL, libelle=libelle,
             cadence_depart=MARDI)
@@ -117,7 +118,10 @@ class TraiteeParEcritTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
 
     def test_la_trace_d_une_autre_touche_ne_dispense_de_rien(self):
-        autre = self._touche_appel(libelle='Appel 4', cadence='contact')
+        # ACRM55 — une seule touche OUVERTE par barreau : l'autre touche
+        # occupe son propre barreau (ordre 4).
+        autre = self._touche_appel(libelle='Appel 4', cadence='contact',
+                                   ordre=4)
         journaliser_whatsapp_ouvert(autre, self.acteur)
         etape = self._touche_appel()
         resp = self._fait(etape)

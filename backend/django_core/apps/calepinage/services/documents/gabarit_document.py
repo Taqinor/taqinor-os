@@ -119,7 +119,7 @@ def _theme_de(company):
         from core.models import TenantTheme
 
         return TenantTheme.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 — un logo ne fait jamais tomber une pièce
+    except Exception:  # un logo ne fait jamais tomber une pièce
         return None
 
 
@@ -129,7 +129,7 @@ def _defaut_nom_profil():
         from apps.parametres.models_company import CompanyProfile
 
         return CompanyProfile._meta.get_field('nom').default
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -153,7 +153,7 @@ def _profil_de(company):
         if not CompanyProfile.objects.filter(company=company).exists():
             return {}
         profil = dict(company_identity(company) or {})
-    except Exception:  # noqa: BLE001
+    except Exception:
         return {}
     nom = (profil.get('nom') or '').strip()
     if nom and nom == _defaut_nom_profil():
@@ -426,7 +426,7 @@ def client_du_calepinage(calepinage):
                 client = ' '.join(filter(None, (
                     _texte(getattr(lead, 'prenom', '')),
                     _texte(getattr(lead, 'nom', '')))))
-    except Exception:  # noqa: BLE001 — une garde sans client reste une garde
+    except Exception:  # une garde sans client reste une garde
         client = ''
     return client
 

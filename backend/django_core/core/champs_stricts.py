@@ -6,7 +6,10 @@ OpenAPI déclare invalide (constat api-fuzz « accepted schema-violating
 request »). ``ChaineStricte`` répond 400 tant que la valeur n'est pas déjà une
 chaîne ; le comportement d'une requête valide est inchangé.
 """
+from django.db import models
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
+from rest_framework.fields import SkipField, empty
 
 
 class ChaineStricte(serializers.CharField):
@@ -49,6 +52,83 @@ class DecimalStricte(serializers.DecimalField):
         return super().validate_empty_values(data)
 
 
+class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
+    r"""ENF11 (api-fuzz « rejected schema-compliant request ») — le motif que
+    drf-spectacular publie pour un décimal-chaîne (``^-?\d{0,N}(?:\.\d{0,M})?$``)
+    accepte la chaîne VIDE, que ``DecimalField`` refuse (400). Le schéma exige
+    désormais au moins un chiffre ; ``""`` n'est publié que pour une
+    ``DecimalStricte`` nullable, qui la lit comme « non renseigné »."""
+    target_class = 'rest_framework.fields.DecimalField'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        champ = self.target
+        schema = auto_schema._map_serializer_field(
+            champ, direction, bypass_extensions=True)
+        if 'pattern' not in schema or not champ.max_whole_digits:
+            return schema
+        schema = dict(schema)
+        entiers, decimales = champ.max_whole_digits, champ.decimal_places
+        schema['pattern'] = (
+            fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
+            fr'|\.\d{{1,{decimales}}})$')
+        if isinstance(champ, DecimalStricte) and champ.allow_null:
+            motif = schema.pop('pattern')
+            schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
+        return schema
+
+
+class TexteLie(serializers.CharField):
+    """Texte d'un objet lié TOUJOURS servi (api-fuzz « Response violates
+    schema »). DRF SAUTE un champ lu via ``source='lien.attr'`` dont le lien est
+    vide dès que le sérialiseur est ``partial`` (PATCH) : la clé disparaissait
+    de la réponse alors que le schéma la déclare obligatoire. Ici la clé est
+    rendue avec son ``default`` (``None``/``''``) comme sur un GET."""
+
+    def get_attribute(self, instance):
+        try:
+            return super().get_attribute(instance)
+        except SkipField:
+            return None if self.default is empty else self.default
+
+
+#: Heure telle que DRF la REND (``time.isoformat()`` d'une heure naïve) :
+#: ``HH:MM:SS`` avec microsecondes éventuelles, jamais de décalage.
+MOTIF_HEURE_RENDUE = r'^\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$'
+
+
+class _HeureRendueSansFuseau(OpenApiSerializerFieldExtension):
+    """CI #956 (api-fuzz « Response violates schema », parametres/delete-logo) —
+    drf-spectacular publie un ``TimeField`` en ``format: time``, que le
+    validateur lit comme une « full-time » RFC 3339 (décalage obligatoire,
+    ``09:00:00Z``) ; DRF rend ``"09:00:00"``. Côté RÉPONSE le schéma dit le
+    motif réellement rendu ; côté requête rien ne change (``format: time``)."""
+    target_class = 'rest_framework.fields.TimeField'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'response' or schema.get('format') != 'time':
+            return schema
+        schema = dict(schema)
+        schema.pop('format')
+        schema['pattern'] = MOTIF_HEURE_RENDUE
+        return schema
+
+
+def drapeau_ou_400(valeur, nom):
+    """Drapeau de requête déclaré ``enum=['1']`` : absent → ``False`` ;
+    ``'1'`` → ``True`` ; toute autre valeur → 400 nommant le paramètre (elle
+    était lue en silence comme « non »)."""
+    if valeur is None:
+        return False
+    if valeur == '1':
+        return True
+    raise serializers.ValidationError(
+        {nom: ['Seule la valeur « 1 » est acceptée.']})
+
+
 class BooleenStrict(serializers.BooleanField):
     """``BooleanField`` qui n'accepte que de vrais booléens JSON (``0``/``1``
     ou ``"true"`` étaient convertis en silence)."""
@@ -57,3 +137,56 @@ class BooleenStrict(serializers.BooleanField):
         if not isinstance(data, bool):
             self.fail('invalid', input=data)
         return data
+
+
+class EntierStrict(serializers.IntegerField):
+    """Entier JSON réel : ``"5"``, ``5.0`` et ``true`` sont refusés (400)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, int):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class ChampsStrictsMixin:
+    """Mixin de ``ModelSerializer`` : les champs de modèle texte, booléens et
+    décimaux sont générés en version STRICTE (un ``0`` pour un booléen ou un
+    nombre JSON pour un décimal-chaîne → 400, comme le schéma le déclare).
+    À placer AVANT ``serializers.ModelSerializer`` dans les bases."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+        models.DecimalField: DecimalStricte,
+    }
+
+
+class ChampsStrictsSansDecimalMixin:
+    """Variante de ``ChampsStrictsMixin`` SANS les décimaux (lane GED/records/
+    notifications : leurs clients envoient encore des nombres JSON pour
+    ``x``/``y``/``largeur``…) — texte et booléens stricts seulement."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+    }
+
+
+class TypageStrictMixin:
+    """Variante (lane parametres/sav) : champs modèle texte / booléen / ENTIER
+    générés en version stricte (``"5"`` pour un entier → 400) ; ``TextField``
+    et décimaux inchangés. À poser en premier sur un ``ModelSerializer``."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.BooleanField: BooleenStrict,
+        models.IntegerField: EntierStrict,
+        models.PositiveIntegerField: EntierStrict,
+        models.SmallIntegerField: EntierStrict,
+        models.PositiveSmallIntegerField: EntierStrict,
+    }

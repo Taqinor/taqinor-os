@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import { buildProductionChartData } from './ProductionPage.jsx'
+import { buildProductionChartData } from './ProductionPage.helpers'
 
 /* VX148 — ProductionPage.jsx : l'écran le plus consulté du dossier monitoring
    n'avait AUCUN graphique (juste une table de relevés) — ses 4 voisins directs

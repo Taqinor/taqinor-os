@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { PackageCheck } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
+import { useListePortail } from '../useListePortail'
 import {
   Badge, Button, Card, EmptyState, Form, FormField, Input, Spinner, toast,
 } from '../../../ui'
@@ -28,31 +29,13 @@ const TON_STATUT = {
 }
 
 export default function PortailFournisseurBcf() {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [erreur, setErreur] = useState(false)
   const [ouvert, setOuvert] = useState(null)
   const [date, setDate] = useState('')
   const [numero, setNumero] = useState('')
   const [champErreur, setChampErreur] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  const charger = () => {
-    setLoading(true)
-    portailApi.fournisseur.bonsCommande.liste()
-      .then((r) => {
-        setRows(r.data?.results ?? [])
-        setErreur(false)
-      })
-      .catch(() => setErreur(true))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    // Différé d'un microtask : `charger` pose l'état de chargement de façon
-    // synchrone (react-hooks/set-state-in-effect).
-    Promise.resolve().then(charger)
-  }, [])
+  const { rows, loading, erreur, charger } = useListePortail(portailApi.fournisseur.bonsCommande.liste)
 
   const ouvrir = (bcf) => {
     setOuvert(bcf.id)

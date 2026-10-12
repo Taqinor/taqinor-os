@@ -155,7 +155,7 @@ class ActionIdempotenteMixin:
                           # deviendrait un no-op SILENCIEUX.
                           'response_body': json.loads(
                               json.dumps(reponse.data, default=str))})
-        except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT : elle
+        except Exception:  # l'idempotence est un CONFORT : elle
             # ne fait jamais échouer une action qui a déjà réussi.
             pass
         return reponse
@@ -409,6 +409,27 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(self.get_serializer(calepinage).data,
                         status=status.HTTP_201_CREATED)
 
+    # ENF11 — PUT et DELETE répondent 405 PAR DESIGN (ACAL120) : ces méthodes ne
+    # sont pas des opérations de l'API, elles ne figurent donc pas au schéma
+    # (PATCH + `archiver/` sont les seuls gestes).
+    #: Méthodes que le détail REFUSE (405) tout en restant routées : ``update``
+    #: sert le PATCH, ``destroy`` garde le 404 d'isolation société.
+    METHODES_REFUSEES = ('PUT', 'DELETE')
+
+    def _allowed_methods(self):
+        """CI #956 (fuzz) — l'en-tête ``Allow`` (OPTIONS, 405) annonçait PUT et
+        DELETE, absents du schéma : il ne liste que les méthodes servies.
+
+        Seule la route de l'OBJET (``calepinages/{id}/``, dont PUT/DELETE
+        mènent à ``update``/``destroy``) les retire : une sous-route de détail
+        (``etiquettes/``, ``photos/{photo_id}/``…) sert son propre DELETE/PUT
+        et doit l'annoncer (fuzz r13 : « missing documented methods »)."""
+        action_map = getattr(self, 'action_map', None) or {}
+        refusees = {m for m in self.METHODES_REFUSEES
+                    if action_map.get(m.lower()) in ('update', 'destroy')}
+        return [m for m in super()._allowed_methods() if m not in refusees]
+
+    @extend_schema(exclude=True)
     def update(self, request, *args, **kwargs):
         """ACAL180 — un refus de rattachement répond 409 avec le corps du
         contrat (``calepinage_creation_conflit.json``), rien n'est écrit."""
@@ -425,6 +446,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         except RattachementRefuse as refus:
             return Response(refus.corps, status=refus.statut)
 
+    @extend_schema(exclude=True)
     def destroy(self, request, *args, **kwargs):
         """ACAL120 — un calepinage ne se SUPPRIME jamais : 405, rien n'est
         détruit (versions, variantes, photos intactes) ; archiver est
@@ -1446,7 +1468,7 @@ def _notifier_la_note(calepinage, auteur, texte):
                '%s a noté sur votre calepinage' % nom,
                body=texte[:200], link='/calepinage/%d' % calepinage.pk,
                company=calepinage.company)
-    except Exception:  # noqa: BLE001 — une notif ne casse jamais la note
+    except Exception:  # une notif ne casse jamais la note
         logging.getLogger(__name__).exception(
             'ACAL293 : notification de la note en échec (calepinage %s)',
             calepinage.pk)

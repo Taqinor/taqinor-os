@@ -35,13 +35,13 @@ if __name__ == '__main__':  # pragma: no cover — chemin « --write » seulemen
 
     django.setup()
 
-from django.test import SimpleTestCase  # noqa: E402
+from django.test import SimpleTestCase
 
-from apps.calepinage.services import etapes  # noqa: E402
-from apps.calepinage.services.chaine_pertes import (  # noqa: E402
+from apps.calepinage.services import etapes
+from apps.calepinage.services.chaine_pertes import (
     appliquer_chaine,
 )
-from apps.calepinage.services.etapes import inter_rangees  # noqa: E402
+from apps.calepinage.services.etapes import inter_rangees
 
 GOLDEN = (pathlib.Path(__file__).resolve().parent / 'golden_simulation'
           / 'casablanca_ramadan.json')

@@ -26,6 +26,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from apps.crm.models import Client, SalleVente
+from apps.parametres.models import CompanyProfile
 
 
 _MOT_DE_PASSE = 'secret-qjr420'
@@ -36,6 +37,9 @@ class MotDePasseHorsUrlTests(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(
             slug='qjr420', defaults={'nom': 'QJR420'})[0]
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client QJR420')
         self.salle = SalleVente.objects.create(

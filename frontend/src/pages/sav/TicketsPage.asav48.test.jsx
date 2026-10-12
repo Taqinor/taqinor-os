@@ -8,7 +8,7 @@ vi.mock('../../api/savApi', () => ({ default: {} }))
 vi.mock('../../api/axios', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: [] })) } }))
 vi.mock('../../api/installationsApi', () => ({ default: {} }))
 
-import { parseBulkResult, executerEditionStatut, annulerEditionStatut } from './TicketsPage'
+import { parseBulkResult, executerEditionStatut, annulerEditionStatut } from './ticketsLogique'
 
 const GRAPHE = {
   nouveau: ['en_cours', 'planifie'],

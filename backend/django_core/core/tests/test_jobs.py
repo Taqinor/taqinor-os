@@ -8,7 +8,7 @@ Couvre :
   * ``run_job`` appelle bien ``send_task`` (mocké) et renvoie l'id ;
   * ``run_job`` ne plante pas si le broker est injoignable → ``RuntimeError`` ;
   * endpoint : gate admin (403 non-admin), liste (admin), run mocké,
-    run d'une tâche inconnue (400), run broker-down (503).
+    run d'une tâche inconnue (404), run broker-down (503).
 
 Le découplage est respecté : la cible des tests n'importe AUCUNE app domaine —
 seulement ``core.jobs`` / ``core.views`` (infra Celery uniquement).
@@ -169,9 +169,17 @@ class ScheduledJobEndpointTests(TestCase):
             resp = self._run(self.admin, {})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_run_unknown_task_is_400(self):
+    def test_run_unknown_task_is_404(self):
+        # ERR-ENF11-FUZZ-CORE — une tâche hors planification est une ressource
+        # introuvable (404 documenté) : le schéma publie `task` en texte libre,
+        # un 400 refusait une requête conforme.
         with _patch_schedule(_FAKE_SCHEDULE):
             resp = self._run(self.admin, {'task': 'nope.nope'})
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_run_task_non_texte_400_jamais_500(self):
+        with _patch_schedule(_FAKE_SCHEDULE):
+            resp = self._run(self.admin, {'task': [None, None]})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_run_calls_send_task_mocked(self):

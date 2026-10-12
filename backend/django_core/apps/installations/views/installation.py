@@ -1,44 +1,28 @@
 import logging
 
-from rest_framework import viewsets, filters, status  # noqa: F401
-from rest_framework.decorators import action  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
+from rest_framework import filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin  # noqa: F401
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet
-from django.utils import timezone  # noqa: F401
+from django.utils import timezone
 
-from .. import activity  # noqa: F401
-from .. import intervention_activity  # noqa: F401
-from ..models import (  # noqa: F401
-    Installation, Intervention, TypeIntervention, ChecklistTemplate,
-    ChecklistEtapeModele, ShotListSlot, ComponentSerial,
-    ConsommationLigne, VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot,
-)
-from ..serializers import (  # noqa: F401
-    InstallationSerializer, InterventionSerializer,
-    InstallationActivitySerializer, InterventionActivitySerializer,
-    TypeInterventionSerializer, ChecklistTemplateSerializer,
-    ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
-    ShotListSlotSerializer, InterventionPreparationSerializer,
-    ComponentSerialSerializer, MaterielConsommationSerializer,
-    ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
-    ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
+from .. import activity
+from ..models import Installation, Intervention, TypeIntervention, Reserve
+from ..serializers import (
+    InstallationSerializer,
+    InterventionSerializer,
+    InstallationActivitySerializer,
+    ChantierChecklistItemSerializer,
     PhotoChecklistMetaSerializer,
 )
-from ..services import (  # noqa: F401
-    create_installation_from_devis, seed_checklist_etapes,
-    ensure_checklist_items, ensure_default_template,
-    notifier_reception_solde_a_facturer,
-)
-from .. import field_services  # noqa: F401
-from .. import field_capture  # noqa: F401
+from ..services import create_installation_from_devis, ensure_checklist_items
 from . import _openapi as oa
-from apps.records.serializers import AttachmentSerializer  # noqa: E402
-from ..serializers_commissioning import (  # noqa: E402
+from apps.records.serializers import AttachmentSerializer
+from ..serializers_commissioning import (
     CommissioningRecordSerializer, HandoverPackSerializer,
 )
 
@@ -379,7 +363,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             except TransitionRefusee as exc:
                 raise ValidationError({'statut': exc.raisons})
 
-    @oa.extend_schema(request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.i(True)), responses={200: InstallationSerializer, 201: InstallationSerializer})
+    @oa.extend_schema(request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.idf(True)), responses={200: InstallationSerializer, 201: InstallationSerializer})
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
     def creer_depuis_devis(self, request):
@@ -387,15 +371,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         existe déjà pour ce devis, le RETOURNE (jamais de doublon)."""
         from apps.ventes.selectors import get_devis_by_pk, is_devis_accepte
         company = request.user.company
-        devis_id = request.data.get('devis')
-        devis = get_devis_by_pk(devis_id)
+        devis = get_devis_by_pk(oa.id_entier(
+            oa.corps_objet(request).get('devis'), 'devis'))
         if devis is None or devis.company_id != company.id:
             return Response({'detail': 'Devis inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND)
         if not is_devis_accepte(devis):
             return Response(
                 {'detail': 'Le devis doit être « Accepté » pour créer le chantier.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # AUD316 — `create_installation_from_devis` journalise ELLE-MÊME la
         # création au chatter (les 3 chemins — API, ce bouton, et l'événement
         # `devis_accepted` — l'obtiennent donc identiquement). Ne PAS rappeler
@@ -909,7 +893,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         try:
             from apps.documents.builders import figer_documents_signes
             figer_documents_signes(inst)
-        except Exception as exc:  # noqa: BLE001 — la signature prime
+        except Exception as exc:  # la signature prime
             logging.getLogger(__name__).warning(
                 "ADOC71 — gel GED du PV/BL du chantier %s impossible : %s",
                 inst.pk, exc)
@@ -1274,7 +1258,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """YSERV7 — chantiers à tranche d'échéancier due (jalon atteint ou
         réceptionné, non facturé). Liste plate, une entrée par tranche due."""
         from ..services import chantiers_a_facturer
-        return Response(chantiers_a_facturer(request.user.company))
+        return Response(chantiers_a_facturer(request.user.company, request.user))
 
     @oa.extend_schema(request=None, responses=oa.OBJ)
     @action(detail=True, methods=['post'], url_path='reserver-stock',
@@ -1442,10 +1426,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             Q(installation=inst) | Q(intervention__installation=inst),
             company=inst.company, pk=rid).first()
         if reserve is None:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Réserve introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        resolution = oa.corps_objet(request).get('resolution') or ''
+        if not isinstance(resolution, str):
+            return Response({'resolution': 'Texte attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         lever_reserve_chantier(
-            reserve, request.user,
-            resolution=(request.data.get('resolution') or '').strip())
+            reserve, request.user, resolution=resolution.strip())
         return Response(reserve_contrat(reserve))
 
     # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──

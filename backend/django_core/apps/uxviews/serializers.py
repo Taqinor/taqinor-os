@@ -2,6 +2,7 @@ from typing import Optional
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldError
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -46,6 +47,11 @@ def cible_du_favori(favori):
     return cible
 
 
+# ENF11 — `apps.crm.serializers.SavedViewSerializer` porte le MÊME nom de
+# composant OpenAPI (« SavedView ») : drf-spectacular n'en gardait qu'un et
+# publiait pour `/uxviews/saved-views/` le contrat de l'autre (ecran/nom jamais
+# exigés, champs `name`/`page`), d'où des POST « conformes » refusés (400).
+@extend_schema_serializer(component_name='UxSavedView')
 class SavedViewSerializer(SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
     # AANA17 — le rôle d'une vue est un rôle de LA société (les ids de rôle
@@ -73,6 +79,7 @@ class SavedViewSerializer(SameCompanyFKSerializerMixin,
         # actif par rôle+écran).
         read_only_fields = ['id', 'owner', 'est_defaut_role', 'created_at', 'updated_at']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_nom(self, obj):
         owner = obj.owner
         if not owner:
@@ -80,6 +87,7 @@ class SavedViewSerializer(SameCompanyFKSerializerMixin,
         full = f'{getattr(owner, "first_name", "")} {getattr(owner, "last_name", "")}'.strip()
         return full or getattr(owner, 'username', None) or getattr(owner, 'email', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_role_nom(self, obj):
         return obj.role.nom if obj.role_id else None
 
@@ -202,6 +210,18 @@ class UxParametresSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        # ENF11 — DRF itère n'importe quel objet itérable : `{}` (ou un dict)
+        # passait pour une liste vide et PATCH répondait 200. Une liste
+        # d'identifiants est exigée, comme le schéma le déclare.
+        brut = data.get('roles_autorises_definir_defaut') if hasattr(
+            data, 'get') else None
+        if brut is not None and not isinstance(brut, (list, tuple)):
+            raise serializers.ValidationError({
+                'roles_autorises_definir_defaut':
+                    "Une liste d'identifiants de rôles est attendue."})
+        return super().to_internal_value(data)
 
     def validate_roles_autorises_definir_defaut(self, value):
         """Un rôle d'une AUTRE société n'a rien à faire ici (les ids de rôle

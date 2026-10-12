@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
 
 /* WIR232/ZMFG8/XMFG10 — vue unifiée Ajout/Retrait/Recyclage des pièces du
    ticket (getTicketPiecesUnifiees enfin consommé) + formulaire « Retirer une
@@ -32,20 +30,9 @@ vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
   return { ...actual, updateTicket: (...a) => updateTicketSpy(...a) }
 })
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPiecesUnifiees: (...a) => getTicketPiecesUnifiees(...a),
-    retirerTicketPiece: (...a) => retirerTicketPiece(...a),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailTestKit')).savApiDetailMock({
+  getTicketPiecesUnifiees: (...a) => getTicketPiecesUnifiees(...a),
+  retirerTicketPiece: (...a) => retirerTicketPiece(...a),
 }))
 
 vi.mock('../../api/axios', () => ({
@@ -59,33 +46,14 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
 import { TicketDetail } from './TicketsPage'
+import { renderTicketDetail } from './__tests__/ticketDetailTestKit'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function makeStore() {
-  return configureStore({
-    reducer: {
-      tickets: (state = { items: [] }) => state,
-      auth: (state = { role: 'admin', permissions: [] }) => state,
-    },
-  })
-}
-
-function renderDetail(ticket, opts = {}) {
-  const store = makeStore()
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <TicketDetail ticket={ticket} onClose={() => {}} onSaved={() => {}} {...opts} />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderDetail = (ticket, opts) => renderTicketDetail(TicketDetail, ticket, opts)
 
 const baseTicket = {
   id: 1, reference: 'SAV-1', statut: 'en_cours', type: 'correctif',

@@ -30,9 +30,8 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
-const {
-  default: PanneauAllees, suggestionAlleeGratuite,
-} = await import('../PanneauAllees')
+const { default: PanneauAllees } = await import('../PanneauAllees')
+const { suggestionAlleeGratuite } = await import('../PanneauAllees.helpers')
 
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })

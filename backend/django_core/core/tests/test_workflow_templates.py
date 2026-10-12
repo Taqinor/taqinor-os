@@ -214,6 +214,11 @@ class WorkflowTemplateEndpointTests(TestCase):
         resp = self._install(self.admin, {'code': 'nope'})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_install_corps_non_objet_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE — `[null, null]` levait AttributeError (500).
+        resp = self._install(self.admin, [None, None])
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_install_creates_then_idempotent(self):
         resp = self._install(self.resp, {'code': 'relance_devis'})
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)

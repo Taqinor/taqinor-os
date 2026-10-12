@@ -24,6 +24,8 @@ client ne puisse jamais forcer la société, le propriétaire ou un flag privil�
 """
 from __future__ import annotations
 
+from django.core.exceptions import FieldDoesNotExist
+
 
 def _user_may_see(user, permission_code) -> bool:
     """Vrai si ``user`` peut voir un champ gardé par ``permission_code``.
@@ -203,3 +205,48 @@ class ServerControlledFieldsMixin:
                 if key in blocked:
                     data.pop(key, None)
         return super().to_internal_value(data)
+
+
+def _chaine_nullable(modele, source) -> bool:
+    """Vrai si le chemin pointé (``a.b.c``) traverse, depuis ``modele``, au moins
+    une colonne/relation ``null=True`` (le champ lecture seule vaut alors
+    ``None``). Chemin non résoluble (propriété, méthode) ou relation inverse
+    (``photos.count``) → False : on ne rend jamais nullable ce qui ne l'est pas."""
+    courant = modele
+    for partie in source.split("."):
+        if courant is None:
+            return False
+        try:
+            champ = courant._meta.get_field(partie)
+        except FieldDoesNotExist:  # propriété / méthode : non résoluble
+            return False
+        if not getattr(champ, "concrete", False):
+            return False
+        if champ.null:
+            return True
+        courant = champ.related_model if champ.is_relation else None
+    return False
+
+
+class NullableDottedSourcesMixin:
+    """ENF11 — un champ lecture seule à ``source='fk.attribut'`` vaut ``None``
+    (et non « absent ») quand la clé ou la colonne traversée est nullable : le
+    schéma OpenAPI doit le dire (``allow_null``), sinon la réponse conforme du
+    serveur « viole » son propre schéma. N'agit que sur les chemins dont le
+    modèle prouve la nullabilité ; ``to_representation`` est inchangé.
+
+    ``core`` reste FONDATION : aucune dépendance app métier.
+    """
+
+    def get_fields(self):
+        champs = super().get_fields()
+        modele = getattr(getattr(self, "Meta", None), "model", None)
+        if modele is None:
+            return champs
+        for champ in champs.values():
+            source = getattr(champ, "source", None)
+            if (champ.read_only and not champ.allow_null and source
+                    and "." in source and source != "*"
+                    and _chaine_nullable(modele, source)):
+                champ.allow_null = True
+        return champs

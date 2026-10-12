@@ -39,31 +39,8 @@ publié un second volume, différent de celui du devis.
 """
 from __future__ import annotations
 
-from core.pompage.hydraulique import (  # noqa: F401 — ré-exports AGR109
-    _CHAMPS_PUITS_REQUIS,
-    _debit_a_hmt,
-    _flottant,
-    debit_a_hmt,
-    hmt_composantes,
-    hmt_puits_iteree,
-)
-from core.pompage.selection import (  # noqa: F401 — ré-exports AGR109
-    TENSION_MONO_V,
-    TENSION_TRI_V,
-    _RE_TENSION_MONO,
-    _RE_TENSION_TRI,
-    _a_prix,
-    _tension_alim,
-    selection_pompe,
-    selection_variateur,
-    tension_produit,
-)
-from core.pompage.volumes import (  # noqa: F401 — ré-exports AGR109
-    JOURS_PAR_MOIS,
-    couverture_besoin_eau,
-    production_mensuelle,
-    pumping_cycle_yield,
-)
+from core.pompage.hydraulique import hmt_composantes
+from core.pompage.volumes import JOURS_PAR_MOIS, production_mensuelle, pumping_cycle_yield
 
 
 # ═══════════════════════════════════════════════════════════════════════════

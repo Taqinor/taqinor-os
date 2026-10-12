@@ -168,9 +168,9 @@ ALLOWED_UNCONSUMED = {
 # (``receivers_without_emitter``) : un récepteur câblé sur un signal que rien
 # n'émet est du code mort qui fait croire à une réaction qui n'arrive jamais.
 ALLOWED_UNEMITTED = {
-    # Producteur parqué (compta/services.py) ; abonné vivant
-    # ``apps/monitoring/receivers.py`` (propriétaire : sav).
-    "abonnement_monitoring_resilie",
+    # ``abonnement_monitoring_resilie`` : RETIRÉ — ASAV100 en a posé l'émetteur
+    # vivant (``apps/monitoring/services.resilier_abonnement_monitoring``,
+    # D-ASAV-4 option (b)). Le cliquet se resserre.
     # Producteur parqué (compta/services.py) ; abonné vivant
     # ``apps/ventes/receivers.py`` (propriétaire : facturation).
     "effet_rejete",
@@ -505,7 +505,8 @@ NO_STATIC_EMITTER = {
     # QUELLE au retour du module (le cliquet ne se relâche que le temps du
     # parcage). Émetteur historique entre parenthèses.
     "effet_rejete",                      # compta/services.py
-    "abonnement_monitoring_resilie",     # compta/services.py
+    # ``abonnement_monitoring_resilie`` : RETIRÉ — émetteur vivant ASAV100
+    # (``apps/monitoring/services.py``), parité de payload vérifiable.
     "contrat_signe",                     # contrats/services.py
     "contrat_actif",                     # contrats/services.py
     "contrat_resilie",                   # contrats/services.py

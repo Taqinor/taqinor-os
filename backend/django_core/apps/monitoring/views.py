@@ -28,21 +28,25 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
-from rest_framework import serializers, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
-    ProductionWarranty,
+    AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
+    MonitoringSettings, ProductionReading, ProductionWarranty,
+    SlaDisponibilite,
 )
 from .providers import available_providers
 from .serializers import (
-    CleaningEventSerializer, MonitoringConfigSerializer,
+    AbonnementMonitoringSerializer, CleaningEventSerializer,
+    CertificatCarboneSerializer, MonitoringConfigSerializer,
+    SlaDisponibiliteSerializer,
     MonitoringSettingsSerializer, ProductionReadingSerializer,
     ProductionWarrantySerializer,
 )
@@ -59,13 +63,25 @@ from rest_framework import serializers as drf_serializers
 READ_ACTIONS = ['list', 'retrieve']
 
 _PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
+# ENF11 — bornes RÉELLES des paramètres entiers (voir query_params.py) : sans
+# `minimum`, le schéma autorisait 0/négatif que le serveur refuse en 400.
+_ENTIER_MIN_1 = {'type': 'integer', 'minimum': 1}
+_ANNEE = {'type': 'integer', 'minimum': 1900}
 _WINDOW = OpenApiParameter(
-    'window_days', OpenApiTypes.INT, required=False, default=365)
-_SINCE = OpenApiParameter('since', OpenApiTypes.DATE, required=False)
-_UNTIL = OpenApiParameter('until', OpenApiTypes.DATE, required=False)
-_CLIENT_REQ = OpenApiParameter('client', OpenApiTypes.INT, required=True)
+    'window_days', _ENTIER_MIN_1, required=False, default=365)
+# ENF11 (api-fuzz) — ``query_params.date_iso`` lit « vide » comme « borne non
+# posée » : le schéma le dit (date ISO ou chaîne vide) au lieu d'annoncer une
+# date seule qu'un ``?until=`` contredit.
+_DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+_SINCE = OpenApiParameter('since', _DATE_OU_VIDE, required=False)
+_UNTIL = OpenApiParameter('until', _DATE_OU_VIDE, required=False)
+# ENF11 (api-fuzz) — ``query_params.identifiant`` refuse 0 et les négatifs :
+# le schéma le dit (``minimum: 1``) au lieu d'annoncer tout entier.
+_IDENTIFIANT = {'type': 'integer', 'minimum': 1}
+_CLIENT_REQ = OpenApiParameter('client', _IDENTIFIANT, required=True)
 _FILTRE_INSTALLATION = [OpenApiParameter(
-    'installation', OpenApiTypes.INT, required=False)]
+    'installation', _IDENTIFIANT, required=False)]
 
 # ── CIQ645 — import CSV des relevés ─────────────────────────────────────────
 _COLONNES_RELEVES = {
@@ -263,7 +279,11 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         'key': serializers.CharField(),
         'label': serializers.CharField(),
     }, many=True))
-    @action(detail=False, methods=['get'], url_path='providers')
+    # ENF11 — liste PLATE (registre de fournisseurs), non paginée : sans
+    # `pagination_class=None` drf-spectacular publiait un schéma paginé
+    # ({count, results}) alors que la réponse est un tableau.
+    @action(detail=False, methods=['get'], url_path='providers',
+            pagination_class=None, filter_backends=[])
     def providers(self, request):
         """Liste des fournisseurs disponibles (registre swappable)."""
         return Response([
@@ -370,7 +390,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('months', OpenApiTypes.INT, required=False,
+            OpenApiParameter('months', _ENTIER_MIN_1, required=False,
                              default=12),
             OpenApiParameter('export', OpenApiTypes.STR, required=False),
         ],
@@ -387,7 +407,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             (200, 'text/csv'): OpenApiTypes.STR,
         })
     @action(detail=True, methods=['get'], url_path='history',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def history(self, request, pk=None):
         """FG84 — Historique de production mensuelle agrégée avec expected vs actual.
 
@@ -467,7 +487,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_FLEET_REPONSE)
     @action(detail=False, methods=['get'], url_path='fleet',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def fleet(self, request):
         """FG281 — Tableau de bord parc/flotte multi-systèmes : production
         totale, kWc installés, PR moyen et alertes ouvertes sur tous les
@@ -482,7 +502,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE)
     @action(detail=False, methods=['get'], url_path='benchmark',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def benchmark(self, request):
         """NTNRG33 — classement RELATIF du parc par PR (percentile), jamais
         un seuil absolu. ?window_days=365 (défaut)."""
@@ -496,7 +516,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE)
     @action(detail=True, methods=['get'], url_path='om-metrics',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def om_metrics(self, request, pk=None):
         """FG279 — Analytique O&M par système (PR, disponibilité, soiling,
         dégradation) depuis `ProductionReading`. Fenêtre : ?window_days=365
@@ -508,7 +528,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_CLIENT_REQ], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE)
     @action(detail=False, methods=['get'], url_path='client-portal',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def client_portal(self, request):
         """FG288 — synthèse environnementale cumulée des systèmes d'un client
         (production / économies / CO₂). ?client=ID requis."""
@@ -523,7 +543,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_SINCE, _UNTIL], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_REPONSE)
     @action(detail=True, methods=['get'], url_path='co2',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def co2(self, request, pk=None):
         """FG286 — CO₂ évité (kg + tonnes) par ce système (toute la production
         ou bornée par ?since=YYYY-MM-DD&until=YYYY-MM-DD)."""
@@ -536,7 +556,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_SINCE, _UNTIL], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_FLEET_REPONSE)
     @action(detail=False, methods=['get'], url_path='co2-fleet',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def co2_fleet(self, request):
         """FG286 — CO₂ évité par système ET cumulé sur le parc de la société."""
         from .selectors import co2_fleet
@@ -549,7 +569,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_SOILING_REPONSE)
     @action(detail=True, methods=['get'], url_path='soiling',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def soiling(self, request, pk=None):
         """FG283 — perte estimée par salissure (chute de PR entre nettoyages)
         + recommandation de nettoyage. ?window_days=365 (défaut)."""
@@ -559,6 +579,30 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             soiling_assessment(config.installation, window_days=window))
 
+    @extend_schema(parameters=[_WINDOW], responses=inline_serializer(
+        'MonitoringPertesCategorisees', {
+            'installation': serializers.IntegerField(),
+            'window_days': serializers.IntegerField(),
+            'soiling_pct': serializers.FloatField(allow_null=True),
+            'ombrage_pct': serializers.FloatField(allow_null=True),
+            'panne_pct': serializers.FloatField(allow_null=True),
+            'curtailment_pct': serializers.FloatField(allow_null=True),
+        }))
+    @action(detail=True, methods=['get'], url_path='pertes',
+            permission_classes=[IsResponsableOrAdmin])
+    def pertes(self, request, pk=None):
+        """ASAV103 (D-ASAV-4 option (b)) — pertes de production PAR
+        CATÉGORIE (salissure, ombrage, panne, écrêtement — NTNRG32) de ce
+        système. Responsable/admin ; 404 hors société. Une catégorie sans
+        donnée vaut ``null`` (jamais un faux 0). ?window_days=365 (défaut).
+        Contrat : ``contract_samples/pertes_categorisees.json``."""
+        from .analytics import pertes_categorisees
+        config = self.get_object()
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
+        return Response(
+            pertes_categorisees(config.installation, window_days=window))
+
     @extend_schema(
         parameters=[
             OpenApiParameter('period', OpenApiTypes.STR, required=False),
@@ -567,7 +611,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         responses={(200, 'application/json'): _VIEWS_MONITORING_CONFIG_VIEW_SET_OM_REPORT_REPONSE,
                    (200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='om-report',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def om_report(self, request, pk=None):
         """FG289 — rapport O&M périodique du système. ?period=monthly|quarterly.
         ?format=pdf renvoie le PDF ; sinon les données JSON."""
@@ -610,10 +654,10 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'sent': sent})
 
     @extend_schema(
-        parameters=[OpenApiParameter('annee', OpenApiTypes.INT, required=False)],
+        parameters=[OpenApiParameter('annee', _ANNEE, required=False)],
         responses=_PDF)
     @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def rapport_garantie_pdf(self, request, pk=None):
         """NTNRG11 — rapport CONTRACTUEL mensuel de garantie de performance
         (PDF), distinct du rapport O&M générique ci-dessus : mention légale
@@ -647,7 +691,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_SINCE, _UNTIL], responses=_PDF)
     @action(detail=True, methods=['get'], url_path='attestation-carbone-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def attestation_carbone_pdf(self, request, pk=None):
         """NTNRG26 — attestation carbone PDF certifiable de CE système
         (au-delà du portail JSON FG286/288) : méthodologie affichée, distincte
@@ -668,7 +712,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(parameters=[_CLIENT_REQ, _SINCE, _UNTIL], responses=_PDF)
     @action(detail=False, methods=['get'], url_path='attestation-carbone-client-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def attestation_carbone_client_pdf(self, request):
         """NTNRG26 — attestation carbone CONSOLIDÉE (multi-sites) pour un
         client (FG288). ?client=ID requis. Sans relevé sur la période :
@@ -795,7 +839,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     @extend_schema(
-        parameters=[OpenApiParameter('year', OpenApiTypes.INT, required=False)],
+        parameters=[OpenApiParameter('year', _ANNEE, required=False)],
         responses=_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_STATUS_REPONSE)
     @action(detail=True, methods=['get'], url_path='status',
             permission_classes=[IsAnyRole])
@@ -810,7 +854,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('years', OpenApiTypes.INT, required=False),
+            OpenApiParameter('years', _ENTIER_MIN_1, required=False),
             OpenApiParameter('drift_threshold_pct', OpenApiTypes.NUMBER,
                              required=False),
         ],
@@ -862,3 +906,170 @@ class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(company=company)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+def _erreur_service(exc):
+    """ASAV100/102 — erreur de service → corps DRF : champ nommé sous le champ,
+    sinon ``detail`` (texte, lu tel quel par ``getApiError`` côté écran)."""
+    if exc.champ:
+        return {exc.champ: [exc.message]}
+    return {'detail': exc.message}
+
+
+class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
+    """ASAV100 (D-ASAV-4 option (b), ASAV93) — abonnements de supervision.
+
+    Responsable/admin seulement (lecture comme écriture) ; société forcée côté
+    serveur, client résolu depuis le système (jamais lu du corps). Ni
+    modification libre ni suppression : un abonnement se crée, puis se résilie
+    par l'action ``resilier`` (motif obligatoire) qui coupe la supervision du
+    système lié. Contrat : ``contract_samples/abonnements_monitoring.json``."""
+    queryset = AbonnementMonitoring.objects.all()
+    serializer_class = AbonnementMonitoringSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['periodicite', 'statut', 'motif_resiliation']
+    ordering_fields = [
+        'prochaine_echeance', 'date_debut', 'date_creation', 'montant',
+        'statut', 'id']
+    ordering = ['prochaine_echeance', 'id']
+    parser_classes = [JSONParser]
+    permission_classes = [IsResponsableOrAdmin]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        from .services import (
+            AbonnementMonitoringError, creer_abonnement_monitoring,
+        )
+        data = serializer.validated_data
+        try:
+            serializer.instance = creer_abonnement_monitoring(
+                self.request.user.company,
+                installation_id=data['installation_id'],
+                periodicite=data.get('periodicite') or (
+                    AbonnementMonitoring.Periodicite.MENSUEL),
+                montant=data.get('montant'),
+                date_debut=data.get('date_debut'),
+                user=self.request.user)
+        except AbonnementMonitoringError as exc:
+            raise serializers.ValidationError(_erreur_service(exc))
+
+    @extend_schema(
+        request=inline_serializer('MonitoringAbonnementResilier', {
+            'motif': serializers.CharField()}),
+        responses=AbonnementMonitoringSerializer)
+    @action(detail=True, methods=['post'], url_path='resilier',
+            permission_classes=[IsResponsableOrAdmin])
+    def resilier(self, request, pk=None):
+        """Résilie l'abonnement (404 hors société) et coupe la supervision
+        automatique du système lié (abonné ``abonnement_monitoring_resilie``)."""
+        from .services import (
+            AbonnementMonitoringError, resilier_abonnement_monitoring,
+        )
+        abonnement = self.get_object()
+        try:
+            resilier_abonnement_monitoring(
+                abonnement, motif=request.data.get('motif'),
+                user=request.user)
+        except AbonnementMonitoringError as exc:
+            raise serializers.ValidationError(_erreur_service(exc))
+        return Response(self.get_serializer(abonnement).data)
+
+
+@extend_schema_view(list=extend_schema(
+    parameters=_FILTRE_INSTALLATION))
+class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
+    """ASAV101 (D-ASAV-4 option (b), ASAV93) — SLA de disponibilité par
+    système : saisie du taux garanti (aucun défaut) et action ``ecart`` qui
+    compare l'indice de suivi mesuré au taux garanti
+    (``selectors.disponibilite_vs_garantie``). Responsable/admin seulement ;
+    société forcée côté serveur (TenantMixin.perform_create). Contrat :
+    ``contract_samples/sla_disponibilite.json``."""
+    queryset = SlaDisponibilite.objects.select_related('installation').all()
+    serializer_class = SlaDisponibiliteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['note']
+    ordering_fields = [
+        'updated_at', 'created_at', 'disponibilite_garantie_pct', 'id']
+    ordering = ['-updated_at']
+    parser_classes = [JSONParser]
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = identifiant(self.request, 'installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        return qs
+
+    @extend_schema(parameters=[_WINDOW], responses=inline_serializer(
+        'MonitoringSlaDisponibiliteEcart', {
+            'has_sla': serializers.BooleanField(),
+            'installation': serializers.IntegerField(required=False),
+            'window_days': serializers.IntegerField(required=False),
+            'libelle_indicateur': serializers.CharField(required=False),
+            'disponibilite_garantie_pct': serializers.FloatField(
+                required=False, allow_null=True),
+            'disponibilite_mesuree_pct': serializers.FloatField(
+                required=False, allow_null=True),
+            'ecart_pct': serializers.FloatField(
+                required=False, allow_null=True),
+            'sous_garantie': serializers.BooleanField(required=False),
+            'jours_indisponibilite_excedentaire': serializers.FloatField(
+                required=False, allow_null=True),
+            'penalite_mad': serializers.FloatField(
+                required=False, allow_null=True),
+        }))
+    @action(detail=True, methods=['get'], url_path='ecart',
+            permission_classes=[IsResponsableOrAdmin])
+    def ecart(self, request, pk=None):
+        """Indice de suivi mesuré vs taux garanti + pénalité (tarif saisi ;
+        ``null`` tant que l'engagement de production n'est pas validé).
+        ?window_days=365 (défaut, 1..1825). 404 hors société."""
+        from .selectors import disponibilite_vs_garantie
+        sla = self.get_object()
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
+        return Response(disponibilite_vs_garantie(
+            sla.installation, window_days=window))
+
+
+class CertificatCarboneViewSet(CompanyScopedModelViewSet):
+    """ASAV102 (D-ASAV-4 option (b), ASAV93) — registre des certificats
+    carbone (NTNRG27) : liste + émission. Responsable/admin seulement ;
+    société forcée côté serveur. Les tCO₂ sont CALCULÉES par le serveur
+    (production mesurée de la période), jamais lues du corps ; un certificat
+    émis ne se modifie ni ne se supprime (traçabilité). Contrat :
+    ``contract_samples/certificats_carbone.json``."""
+    queryset = CertificatCarbone.objects.all()
+    serializer_class = CertificatCarboneSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference']
+    ordering_fields = [
+        'created_at', 'periode_debut', 'periode_fin', 'tco2_evitees',
+        'reference', 'id']
+    ordering = ['-created_at']
+    parser_classes = [JSONParser]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        from .services import (
+            CertificatCarboneError, emettre_certificat_carbone_mesure,
+        )
+        data = serializer.validated_data
+        try:
+            serializer.instance = emettre_certificat_carbone_mesure(
+                self.request.user.company,
+                installation_id=data.get('installation_id'),
+                client_id=data.get('client_id'),
+                periode_debut=data['periode_debut'],
+                periode_fin=data['periode_fin'])
+        except CertificatCarboneError as exc:
+            raise serializers.ValidationError(_erreur_service(exc))

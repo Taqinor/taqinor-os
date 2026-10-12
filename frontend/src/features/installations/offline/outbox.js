@@ -68,8 +68,10 @@ export class FieldOutbox extends Outbox {
     await this._ensureLoaded()
     await this._mutate((cur) => cur.map((op) => {
       if (op.client_op_id !== clientOpId) return op
-      // eslint-disable-next-line no-unused-vars
-      const { serverError, attempts, base_updated_at, ...reste } = op
+      const reste = { ...op }
+      delete reste.serverError
+      delete reste.attempts
+      delete reste.base_updated_at
       return reste
     }))
   }

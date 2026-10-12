@@ -15,28 +15,10 @@ const lf = (s) => s.replace(/\r\n/g, '\n')
 const SRC = lf(readFileSync(join(HERE, 'TicketsPage.jsx'), 'utf8'))
 const SERIALIZER = lf(readFileSync(
   join(HERE, '../../../../backend/django_core/apps/sav/serializers.py'), 'utf8'))
-
-/* ── La logique PURE, rejouee (le composant n'est pas importable sans bundler
-      JSX dans cette lane). Le test « fidele a la source » ci-dessous epingle
-      le texte exact de la fonction. ── */
-const OUVERTS = ['nouveau', 'planifie', 'en_cours']
-const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-function ticketSlaEcheance(ticket, now = new Date()) {
-  const dueIso = ticket?.sla_due_at_effectif || ticket?.sla_due_at || null
-  if (!dueIso) return null
-  const due = new Date(`${String(dueIso).slice(0, 10)}T00:00:00`)
-  if (Number.isNaN(due.getTime())) return null
-  const aujourdhui = new Date(`${ymdLocal(now)}T00:00:00`)
-  const jours = Math.round((due - aujourdhui) / 86400000)
-  const ouvert = !ticket?.annule && OUVERTS.includes(ticket?.statut)
-  return {
-    dueIso: String(dueIso).slice(0, 10),
-    jours,
-    depasse: ouvert ? jours < 0 : !!ticket?.sla_breach,
-    enPause: !!ticket?.en_attente_client,
-    ouvert,
-  }
-}
+// ENF28 — la logique PURE vit dans ticketsLogique.js (sans JSX, importable
+// par node) : le test exerce LA fonction de production, plus une copie.
+const LOGIQUE = lf(readFileSync(join(HERE, 'ticketsLogique.js'), 'utf8'))
+const { ticketSlaEcheance } = await import('./ticketsLogique.js')
 
 // Un « maintenant » FIGE : sinon ce test devient flaky autour de minuit
 // (classe de bug connue du depot).
@@ -109,11 +91,14 @@ test('APX30 : le TRI remonte les depassements et rejette les sans-SLA en fin', (
   assert.deepEqual(ordre, ['retard2j', 'aujourdhui', 'dans3j', 'sans'])
 })
 
-test('APX30 : la copie de logique de ce test est fidele a la source', () => {
-  assert.match(SRC, /export function ticketSlaEcheance\(ticket, now = new Date\(\)\) \{/)
-  assert.match(SRC, /const dueIso = ticket\?\.sla_due_at_effectif \|\| ticket\?\.sla_due_at \|\| null/)
-  assert.match(SRC, /depasse: ouvert \? jours < 0 : !!ticket\?\.sla_breach,/)
-  assert.match(SRC, /export function ticketSlaTri\(ticket, now = new Date\(\)\) \{/)
+test('APX30 : l\'ecran utilise LA logique testee (ticketsLogique.js)', () => {
+  assert.match(LOGIQUE, /export function ticketSlaEcheance\(ticket, now = new Date\(\)\) \{/)
+  assert.match(LOGIQUE, /const dueIso = ticket\?\.sla_due_at_effectif \|\| ticket\?\.sla_due_at \|\| null/)
+  assert.match(LOGIQUE, /depasse: ouvert \? jours < 0 : !!ticket\?\.sla_breach,/)
+  assert.match(LOGIQUE, /export function ticketSlaTri\(ticket, now = new Date\(\)\) \{/)
+  // L'ecran importe ces deux fonctions, il n'en garde aucune copie.
+  assert.match(SRC, /ticketSlaEcheance, ticketSlaTri,\n\} from '\.\/ticketsLogique'/)
+  assert.doesNotMatch(SRC, /function ticketSlaEcheance\(/)
 })
 
 test('APX30 : ZERO backend — tous les champs lus existent deja au serializer', () => {
@@ -131,10 +116,12 @@ test('APX30 : ZERO backend — tous les champs lus existent deja au serializer',
   // garde avalait son appel reseau parfaitement legitime. Bornes recalculees
   // depuis les declarations APX30 elles-memes : tout ce que APX30 possede reste
   // couvert, y compris un helper ajoute au milieu du bloc.
+  // ENF28 — ymdLocal / ticketSlaEcheance / ticketSlaTri vivent dans
+  // ticketsLogique.js (dernier bloc du module) : il passe la meme garde.
+  const debutSla = LOGIQUE.indexOf('export function ymdLocal(d) {')
+  assert.notEqual(debutSla, -1, 'ymdLocal absent de ticketsLogique.js')
+  assert.doesNotMatch(LOGIQUE.slice(debutSla), /api\.|savApi|fetch\(|useEffect/)
   const DECLARATIONS_APX30 = [
-    'function ymdLocal(d) {',
-    'export function ticketSlaEcheance(ticket, now = new Date()) {',
-    'export function ticketSlaTri(ticket, now = new Date()) {',
     'export function TicketSlaEcheanceChip({ ticket }) {',
     'export function TicketPremiereReponseChip({ ticket }) {',
   ]

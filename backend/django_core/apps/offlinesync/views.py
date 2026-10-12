@@ -32,11 +32,24 @@ from rest_framework import serializers
 from rest_framework.parsers import JSONParser
 
 
+class _ChaineStricte(serializers.CharField):
+    """Chaîne JSON uniquement : DRF coerce sinon 12 -> « 12 » et accepte une
+    requête que le schéma OpenAPI (string) déclare invalide (ENF11)."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
 class OperationHorsLigneSerializer(serializers.Serializer):
-    client_op_id = serializers.CharField()
-    op_type = serializers.CharField()
-    payload = serializers.DictField(required=False)
-    queued_at = serializers.CharField(required=False, allow_blank=True)
+    client_op_id = _ChaineStricte()
+    op_type = _ChaineStricte()
+    payload = serializers.DictField(required=False, allow_null=True)
+    queued_at = _ChaineStricte(
+        required=False, allow_blank=True, allow_null=True)
+    date_creation = _ChaineStricte(
+        required=False, allow_blank=True, allow_null=True)
 
 
 class LotHorsLigneSerializer(serializers.Serializer):
@@ -74,6 +87,12 @@ class OfflineSyncBatchView(GenericAPIView):
         if company is None:
             return Response({'detail': "Aucune société sur l'utilisateur."},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 — la forme du lot est validée contre le schéma publié : un
+        # lot mal formé répond 400 (les refus MÉTIER d'une opération, eux,
+        # restent par opération dans `results`, le lot continue).
+        entree = LotHorsLigneSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
         try:
             resume = services.apply_batch(company, request.user,
                                           request.data.get('ops'))

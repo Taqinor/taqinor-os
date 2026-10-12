@@ -289,14 +289,8 @@ describe('CALX6 — le contrat committé, lu à sa source', () => {
    `calepinage_meteo_fichier.json` (nom, fournisseur, empreinte du dépôt). */
 describe('ACAL147 — la source météo retenue', () => {
   const depot = CONTRAT_METEO.exemple
-  const retenu = {
-    piece_jointe: depot.piece_jointe,
-    nom: depot.meteo.fichier.nom,
-    fournisseur: depot.meteo.fournisseur,
-    sha256: depot.meteo.fichier.empreinte_sha256,
-    depose_le: '2026-09-21T09:00:00+00:00',
-    depose_par: 'Sami Alaoui',
-  }
+  // ACAL363 — la réponse GET vient du contrat committé, jamais d'une valeur inventée.
+  const retenu = CONTRAT_METEO.exemple_get
 
   it('fichier retenu affiché avec son fournisseur', async () => {
     meteoFichier.mockResolvedValue({ data: retenu })
@@ -331,15 +325,8 @@ describe('ACAL147 — la source météo retenue', () => {
    réponses reprennent le contrat `calepinage_meteo_fichier.json`
    (`exemple_remplace`, `exemple_delete_404`). */
 describe('ACAL148 — retirer ou remplacer le fichier météo', () => {
-  const depot = CONTRAT_METEO.exemple
-  const retenu = {
-    piece_jointe: depot.piece_jointe,
-    nom: depot.meteo.fichier.nom,
-    fournisseur: depot.meteo.fournisseur,
-    sha256: depot.meteo.fichier.empreinte_sha256,
-    depose_le: '2026-09-21T09:00:00+00:00',
-    depose_par: 'Sami Alaoui',
-  }
+  // ACAL363 — la réponse GET vient du contrat committé, jamais d'une valeur inventée.
+  const retenu = CONTRAT_METEO.exemple_get
 
   it('Retirer le fichier météo appelle DELETE puis affiche Retour à PVGIS', async () => {
     meteoFichier

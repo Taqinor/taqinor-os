@@ -33,6 +33,7 @@ from ..permissions import PeutGererCalepinage
 from ..selectors import calepinages_visibles
 from ..services.archivage import ArchivageInvalide, restaurer
 from ..services.archivage import archiver as archiver_service
+from .calepinages import CalepinageViewSet
 
 __all__ = ['archiver', 'restaurer_corbeille']
 
@@ -85,7 +86,5 @@ def restaurer_corbeille(self, request, pk=None):
                         status=status.HTTP_400_BAD_REQUEST)
     return Response({'calepinage': calepinage.pk, 'archive': False})
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 _attacher(CalepinageViewSet)

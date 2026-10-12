@@ -52,6 +52,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from .calepinages import CalepinageViewSet
 
 __all__ = ['plan_importe', 'dimensions_image', 'SANS_FOND', 'FOND_PHOTO',
            'SANS_PIECE', 'PIECE_INTROUVABLE', 'MOTIF_FICHIER_ABSENT',
@@ -275,8 +276,6 @@ def plan_importe_fichier(self, request, pk=None):
     reponse = reponse_fichier(lire_octets_piece(piece.file_key), piece.mime)
     return reponse if reponse is not None else fichier_introuvable()
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7 / bug de classe #105).

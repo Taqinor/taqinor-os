@@ -43,10 +43,12 @@ scopé, exactement comme le fait ``TenantMixin`` pour les listes.
 """
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from .champs_stricts import BooleenStrict, ChaineStricte
+from .parseurs import ObjetJSON
+
 from .models import (
     ApiUsagePlan,
     BackgroundJob,
@@ -301,6 +303,16 @@ class WorkflowStepDefinitionSerializer(CompanyScopedRelationsMixin, serializers.
         return attrs
 
 
+# ERR-ENF11-FUZZ-CORE — création AUTONOME d'une étape (viewset des étapes) :
+# ``definition`` y est obligatoire (``validate`` le refusait déjà) ; le schéma
+# la publie désormais requise sous un composant distinct (l'étape imbriquée
+# garde ``definition`` facultative, imposée par le parent).
+@extend_schema_serializer(component_name='WorkflowEtapeAutonome')
+class WorkflowStepDefinitionAutonomeSerializer(WorkflowStepDefinitionSerializer):
+    class Meta(WorkflowStepDefinitionSerializer.Meta):
+        extra_kwargs = {'definition': {'required': True}}
+
+
 class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
     ses étapes imbriquées.
@@ -516,6 +528,12 @@ class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializ
     imposée côté serveur (TenantMixin) et ``owner`` est positionné à
     l'utilisateur courant à la création (voir la vue).
     """
+    # ERR-ENF11-FUZZ-CORE — objet JSON publié et exigé (``null`` était
+    # conforme au schéma ``{}`` puis refusé par le champ de modèle non nul).
+    layout = ObjetJSON(required=False)
+    # api-fuzz #956 — booléen JSON réel (``0`` était converti en silence).
+    partage = BooleenStrict(required=False)
+
     class Meta:
         model = Dashboard
         fields = [
@@ -682,6 +700,8 @@ class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
     expose les placeholders détectés dans le corps (aide à l'éditeur).
     """
     variables = serializers.SerializerMethodField()
+    # ERR-ENF11-FUZZ-CORE — booléen JSON strict (``actif: 0`` était accepté).
+    actif = BooleenStrict(required=False)
 
     class Meta:
         model = BrandedTemplate
@@ -697,6 +717,11 @@ class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
         return variables_utilisees(f'{obj.sujet}\n{obj.corps}')
 
 
+# ERR-ENF11-FUZZ-CORE — composant OpenAPI distinct : le nom par défaut
+# « ConsentRecord » entrait en collision avec ``apps.adsengine`` (PUB75) et le
+# schéma publiait SES champs (client_nom…) pour ``core/consent-records/`` :
+# un corps conforme y était refusé (subject_identifier/purpose requis).
+@extend_schema_serializer(component_name='ConsentementTraitement')
 class ConsentRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG394 — entrée du registre de consentement.
 
@@ -759,6 +784,8 @@ class RegistreTraitementSerializer(CompanyScopedRelationsMixin, serializers.Mode
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
     """
+    actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
+
     class Meta:
         model = RegistreTraitement
         fields = [
@@ -797,6 +824,8 @@ class ApiUsagePlanSerializer(CompanyScopedRelationsMixin, serializers.ModelSeria
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
     """
+    actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
+
     class Meta:
         model = ApiUsagePlan
         fields = [

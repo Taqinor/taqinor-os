@@ -32,7 +32,8 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
-const { default: RemplissageProuve, regimeDePreuve } = await import('../RemplissageProuve')
+const { default: RemplissageProuve } = await import('../RemplissageProuve')
+const { regimeDePreuve } = await import('../RemplissageProuve.helpers')
 
 const ENTREE = { surfaces: [{ id: 'PAN-A' }] }
 

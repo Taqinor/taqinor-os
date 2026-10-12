@@ -32,7 +32,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import AffectationChaines, { couleurParModule } from './AffectationChaines'
+import AffectationChaines from './AffectationChaines'
+import { couleurParModule } from './AffectationChaines.helpers'
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
 

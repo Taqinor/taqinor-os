@@ -56,6 +56,36 @@ class TestFkSociete(TestCase):
         resp = self._alerte([self.collegue.pk])
         self.assertEqual(resp.status_code, 201, resp.data)
 
+    def test_metrique_autre_societe_refusee_comme_absente(self):
+        """ENF28 — une métrique nommée de B est refusée à la RÉSOLUTION du
+        champ, avec la réponse d'un id inexistant (aucun oracle)."""
+        from apps.semantic.models import MetricDefinition
+        etrangere = MetricDefinition.objects.create(
+            company=self.co_b, cle='mrr', libelle='MRR',
+            dataset='sav_contrats', mesure={'agg': 'count'})
+        locale = MetricDefinition.objects.create(
+            company=self.co_a, cle='mrr', libelle='MRR',
+            dataset='sav_contrats', mesure={'agg': 'count'})
+
+        def poster(metrique_id):
+            return self.api.post(f'{BASE}/kpi-alertes/', {
+                'nom': 'MRR bas', 'source': KpiAlerte.Source.METRIQUE,
+                'metric_definition': metrique_id,
+                'operateur': KpiAlerte.Operateur.INF, 'seuil': '1',
+            }, format='json')
+
+        resp = poster(etrangere.pk)
+        self.assertEqual(resp.status_code, 400, resp.data)
+        absent = poster(999999)
+        self.assertEqual(absent.status_code, 400, absent.data)
+        self.assertEqual(
+            [str(e.code) for e in resp.data['metric_definition']],
+            [str(e.code) for e in absent.data['metric_definition']])
+        self.assertFalse(KpiAlerte.objects.filter(company=self.co_a).exists())
+
+        resp = poster(locale.pk)
+        self.assertEqual(resp.status_code, 201, resp.data)
+
     def test_config_user_autre_societe_refuse(self):
         resp = self.api.post(f'{BASE}/dashboard-config/', {
             'user': self.etranger.pk, 'cards': [],

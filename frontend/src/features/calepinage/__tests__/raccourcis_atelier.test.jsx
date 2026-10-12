@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
-import RaccourcisAtelier, { RACCOURCIS, estSaisieEnCours } from '../RaccourcisAtelier'
+import RaccourcisAtelier from '../RaccourcisAtelier'
+import { RACCOURCIS, estSaisieEnCours } from '../RaccourcisAtelier.helpers'
 
 /* ============================================================================
    CAL101 — CHAQUE RACCOURCI EST LISTÉ *ET* TESTÉ, ET AUCUN NE VOLE UNE FRAPPE.

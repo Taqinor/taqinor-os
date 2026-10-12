@@ -1,11 +1,7 @@
-/* eslint-disable react-refresh/only-export-components --
-   `suggestionAlleeGratuite` est une fonction PURE (une réponse du moteur →
-   la suggestion `ALLEE_GRATUITE`, ou `null`) : la tâche exige de VÉRIFIER
-   que la règle « ne jamais publier l'allée minimale quand une allée large
-   est gratuite » tient, ce qui demande de l'appeler sans monter React —
-   même dérogation que `RemplissageProuve.jsx` (CAL79) du même module. */
 import { useEffect, useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
+import { ecrireSection } from './useDocumentCalepinage'
+import { PRESET_FM_DS_1_15, suggestionAlleeGratuite } from './PanneauAllees.helpers'
 
 /* ============================================================================
    CAL70 — DÉCLARER LES ALLÉES ET PASSAGES DE MAINTENANCE DANS L'ATELIER.
@@ -36,62 +32,10 @@ import calepinageApi from '../../api/calepinageApi'
    jamais une promesse en l'air.
    ========================================================================== */
 
-/**
- * CAL70 — la suggestion `ALLEE_GRATUITE` d'une réponse du moteur, ou `null`.
- * Fonction PURE : elle ne calcule rien, elle LIT ce que le moteur a déjà
- * publié dans `suggestions[]` (contrat `moteur_calculer.json`).
- */
-export function suggestionAlleeGratuite(resultat) {
-  const suggestions = resultat?.suggestions
-  if (!Array.isArray(suggestions)) return null
-  const trouvee = suggestions.find((s) => s?.code === 'ALLEE_GRATUITE'
-    && Number.isFinite(s?.action?.patch?.allee_m))
-  if (!trouvee) return null
-  return {
-    alleeM: trouvee.action.patch.allee_m,
-    titre: trouvee.titre ?? null,
-    gainModules: trouvee.gain_modules ?? null,
-    gainKwc: trouvee.gain_kwc ?? null,
-    confiance: trouvee.confiance ?? null,
-  }
-}
-
 /** Une grandeur du serveur, ou le tiret — jamais un zéro de remplacement. */
 function valeur(brut, suffixe = '') {
   if (brut === null || brut === undefined || brut === '') return '—'
   return `${brut}${suffixe}`
-}
-
-/* ============================================================================
-   CIQ138 — CONTRAINTES DE SITE DU PROJET (assureur, dégagements, îlots).
-   ----------------------------------------------------------------------------
-   Champ serveur `Calepinage.contraintes_site` (CIQ136, contrat
-   `calepinage_detail.json`) : VIDE par défaut ; le préréglage FM Global
-   DS 1-15 (avril 2026) ne se charge QUE sur clic, QUE pour l'assureur FM ;
-   une valeur sans SOURCE est refusée (comme le serveur). Les règles affichées
-   à côté des obstacles sont celles que le serveur publie (`regles`), jamais
-   recomposées ici. Saisie libre : `step="any"`, aucun nombre n'est arrondi.
-   ========================================================================== */
-
-/** Le préréglage FM Global DS 1-15 — MÊMES valeurs que
- *  `services/degagements.py PRESET_FM_DS_1_15` (verrouillé par un test sur le
- *  contrat committé `calepinage_detail.json`). */
-export const PRESET_FM_DS_1_15 = {
-  assureur: 'fm_global',
-  degagements_m: { lanterneau: 1.8, joint_dilatation: 1.2 },
-  ilot_max_m: { longueur: 46.0, largeur: 46.0 },
-  allee_ilot_m: 1.2,
-  source: {
-    document: 'FM Global Data Sheet 1-15 « Roof-Mounted Solar Photovoltaic Panels » (avril 2026)',
-    date: '2026-04',
-    reference: '§2.1.1.4 B-E',
-  },
-  regles: {
-    lanterneau: 'DS 1-15 §2.1.1.4 — 1,8 m des lanterneaux',
-    joint_dilatation: 'DS 1-15 §2.1.1.4 — 1,2 m des joints de dilatation',
-    ilot_max_m: 'DS 1-15 §2.1.1.4 — champs ≤ 46 × 46 m',
-    allee_ilot_m: 'DS 1-15 §2.1.1.4 — allées de 1,2 m entre champs',
-  },
 }
 
 const ASSUREURS = [
@@ -424,21 +368,18 @@ export default function PanneauAllees({
     }
     setEnregistrement(true)
     setMessageCalepinage(null)
-    builderApi.appliquerSection('alleeTechnique', { largeurM: largeur, source: sourceCalepinage })
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(
-      calepinageId, builderApi.serializeLayout(), documentVivant?.empreinte ?? null))
-      .then((res) => {
-        const apres = res?.data?.empreinte_document ?? null
-        if (apres) {
-          documentVivant?.appliquerSection?.('alleeTechnique', { largeurM: largeur, source: sourceCalepinage }, apres)
-        }
-        setMessageCalepinage(`Allée de ${largeur} m enregistrée pour ce calepinage.`)
-      })
-      .catch((e) => setMessageCalepinage(
-        e?.response?.data?.roof_layout?.[0] ?? e?.response?.data?.roof_layout
-        ?? e?.response?.data?.detail
-        ?? 'L’allée n’a pas pu être enregistrée pour ce calepinage.'))
-      .finally(() => setEnregistrement(false))
+    const valeur = { largeurM: largeur, source: sourceCalepinage }
+    builderApi.appliquerSection('alleeTechnique', valeur)
+    // ACAL364 — UNE section (`layout/section/`), jamais le document entier : une
+    // copie périmée de l'atelier n'écrase plus le travail des autres onglets.
+    ecrireSection({
+      calepinageId, cle: 'alleeTechnique', valeur,
+      empreinte: documentVivant?.empreinte ?? null, documentVivant,
+    }).then((res) => {
+      setMessageCalepinage(res.ok
+        ? `Allée de ${largeur} m enregistrée pour ce calepinage.`
+        : (res.motif || 'L’allée n’a pas pu être enregistrée pour ce calepinage.'))
+    }).finally(() => setEnregistrement(false))
   }
 
   const enregistrer = () => {

@@ -37,6 +37,13 @@ from apps.calepinage.services.parametres import (
 from apps.calepinage.services.presets import (
     CLE_APPROBATION_EXIGEE, SECTION, normaliser_section_presets,
 )
+from apps.calepinage.models import Calepinage, CalepinageVariante
+from apps.calepinage.services.approbation import decider
+from apps.calepinage.services.parametres import (
+    enregistrer_parametres,
+)
+from apps.calepinage.services.variantes import retenir_variante
+from .test_api_liste import BaseApiCalepinage, url_detail
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT_PARAMETRES = json.loads(
@@ -156,15 +163,6 @@ class RefusApprobationExigeeTest(SimpleTestCase):
 
 
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
-
-from apps.calepinage.models import Calepinage, CalepinageVariante  # noqa: E402
-from apps.calepinage.services.approbation import decider  # noqa: E402
-from apps.calepinage.services.parametres import (  # noqa: E402
-    enregistrer_parametres,
-)
-from apps.calepinage.services.variantes import retenir_variante  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
 
 
 def _exiger(company, valeur=True):

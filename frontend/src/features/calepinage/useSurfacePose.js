@@ -18,7 +18,7 @@ import {
   documentSurfacePose, saisieDepuisSurface, reponseDepuisSurface,
   entreeMoteurChangee, surfacesDuGenre, remplacerSurface, retirerSurface, repereLibre,
 } from './surfacePose'
-import { motifChampVide, motifRefus } from './ModeTerrain'
+import { motifChampVide, motifRefus } from './ModeTerrain.helpers'
 
 /**
  * @param {object} o

@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/django/monitoring/certificats-carbone/",
+  "pourquoi": "ASAV102 (D-ASAV-4 option (b), ASAV93) — registre des certificats carbone émis (NTNRG27), servi par CertificatCarboneViewSet.list (enveloppe paginée DRF). Rôle responsable/admin ; société forcée côté serveur (une autre société → 404). L'émission (POST, corps : installation_id OU client_id + periode_debut/periode_fin) passe par apps.monitoring.services.emettre_certificat_carbone_mesure : les tCO₂ évitées sont CALCULÉES par le serveur depuis la production mesurée de la période (même calcul que l'attestation PDF NTNRG26, report_carbon), jamais saisies ; la référence CERT-CO2-AAAAMM-NNNN est posée côté serveur (numérotation race-safe) ; un doublon exact (même cible + même période) est refusé (anti-double-comptage). `tco2_evitees` est un texte décimal (3 décimales).",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 4,
+        "installation_id": 87,
+        "client_id": null,
+        "periode_debut": "2026-01-01",
+        "periode_fin": "2026-06-30",
+        "tco2_evitees": "3.402",
+        "reference": "CERT-CO2-202610-0001",
+        "created_at": "2026-10-11T09:30:00Z"
+      }
+    ]
+  },
+  "exemple_emission": {
+    "endpoint": "POST /api/django/monitoring/certificats-carbone/",
+    "corps": {"installation_id": 87, "periode_debut": "2026-01-01", "periode_fin": "2026-06-30"},
+    "reponse_statut": 201
+  },
+  "notes": {
+    "cible_xor": "Ni système ni client, ou les deux → 400 (`detail`).",
+    "sans_production": "Aucune production mesurée sur la période → 400 (`detail`) : aucun certificat chiffré n'est émis.",
+    "doublon": "Même cible + même période déjà émise → 400 (`detail`, anti-double-comptage).",
+    "systeme_inconnu": "Système d'une autre société → 400 (champ `installation_id`)."
+  }
+}

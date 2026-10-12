@@ -275,9 +275,14 @@ def calendar_events(request):
 
 
 class CalendarRescheduleSerializer(serializers.Serializer):
-    type = serializers.ChoiceField(choices=sorted(EDITABLE_TYPES))
-    id = serializers.IntegerField()
-    date = serializers.DateField()
+    type = serializers.ChoiceField(
+        choices=sorted(EDITABLE_TYPES),
+        error_messages={'invalid_choice': 'Type non replanifiable.'})
+    # Bornes d'un entier PostgreSQL : un id hors plage ne doit pas atteindre
+    # l'ORM (DataError -> 500, ENF11).
+    id = serializers.IntegerField(min_value=1, max_value=2147483647)
+    date = serializers.DateField(
+        error_messages={'invalid': 'Date invalide (AAAA-MM-JJ).'})
 
 
 _CALENDAR_CALENDAR_RESCHEDULE_REPONSE = inline_serializer('CalendarCalendarRescheduleReponse', {
@@ -303,13 +308,15 @@ def calendar_reschedule(request):
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
 
-    type_key = (request.data.get('type') or '').strip()
-    obj_id = request.data.get('id')
-    new_date = _parse_date(request.data.get('date'), None)
-    if type_key not in EDITABLE_TYPES:
-        return Response({'detail': 'Type non replanifiable.'}, status=400)
-    if new_date is None:
-        return Response({'detail': 'Date invalide (AAAA-MM-JJ).'}, status=400)
+    entree = CalendarRescheduleSerializer(data=request.data)
+    if not entree.is_valid():
+        premier = next(iter(entree.errors.values()))
+        detail = premier[0] if isinstance(premier, list) and premier else (
+            'Requête invalide.')
+        return Response({'detail': str(detail), **entree.errors}, status=400)
+    type_key = entree.validated_data['type']
+    obj_id = entree.validated_data['id']
+    new_date = entree.validated_data['date']
 
     from apps.installations.models import Installation, Intervention
     from apps.records.models import Activity

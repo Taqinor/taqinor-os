@@ -31,6 +31,9 @@ from .models_email import (
     EMAIL_TEMPLATE_PLACEHOLDERS,
     EmailTemplate,
 )
+from .requetes_strictes import (
+    EmailTemplatesBulkRequestSerializer, valider_corps,
+)
 from .serializers_email import EmailTemplateSerializer
 from .views_common import SettingsAuditedMixin
 
@@ -46,13 +49,6 @@ _EMAILS_EFFECTIFS = inline_serializer('EmailTemplatesEffectifs', {
         'corps_defaut': serializers.CharField(),
         'personnalise': serializers.BooleanField(),
         'placeholders': serializers.ListField(child=serializers.CharField()),
-    }, many=True),
-})
-_EMAILS_BULK_REQUEST = inline_serializer('EmailTemplatesBulkRequest', {
-    'templates': inline_serializer('EmailTemplatesBulkLigne', {
-        'cle': serializers.CharField(),
-        'sujet': serializers.CharField(required=False, allow_null=True),
-        'corps': serializers.CharField(required=False, allow_null=True),
     }, many=True),
 })
 
@@ -125,7 +121,7 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
         company = request.user.company if request.user.company_id else None
         return Response({'results': effective_email_templates(company)})
 
-    @extend_schema(request=_EMAILS_BULK_REQUEST,
+    @extend_schema(request=EmailTemplatesBulkRequestSerializer,
                    responses=_EMAILS_EFFECTIFS)
     @action(detail=False, methods=['put'])
     def bulk(self, request):
@@ -142,11 +138,9 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
                 {'detail': 'Société requise.'},
                 status=status.HTTP_400_BAD_REQUEST)
         valid = {c for c, _ in EmailTemplate.Cle.choices}
+        # ENF11 — corps validé contre le schéma publié (clé connue, types stricts).
+        valider_corps(EmailTemplatesBulkRequestSerializer, request)
         items = request.data.get('templates')
-        if not isinstance(items, list):
-            return Response(
-                {'detail': 'Champ « templates » : liste attendue.'},
-                status=status.HTTP_400_BAD_REQUEST)
         for item in items:
             item = item or {}
             cle = item.get('cle')

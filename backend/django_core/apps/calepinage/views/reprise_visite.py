@@ -31,6 +31,7 @@ from ..permissions import PeutLireOuEcrireCalepinage
 from ..services.reprise_visite import (
     RepriseRefusee, etat_reprise, reprendre_visite,
 )
+from .calepinages import CalepinageViewSet
 
 __all__ = ['releve_visite']
 
@@ -56,8 +57,6 @@ def releve_visite(self, request, pk=None):
     return Response(reponse, status=(status.HTTP_201_CREATED if cree
                                      else status.HTTP_200_OK))
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

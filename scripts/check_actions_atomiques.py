@@ -73,7 +73,7 @@ ALLOWLIST: dict = {
         "deux branches EXCLUSIVES (retour anticipé après "
         "clore_locataire_sans_proprietaire) : une seule écriture de service "
         "par requête, rien à rendre atomique",
-    "backend/django_core/apps/crm/views.py::RelanceEtapeViewSet.fait":
+    "backend/django_core/apps/crm/cadence_views.py::RelanceEtapeViewSet.fait":
         "À CORRIGER (constaté au build, hors Files de la garde) : "
         "definir_langue_preferee s'écrit APRÈS le geste atomique "
         "(_marquer/_repondre) dans sa propre transaction — un échec laisse la "
@@ -237,10 +237,22 @@ def evaluer(views_source: str, services_source: str, allowlist: dict,
     return violations, mortes
 
 
+def fichiers_vues() -> list:
+    """SPL74 — `views.py` ET les modules de vues de la scission
+    (`*_views.py`) : une action déplacée ne sort pas du périmètre."""
+    return [VIEWS_REL] + sorted(
+        f"backend/django_core/apps/crm/{p.name}" for p in CRM.glob("*_views.py"))
+
+
 def main(argv=None) -> int:
-    vues = (ROOT / VIEWS_REL).read_text(encoding="utf-8")
     services = source_services()
-    violations, mortes = evaluer(vues, services, ALLOWLIST)
+    violations, mortes = [], set(ALLOWLIST)
+    for rel in fichiers_vues():
+        vues = (ROOT / rel).read_text(encoding="utf-8")
+        v, m = evaluer(vues, services, ALLOWLIST, rel)
+        violations += v
+        mortes &= set(m)
+    mortes = sorted(mortes)
     violations += [f"{c} — clé morte de la liste blanche : la retirer"
                    for c in mortes]
     if violations:

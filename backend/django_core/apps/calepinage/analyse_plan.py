@@ -71,7 +71,7 @@ class DxfInvalide(ValueError):
 def _unite_document(doc):
     try:
         code = int(doc.header.get('$INSUNITS', 0) or 0)
-    except Exception:  # noqa: BLE001 — un en-tête bizarre ne doit rien casser
+    except Exception:  # un en-tête bizarre ne doit rien casser
         return 'inconnu'
     return _UNITES_INSUNITS.get(code, 'inconnu')
 
@@ -338,7 +338,7 @@ def analyser_dxf(contenu: bytes) -> dict:
     try:
         flux = io.StringIO(_decoder_dxf(contenu))
         doc = ezdxf.read(flux)
-    except Exception as exc:  # noqa: BLE001 — fichier hostile : jamais un 500
+    except Exception as exc:  # fichier hostile : jamais un 500
         raise DxfInvalide(
             "Ce fichier n'a pas pu être lu comme un DXF (export corrompu ou "
             "incompatible). Vérifiez qu'il s'agit bien d'un export DXF, pas "
@@ -367,7 +367,7 @@ def analyser_dxf(contenu: bytes) -> dict:
                 if sommets:
                     polylignes[nom_calque].append(
                         _entite(sommets, ferme, tolerance))
-    except Exception as exc:  # noqa: BLE001 — un DXF structurellement valide
+    except Exception as exc:  # un DXF structurellement valide
         # mais illisible en pratique (entité corrompue) reste un refus 400.
         raise DxfInvalide(
             "Ce fichier DXF n'a pas pu être parcouru jusqu'au bout — il est "
@@ -453,7 +453,7 @@ def _analyser_pdf_vectoriel(contenu, *, nom_fichier=''):
 
     try:
         document = fitz.open(stream=contenu, filetype='pdf')
-    except Exception as erreur:  # noqa: BLE001 — fichier hostile : jamais un 500
+    except Exception as erreur:  # fichier hostile : jamais un 500
         raise DxfInvalide(
             "Ce fichier n'a pas pu être lu comme un PDF (export corrompu ou "
             'protégé par mot de passe).') from erreur
@@ -464,7 +464,7 @@ def _analyser_pdf_vectoriel(contenu, *, nom_fichier=''):
             page = document.load_page(numero)
             try:
                 traces = page.get_drawings()
-            except Exception:  # noqa: BLE001 — page corrompue : pas un 500
+            except Exception:  # page corrompue : pas un 500
                 traces = []
             entites = _entites_des_traces(traces)
             if entites:

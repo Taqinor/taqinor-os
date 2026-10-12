@@ -26,6 +26,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from apps.crm.models import Client, SalleVente, SalleVenteVue
+from apps.parametres.models import CompanyProfile
 
 
 class EmpreinteVisiteurClaveeTests(TestCase):
@@ -34,6 +35,9 @@ class EmpreinteVisiteurClaveeTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor CRX31', slug='taqinor-crx31')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client CRX31')
         self.salle = SalleVente.objects.create(
@@ -96,6 +100,9 @@ class PlafondPhotosQuestionnaireTests(TestCase):
 
         self.company = Company.objects.create(
             nom='Taqinor CRX31 Q', slug='taqinor-crx31-q')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.lead = Lead.objects.create(
             company=self.company, nom='Lead photos')
 

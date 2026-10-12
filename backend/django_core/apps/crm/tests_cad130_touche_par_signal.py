@@ -269,7 +269,7 @@ class ToucheParSignalTests(TestCase):
                     owner=self.acteur, telephone='+212661112244')
                 setattr(lead, champ, valeur)
                 lead.save()
-                self.assertTrue(cadence_signaux.refus_touche_signal(lead))
+                self.assertTrue(cadence_signaux._refus_touche_signal(lead))
                 self.assertIsNone(cadence_signaux.poser_touche_signal(
                     lead, cadence_signaux.SIGNAL_PROPOSITION_ROUVERTE))
                 self.assertFalse(lead.relance_etapes.exists())

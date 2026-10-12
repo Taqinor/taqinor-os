@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
-import ArbreHistorique, { entreeArbre } from './ArbreHistorique'
+import ArbreHistorique from './ArbreHistorique'
+import { entreeArbre } from './arbreEntree'
 
 /* QJ-ARBRE — l'arbre « Historique en un coup d'œil » (colonne droite du Suivi
    commercial) : filtrage du bruit, jalons devis accentués, groupement par

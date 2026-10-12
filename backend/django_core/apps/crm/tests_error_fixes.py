@@ -315,3 +315,138 @@ class TestWebhookNullGuard(TestCase):
         self.assertEqual(lead.nom, 'Amina')
         # Garde-fou : la note de chatter n'est pas testée ici (logique de vue).
         self.assertEqual(LeadActivity.objects.filter(lead=lead).count(), 0)
+
+
+# ── ENF11 — entrées que le fuzz API a vues passer en silence (200) ou en 500 ─
+class TestEntreesTypeesEnf11(TestCase):
+    def setUp(self):
+        self.company = make_company('enf11-co', 'Enf11 Co')
+        self.user = User.objects.create_user(
+            username='enf11_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_coerce_id_list_refuse_un_flottant(self):
+        with self.assertRaises(ValueError):
+            coerce_id_list([2.5890419884777833e-42])
+
+    def test_export_clients_ids_non_entiers_400_pas_500(self):
+        resp = self.api.post('/api/django/crm/clients/export-xlsx/',
+                             {'ids': [{}]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_export_clients_ids_pas_une_liste_400(self):
+        # CI #956 (fuzz « accepted schema-violating ») : `ids` est un tableau
+        # au schéma ; un objet (même vide) ou null est refusé, pas « tout ».
+        for ids in ({}, None, 'a', 3):
+            resp = self.api.post('/api/django/crm/clients/export-xlsx/',
+                                 {'ids': ids}, format='json')
+            self.assertEqual(resp.status_code, 400, (ids, resp.content))
+        resp = self.api.post('/api/django/crm/clients/export-xlsx/', {},
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_jours_non_entier_refuse_et_entier_accepte(self):
+        # Contrat STRICT (schéma `integer`) : cadences-echues refuse en 400
+        # nommant le champ (avant : 500 ou défaut silencieux).
+        url = '/api/django/crm/relance-etapes/cadences-echues/'
+        for brut in ('null', 'abc', '2.5'):
+            resp = self.api.get(url, {'jours': brut})
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+            self.assertIn('jours', resp.data)
+        self.assertEqual(self.api.get(url, {'jours': 10}).status_code, 200)
+        # Contrat TOLÉRANT (97f493887, règle produit MRY19/MRY21/CAD87 ; schéma
+        # `schema_docs.P_JOURS` = entier OU texte) : les trois agrégats KPI
+        # retombent sur le défaut au lieu de bloquer un tableau de bord.
+        for url in ('/api/django/crm/leads/kpi-cadences/',
+                    '/api/django/crm/leads/kpi-premier-contact/',
+                    '/api/django/crm/leads/mesure-cadence/'):
+            for brut in ('null', 'abc', '2.5'):
+                resp = self.api.get(url, {'jours': brut})
+                self.assertEqual(resp.status_code, 200, (url, brut, resp.content))
+            self.assertEqual(self.api.get(url, {'jours': 10}).status_code, 200)
+            # hors plage : borné [1, 365], pas refusé.
+            self.assertEqual(
+                self.api.get(url, {'jours': 99999}).status_code, 200, url)
+
+    def test_cadences_echues_jours_enorme_ne_leve_plus_500(self):
+        resp = self.api.get('/api/django/crm/relance-etapes/cadences-echues/',
+                            {'jours': 999999999})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['count'], 0)
+
+    def test_attribution_date_impossible_400(self):
+        resp = self.api.get('/api/django/crm/rapports/attribution/',
+                            {'debut': '2026-13-45'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('debut', resp.data)
+
+    def test_booleen_strict_sur_canaux(self):
+        corps = {'cle': 'enf11', 'libelle': 'Enf11', 'ordre': 0}
+        resp = self.api.post('/api/django/crm/canaux/',
+                             {**corps, 'archived': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post('/api/django/crm/canaux/',
+                             {**corps, 'archived': False}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_ce_navigateur_corps_non_objet_400(self):
+        resp = self.api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
+                             'texte nu', format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
+                             {'navigateur': {}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_fait_langue_liste_400_pas_500(self):
+        lead = Lead.objects.create(company=self.company, nom='Fait liste')
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal=RelanceEtape.Canal.APPEL, libelle='Appeler',
+            due_date=date(2030, 1, 1))
+        resp = self.api.post(
+            f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
+            {'langue': [None, None]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+
+class TestChampsApiEnf11(TestCase):
+    def test_booleen_strict(self):
+        from apps.crm.champs_api import BooleenStrict
+        from rest_framework.exceptions import ValidationError as DRFError
+
+        champ = BooleenStrict()
+        self.assertIs(champ.run_validation(True), True)
+        self.assertIs(champ.run_validation('false'), False)
+        for brut in (0, 1, 'yes', 'on', [], {}):
+            with self.assertRaises(DRFError):
+                champ.run_validation(brut)
+
+    def test_date_heure_ancienne_reste_rfc3339(self):
+        import datetime
+
+        from apps.crm.champs_api import DateHeureRfc3339
+
+        ancienne = datetime.datetime(
+            960, 3, 6, 12, 30, tzinfo=datetime.timezone.utc)
+        rendu = DateHeureRfc3339().to_representation(ancienne)
+        self.assertRegex(rendu, r'(Z|[+-]\d\d:\d\d)$', rendu)
+
+    def test_email_et_url_blancs_publies_comme_tels(self):
+        from drf_spectacular.openapi import AutoSchema
+        from rest_framework import serializers
+
+        from apps.crm import champs_api
+
+        # L'import enregistre l'extension de schéma (métaclasse drf-spectacular).
+        self.assertTrue(champs_api._EmailBlancAutorise.match_subclasses)
+        for champ in (serializers.EmailField(allow_blank=True),
+                      serializers.URLField(allow_blank=True)):
+            schema = AutoSchema()._map_serializer_field(champ, 'response')
+            self.assertIn('anyOf', schema)
+            self.assertNotIn('format', schema)
+        strict = AutoSchema()._map_serializer_field(
+            serializers.EmailField(), 'response')
+        self.assertEqual(strict.get('format'), 'email')

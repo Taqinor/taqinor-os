@@ -5,6 +5,7 @@ import { formatMAD } from '../../lib/format'
 import { Card, CardContent, EmptyState, Skeleton } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { Table } from './Table'
+import KpiCard from './KpiCard'
 
 /* ============================================================================
    WIR84 — Écran consommateur des trois agrégateurs Quote-to-Cash de `ventes`.
@@ -39,21 +40,6 @@ const BUCKET_LABELS = [
   ['au_dela', 'Au-delà'],
   ['sans_echeance', 'Sans échéance'],
 ]
-
-function KpiCard({ icon, label, value, hint }) {
-  return (
-    <Card className="flex-1 min-w-[160px]">
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="text-muted-foreground">{icon}</div>
-        <div>
-          <div className="text-xs text-muted-foreground">{label}</div>
-          <div className="text-lg font-semibold">{value}</div>
-          {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 export default function QuoteToCashPage() {
   const [dash, setDash] = useState(null)

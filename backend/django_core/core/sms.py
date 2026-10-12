@@ -88,7 +88,7 @@ class GenericHttpSmsProvider(SmsProvider):
         # provisionné : on importe ``requests`` paresseusement pour ne pas
         # imposer la dépendance réseau à la fondation, et on dégrade si absente.
         try:
-            import requests  # noqa: F401  (import paresseux, optionnel)
+            import requests  # import paresseux, optionnel
         except Exception:  # noqa: BLE001
             return SmsResult(
                 sent=False, provider=self.code,

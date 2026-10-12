@@ -7,7 +7,6 @@ Administrateur/Responsable promu — même patron que le reste de l'app — ET
 porteur de ``localisation_gerer`` (NTI18N40). La LECTURE reste ouverte à tout
 rôle interne : le calendrier des fériés sert à tout le monde (planification
 chantier/RH), la borner masquerait des jours non ouvrés à ceux qui les subissent."""
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
@@ -42,7 +41,8 @@ FETES_MOBILES_ETAT_RESPONSE = inline_serializer('FetesMobilesEtat', {
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'annee', OpenApiTypes.INT, OpenApiParameter.QUERY, required=True,
+        'annee', {'type': 'integer', 'minimum': 1900, 'maximum': 2200},
+        OpenApiParameter.QUERY, required=True,
         description='Année civile (1900 à 2200).')],
     responses=FETES_MOBILES_ETAT_RESPONSE)
 @api_view(['GET'])
@@ -55,6 +55,10 @@ def fetes_mobiles_etat(request):
     except (TypeError, ValueError):
         return Response(
             {'detail': "Paramètre 'annee' requis (entier)."},
+            status=status.HTTP_400_BAD_REQUEST)
+    if not 1900 <= annee <= 2200:  # ENF11 — hors plage : 400, jamais 500
+        return Response(
+            {'detail': "Paramètre 'annee' attendu entre 1900 et 2200."},
             status=status.HTTP_400_BAD_REQUEST)
     if company is None:
         return Response({cle: None for cle in FETES_MOBILES_CLES})
@@ -86,13 +90,23 @@ def fetes_mobiles_enregistrer(request):
         return Response(
             {'detail': 'Aucune société associée à ce compte.'},
             status=status.HTTP_400_BAD_REQUEST)
-    try:
-        annee = int(request.data.get('annee'))
-    except (TypeError, ValueError):
+    # ENF11 — corps validé contre le schéma publié (année 1900..2200, dates
+    # ISO) : une valeur démesurée ou un `dates` non objet faisait lever (500).
+    corps = request.data if isinstance(request.data, dict) else {}
+    annee_brute = corps.get('annee')
+    if (isinstance(annee_brute, bool) or not isinstance(annee_brute, int)
+            or not 1900 <= annee_brute <= 2200):
         return Response(
-            {'detail': "Champ 'annee' requis (entier)."},
+            {'detail': "Champ 'annee' requis (entier entre 1900 et 2200)."},
             status=status.HTTP_400_BAD_REQUEST)
-    dates = request.data.get('dates') or {}
+    annee = annee_brute
+    dates = corps.get('dates') or {}
+    if not isinstance(dates, dict) or any(
+            valeur is not None and not isinstance(valeur, str)
+            for valeur in dates.values()):
+        return Response(
+            {'detail': "Champ 'dates' : objet de dates AAAA-MM-JJ attendu."},
+            status=status.HTTP_400_BAD_REQUEST)
     try:
         enregistrer_fetes_mobiles(company, annee, dates, user=request.user)
     except SaisieFetesInvalide as exc:

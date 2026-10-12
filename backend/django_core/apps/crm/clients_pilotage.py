@@ -416,3 +416,61 @@ def soumettre_lead_partenaire(company, partenaire_id, donnees):
         statut=SoumissionLeadPartenaire.Statut.SOUMIS,
     )
     return soumission, None
+
+
+# ── ACRM57 (C-ACRM-019) — transitions d'un deal enregistré ────────────────
+#: Gestes MANUELS autorisés : ``geste`` -> {statut de départ: statut d'arrivée}.
+#: approuvé -> expiré | à_payer se fait par le SYSTÈME seulement (expiration,
+#: récepteur NTCRM22 au devis accepté) — jamais par ces deux gestes : rejeter
+#: un deal « à payer » le sortait de ``a-payer/`` et effaçait une dette due.
+TRANSITIONS_DEAL_MANUELLES = {
+    'approuver': {'en_attente': 'approuve'},
+    'rejeter': {'en_attente': 'rejete'},
+}
+_VERBE_GESTE_DEAL = {'approuver': 'approuvé', 'rejeter': 'rejeté'}
+
+
+def _transitionner_deal(deal, geste, user):
+    """Applique ``geste`` à ``deal`` selon ``TRANSITIONS_DEAL_MANUELLES``.
+
+    Hors table -> ``ValidationError({'statut': [...]})``, RIEN n'est écrit.
+    À l'approbation, ``full_clean()`` est rejoué (``DealEnregistre.clean`` :
+    un client déjà protégé par un autre apporteur ne peut pas être approuvé).
+    Une ligne de chatter sur le lead trace l'acteur et ancien -> nouveau."""
+    from django.core.exceptions import ValidationError
+    from django.db import transaction
+
+    from .models import DealEnregistre
+
+    ancien = deal.statut
+    cible = TRANSITIONS_DEAL_MANUELLES[geste].get(ancien)
+    libelles = dict(DealEnregistre.Statut.choices)
+    if cible is None:
+        raise ValidationError({'statut': [
+            f"Transition refusée : un deal « {libelles.get(ancien, ancien)} » "
+            f"ne peut pas être {_VERBE_GESTE_DEAL[geste]}."]})
+    with transaction.atomic():
+        deal.statut = cible
+        if cible == DealEnregistre.Statut.APPROUVE:
+            try:
+                deal.full_clean()
+            except ValidationError as exc:
+                deal.statut = ancien
+                raise ValidationError({'statut': exc.messages}) from exc
+        deal.save(update_fields=['statut'])
+        LeadActivity.objects.create(
+            company=deal.lead.company, lead=deal.lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f"Deal apporteur « {deal.apporteur.nom} » : "
+                  f"{libelles.get(ancien, ancien)} → {libelles.get(cible, cible)}."))
+    return deal
+
+
+def approuver_deal(deal, *, user):
+    """ACRM57 — en_attente -> approuvé (seule transition), clean() rejoué."""
+    return _transitionner_deal(deal, 'approuver', user)
+
+
+def rejeter_deal(deal, *, user):
+    """ACRM57 — en_attente -> rejeté (seule transition)."""
+    return _transitionner_deal(deal, 'rejeter', user)

@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
-from ..models import LotPrelevement
+from ..models import LotPrelevement, PickList
 from ..serializers import LotPrelevementSerializer
 from .. import services
 from . import _openapi as oa
@@ -45,16 +45,22 @@ class LotPrelevementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
-    @oa.extend_schema(request=oa.body('CreerLotPrelevementRequete', pick_list_ids=oa.ints(True)), responses={201: LotPrelevementSerializer})
+    @oa.extend_schema(request=oa.body('CreerLotPrelevementRequete', pick_list_ids=oa.ids(True)), responses={201: LotPrelevementSerializer})
     def create(self, request, *args, **kwargs):
         company = request.user.company
-        pick_list_ids = request.data.get('pick_list_ids') or []
+        pick_list_ids = oa.ids_entiers(
+            oa.corps_objet(request).get('pick_list_ids'), 'pick_list_ids')
+        if not PickList.objects.filter(
+                company=company, id__in=pick_list_ids).exists():
+            return Response(
+                {'detail': 'Aucune pick-list valide sélectionnée.'},
+                status=status.HTTP_404_NOT_FOUND)
         try:
             lot = services.creer_lot_prelevement(
                 company, pick_list_ids, request.user)
-        except ValueError as exc:
+        except ValueError as exc:  # dépôts différents : conflit d'état
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             self.get_serializer(lot).data, status=status.HTTP_201_CREATED)
 

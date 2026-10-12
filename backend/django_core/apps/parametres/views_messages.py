@@ -16,6 +16,9 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
+from .requetes_strictes import (
+    MessageTemplateEcritRequestSerializer, valider_corps,
+)
 from .models import (
     CLES_RELANCE,
     MESSAGE_TEMPLATE_DEFAULTS,
@@ -91,13 +94,6 @@ _MESSAGE_LIGNE = inline_serializer('MessageTemplateLigne', many=True, fields={
     'default_darija': serializers.CharField(),
     'placeholders': serializers.ListField(child=serializers.CharField()),
 })
-_MESSAGE_ECRIT_REQUEST = inline_serializer('MessageTemplateEcritRequest', {
-    'cle': serializers.ChoiceField(
-        choices=[c for c, _ in MessageTemplate.Cle.choices]),
-    'corps_fr': serializers.CharField(required=False, allow_null=True),
-    'corps_darija': serializers.CharField(required=False, allow_null=True),
-    'reset': serializers.BooleanField(required=False),
-})
 _MESSAGE_ECRIT = inline_serializer('MessageTemplateEcrit', {
     'cle': serializers.CharField(),
     'corps_fr': serializers.CharField(),
@@ -107,7 +103,8 @@ _MESSAGE_ECRIT = inline_serializer('MessageTemplateEcrit', {
 
 
 @extend_schema(methods=['GET'], responses=_MESSAGE_LIGNE)
-@extend_schema(methods=['PUT', 'PATCH'], request=_MESSAGE_ECRIT_REQUEST,
+@extend_schema(methods=['PUT', 'PATCH'],
+               request=MessageTemplateEcritRequestSerializer,
                responses=_MESSAGE_ECRIT)
 @api_view(['GET', 'PUT', 'PATCH'])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
@@ -163,13 +160,8 @@ def _messages_save(request):
             {'detail': 'Société requise.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    cle = request.data.get('cle')
-    valid = {c for c, _ in MessageTemplate.Cle.choices}
-    if cle not in valid:
-        return Response(
-            {'detail': 'Clé de message inconnue.'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # ENF11 — corps validé contre le schéma publié (clé connue, types stricts).
+    cle = valider_corps(MessageTemplateEcritRequestSerializer, request)['cle']
     # L776 — réinitialisation au modèle par défaut : restaure corps_fr au défaut
     # et efface l'override Darija (le défaut FR sert alors aussi de repli Darija).
     if request.data.get('reset'):

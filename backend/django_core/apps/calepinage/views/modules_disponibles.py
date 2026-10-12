@@ -30,6 +30,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
 from ..services.modules_stock import modules_disponibles_du_calepinage
+from .calepinages import CalepinageViewSet
 
 __all__ = ['modules_disponibles']
 
@@ -45,7 +46,5 @@ def modules_disponibles(self, request, pk=None):
     return Response(
         modules_disponibles_du_calepinage(calepinage, produits))
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 CalepinageViewSet.modules_disponibles = modules_disponibles

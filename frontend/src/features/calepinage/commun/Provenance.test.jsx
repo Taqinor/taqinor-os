@@ -19,7 +19,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import SourcesNormatives, { ORIGINES, Provenance, ValeurSourcee } from './Provenance'
+import SourcesNormatives, { Provenance, ValeurSourcee } from './Provenance'
+import { ORIGINES } from './Provenance.helpers'
 
 const servir = (variante) => {
   calepinageApi.parametres.get

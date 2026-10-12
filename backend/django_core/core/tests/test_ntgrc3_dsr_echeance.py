@@ -127,7 +127,7 @@ class EndpointTransitionTests(TestCase):
             {'post': action_name.replace('-', '_')})
         return view(request, pk=demande.pk)
 
-    def test_prendre_en_charge_puis_transition_illegale_renvoie_400(self):
+    def test_prendre_en_charge_puis_transition_illegale_renvoie_409(self):
         demande = DataSubjectRequest.objects.create(
             company=self.company, subject_identifier='a@b.ma',
             kind=DataSubjectRequest.KIND_ACCESS)
@@ -137,7 +137,8 @@ class EndpointTransitionTests(TestCase):
                          DataSubjectRequest.STATUT_EN_VERIFICATION)
 
         r2 = self._post(demande, 'prendre-en-charge')
-        self.assertEqual(r2.status_code, 400, r2.data)
+        # ERR-ENF11-FUZZ-CORE — conflit d'état : 409, plus 400.
+        self.assertEqual(r2.status_code, 409, r2.data)
         self.assertIn('statut', r2.data)
 
     def test_lechance_est_exposee_en_lecture_seule(self):

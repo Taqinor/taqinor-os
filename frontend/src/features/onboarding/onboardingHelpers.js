@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import stockApi from '../../api/stockApi'
 import api from '../../api/axios'
+import { useHasRole } from '../../hooks/useHasPermission'
 
 // Version du guide : incrémenter pour re-déclencher le guide chez tout le monde
 // après une refonte des étapes.
@@ -144,30 +145,46 @@ export function dismissOnboarding(companyId) {
   } catch { /* stockage indisponible : sans effet */ }
 }
 
+// Les deux lectures de comptes (produits, utilisateurs) de l'onboarding — UN
+// seul exemplaire, partagé par le hook ci-dessous et l'onglet « Prise en main ».
+// Une lecture en échec (ou /users/ non lisible) donne `null` : l'étape reste
+// « à faire », jamais d'erreur.
+export function lireComptesOnboarding(peutLireUsers) {
+  return Promise.allSettled([
+    stockApi.getProduits({ page_size: 1 }),
+    peutLireUsers
+      ? api.get('/users/')
+      : Promise.reject(new Error('users non lisibles')),
+  ]).then(([prod, users]) => ({
+    produitCount: prod.status === 'fulfilled'
+      ? countFromListResponse(prod.value.data) : null,
+    userCount: users.status === 'fulfilled'
+      ? countFromListResponse(users.value.data) : null,
+  }))
+}
+
 // Hook partagé : charge les comptes produits/utilisateurs (mêmes lectures que
 // l'onglet « Prise en main ») et renvoie les étapes dérivées + agrégats. Le
 // profil entreprise vient du store (déjà chargé par la coquille/Paramètres).
 // Défensif : une lecture en échec laisse l'étape « à faire », jamais d'erreur.
 export function useOnboardingSteps() {
   const profile = useSelector((s) => s.parametres?.profile)
+  // /users/ est réservé aux paliers responsable/admin (ASEC10) : un compte
+  // « normal » (Commercial…) ne l'appelle pas — sinon 403 sur chaque page.
+  const peutLireUsers = useHasRole(['responsable', 'admin'])
   const [produitCount, setProduitCount] = useState(null)
   const [userCount, setUserCount] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let alive = true
-    Promise.allSettled([
-      stockApi.getProduits({ page_size: 1 }),
-      api.get('/users/'),
-    ]).then(([prod, users]) => {
+    lireComptesOnboarding(peutLireUsers).then((comptes) => {
       if (!alive) return
-      setProduitCount(prod.status === 'fulfilled'
-        ? countFromListResponse(prod.value.data) : null)
-      setUserCount(users.status === 'fulfilled'
-        ? countFromListResponse(users.value.data) : null)
+      setProduitCount(comptes.produitCount)
+      setUserCount(comptes.userCount)
     }).finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [])
+  }, [peutLireUsers])
 
   const steps = buildOnboardingSteps({ profile, produitCount, userCount })
   const doneCount = steps.filter((s) => s.done).length

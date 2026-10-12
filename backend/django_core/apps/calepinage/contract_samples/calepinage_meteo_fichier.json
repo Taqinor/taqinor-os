@@ -163,5 +163,14 @@
   },
   "exemple_delete_404": {
     "detail": "Aucun fichier météo n'est rattaché à ce calepinage."
-  }
+  },
+  "exemple_get": {
+    "piece_jointe": 481,
+    "nom": "meteo-2021-plan.csv",
+    "fournisseur": "Station d essai — service meteorologique",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "depose_le": "2026-09-21T09:00:00+00:00",
+    "depose_par": "Sami Alaoui"
+  },
+  "exemple_get_vide": null
 }

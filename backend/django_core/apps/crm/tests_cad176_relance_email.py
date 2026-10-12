@@ -36,7 +36,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.serializers import RelanceEtapeSerializer
+from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from apps.crm.cadence_messages import message_pour_etape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (

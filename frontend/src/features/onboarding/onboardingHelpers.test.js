@@ -1,5 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createElement } from 'react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { renderHook, waitFor } from '@testing-library/react'
+import api from '../../api/axios'
+import stockApi from '../../api/stockApi'
 import {
+  useOnboardingSteps,
   buildOnboardingSteps,
   isCompanyProfileComplete,
   countFromListResponse,
@@ -66,5 +73,39 @@ describe('rejet de la bannière PAR SOCIÉTÉ (VX36)', () => {
     expect(isOnboardingDismissed(undefined)).toBe(false)
     dismissOnboarding(undefined)
     expect(isOnboardingDismissed(undefined)).toBe(true)
+  })
+})
+
+vi.mock('../../api/axios', () => ({ default: { get: vi.fn() } }))
+vi.mock('../../api/stockApi', () => ({ default: { getProduits: vi.fn() } }))
+
+describe('useOnboardingSteps : /users/ réservé aux paliers responsable/admin', () => {
+  function rendre(role) {
+    const store = configureStore({
+      reducer: {
+        auth: (s = { role, permissions: [] }) => s,
+        parametres: (s = { profile: null }) => s,
+      },
+    })
+    const wrapper = ({ children }) => createElement(Provider, { store }, children)
+    return renderHook(() => useOnboardingSteps(), { wrapper })
+  }
+  beforeEach(() => {
+    api.get.mockReset()
+    stockApi.getProduits.mockReset()
+    stockApi.getProduits.mockResolvedValue({ data: { count: 1 } })
+    api.get.mockResolvedValue({ data: { count: 3 } })
+  })
+  it('compte « normal » (Commercial) : aucun appel à /users/ (pas de 403)', async () => {
+    const { result } = rendre('normal')
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(api.get).not.toHaveBeenCalled()
+    expect(result.current.steps.find((s) => s.key === 'equipe').done).toBe(false)
+  })
+  it('palier responsable/admin : /users/ est lu', async () => {
+    const { result } = rendre('admin')
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(api.get).toHaveBeenCalledWith('/users/')
+    expect(result.current.steps.find((s) => s.key === 'equipe').done).toBe(true)
   })
 })

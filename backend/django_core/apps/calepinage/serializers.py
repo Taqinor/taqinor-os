@@ -200,7 +200,9 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         ]
         #: ACAL294 — ``custom_data`` est publié par le DÉTAIL (contrat
         #: ``calepinage_detail.json``) ; la LISTE ne le porte pas.
-        extra_kwargs = {'custom_data': {'write_only': True}}
+        extra_kwargs = {'custom_data': {'write_only': True},
+                        # null = « aucune contrainte » ({}), normalisé ci-dessous.
+                        'contraintes_site': {'allow_null': True}}
 
     # YAPIC6 — la nature est DÉCLARÉE (même patron que le jumeau côté ventes,
     # `apps/ventes/serializers.py`) : sans cela drf-spectacular ne sait pas

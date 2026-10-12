@@ -118,3 +118,38 @@ class TestScopingAndRoles(TestCase):
         resp = api.get(f'{BASE}/materiels-consignes/')
         results = resp.data.get('results', resp.data)
         self.assertEqual(len(results), 0)
+
+
+class TestChampsStrictsFuzzR12(TestCase):
+    """api-fuzz r12 (CI #956) — le sérialiseur n'accepte plus ce que le schéma
+    refuse (`note` entier → 400) et sert `fournisseur_nom` même sur un PATCH
+    (DRF sautait la clé à `default` en réponse partielle)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.api = auth(make_user(self.company))
+        self.mc = MaterielConsigne.objects.create(
+            company=self.company, designation='Palette', quantite=1)
+
+    def test_note_entier_refuse_en_400(self):
+        resp = self.api.post(f'{BASE}/materiels-consignes/', {
+            'designation': 'Touret', 'quantite': 1, 'note': 0,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('note', resp.data)
+        resp = self.api.patch(
+            f'{BASE}/materiels-consignes/{self.mc.id}/', {'note': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_patch_sert_fournisseur_nom_meme_sans_fournisseur(self):
+        resp = self.api.patch(
+            f'{BASE}/materiels-consignes/{self.mc.id}/', {'note': 'ok'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn('fournisseur_nom', resp.data)
+        self.assertIsNone(resp.data['fournisseur_nom'])
+
+    def test_filtre_fournisseur_illisible_repond_400(self):
+        for valeur in ('abc', '0'):
+            resp = self.api.get(f'{BASE}/materiels-consignes/', {'fournisseur': valeur})
+            self.assertEqual(resp.status_code, 400, (valeur, resp.content))
+            self.assertIn('fournisseur', resp.data)

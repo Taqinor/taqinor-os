@@ -81,8 +81,8 @@ export default function AnnoncesPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount via le helper de rafraîchissement partagé
-  useEffect(() => { charger() }, [charger])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans l'effet).
+  useEffect(() => { Promise.resolve().then(charger) }, [charger])
 
   // `?annonce=<pk>` : l'annonce visée est déjà remontée en tête par `trier` ;
   // on l'amène en plus dans le champ de vision (best-effort — `scrollIntoView`

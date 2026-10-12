@@ -43,6 +43,7 @@ from ..permissions import PeutGererCalepinage
 from ..services.creation import (
     CreationRefusee, corps_conflit, ouvrir_ou_creer_pour_lead,
 )
+from .calepinages import CalepinageViewSet
 
 __all__ = ['depuis_lead']
 
@@ -55,6 +56,15 @@ def _identifiant(brut):
         return int(brut)
     except (TypeError, ValueError):
         return None
+
+
+_REPONSE = inline_serializer('CalepinageDepuisLeadReponse', {
+    'calepinage': drf_serializers.IntegerField(),
+    'reference': drf_serializers.CharField(),
+    'nom': drf_serializers.CharField(),
+    'lead': drf_serializers.IntegerField(allow_null=True),
+    'cree': drf_serializers.BooleanField(),
+})
 
 
 def _reponse(calepinage, *, cree):
@@ -73,7 +83,10 @@ def _reponse(calepinage, *, cree):
     'CalepinageDepuisLeadRequete', {
         'lead': drf_serializers.IntegerField(),
         'titre': drf_serializers.CharField(required=False, allow_blank=True),
-    }))
+    }),
+    responses={
+        (200, 'application/json'): _REPONSE, (201, 'application/json'): _REPONSE,
+    })
 @action(detail=False, methods=['post'], url_path='depuis-lead',
         permission_classes=[PeutGererCalepinage])
 def depuis_lead(self, request):
@@ -108,8 +121,6 @@ def depuis_lead(self, request):
     return Response(_reponse(calepinage, cree=True),
                     status=status.HTTP_201_CREATED)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).

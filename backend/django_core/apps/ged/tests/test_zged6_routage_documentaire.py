@@ -95,6 +95,24 @@ class ServiceTests(ZGed6Base):
         self.assertEqual(doc1.pk, doc2.pk)
         self.assertEqual(Document.objects.filter(company=self.co_a).count(), 1)
 
+    def test_dossier_homonyme_reprend_le_plus_ancien(self):
+        """ENF28 — (cabinet, parent, nom) n'est pas unique (dossiers créés à la
+        main) : deux homonymes ne font plus échouer le routage, le plus ancien
+        est repris et rien n'est recréé."""
+        from apps.ged.models import Folder
+        RoutageDocumentaire.objects.create(
+            company=self.co_a, source='paie_bulletin',
+            cabinet_cible=self.cab_a, dossier_cible='Paie')
+        ancien = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Paie')
+        Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='Paie')
+        document = services.router_document_module(
+            'paie_bulletin', company=self.co_a, file=_fake_pdf(),
+            filename='bulletin.pdf', reference='2026-07-009')
+        self.assertEqual(document.folder_id, ancien.pk)
+        self.assertEqual(Folder.objects.filter(
+            company=self.co_a, cabinet=self.cab_a, nom='Paie').count(), 2)
+
     def test_routage_inactif_est_ignore(self):
         RoutageDocumentaire.objects.create(
             company=self.co_a, source='paie_bulletin',

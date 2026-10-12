@@ -79,6 +79,15 @@ class TestSeuilConfig(TestCase):
         s = SeuilApprobationBCF.objects.get(id=r.data['id'])
         self.assertEqual(s.company_id, self.company.id)
 
+    def test_seuil_types_stricts(self):
+        # ENF11 (api-fuzz) — décimal transporté en chaîne, booléen JSON :
+        # un nombre ou un 0 n'est plus converti en silence.
+        api = auth(make_user(self.company, role='admin'))
+        for corps in ({'seuil_responsable': 0}, {'seuil_responsable': '10',
+                                                 'actif': 0}):
+            r = api.post(f'{BASE}/seuils-approbation-bcf/', corps)
+            self.assertEqual(r.status_code, 400, r.data)
+
     def test_responsable_cannot_set_seuil(self):
         resp = make_user(self.company, role='responsable')
         api = auth(resp)

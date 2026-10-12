@@ -189,7 +189,7 @@ def _sections_du_document(calepinage, code):
     try:
         return sections_retenues(
             parametres_de_societe(getattr(calepinage, 'company', None)))
-    except Exception:  # noqa: BLE001 — réglage refusé : le rendu le dira
+    except Exception:  # réglage refusé : le rendu le dira
         return None
 
 
@@ -236,7 +236,7 @@ def versions_du_document(calepinage, code):
         if langue not in cache:
             try:
                 cache[langue] = empreinte_courante(calepinage, code, langue)
-            except Exception:  # noqa: BLE001 — non prouvée courante = périmée
+            except Exception:  # non prouvée courante = périmée
                 logger.exception(
                     'ACAL222 : empreinte courante illisible (calepinage %s, '
                     '%s)', calepinage.pk, code)

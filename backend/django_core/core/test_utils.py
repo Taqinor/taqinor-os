@@ -40,7 +40,7 @@ class AssertQueryBudgetMixin:
     requêtes SQL exécutées dans le bloc ``with``, message d'échec explicite."""
 
     @contextmanager
-    def assertMaxQueries(self, n, msg=None):  # noqa: N802 — convention Django
+    def assertMaxQueries(self, n, msg=None):  # convention Django
         with CaptureQueriesContext(connection) as ctx:
             yield ctx
         actual = len(ctx.captured_queries)
@@ -180,7 +180,7 @@ class WideTeardownTimeoutMixin:
     il protège un usage direct hors runner du projet.
     """
 
-    def _fixture_teardown(self):  # noqa: N802 — nom imposé par Django
+    def _fixture_teardown(self):  # nom imposé par Django
         aliases = self._databases_names(include_mirrors=False)
         with wide_fixture_teardown_timeout(aliases):
             super()._fixture_teardown()

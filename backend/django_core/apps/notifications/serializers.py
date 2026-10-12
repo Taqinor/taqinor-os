@@ -2,7 +2,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import DecimalStricte
 from core.mixins import SameCompanyFKSerializerMixin
+from core.champs_stricts import ChampsStrictsSansDecimalMixin, EntierStrict
 
 from .models import (
     Annonce,
@@ -64,7 +66,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         return severity_module.is_action(obj.event_type)
 
 
-class NotificationPreferenceSerializer(serializers.ModelSerializer):
+class NotificationPreferenceSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     event_label = serializers.CharField(
         source='get_event_type_display', read_only=True)
 
@@ -80,7 +82,8 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         return value
 
 
-class NotificationRoutingRuleSerializer(SameCompanyFKSerializerMixin,
+class NotificationRoutingRuleSerializer(ChampsStrictsSansDecimalMixin,
+                                        SameCompanyFKSerializerMixin,
                                         serializers.ModelSerializer):
     """FG4 — Serializer des règles de routage (admin seulement)."""
     # ENF17 — l'utilisateur ciblé d'une AUTRE société = id absent (400).
@@ -118,8 +121,16 @@ class NotificationRoutingRuleSerializer(SameCompanyFKSerializerMixin,
         return data
 
 
-class WorkingHoursConfigSerializer(serializers.ModelSerializer):
+class WorkingHoursConfigSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG5 — Sérializer de la configuration des jours ouvrés (singleton société)."""
+    # ERR-ENF11-FUZZ-NOTIFICATIONS — sans ligne en base, GET renvoie les défauts
+    # avec ``id``/``updated_at`` à ``null`` : le schéma doit le dire. Entier et
+    # décimal STRICTS (le schéma déclare integer / string décimale).
+    id = serializers.IntegerField(read_only=True, allow_null=True)
+    updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    working_days = EntierStrict(min_value=0, max_value=32767, required=False)
+    hours_per_day = DecimalStricte(
+        max_digits=4, decimal_places=2, required=False)
 
     class Meta:
         model = WorkingHoursConfig
@@ -128,7 +139,7 @@ class WorkingHoursConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'updated_at']
 
 
-class HolidaySerializer(serializers.ModelSerializer):
+class HolidaySerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG5 — Sérializer des jours fériés."""
 
     class Meta:
@@ -138,7 +149,7 @@ class HolidaySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
-class WhatsAppTemplateSerializer(serializers.ModelSerializer):
+class WhatsAppTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """XMKT25 — Registre des gabarits BSP + cycle d'approbation Meta."""
     statut_approbation_label = serializers.CharField(
         source='get_statut_approbation_display', read_only=True)
@@ -160,7 +171,7 @@ class WhatsAppTemplateSerializer(serializers.ModelSerializer):
         ]
 
 
-class AnnonceSerializer(serializers.ModelSerializer):
+class AnnonceSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """XKB5 — Annonces internes ciblées et programmées."""
     cible_type_label = serializers.CharField(
         source='get_cible_type_display', read_only=True)
@@ -195,7 +206,7 @@ class AnnonceSerializer(serializers.ModelSerializer):
         return obj.lectures.count()
 
 
-class MessageAccueilSerializer(serializers.ModelSerializer):
+class MessageAccueilSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """MSGACC1 — message d'accueil (PAS une notification, cf. models.py).
 
     ``company``/``auteur`` posés côté serveur (perform_create) — jamais

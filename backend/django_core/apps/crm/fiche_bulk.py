@@ -75,7 +75,7 @@ def coerce_id_list(raw):
     out = []
     seen = set()
     for item in raw:
-        if isinstance(item, bool):
+        if isinstance(item, (bool, float)):
             raise ValueError("Identifiant invalide.")
         try:
             value = int(item)

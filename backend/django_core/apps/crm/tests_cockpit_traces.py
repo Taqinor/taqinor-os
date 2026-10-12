@@ -213,7 +213,7 @@ class DeplacementMoteurTests(_Base):
     def test_les_relances_decalees_autour_de_la_visite_ne_comptent_pas(self):
         touche = self._touche(_a(1), cadence=cadence_reperes.VISITE_CADENCE,
                               ordre=2, libelle='Relance proposition')
-        deplacee = cadence_visite.suspendre_plan_jusqu_apres_visite(
+        deplacee = cadence_visite._suspendre_plan_jusqu_apres_visite(
             self.lead, self.acteur, _a(5).date())
         self.assertIsNotNone(deplacee)
         touche.refresh_from_db()
@@ -223,7 +223,7 @@ class DeplacementMoteurTests(_Base):
 
     def test_un_rappel_demande_par_le_client_ne_compte_pas(self):
         touche = self._touche(_a(2))
-        cadence_signaux.poser_touche_rappel_demande(self.lead, user=None)
+        cadence_signaux._poser_touche_rappel_demande(self.lead, user=None)
         touche.refresh_from_db()
         self.assertLess(touche.due_at, _a(2))
         self.assertEqual(touche.nb_reports, 0)

@@ -32,22 +32,6 @@
  },
  {
   "actions_map": {
-   "get": "attribution"
-  },
-  "motif": "^points-contact/attribution/$",
-  "nom": "pointcontact-attribution",
-  "vue": "PointContactViewSet"
- },
- {
-  "actions_map": {
-   "get": "attribution"
-  },
-  "motif": "^points-contact/attribution\\.(?P<format>[a-z0-9]+)/?$",
-  "nom": "pointcontact-attribution",
-  "vue": "PointContactViewSet"
- },
- {
-  "actions_map": {
    "get": "list",
    "post": "create"
   },

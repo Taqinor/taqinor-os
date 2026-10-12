@@ -264,7 +264,7 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='bon-livraison',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def bon_livraison(self, request, pk=None):
         """ZSTK4 — bon de livraison PDF (packing/delivery slip). Client-facing :
         aucun `cout_transport` ni prix d'achat (test dédié)."""
@@ -279,7 +279,7 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(parameters=[oa.qi('client', required=True)], responses=oa.LIST)
     @action(detail=False, methods=['get'], url_path='portail',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsResponsableOrAdmin])
     def portail(self, request):
         """XSTK22 — section « Livraisons » du portail client (FG228) : les
         livraisons des chantiers de ``?client=ID``, format plat SANS

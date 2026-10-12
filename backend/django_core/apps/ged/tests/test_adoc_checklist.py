@@ -71,3 +71,41 @@ class ChecklistTests(TestCase):
             'CIN': 'present', 'Attestation CNSS': 'manquant'})
         self.assertEqual(
             DemandeDocument.objects.filter(statut='soldee').count(), 1)
+
+    def _deposer(self, nom):
+        doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom=nom)
+        services.matcher_depot_demandes(doc)
+        return doc
+
+    def test_depot_sans_rapport_ne_solde_pas(self):
+        """ADOC177 (sonde C-ADOC-VER-002) — ni sous-chaîne (« medeCINe »),
+        ni repli « demande unique » : seul un nom qui désigne la pièce solde."""
+        demande = services.creer_demande_document(
+            folder=self.folder, company=self.co, libelle='CIN',
+            exigence=self.cin, created_by=self.admin)
+        for nom in ('facture.pdf', 'certificat medecine.pdf'):
+            self._deposer(nom)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, 'en_attente', nom)
+            self.assertIsNone(demande.document_id, nom)
+            self.assertEqual(self._statuts()['CIN'], 'manquant', nom)
+        doc = self._deposer('CIN recto.pdf')
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, 'soldee')
+        self.assertEqual(demande.document_id, doc.pk)
+        self.assertEqual(self._statuts()['CIN'], 'present')
+
+    def test_depot_solde_la_seule_piece_designee(self):
+        demande_cin = services.creer_demande_document(
+            folder=self.folder, company=self.co, libelle='CIN',
+            exigence=self.cin, created_by=self.admin)
+        demande_cnss = services.creer_demande_document(
+            folder=self.folder, company=self.co, libelle='Attestation CNSS',
+            exigence=self.cnss, created_by=self.admin)
+        doc = self._deposer('attestation cnss 2026.pdf')
+        demande_cin.refresh_from_db()
+        demande_cnss.refresh_from_db()
+        self.assertEqual(demande_cin.statut, 'en_attente')
+        self.assertEqual(demande_cnss.statut, 'soldee')
+        self.assertEqual(demande_cnss.document_id, doc.pk)

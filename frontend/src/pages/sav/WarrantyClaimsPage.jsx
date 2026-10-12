@@ -3,9 +3,9 @@
 // signalement jusqu'à la résolution (remplacement/avoir/réparation/refus).
 // Même patron d'écran que ContratsMaintenance (création + édition inline +
 // DataTable).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import {
-  Plus, Pencil, Check, X, AlertTriangle, ShieldAlert,
+  Plus, Pencil, Check, X, ShieldAlert,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
@@ -13,11 +13,9 @@ import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   TooltipProvider,
   Button,
-  Badge,
   StatusPill,
   Card,
   EmptyState,
-  Skeleton,
   Input,
   Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -25,6 +23,7 @@ import {
   DataTable,
   toast,
 } from '../../ui'
+import { ErreurChargement, ErreurFormulaire, OptionsEquipement, SqueletteListe } from './SavCommun'
 
 const STATUTS = [
   { value: 'ouvert', label: 'Ouvert' },
@@ -90,8 +89,10 @@ export default function WarrantyClaimsPage() {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [statutFiltre])
+  // ENF28 — chargement différé d'une microtâche (aucun setState synchrone dans
+  // l'effet) ; l'effet-événement lit toujours la fonction courante.
+  const chargerListe = useEffectEvent(load)
+  useEffect(() => { Promise.resolve().then(() => chargerListe()) }, [statutFiltre])
   useEffect(() => {
     lireTout(savApi.getEquipements)
       .then(setEquipements).catch(() => {})
@@ -256,11 +257,7 @@ export default function WarrantyClaimsPage() {
                 <SelectTrigger><SelectValue placeholder="— Équipement —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Équipement —</SelectItem>
-                  {equipements.map((e) => (
-                    <SelectItem key={e.id} value={String(e.id)}>
-                      {(e.produit_nom ?? 'Produit')} — {e.numero_serie ?? 'sans n° série'}
-                    </SelectItem>
-                  ))}
+                  <OptionsEquipement equipements={equipements} />
                 </SelectContent>
               </Select>
             </FormField>
@@ -290,26 +287,13 @@ export default function WarrantyClaimsPage() {
             </FormField>
             <Button type="submit"><Plus /> Créer</Button>
           </Form>
-          {formError && (
-            <div role="alert"
-                 className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
-              <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
-              {formError}
-            </div>
-          )}
+          <ErreurFormulaire message={formError} />
         </Card>
 
         {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
+          <SqueletteListe lignes={5} />
         ) : loadError ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="Chargement impossible"
-            description="Les réclamations n'ont pas pu être chargées. Réessayez."
-            action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>}
-          />
+          <ErreurChargement description="Les réclamations n'ont pas pu être chargées. Réessayez." onRetry={load} />
         ) : visibleRows.length === 0 ? (
           <EmptyState
             icon={ShieldAlert}
@@ -317,10 +301,7 @@ export default function WarrantyClaimsPage() {
             description="Créez une réclamation garantie fournisseur (RMA) ci-dessus."
           />
         ) : (
-          <DataTable
-            data={visibleRows}
-            columns={columns}
-            getRowId={(row) => row.id}
+          <DataTable data={visibleRows} columns={columns} getRowId={(row) => row.id}
             searchable={false}
             exportName="warranty-claims"
             emptyTitle="Aucune réclamation"

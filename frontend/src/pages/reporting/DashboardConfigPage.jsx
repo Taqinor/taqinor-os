@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { LayoutGrid, Plus, Trash2 } from 'lucide-react'
+import { LayoutGrid, Plus } from 'lucide-react'
 import api from '../../api/axios'
 import coreApi from '../../api/coreApi'
+import { colonneSupprimer } from './colonneSupprimer'
 import reportingApi from '../../api/reportingApi'
 import {
-  Badge, Button, Card, CardContent, Checkbox, DataTable, EmptyState, IconButton,
-  Label, Segmented, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Badge, Button, Card, CardContent, Checkbox, DataTable, EmptyState, Label, Segmented, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Spinner,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -170,7 +170,7 @@ export default function DashboardConfigPage() {
       .catch(() => toast.error('Suppression impossible.'))
   }
 
-  const columns = useMemo(() => [
+  const columns = [
     {
       id: 'scope', header: 'Portée', width: 160,
       accessor: (r) => (r.user ? 'Utilisateur' : 'Palier'),
@@ -193,17 +193,8 @@ export default function DashboardConfigPage() {
         </span>
       ),
     },
-    {
-      id: 'actions', header: '', width: 70, align: 'right',
-      accessor: () => '',
-      cell: (v, r) => (
-        <IconButton variant="ghost" label="Supprimer" onClick={() => remove(r)}>
-          <Trash2 />
-        </IconButton>
-      ),
-    },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- remove recréé par rendu
-  ], [userName])
+    colonneSupprimer(remove, 70),
+  ]
 
   return (
     <div className="page">

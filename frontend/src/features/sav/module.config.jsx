@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
 import { Boxes, Wrench, LayoutDashboard } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -54,8 +54,9 @@ import { appGlyph } from '../../lib/apps/appGlyph'
       complet ; SAV n'obtient PAS de tuile Monitoring séparée.
    ========================================================================== */
 
-// eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
-const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
+// ENF28 — rendu par createElement : l'icône (composant polymorphe) est une
+// valeur lue, plus un paramètre « inutilisé » aux yeux de no-unused-vars.
+const navIcon = (icone) => createElement(icone, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 // ODY19 — cockpit de l'app (porte d'entrée), en tête de nav.
@@ -81,6 +82,9 @@ const KbArticlesPage = lazy(() => import('../../pages/sav/KbArticlesPage'))
 // NTSRV16/NTSRV17/NTSRV31 — Gestion Problème (problème ↔ incidents) +
 // assistant de création depuis les regroupements suggérés.
 const ProblemesPage = lazy(() => import('../../pages/sav/ProblemesPage'))
+// ASAV100-103 (D-ASAV-4 option (b)) — écran SAV/monitoring : abonnements, SLA
+// de disponibilité, certificats carbone, pertes catégorisées.
+const SavMonitoringPage = lazy(() => import('./monitoring/SavMonitoringPage'))
 
 const RESPONSABLE_ADMIN = ['responsable', 'admin']
 
@@ -113,6 +117,8 @@ const config = {
       { to: '/sav/action-requise',   label: 'Action requise',    k: 'nav.sav_action_requise', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/sav/sla-rapport',      label: 'Rapport SLA SAV',   k: 'nav.sav_sla_rapport', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/sav/parametres',       label: 'Paramètres SAV',    k: 'nav.sav_parametres', icon: navIcon(Wrench), roles: ['responsable','admin'] },
+      // ASAV100-103 — monitoring rendu utilisable (responsable/admin).
+      { to: '/sav/monitoring',       label: 'Monitoring',        icon: navIcon(Wrench), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -127,6 +133,7 @@ const config = {
     { path: '/sav/action-requise', component: SavActionBoardPage, roles: RESPONSABLE_ADMIN },
     { path: '/sav/kb', component: KbArticlesPage },
     { path: '/sav/problemes', component: ProblemesPage },
+    { path: '/sav/monitoring', component: SavMonitoringPage, roles: RESPONSABLE_ADMIN },
   ],
 }
 

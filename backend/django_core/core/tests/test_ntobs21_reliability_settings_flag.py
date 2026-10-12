@@ -69,7 +69,7 @@ class NotifierSeuilsUsageReliabilitySettingsTest(TestCase):
             assert (app_label, model_name) == ('core', 'ReliabilitySettings')
 
             class _Bound:
-                class objects:  # noqa: N801 — miroir Django `Model.objects`
+                class objects:  # miroir Django `Model.objects`
                     @staticmethod
                     def filter(company=None):
                         return _FakeQuerySet(

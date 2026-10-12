@@ -65,4 +65,16 @@ describe('ACAL31 — aller-retour octet-identique de l’exemple complet', () =>
     const sortie = ouvrirPuisEnregistrer({ id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(EXEMPLE)) }, cibleVendue: false });
     expect(differences(EXEMPLE, { ...sortie, source: 'devis' })).toEqual(['.source : attendu "lead" — obtenu "devis"']);
   });
+
+  // ACAL365 (C-ACAL-VER-014) — PV13 : « si le JSON dit 20 panneaux, le résultat dit 20 ».
+  it('l’exemple respecte PV13 : result = somme des zones', () => {
+    type Zone = { geometry: { count: number; kwc: number }; result?: { annualKwh?: number } };
+    const zones = EXEMPLE.zones as Zone[];
+    const result = EXEMPLE.result as { panels: number; kwc: number; annualKwh: number };
+    expect(result.panels).toBe(zones.reduce((s, z) => s + z.geometry.count, 0));
+    expect(result.kwc).toBeCloseTo(zones.reduce((s, z) => s + z.geometry.kwc, 0), 9);
+    // Chaque pan porte SA production (ACAL355) ; le total en est la somme, jamais un prorata.
+    for (const z of zones) expect(typeof z.result?.annualKwh).toBe('number');
+    expect(result.annualKwh).toBe(zones.reduce((s, z) => s + (z.result?.annualKwh ?? 0), 0));
+  });
 });

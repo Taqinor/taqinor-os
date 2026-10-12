@@ -260,3 +260,23 @@ class TestFG292Tenant(TestCase):
             'libelle': 'Intrus',
         }, format='json')
         self.assertEqual(r.status_code, 400, r.data)
+
+
+class TestFiltresEntiersFuzzR12(TestCase):
+    """api-fuzz r12 (CI #956) — `projet`/`assigne` sont lus avec ``mini=1`` :
+    0 → 400 nommant le paramètre (et le schéma annonce ``minimum: 1``)."""
+
+    def setUp(self):
+        self.api = auth(make_user(make_company()))
+
+    def test_projet_zero_repond_400_nomme(self):
+        r = self.api.get(f'{BASE}/programme-taches/', {'projet': 0})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('projet', r.data)
+        r = self.api.get(f'{BASE}/programme-taches/', {'assigne': 0})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('assigne', r.data)
+
+    def test_schema_declare_minimum_1(self):
+        from apps.installations.views.program import _ID_PARAM
+        self.assertEqual(_ID_PARAM, {'type': 'integer', 'minimum': 1})

@@ -67,7 +67,7 @@ def installer_flush_cascade():
         return
 
     @functools.wraps(origine)
-    def _fixture_teardown(self):  # noqa: N802 — nom imposé par Django
+    def _fixture_teardown(self):  # nom imposé par Django
         aliases = self._databases_names(include_mirrors=False)
         with wide_fixture_teardown_timeout(aliases), cascading_flush(aliases):
             origine(self)

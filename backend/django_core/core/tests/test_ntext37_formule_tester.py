@@ -116,7 +116,17 @@ class FormuleTesterTests(TestCase):
         res = self.api.post(URL, {'dataset': 'ntext37_utilisateurs'},
                             format='json')
         self.assertEqual(res.status_code, 400)
-        self.assertIn('requise', res.data['detail'])
+        # ERR-ENF11-FUZZ-CORE — corps validé par le serializer déclaré :
+        # l'erreur est rattachée au champ (enveloppe YAPIC3).
+        self.assertIn('requise', str(res.data['expression']))
+
+    def test_corps_hors_schema_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE — `dataset: true` levait AttributeError (500) ;
+        # un corps tableau aussi.
+        for corps in ({'expression': 'id', 'dataset': True}, [None, None]):
+            with self.subTest(corps=corps):
+                res = self.api.post(URL, corps, format='json')
+                self.assertEqual(res.status_code, 400, res.data)
 
     def test_aucun_effet_de_bord(self):
         avant = User.objects.count()

@@ -18,15 +18,59 @@ de DRF (aucune surcharge de ``get_paginated_response``). Câblée en
 """
 import base64
 import json
+import re
 
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import BasePagination, PageNumberPagination
 from rest_framework.response import Response
+
+# ERR-ENF11-FUZZ-PAGE-SIZE (11/10/2026) — le schéma OpenAPI (drf-spectacular)
+# déclare ``page`` et ``page_size`` comme UN entier. DRF avalait en silence
+# toute autre forme (``?page_size=null``, ``?page_size=abc``, paramètre
+# répété…) et renvoyait 200 avec la taille par défaut : 295 constats api-fuzz
+# « API accepted schema-violating request » sur toutes les listes paginées.
+# Désormais une valeur non entière ou répétée → 400 ``validation_error``
+# (déjà documenté sur chaque opération par ``core.openapi_erreurs``).
+# Un entier conforme au schéma reste accepté tel qu'avant : ``0`` ou un
+# négatif → taille par défaut, au-delà du plafond → ``max_page_size``.
+_ENTIER = re.compile(r'^[+-]?\d+$')
+
+
+def valider_parametre_entier(request, nom):
+    """Lève 400 si le paramètre de requête ``nom`` est répété ou non entier.
+
+    Absent → rien (le défaut s'applique). Renvoie la valeur brute sinon.
+    """
+    valeurs = request.query_params.getlist(nom)
+    if not valeurs:
+        return None
+    if len(valeurs) > 1:
+        raise ValidationError(
+            {nom: [f"Le paramètre « {nom} » ne doit figurer qu'une fois."]})
+    brut = valeurs[0]
+    if not _ENTIER.match(brut):
+        raise ValidationError(
+            {nom: [f'Le paramètre « {nom} » doit être un nombre entier.']})
+    return brut
 
 
 class StandardPagination(PageNumberPagination):
     page_size = 50
     page_size_query_param = 'page_size'
     max_page_size = 200
+
+    def get_page_size(self, request):
+        valider_parametre_entier(request, self.page_size_query_param)
+        return super().get_page_size(request)
+
+    def paginate_queryset(self, queryset, request, view=None):
+        # ``page`` répété → 400 ; ``page`` non entier garde le 404 « Page non
+        # valide » de DRF (déjà documenté, déjà un refus).
+        if len(request.query_params.getlist(self.page_query_param)) > 1:
+            raise ValidationError({self.page_query_param: [
+                f'Le paramètre « {self.page_query_param} » ne doit figurer '
+                "qu'une fois."]})
+        return super().paginate_queryset(queryset, request, view)
 
 
 # ---------------------------------------------------------------------------
@@ -81,12 +125,9 @@ class KeysetPagination(BasePagination):
     page_size_query_param = 'page_size'
 
     def _get_page_size(self, request):
-        raw = request.query_params.get(self.page_size_query_param)
-        if raw:
-            try:
-                return max(1, min(int(raw), self.max_page_size))
-            except (TypeError, ValueError):
-                pass
+        raw = valider_parametre_entier(request, self.page_size_query_param)
+        if raw is not None:
+            return max(1, min(int(raw), self.max_page_size))
         return self.page_size
 
     def paginate_queryset(self, queryset, request, view=None):

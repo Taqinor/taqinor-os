@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin, TexteLie  # ENF11
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .serializers_stage import valider_unicite_societe
@@ -183,7 +184,7 @@ class FicheInterventionValeurSerializer(serializers.ModelSerializer):
         read_only_fields = ['champ']
 
 
-class FicheInterventionReleveSerializer(serializers.ModelSerializer):
+class FicheInterventionReleveSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     valeurs = FicheInterventionValeurSerializer(many=True, read_only=True)
     template_nom = serializers.CharField(
         source='template.nom', read_only=True, default=None)
@@ -196,7 +197,7 @@ class FicheInterventionReleveSerializer(serializers.ModelSerializer):
 
 
 class ChantierChecklistItemSerializer(serializers.ModelSerializer):
-    fait_par_nom = serializers.SerializerMethodField()
+    fait_par_nom = serializers.CharField(source='fait_par.username', read_only=True, allow_null=True)
     # NTMOB11 — nombre de photos déjà capturées pour cette étape (pellicule
     # côté client), sans requête séparée. `source='photos.count'` : DRF
     # appelle automatiquement la méthode du related manager.
@@ -208,9 +209,6 @@ class ChantierChecklistItemSerializer(serializers.ModelSerializer):
                   # FG76 — photo obligatoire.
                   'photo_obligatoire',
                   'fait', 'fait_par_nom', 'fait_le', 'photos_count']
-
-    def get_fait_par_nom(self, obj):
-        return getattr(obj.fait_par, 'username', None)
 
 
 class PhotoChecklistMetaSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
@@ -1315,8 +1313,8 @@ class SousTraitantSerializer(serializers.Serializer):
     actif = serializers.BooleanField(required=False, default=True)
     note = serializers.CharField(
         required=False, allow_blank=True, allow_null=True)
-    date_creation = serializers.DateTimeField(read_only=True)
-    date_modification = serializers.DateTimeField(read_only=True)
+    date_creation = serializers.DateTimeField(read_only=True, allow_null=True)
+    date_modification = serializers.DateTimeField(read_only=True, allow_null=True)
 
     _METIER_LABELS = {
         'terrassement': 'Terrassement', 'genie_civil': 'Génie civil',
@@ -1421,7 +1419,7 @@ class DemandeAchatLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
         return attrs
 
 
-class DemandeAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DemandeAchatSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG310 — réquisition d'achat soumise à approbation. La référence, la
     société et `created_by` sont posés CÔTÉ SERVEUR ; `reference` est
     anti-collision (`DA-YYYYMM-NNNN`). Le `statut`, l'approbateur et la date de
@@ -1452,11 +1450,14 @@ class DemandeAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeri
             # (protéger un brouillon de l'archivage automatique) ; `archivee`
             # et `date_archivage` sont posés par la tâche planifiée.
             'archivee', 'epinglee', 'date_archivage',
+            # AMET14 — « à revoir (V2) » + diff, posés par le serveur.
+            'a_revoir_v2', 'diff_v2',
         ]
         read_only_fields = [
             'reference', 'statut', 'bon_commande', 'approuvee_par',
             'date_decision', 'motif_refus', 'created_by', 'date_creation',
             'date_modification', 'archivee', 'date_archivage',
+            'a_revoir_v2', 'diff_v2',
         ]
 
     def get_fields(self):
@@ -1533,7 +1534,7 @@ class EtapeApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.
         read_only_fields = fields
 
 
-class SeuilApprobationBCFSerializer(serializers.ModelSerializer):
+class SeuilApprobationBCFSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """FG312 — seuil (MAD) par société : un BCF au-dessus du seuil exige un
     Administrateur. La société est posée CÔTÉ SERVEUR."""
 
@@ -1663,8 +1664,7 @@ class AppelCommandeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSer
         return value
 
 
-class DossierImportSerializer(SameCompanyFKSerializerMixin,
-                              serializers.ModelSerializer):
+class DossierImportSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG315 — dossier d'import / dédouanement d'un conteneur. La référence et la
     société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
     (`IMP-YYYYMM-NNNN`). Le `statut_douane` avance via l'action `avancer`."""
@@ -1754,7 +1754,7 @@ class LandedCostLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         return attrs
 
 
-class ReceptionNonFactureeSerializer(SameCompanyFKSerializerMixin,
+class ReceptionNonFactureeSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                      serializers.ModelSerializer):
     """FG317 — provision de dette latente (réceptionné-non-facturé). La société
     et `created_by` sont posés CÔTÉ SERVEUR ; `lettre`/`date_lettrage`/`facture`
@@ -2184,16 +2184,15 @@ class RegleReapproSerializer(SameCompanyFKSerializerMixin,
         return attrs
 
 
-class MaterielConsigneSerializer(SameCompanyFKSerializerMixin,
+class MaterielConsigneSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE
     SERVEUR ; le statut et la trace de retour avancent via l'action `retourner`.
-    `caution_totale` est derivee (INTERNE)."""
+    `caution_totale` est derivee (INTERNE). Champs stricts ; `fournisseur_nom` servi meme sur PATCH (fuzz r12)."""
     # ENF17 — FK cross-app inscriptibles bornées à la société (id
     # d'une autre société = id absent, 400).
     same_company_fields = ('fournisseur',)
-    fournisseur_nom = serializers.CharField(
-        source='fournisseur.nom', read_only=True, default=None)
+    fournisseur_nom = TexteLie(source='fournisseur.nom', read_only=True, default=None)
     type_materiel_display = serializers.CharField(
         source='get_type_materiel_display', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -2442,9 +2441,9 @@ class OrdreDemontageLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         model = OrdreDemontageLigne
         fields = [
             'id', 'ordre', 'produit', 'produit_nom', 'designation',
-            'quantite_attendue', 'quantite_recuperee',
+            'quantite_attendue', 'quantite_recuperee', 'origine',
         ]
-        read_only_fields = ['quantite_attendue']
+        read_only_fields = ['quantite_attendue', 'origine']
 
 
 class ControleQualiteItemModeleSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
@@ -2652,9 +2651,9 @@ class PreuveLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         ]
 
 
-class TransporteurSerializer(serializers.ModelSerializer):
+class TransporteurSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """FG331 - transporteur (interne/tiers) + tarif de base (INTERNE). La
-    societe et `created_by` sont poses COTE SERVEUR."""
+    societe et `created_by` sont poses COTE SERVEUR. Champs stricts (api-fuzz r12)."""
     type_transporteur_display = serializers.CharField(
         source='get_type_transporteur_display', read_only=True, default=None)
 
