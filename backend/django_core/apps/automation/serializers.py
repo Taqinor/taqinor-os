@@ -223,6 +223,14 @@ class AutomationApprovalSerializer(SameCompanyFKSerializerMixin,
 
 
 class ApprovalRequestTypeSerializer(serializers.ModelSerializer):
+    # ERR fuzz : colonnes non nulles -> schéma explicite (liste / objet), sinon
+    # le schéma JSONField annonçait `null`, que l'API refuse à raison (400).
+    champs_requis = serializers.ListField(
+        child=serializers.CharField(), required=False)
+    champs_optionnels = serializers.ListField(
+        child=serializers.CharField(), required=False)
+    champs_config = serializers.DictField(required=False)
+
     class Meta:
         model = ApprovalRequestType
         # `company` posée côté serveur (TenantMixin) — jamais lue du corps.

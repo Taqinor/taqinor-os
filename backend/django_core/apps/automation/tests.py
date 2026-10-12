@@ -886,6 +886,31 @@ class ApprovalRequestTests(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 403)
 
+    def test_fuzz_corps_liste_refuse_en_400(self):
+        """ERR fuzz : un corps JSON non objet (``[null, null]``) = 400, pas 500."""
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/',
+                        [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': self._type().pk, 'payload': [1]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_fuzz_type_schema_champs_non_nuls(self):
+        """ERR fuzz : le schéma ne propose plus ``null`` pour les colonnes
+        non nulles ; omises, elles prennent leur défaut (liste/objet vides)."""
+        api = auth(self.admin)
+        resp = api.post('/api/django/automation/approval-request-types/',
+                        {'nom': 'Sans champs'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        obj = ApprovalRequestType.objects.get(pk=resp.data['id'])
+        self.assertEqual(obj.champs_requis, [])
+        self.assertEqual(obj.champs_config, {})
+        from apps.automation.serializers import ApprovalRequestTypeSerializer
+        champs = ApprovalRequestTypeSerializer().fields
+        self.assertFalse(champs['champs_requis'].allow_null)
+        self.assertFalse(champs['champs_config'].allow_null)
+
     def test_employee_submits_request_seen_by_approver(self):
         req_type = self._type()
         api = auth(self.employe)
