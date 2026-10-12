@@ -136,13 +136,13 @@ class ProprietesAvoirEcheancierTests(_Base):
         total = Avoir.objects.get(pk=r.data['id'])
         self.assertEqual(Decimal(str(total.total_ttc)), ttc)
         verifier_chaine_document(total)
-        # Plus rien à créditer : tout avoir supplémentaire = 400.
+        # Plus rien à créditer : tout avoir supplémentaire = 409 (état).
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
             {'lignes': [{'designation': 'Trop', 'quantite': '1',
                          'prix_unitaire': '10', 'taux_tva': '20',
                          'produit': self.produit.id}]}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.api.post(f'/api/django/ventes/avoirs/{total.id}/annuler/', {},
                       format='json')
 
