@@ -28,6 +28,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+from apps.ventes.domain.noyau_totaux import remise_pour_ttc
 from apps.ventes.selectors import _canonical_totaux
 
 User = get_user_model()
@@ -177,6 +178,117 @@ class NoyauArrondiTests(SimpleTestCase):
                 # 10 % peut, lui, descendre d'un palier — test dédié).
                 if any(li.taux_tva_effectif == 20 for li in lignes):
                     self.assertLess(exact['ttc'] - t['ttc'], 100)
+
+
+class SolveurRemisePourTtcTests(SimpleTestCase):
+    """VNT49 (D-VNT-2) — « Prix négocié » : le TTC tapé → la remise globale à
+    2 décimales qui le rend EXACTEMENT par la chaîne canonique (ARRONDI-100
+    compris). Parmi toutes celles qui l'atteignent, la plus RONDE (entier,
+    puis 1 décimale, puis 2 ; à égalité la plus petite) ; sinon les deux prix
+    atteignables voisins — jamais un arrondi silencieux.
+    """
+
+    # V1 réelle Kharbachi (54 500 TTC) : 8 × 1 200 @10 % + 36 643,50 @20 %.
+    KHARBACHI = [_ligne(1, '9600.00', 10), _ligne(1, '36643.50', 20)]
+
+    def _solve(self, lignes, cible):
+        return remise_pour_ttc(lignes, Decimal(cible),
+                               fallback_taux=Decimal('20'),
+                               arrondi_pas=PAS_ARRONDI_DEVIS)
+
+    def _bases(self, t):
+        return {int(b['taux']): b['ht_net'] for b in t['tva_par_taux']}
+
+    def test_kharbachi_la_remise_la_plus_ronde_est_la_prod_388(self):
+        self.assertEqual(_totaux(self.KHARBACHI)['ttc'], Decimal('54500.00'))
+        r = self._solve(self.KHARBACHI, '49000')
+        self.assertTrue(r['atteint'])
+        self.assertEqual(r['remise_pct'], Decimal('10.00'))
+        self.assertEqual(r['intervalle'], (Decimal('9.97'), Decimal('10.14')))
+        t = r['totaux']
+        self.assertEqual(t['ttc'], Decimal('49000.00'))
+        self.assertEqual(self._bases(t), {10: Decimal('8640.00'),
+                                          20: Decimal('32913.33')})
+        self.assertEqual(t['remise'], Decimal('4624.35'))
+        self.assertEqual(t['arrondi'], Decimal('65.82'))
+        self.assertEqual(r['voisins'], None)
+        # La chaîne rejouée à la remise rendue donne le même TTC au centime.
+        self.assertEqual(_totaux(self.KHARBACHI, remise='10.00'), t)
+
+    def test_exemple_une_decimale_avant_deux(self):
+        lignes = [_ligne(1, '30000.00', 10), _ligne(1, '15333.33', 20)]
+        r = self._solve(lignes, '49000')
+        self.assertTrue(r['atteint'])
+        self.assertEqual(r['remise_pct'], Decimal('4.50'))
+        self.assertEqual(r['intervalle'], (Decimal('4.48'), Decimal('4.66')))
+        t = r['totaux']
+        self.assertEqual(t['ttc'], Decimal('49000.00'))
+        self.assertEqual(self._bases(t), {10: Decimal('28650.00'),
+                                          20: Decimal('14570.83')})
+        self.assertEqual(t['remise'], Decimal('2040.00'))
+        self.assertEqual(t['arrondi'], Decimal('72.50'))
+
+    def test_prix_qui_ne_finit_pas_par_00_refuse(self):
+        for cible in ('49050', '48999.99', '0', '-100'):
+            with self.assertRaises(ValueError):
+                self._solve(self.KHARBACHI, cible)
+
+    def test_prix_au_dessus_du_devis_inatteignable(self):
+        r = self._solve(self.KHARBACHI, '60000')
+        self.assertFalse(r['atteint'])
+        self.assertIsNone(r['remise_pct'])
+        self.assertEqual(r['voisins']['bas'],
+                         {'ttc': Decimal('54500.00'),
+                          'remise_pct': Decimal('0.00')})
+        self.assertIsNone(r['voisins']['haut'])
+
+    def _paniers(self, alea, ttc_vise):
+        ht = Decimal(ttc_vise) / Decimal('1.17')
+        part = Decimal(alea.randint(5, 95)) / 100
+        a = (ht * part).quantize(Decimal('0.01'), rounding='ROUND_HALF_UP')
+        b = (ht - a).quantize(Decimal('0.01'), rounding='ROUND_HALF_UP')
+        return [_ligne(1, a, 10), _ligne(1, b, 20)]
+
+    def test_propriete_toute_cible_sous_900k_atteinte(self):
+        import random
+        alea = random.Random(20261012)
+        for ttc_vise in (5000, 54500, 150000, 400000, 900000):
+            for _ in range(12):
+                lignes = self._paniers(alea, ttc_vise)
+                brut = _totaux(lignes)['ttc']
+                cible = (brut * Decimal(alea.randint(70, 98)) / 10000
+                         ).to_integral_value(rounding='ROUND_FLOOR') * 100
+                r = self._solve(lignes, cible)
+                self.assertTrue(r['atteint'], (lignes, cible))
+                self.assertEqual(r['totaux']['ttc'], cible)
+                bas, haut = r['intervalle']
+                self.assertTrue(bas <= r['remise_pct'] <= haut)
+                self.assertEqual(
+                    _totaux(lignes, remise=r['remise_pct'])['ttc'], cible)
+
+    def test_a_3_millions_voisins_bas_et_haut_atteignables(self):
+        import random
+        alea = random.Random(3000000)
+        manques = 0
+        for _ in range(40):
+            lignes = self._paniers(alea, 3000000)
+            brut = _totaux(lignes)['ttc']
+            cible = (brut * Decimal(alea.randint(70, 98)) / 10000
+                     ).to_integral_value(rounding='ROUND_FLOOR') * 100
+            r = self._solve(lignes, cible)
+            if r['atteint']:
+                self.assertEqual(r['totaux']['ttc'], cible)
+                continue
+            manques += 1
+            bas, haut = r['voisins']['bas'], r['voisins']['haut']
+            self.assertLess(bas['ttc'], cible)
+            self.assertLess(cible, haut['ttc'])
+            for v in (bas, haut):
+                self.assertEqual(v['ttc'] % 100, 0)
+                self.assertEqual(
+                    _totaux(lignes, remise=v['remise_pct'])['ttc'], v['ttc'])
+        # À 3 M MAD un pas de 0,01 % vaut ~300 MAD : des prix tombent entre.
+        self.assertGreater(manques, 0)
 
 
 class AuditeurCoherenceArrondiTests(SimpleTestCase):

@@ -256,3 +256,109 @@ def totaux_multi_proprietes(totaux, n):
             paniers.append(b)
         out['tva_par_taux'] = paniers
     return out
+
+
+def _rang_rondeur(p):
+    """VNT49 — 0 : remise entière ; 1 : une décimale ; 2 : deux décimales."""
+    if p == p.to_integral_value():
+        return 0
+    return 1 if p * 10 == (p * 10).to_integral_value() else 2
+
+
+def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=100,
+                    _voisins=True):
+    """VNT49 (D-VNT-2, « Prix négocié ») — le TTC tapé → la remise globale.
+
+    Cherche, parmi les remises à 2 décimales de [0 ; 100], celles dont la
+    chaîne canonique :func:`_canonical_totaux` (ARRONDI-100 compris) rend
+    EXACTEMENT ``ttc_cible`` ; rend la plus RONDE (entière, puis 1 décimale,
+    puis 2 ; à rondeur égale la plus petite) — sur la V1 Kharbachi, 9,97 à
+    10,14 % donnent 49 000 et c'est 10,00 % qui reproduit le devis 388 au
+    centime. Aucune ne l'atteint (au-delà d'≈ 1,2 M MAD un pas de 0,01 %
+    dépasse le palier de 100) ⇒ les deux prix atteignables voisins, chacun
+    avec sa remise la plus ronde — jamais un arrondi silencieux.
+
+    Le prix tapé finit par 00 (fondateur, 02/10/2026) : une cible ≤ 0 ou hors
+    multiple de ``arrondi_pas`` lève ``ValueError``. Fonction PURE (aucun
+    import d'app) : la chaîne est rejouée, jamais réimplémentée.
+
+    Rend ``{'atteint', 'remise_pct', 'intervalle' (min, max), 'totaux',
+    'voisins'}`` ; ``voisins`` vaut ``None`` si la cible est atteinte, sinon
+    ``{'bas': {'ttc', 'remise_pct'} | None, 'haut': … | None}``.
+    """
+    from decimal import Decimal as D, ROUND_FLOOR
+
+    pas = D(str(arrondi_pas or 0))
+    cible = D(str(ttc_cible))
+    if cible <= 0:
+        raise ValueError('Le prix négocié doit être supérieur à zéro.')
+    if pas > 0 and cible % pas != 0:
+        raise ValueError(
+            f'Le prix négocié doit être un multiple de {pas} MAD '
+            '(il finit par 00).')
+    lignes = list(lignes)
+    rendus = {}
+
+    def totaux(k):          # k = remise en centièmes de pour cent (0..10000)
+        if k not in rendus:
+            rendus[k] = _canonical_totaux(
+                lignes, remise_globale_pct=D(k).scaleb(-2),
+                fallback_taux=fallback_taux, arrondi_pas=arrondi_pas)
+        return rendus[k]
+
+    def la_plus_ronde(ks):
+        return min(ks, key=lambda k: (_rang_rondeur(D(k).scaleb(-2)), k))
+
+    vide = {'atteint': False, 'remise_pct': None, 'intervalle': None,
+            'totaux': None, 'voisins': {'bas': None, 'haut': None}}
+    t0 = _canonical_totaux(lignes, remise_globale_pct=D('0'),
+                           fallback_taux=fallback_taux,
+                           arrondi_pas=None)['ttc']
+    if t0 <= 0:
+        return vide
+    # Fenêtre : le TTC exact baisse ≈ linéairement avec la remise ; la cible
+    # est rendue quand il tombe dans [cible ; cible + palier[ — ou dans le
+    # palier du dessus quand la chaîne descend d'un palier (mono-taux 10 %).
+    palier = pas if pas > 0 else D('0.01')
+
+    def k_pour(prix):
+        return int(((1 - prix / t0) * 10000).to_integral_value(
+            rounding=ROUND_FLOOR))
+
+    k_bas = max(0, k_pour(cible + 2 * palier) - 5)
+    k_haut = min(10000, k_pour(cible) + 6)
+    fenetre = range(k_bas, k_haut + 1)
+    touches = [k for k in fenetre if totaux(k)['ttc'] == cible]
+    if touches:
+        k = la_plus_ronde(touches)
+        return {'atteint': True, 'remise_pct': D(k).scaleb(-2),
+                'intervalle': (D(min(touches)).scaleb(-2),
+                               D(max(touches)).scaleb(-2)),
+                'totaux': totaux(k), 'voisins': None}
+    if not _voisins:
+        return vide
+
+    def voisin(du_bon_cote, k, sens):
+        """Le prix tapable le plus proche de la cible d'un côté : d'abord
+        dans la fenêtre, sinon en s'éloignant d'un pas de remise à la fois."""
+        ok = [totaux(j)['ttc'] for j in fenetre]
+        while True:
+            ok = [t for t in ok if t > 0 and (pas <= 0 or t % pas == 0)
+                  and du_bon_cote(t)]
+            if ok or not 0 <= k <= 10000:
+                break
+            ok = [totaux(k)['ttc']]
+            k += sens
+        if not ok:
+            return None
+        prix = max(ok) if sens > 0 else min(ok)
+        r = remise_pour_ttc(lignes, prix, fallback_taux=fallback_taux,
+                            arrondi_pas=arrondi_pas, _voisins=False)
+        if r['atteint']:
+            return {'ttc': r['totaux']['ttc'], 'remise_pct': r['remise_pct']}
+        k = la_plus_ronde([j for j in rendus if rendus[j]['ttc'] == prix])
+        return {'ttc': rendus[k]['ttc'], 'remise_pct': D(k).scaleb(-2)}
+
+    return dict(vide, voisins={
+        'bas': voisin(lambda t: t < cible, max(k_haut + 1, 0), 1),
+        'haut': voisin(lambda t: t > cible, k_bas - 1, -1)})
