@@ -622,6 +622,10 @@
     "etape": "PA4.05"
    },
    {
+    "source": "backend/django_core/apps/ventes/domain/facturation_vente.py::_inserer_facture",
+    "etape": "PA4.05"
+   },
+   {
     "source": "backend/django_core/apps/ventes/views/bon_commande.py::BonCommandeViewSet.creer_facture._create_facture",
     "etape": "PA4.04"
    },
