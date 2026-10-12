@@ -19,6 +19,7 @@ from authentication.scoping import scope_queryset
 from .models import Appointment, Lead, RelanceEtape
 from .serializers import AppointmentSerializer
 from .actions_crud import READ_ACTIONS
+from .cadence_messages import CLES_MESSAGE_VISITE
 from .cadence_views import _prochaine_touche_publique
 from . import activity
 from . import schema_docs as sd
@@ -248,10 +249,10 @@ class LeadVisitesActionsMixin:
             'rappel_juridique': avertissement['rappel_juridique'],
         })
 
-    @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False), date_prevue=serializers.CharField(), etape=serializers.CharField(required=False), note_etape=serializers.CharField(required=False), notes=serializers.CharField(required=False), replanifier=serializers.BooleanField(required=False)), responses=inline_serializer('CrmLeadVisitePlanifiee', {
+    @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False), date_prevue=serializers.CharField(), etape=serializers.CharField(required=False), note_etape=serializers.CharField(required=False), notes=serializers.CharField(required=False), replanifier=serializers.BooleanField(required=False)), responses={201: inline_serializer('CrmLeadVisitePlanifiee', {
         'visite': serializers.DictField(),
         'prochaine_touche': serializers.DictField(allow_null=True),
-    }))
+    })})
     @action(detail=True, methods=['post'], url_path='visites/planifier',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def planifier_visite(self, request, pk=None):
@@ -341,7 +342,7 @@ class LeadVisitesActionsMixin:
                              _prochaine_touche_a_faire(lead))},
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[sd.P_CLE], responses=inline_serializer('CrmLeadMessageVisite', {
+    @extend_schema(parameters=[sd.param('cle', enum=[*CLES_MESSAGE_VISITE], required=True, description='Clé du message.')], responses=inline_serializer('CrmLeadMessageVisite', {
         'corps_fr': serializers.CharField(),
         'corps_darija': serializers.CharField(),
     }))

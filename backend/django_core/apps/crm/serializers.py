@@ -11,6 +11,9 @@ from core.serializers import (
     request_company_id,
     scope_related_field,
 )
+from .champs_api import (
+    MAPPING_BOOLEEN_STRICT, MAPPING_DATE_HEURE_RFC3339, DateHeureRfc3339,
+)
 from .models import (
     Appointment, Client, Lead, LeadActivity, PointContact, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -493,21 +496,22 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     stage_since_days = serializers.SerializerMethodField()
     # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
     updated_by_nom = serializers.CharField(
-        source='updated_by.username', read_only=True, default=None,
+        source='updated_by.username', read_only=True,
         allow_null=True)
     # STKCAT9 — le NOM de la structure épinglée, en lecture seule : l'écran CRM
     # affiche « Pergola acier 4x3 » sans avoir à re-demander le produit au
-    # catalogue. ``default=None`` : un lead sans structure rend ``null``, jamais
-    # une erreur d'attribut (même patron qu'``updated_by_nom`` ci-dessus).
+    # catalogue. ``allow_null`` SANS ``default`` : un lead sans structure rend
+    # ``null`` y compris sur un PATCH (un ``default`` fait SAUTER le champ des
+    # écritures partielles — ENF11), jamais une erreur d'attribut.
     structure_produit_nom = serializers.CharField(
-        source='structure_produit.nom', read_only=True, default=None,
+        source='structure_produit.nom', read_only=True,
         allow_null=True)
     # VX243(a) — confiance au niveau du DOSSIER : « archivé par X le … ». Les
     # champs archived_by/archived_at sont posés côté serveur (jamais rendus
     # avant) — on expose ici le NOM de l'archiviste en lecture seule pour que
     # la ligne archivée le montre. Silencieux si le lead n'est pas archivé.
     archived_by_nom = serializers.CharField(
-        source='archived_by.username', read_only=True, default=None,
+        source='archived_by.username', read_only=True,
         allow_null=True)
     # LW29 — masquage PII rendu VISIBLE (au lieu de silencieux) : le front
     # peut afficher les champs PII_FIELDS verrouillés-cadenas plutôt que de
@@ -559,9 +563,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # ``None``/``False`` quand l'annotation est absente (ex. un `retrieve`
     # servi par un autre queryset) — jamais une exception.
     prochaine_touche_at = serializers.DateTimeField(
-        read_only=True, required=False, allow_null=True, default=None)
+        read_only=True, required=False, allow_null=True)
     prochaine_touche_canal = serializers.CharField(
-        read_only=True, required=False, allow_null=True, default=None)
+        read_only=True, required=False, allow_null=True)
     touche_en_retard = serializers.SerializerMethodField()
     # MRY20 — nombre de TENTATIVES humaines (appel/WhatsApp/e-mail avec un
     # auteur), annoté par `LeadViewSet.get_queryset`. C'est ce chiffre qui dit
@@ -1498,6 +1502,7 @@ def _motif_en_usage(company, nom):
 
 
 class LeadTagSerializer(serializers.ModelSerializer):
+    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
     # Nombre de leads référençant cette étiquette — l'UI désactive la
     # suppression et propose l'archivage si > 0 (L780).
     en_usage = serializers.SerializerMethodField()
@@ -1513,6 +1518,7 @@ class LeadTagSerializer(serializers.ModelSerializer):
 
 
 class MotifPerteSerializer(serializers.ModelSerializer):
+    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
     # Nombre de leads utilisant ce motif de perte (L779).
     en_usage = serializers.SerializerMethodField()
 
@@ -1529,6 +1535,7 @@ class MotifPerteSerializer(serializers.ModelSerializer):
 
 
 class CanalSerializer(serializers.ModelSerializer):
+    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
     # Nombre de leads utilisant ce canal — l'UI désactive la suppression si > 0.
     en_usage = serializers.SerializerMethodField()
 
@@ -1563,7 +1570,7 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
     (site web ou Meta Lead Ads) : sans eux, l'écran ne pourrait pas expliquer
     ce qu'un rejeu va faire."""
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None,
+        source='lead.nom', read_only=True,
         allow_null=True)
     source_display = serializers.CharField(
         source='get_source_display', read_only=True)
@@ -1628,11 +1635,12 @@ class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     même société (validate_lead).
     ``statut_display`` et ``lead_nom`` sont en lecture seule pour l'UI.
     """
+    serializer_field_mapping = MAPPING_DATE_HEURE_RFC3339  # ENF11
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None,
+        source='lead.nom', read_only=True,
         allow_null=True)
 
     class Meta:
@@ -1673,9 +1681,9 @@ class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     canal_libelle = serializers.CharField(
         source='get_canal_display', read_only=True)
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None,
+        source='lead.nom', read_only=True,
         allow_null=True)
-    date_contact = serializers.DateTimeField(required=False)
+    date_contact = DateHeureRfc3339(required=False)
 
     class Meta:
         model = PointContact

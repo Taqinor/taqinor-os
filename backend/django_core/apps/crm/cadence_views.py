@@ -19,14 +19,23 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
+from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
 from .models import MessageTemplate, PlanActivite, RelanceEtape
 from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializer
 from . import schema_docs as sd
+from .cadence_selectors import STATUTS_SUIVI
+from .controle_suivi import SEGMENTS_ADMIS
+from .params_requete import CorpsTexteMixin, entier_param
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 
 logger = logging.getLogger(__name__)
+
+#: Cadences qu'on peut DÉMARRER sur un lead (les gabarits du moteur — après
+#: l'appel, visite — sont posés par le moteur, jamais démarrés à la main).
+CADENCES_LANCABLES = [
+    code for code, _ in Cadence.choices if code not in CADENCES_MOTEUR]
 
 
 def _best_effort(libelle, fn, *args, **kwargs):
@@ -201,7 +210,7 @@ def _prochaine_touche_publique(etape):
 
 # ── RELANCE FOUNDATION — file « Relances du jour » + actions Fait/Sauter ────
 @extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD, sd.P_OWNER, sd.P_SCOPE], responses=sd.OBJ))
-class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
+class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                           viewsets.GenericViewSet):
     """Étapes de plan de relance structuré (``RelanceEtape``). AUCUNE création/
     édition brute exposée : les étapes sont matérialisées UNIQUEMENT par
@@ -210,6 +219,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
     routées. Aucun envoi automatique (WhatsApp/e-mail) n'est jamais déclenché
     ici : ce sont des rappels VISUELS pour le commercial."""
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    # ENF11 — clés lues comme du TEXTE par les gestes (fait, sauter, reporter,
+    # pièce reçue…) : une liste/un objet y levait ``.strip()`` (500).
+    champs_texte = ('note', 'outcome', 'body', 'motif_refus', 'perdu_junk',
+                    'rappel_le', 'rappel_heure', 'langue', 'reponse',
+                    'type_piece', 'mode', 'due_at', 'raison_attente')
     queryset = RelanceEtape.objects.select_related('lead', 'lead__owner').all()
     serializer_class = RelanceEtapeSerializer
 
@@ -297,7 +311,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 request.user.company, request.user, owner=owner)
         return Response(payload)
 
-    @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True), sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER, sd.param('statut')], responses=sd.OBJ)
+    @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True), sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER, sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='suivi',
             permission_classes=[IsAnyRole])
     def suivi(self, request):
@@ -403,19 +417,19 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         message différent servirait d'oracle d'existence."""
         from .selectors import journal_relance
 
-        brut = (request.query_params.get('lead') or '').strip()
-        if not brut.isdigit():
+        lead_id = entier_param(request, 'lead')
+        if lead_id is None:
             return Response(
                 {'lead': 'Identifiant de lead obligatoire.'},
                 status=status.HTTP_400_BAD_REQUEST)
         journal = journal_relance(
-            request.user.company, request.user, int(brut))
+            request.user.company, request.user, lead_id)
         if journal is None:
             return Response({'detail': 'Lead inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
         return Response(journal)
 
-    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, required=True)], responses=inline_serializer('CrmCadencesEchues', {
+    @extend_schema(parameters=[sd.param('jours', {'type': 'integer', 'minimum': 0}, required=True)], responses=inline_serializer('CrmCadencesEchues', {
         'count': serializers.IntegerField(),
         'jours': serializers.IntegerField(),
         'results': serializers.ListField(child=serializers.DictField()),
@@ -436,13 +450,18 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         portée de visibilité du demandeur s'applique (sélecteur)."""
         from .selectors import cadences_echues_a_clore
 
-        brut = (request.query_params.get('jours') or '').strip()
-        if not brut.isdigit():
+        try:
+            jours = entier_param(request, 'jours')
+        except DRFValidationError:
+            jours = None
+        if jours is None or jours < 0:
             # Levée : la forme versionnée reste celle de la réponse.
             raise DRFValidationError({'jours': (
                 '« Retard de plus de (jours) » : un nombre entier de jours '
                 '(0 ou plus) est obligatoire.')})
-        jours = int(brut)
+        # ENF11 — au-delà d'un siècle aucune cadence n'est « échue » : le
+        # plafond évite le débordement de date (500) sur 999999999.
+        jours = min(jours, 36500)
         lignes = cadences_echues_a_clore(
             request.user.company, request.user, jours=jours)
         return Response({'count': len(lignes), 'jours': jours,
@@ -467,7 +486,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         return Response(
             chaine_commerciale(request.user, request.user.company))
 
-    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, enum=[7, 14, 30]), sd.P_OWNER, sd.param('segment')], responses=inline_serializer('CrmControleSuivi', {
+    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, enum=[7, 14, 30]), sd.P_OWNER, sd.param('segment', enum=[*SEGMENTS_ADMIS])], responses=inline_serializer('CrmControleSuivi', {
         'periode_jours': serializers.IntegerField(),
         'owner': serializers.IntegerField(allow_null=True),
         'commerciaux': serializers.ListField(child=serializers.DictField()),
@@ -1443,9 +1462,9 @@ class LeadCadenceActionsMixin:
             status=status.HTTP_200_OK)
 
     # ── RELANCE FOUNDATION — plan de relance structuré (multi-touches) ──────
-    @extend_schema(request=sd.corps('CrmInitialiserRelanceRequest', cadence=serializers.CharField(required=False), confirmer_remplacement=serializers.BooleanField(required=False), devis=serializers.IntegerField(required=False), motif=serializers.CharField(required=False), sans_devis_confirme=serializers.BooleanField(required=False)), responses=RelanceEtapeSerializer(many=True))
+    @extend_schema(request=sd.corps('CrmInitialiserRelanceRequest', cadence=serializers.ChoiceField(choices=sorted(CADENCES_LANCABLES), required=False), confirmer_remplacement=serializers.BooleanField(required=False), devis=serializers.IntegerField(required=False), motif=serializers.CharField(required=False), sans_devis_confirme=serializers.BooleanField(required=False)), responses=RelanceEtapeSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='relance/initialiser',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin], pagination_class=None)
     def initialiser_relance(self, request, pk=None):
         """Initialise (à la demande) une cadence de relance sur le lead depuis
         le gabarit de la société (Paramètres → CRM).
@@ -1733,10 +1752,7 @@ class LeadCadenceActionsMixin:
 
         `null` dès qu'un dénominateur est 0 — jamais un 0 % qui se lirait
         comme un échec là où il n'y a rien à mesurer."""
-        try:
-            jours = max(1, min(365, int(request.query_params.get('jours', 30))))
-        except (TypeError, ValueError):
-            jours = 30
+        jours = entier_param(request, 'jours', 30, mini=1, maxi=365)
         from .selectors import kpi_cadences as _kpi
         return Response(_kpi(request.user.company, jours=jours))
 
@@ -1770,11 +1786,8 @@ class LeadCadenceActionsMixin:
         qu'un dénominateur est 0 ou qu'aucun geste n'a encore été compté."""
         from .mesure_cadence import JOURS_MESURE_DEFAUT
         from .mesure_cadence import mesure_cadence as _mesure
-        try:
-            jours = max(1, min(365, int(request.query_params.get(
-                'jours', JOURS_MESURE_DEFAUT))))
-        except (TypeError, ValueError):
-            jours = JOURS_MESURE_DEFAUT
+        jours = entier_param(request, 'jours', JOURS_MESURE_DEFAUT,
+                             mini=1, maxi=365)
         return Response(_mesure(request.user.company, jours=jours))
 
     # ── CAD-L ── CAD148 — le panneau d'appel guidé.

@@ -40,8 +40,10 @@ def corps(nom, **champs):
 
 def ids_requis(**kw):
     """Liste d'identifiants entiers NON vide (sélection d'une action de masse)."""
+    # ``min_length=1`` : le schéma publie ``minItems: 1`` (avant, ``[]``
+    # semblait valide et le serveur répondait « Sélectionnez au moins un… »).
     return serializers.ListField(
-        child=serializers.IntegerField(), allow_empty=False, **kw)
+        child=serializers.IntegerField(), allow_empty=False, min_length=1, **kw)
 
 
 # ── Paramètres de requête réutilisés ────────────────────────────────────────
@@ -51,6 +53,12 @@ P_JOURS = param('jours', OpenApiTypes.INT,
                 description='Fenêtre en jours (1 à 365).')
 P_OWNER = param('owner', OpenApiTypes.INT,
                 description='Identifiant du responsable.')
+#: ``owner`` : identifiant entier OU le mot « null » (responsable vide).
+P_OWNER_OU_NULL = OpenApiParameter(
+    'owner',
+    {'anyOf': [{'type': 'integer'}, {'type': 'string', 'enum': ['null']}]},
+    OpenApiParameter.QUERY, required=False,
+    description='Identifiant du responsable, ou « null » (sans responsable).')
 P_LEAD = param('lead', OpenApiTypes.INT, description='Identifiant du lead.')
 P_LEAD_REQ = param('lead', OpenApiTypes.INT, required=True,
                    description='Identifiant du lead.')

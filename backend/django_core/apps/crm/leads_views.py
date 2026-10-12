@@ -18,6 +18,7 @@ from .serializers import LeadSerializer, PointContactSerializer, masquer_pii_dic
 from .actions_crud import READ_ACTIONS, _PorteeEnfantsMixin
 from . import activity
 from . import schema_docs as sd
+from .params_requete import date_param, entier_param
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
 
 
@@ -31,9 +32,10 @@ def rapport_attribution(request):
     user = request.user
     if not user.company_id:
         return Response({'par_commercial': [], 'par_source': []})
-    from django.utils.dateparse import parse_date
-    debut = parse_date(request.query_params.get('debut') or '') or None
-    fin = parse_date(request.query_params.get('fin') or '') or None
+    # ENF11 — une date illisible (ou impossible : 2026-13-45) est refusée en
+    # 400 nommant le paramètre ; ``parse_date`` levait ValueError (500).
+    debut = date_param(request, 'debut')
+    fin = date_param(request, 'fin')
     from .selectors import attribution_leads
     return Response(attribution_leads(user.company, debut=debut, fin=fin))
 
@@ -197,8 +199,7 @@ class LeadIntakeActionsMixin:
         phone = request.query_params.get('telephone') or \
             request.query_params.get('phone')
         email = request.query_params.get('email')
-        exclude = request.query_params.get('exclude')
-        exclude_pk = exclude if (exclude or '').isdigit() else None
+        exclude_pk = entier_param(request, 'exclude')
         dups = find_duplicates_by_contact(
             request.user.company, phone=phone, email=email,
             exclude_pk=exclude_pk, queryset=self._leads_en_portee())
@@ -461,23 +462,15 @@ class LeadIntakeActionsMixin:
           win_rate (%), signed_value_ttc (somme des devis acceptés TTC).
         Filtres : ?from=YYYY-MM-DD &to=YYYY-MM-DD &canal=<key>
         """
-        import datetime
-
         qs = self.get_queryset().filter(is_archived=False)
 
         # Filtres date optionnels
-        from_ = request.query_params.get('from')
-        to_ = request.query_params.get('to')
+        from_ = date_param(request, 'from')
+        to_ = date_param(request, 'to')
         if from_:
-            try:
-                qs = qs.filter(date_creation__date__gte=datetime.date.fromisoformat(from_))
-            except ValueError:
-                pass
+            qs = qs.filter(date_creation__date__gte=from_)
         if to_:
-            try:
-                qs = qs.filter(date_creation__date__lte=datetime.date.fromisoformat(to_))
-            except ValueError:
-                pass
+            qs = qs.filter(date_creation__date__lte=to_)
         canal_filter = request.query_params.get('canal')
         if canal_filter:
             qs = qs.filter(canal=canal_filter)
@@ -550,10 +543,7 @@ class LeadIntakeActionsMixin:
         Minutes OUVRÉES, leads OS_NATIVE seulement, `null` partout sur zéro
         lead — jamais un 0 % fabriqué. Ne touche PAS à `sla-breach`, dont le
         contrat est consommé tel quel par `CrmInsightsPanel`."""
-        try:
-            jours = max(1, min(365, int(request.query_params.get('jours', 30))))
-        except (TypeError, ValueError):
-            jours = 30
+        jours = entier_param(request, 'jours', 30, mini=1, maxi=365)
         from .selectors import kpi_premier_contact as _kpi
         return Response(_kpi(request.user.company, jours=jours))
 

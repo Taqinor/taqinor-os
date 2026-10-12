@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from .champs_api import MAPPING_BOOLEEN_STRICT
 from .models import (
     ConcurrentPerte, EquipeCommerciale, EtapePlanActivite, ForecastEntry,
     ForecastSnapshot, LeadPlaybookProgress, ObjectifCommercial, Parrainage,
@@ -171,7 +172,7 @@ class VisiteExterneSerializer(serializers.ModelSerializer):
     point_display = serializers.CharField(
         source='get_point_display', read_only=True)
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None,
+        source='lead.nom', read_only=True,
         allow_null=True)
 
     class Meta:
@@ -198,7 +199,7 @@ class AppareilEquipeSerializer(serializers.ModelSerializer):
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     cree_par = serializers.PrimaryKeyRelatedField(read_only=True)
     cree_par_nom = serializers.CharField(
-        source='cree_par.get_full_name', read_only=True, default=None,
+        source='cree_par.get_full_name', read_only=True,
         allow_null=True)
 
     class Meta:
@@ -453,7 +454,7 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
     champs_client_portee = ('parrain', 'filleul_client')
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     parrain_nom = serializers.CharField(
-        source='parrain.nom', read_only=True, default=None,
+        source='parrain.nom', read_only=True,
         allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -583,7 +584,7 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
     saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
     saisi_par_nom = serializers.SerializerMethodField()
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None,
+        source='lead.nom', read_only=True,
         allow_null=True)
 
     class Meta:
@@ -635,6 +636,7 @@ class EtapePlanActiviteSerializer(_CompanyScopedRelationsMixin,
 
 
 class PlanActiviteSerializer(serializers.ModelSerializer):
+    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
     etapes = EtapePlanActiviteSerializer(many=True, read_only=True)
 
     class Meta:
@@ -648,9 +650,10 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
     # CRX13 — responsable ET membres (M2M) : le ``ManyRelatedField`` délègue à
     # son ``child_relation``, promu lui aussi.
     scoped_relations = ('responsable', 'membres')
+    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
 
     responsable_nom = serializers.CharField(
-        source='responsable.username', read_only=True, default=None,
+        source='responsable.username', read_only=True,
         allow_null=True)
     nb_membres = serializers.IntegerField(source='membres.count', read_only=True)
 
@@ -676,7 +679,8 @@ class ForecastEntrySerializer(_LeadEnPorteeMixin,
         source='get_categorie_display', read_only=True)
     montant_effectif = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
-    owner_id = serializers.IntegerField(source='lead.owner_id', read_only=True)
+    owner_id = serializers.IntegerField(
+        source='lead.owner_id', read_only=True, allow_null=True)
 
     class Meta:
         model = ForecastEntry
@@ -770,6 +774,7 @@ class PlaybookEtapeSerializer(_CompanyScopedRelationsMixin,
 
 
 class PlaybookSerializer(serializers.ModelSerializer):
+    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
     etapes = PlaybookEtapeSerializer(many=True, read_only=True)
 
     class Meta:
@@ -787,7 +792,7 @@ class LeadPlaybookProgressSerializer(_CompanyScopedRelationsMixin,
         source='tache.obligatoire', read_only=True)
     etape_stage = serializers.CharField(source='tache.etape.stage', read_only=True)
     fait_par_nom = serializers.CharField(
-        source='fait_par.username', read_only=True, default=None,
+        source='fait_par.username', read_only=True,
         allow_null=True)
     # AGR526 (contrat `lead_playbook.json`, AGR507) — la clé du TEXTE que la
     # tâche propose (`dossier_fda` / `dossier_8221`), ou null.
