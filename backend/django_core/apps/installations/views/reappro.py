@@ -74,8 +74,10 @@ class RegleReapproViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    # ENF11 — liste calculée NON paginée : sans ``pagination_class=None`` le
+    # schéma annonçait ``page``/``page_size`` que la vue ignore (api-fuzz).
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], pagination_class=None)
     def propositions(self, request):
         """FG326 — liste des transferts proposés (emplacements sous leur min).
         Lecture seule, consultative."""
