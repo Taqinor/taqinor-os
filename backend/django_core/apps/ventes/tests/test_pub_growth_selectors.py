@@ -14,7 +14,7 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.crm.models import Client, Lead
 from apps.sav.models import ContratMaintenance
-from apps.ventes.models import Devis, ShareLink
+from apps.ventes.models import Devis, LigneDevis, ShareLink
 from apps.ventes.selectors import (
     devis_accepted_totals_by_lead, devis_view_tracking_segments,
     expired_devis_contacts, signature_velocity_by_month_and_mode,
@@ -258,3 +258,56 @@ class SignatureVelocityByMonthAndModeTests(TestCase):
             date_acceptation=date(2025, 1, 1))
         result = signature_velocity_by_month_and_mode(self.company)
         self.assertEqual(result['par_mode'], {})
+
+
+class VenteEnVigueurPubliciteTests(TestCase):
+    """VNT84 — ticket moyen, vélocité et cross-sell lisent la vente en
+    vigueur (``devis_signes_en_vigueur``) : une chaîne de révisions
+    acceptées compte UNE fois (lead 1594 : 201 500 au lieu de 49 000)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='VNT84 Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='Chaine',
+            email='chaine@ex.ma', telephone='+212600000084')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Lead Chaine', ville='Agadir')
+
+    def _accepte(self, ref, prix, option=''):
+        d = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-{ref}',
+            client=self.client_obj, lead=self.lead, taux_tva=Decimal('0'),
+            statut=Devis.Statut.ACCEPTE, option_acceptee=option)
+        LigneDevis.objects.create(
+            devis=d, designation='Kit', quantite=1,
+            prix_unitaire=Decimal(prix), taux_tva=Decimal('0'))
+        return d
+
+    def _chaine(self):
+        v1 = self._accepte('VNT8401', '10000')
+        v2 = self._accepte('VNT8402', '20000')
+        v3 = self._accepte('VNT8403', '49000')
+        for ancien, nouveau in ((v1, v2), (v2, v3)):
+            ancien.superseded_by = nouveau
+            ancien.is_active = False
+            ancien.save(update_fields=['superseded_by', 'is_active'])
+        return v1, v2, v3
+
+    def test_ticket_moyen_compte_la_vente_une_fois(self):
+        self._chaine()
+        totals = devis_accepted_totals_by_lead(self.company, [self.lead.id])
+        self.assertEqual(totals, {self.lead.id: Decimal('49000')})
+
+    def test_velocite_compte_une_signature_par_chaine(self):
+        self._chaine()
+        result = signature_velocity_by_month_and_mode(self.company)
+        self.assertEqual(
+            sum(sum(m.values()) for m in result['par_mode'].values()), 1)
+
+    def test_cross_sell_devis_origine_est_la_vente_en_vigueur(self):
+        v1, v2, v3 = self._chaine()
+        Devis.objects.filter(pk=v3.pk).update(
+            option_acceptee=Devis.OptionAcceptee.AVEC_BATTERIE)
+        # V1 (sans batterie) est remplacée : seule V3 (avec batterie) compte.
+        segments = signed_clients_cross_sell_segments(self.company)
+        self.assertEqual(segments['sans_batterie'], [])
