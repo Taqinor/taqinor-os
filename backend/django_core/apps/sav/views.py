@@ -1,5 +1,5 @@
 import re
-from datetime import date as _date, timedelta
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
@@ -22,7 +22,8 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
-from core.parseurs import PARSEURS_JSON
+from core.conflit_etat import ConflitEtat
+from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -39,7 +40,9 @@ from .models import (
     WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
 )
 from .dateutils import add_months
-from .query_params import ENTIER_ID, entier_param
+from .query_params import (
+    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, choix_param, date_param, entier_param,
+)
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
     DowntimeEntreeSerializer, EquipementSerializer, TicketSerializer, TicketActivitySerializer,
@@ -151,6 +154,9 @@ _CreerLeadReponse = _sch('SavCreerLeadReponse', {
     'created': drf_serializers.BooleanField(),
 })
 
+_MOTIF_STATUT = '^(' + '|'.join(c for c, _ in Ticket.Statut.choices) + ')$'
+_MOTIF_PRIORITE = '^(' + '|'.join(c for c, _ in Ticket.Priorite.choices) + ')$'
+
 _RegistreGaranties = _sch('SavRegistreGaranties', {
     'today': drf_serializers.DateField(),
     'expiring_soon_days': drf_serializers.IntegerField(),
@@ -182,7 +188,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
         OpenApiParameter('categorie', ENTIER_ID, required=False),
         OpenApiParameter('rebut', OpenApiTypes.STR, required=False, enum=['only', 'tous']),
     ]))
-class EquipementViewSet(CompanyScopedModelViewSet):
+class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """Parc d'équipements (n° de série + horloges de garantie). Tout est scopé
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
@@ -432,14 +438,15 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('ids', {'type': 'string', 'pattern': r'^[0-9]+(,[0-9]+)*$'},
+            OpenApiParameter('ids', {'type': 'string', 'pattern': r'^([0-9]+(,[0-9]+)*)?$'},
                              required=False,
                              description='Identifiants séparés par des virgules.'),
             OpenApiParameter('public', OpenApiTypes.STR, required=False,
                              enum=['0', '1', 'true', 'false'],
                              description="'1'/'true' : QR de l'URL publique."),
-            OpenApiParameter('symbology', OpenApiTypes.STR, required=False,
-                             enum=['qr', 'code128']),
+            OpenApiParameter('symbology', {
+                'type': 'string', 'enum': ['qr', 'code128', '']},
+                required=False),
         ],
         responses={(200, 'text/html'): OpenApiTypes.STR})
     @action(detail=False, methods=['get'], url_path='etiquettes',
@@ -455,10 +462,12 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
         qs = self.get_queryset()
         ids_param = request.query_params.get('ids', '')
+        symbology = choix_param(
+            request, 'symbology', ('qr', 'code128'), 'qr')
         if ids_param:
             if not re.fullmatch(r'[0-9]+(,[0-9]+)*', ids_param):
                 return Response({'detail': 'ids invalides.'}, status=400)
-            ids = [int(i) for i in ids_param.split(',')]
+            ids = [n for n in map(int, ids_param.split(',')) if n <= ID_MAX]
             qs = qs.filter(pk__in=ids)
         qs = qs[:200]
 
@@ -506,7 +515,6 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         if not items:
             return Response({'detail': 'Aucun équipement.'}, status=404)
 
-        symbology = request.query_params.get('symbology', 'qr')
         html = render_labels_html(items, symbology=symbology)
         return HR(html, content_type='text/html; charset=utf-8')
 
@@ -652,8 +660,8 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('debut', OpenApiTypes.DATE, required=False),
-            OpenApiParameter('fin', OpenApiTypes.DATE, required=False),
+            OpenApiParameter('debut', DATE_OU_VIDE, required=False),
+            OpenApiParameter('fin', DATE_OU_VIDE, required=False),
         ],
         responses=_sch('SavDisponibiliteEquipement', {}, extra=True))
     @action(detail=True, methods=['get'], url_path='disponibilite',
@@ -669,15 +677,10 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         equipement = self.get_object()
 
         def _parse_date(name, default):
-            raw = (request.query_params.get(name) or '').strip()
-            if not raw:
+            d = date_param(request, name)
+            if d is None:
                 return default
-            try:
-                from datetime import date as _date
-                d = _date.fromisoformat(raw)
-                return timezone.make_aware(_dt(d.year, d.month, d.day))
-            except ValueError:
-                return default
+            return timezone.make_aware(_dt(d.year, d.month, d.day))
 
         fin_periode = _parse_date('fin', timezone.now())
         debut_periode = _parse_date(
@@ -693,7 +696,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         methods=['POST'],
         request=_sch('SavReleveCompteurRequete', {
-            'type': _CharF(),
+            'type': drf_serializers.RegexField(r'^(heures|kwh|m3)$'),
             'valeur': drf_serializers.DecimalField(
                 max_digits=14, decimal_places=2),
             'date': drf_serializers.DateField(required=False),
@@ -1202,7 +1205,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return sav_services.appliquer_transition_ticket(
                 ticket, statut_cible, self.request.user, request=self.request)
         except sav_services.TransitionTicketRefusee as exc:
-            raise ValidationError(exc.detail)
+            raise ConflitEtat(exc.detail)
 
     @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='planifier',
@@ -1298,13 +1301,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         request=_sch('SavActionsGroupeesRequete', {
-            'ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField(), allow_empty=False),
-            'operation': _CharF(),
-            'statut': _CharF(required=False),
+            'ids': drf_serializers.ListField(child=drf_serializers.IntegerField(
+                min_value=1, max_value=ID_MAX), min_length=1),
+            'operation': drf_serializers.RegexField(
+                r'^(technicien|priorite|statut|annuler)$'),
+            'statut': drf_serializers.RegexField(_MOTIF_STATUT, required=False),
             'technicien': drf_serializers.IntegerField(
                 required=False, allow_null=True),
-            'priorite': _CharF(required=False),
+            'priorite': drf_serializers.RegexField(
+                _MOTIF_PRIORITE, required=False),
             'motif': _CharF(required=False, allow_blank=True),
         }),
         responses=_sch('SavActionsGroupeesReponse', {
@@ -1359,8 +1364,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 try:
                     self._appliquer_transition_statut(ticket, statut_cible)
                     traites.append(ticket.id)
-                except (ValidationError, machine_etats.TransitionInterdite) \
-                        as exc:
+                except (ConflitEtat, ValidationError,
+                        machine_etats.TransitionInterdite) as exc:
                     echecs.append({'id': ticket.id, 'raison': str(exc)})
 
         elif operation == 'technicien':
@@ -1692,7 +1697,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         request=_sch('SavLogAppelRequete', {
-            'issue': _CharF(required=False, allow_blank=True),
+            'issue': drf_serializers.RegexField(
+                r'^(joint|non_joint|rappel|refuse|interesse)?$',
+                required=False, allow_blank=True),
             'duree_minutes': drf_serializers.IntegerField(
                 required=False, min_value=0),
             'notes': _CharF(required=False, allow_blank=True),
@@ -2232,7 +2239,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 ticket=ticket, user=request.user, company=ticket.company,
                 type_intervention=request.data.get('type_intervention'))
         except TicketSansInstallationError as exc:
-            return Response({'detail': str(exc)}, status=400)
+            raise ConflitEtat(str(exc))
         # AUD514 — le passage NOUVEAU → PLANIFIE passe par la machine d'états
         # gardée (``machine_etats``), plus par une écriture directe qui
         # court-circuitait le graphe. La transition est dans le graphe normal ;
@@ -2408,13 +2415,20 @@ class TicketViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         methods=['POST'],
         request=_sch('SavChecklistInitRequete', {
-            'template_id': drf_serializers.IntegerField()}),
+            'template_id': drf_serializers.IntegerField(
+                min_value=1, max_value=ID_MAX)}),
         responses={
             200: TicketChecklistItemSerializer(many=True),
             201: TicketChecklistItemSerializer(many=True)})
     @extend_schema(
         methods=['PATCH'],
-        request=SavChecklistMajRequete,
+        # Schéma brut : ``cle`` est OBLIGATOIRE (sans lui le composant « Patched »
+        # annonçait tous les champs facultatifs alors que la vue exige ``cle``).
+        request={'application/json': {
+            'type': 'object', 'required': ['cle'], 'properties': {
+                'cle': {'type': 'string', 'minLength': 1, 'pattern': r'\S'},
+                'coche': {'type': 'boolean'},
+                'note': {'type': 'string', 'nullable': True}}}},
         responses=TicketChecklistItemSerializer)
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist', pagination_class=None,
@@ -2591,7 +2605,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             TicketSerializer(ticket, context={'request': request}).data)
 
     @extend_schema(request=_sch('SavFusionnerRequete', {
-        'doublon_id': drf_serializers.IntegerField()}), responses=_sch(
+        'doublon_id': drf_serializers.IntegerField(
+            min_value=1, max_value=ID_MAX)}), responses=_sch(
             'SavFusionnerReponse', {}, extra=True))
     @action(detail=True, methods=['post'], url_path='fusionner',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2727,7 +2742,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Ticket couvert (garantie ou contrat) : aucun '
                            "devis de réparation n'est nécessaire."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
         from apps.ventes.services import create_devis_pour_ticket
 
@@ -2796,7 +2811,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
 @extend_schema_view(list=extend_schema(responses=SavSlaSettingsSerializer))
-class SavSlaSettingsViewSet(CompanyScopedModelViewSet):
+class SavSlaSettingsViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """Réglages SLA SAV par société (FG81). Singleton : list renvoie l'unique
     enregistrement ; écriture responsable/admin."""
     queryset = SavSlaSettings.objects.all()
@@ -2867,11 +2882,11 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
 
 @extend_schema_view(list=extend_schema(
     parameters=[
-        OpenApiParameter('equipement', OpenApiTypes.INT, required=False),
-        OpenApiParameter('ticket', OpenApiTypes.INT, required=False),
+        OpenApiParameter('equipement', ENTIER_ID, required=False),
+        OpenApiParameter('ticket', ENTIER_ID, required=False),
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
     ]))
-class WarrantyClaimViewSet(CompanyScopedModelViewSet):
+class WarrantyClaimViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """Réclamations garantie fournisseur / flux RMA (FG83).
     Lecture tout rôle ; écriture responsable/admin."""
     queryset = WarrantyClaim.objects.select_related(
@@ -2890,8 +2905,8 @@ class WarrantyClaimViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        equipement = self.request.query_params.get('equipement')
-        ticket = self.request.query_params.get('ticket')
+        equipement = entier_param(self.request, 'equipement')
+        ticket = entier_param(self.request, 'ticket')
         statut = self.request.query_params.get('statut')
         if equipement:
             qs = qs.filter(equipement_id=equipement)
@@ -2960,10 +2975,10 @@ class WarrantyClaimViewSet(CompanyScopedModelViewSet):
 
 @extend_schema_view(list=extend_schema(
     parameters=[
-        OpenApiParameter('produit', OpenApiTypes.INT, required=False),
+        OpenApiParameter('produit', ENTIER_ID, required=False),
         OpenApiParameter('categorie', OpenApiTypes.STR, required=False),
     ]))
-class KbArticleViewSet(CompanyScopedModelViewSet):
+class KbArticleViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """Articles de la base de connaissances SAV (FG87).
     Cherchables par texte libre + filtrables par produit/catégorie."""
     queryset = KbArticle.objects.select_related('produit').all()
@@ -2980,7 +2995,7 @@ class KbArticleViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset().filter(actif=True)
-        produit = self.request.query_params.get('produit')
+        produit = entier_param(self.request, 'produit')
         categorie = self.request.query_params.get('categorie')
         if produit:
             qs = qs.filter(produit_id=produit)
@@ -3000,9 +3015,9 @@ class KbArticleViewSet(CompanyScopedModelViewSet):
     parameters=[
         OpenApiParameter('gravite', OpenApiTypes.STR, required=False),
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
-        OpenApiParameter('equipement', OpenApiTypes.INT, required=False),
+        OpenApiParameter('equipement', ENTIER_ID, required=False),
     ]))
-class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
+class AlarmeOnduleurViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """Alarmes / défauts onduleur (FG280) — DISTINCTES du ticket SAV.
 
     Cycle de vie propre (active → acquittée → escaladée/résolue) avec
@@ -3030,7 +3045,7 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
         params = self.request.query_params
         gravite = params.get('gravite')
         statut = params.get('statut')
-        equipement = params.get('equipement')
+        equipement = entier_param(self.request, 'equipement')
         if gravite:
             qs = qs.filter(gravite=gravite)
         if statut:
@@ -3078,8 +3093,8 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
         return Response(AlarmeOnduleurSerializer(alarme).data)
 
     @extend_schema(
-        request=_sch('SavEscaladerRequete', {
-            'ticket': drf_serializers.IntegerField(required=False)}),
+        request=_sch('SavEscaladerRequete', {'ticket': drf_serializers.IntegerField(
+            required=False, min_value=1, max_value=ID_MAX)}),
         responses=AlarmeOnduleurSerializer)
     @action(detail=True, methods=['post'], url_path='escalader',
             permission_classes=[IsResponsableOrAdmin])
@@ -3109,7 +3124,7 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
                       if installation is not None
                       else getattr(equipement, "client_vente", None))  # ASAV40
             if client is None:
-                raise ValidationError({
+                raise ConflitEtat({
                     'ticket': "Aucun ticket fourni et l'alarme n'a pas "
                               "d'équipement rattaché à un client — précisez "
                               "un ticket existant."})
@@ -3147,7 +3162,7 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
     parameters=[
         OpenApiParameter('archived', OpenApiTypes.STR, required=False, enum=['1']),
     ]))
-class CauseDefaillanceViewSet(CompanyScopedModelViewSet):
+class CauseDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """Référentiel des causes de panne (XSAV14). Lecture tout rôle, écriture
     responsable/admin (édité dans Paramètres).
 
@@ -3177,7 +3192,7 @@ class CauseDefaillanceViewSet(CompanyScopedModelViewSet):
     parameters=[
         OpenApiParameter('archived', OpenApiTypes.STR, required=False, enum=['1']),
     ]))
-class RemedeDefaillanceViewSet(CompanyScopedModelViewSet):
+class RemedeDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """Référentiel des remèdes de panne (XSAV14). Lecture tout rôle, écriture
     responsable/admin (édité dans Paramètres)."""
     queryset = RemedeDefaillance.objects.all()
@@ -3203,7 +3218,7 @@ class RemedeDefaillanceViewSet(CompanyScopedModelViewSet):
     parameters=[
         OpenApiParameter('actif', OpenApiTypes.STR, required=False, enum=['0']),
     ]))
-class CategorieTicketViewSet(CompanyScopedModelViewSet):
+class CategorieTicketViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """ZSAV2 — Référentiel de catégorie de ticket (au-delà de correctif/
     préventif). Lecture tout rôle, écriture responsable/admin (édité dans
     Paramètres). Même patron que CauseDefaillance/RemedeDefaillance."""
@@ -3234,7 +3249,7 @@ class CategorieTicketViewSet(CompanyScopedModelViewSet):
     parameters=[
         OpenApiParameter('actif', OpenApiTypes.STR, required=False, enum=['0']),
     ]))
-class EquipeMaintenanceViewSet(CompanyScopedModelViewSet):
+class EquipeMaintenanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """ZMFG1 — CRUD équipe de maintenance, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
     queryset = EquipeMaintenance.objects.prefetch_related('membres').all()
@@ -3260,7 +3275,7 @@ class EquipeMaintenanceViewSet(CompanyScopedModelViewSet):
 
 # ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
 
-class CategorieEquipementViewSet(CompanyScopedModelViewSet):
+class CategorieEquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """ZMFG2 — CRUD catégorie d'équipement, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
     queryset = CategorieEquipement.objects.select_related(
@@ -3304,9 +3319,9 @@ class WorksheetMaintenanceModeleViewSet(CompanyScopedModelViewSet):
     parameters=[
         OpenApiParameter('archived', OpenApiTypes.STR, required=False, enum=['1']),
         OpenApiParameter('canal', OpenApiTypes.STR, required=False),
-        OpenApiParameter('ticket', OpenApiTypes.INT, required=False),
+        OpenApiParameter('ticket', ENTIER_ID, required=False),
     ]))
-class ReponseTypeViewSet(CompanyScopedModelViewSet):
+class ReponseTypeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """CRUD des réponses types (macros) SAV, company-scoped (Paramètres)."""
     queryset = ReponseType.objects.all()
     serializer_class = ReponseTypeSerializer
@@ -3341,12 +3356,10 @@ class ReponseTypeViewSet(CompanyScopedModelViewSet):
         une macro."""
         params = self.request.query_params
         canal = (params.get('canal') or '').strip().lower()
-        ticket_id = (params.get('ticket') or '').strip()
+        ticket_id = entier_param(self.request, 'ticket')
         if not canal and ticket_id:
             ticket = Ticket.objects.filter(
-                pk=ticket_id,
-                company=self.request.user.company).first() \
-                if ticket_id.isdigit() else None
+                pk=ticket_id, company=self.request.user.company).first()
             if ticket is None:
                 return qs
             canal = ReponseType.canal_de_ticket(ticket)
@@ -3366,9 +3379,9 @@ class ReponseTypeViewSet(CompanyScopedModelViewSet):
 
 @extend_schema_view(list=extend_schema(
     parameters=[
-        OpenApiParameter('produit_equipement', OpenApiTypes.INT, required=False),
+        OpenApiParameter('produit_equipement', ENTIER_ID, required=False),
     ]))
-class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
+class CompatibilitePieceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """CRUD du mapping pièce compatible <-> modèle d'équipement (XSAV25)."""
     queryset = CompatibilitePiece.objects.select_related(
         'produit_equipement', 'piece', 'remplace_par').all()
@@ -3381,7 +3394,7 @@ class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        produit_equipement = self.request.query_params.get('produit_equipement')
+        produit_equipement = entier_param(self.request, 'produit_equipement')
         if produit_equipement:
             qs = qs.filter(produit_equipement_id=produit_equipement)
         return qs
@@ -3409,7 +3422,7 @@ class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
         OpenApiParameter('ordering', OpenApiTypes.STR, required=False, enum=['impact', '-impact']),
     ]))
-class ProblemeViewSet(CompanyScopedModelViewSet):
+class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """NTSRV16 — CRUD des problèmes + rattachement/détachement des incidents.
 
     Un « problème » regroupe N tickets qui partagent UNE cause racine. Les
@@ -3659,7 +3672,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
             'description': drf_serializers.CharField(required=False),
             'cause_racine': drf_serializers.CharField(required=False),
             'ticket_ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField()),
+                child=drf_serializers.IntegerField(min_value=1, max_value=ID_MAX),
+                min_length=1),
         }),
         responses=inline_serializer('SavProblemeDepuisRegroupementResponse', {
             'id': drf_serializers.IntegerField(),
@@ -3731,18 +3745,7 @@ def _bornes_periode(request):
     Une date mal formée est REFUSÉE en NOMMANT le champ fautif — jamais
     ignorée en silence (un rapport calculé sur une autre période que celle
     demandée est pire qu'une erreur)."""
-    bornes = {}
-    for champ in ('date_debut', 'date_fin'):
-        brut = (request.query_params.get(champ) or '').strip()
-        if not brut:
-            bornes[champ] = None
-            continue
-        try:
-            bornes[champ] = _date.fromisoformat(brut)
-        except ValueError:
-            raise ValidationError(
-                {champ: 'Date invalide (format attendu : AAAA-MM-JJ).'})
-    return bornes
+    return {c: date_param(request, c) for c in ('date_debut', 'date_fin')}
 
 
 def sav_fcr_insight(request):
@@ -3758,7 +3761,7 @@ def sav_fcr_insight(request):
         request.user.company,
         date_debut=bornes['date_debut'], date_fin=bornes['date_fin'])
 
-    if (request.query_params.get('export') or '').lower() == 'xlsx':
+    if choix_param(request, 'export', ('xlsx',)):
         from apps.records.xlsx import build_xlsx_response
 
         entetes = ['Référence', 'Premier contact', 'Motif',
@@ -3790,7 +3793,7 @@ def sav_performance_agent_insight(request):
         request.user.company,
         date_debut=bornes['date_debut'], date_fin=bornes['date_fin'])
 
-    if (request.query_params.get('export') or '').lower() == 'xlsx':
+    if choix_param(request, 'export', ('xlsx',)):
         from apps.records.xlsx import build_xlsx_response
 
         entetes = ['Agent', 'Tickets traités', 'Résolution moyenne (jours)',
@@ -3816,26 +3819,15 @@ def sav_pareto_pannes(request):
     ``?date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ`` optionnels. Alimente les
     réclamations garantie FG83 avec des preuves chiffrées (récurrence par
     modèle/fournisseur)."""
-    from datetime import date as _date
     from .selectors import pareto_pannes
 
     company = request.user.company
-    group_by = request.query_params.get('group_by', 'produit')
-    if group_by not in ('produit', 'fournisseur'):
-        group_by = 'produit'
-
-    def _parse(name):
-        raw = (request.query_params.get(name) or '').strip()
-        if not raw:
-            return None
-        try:
-            return _date.fromisoformat(raw)
-        except ValueError:
-            return None
-
+    group_by = choix_param(
+        request, 'group_by', ('produit', 'fournisseur'), 'produit')
+    bornes = _bornes_periode(request)
     data = pareto_pannes(
         company, group_by=group_by,
-        date_debut=_parse('date_debut'), date_fin=_parse('date_fin'))
+        date_debut=bornes['date_debut'], date_fin=bornes['date_fin'])
     return Response({'group_by': group_by, 'results': data})
 
 
@@ -3848,12 +3840,9 @@ def sav_fiabilite_insight(request):
     from .selectors import fiabilite_equipements
     company = request.user.company
     include_couts = bool(request.user.can_view_buy_prices)
-    try:
-        limit = int(request.query_params.get('limit', 50))
-    except (TypeError, ValueError):
-        limit = 50
+    limit = entier_param(request, 'limit', 50, maxi=LIMITE_MAX)
     data = fiabilite_equipements(
-        company, include_couts=include_couts, limit=max(1, limit))
+        company, include_couts=include_couts, limit=limit)
     return Response({'results': data, 'couts_inclus': include_couts})
 
 

@@ -11,7 +11,6 @@ que le GPS du chantier existe. On expose la file des visites DUES avec leur GPS
 action de planification BULK posant date_tournee + technicien sur un lot de
 tickets, scopée société côté serveur.
 """
-from datetime import date as _date
 from math import asin, cos, radians, sin, sqrt
 
 from django.contrib.auth import get_user_model
@@ -32,6 +31,9 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from .models import ContratMaintenance, Ticket
 from .pdf import rapport_maintenance_pdf
+from .query_params import (
+    DATE_OU_VIDE, ENTIER_ID, ID_MAX, date_param, entier_param, nombre_param,
+)
 from .serializers_maintenance import ContratMaintenanceSerializer
 
 
@@ -221,6 +223,17 @@ _TourneeLigne = inline_serializer('TourneeVisiteDue', {
 })
 
 
+class PlanifierTourneeRequete(drf_serializers.Serializer):
+    """Corps de ``planifier-tournee`` : validé AVANT toute écriture (liste
+    d'ids non vide et bornée, date ISO) — le schéma publie ces mêmes bornes."""
+    ticket_ids = drf_serializers.ListField(
+        child=drf_serializers.IntegerField(min_value=1, max_value=ID_MAX),
+        min_length=1)
+    date_tournee = drf_serializers.DateField()
+    technicien_id = drf_serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=ID_MAX)
+
+
 @extend_schema_view(
     list=extend_schema(parameters=[
         OpenApiParameter(
@@ -230,7 +243,7 @@ _TourneeLigne = inline_serializer('TourneeVisiteDue', {
             'a_renouveler', OpenApiTypes.STR, required=False,
             description="'1' ou 'true' : seulement les contrats à renouveler."),
         OpenApiParameter(
-            'client', OpenApiTypes.INT, required=False,
+            'client', ENTIER_ID, required=False,
             description="Identifiant du client : seulement ses contrats."),
     ]),
 )
@@ -272,9 +285,9 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        client = self.request.query_params.get('client')
-        if client and client.isdigit():
-            qs = qs.filter(client_id=int(client))
+        client = entier_param(self.request, 'client')
+        if client:
+            qs = qs.filter(client_id=client)
         if self.request.query_params.get('due') in ('1', 'true'):
             ids = [c.id for c in qs if c.is_due()]
             qs = qs.filter(id__in=ids)
@@ -303,10 +316,12 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('lat', OpenApiTypes.FLOAT, required=False,
-                             description="Latitude du point d'origine."),
-            OpenApiParameter('lng', OpenApiTypes.FLOAT, required=False,
-                             description="Longitude du point d'origine."),
+            OpenApiParameter('lat', {
+                'type': 'number', 'minimum': -90, 'maximum': 90},
+                required=False, description="Latitude du point d'origine."),
+            OpenApiParameter('lng', {
+                'type': 'number', 'minimum': -180, 'maximum': 180},
+                required=False, description="Longitude du point d'origine."),
         ],
         responses=inline_serializer('TourneeReponse', {
             'count': drf_serializers.IntegerField(),
@@ -323,28 +338,14 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         chantier, triés par proximité (haversine) depuis le point d'origine
         fourni (?lat/?lng) ou, à défaut, le premier chantier géolocalisé. Aucun
         service de routage externe."""
-        def _coord(name):
-            raw = (request.query_params.get(name) or '').strip()
-            if not raw:
-                return None
-            try:
-                return float(raw)
-            except ValueError:
-                return None
-
         rows = tournee_preventive(
-            request.user.company, _coord('lat'), _coord('lng'))
+            request.user.company, nombre_param(request, 'lat', -90, 90),
+            nombre_param(request, 'lng', -180, 180))
         return Response({'count': len(rows), 'results': rows},
                         status=status.HTTP_200_OK)
 
     @extend_schema(
-        request=inline_serializer('PlanifierTourneeRequete', {
-            'ticket_ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField(), allow_empty=False),
-            'date_tournee': drf_serializers.DateField(),
-            'technicien_id': drf_serializers.IntegerField(
-                required=False, allow_null=True),
-        }),
+        request=PlanifierTourneeRequete,
         responses=inline_serializer('PlanifierTourneeReponse', {
             'ok': drf_serializers.BooleanField(),
             'tickets_planifies': drf_serializers.IntegerField(),
@@ -361,21 +362,13 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         Pose date_tournee (+ technicien optionnel) sur les tickets préventifs
         de la société et passe NOUVEAU → PLANIFIE. La société n'est jamais lue
         du corps : seuls les tickets de l'utilisateur sont touchés."""
-        ticket_ids = request.data.get('ticket_ids') or []
-        if not isinstance(ticket_ids, list) or not ticket_ids:
-            return Response({'ok': False, 'detail': 'ticket_ids requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        raw_date = (request.data.get('date_tournee') or '').strip()
-        try:
-            date_tournee = _date.fromisoformat(raw_date)
-        except (ValueError, TypeError):
-            return Response(
-                {'ok': False, 'detail': 'date_tournee invalide (AAAA-MM-JJ).'},
-                status=status.HTTP_400_BAD_REQUEST)
-        technicien_id = request.data.get('technicien_id')
+        entree = PlanifierTourneeRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        corps = entree.validated_data
         try:
             n = planifier_tournee(
-                request.user.company, ticket_ids, date_tournee, technicien_id,
+                request.user.company, corps['ticket_ids'],
+                corps['date_tournee'], corps.get('technicien_id'),
                 user=request.user)
         except ValidationError as exc:
             return Response({'ok': False, 'detail': exc.detail},
@@ -385,7 +378,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter(
-            'date', OpenApiTypes.DATE, required=False,
+            'date', DATE_OU_VIDE, required=False,
             description='Date de la visite (défaut : dernière visite).')],
         responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
@@ -396,11 +389,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         Sans prix d'achat. ?date=AAAA-MM-JJ pour la date de visite (défaut :
         dernière visite enregistrée)."""
         contrat = self.get_object()
-        raw = (request.query_params.get('date') or '').strip()
-        try:
-            visite = _date.fromisoformat(raw) if raw else None
-        except ValueError:
-            visite = None
+        visite = date_param(request, 'date')
         pdf_bytes = rapport_maintenance_pdf(contrat, visite)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (

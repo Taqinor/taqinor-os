@@ -192,3 +192,13 @@ class XSAV16DowntimeTest(TestCase):
             f'/api/django/sav/equipements/{self.equip.id}/disponibilite/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn('disponibilite_pct', resp.data)
+
+    def test_disponibilite_dates_invalides_refusees_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : une date illisible n'est plus ignorée
+        # (période par défaut) — 400 nommé ; vide = borne par défaut.
+        api = auth(self.admin)
+        url = f'/api/django/sav/equipements/{self.equip.id}/disponibilite/'
+        for requete in ('?fin=hier', '?debut=2026-13-45', '?debut=2026-1-1'):
+            resp = api.get(url + requete)
+            self.assertEqual(resp.status_code, 400, (requete, resp.content))
+        self.assertEqual(api.get(url + '?debut=&fin=').status_code, 200)

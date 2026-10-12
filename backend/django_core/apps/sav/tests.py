@@ -391,11 +391,11 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertEqual(r.data['statut'], 'nouveau')
 
     def test_illegal_status_jump_rejected(self):
-        # YDOCF1 — un saut NOUVEAU → CLOTURE (hors graphe) est refusé (400).
+        # YDOCF1 — un saut NOUVEAU → CLOTURE (hors graphe) est refusé (409, conflit d'état).
         tid = self._open_ticket().data['id']
         r = self.api.post(f'/api/django/sav/tickets/{tid}/cloturer/',
                           {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_default_list_shows_open_only(self):
         open_id = self._open_ticket().data['id']

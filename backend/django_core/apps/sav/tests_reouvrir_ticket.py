@@ -85,7 +85,7 @@ class ReouvrirTicketTest(TestCase):
     def test_reouvrir_depuis_en_cours_refuse_400(self):
         t = self._ticket(Ticket.Statut.EN_COURS)
         r = self._reouvrir(t)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         t.refresh_from_db()
         self.assertEqual(t.statut, Ticket.Statut.EN_COURS)
         self.assertEqual(t.reopen_count, 0)
