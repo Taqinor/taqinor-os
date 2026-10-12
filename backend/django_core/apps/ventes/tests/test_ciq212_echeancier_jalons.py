@@ -246,3 +246,36 @@ class ProfilSocieteTest(_Base):
                          [40, 50, 10])
         self.assertEqual([j['jalon'] for j in effectifs['residentiel']],
                          ['acompte', 'materiel', 'solde'])
+
+
+class AcomptePrevuVNT63(_Base):
+    """VNT63 — page publique et mail d'acceptation lisent l'acompte PRÉVU
+    (1re tranche de ``plan_facturation``) : une fois le brouillon d'acompte
+    créé (VNT62), ``next_tranche`` sauterait l'acompte et annoncerait la
+    tranche suivante ; le montant reste celui de la facture d'acompte."""
+
+    def _brouillon_acompte(self, devis):
+        from apps.ventes.domain.negociation import preparer_acompte_automatique
+        return preparer_acompte_automatique(devis, self.user)
+
+    def test_public_et_mail_annoncent_le_brouillon_d_acompte(self):
+        from apps.ventes.domain.cycle_vie import _acceptance_deposit_block
+        from apps.ventes.public.payload_conditions import _acompte_publique
+        devis = self._devis('residentiel', 'DEV-VNT63-0001')
+        avant = _acompte_publique(devis)
+        facture = self._brouillon_acompte(devis)
+        self.assertIsNotNone(facture)
+        apres = _acompte_publique(devis)
+        self.assertEqual(apres['ttc'], str(facture.montant_ttc))
+        self.assertEqual(apres['ttc'], avant['ttc'])
+        self.assertEqual(apres['pourcentage'], avant['pourcentage'])
+        montant = f'{facture.montant_ttc:,.2f}'.replace(',', ' ') + ' MAD'
+        self.assertIn(montant, _acceptance_deposit_block(devis))
+
+    def test_option_cochee_respectee(self):
+        from apps.ventes.public.payload_conditions import _acompte_publique
+        devis = self._devis('residentiel', 'DEV-VNT63-0002')
+        acompte = _acompte_publique(devis)
+        self.assertEqual(set(acompte), {'pourcentage', 'ttc', 'option',
+                                        'montants'})
+        self.assertEqual(list(acompte['montants'].values()), [acompte['ttc']])

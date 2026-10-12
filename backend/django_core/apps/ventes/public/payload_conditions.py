@@ -21,12 +21,28 @@ logger = logging.getLogger(__name__)
 PAIEMENT_MOYENS_PUBLICS = ('virement', 'cheque')
 
 
+def _acompte_prevu(devis, lignes=None, option=None):
+    """VNT63 — la 1re tranche du PLAN de facturation (l'acompte prévu, quel
+    que soit son statut : à faire, brouillon ou émis), aux clés lues par
+    :func:`_acompte_publique` (``ttc``, ``pourcentage``) ; ``None`` sans
+    tranche. Aucune somme locale : ``plan_facturation`` seul."""
+    from ..vente_facturation import plan_facturation
+    tranches = plan_facturation(devis, option=option, lignes=lignes)['tranches']
+    if not tranches:
+        return None
+    return {'ttc': tranches[0]['montant_ttc'],
+            'pourcentage': tranches[0]['pourcentage']}
+
+
 def _acompte_publique(devis, lignes=None):
     """PREVIEW-V3 — la PREMIÈRE tranche de l'échéancier, telle qu'elle sera
     facturée, ou ``None`` si elle n'est pas calculable.
 
-    SOURCE UNIQUE : ``apps.ventes.utils.echeancier.next_tranche`` — exactement
-    la fonction qui alimentait déjà l'écran de succès POST-signature
+    SOURCE UNIQUE : VNT63 — l'acompte PRÉVU, 1re tranche de
+    ``vente_facturation.plan_facturation`` (brouillon d'acompte compris : après
+    l'acceptation, ``next_tranche`` sauterait l'acompte déjà prévu et
+    annoncerait la tranche suivante) — la même lecture pour l'écran de succès
+    POST-signature
     (``_deposit_success_payload``, QX33be) et la facturation. Jamais
     ``deposit.compute_deposit()`` (30 % forfaitaires, échafaudage PSP) : la
     page client ne montre QUE le chiffre que le devis facturera vraiment.
@@ -57,10 +73,9 @@ def _acompte_publique(devis, lignes=None):
     """
     from decimal import Decimal
     try:
-        from ..utils.echeancier import next_tranche
         from ..utils.options import (AVEC_BATTERIE, SANS_BATTERIE,
                                      deux_options_declarees, option_effective)
-        tr = next_tranche(devis, lignes=lignes)
+        tr = _acompte_prevu(devis, lignes=lignes)
         if tr is None:
             return None
         # PREVIEW-V3-FIX (audit C7) — UN ACOMPTE DE 0,00 N'EST PAS UN ACOMPTE.
@@ -77,7 +92,7 @@ def _acompte_publique(devis, lignes=None):
             cles = (effective or SANS_BATTERIE,)
         montants = {}
         for cle in cles:
-            tr_opt = next_tranche(devis, lignes=lignes, option=cle)
+            tr_opt = _acompte_prevu(devis, lignes=lignes, option=cle)
             if tr_opt is None:
                 continue
             montant = Decimal(str(tr_opt['ttc']))
