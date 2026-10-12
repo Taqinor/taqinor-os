@@ -422,10 +422,14 @@
     couts_inclus:inconnu, results:inconnu
 - frontend/src/api/savApi.js :: getSavFileAction -> /api/django/sav/tickets/file-action
     buckets:inconnu
+- frontend/src/api/savApi.js :: getSavPareto -> /api/django/sav/insights/sav-pannes
+    group_by:inconnu, results:inconnu
 - frontend/src/api/savApi.js :: getSavResumeParEquipe -> /api/django/sav/insights/sav-resume-equipe
     results:inconnu
 - frontend/src/api/savApi.js :: getTicketsSimilaires -> /api/django/sav/tickets/<>/similaires
     results:inconnu
+- frontend/src/api/savApi.js :: getTourneePreventive -> /api/django/sav/contrats-maintenance/tournee
+    count:nombre, results:inconnu
 - frontend/src/api/savApi.js :: getTriageIa -> /api/django/sav/tickets/<>/triage-ia
     disponible:booleen, erreur:texte, kb_articles:inconnu, suggestion:inconnu
 - frontend/src/api/savApi.js :: lienClientTicket -> /api/django/sav/tickets/<>/lien-client
