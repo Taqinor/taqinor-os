@@ -83,6 +83,8 @@ GROUPES = {
 #: déplacement (ex. VNT97 : ``PLACE['cycle'] = 'facture_cycle.py'``).
 PLACE = {
     'cycle': 'facture_cycle.py',  # VNT97
+    'encaissement': 'facture_encaissement.py',  # VNT98
+    'gardes': 'facture_gardes.py',  # VNT98
 }
 
 #: Actions standard du ``ModelViewSet`` (non décorées).

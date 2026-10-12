@@ -145,7 +145,8 @@ class GestesArgentTests(TestCase):
                     self.assertFalse(objet.abandon_montant)
 
     def test_get_permissions_respecte_action(self):
-        from apps.ventes.views.facture import FactureViewSet, PeutEncaisser
+        from apps.ventes.views.facture import FactureViewSet
+        from apps.ventes.views.facture_gardes import PeutEncaisser
         fabrique = APIRequestFactory()
         for action in ('enregistrer_paiement', 'abandonner_solde',
                        'creer_avoir', 'encaissement_groupe'):
