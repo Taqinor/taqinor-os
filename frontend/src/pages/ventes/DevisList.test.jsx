@@ -68,6 +68,8 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
       // toucher le réseau réel dans le test du toast.warning associé.
       reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
+      // VNT79 — l'aperçu de FacturerVenteDialog, ouvert par le bouton unique « Facturer… ».
+      apercuFacturerVente: vi.fn(() => Promise.resolve({ data: { plan: [], prochaine: null, vente: null } })),
       // QJR624 — l'acompte personnalisé du dialogue PDF est PATCHé dans
       // l'échéancier du devis avant le rendu.
       patchDevis: vi.fn(() => Promise.resolve({ data: {} })),
@@ -808,7 +810,7 @@ describe('DevisList — VX216(a) : seam devis↔chantier visible côté vendeur'
       devis: [{
         id: 72, reference: 'DEV-VX216-C', client_nom: 'ACME', statut: 'envoye',
         date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
-        is_active: true,
+        is_active: true, revision_possible: true,
         chantier: { id: 7, reference: 'CH-2026-07-0007', statut: 'planifie' },
       }],
     })
@@ -1450,5 +1452,30 @@ describe('DevisList — CIQ324 : acceptation C&I (identité d\'entreprise)', () 
     await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
     expect(Object.keys(ventesApi.accepterDevis.mock.calls[0][1]).sort())
       .toEqual(['date', 'nom', 'option'])
+  })
+})
+
+describe('DevisList — VNT79 : puce de résumé, sous-ligne PanneauVente, bouton « Facturer… »', () => {
+  const ACCEPTE = {
+    id: 502, reference: 'DEV-202610-0021', client_nom: 'ACME', statut: 'accepte',
+    date_creation: '2026-10-05', total_ttc: 49000, nb_options: 1, version: 2, is_active: true,
+    vente: exempleContrat('ventes', 'vente_etat', 'exemple_acompte_brouillon').vente,
+  }
+
+  it('la puce ouvre le panneau de vente sous la ligne (brouillon ≠ émise)', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: [ACCEPTE] })
+    expect(screen.queryByTestId('panneau-vente-502')).toBeNull()
+    await user.click(screen.getByTestId('vente-puce-502'))
+    const panneau = screen.getByTestId('panneau-vente-502')
+    expect(within(panneau).getByText('Brouillon')).toBeVisible()
+  })
+
+  it('« Facturer… » ouvre FacturerVenteDialog pour CE devis (aperçu serveur lu)', async () => {
+    const user = userEvent.setup()
+    const ouvert = { ...ACCEPTE, vente: exempleContrat('ventes', 'vente_etat', 'exemple').vente }
+    renderList({ loading: false, devis: [ouvert] })
+    await user.click(screen.getByRole('button', { name: 'Facturer…' }))
+    await waitFor(() => expect(ventesApi.apercuFacturerVente).toHaveBeenCalledWith(502))
   })
 })

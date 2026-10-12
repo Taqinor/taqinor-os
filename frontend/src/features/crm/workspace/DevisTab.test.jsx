@@ -3,7 +3,7 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
 import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
@@ -19,7 +19,8 @@ import DevisTab, {
    props contrôlées, comme le fera réellement ContextRail). */
 
 const {
-  genererFacture, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
+  genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement,
+  ouvrirPdfFacture, prixNegocie, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
@@ -30,6 +31,16 @@ const {
   ]
   return {
     genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
+    // VNT75 — l'aperçu de FacturerVenteDialog, ouvert depuis le panneau de vente.
+    apercuFacturerVente: vi.fn(),
+    // VNT76 — gestes par facture du panneau (useActionsVente) ; jamais de toast.
+    emettreFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    whatsappFacture: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212612345678?text=x' } })),
+    envoyerEmailFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    recuPdfPaiement: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF']), headers: {} })),
+    ouvrirPdfFacture: vi.fn(() => Promise.resolve('ouvert')),
+    // VNT78 — PrixNegocieDialog monté depuis le panneau.
+    prixNegocie: vi.fn(),
     createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
     whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR538 — l'aperçu sans effet : réponse fournie par le test depuis
@@ -62,8 +73,10 @@ const {
   }
 })
 vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+  default: { genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, prixNegocie, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
 }))
+vi.mock('../../ventes/vente/facturePdf', () => ({ ouvrirPdfFacture }))
+vi.mock('../../../utils/pdfBlob', () => ({ openPdfBlob: vi.fn(), messageErreurBlob: vi.fn(() => Promise.resolve('')) }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
@@ -221,51 +234,53 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     date_creation: '2026-01-05', option_acceptee: 'A', chantier: null,
   }
 
-  it('carte rend référence, statut, total .num et « Générer la facture »/« Créer le chantier »', () => {
+  it('carte rend référence, statut, total .num et « Créer le chantier » (plus aucun bouton de facturation hérité)', () => {
     renderTab({ state: leadState({ devis: [devisAccepte] }) })
     expect(screen.getByText('DEV-2026-001')).toBeInTheDocument()
     expect(screen.getByText('Accepté')).toBeInTheDocument()
     expect(document.querySelector('.num')).toHaveTextContent('15 000')
-    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Créer le chantier/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Facturer|Générer la facture/ })).toBeNull()
   })
 
-  it('« Générer la facture » appelle ventesApi puis onAction(\'refresh\')', async () => {
+  // VNT75 — « Facturer l'acompte » / « Facturer le solde » sont ouverts par
+  // `vente.peut` (exemples COMMITTÉS de `vente_etat.json`), jamais par
+  // `solde.porte_facturation` ni par le statut seul.
+  const avecVente = (variante, extra = {}) => ({
+    ...devisAccepte, ...extra, vente: exempleContrat('ventes', 'vente_etat', variante).vente,
+  })
+  const LEGACY = /Facturer \(facture complète\)|Facturer par tranches|Générer la facture/
+
+  it("VNT75 — acompte ouvert : « Facturer l'acompte » seul, ouvre FacturerVenteDialog", async () => {
     const user = userEvent.setup()
-    const { onAction } = renderTab({ state: leadState({ devis: [devisAccepte] }) })
-    await user.click(screen.getByRole('button', { name: /Facturer par tranches/ }))
-    await waitFor(() => expect(genererFacture).toHaveBeenCalledWith(1))
-    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
-    expect(await screen.findByText(/FAC-1 créée/)).toBeInTheDocument()
+    apercuFacturerVente.mockResolvedValue({ data: { plan: [], prochaine: null, vente: null } })
+    const { onAction } = renderTab({ state: leadState({ devis: [avecVente('exemple', { id: 502 })] }) })
+    expect(screen.queryByRole('button', { name: /Facturer le solde/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: LEGACY })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Facturer l'acompte/ }))
+    await waitFor(() => expect(apercuFacturerVente).toHaveBeenCalledWith(502))
+    expect(genererFacture).not.toHaveBeenCalled()
+    expect(onAction).not.toHaveBeenCalledWith('refresh')
   })
 
-  // ATOT31 — les boutons suivent `solde.porte_facturation` du contrat
-  // `devis_solde.json` (exemples COMMITTÉS, jamais un mock inventé).
-  const avecPorte = (variante) => ({
-    ...devisAccepte,
-    solde: exempleContrat('ventes', 'devis_solde', variante).solde,
+  it('VNT75 — acompte payé : « Facturer le solde » seul', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_acompte_paye_solde_a_faire')] }) })
+    expect(screen.getByRole('button', { name: /Facturer le solde/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Facturer l'acompte/ })).toBeNull()
   })
 
-  it('porte aucune masque generer-facture', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple_tout_facture')] }) })
-    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
+  it.each([
+    ['exemple_tout_facture'], ['exemple_version_remplacee'], ['exemple_acompte_brouillon'], ['exemple_revision_en_cours'],
+  ])('VNT75 — %s : aucun bouton « Facturer… »', (variante) => {
+    renderTab({ state: leadState({ devis: [avecVente(variante)] }) })
+    expect(screen.queryByRole('button', { name: /Facturer/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: LEGACY })).toBeNull()
   })
 
-  it('porte tranche', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple')] }) })
-    expect(screen.getByRole('button', { name: /Générer la facture/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
-  })
-
-  it('porte libre', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple_vide')] }) })
-    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
+  it('VNT75 — jamais sur une version remplacée, même si le serveur laissait `peut` ouvert', () => {
+    const v = avecVente('exemple')
+    renderTab({ state: leadState({ devis: [{ ...v, vente: { ...v.vente, est_tete: false } }] }) })
+    expect(screen.queryByRole('button', { name: /Facturer/ })).toBeNull()
   })
 
   it('« Créer le chantier » appelle installationsApi puis onAction(\'refresh\')', async () => {
@@ -1252,5 +1267,274 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     renderTab({ state: leadState({ devis: [carte('exemple_remplace')] }) })
     expect(screen.queryByRole('button', { name: /^Modifier$/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Réviser/ })).toBeNull()
+  })
+})
+
+/* VNT74 (Groupe VNT, M2) — panneau de vente EN LECTURE SEULE dans la carte
+   d'un devis accepté : tout est lu de `d.vente` (exemples COMMITTÉS de
+   `ventes/contract_samples/vente_etat.json`, jamais un mock inventé). */
+describe('VNT74 — panneau de vente (lecture seule)', () => {
+  const accepte = {
+    id: 502, reference: 'DEV-202610-0021', statut: 'accepte', total_ttc: '49000',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+  }
+  const avecVente = (variante, extra = {}) => ({
+    ...accepte, ...extra, vente: exempleContrat('ventes', 'vente_etat', variante).vente,
+  })
+
+  it('acompte en brouillon : prix convenu, pastille « Brouillon » distincte d\'« Émise », reste', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_acompte_brouillon')] }) })
+    const panneau = screen.getByTestId('panneau-vente-502')
+    expect(within(panneau).getByTestId('vente-bilan')).toHaveTextContent(/Prix convenu/)
+    expect(within(panneau).getByTestId('vente-bilan')).toHaveTextContent(/49\s?000/)
+    const ligne = within(panneau).getByTestId('vente-facture-117')
+    expect(ligne).toHaveTextContent('BROUILLON-117')
+    expect(within(ligne).getByText('Brouillon')).toBeInTheDocument()
+    expect(within(ligne).queryByText('Émise')).toBeNull()
+    expect(within(panneau).getByTestId('vente-bilan')).toHaveTextContent(/Reste à facturer/)
+  })
+
+  it('acompte payé : pastille « Payée », payé 15 000 et reste à payer 34 000', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_acompte_paye_solde_a_faire')] }) })
+    const bilan = screen.getByTestId('vente-bilan')
+    expect(bilan).toHaveTextContent(/Payé/)
+    expect(bilan).toHaveTextContent(/15\s?000/)
+    expect(bilan).toHaveTextContent(/34\s?000/)
+    expect(within(screen.getByTestId('vente-facture-118')).getByText('Payée')).toBeInTheDocument()
+  })
+
+  it('version remplacée : « Remplacé par … » et AUCUN bouton dans le panneau', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_version_remplacee', { id: 501, reference: 'DEV-202610-0020' })] }) })
+    const panneau = screen.getByTestId('panneau-vente-501')
+    expect(within(panneau).getByTestId('vente-remplacee-501')).toHaveTextContent('Remplacé par DEV-202610-0021')
+    expect(within(panneau).queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('sans `vente` (ancien serveur) : aucun panneau', () => {
+    renderTab({ state: leadState({ devis: [accepte] }) })
+    expect(screen.queryByTestId('panneau-vente-502')).toBeNull()
+  })
+
+  it('un PATCH / refresh dont la réponse n\'a pas `vente` garde l\'état du dernier GET détail', () => {
+    const premier = avecVente('exemple_acompte_brouillon')
+    const { rerender } = renderTab({ state: leadState({ devis: [premier] }) })
+    expect(screen.getByTestId('vente-facture-117')).toBeInTheDocument()
+    const sansVente = { ...premier }
+    delete sansVente.vente
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [sansVente] })} onAction={vi.fn()} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('panneau-vente-502')).toBeInTheDocument()
+    expect(screen.getByTestId('vente-facture-117')).toBeInTheDocument()
+  })
+})
+
+/* VNT76 — gestes PAR FACTURE dans le panneau : Émettre, PDF, Envoyer (WhatsApp /
+   e-mail), Reçu PAR PAIEMENT ; chaque bouton suit `facture.peut` (serveur) ;
+   un refus s'affiche en `role=alert` SOUS cette facture avec sa référence, jamais
+   en toast. (Encaisser : PaiementDialog.instantane.test.jsx.) */
+describe('VNT76 — gestes par facture du panneau de vente', () => {
+  const accepte = {
+    id: 502, reference: 'DEV-202610-0021', statut: 'accepte', total_ttc: '49000',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+  }
+  const carte = (variante) => ({
+    ...accepte, vente: exempleContrat('ventes', 'vente_etat', variante).vente,
+  })
+
+  it('brouillon : Émettre et PDF seulement (peut.emettre / peut.pdf), pas d\'Envoyer ni d\'Encaisser', () => {
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('vente-facture-117')
+    expect(within(ligne).getByRole('button', { name: 'Émettre' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    expect(within(ligne).queryByRole('button', { name: /WhatsApp|E-mail|Encaisser/ })).toBeNull()
+  })
+
+  it('Émettre : appelle l\'API de CETTE facture puis rafraîchit la fiche', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    await user.click(within(screen.getByTestId('vente-facture-117')).getByRole('button', { name: 'Émettre' }))
+    await waitFor(() => expect(emettreFacture).toHaveBeenCalledWith(117))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('refus serveur : role=alert SOUS la facture avec sa référence, aucun toast', async () => {
+    const user = userEvent.setup()
+    const err = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    emettreFacture.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'La facture est déjà émise.', code: 'deja_emise' } },
+    })
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    await user.click(within(screen.getByTestId('vente-facture-117')).getByRole('button', { name: 'Émettre' }))
+    const alerte = await within(screen.getByTestId('vente-facture-117')).findByRole('alert')
+    expect(alerte).toHaveTextContent('BROUILLON-117')
+    expect(alerte).toHaveTextContent('La facture est déjà émise.')
+    expect(err).not.toHaveBeenCalled()
+  })
+
+  it('facture payée : PDF, WhatsApp, E-mail et Reçu par paiement ; pas d\'Émettre', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('vente-facture-118')
+    expect(within(ligne).queryByRole('button', { name: 'Émettre' })).toBeNull()
+    await user.click(within(ligne).getByRole('button', { name: 'PDF' }))
+    await waitFor(() => expect(ouvrirPdfFacture).toHaveBeenCalledWith(118, 'FAC-202610-0007', undefined))
+    await user.click(within(ligne).getByRole('button', { name: 'E-mail' }))
+    await waitFor(() => expect(envoyerEmailFacture).toHaveBeenCalledWith(118))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    await user.click(within(ligne).getByRole('button', { name: 'WhatsApp' }))
+    await waitFor(() => expect(whatsappFacture).toHaveBeenCalledWith(118, { modele: 'facture', langue: 'fr' }))
+    await waitFor(() => expect(open).toHaveBeenCalledWith('https://wa.me/212612345678?text=x', '_blank', 'noopener'))
+    open.mockRestore()
+    await user.click(within(screen.getByTestId('vente-paiement-301')).getByRole('button', { name: /Reçu/ }))
+    await waitFor(() => expect(recuPdfPaiement).toHaveBeenCalledWith(301))
+  })
+
+  it('« Reçu » seulement quand le serveur l\'ouvre (paiement.peut.recu)', () => {
+    const c = carte('exemple_acompte_paye_solde_a_faire')
+    c.vente.factures[0].paiements[0].peut = { recu: false }
+    renderTab({ state: leadState({ devis: [c] }) })
+    expect(within(screen.getByTestId('vente-paiement-301')).queryByRole('button', { name: /Reçu/ })).toBeNull()
+  })
+})
+
+/* VNT78 — « Prix négocié » (PrixNegocieDialog, VNT73) monté dans le panneau :
+   ouvert par `vente.peut.prix_negocie` (tête acceptée active seulement) ; le
+   succès rafraîchit la fiche, qui montre alors la V2 acceptée. */
+describe('VNT78 — « Prix négocié » dans le panneau de vente', () => {
+  const CONTRAT = documentContrat('ventes', 'devis_prix_negocie')
+  const tete = {
+    id: 501, reference: 'DEV-202610-0020', statut: 'accepte', total_ttc: '54500',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+    vente: { ...exempleContrat('ventes', 'vente_etat', 'exemple_acompte_paye_solde_a_faire').vente,
+      prix_convenu_ttc: '54500.00', tete_id: 501,
+      versions: [{ id: 501, reference: 'DEV-202610-0020', version: 1, statut: 'accepte', is_active: true }] },
+  }
+
+  it('bouton ouvert par vente.peut.prix_negocie, absent sur version remplacée et quand le serveur le ferme', () => {
+    renderTab({ state: leadState({ devis: [tete] }) })
+    expect(screen.getByTestId('vente-prix-negocie-501')).toBeInTheDocument()
+    cleanup()
+    const remplacee = { ...tete, vente: exempleContrat('ventes', 'vente_etat', 'exemple_version_remplacee').vente }
+    renderTab({ state: leadState({ devis: [{ ...remplacee, id: 501 }] }) })
+    expect(screen.queryByTestId('vente-prix-negocie-501')).toBeNull()
+    cleanup()
+    const ferme = { ...tete, vente: { ...tete.vente, peut: { ...tete.vente.peut, prix_negocie: false } } }
+    renderTab({ state: leadState({ devis: [ferme] }) })
+    expect(screen.queryByTestId('vente-prix-negocie-501')).toBeNull()
+  })
+
+  it('tête 54 500 avec 15 000 facturés : aperçu, application, puis la V2 acceptée s\'affiche', async () => {
+    const user = userEvent.setup()
+    prixNegocie.mockImplementation((id, body) => Promise.resolve({
+      data: JSON.parse(JSON.stringify(body.mode === 'appliquer' ? CONTRAT.reponse_appliquer_201 : CONTRAT.reponse_apercu_200)),
+    }))
+    const { onAction, rerender } = renderTab({ state: leadState({ devis: [tete] }) })
+    await user.click(screen.getByTestId('vente-prix-negocie-501'))
+    await user.type(await screen.findByLabelText('Prix négocié TTC (MAD)'), '49000')
+    expect(await screen.findByTestId('prix-negocie-apercu')).toBeInTheDocument()
+    expect(screen.getByTestId('prix-negocie-remise')).toHaveTextContent('10,00')
+    await user.click(screen.getByRole('button', { name: 'Appliquer le prix négocié' }))
+    await waitFor(() => expect(prixNegocie).toHaveBeenCalledWith(501, expect.objectContaining({ mode: 'appliquer', prix_ttc: '49000' })))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    // la fiche relue porte la V1 remplacée et la V2 acceptée
+    const v1 = { ...tete, is_active: false, vente: exempleContrat('ventes', 'vente_etat', 'exemple_version_remplacee').vente }
+    const v2 = { ...tete, id: 502, reference: 'DEV-202610-0021', total_ttc: '49000',
+      vente: exempleContrat('ventes', 'vente_etat', 'exemple').vente }
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [v1, v2] })} onAction={onAction} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('panneau-vente-502')).toBeInTheDocument()
+    expect(within(screen.getByTestId('panneau-vente-502')).getByTestId('vente-bilan')).toHaveTextContent(/49\s?000/)
+    expect(screen.queryByTestId('vente-prix-negocie-501')).toBeNull()
+  })
+})
+
+/* VNT80 — « Réviser » refusé par un 409 qui NOMME la tête (contrat
+   devis_prix_negocie.json, erreurs_409.version_remplacee) : l'erreur reste SOUS
+   la carte (role=alert) avec « Ouvrir <réf> » qui fait défiler jusqu'à la tête. */
+describe('VNT80 — 409 nommant la tête : erreur sous la carte + « Ouvrir <réf> »', () => {
+  const carte = (extra = {}) => ({
+    ...exempleContrat('ventes', 'devis_modifiabilite', 'exemple_accepte'),
+    total_ttc: '15000', date_creation: '2026-01-05', chantier: null, ...extra,
+  })
+  const CORPS = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.version_remplacee
+
+  it('alerte sous CETTE carte, « Ouvrir DEV-… » défile jusqu à la tête, aucun toast', async () => {
+    const user = userEvent.setup()
+    const err = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const defiler = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
+    reviserDevis.mockRejectedValueOnce({ response: { status: 409, data: CORPS } })
+    renderTab({
+      state: leadState({ devis: [carte(), carte({ id: 503, reference: 'DEV-202610-0022' })] }),
+    })
+    const carteBasse = document.getElementById('devis-card-414')
+    await user.click(within(carteBasse).getByRole('button', { name: /Réviser/ }))
+    const alerte = await within(carteBasse).findByRole('alert')
+    expect(alerte).toHaveTextContent(CORPS.detail)
+    expect(err).not.toHaveBeenCalled()
+    await user.click(within(alerte).getByRole('button', { name: 'Ouvrir DEV-202610-0022' }))
+    expect(defiler).toHaveBeenCalled()
+    expect(defiler.mock.contexts.at(-1).id).toBe('devis-card-503')
+    defiler.mockRestore()
+  })
+})
+
+/* VNT81 — panneau de vente au téléphone (< 768 px) : cibles ≥ 44 px (min-h-11),
+   AU PLUS deux boutons visibles par facture (le geste principal + « Plus
+   d'actions »), Reçu et envois dans le menu ; le bureau garde tout visible. */
+describe('VNT81 — panneau de vente utilisable au téléphone', () => {
+  const accepte = {
+    id: 502, reference: 'DEV-202610-0021', statut: 'accepte', total_ttc: '49000',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+  }
+  const carte = (variante) => ({ ...accepte, vente: exempleContrat('ventes', 'vente_etat', variante).vente })
+  const stubMobile = (mobile) => vi.stubGlobal('matchMedia', (media) => ({
+    matches: mobile, media, onchange: null, dispatchEvent: () => false,
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+  }))
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('téléphone : ≤ 2 boutons par facture, cibles min-h-11, le reste dans « Plus d\'actions »', async () => {
+    stubMobile(true)
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('vente-facture-118')
+    const boutons = within(ligne).getAllByRole('button')
+    expect(boutons.length).toBeLessThanOrEqual(2)
+    for (const b of boutons) expect(b.className).toContain('min-h-11')
+    expect(within(ligne).queryByRole('button', { name: 'WhatsApp' })).toBeNull()
+    await user.click(within(ligne).getByRole('button', { name: /Plus d'actions/ }))
+    expect(await screen.findByRole('menuitem', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'E-mail' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Reçu/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: /Reçu/ }))
+    await waitFor(() => expect(recuPdfPaiement).toHaveBeenCalledWith(301))
+  })
+
+  it('téléphone : « Facturer le solde » a une cible de 44 px', () => {
+    stubMobile(true)
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    expect(screen.getByRole('button', { name: /Facturer le solde/ }).className).toContain('min-h-11')
+  })
+
+  it('bureau : tout reste visible (WhatsApp, E-mail, Reçu), pas de menu', () => {
+    stubMobile(false)
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('vente-facture-118')
+    expect(within(ligne).getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: 'E-mail' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: /Reçu/ })).toBeInTheDocument()
+    expect(within(ligne).queryByRole('button', { name: /Plus d'actions/ })).toBeNull()
   })
 })

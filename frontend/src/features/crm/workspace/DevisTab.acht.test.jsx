@@ -9,7 +9,7 @@ import DevisTab from './DevisTab'
 
 vi.mock('../../../api/ventesApi', () => ({
   default: {
-    genererFacture: vi.fn(), shareLinkDevis: vi.fn(),
+    apercuFacturerVente: vi.fn(), shareLinkDevis: vi.fn(),
     getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
     reviserDevis: vi.fn(),
   },

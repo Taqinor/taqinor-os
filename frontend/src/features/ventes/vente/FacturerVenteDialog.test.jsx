@@ -270,3 +270,25 @@ describe('FacturerVenteDialog (VNT45)', () => {
     expect(contenu.className).not.toContain('-translate-y-1/2')
   })
 })
+
+/* VNT81 — « Facturer l'acompte » au téléphone : le dialogue est un TIROIR BAS
+   (ResponsiveDialog, < 768 px), sur toute la largeur — pas une modale centrée. */
+describe('FacturerVenteDialog — VNT81 : tiroir bas au téléphone', () => {
+  it('< 768 px : tiroir bas (rounded-t-2xl), pas de modale centrée', async () => {
+    mockMatchMedia(true)
+    monter()
+    await attendreApercu()
+    const contenu = document.querySelector('[role="dialog"]')
+    expect(contenu.className).toContain('rounded-t-2xl')
+    expect(contenu.className).not.toContain('-translate-y-1/2')
+  })
+
+  it('≥ 768 px : modale centrée', async () => {
+    mockMatchMedia(false)
+    monter()
+    await attendreApercu()
+    const contenu = document.querySelector('[role="dialog"]')
+    expect(contenu.className).toContain('-translate-y-1/2')
+    expect(contenu.className).not.toContain('rounded-t-2xl')
+  })
+})

@@ -8,7 +8,8 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import { toast } from '../../ui'
-import { reviserEtOuvrir } from './reviserDevis'
+import { reviserEtOuvrir, lireConflit } from './reviserDevis'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 const DEVIS = { id: 12, reference: 'DEV-202609-0012', chantier: null }
 
@@ -63,5 +64,50 @@ describe('QJR533 — reviserEtOuvrir', () => {
       navigate: vi.fn(),
     })
     expect(ordre).toEqual(['warning', 'appel'])
+  })
+})
+
+/* VNT80 — un 409 qui NOMME un autre devis (contrat `devis_prix_negocie.json`,
+   erreurs_409) : la forme `{conflit, successeur}` est rendue, le devis nommé
+   s'ouvre (« Ouvrir <réf> »), et un appelant qui affiche lui-même l'erreur
+   (`onConflit`) évite le toast. */
+describe('VNT80 — reviserEtOuvrir : 409 qui nomme un autre devis', () => {
+  const ERREURS = documentContrat('ventes', 'devis_prix_negocie').erreurs_409
+  const rejeter409 = (corps) => ventesApi.reviserDevis.mockRejectedValue({ response: { status: 409, data: corps } })
+
+  it('version_remplacee : rend {conflit, successeur}, toast avec action « Ouvrir <réf> » vers ?devis=', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const navigate = vi.fn()
+    rejeter409(ERREURS.version_remplacee)
+    const r = await reviserEtOuvrir({ devis: DEVIS, navigate })
+    expect(r).toMatchObject({ conflit: true, code: 'version_remplacee', successeur: { id: 503, reference: 'DEV-202610-0022' } })
+    expect(erreur).toHaveBeenCalledWith(
+      ERREURS.version_remplacee.detail,
+      { action: expect.objectContaining({ label: 'Ouvrir DEV-202610-0022' }) },
+    )
+    erreur.mock.calls[0][1].action.onClick()
+    expect(navigate).toHaveBeenCalledWith('/ventes/devis?devis=503')
+  })
+
+  it('vente_active_existante : le devis nommé est `vente_active`', async () => {
+    vi.spyOn(toast, 'error').mockImplementation(() => {})
+    rejeter409(ERREURS.vente_active_existante)
+    const r = await reviserEtOuvrir({ devis: DEVIS, navigate: vi.fn() })
+    expect(r.successeur).toEqual({ id: 410, reference: 'DEV-202610-0009' })
+  })
+
+  it('onConflit : l\'appelant montre l\'erreur sous sa carte, aucun toast', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const onConflit = vi.fn()
+    rejeter409(ERREURS.version_remplacee)
+    await reviserEtOuvrir({ devis: DEVIS, navigate: vi.fn(), onConflit })
+    expect(onConflit).toHaveBeenCalledWith(expect.objectContaining({ successeur: { id: 503, reference: 'DEV-202610-0022' } }))
+    expect(erreur).not.toHaveBeenCalled()
+  })
+
+  it('lireConflit : ni un 400, ni un 409 sans devis nommé', () => {
+    expect(lireConflit({ response: { status: 400, data: ERREURS.version_remplacee } })).toBeNull()
+    expect(lireConflit({ response: { status: 409, data: ERREURS.pas_une_vente_active } })).toBeNull()
+    expect(lireConflit(new Error('réseau'))).toBeNull()
   })
 })

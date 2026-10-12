@@ -20,7 +20,8 @@ vi.mock('../../../api/ventesApi', async (importOriginal) => {
 
 import SigneDialog from './SigneDialog'
 import ventesApi from '../../../api/ventesApi'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
+import { toast } from '../../../ui'
 
 const ERP = exempleContrat('ventes', 'acceptation_entreprise', 'exemple_erp').corps
 
@@ -68,5 +69,22 @@ describe('SigneDialog — CIQ324 identité d\'entreprise', () => {
     await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
     expect(Object.keys(ventesApi.accepterDevis.mock.calls[0][1]).sort())
       .toEqual(['date', 'nom', 'option'])
+  })
+})
+
+describe('SigneDialog — VNT80 : 409 qui nomme le devis de la vente active', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('toast nommé avec « Ouvrir <réf> » (corps du contrat devis_prix_negocie.json)', async () => {
+    const corps = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.vente_active_existante
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    await ouvrir('residentiel')
+    ventesApi.accepterDevis.mockRejectedValueOnce({ response: { status: 409, data: corps } })
+    confirmer()
+    await waitFor(() => expect(erreur).toHaveBeenCalledWith(
+      corps.detail,
+      { action: expect.objectContaining({ label: 'Ouvrir DEV-202610-0009' }) },
+    ))
+    erreur.mockRestore()
   })
 })

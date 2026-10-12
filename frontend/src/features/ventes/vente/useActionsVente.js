@@ -19,6 +19,8 @@ const REPLIS = {
   emettre: 'Émission impossible.',
   recu: 'Reçu indisponible pour le moment.',
   pdf: 'PDF de la facture indisponible pour le moment.',
+  whatsapp: 'Envoi WhatsApp impossible.',
+  email: "Envoi de l'e-mail impossible.",
 }
 
 /** `Quittance_<numero_recu>.pdf` lu de l'en-tête serveur, sinon repli sur le paiement. */
@@ -30,15 +32,19 @@ export function nomQuittance(headers, paiement) {
 }
 
 /**
+ * VNT76 — `liste: false` : pas de rechargement de la liste des factures (le
+ * panneau de vente vit hors de cet écran) ; `onChange()` : appelé après tout
+ * geste qui a MODIFIÉ la facture (le panneau relit alors la fiche).
  * @returns {{
  *   occupe: string|null,
  *   erreur: {geste: string, factureId: number, message: string, code: string}|null,
  *   effacerErreur: () => void,
  *   facturesChargees: () => Array,
  *   annuler: Function, supprimer: Function, emettre: Function, recu: Function, pdf: Function,
+ *   whatsapp: Function, envoyerEmail: Function,
  * }}
  */
-export function useActionsVente() {
+export function useActionsVente({ liste = true, onChange } = {}) {
   // Contexte redux OPTIONNEL : une ligne rendue hors <Provider> (test, aperçu)
   // fonctionne, sans rafraîchissement de liste.
   const redux = useContext(ReactReduxContext)
@@ -76,7 +82,10 @@ export function useActionsVente() {
     setErreur(null)
     try {
       const res = await action()
-      if (rafraichirListe) rafraichir()
+      if (rafraichirListe) {
+        if (liste) rafraichir()
+        onChange?.()
+      }
       return { ok: true, data: res?.data }
     } catch (err) {
       const { message, code } = await lireErreur(err, geste)
@@ -104,6 +113,18 @@ export function useActionsVente() {
     return res
   }, { rafraichirListe: false, cle: paiement.id })
 
+  /** WhatsApp : le serveur construit le message et consigne l'envoi ; on ouvre wa.me. */
+  const whatsapp = async (facture) => {
+    const res = await executer('whatsapp', facture, () => (
+      ventesApi.whatsappFacture(facture.id, { modele: 'facture', langue: 'fr' })), { rafraichirListe: false })
+    if (res.ok && res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
+    return res
+  }
+
+  /** E-mail au client de la facture (adresse du client côté serveur). */
+  const envoyerEmail = (facture) => executer('email', facture, () => (
+    ventesApi.envoyerEmailFacture(facture.id)), { rafraichirListe: false })
+
   /** Génère puis ouvre le PDF de la facture (sondage borné de `facturePdf.js`). */
   const pdf = async (facture, options) => {
     setOccupe(`pdf:${facture.id}`)
@@ -121,7 +142,7 @@ export function useActionsVente() {
     }
   }
 
-  return { occupe, erreur, effacerErreur, facturesChargees, annuler, supprimer, emettre, recu, pdf }
+  return { occupe, erreur, effacerErreur, facturesChargees, annuler, supprimer, emettre, recu, pdf, whatsapp, envoyerEmail }
 }
 
 export default useActionsVente
