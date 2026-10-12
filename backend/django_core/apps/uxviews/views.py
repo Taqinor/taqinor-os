@@ -334,8 +334,11 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
                 f'« {instance.ecran} » : « {instance.nom} ».'))
         return Response(SavedViewSerializer(instance).data)
 
+    # ENF11 — la réponse est un tableau NU (pas l'enveloppe count/results) :
+    # sans `pagination_class=None`, le schéma annonçait PaginatedSavedViewList.
     @extend_schema(responses=SavedViewSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='toutes-company')
+    @action(detail=False, methods=['get'], url_path='toutes-company',
+            pagination_class=None)
     def toutes_company(self, request):
         """NTUX23 — Rapport « configuration des vues actives » : liste ADMIN
         de TOUTES les `SavedView` de la company (au-delà du filtre perso/
