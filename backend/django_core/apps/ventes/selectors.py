@@ -1710,6 +1710,15 @@ from .selectors_stock import (  # noqa: E402,F401 — ré-export (SPL147)
     devis_utilisant_produit,
 )
 
+# VNT23 — l'état de la vente se lit par la FAÇADE (contrat import-linter
+# ``vente-lue-par-la-facade``) ; défini UNE fois dans ``vente_facturation``.
+# Exception C20 : FACADE backend/django_core/apps/ventes/selectors.py car :
+# frontière M3, lecture cross-app par `selectors`.
+from .vente_facturation import (  # noqa: E402,F401 — ré-export (VNT23)
+    etat_vente,
+    etat_vente_map,
+)
+
 
 def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
                           exclure_id=None):

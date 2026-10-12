@@ -207,45 +207,26 @@ def _ventilation_reste(paniers, autres, ttc, ht, tva):
     return _ventilation(paniers, ttc, ht, tva)
 
 
-def plan_facturation(devis, option=None, lignes=None) -> dict:
-    """LE plan de facturation de la vente de ``devis`` (lecture pure).
+def _somme(couples):
+    """(ttc, ht, tva) nets (avoirs de correction déduits) de ``couples``
+    ``[(facture, part)]``."""
+    ttc = ht = tva = ZERO
+    for f, ratio in couples:
+        a, b, d = _montants_nets(f, ratio)
+        ttc, ht, tva = ttc + a, ht + b, tva + d
+    return ttc, ht, tva
 
-    Rend ``{prix_convenu_ttc, prix_convenu_ht, prix_convenu_tva, tranches,
-    emis_net, brouillons, prevu, reste_a_facturer, prochaine, hors_tranche}``
-    où ``tranches`` = ``[{cle, key, libelle, unite, valeur, cible_cumul_ttc,
-    montant_ttc, ht, tva, ventilation_tva, pourcentage, type, statut,
-    facture_id, ...}]`` (``statut`` ∈ emise | brouillon | a_faire) et
-    ``prochaine`` = la première tranche ``a_faire`` de montant > 0 (ou None).
 
-    Le prix convenu est ``option_totaux(devis, option, lignes)`` ; les
-    factures sont celles de TOUTE la vente (``factures_de_la_vente``)."""
-    from apps.ventes.utils.echeancier import (
-        UNITE_MONTANT, _tranche_type, cles_tranches, tranches_normalisees,
-    )
-    from apps.ventes.utils.options import option_totaux
-    tot = option_totaux(devis, option=option, lignes=lignes)
-    T_ttc, T_ht, T_tva = _d(tot['ttc']), _d(tot['ht']), _d(tot['tva'])
-    paniers = [{'taux': b['taux'], 'base_ht': b['base_ht'],
-                'montant': b['montant']}
-               for b in (tot.get('tva_par_taux') or [])]
-
-    ids = set(_ids_chaine(devis)) if getattr(devis, 'pk', None) else set()
-    parts = _factures_et_parts(devis)
-    emis_net = brouillons = ZERO
-    for f, ratio in parts:
-        ttc, _ht, _tva = _montants_nets(f, ratio)
-        if f.statut in STATUTS_EMIS:
-            emis_net += ttc
-        elif f.statut == STATUT_BROUILLON:
-            brouillons += _d(f.total_ttc) * ratio
-
-    tranches = tranches_normalisees(devis)
-    cles = cles_tranches(tranches)
-    # Couverture par CLÉ (ATOT5) ; une facture de tranche SANS clé
-    # (historique) occupe, dans l'ordre, la première clé libre.
+def _couverture(parts, cles, ids):
+    """``({clé: [(facture, part)]}, hors)`` — couverture par CLÉ (ATOT5) ;
+    une facture de tranche SANS clé (historique) occupe, dans l'ordre, la
+    première clé libre. ``hors`` = factures ÉMISES hors échéancier (complète,
+    BC, consolidée, clé disparue). VNT20 — un BROUILLON hors échéancier (BC,
+    complète, complément de révision) est une alternative concurrente, pas
+    une part du plan : il ne réduit aucune tranche ; seule son ÉMISSION est
+    bornée au prix convenu (:func:`motif_emission_hors_prix`)."""
     couvrantes = {c: [] for c in cles}
-    hors = []
-    sans_cle = []
+    hors, sans_cle = [], []
     for f, ratio in parts:
         if f.statut not in STATUTS_EMIS and f.statut != STATUT_BROUILLON:
             continue
@@ -257,113 +238,137 @@ def plan_facturation(devis, option=None, lignes=None) -> dict:
             hors.append((f, ratio))
     for f, ratio in sans_cle:
         libre = next((c for c in cles if not couvrantes[c]), None)
-        if libre is None:
-            hors.append((f, ratio))
-        else:
-            couvrantes[libre].append((f, ratio))
-    # VNT20 — un BROUILLON hors échéancier (facture de BC, complète,
-    # complément de révision) est une alternative concurrente, pas une part
-    # du plan : il ne réduit aucune tranche ; seule son ÉMISSION est bornée
-    # au prix convenu (``motif_emission_hors_prix``).
-    hors = [(f, r) for f, r in hors if f.statut in STATUTS_EMIS]
+        (hors if libre is None else couvrantes[libre]).append((f, ratio))
+    return couvrantes, [(f, r) for f, r in hors if f.statut in STATUTS_EMIS]
 
-    # Ce qui est réalisé (net des corrections) par tranche couverte et hors
-    # échéancier (complète, BC, consolidée, clé disparue).
-    realise = {}
-    for c in cles:
-        if couvrantes[c]:
-            ttc = ht = tva = ZERO
-            for f, ratio in couvrantes[c]:
-                a, b, d = _montants_nets(f, ratio)
-                ttc, ht, tva = ttc + a, ht + b, tva + d
-            realise[c] = (ttc, ht, tva)
-    hors_ttc = hors_ht = hors_tva = ZERO
-    for f, ratio in hors:
-        a, b, d = _montants_nets(f, ratio)
-        hors_ttc, hors_ht, hors_tva = hors_ttc + a, hors_ht + b, hors_tva + d
 
+def _montants_a_faire(t, valeur, v, ctx, i, etat):
+    """(ttc, ht, tva) d'une tranche À FAIRE. La FERMANTE (dernière à faire)
+    vaut le RESTE exact (TTC, HT, TVA) ; une autre vaut sa cible cumulée
+    moins ce qui est prévu avant elle, bornée au prix convenu (une tranche
+    inchangée garde la fraction déclarée : HT d'hier au centime)."""
+    from apps.ventes.utils.echeancier import UNITE_MONTANT
+    t_ttc, t_ht, t_tva = ctx['T']
+    cumul = etat['cumul']
+    apres = [ctx['realise'][c] for c in ctx['cles'][i + 1:]
+             if c in ctx['realise']]
+    reste_ttc = t_ttc - cumul[0] - sum((r[0] for r in apres), ZERO)
+    if i == ctx['fermante']:
+        if reste_ttc <= 0:
+            return ZERO, ZERO, ZERO
+        return (reste_ttc,
+                t_ht - cumul[1] - sum((r[1] for r in apres), ZERO),
+                t_tva - cumul[2] - sum((r[2] for r in apres), ZERO))
+    ttc = max(ZERO, min(etat['declare'] - cumul[0], reste_ttc))
+    if t['unite'] != UNITE_MONTANT and ttc == v:
+        frac = valeur / 100
+    else:
+        frac = (ttc / t_ttc) if t_ttc > 0 else ZERO
+    ht = _q(t_ht * frac) if ttc > 0 else ZERO
+    return ttc, ht, ttc - ht
+
+
+def _tranche_du_plan(i, t, cle, ctx, etat):
+    """Une ligne du plan ; avance ``etat`` (cible déclarée cumulée, cumul
+    prévu TTC/HT/TVA, ventilations déjà posées)."""
+    from apps.ventes.utils.echeancier import UNITE_MONTANT, _tranche_type
+    t_ttc = ctx['T'][0]
+    realise = ctx['realise']
+    valeur = _d(t['valeur'])
+    v = _q(valeur) if t['unite'] == UNITE_MONTANT else \
+        _q(t_ttc * valeur / 100)
+    if cle in realise and t['unite'] != UNITE_MONTANT:
+        # Une tranche en % déjà facturée vaut ce qu'elle a facturé (le
+        # montant tapé fait foi, D-VNT-3) ; une tranche en MAD garde son
+        # montant contractuel (un écart — facture re-pointée d'une version
+        # antérieure — est absorbé par la tranche suivante).
+        v = _q(realise[cle][0])
+    etat['declare'] = min(t_ttc, etat['declare'] + v)
+    ligne = {'cle': cle, 'key': t['key'], 'libelle': t['libelle'],
+             'unite': t['unite'], 'valeur': valeur,
+             'cible_cumul_ttc': _q(etat['declare']),
+             'type': _tranche_type(t['key'], i == len(ctx['cles']) - 1),
+             'statut': 'a_faire', 'facture_id': None}
+    for extra in ('jalon', 'delai_reglement_jours', 'payeur'):
+        if t.get(extra) is not None:
+            ligne[extra] = t[extra]
+    vent = None
+    if cle in realise:
+        ttc, ht, tva = realise[cle]
+        fs = [f for f, _r in ctx['couvrantes'][cle]]
+        ligne['statut'] = ('emise' if any(f.statut in STATUTS_EMIS
+                                          for f in fs) else 'brouillon')
+        ligne['facture_id'] = fs[0].pk
+        vent = fs[0].ventilation_tva if len(fs) == 1 else None
+    else:
+        ttc, ht, tva = _montants_a_faire(t, valeur, v, ctx, i, etat)
+    ttc, ht, tva = _q(ttc), _q(ht), _q(tva)
+    if ligne['statut'] == 'a_faire' and ttc > 0:
+        vent = (_ventilation_reste(ctx['paniers'], etat['ventilations'],
+                                   ttc, ht, tva)
+                if i == ctx['fermante'] else
+                _ventilation(ctx['paniers'], ttc, ht, tva))
+    etat['ventilations'].append(vent)
+    ligne.update({
+        'montant_ttc': ttc, 'ht': ht, 'tva': tva, 'ventilation_tva': vent,
+        'pourcentage': (_q(ttc / t_ttc * 100) if t_ttc > 0 else ZERO),
+        'is_last': i == ctx['fermante'],
+    })
+    c = etat['cumul']
+    etat['cumul'] = (c[0] + ttc, c[1] + ht, c[2] + tva)
+    return ligne
+
+
+def plan_facturation(devis, option=None, lignes=None) -> dict:
+    """LE plan de facturation de la vente de ``devis`` (lecture pure).
+
+    Rend ``{prix_convenu_ttc, prix_convenu_ht, prix_convenu_tva, tranches,
+    emis_net, brouillons, prevu, reste_a_facturer, prochaine, hors_tranche,
+    factures_parts}`` où ``tranches`` = ``[{cle, key, libelle, unite, valeur,
+    cible_cumul_ttc, montant_ttc, ht, tva, ventilation_tva, pourcentage,
+    type, statut, facture_id, is_last, ...}]`` (``statut`` ∈ emise |
+    brouillon | a_faire) et ``prochaine`` = la première tranche ``a_faire``
+    de montant > 0 (ou None).
+
+    Le prix convenu est ``option_totaux(devis, option, lignes)`` ; les
+    factures sont celles de TOUTE la vente (``factures_de_la_vente``)."""
+    from apps.ventes.utils.echeancier import (
+        cles_tranches, tranches_normalisees)
+    from apps.ventes.utils.options import option_totaux
+    tot = option_totaux(devis, option=option, lignes=lignes)
+    prix = (_d(tot['ttc']), _d(tot['ht']), _d(tot['tva']))
+    ids = set(_ids_chaine(devis)) if getattr(devis, 'pk', None) else set()
+    parts = _factures_et_parts(devis)
+    emis_net = sum((_montants_nets(f, r)[0] for f, r in parts
+                    if f.statut in STATUTS_EMIS), ZERO)
+    brouillons = sum((_d(f.total_ttc) * r for f, r in parts
+                      if f.statut == STATUT_BROUILLON), ZERO)
+    tranches = tranches_normalisees(devis)
+    cles = cles_tranches(tranches)
+    couvrantes, hors = _couverture(parts, cles, ids)
     a_faire = [i for i, c in enumerate(cles) if not couvrantes[c]]
-    fermante = a_faire[-1] if a_faire else None
-    sortie = []
-    declare = ZERO
-    cumul = (hors_ttc, hors_ht, hors_tva)
-    ventilations = []
-    for i, (t, cle) in enumerate(zip(tranches, cles)):
-        valeur = _d(t['valeur'])
-        v = _q(valeur) if t['unite'] == UNITE_MONTANT else \
-            _q(T_ttc * valeur / 100)
-        if cle in realise and t['unite'] != UNITE_MONTANT:
-            # Une tranche en % déjà facturée vaut ce qu'elle a facturé (le
-            # montant tapé fait foi, D-VNT-3) ; une tranche en MAD garde son
-            # montant contractuel (un écart — facture re-pointée d'une
-            # version antérieure — est absorbé par la tranche suivante).
-            v = _q(realise[cle][0])
-        declare = min(T_ttc, declare + v)
-        ligne = {'cle': cle, 'key': t['key'], 'libelle': t['libelle'],
-                 'unite': t['unite'], 'valeur': valeur,
-                 'cible_cumul_ttc': _q(declare),
-                 'type': _tranche_type(t['key'], i == len(tranches) - 1),
-                 'statut': 'a_faire', 'facture_id': None}
-        for extra in ('jalon', 'delai_reglement_jours', 'payeur'):
-            if t.get(extra) is not None:
-                ligne[extra] = t[extra]
-        if cle in realise:
-            ttc, ht, tva = realise[cle]
-            fs = [f for f, _r in couvrantes[cle]]
-            ligne['statut'] = ('emise' if any(f.statut in STATUTS_EMIS
-                                              for f in fs) else 'brouillon')
-            ligne['facture_id'] = fs[0].pk
-            vent = fs[0].ventilation_tva if len(fs) == 1 else None
-        elif i == fermante:
-            apres = [realise[c] for c in cles[i + 1:] if c in realise]
-            ttc = T_ttc - cumul[0] - sum((r[0] for r in apres), ZERO)
-            ht = T_ht - cumul[1] - sum((r[1] for r in apres), ZERO)
-            tva = T_tva - cumul[2] - sum((r[2] for r in apres), ZERO)
-            if ttc <= 0:
-                ttc = ht = tva = ZERO
-            vent = None
-        else:
-            apres = sum((realise[c][0] for c in cles[i + 1:]
-                         if c in realise), ZERO)
-            ttc = max(ZERO, min(declare - cumul[0],
-                                T_ttc - cumul[0] - apres))
-            if t['unite'] != UNITE_MONTANT and ttc == v:
-                frac = valeur / 100
-            else:
-                frac = (ttc / T_ttc) if T_ttc > 0 else ZERO
-            ht = _q(T_ht * frac) if ttc > 0 else ZERO
-            tva = ttc - ht
-            vent = None
-        ttc, ht, tva = _q(ttc), _q(ht), _q(tva)
-        if ligne['statut'] == 'a_faire' and ttc > 0:
-            vent = (_ventilation_reste(paniers, ventilations, ttc, ht, tva)
-                    if i == fermante else
-                    _ventilation(paniers, ttc, ht, tva))
-        ventilations.append(vent)
-        ligne.update({
-            'montant_ttc': ttc, 'ht': ht, 'tva': tva,
-            'ventilation_tva': vent,
-            'pourcentage': (_q(ttc / T_ttc * 100) if T_ttc > 0 else ZERO),
-            'is_last': i == fermante,
-        })
-        cumul = (cumul[0] + ttc, cumul[1] + ht, cumul[2] + tva)
-        sortie.append(ligne)
-
-    prochaine = next((t for t in sortie
-                      if t['statut'] == 'a_faire' and t['montant_ttc'] > 0),
-                     None)
-    prevu = emis_net + brouillons
-    reste = T_ttc - prevu
+    ctx = {'T': prix, 'cles': cles, 'couvrantes': couvrantes,
+           'realise': {c: _somme(couvrantes[c]) for c in cles
+                       if couvrantes[c]},
+           'fermante': a_faire[-1] if a_faire else None,
+           'paniers': [{'taux': b['taux'], 'base_ht': b['base_ht'],
+                        'montant': b['montant']}
+                       for b in (tot.get('tva_par_taux') or [])]}
+    etat = {'declare': ZERO, 'cumul': _somme(hors), 'ventilations': []}
+    sortie = [_tranche_du_plan(i, t, cle, ctx, etat)
+              for i, (t, cle) in enumerate(zip(tranches, cles))]
+    reste = prix[0] - emis_net - brouillons
     return {
-        'prix_convenu_ttc': _q(T_ttc),
-        'prix_convenu_ht': _q(T_ht),
-        'prix_convenu_tva': _q(T_tva),
+        'prix_convenu_ttc': _q(prix[0]),
+        'prix_convenu_ht': _q(prix[1]),
+        'prix_convenu_tva': _q(prix[2]),
         'tranches': sortie,
         'emis_net': _q(emis_net),
         'brouillons': _q(brouillons),
-        'prevu': _q(prevu),
+        'prevu': _q(emis_net + brouillons),
         'reste_a_facturer': _q(reste if reste > 0 else ZERO),
-        'prochaine': prochaine,
+        'prochaine': next((t for t in sortie if t['statut'] == 'a_faire'
+                           and t['montant_ttc'] > 0), None),
         'hors_tranche': [f.pk for f, _r in hors],
         # (facture, part) vivantes de la vente — lecteurs internes (solde,
         # etat_vente) ; jamais sérialisé tel quel.
@@ -440,3 +445,205 @@ def motif_emission_hors_prix(facture):
                     f'({_q(part)} MAD) la dépasserait. Annulez ce brouillon '
                     'ou corrigez par un avoir.')
     return None
+
+
+# ── L'état de la vente (VNT23, contrat ``vente_etat.json``) ──────────────────
+
+#: Statuts d'un devis dont la révision est EN COURS (ni acceptée, ni close).
+STATUTS_REVISION_OUVERTE = ('brouillon', 'envoye')
+_TEXTE = '{:.2f}'
+
+
+def _txt(valeur) -> str:
+    return _TEXTE.format(_q(valeur))
+
+
+def peut_gerer_la_vente(user) -> bool:
+    """Le palier des gestes d'argent de la vente (annuler, supprimer un
+    brouillon, modifier un montant, échéancier d'un accepté, prix négocié) :
+    ``IsAdminOrResponsableTier`` ET ``IsResponsableOrAdmin`` sur le module
+    ventes (écriture) — arbitrage 5 du Groupe VNT : jamais un Commercial,
+    ni un Technicien responsable, ni un Admin RH. Même prédicat que les
+    vues : l'écran n'en redérive aucun."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    from types import SimpleNamespace
+
+    from authentication.permissions import (
+        IsAdminOrResponsableTier, IsResponsableOrAdmin)
+    requete = SimpleNamespace(user=user, method='POST')
+    vue = SimpleNamespace(permission_module='ventes')
+    return (IsAdminOrResponsableTier().has_permission(requete, vue)
+            and IsResponsableOrAdmin().has_permission(requete, vue))
+
+
+def _nature(facture, ids) -> str:
+    if facture.bon_commande_id:
+        return 'bc'
+    if facture.devis_id not in ids:
+        return 'consolidee'
+    return facture.type_facture
+
+
+def _facture_etat(facture, ids, palier, actionnable) -> dict:
+    from core.numbering import est_reference_provisoire
+    statut = facture.statut
+    emise = statut in STATUTS_EMIS
+    brouillon = statut == STATUT_BROUILLON
+    paiements = [{
+        'id': p.pk, 'montant': _txt(p.montant),
+        'date_paiement': (p.date_paiement.isoformat()
+                          if p.date_paiement else None),
+        'mode_paiement': p.mode, 'statut': p.statut,
+        'peut': {'recu': p.statut not in ('rejete', 'annule_saisie')},
+    } for p in sorted(facture.paiements.all(), key=lambda p: p.pk)]
+    return {
+        'id': facture.pk,
+        'reference': facture.reference,
+        'nature': str(_nature(facture, ids)),
+        'statut': statut,
+        'total_ttc': _txt(facture.total_ttc),
+        'montant_paye': _txt(facture.montant_paye),
+        'date_emission': (facture.date_emission.isoformat()
+                          if emise and facture.date_emission else None),
+        'paiements': paiements,
+        'peut': {
+            'emettre': brouillon and actionnable,
+            'pdf': True,
+            'envoyer': emise,
+            'encaisser': statut in ('emise', 'en_retard')
+            and _d(facture.montant_du) > 0,
+            'annuler': emise and palier,
+            'supprimer': (brouillon and palier
+                          and est_reference_provisoire(facture.reference)),
+            'modifier_montant': brouillon and palier,
+        },
+    }
+
+
+def _tete_de_vente(chaine):
+    """(tête, révision en cours) : la tête = le dernier ACCEPTÉ de la chaîne
+    (sinon la version la plus récente) ; la révision en cours = une version
+    POSTÉRIEURE à la tête encore brouillon ou envoyée."""
+    acceptes = [d for d in chaine if d.statut == 'accepte']
+    tete = acceptes[-1] if acceptes else chaine[-1]
+    apres = chaine[chaine.index(tete) + 1:]
+    ouvertes = [d for d in apres if d.statut in STATUTS_REVISION_OUVERTE]
+    return tete, (ouvertes[-1] if ouvertes else None)
+
+
+def _montants_vente(plan) -> dict:
+    """Les montants (TEXTE) du bloc ``vente`` : émis net des corrections,
+    brouillons à part, payé (rejetés / annulés exclus), reste à facturer et
+    reste à payer (= dû des émises + reste à facturer = ``solde.restant``)."""
+    parts = plan['factures_parts']
+    emises = [(f, r) for f, r in parts if f.statut in STATUTS_EMIS]
+    paye = sum((_d(f.montant_paye) * r for f, r in parts), ZERO)
+    du = sum((_d(f.montant_du) * r for f, r in emises), ZERO)
+    a_facturer = plan['prix_convenu_ttc'] - plan['emis_net']
+    premiere = plan['tranches'][0] if plan['tranches'] else None
+    return {
+        'prix_convenu_ttc': _txt(plan['prix_convenu_ttc']),
+        'emis_ttc': _txt(plan['emis_net']),
+        'brouillons_ttc': _txt(plan['brouillons']),
+        'paye_ttc': _txt(paye),
+        'reste_a_facturer_ttc': _txt(plan['reste_a_facturer']),
+        'reste_a_payer_ttc': _txt(
+            du + (a_facturer if a_facturer > 0 else ZERO)),
+        'acompte_propose': _txt(premiere['montant_ttc']
+                                if premiere and plan['reste_a_facturer'] > 0
+                                else ZERO),
+    }
+
+
+def _raison_bloquee(devis, tete, revision, brouillon_tranche) -> str:
+    if revision is not None and revision.pk == devis.pk:
+        return f'Révision de {tete.reference} : acceptez-la pour facturer.'
+    if tete.pk != devis.pk:
+        return ('Cette version a été remplacée : travaillez sur la version '
+                'en cours.')
+    if revision is not None:
+        return (f'Révision {revision.reference} en cours — acceptez-la ou '
+                'abandonnez-la.')
+    if brouillon_tranche is None:
+        return ''
+    if brouillon_tranche['type'] == 'acompte':
+        return "L'acompte est en brouillon : émettez-le."
+    return (f"La tranche « {brouillon_tranche['libelle']} » est en "
+            'brouillon : émettez-la.')
+
+
+def _gestes_vente(plan, actionnable, palier) -> tuple:
+    """(prochaine_action, prochaines tranches à faire, ``peut``)."""
+    tranches = plan['tranches']
+    a_venir = [t for t in tranches
+               if t['statut'] == 'a_faire' and t['montant_ttc'] > 0]
+    brouillon = next((t for t in tranches if t['statut'] == 'brouillon'),
+                     None)
+    if not actionnable:
+        prochaine = 'aucune'
+    elif brouillon is not None:
+        prochaine = str(brouillon['type'])
+    else:
+        prochaine = str(a_venir[0]['type']) if a_venir else 'aucune'
+    libre = actionnable and brouillon is None
+    premiere = tranches[0] if tranches else None
+    emises = any(f.statut in STATUTS_EMIS for f, _r in plan['factures_parts'])
+    peut = {
+        'facturer_acompte': bool(libre and premiere
+                                 and premiere['statut'] == 'a_faire'
+                                 and premiere['montant_ttc'] > 0),
+        'facturer_solde': bool(libre and emises and a_venir),
+        'facturer_complete': bool(libre and not plan['factures_parts']),
+        'prix_negocie': actionnable and palier,
+        'modifier_echeancier': (actionnable and palier
+                                and plan['reste_a_facturer'] > 0),
+    }
+    return prochaine, a_venir, peut
+
+
+def etat_vente(devis, user=None) -> dict:
+    """L'état de la vente de ``devis`` (bloc ``vente`` du contrat
+    ``vente_etat.json``), composé au-dessus de :func:`plan_facturation` et
+    :func:`factures_de_la_vente` (importés, jamais redéfinis).
+
+    Montants en TEXTE (:func:`_montants_vente`) ; ``factures`` = TOUTE la
+    chaîne (+ BC + part de consolidée) ; ``peut`` = gestes autorisés pour
+    ``user`` (palier :func:`peut_gerer_la_vente`) ; une version remplacée ou
+    une révision en cours ferme tous les gestes de facturation."""
+    chaine = chaine_vente(devis)
+    tete, revision = _tete_de_vente(chaine)
+    plan = plan_facturation(tete)
+    ids = {d.pk for d in chaine}
+    palier = peut_gerer_la_vente(user)
+    est_tete = tete.pk == devis.pk
+    actionnable = est_tete and revision is None and tete.statut == 'accepte'
+    prochaine, a_venir, peut = _gestes_vente(plan, actionnable, palier)
+    brouillon = next((t for t in plan['tranches']
+                      if t['statut'] == 'brouillon'), None)
+    return {
+        **_montants_vente(plan),
+        'factures': [_facture_etat(f, ids, palier, actionnable)
+                     for f, _r in plan['factures_parts']],
+        'versions': [{'id': d.pk, 'reference': d.reference,
+                      'version': d.version, 'statut': d.statut,
+                      'is_active': d.is_active}
+                     for d in chaine[:chaine.index(tete) + 1]],
+        'est_tete': est_tete,
+        'tete_id': tete.pk,
+        'revision_en_cours': ({'id': revision.pk,
+                               'reference': revision.reference}
+                              if revision is not None else None),
+        'prochaine_action': prochaine,
+        'raison_bloquee': _raison_bloquee(devis, tete, revision, brouillon),
+        'prochaines_echeances': ([{'cle': t['cle'], 'libelle': t['libelle'],
+                                   'montant_ttc': _txt(t['montant_ttc'])}
+                                  for t in a_venir] if est_tete else []),
+        'peut': peut,
+    }
+
+
+def etat_vente_map(rows, user=None) -> dict:
+    """``{devis.pk: etat_vente(devis, user)}`` pour une liste de devis (la
+    ligne devis du lead, la fiche) ; jamais servi sur une liste paginée."""
+    return {d.pk: etat_vente(d, user) for d in rows}
