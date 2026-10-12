@@ -312,6 +312,12 @@ class Facture(TotauxDocumentMixin, models.Model):
     # PDF d'une facture émise se rend depuis cet instantané, jamais depuis le
     # profil vivant. NULL (facture antérieure, brouillon) = profil vivant.
     identite_vendeur = models.JSONField(null=True, blank=True)
+    # VNT15 (Groupe VNT) — « Objet de la vente » et « Garanties » FIGÉS à
+    # l'émission (même geste qu'APAR61, ``instantanes_facture``) : une facture
+    # ÉMISE garde ce que le client a reçu. NULL (brouillon, facture
+    # antérieure) = blocs vivants lus sur le devis.
+    objet_vente = models.JSONField(null=True, blank=True)
+    garanties = models.JSONField(null=True, blank=True)
     # ── Export structuré UBL 2.1 (N38) — clé MinIO du dernier XML généré.
     # Purement préparatoire (aperçu brouillon, jamais transmis). Additif.
     fichier_ubl = models.CharField(
@@ -429,6 +435,14 @@ class Facture(TotauxDocumentMixin, models.Model):
                 & models.Q(montant_tva__gte=0)
                 & models.Q(montant_ttc__gte=0),
                 name='ck_facture_montants_positifs'),
+            # VNT15 (P0) — une tranche d'échéancier ne vit qu'UNE fois par
+            # devis : un double clic créait deux acomptes (prod 12/10,
+            # 01:21:59 / 01:22:03). Annulées et factures sans clé exclues.
+            models.UniqueConstraint(
+                fields=['devis', 'cle_tranche'],
+                condition=~models.Q(statut='annulee')
+                & ~models.Q(cle_tranche=''),
+                name='uq_facture_tranche_vivante'),
         ]
 
     def __str__(self):

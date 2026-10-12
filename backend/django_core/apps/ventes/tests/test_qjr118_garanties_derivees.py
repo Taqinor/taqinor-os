@@ -197,3 +197,120 @@ class TestSpl162GarantiesDesFichesApresScission(SimpleTestCase):
         self.assertEqual(par_libelle['Panneaux'][0], '15')
         self.assertEqual(par_libelle['Performance'][0], '25')
         self.assertEqual(par_libelle['Batterie'][0], '10')
+
+
+class TestVnt37GarantiesDeLaVente(SimpleTestCase):
+    """VNT37 — ``utils/garanties.garanties_de_la_vente`` : les garanties de la
+    facture sont celles de la bande du PDF devis du MÊME marché, en texte
+    seul ; ``[]`` sans ligne et sur erreur (jamais les constantes)."""
+
+    #: Panneaux Canadian Solar 144/360, onduleur Deye 120, batterie SANS durée.
+    ITEMS = [
+        {"designation": "Panneau Canadian Solar TOPHiKu7 580W",
+         "marque": "Canadian Solar", "quantite": 12,
+         "garantie_mois": 144, "garantie_production_mois": 360},
+        {"designation": "Onduleur hybride Deye SUN-8K-SG05LP3",
+         "marque": "Deye", "quantite": 1, "garantie_mois": 120},
+        {"designation": "Batterie lithium Deye BOS-B-Pack16-A3 16 kWh",
+         "marque": "Deye", "quantite": 1},
+    ]
+    #: Pompe + variateur (rôle pompage AGR7), durées structurées.
+    ITEMS_POMPAGE = [
+        {"designation": "Pompe immergée OSP 30-5", "quantite": 1,
+         "role_pompage": "pompe", "garantie_mois": 24},
+        {"designation": "Variateur VEICHI SI23 4 kW", "quantite": 1,
+         "role_pompage": "variateur_pompage", "garantie_mois": 18},
+    ]
+
+    def _g(self, items, mode="residentiel", langue="fr"):
+        from apps.ventes.utils.garanties import garanties_des_items
+        return garanties_des_items(items, mode, langue)
+
+    def test_residentiel_durees_des_fiches(self):
+        g = self._g(self.ITEMS)
+        self.assertEqual(
+            [(x["designation"], x["duree"], x["detail"]) for x in g],
+            [("Installation", "2 ans", ""), ("Onduleur", "10 ans", ""),
+             ("Panneaux", "12 ans", ""),
+             ("Performance", "30 ans", "87,4 % garanti")])
+        self.assertNotIn("Batterie", [x["designation"] for x in g])
+        self.assertNotIn("TAQINOR", repr(g))
+
+    def test_arabe_texte_seul(self):
+        g = self._g(self.ITEMS, langue="ar")
+        self.assertEqual(len(g), 4)
+        self.assertNotIn("<span", repr(g))
+        self.assertNotIn("Onduleur", repr(g))
+        self.assertIn("سنوات", g[1]["duree"])
+
+    def test_sans_lignes_liste_vide(self):
+        from apps.ventes.utils.garanties import garanties_de_la_vente
+        self.assertEqual(self._g([]), [])
+        self.assertEqual(self._g([], mode="agricole"), [])
+        self.assertEqual(garanties_de_la_vente(None), [])
+
+    def test_exception_liste_vide_jamais_les_constantes(self):
+        with mock.patch.object(theme, "warranties_for",
+                               side_effect=RuntimeError("boom")):
+            self.assertEqual(self._g(self.ITEMS), [])
+        with mock.patch("importlib.import_module",
+                        side_effect=ImportError("cassé")):
+            self.assertEqual(self._g(self.ITEMS), [])
+
+    def test_agricole_liste_de_garanties_pompage(self):
+        from apps.ventes.quote_engine.agricole.garanties import (
+            garanties_pompage)
+        g = self._g(self.ITEMS_POMPAGE, mode="agricole")
+        attendu = garanties_pompage(self.ITEMS_POMPAGE)
+        self.assertEqual(len(g), 2)
+        self.assertEqual([x["texte"] for x in g],
+                         [a["libelle"] for a in attendu])
+        noms = " ".join(x["designation"] for x in g)
+        self.assertNotIn("Onduleur", noms)
+        self.assertNotIn("Installation", noms)
+        self.assertEqual((g[0]["designation"], g[0]["duree"]),
+                         ("Garantie constructeur de la pompe", "2 ans"))
+        self.assertEqual(g[1]["duree"], "18 mois")
+
+    def test_parite_bande_devis_residentiel_et_ci(self):
+        data = _fixture(i_sample, i_renderer, self.ITEMS)
+        attendu = [(x["duree"], x["designation"]) for x in self._g(self.ITEMS)]
+        self.assertEqual(attendu, _residential_cells(data))
+        cells = _cells(i_render.build_html(data), "i3")
+        self.assertEqual(attendu, [c for c in cells if c[0] != "O&amp;M"])
+        com = _fixture(c_sample, c_renderer, self.ITEMS)
+        cells = _cells(c_render.build_html(com), "c3")
+        self.assertEqual(attendu, [c for c in cells if c[0] != "O&amp;M"])
+
+    def test_parite_bande_devis_agricole(self):
+        from apps.ventes.quote_engine.agricole import pages
+        from apps.ventes.quote_engine.agricole.garanties import (
+            garanties_pompage)
+        for lg in ("fr", "ar"):
+            with self.subTest(langue=lg):
+                html = pages._garanties(
+                    {"garanties": garanties_pompage(self.ITEMS_POMPAGE)}, lg)
+                bande = re.findall(r'class="ag-li">([^<]+)<', html)
+                g = self._g(self.ITEMS_POMPAGE, mode="agricole", langue=lg)
+                self.assertEqual([x["texte"] for x in g], bande)
+
+    def test_garanties_de_la_vente_lit_l_option_retenue(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.utils.garanties import garanties_de_la_vente
+        lignes = [SimpleNamespace(
+            designation=it["designation"], prix_unitaire=100, quantite=1,
+            remise=0, taux_tva=20, ordre=0, role_devis=None,
+            produit=SimpleNamespace(
+                nom=it["designation"], marque=it["marque"], description="",
+                garantie="", garantie_mois=it.get("garantie_mois"),
+                garantie_production_mois=it.get("garantie_production_mois"),
+                role_pompage=None, courbe_pompe=None))
+            for it in self.ITEMS]
+        devis = SimpleNamespace(taux_tva=20, mode_installation="residentiel")
+        with mock.patch("apps.ventes.utils.options.option_lines",
+                        return_value=lignes):
+            g = garanties_de_la_vente(devis)
+        self.assertEqual([x["designation"] for x in g],
+                         ["Installation", "Onduleur", "Panneaux",
+                          "Performance"])
