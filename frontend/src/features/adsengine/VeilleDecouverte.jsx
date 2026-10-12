@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Plus, Play, RefreshCw } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { NOMS_PAYS } from './VeilleLibelles'
 
 /* ============================================================================
@@ -88,9 +89,9 @@ export default function VeilleDecouverte({ couverture = [], decouverteId = null,
   }, [onSelection])
 
   useEffect(() => {
-    adsengineApi.veille.decouvertes()
-      .then(r => {
-        const liste = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    fetchAllPages((page) => adsengineApi.veille.decouvertes({ page }).then(r => r.data), { concurrency: 3 })
+      .then(res => {
+        const liste = Array.isArray(res) ? res : (res?.results || [])
         setDecouvertes(liste)
         const choisie = liste.find(d => d.id === decouverteId) || liste[0] || null
         selectionner(choisie)

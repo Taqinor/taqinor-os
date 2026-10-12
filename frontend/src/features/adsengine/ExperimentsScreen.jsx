@@ -4,6 +4,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   normalizeExperiment, normalizeArms, normalizeDecisionLog, bestArm, readPaginated,
   formatPercent, formatMAD, formatNumber, erreurServeur,
@@ -265,9 +266,9 @@ export default function ExperimentsScreen() {
 
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.experiments.list()
-      .then(r => {
-        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    fetchAllPages((page) => adsengineApi.experiments.list({ page }).then(r => r.data), { concurrency: 3 })
+      .then(res => {
+        const rows = Array.isArray(res) ? res : (res?.results || [])
         setList(rows)
         if (rows.length) loadDetail(rows[0].id)
       })

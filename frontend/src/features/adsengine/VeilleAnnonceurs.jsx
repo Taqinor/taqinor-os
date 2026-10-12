@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Download, ExternalLink } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { nomPays } from './VeilleLibelles'
 
 /* ============================================================================
@@ -149,8 +150,8 @@ export default function VeilleAnnonceurs({ decouverteId = null }) {
     setErrListe('')
     const params = { page_size: 200 }
     if (decouverteId) params.decouverte = decouverteId
-    adsengineApi.veille.annonceurs(params)
-      .then(r => setAnnonceurs(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+    fetchAllPages((page) => adsengineApi.veille.annonceurs({ ...params, page }).then(r => r.data), { concurrency: 3 })
+      .then(rows => setAnnonceurs(Array.isArray(rows) ? rows : (rows?.results || [])))
       .catch(() => setErrListe('Annonceurs illisibles pour le moment : la liste affichée reste la dernière reçue.'))
   }, [decouverteId])
 

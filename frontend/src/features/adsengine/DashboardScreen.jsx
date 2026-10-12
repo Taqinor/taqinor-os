@@ -245,7 +245,7 @@ export default function DashboardScreen() {
     setLeadsLoading(true)
     setLeads([])
     adsengineApi.metrics.leads(num.metric)
-      .then(r => setLeads(Array.isArray(r.data) ? r.data : (r.data?.results || r.data?.leads || [])))
+      .then(r => setLeads(Array.isArray(r.data) ? r.data : []))
       .catch(() => setLeads([]))
       .finally(() => setLeadsLoading(false))
   }

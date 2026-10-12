@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   actionTypeLabel, actionResultLabel, actionResultKey, actionMode, filterActionLog,
 } from './adsengine'
@@ -69,9 +70,10 @@ export default function ActionsLogScreen() {
   const load = useCallback(() => {
     setLoading(true)
     const params = { debut: range.debut || undefined, fin: range.fin || undefined }
-    adsengineApi.actions.log(params)
-      .then(r => {
-        const raw = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => adsengineApi.actions.log({ ...params, page }).then(r => r.data), { concurrency: 3 })
+      .then(rows => {
+        const raw = Array.isArray(rows) ? rows : (rows?.results || [])
         // PACT157 — l'API EngineAction expose le genre dans `kind` (jamais
         // `type`) : même normalisation déjà posée par ApprovalsScreen.jsx:117,
         // appliquée ici pour que actionTypeLabel(a.type) affiche le vrai libellé.
@@ -82,9 +84,9 @@ export default function ActionsLogScreen() {
       .finally(() => setLoading(false))
     if (range.compare && range.debut && range.fin) {
       const prev = previousRange(range)
-      adsengineApi.actions.log({ debut: prev.debut, fin: prev.fin })
-        .then(r => setPreviousCount(
-          (Array.isArray(r.data) ? r.data : (r.data?.results || [])).length))
+      fetchAllPages((page) => adsengineApi.actions.log({ debut: prev.debut, fin: prev.fin, page }).then(r => r.data), { concurrency: 3 })
+        .then(rows => setPreviousCount(
+          (Array.isArray(rows) ? rows : (rows?.results || [])).length))
         .catch(() => setPreviousCount(null))
     } else {
       setPreviousCount(null)
