@@ -157,6 +157,13 @@
     {{ _L("Solde restant dû") }}{% if facture_reference and not affectations %} {{ _L("sur") }} {{ facture_reference }}{% endif %} :
     <strong>{{ "%.2f"|format(solde_restant) }} MAD</strong>
   </div>
+  {# VNT92 — paiement sur une facture de vente : le reste dû sur la VENTE
+     (etat_vente), à côté du solde de la facture ; absent = reçu d'hier. #}
+  {% if vente_recu %}
+  <div class="solde-block">
+    {{ _L("Reste dû sur la vente") }} : <strong>{{ vente_recu.reste_du_ttc }} MAD</strong> ({{ _L("devis") }} {{ vente_recu.devis_reference }})
+  </div>
+  {% endif %}
 
   {% if signature_uri %}
   <div class="signature-section">

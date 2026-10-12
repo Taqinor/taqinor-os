@@ -99,6 +99,8 @@ LIBELLES = {
         'reste_du': 'reste dû',
         # VNT41 — prochaines tranches de la vente.
         'prochaines_echeances': 'Prochaines échéances',
+        # VNT71 — remise d'un avenant négocié (montant, sans pourcentage).
+        'remise_negociee': 'Remise négociée',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -165,6 +167,7 @@ LIBELLES = {
         'reste_a_facturer': 'المتبقي للفوترة',
         'reste_du': 'المتبقي المستحق',
         'prochaines_echeances': 'الدفعات المقبلة',
+        'remise_negociee': 'الخصم المتفاوض عليه',
     },
 }
 
@@ -240,6 +243,8 @@ TEXTES_AR = {
     'Facture réglée': 'الفاتورة المؤداة',
     'Montant affecté': 'المبلغ المخصص',
     'Solde restant dû': 'الرصيد المتبقي المستحق',
+    # VNT92 — reçu : reste dû sur la vente (devis …).
+    'Reste dû sur la vente': 'المتبقي المستحق من البيع',
     'sur': 'على',
     'Quittance générée automatiquement le': 'وصل مُنشأ تلقائيا بتاريخ',
     'Objet': 'الموضوع',

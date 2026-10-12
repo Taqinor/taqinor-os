@@ -275,6 +275,52 @@ class TestChaineSoldeQuittance(_BaseDocumentsLegacy):
         self.assertEqual(
             paiement.montant + self.facture.montant_du, self.GOLDEN_TTC)
 
+    def _recu_genere(self, paiement):
+        """``generate_recu_pdf`` réel, HTML capturé avant WeasyPrint."""
+        from unittest.mock import patch
+        from apps.ventes.utils.pdf import generate_recu_pdf
+        frais = Paiement.objects.select_related(
+            'facture', 'facture__client', 'company').get(pk=paiement.pk)
+        with patch('apps.ventes.utils.pdf._html_to_pdf',
+                   side_effect=lambda html: html):
+            return generate_recu_pdf(frais)
+
+    def test_paiement_sans_devis_aucune_ligne_vente(self):
+        """VNT92 — facture sans devis : le reçu reste celui d'hier."""
+        html = self._recu_genere(self._paiement())
+        self.assertNotIn('Reste dû sur la vente', html)
+        self.assertIn('Solde restant dû', html)
+
+    def test_reste_du_sur_la_vente_reconcilie(self):
+        """VNT92 — paiement sur l'acompte du 388 : payé sur la vente +
+        « Reste dû sur la vente » == prix convenu (49 000), et la ligne
+        imprimée == ``etat_vente.reste_a_payer_ttc``."""
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            ECHEANCIER_LIBRE, VENT_ACOMPTE_15000, creer_devis_388,
+            facture_tranche)
+        from apps.ventes.vente_facturation import etat_vente
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-AUD108-{_nxt()}', ECHEANCIER_LIBRE)
+        acompte = facture_tranche(devis, f'FAC-AUD108-{_nxt()}', 'acompte',
+                                  '15000.00', '12720.41', '2279.59',
+                                  ventilation=VENT_ACOMPTE_15000)
+        paiement = Paiement.objects.create(
+            company=self.company, facture=acompte,
+            montant=Decimal('15000.00'), date_paiement=timezone.localdate(),
+            mode=Paiement.Mode.VIREMENT)
+        html = ' '.join(self._recu_genere(paiement).split())
+        trouve = re.search(
+            r'Reste dû sur la vente : <strong>([0-9]+\.[0-9]{2}) MAD</strong>',
+            html)
+        self.assertIsNotNone(trouve, html[-1500:])
+        reste = Decimal(trouve.group(1))
+        etat = etat_vente(devis)
+        self.assertEqual(reste, Decimal(etat['reste_a_payer_ttc']))
+        self.assertEqual(reste, Decimal('34000.00'))
+        self.assertEqual(paiement.montant + reste,
+                         Decimal(etat['prix_convenu_ttc']))
+        self.assertIn(devis.reference, html)
+
 
 class TestAucunPrixAchatDansLesCinqDocuments(_BaseDocumentsLegacy):
     """Invariant (b) — le prix d'achat ne fuit sur AUCUN document client."""

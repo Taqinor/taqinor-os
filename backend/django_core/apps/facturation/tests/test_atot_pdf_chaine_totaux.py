@@ -22,7 +22,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
@@ -224,3 +224,129 @@ class ObjetDeLaVenteTests(TestCase):
         self.assertIn('DEV-VNT35-V2', texte_v2)
         self.assertIn('48643.50 MAD', texte_v2)
         self.assertNotIn('7777', texte_v2)
+
+
+# ── VNT71 — « Remise négociée » sur la facture d'un avenant négocié ─────────
+
+_LIB_CHAINE = {'sous_total': 'Sous-total HT', 'remise_globale': 'Remise globale',
+               'remise_negociee': 'Remise négociée',
+               'arrondi': 'Arrondi commercial', 'total_ht': 'Total HT',
+               'tva': 'TVA', 'total_ttc': 'Total TTC', 'base_ht': 'Base HT'}
+_T_388 = {'ht_brut': Decimal('46243.50'), 'remise': Decimal('4624.35'),
+          'arrondi': Decimal('65.82'), 'ht_net': Decimal('41553.33'),
+          'tva_par_taux': [
+              {'taux': Decimal('10'), 'base_ht': Decimal('8640.00'),
+               'montant': Decimal('864.00')},
+              {'taux': Decimal('20'), 'base_ht': Decimal('32913.33'),
+               'montant': Decimal('6582.67')}],
+          'tva': Decimal('7446.67'), 'ttc': Decimal('49000.00')}
+
+
+class ChaineMacroRemiseNegocieeTests(SimpleTestCase):
+    """VNT71 — la macro partagée : sans ``remise_negociee`` (facture, avoir,
+    ND, BC, pro-forma d'hier) le rendu est OCTET-IDENTIQUE à
+    ``remise_negociee=False`` ; avec, seule la ligne de remise change de
+    libellé (montant, sans « (x %) »)."""
+
+    def _rendre(self, appel):
+        from django.template import engines
+        env = engines['jinja2'].env
+        source = ("{% from '_chaine_totaux.html' import chaine_totaux %}"
+                  '{{ ' + appel + ' }}')
+        return env.from_string(source).render(t=_T_388, lib=_LIB_CHAINE)
+
+    def test_defaut_octet_identique(self):
+        for kw in ('', ', ventilation=True', ', tva_ventilee=False'):
+            defaut = self._rendre('chaine_totaux(t, 10, lib' + kw + ')')
+            faux = self._rendre(
+                'chaine_totaux(t, 10, lib' + kw + ', remise_negociee=False)')
+            self.assertEqual(defaut, faux)
+            self.assertIn('Remise globale (10%)', defaut)
+            self.assertNotIn('Remise négociée', defaut)
+
+    def test_seul_le_libelle_change(self):
+        defaut = self._rendre('chaine_totaux(t, 10, lib)')
+        negociee = self._rendre(
+            'chaine_totaux(t, 10, lib, remise_negociee=True)')
+        self.assertIn('<span>Remise négociée</span>', negociee)
+        self.assertNotIn('Remise globale', negociee)
+        self.assertNotIn('Remise négociée (', negociee)
+        self.assertEqual(
+            negociee.replace('Remise négociée', 'Remise globale (10%)'),
+            defaut)
+
+
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class RemiseNegocieeFactureTests(TestCase):
+    """VNT71 — l'avenant négocié 54 500 → 49 000 (remise 10 % + arrondi
+    65,82, ARRONDI-100) facturé COMPLET imprime « Remise négociée
+    −4624.35 MAD » sans « (10 %) » ; la chaîne lue tient (Sous-total −
+    Remise − Arrondi = Total HT ; Total HT + Σ TVA = 49000.00) ; une
+    facture du même panier SANS prédécesseur accepté garde « Remise
+    globale (10.00%) »."""
+
+    def setUp(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_devis, make_user)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            LIGNES_388, creer_devis_388)
+        from apps.ventes.utils.options import option_totaux
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        v1 = make_devis(self.company, self.user, self.client_obj, LIGNES_388,
+                        reference='DEV-VNT71-V1')
+        self.assertEqual(Decimal(str(option_totaux(v1)['ttc'])),
+                         Decimal('54500.00'))
+        self.v2 = creer_devis_388(self.company, self.user, self.client_obj,
+                                  'DEV-VNT71-V2', version=2,
+                                  version_parent=v1)
+        Devis.objects.filter(pk=v1.pk).update(
+            statut='accepte', is_active=False, superseded_by=self.v2)
+
+    def _facture(self, devis, reference):
+        from apps.ventes.domain.facturation_ops import (
+            copier_devis_sur_facture)
+        facture = Facture.objects.create(
+            company=self.company, client=self.client_obj, devis=devis,
+            reference=reference, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        copier_devis_sur_facture(facture, devis)
+        return Facture.objects.get(pk=facture.pk)
+
+    def _texte(self, facture):
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        patcheur, boite = _capturer_pdf()
+        with patcheur:
+            generate_facture_pdf(facture.pk)
+        return _texte_pdf(boite['pdf'])
+
+    def test_avenant_negocie_facture_complet(self, _dl):
+        from apps.facturation.tests.oracles_argent import (
+            verifier_chaine_document)
+        from apps.facturation.tests.test_atot_parite_pdf_argent import (
+            figures_lues)
+        facture = self._facture(self.v2, 'FAC-VNT71-0001')
+        self.assertEqual(facture.total_ttc, Decimal('49000.00'))
+        texte = self._texte(facture)
+        self.assertRegex(texte, r'Remise négociée [−-] ?4624\.35 MAD')
+        self.assertNotIn('Remise globale', texte)
+        self.assertNotRegex(texte, r'Remise négociée \(')
+        lues = figures_lues(texte, 'Sous-total HT', 'Total TTC')
+        self.assertEqual(lues['ht_brut'], Decimal('46243.50'))
+        self.assertEqual(lues['remise'], Decimal('4624.35'))
+        self.assertEqual(lues['arrondi'], Decimal('65.82'))
+        self.assertEqual(lues['ht_net'], Decimal('41553.33'))
+        self.assertEqual(lues['ttc'], Decimal('49000.00'))
+        self.assertTrue(verifier_chaine_document(None, figures=lues))
+
+    def test_sans_predecesseur_accepte_remise_globale(self, _dl):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        seul = creer_devis_388(self.company, self.user, self.client_obj,
+                               'DEV-VNT71-SEUL')
+        texte = self._texte(self._facture(seul, 'FAC-VNT71-0002'))
+        self.assertRegex(texte, r'Remise globale \(10\.00 ?%\) [−-] ?'
+                                r'4624\.35 MAD')
+        self.assertNotIn('Remise négociée', texte)
