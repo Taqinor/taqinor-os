@@ -816,6 +816,7 @@ SPECTACULAR_SETTINGS = {
         'core.openapi_erreurs.declarer_enveloppe_erreur',
         # ENF11 (achats) — lignes non vides, quantités/montants > 0 : voir le module.
         'apps.stock.schema_contraintes.declarer_contraintes_achats',
+        'core.openapi_erreurs.aligner_motifs_sur_drf',  # ERR-ENF11-FUZZ-CORE
     ],
     # YAPIC6 — nommage STABLE des jeux de choix partagés. Sans ces entrées,
     # drf-spectacular baptise un jeu de choix ambigu avec un suffixe de hachage

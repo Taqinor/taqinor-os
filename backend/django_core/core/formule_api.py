@@ -39,6 +39,8 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole
 
+from .parseurs import corps_valide
+
 __all__ = [
     'FormuleTestView', 'FormuleFonctionsView', 'FormuleValiderView',
     'LIMITE_MAX_LIGNES',
@@ -58,6 +60,30 @@ def _limite(brut):
     return max(1, min(valeur, LIMITE_MAX_LIGNES))
 
 
+# ERR-ENF11-FUZZ-CORE — corps validés par ces serializers DÉCLARÉS
+# (``core.parseurs.corps_valide``) : un corps non objet ou un champ de mauvais
+# type répond 400 nommant le champ (500 avant, ``dataset: true``).
+_REQUETE_TEST = inline_serializer('FormuleTestRequete', {
+    'expression': drf_serializers.CharField(error_messages={
+        'required': "L'expression à tester est requise."}),
+    'dataset': drf_serializers.CharField(error_messages={
+        'required': 'Le dataset à interroger est requis.'}),
+    'filtres': drf_serializers.DictField(required=False),
+    'limite': drf_serializers.IntegerField(required=False),
+    'group_by': drf_serializers.ListField(
+        child=drf_serializers.CharField(), required=False),
+    'agregats': drf_serializers.ListField(
+        child=drf_serializers.DictField(), required=False),
+})
+_REQUETE_VALIDER = inline_serializer('FormuleValiderRequete', {
+    # Absente : le serveur répond 200 {ok: false} (dry-run).
+    'expression': drf_serializers.CharField(
+        required=False, allow_blank=True),
+    'variables': drf_serializers.ListField(
+        child=drf_serializers.CharField(), required=False),
+})
+
+
 class FormuleTestView(APIView):
     """Banc d'essai d'une expression sur des données réelles (lecture seule)."""
 
@@ -65,16 +91,7 @@ class FormuleTestView(APIView):
     permission_classes = [IsAnyRole]
 
     @extend_schema(
-        request=inline_serializer('FormuleTestRequete', {
-            'expression': drf_serializers.CharField(),
-            'dataset': drf_serializers.CharField(),
-            'filtres': drf_serializers.DictField(required=False),
-            'limite': drf_serializers.IntegerField(required=False),
-            'group_by': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-            'agregats': drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False),
-        }),
+        request=_REQUETE_TEST,
         responses=inline_serializer('FormuleTestReponse', {
             'dataset': drf_serializers.CharField(),
             'expression': drf_serializers.CharField(),
@@ -89,25 +106,10 @@ class FormuleTestView(APIView):
             FormulaError, evaluer_formule, valider_formule,
         )
 
-        donnees = request.data if isinstance(request.data, dict) else {}
-        expression = (donnees.get('expression') or '').strip()
-        nom_dataset = (donnees.get('dataset') or '').strip()
-
-        if not expression:
-            return Response(
-                {'detail': "L'expression à tester est requise."},
-                status=status.HTTP_400_BAD_REQUEST)
-        if not nom_dataset:
-            return Response(
-                {'detail': 'Le dataset à interroger est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-
+        donnees = corps_valide(request, _REQUETE_TEST)
+        expression = donnees['expression']
+        nom_dataset = donnees['dataset']
         filtres = donnees.get('filtres') or {}
-        if not isinstance(filtres, dict):
-            return Response(
-                {'detail': 'Les filtres doivent être un objet '
-                           '{champ: valeur}.'},
-                status=status.HTTP_400_BAD_REQUEST)
 
         spec = {
             'filters': filtres,
@@ -208,12 +210,7 @@ class FormuleValiderView(APIView):
     permission_classes = [IsAnyRole]
 
     @extend_schema(
-        request=inline_serializer('FormuleValiderRequete', {
-            # Absente : le serveur répond 200 {ok: false} (dry-run).
-            'expression': drf_serializers.CharField(required=False),
-            'variables': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-        }),
+        request=_REQUETE_VALIDER,
         responses=inline_serializer('FormuleValiderReponse', {
             'ok': drf_serializers.BooleanField(),
             'erreur': drf_serializers.CharField(
@@ -222,12 +219,10 @@ class FormuleValiderView(APIView):
     def post(self, request):
         from core.formula import valider_formule
 
-        donnees = request.data if isinstance(request.data, dict) else {}
+        donnees = corps_valide(request, _REQUETE_VALIDER)
         expression = donnees.get('expression')
         variables = donnees.get('variables') or []
-        if not isinstance(variables, list):
-            variables = []
-        if not isinstance(expression, str) or not expression.strip():
+        if not expression:
             return Response(
                 {'ok': False, 'erreur': "L'expression à valider est requise."})
         ok, erreur = valider_formule(expression, variables)

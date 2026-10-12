@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 from authentication.permissions import IsAnyRole
 
 from . import dashboard_data, data_explorer
+from .parseurs import corps_valide
 
 __all__ = ['DrillDownView', 'LIMITE_MAX_LIGNES']
 
@@ -36,6 +37,18 @@ __all__ = ['DrillDownView', 'LIMITE_MAX_LIGNES']
 LIMITE_MAX_LIGNES = 1000
 #: Nombre d'enregistrements renvoyés par défaut.
 LIMITE_DEFAUT = 200
+
+
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer DÉCLARÉ : un
+# ``dataset`` non texte levait une erreur de hachage (500). ``limite`` est
+# bornée au schéma comme dans ``dashboard_data.drill`` (1..LIMITE_MAX_LIGNES).
+_REQUETE_DRILL = inline_serializer('DrillRequete', {
+    'dataset': drf_serializers.CharField(),
+    'group_by': drf_serializers.DictField(required=False),
+    'filtres': drf_serializers.DictField(required=False),
+    'limite': drf_serializers.IntegerField(
+        required=False, min_value=1, max_value=LIMITE_MAX_LIGNES),
+})
 
 
 class DrillDownView(APIView):
@@ -53,12 +66,7 @@ class DrillDownView(APIView):
         return Response({'mappings': dashboard_data.list_drill()})
 
     @extend_schema(
-        request=inline_serializer('DrillRequete', {
-            'dataset': drf_serializers.CharField(),
-            'group_by': drf_serializers.DictField(required=False),
-            'filtres': drf_serializers.DictField(required=False),
-            'limite': drf_serializers.IntegerField(required=False),
-        }),
+        request=_REQUETE_DRILL,
         responses=inline_serializer('DrillReponse', {
             'dataset': drf_serializers.CharField(),
             'id_field': drf_serializers.CharField(),
@@ -67,18 +75,10 @@ class DrillDownView(APIView):
             'enregistrements': drf_serializers.JSONField(),
         }))
     def post(self, request):
-        corps = request.data or {}
-        dataset = corps.get('dataset')
-        if not dataset:
-            return Response({'detail': "Champ « dataset » requis."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        corps = corps_valide(request, _REQUETE_DRILL)
+        dataset = corps['dataset']
         group_by = corps.get('group_by') or {}
         filtres = corps.get('filtres') or {}
-        if not isinstance(group_by, dict) or not isinstance(filtres, dict):
-            return Response(
-                {'detail': "« group_by » et « filtres » doivent être des "
-                           "objets JSON."},
-                status=status.HTTP_400_BAD_REQUEST)
         try:
             resultat = dashboard_data.drill(
                 dataset, request.user.company, request.user,

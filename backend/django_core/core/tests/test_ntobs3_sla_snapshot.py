@@ -125,6 +125,13 @@ class SlaEndpointsTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data), 1)
 
+    def test_liste_ignore_tri_et_recherche_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE — la fenêtre de 12 mois est une liste Python :
+        # le filtre de tri par défaut levait AttributeError (500).
+        generer_snapshot_societe(self.company, datetime.date(2026, 6, 1))
+        resp = self.client.get('/api/django/core/sla/?ordering=o&search=x')
+        self.assertEqual(resp.status_code, 200)
+
     def test_export_pdf_404_without_snapshot(self):
         resp = self.client.get('/api/django/core/sla/2026-06/export-pdf/')
         self.assertEqual(resp.status_code, 404)

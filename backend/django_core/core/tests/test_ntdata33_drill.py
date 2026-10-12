@@ -94,6 +94,11 @@ class DrillDownTests(TestCase):
         resp = self._post({'dataset': 'changelog', 'group_by': ['x']})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_dataset_non_texte_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE — `dataset: [null, null]` répondait 500.
+        resp = self._post({'dataset': [None, None], 'group_by': {}})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_catalogue_des_mappings(self):
         req = self.factory.get('/data-explorer/drill/')
         force_authenticate(req, user=self.user)

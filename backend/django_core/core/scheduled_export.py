@@ -40,6 +40,8 @@ import re
 
 from django.conf import settings
 from django.utils import timezone
+from rest_framework import status
+from rest_framework.exceptions import APIException
 
 from .integrations import (
     BaseProvider,
@@ -725,6 +727,25 @@ def exports_dus(now, *, companies=None):
     if companies is not None:
         qs = qs.filter(company__in=list(companies))
     return [export for export in qs.order_by('id') if est_du(export, now)]
+
+
+class ExtraitInexecutable(APIException):
+    """ERR-ENF11-FUZZ-CORE — 409 : l'extrait vise un dataset qui n'est plus
+    (ou pas) enregistré ; l'exécuter est un conflit d'ÉTAT, pas un 500."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Le dataset de cet extrait n'est pas disponible."
+    default_code = 'extrait_inexecutable'
+
+
+def executer_manuel(export, now=None):
+    """``executer`` déclenché par l'API : dataset inconnu -> 409 documenté
+    (l'exécution planifiée garde son isolement par extrait, inchangé)."""
+    from . import data_explorer
+    try:
+        return executer(export, now=now)
+    except data_explorer.DatasetInconnu as exc:
+        raise ExtraitInexecutable(str(exc)) from exc
 
 
 def executer_exports_dus(now=None, *, companies=None):

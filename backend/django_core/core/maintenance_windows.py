@@ -22,6 +22,8 @@ from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
+
+from core.champs_stricts import ChaineStricte
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.parsers import JSONParser
@@ -144,6 +146,10 @@ class MaintenanceWindowSerializer(CompanyScopedRelationsMixin, serializers.Model
     # s'afficher à l'heure locale de CHAQUE tenant qui la consulte).
     debute_le_local = serializers.SerializerMethodField()
     termine_le_local = serializers.SerializerMethodField()
+    # ERR-ENF11-FUZZ-CORE — textes JSON stricts (``description: 0`` était
+    # converti en « 0 » et accepté).
+    region = ChaineStricte(required=False, allow_blank=True, max_length=60)
+    description = ChaineStricte(required=False, allow_blank=True)
 
     class Meta:
         model = MaintenanceWindow

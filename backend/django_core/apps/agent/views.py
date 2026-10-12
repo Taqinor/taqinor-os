@@ -46,11 +46,28 @@ class ConfirmationActionSerializer(drf_serializers.Serializer):
 
 
 class BrouillonAutomationSerializer(drf_serializers.Serializer):
-    nom = drf_serializers.CharField()
+    # ``nom`` : au moins un caractère non blanc (le service refuse un nom vide
+    # après ``strip``), 255 au plus (``AutomationRule.nom``).
+    nom = drf_serializers.RegexField(r'\S', max_length=255)
     trigger_type = drf_serializers.CharField()
     trigger_config = drf_serializers.DictField(required=False)
     action_type = drf_serializers.CharField()
     action_config = drf_serializers.DictField(required=False)
+
+    def get_fields(self):
+        # Catalogue FERMÉ lu via le selector d'automation (jamais ses modèles),
+        # à l'exécution : même source que ``create_draft_rule_from_agent``.
+        from apps.automation.selectors import closed_rule_catalogue
+        from core.parseurs import ChoixDocumente
+
+        champs = super().get_fields()
+        catalogue = closed_rule_catalogue()
+        # ERR-ENF11-FUZZ-AGENT — énum EN LIGNE (``core.parseurs.
+        # ChoixDocumente``) : action_type « 0 » était conforme au schéma puis
+        # refusé ; un composant d'énum partagé renommerait TriggerTypeEnum.
+        champs['trigger_type'] = ChoixDocumente(catalogue['trigger_types'])
+        champs['action_type'] = ChoixDocumente(catalogue['action_types'])
+        return champs
 
 
 _JournalAgent = inline_serializer('AgentActionJournal', {
@@ -268,14 +285,18 @@ class AutomationDraftView(APIView):
                 {'detail': "Aucune société associée à l'utilisateur."},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        data = request.data or {}
+        # ERR-ENF11-FUZZ-AGENT — le corps est validé contre le schéma publié
+        # (400 par champ) ; le service re-valide le catalogue fermé.
+        brouillon = BrouillonAutomationSerializer(data=request.data)
+        brouillon.is_valid(raise_exception=True)
+        data = brouillon.validated_data
         try:
             rule = create_draft_rule_from_agent(
                 company=company,
-                nom=data.get('nom', ''),
-                trigger_type=data.get('trigger_type', ''),
+                nom=data['nom'],
+                trigger_type=data['trigger_type'],
                 trigger_config=data.get('trigger_config') or {},
-                action_type=data.get('action_type', ''),
+                action_type=data['action_type'],
                 action_config=data.get('action_config') or {},
             )
         except DraftRuleError as exc:

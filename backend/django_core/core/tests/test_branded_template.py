@@ -90,6 +90,26 @@ class BrandedTemplateViewSetTests(TestCase):
         self.assertEqual(resp.data['sujet'], 'Devis D-1')
         self.assertEqual(resp.data['corps'], 'Bonjour Reda')
 
+    def test_preview_contexte_non_objet_400(self):
+        # ERR-ENF11-FUZZ-CORE — `context: [null, null]` levait TypeError.
+        tpl = BrandedTemplate.objects.create(
+            company=self.company, kind='email', code='c', nom='C',
+            sujet='S', corps='B')
+        req = self.factory.post(
+            f'/branded-templates/{tpl.pk}/preview/',
+            {'context': [None, None]}, format='json')
+        force_authenticate(req, user=self.admin)
+        resp = BrandedTemplateViewSet.as_view({'post': 'preview'})(req, pk=tpl.pk)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_actif_booleen_strict(self):
+        # ERR-ENF11-FUZZ-CORE — `actif: 0` était converti et accepté.
+        from core.serializers import BrandedTemplateSerializer
+        ser = BrandedTemplateSerializer(data={
+            'kind': 'email', 'code': 'b', 'nom': 'B', 'actif': 0})
+        self.assertFalse(ser.is_valid())
+        self.assertIn('actif', ser.errors)
+
     def test_list_company_isolation(self):
         BrandedTemplate.objects.create(
             company=self.other, kind='email', code='x', nom='Secret')

@@ -56,6 +56,8 @@ from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
+from .parametres_requete import choix_ou_400
+from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
 from .permissions import PeutExecuterEditionMasse, declared_action_permissions
 from .models import (
@@ -103,6 +105,7 @@ from .serializers import (
     TenantThemeSerializer,
     TenantUsageSnapshotSerializer,
     WorkflowDefinitionSerializer,
+    WorkflowStepDefinitionAutonomeSerializer,
     WorkflowStepDefinitionSerializer,
     WorkflowTemplateSerializer,
 )
@@ -122,8 +125,18 @@ _DETAIL = inline_serializer('CoreDetail', {
 })
 _OBJET = {'type': 'object', 'additionalProperties': True}
 _LISTE_OBJETS = {'type': 'array', 'items': _OBJET}
+# ERR-ENF11-FUZZ-CORE — année 0000 hors motif (aucune date possible : la vue
+# répondait 400 « Format de période invalide » à une valeur conforme).
 _PERIODE_TYPE = {
-    'type': 'string', 'pattern': r'^\d{4}-(0[1-9]|1[0-2])$'}
+    'type': 'string', 'pattern': r'^[1-9]\d{3}-(0[1-9]|1[0-2])$'}
+
+
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré
+# (``corps_valide`` : ``task`` non texte = 400, 500 avant) ; une tâche hors
+# planification est une ressource introuvable : 404 documenté.
+_RUN_JOB = inline_serializer('ScheduledJobRunRequest', {
+    'task': drf_serializers.CharField(),
+})
 
 
 class ScheduledJobViewSet(viewsets.ViewSet):
@@ -141,9 +154,7 @@ class ScheduledJobViewSet(viewsets.ViewSet):
         return Response(ScheduledJobSerializer(data, many=True).data)
 
     @extend_schema(
-        request=inline_serializer('ScheduledJobRunRequest', {
-            'task': drf_serializers.CharField(),
-        }),
+        request=_RUN_JOB,
         responses={202: inline_serializer('ScheduledJobRunReponse', {
             'task': drf_serializers.CharField(),
             'task_id': drf_serializers.CharField(),
@@ -157,18 +168,13 @@ class ScheduledJobViewSet(viewsets.ViewSet):
         réellement planifiées sont autorisées (liste blanche). Broker
         injoignable → 503 (jamais 500).
         """
-        task_name = (request.data or {}).get('task')
-        if not task_name:
-            return Response(
-                {'detail': "Champ « task » requis."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        task_name = corps_valide(request, _RUN_JOB)['task']
         try:
             task_id = jobs_infra.run_job(task_name)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_404_NOT_FOUND,
             )
         except RuntimeError as exc:
             # Broker indisponible / erreur de transport : on dégrade en 503.
@@ -188,6 +194,15 @@ _WORKFLOW_INSTALLE = inline_serializer('WorkflowInstalle', {
     'definition_id': drf_serializers.IntegerField(),
     'created': drf_serializers.BooleanField(),
     'nb_etapes': drf_serializers.IntegerField(),
+})
+
+
+# ERR-ENF11-FUZZ-CORE — ``code`` publié comme l'énum du catalogue (statique,
+# sans base) : un code inconnu était conforme au schéma puis refusé ; un corps
+# non objet levait AttributeError (500). Validé par ``corps_valide``.
+_INSTALLER_WORKFLOW = inline_serializer('WorkflowInstallerRequest', {
+    'code': ChoixDocumente(
+        [m['code'] for m in workflow_templates.liste_modeles_workflow()]),
 })
 
 
@@ -223,9 +238,7 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
         return Response(WorkflowTemplateSerializer(data, many=True).data)
 
     @extend_schema(
-        request=inline_serializer('WorkflowInstallerRequest', {
-            'code': drf_serializers.CharField(),
-        }),
+        request=_INSTALLER_WORKFLOW,
         responses={
             (200, 'application/json'): _WORKFLOW_INSTALLE,
             (201, 'application/json'): _WORKFLOW_INSTALLE,
@@ -239,12 +252,7 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
         Idempotent : réinstaller un modèle déjà présent ne crée aucun doublon
         et renvoie 200 (au lieu de 201).
         """
-        code = (request.data or {}).get('code')
-        if not code:
-            return Response(
-                {'detail': "Champ « code » requis."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        code = corps_valide(request, _INSTALLER_WORKFLOW)['code']
         company = getattr(request.user, 'company', None)
         if company is None:
             return Response(
@@ -370,6 +378,12 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
     serializer_class = WorkflowStepDefinitionSerializer
     pagination_class = None
 
+    def get_serializer_class(self):
+        # ERR-ENF11-FUZZ-CORE — création AUTONOME : ``definition`` publiée
+        # requise (elle était facultative au schéma puis refusée).
+        return (WorkflowStepDefinitionAutonomeSerializer
+                if self.action == 'create' else self.serializer_class)
+
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [IsAuthenticated()]
@@ -393,15 +407,22 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
         return ctx
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré (un corps
+# tableau levait AttributeError, 500) ; ``min_length=1`` publie ``minItems``
+# (``allow_empty`` seul ne l'exprimait pas : ``[]`` conforme puis refusé).
+_APPROBATION_GROUPEE = inline_serializer(
+    name='ApprobationGroupeeRequest',
+    fields={
+        'step_ids': drf_serializers.ListField(
+            child=drf_serializers.IntegerField(), min_length=1),
+        'commentaire': drf_serializers.CharField(
+            required=False, allow_blank=True),
+    },
+)
+
+
 @extend_schema(
-    request=inline_serializer(
-        name='ApprobationGroupeeRequest',
-        fields={
-            'step_ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField(), allow_empty=False),
-            'commentaire': drf_serializers.CharField(required=False),
-        },
-    ),
+    request=_APPROBATION_GROUPEE,
     responses={200: inline_serializer(
         name='ApprobationGroupeeResponse',
         fields={
@@ -436,19 +457,8 @@ def approuver_etapes_en_masse(request):
             {'detail': "Utilisateur sans société."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    demandes = (request.data or {}).get('step_ids') or []
-    try:
-        voulus = {int(v) for v in demandes}
-    except (TypeError, ValueError):
-        return Response(
-            {'detail': "Le champ « step_ids » doit être une liste d'entiers."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if not voulus:
-        return Response(
-            {'detail': "Champ « step_ids » requis (au moins une étape)."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    donnees = corps_valide(request, _APPROBATION_GROUPEE)
+    voulus = set(donnees['step_ids'])
     en_attente = workflow_engine.pending_steps_for_company(company)
     steps = [s for s in en_attente if s.pk in voulus]
     introuvables = sorted(voulus - {s.pk for s in steps})
@@ -457,7 +467,7 @@ def approuver_etapes_en_masse(request):
             {'detail': "Aucune étape en attente ne correspond à la sélection."},
             status=status.HTTP_404_NOT_FOUND,
         )
-    commentaire = ((request.data or {}).get('commentaire') or '').strip()
+    commentaire = donnees.get('commentaire', '')
     try:
         resultat = workflow_engine.approuver_en_masse(
             steps, user=request.user, commentaire=commentaire)
@@ -543,7 +553,10 @@ def mes_processus_view(request):
 
 _P_CHARGE = [
     _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
-    _q('seuil', OpenApiTypes.INT, 'Seuil de surcharge (entier positif).')]
+    # ERR-ENF11-FUZZ-CORE — ``minimum`` publié : ``seuil=-538`` était
+    # conforme au schéma puis refusé (400 « doit être positif »).
+    _q('seuil', {'type': 'integer', 'minimum': 0},
+       'Seuil de surcharge (entier positif).')]
 
 
 @extend_schema(parameters=_P_CHARGE, responses={200: inline_serializer(
@@ -605,16 +618,21 @@ _P_CONFORMITE = [
        enum=['xlsx'])]
 
 
-@extend_schema(parameters=_P_CONFORMITE, responses={200: inline_serializer(
-    name='RapportConformiteResponse',
-    fields={
-        'periode': drf_serializers.CharField(allow_null=True),
-        'colonnes': drf_serializers.JSONField(),
-        'decisions': drf_serializers.JSONField(),
-        'sources': drf_serializers.JSONField(),
-        'sources_en_erreur': drf_serializers.JSONField(),
-    },
-)})
+# ERR-ENF11-FUZZ-CORE — le classeur ``?export=xlsx`` est documenté (il était
+# servi sous un Content-Type absent du schéma).
+@extend_schema(parameters=_P_CONFORMITE, responses={
+    (200, 'application/json'): inline_serializer(
+        name='RapportConformiteResponse',
+        fields={
+            'periode': drf_serializers.CharField(allow_null=True),
+            'colonnes': drf_serializers.JSONField(),
+            'decisions': drf_serializers.JSONField(),
+            'sources': drf_serializers.JSONField(),
+            'sources_en_erreur': drf_serializers.JSONField(),
+        },
+    ),
+    (200, _XLSX): OpenApiTypes.BINARY,
+})
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def rapport_conformite_view(request):
@@ -635,7 +653,8 @@ def rapport_conformite_view(request):
     company = getattr(request.user, 'company', None)
     periode = request.query_params.get('periode')
     rapport = workflow_engine.decisions_conformite(company, periode=periode)
-    if request.query_params.get('export') == 'xlsx':
+    # ERR-ENF11-FUZZ-CORE — ``?export=AAA`` (hors énum publiée) = 400.
+    if choix_ou_400(request, 'export', ('xlsx',)) == 'xlsx':
         return _conformite_xlsx_response(rapport)
     rapport['colonnes'] = [
         {'cle': cle, 'libelle': libelle}
@@ -826,6 +845,14 @@ _ROWS = inline_serializer('SavedQueryRows', {
 })
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré : un
+# ``dataset`` non texte levait une erreur de hachage (500).
+_REQUETE_ADHOC = inline_serializer('SavedQueryAdhocRequest', {
+    'dataset': drf_serializers.CharField(),
+    'spec': ObjetJSON(required=False, allow_null=True),
+})
+
+
 class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
 
@@ -890,19 +917,11 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
         obj = self.get_object()
         return self._execute(obj.dataset, obj.spec)
 
-    @extend_schema(
-        request=inline_serializer('SavedQueryAdhocRequest', {
-            'dataset': drf_serializers.CharField(),
-            'spec': drf_serializers.JSONField(required=False),
-        }),
-        responses=_ROWS)
+    @extend_schema(request=_REQUETE_ADHOC, responses=_ROWS)
     @action(detail=False, methods=['post'], url_path='run')
     def run_adhoc(self, request):
-        dataset = (request.data or {}).get('dataset')
-        if not dataset:
-            return Response({'detail': "Champ « dataset » requis."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        return self._execute(dataset, (request.data or {}).get('spec') or {})
+        corps = corps_valide(request, _REQUETE_ADHOC)
+        return self._execute(corps['dataset'], corps.get('spec') or {})
 
 
 class DataExplorerDatasetsView(APIView):
@@ -1087,7 +1106,8 @@ class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def executer(self, request, pk=None):
         export = self.get_object()
-        scheduled_export_infra.executer(export)
+        # ERR-ENF11-FUZZ-CORE — dataset devenu inconnu = 409 (500 avant).
+        scheduled_export_infra.executer_manuel(export)
         return Response(self.get_serializer(export).data)
 
 
@@ -1153,6 +1173,16 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         })
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré (500 avant sur
+# ``target`` non texte).
+_REQUETE_BULK = inline_serializer('BulkEditAppliquerRequest', {
+    'target': drf_serializers.CharField(),
+    'ids': drf_serializers.ListField(
+        child=drf_serializers.IntegerField(), required=False),
+    'changes': drf_serializers.DictField(required=False),
+})
+
+
 class BulkEditViewSet(viewsets.ViewSet):
     """FG389 — édition de champ en masse, généralisée (sans modèle propre).
 
@@ -1192,7 +1222,9 @@ class BulkEditViewSet(viewsets.ViewSet):
             target = (self.request.data or {}).get('target')
         except Exception:  # noqa: BLE001 — corps illisible → palier par défaut
             target = None
-        if target:
+        # ERR-ENF11-FUZZ-CORE — une cible non texte (liste…) levait TypeError
+        # ici (500) : seule une chaîne est cherchée dans le registre.
+        if isinstance(target, str) and target:
             declarees = bulk_edit_infra.target_permissions(target)
             if declarees:
                 return declarees
@@ -1202,28 +1234,20 @@ class BulkEditViewSet(viewsets.ViewSet):
         # qui déclare ses PROPRES permissions ci-dessus n'est pas concernée.
         return [IsAdminOrResponsableTier(), PeutExecuterEditionMasse()]
 
-    @extend_schema(responses={200: _OBJET})
+    @extend_schema(responses={200: _LISTE_OBJETS})  # ERR-ENF11 : une liste
     @action(detail=False, methods=['get'])
     def targets(self, request):
         return Response(bulk_edit_infra.list_bulk_targets())
 
     @extend_schema(
-        request=inline_serializer('BulkEditAppliquerRequest', {
-            'target': drf_serializers.CharField(),
-            'ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField(), required=False),
-            'changes': drf_serializers.DictField(required=False),
-        }),
+        request=_REQUETE_BULK,
         responses=inline_serializer('BulkEditAppliquerReponse', {
             'modifies': drf_serializers.IntegerField(),
         }))
     @action(detail=False, methods=['post'])
     def appliquer(self, request):
-        body = request.data or {}
-        target = body.get('target')
-        if not target:
-            return Response({'detail': "Champ « target » requis."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        body = corps_valide(request, _REQUETE_BULK)
+        target = body['target']
         try:
             count = bulk_edit_infra.apply_bulk_edit(
                 target, request.user.company, request.user,
@@ -1289,7 +1313,9 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
-    @extend_schema(responses={200: _LISTE_OBJETS})
+    # ERR-ENF11-FUZZ-CORE — l'action ``list`` est déjà publiée en tableau :
+    # ``_LISTE_OBJETS`` donnait un tableau de tableaux.
+    @extend_schema(responses={200: _OBJET})
     def list(self, request):
         from . import feature_flags
         company = request.user.company
@@ -1307,8 +1333,11 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
             actives = feature_flags.activer_module(
                 company, pk, user=request.user)
         except feature_flags.DependencyError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ERR-ENF11-FUZZ-CORE — module inconnu = introuvable (404).
+            return Response({'detail': str(exc)}, status=(
+                status.HTTP_404_NOT_FOUND
+                if isinstance(exc, feature_flags.ModuleInconnu)
+                else status.HTTP_400_BAD_REQUEST))
         return Response({'actives': actives})
 
     @extend_schema(
@@ -1329,10 +1358,12 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
         except feature_flags.DependencyError as exc:
             return Response(
                 {'detail': str(exc), 'dependants': exc.dependents},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=(status.HTTP_404_NOT_FOUND
+                        if isinstance(exc, feature_flags.ModuleInconnu)
+                        else status.HTTP_400_BAD_REQUEST))
         return Response({'desactives': desactives})
 
-    @extend_schema(responses={200: _OBJET})
+    @extend_schema(responses={200: _LISTE_OBJETS})  # ERR-ENF11 : une liste
     @action(detail=False, methods=['get'], url_path='journal')
     def journal(self, request):
         """ODY25 — journal d'installation de la société de l'appelant.
@@ -1389,6 +1420,12 @@ class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
         return Response(serializer.data)
 
 
+# ERR-ENF11-FUZZ-CORE — ``context`` non objet levait TypeError (500).
+_REQUETE_APERCU = inline_serializer('BrandedPreviewRequest', {
+    'context': drf_serializers.DictField(required=False),
+})
+
+
 class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG393 — éditeur de modèles imprimables/brandés (PDF/email/WhatsApp).
 
@@ -1411,9 +1448,7 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsAdminOrResponsableTier()]
 
     @extend_schema(
-        request=inline_serializer('BrandedPreviewRequest', {
-            'context': drf_serializers.DictField(required=False),
-        }),
+        request=_REQUETE_APERCU,
         responses=inline_serializer('BrandedPreviewReponse', {
             'sujet': drf_serializers.CharField(),
             'corps': drf_serializers.CharField(),
@@ -1422,7 +1457,7 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     def preview(self, request, pk=None):
         from . import templating
         template = self.get_object()
-        context = (request.data or {}).get('context') or {}
+        context = corps_valide(request, _REQUETE_APERCU).get('context') or {}
         sujet, corps = templating.rendre_modele(template, context)
         return Response({'sujet': sujet, 'corps': corps})
 
@@ -1486,9 +1521,10 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             dsr.traiter_demande(dsr_request)
         except dsr.TransitionInterdite as exc:
-            # NTGRC3 — transition illégale ⇒ 400 explicite (jamais 500), le
-            # message nomme le statut courant et le statut visé.
-            return Response({'statut': str(exc)}, status=400)
+            # NTGRC3 — transition illégale ⇒ réponse explicite (jamais 500),
+            # le message nomme les statuts. ERR-ENF11-FUZZ-CORE : 409 (conflit
+            # d'ÉTAT, la requête elle-même est conforme), plus 400.
+            return Response({'statut': str(exc)}, status=409)
         except dsr.EffacementBloque as exc:
             # NTGRC8 — une garde (mise sous séquestre) refuse l'effacement :
             # 409 (conflit d'état) avec le motif, jamais un échec silencieux.
@@ -1502,14 +1538,14 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
 
         Étape obligatoire avant de livrer les données de quelqu'un : on
         s'assure d'abord que le demandeur est bien la personne concernée. Une
-        transition illégale renvoie 400 (jamais 500).
+        transition illégale renvoie 409 (conflit d'état, jamais 500).
         """
         from . import dsr
         dsr_request = self.get_object()
         try:
             dsr.prendre_en_charge(dsr_request)
         except dsr.TransitionInterdite as exc:
-            return Response({'statut': str(exc)}, status=400)
+            return Response({'statut': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
 
     @extend_schema(responses=inline_serializer('DsrEnRetard', {
@@ -1656,11 +1692,9 @@ class SystemStatusViewSet(viewsets.ViewSet):
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=inline_serializer('EtatSysteme', {
-        'global': drf_serializers.CharField(),
-        'services': drf_serializers.JSONField(),
-        'incidents': drf_serializers.JSONField(),
-    }))
+    # ERR-ENF11-FUZZ-CORE — UN objet (global/services/incidents) : un
+    # serializer sur l'action ``list`` était publié en TABLEAU de cet objet.
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def list(self, request):
         from . import health
         services = health.check_services()
@@ -1986,7 +2020,10 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
     @extend_schema(
         parameters=[
             _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
-            _q('format', OpenApiTypes.STR, 'xlsx : export tableur.',
+            # ERR-ENF11-FUZZ-CORE — ``export`` et non ``format`` : DRF réserve
+            # ``?format=`` à la négociation (``format=xlsx`` = 404, toute
+            # méthode confondue).
+            _q('export', OpenApiTypes.STR, 'xlsx : export tableur.',
                enum=['xlsx'])],
         responses={
             (200, 'application/json'): inline_serializer('UsageCouts', {
@@ -2000,13 +2037,13 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
         """NTPLT45 — rapport de coût par tenant (SUPERUSER only).
 
         ``GET usage/couts/?periode=AAAA-MM`` → JSON par société (requêtes,
-        db_time, stockage, jobs). ``?format=xlsx`` → export tableur. Base
+        db_time, stockage, jobs). ``?export=xlsx`` → export tableur. Base
         factuelle de la discussion prix/plan (N100).
         """
         from . import usage
         periode = request.query_params.get('periode')
         rows = usage.cout_par_tenant(periode=periode)
-        if request.query_params.get('format') == 'xlsx':
+        if choix_ou_400(request, 'export', ('xlsx',)) == 'xlsx':
             return _couts_xlsx_response(rows, periode)
         return Response({'periode': periode, 'tenants': rows})
 
@@ -2338,6 +2375,6 @@ def sla_export_csv(request):
     company = request.user.company
     snapshots = _sla_export_rows(company)
     incidents = _incidents_export_rows(company)
-    if request.query_params.get('export') == 'xlsx':
+    if choix_ou_400(request, 'export', ('csv', 'xlsx')) == 'xlsx':
         return _sla_export_xlsx_response(snapshots, incidents)
     return _sla_export_csv_response(snapshots, incidents)

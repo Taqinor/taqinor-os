@@ -23,6 +23,7 @@ from authentication.role_tiers import (
 )
 
 from .models import VuePersonnalisee
+from .parseurs import ChoixDocumente
 from .viewsets import CompanyScopedModelViewSet
 from .vues import (
     demarquer_defauts_concurrents, filtre_visibilite, resoudre_vue_defaut,
@@ -39,6 +40,10 @@ class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelS
         source='get_partage_display', read_only=True)
     owner_username = serializers.CharField(
         source='owner.username', read_only=True, default='')
+    # ERR-ENF11-FUZZ-CORE — paliers publiés (énum en ligne) : un palier
+    # inconnu était conforme au schéma (texte libre) puis refusé.
+    role_tier = ChoixDocumente(
+        ['', *sorted(TIERS_VALIDES)], required=False, allow_blank=True)
 
     class Meta:
         model = VuePersonnalisee

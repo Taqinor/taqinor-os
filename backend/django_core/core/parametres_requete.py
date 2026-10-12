@@ -196,6 +196,13 @@ def verifier_parametres_requete(view, request) -> None:
     faux, sur ``OPTIONS`` et sans query string."""
     if not strict_actif() or request.method.upper() == 'OPTIONS':
         return
+    # ERR-ENF11-FUZZ-CORE — méthode non servie par la vue : le 405 de DRF
+    # (levé APRÈS ``initial``, dans ``dispatch``) prime ; un 400 « paramètre
+    # non déclaré » masquait « méthode non supportée » (POST module-toggles).
+    methode = request.method.lower()
+    if (methode not in getattr(view, 'http_method_names', ())
+            or not hasattr(view, methode)):
+        return
     cles = set(request.query_params.keys())
     if not cles:
         return
@@ -230,3 +237,17 @@ def installer() -> None:
 
     initial._enfp_parametres_requete = True
     APIView.initial = initial
+
+
+def choix_ou_400(request, nom, choix):
+    """ERR-ENF11-FUZZ-CORE — valeur d'un paramètre de requête à énumération
+    PUBLIÉE (``enum=`` au schéma). Absent → ``None`` ; hors liste → 400
+    ``validation_error`` nommant le paramètre (``?export=AAA`` rendait le CSV
+    par défaut en 200 : donnée invalide acceptée en silence)."""
+    from rest_framework.exceptions import ValidationError
+
+    valeur = request.query_params.get(nom)
+    if valeur is not None and valeur not in choix:
+        raise ValidationError({nom: [
+            f"Valeur « {valeur} » invalide : attendu {', '.join(choix)}."]})
+    return valeur

@@ -60,6 +60,14 @@ class FormuleValiderTests(TestCase):
         self.assertEqual(res.status_code, 200, res.data)
         self.assertFalse(res.data['ok'])
 
+    def test_corps_hors_schema_400(self):
+        # ERR-ENF11-FUZZ-CORE — `variables: [""]` (minLength 1 au schéma) et un
+        # corps tableau étaient acceptés en 200.
+        for corps in ({'expression': 'a', 'variables': ['']}, [None, None]):
+            with self.subTest(corps=corps):
+                res = self.api.post(URL, corps, format='json')
+                self.assertEqual(res.status_code, 400, res.data)
+
     def test_aucun_effet_de_bord_rien_n_est_ecrit(self):
         """Un dry-run ne persiste rien — juste la certitude que la formule
         est utilisable telle quelle."""

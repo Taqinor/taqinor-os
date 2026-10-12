@@ -24,8 +24,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_field,
-    extend_schema_view, inline_serializer,
+    OpenApiParameter, PolymorphicProxySerializer, extend_schema,
+    extend_schema_field, extend_schema_view, inline_serializer,
 )
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
@@ -35,6 +35,7 @@ from rest_framework.response import Response
 
 from . import dossiers as dossiers_service
 from .mixins import SameCompanyFKSerializerMixin
+from .parseurs import corps_valide
 from .models import (
     Dossier, DossierActivity, DossierChecklistItem, DossierLien,
 )
@@ -101,8 +102,10 @@ class DossierSerializer(SameCompanyFKSerializerMixin,
         source='get_statut_display', read_only=True)
     priorite_label = serializers.CharField(
         source='get_priorite_display', read_only=True)
-    proprietaire_username = serializers.CharField(
-        source='proprietaire.username', read_only=True, default='')
+    # ERR-ENF11-FUZZ-CORE — toujours présent : avec ``source`` traversant un
+    # propriétaire nul, DRF OMETTAIT le champ sur un PATCH (partial) alors que
+    # le schéma le déclare requis (« Response violates schema »).
+    proprietaire_username = serializers.SerializerMethodField()
     liens = DossierLienSerializer(many=True, read_only=True)
     checklist = DossierWorkflowChecklistItemSerializer(many=True, read_only=True)
     # NTWFL20 — l'étape courante du processus attaché, telle que l'écran
@@ -124,6 +127,9 @@ class DossierSerializer(SameCompanyFKSerializerMixin,
                             'priorite_label', 'proprietaire_username',
                             'liens', 'checklist', 'workflow_instance',
                             'etape_courante', 'created_at', 'updated_at']
+
+    def get_proprietaire_username(self, obj) -> str:
+        return getattr(obj.proprietaire, 'username', '') or ''
 
     @extend_schema_field(inline_serializer('DossierEtapeCourante', {
         'id': serializers.IntegerField(),
@@ -162,11 +168,27 @@ def resoudre_content_type(cle_modele):
         return None
 
 
+# ERR-ENF11-FUZZ-CORE — ``cle_modele`` publié avec sa forme
+# (« app_label.model ») ; une forme valide mais un type inexistant est une
+# cible introuvable : 404 documenté (400 avant, sur une requête conforme).
 _CIBLE_LIEN = inline_serializer('DossierCibleLien', {
-    'cle_modele': serializers.CharField(
+    'cle_modele': serializers.RegexField(
+        r'^[A-Za-z_]\w*\.[A-Za-z_]\w*$',
         help_text='« app_label.model », ex. crm.lead.'),
     'object_id': serializers.IntegerField(min_value=1),
-    'libelle': serializers.CharField(required=False),
+    'libelle': serializers.CharField(required=False, allow_blank=True),
+})
+_TYPE_INCONNU = ("Type d'objet introuvable — attendu « app_label.model » "
+                 "(ex. « crm.lead »).")
+# ERR-ENF11-FUZZ-CORE — POST checklist : DEUX formes exclusives (ajout d'une
+# étape OU coche d'une étape) ; ``{}`` était conforme puis refusé.
+_CHECKLIST_AJOUT = inline_serializer('DossierChecklistAjout', {
+    'libelle': serializers.CharField(max_length=200),
+    'ordre': serializers.IntegerField(required=False, min_value=0),
+})
+_CHECKLIST_COCHE = inline_serializer('DossierChecklistCoche', {
+    'item_id': serializers.IntegerField(),
+    'fait': serializers.BooleanField(required=False, default=True),
 })
 
 
@@ -219,7 +241,8 @@ class DossierViewSet(CompanyScopedModelViewSet):
                 user=self.request.user)
 
     @extend_schema(responses=DossierActivitySerializer(many=True))
-    @action(detail=True, methods=['get'])
+    # ERR-ENF11-FUZZ-CORE — liste À PLAT : le schéma la publiait paginée.
+    @action(detail=True, methods=['get'], pagination_class=None)
     def historique(self, request, pk=None):
         """Le chatter du dossier, du plus récent au plus ancien."""
         dossier = self.get_object()
@@ -251,28 +274,18 @@ class DossierViewSet(CompanyScopedModelViewSet):
     def lier(self, request, pk=None):
         """Rattache ``{cle_modele, object_id, libelle?}`` au dossier."""
         dossier = self.get_object()
-        ct = resoudre_content_type(request.data.get('cle_modele'))
+        cible = corps_valide(request, _CIBLE_LIEN)
+        ct = resoudre_content_type(cible['cle_modele'])
         if ct is None:
-            return Response(
-                {'cle_modele': 'Type d\'objet inconnu — attendu '
-                               '« app_label.model » (ex. « crm.lead »).'},
-                status=status.HTTP_400_BAD_REQUEST)
-        try:
-            object_id = int(request.data.get('object_id'))
-        except (TypeError, ValueError):
-            return Response(
-                {'object_id': 'Identifiant de cible manquant ou invalide.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        if object_id <= 0:
-            return Response(
-                {'object_id': 'Identifiant de cible manquant ou invalide.'},
-                status=status.HTTP_400_BAD_REQUEST)
+            return Response({'cle_modele': _TYPE_INCONNU},
+                            status=status.HTTP_404_NOT_FOUND)
+        object_id = cible['object_id']
 
         lien, cree = DossierLien.objects.get_or_create(
             dossier=dossier, content_type=ct, object_id=object_id,
             defaults={
                 'company': dossier.company,
-                'libelle': (request.data.get('libelle') or '')[:200],
+                'libelle': (cible.get('libelle') or '')[:200],
             })
         if cree:
             dossiers_service.journaliser_lien(
@@ -290,16 +303,12 @@ class DossierViewSet(CompanyScopedModelViewSet):
     def delier(self, request, pk=None):
         """Détache ``{cle_modele, object_id}`` du dossier."""
         dossier = self.get_object()
-        ct = resoudre_content_type(request.data.get('cle_modele'))
-        try:
-            object_id = int(request.data.get('object_id'))
-        except (TypeError, ValueError):
-            object_id = None
-        if ct is None or object_id is None:
-            return Response(
-                {'detail': 'Cible introuvable : « cle_modele » et '
-                           '« object_id » sont requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        cible = corps_valide(request, _CIBLE_LIEN)
+        ct = resoudre_content_type(cible['cle_modele'])
+        object_id = cible['object_id']
+        if ct is None:
+            return Response({'detail': _TYPE_INCONNU},
+                            status=status.HTTP_404_NOT_FOUND)
         supprimes, _ = DossierLien.objects.filter(
             dossier=dossier, content_type=ct, object_id=object_id).delete()
         if supprimes:
@@ -313,17 +322,15 @@ class DossierViewSet(CompanyScopedModelViewSet):
         responses=DossierWorkflowChecklistItemSerializer(many=True))
     @extend_schema(
         methods=['POST'],
-        request=inline_serializer('DossierChecklistRequest', {
-            'libelle': serializers.CharField(required=False),
-            'ordre': serializers.IntegerField(required=False, min_value=0),
-            'item_id': serializers.IntegerField(required=False),
-            'fait': serializers.BooleanField(required=False),
-        }),
+        request=PolymorphicProxySerializer(
+            component_name='DossierChecklistRequete',
+            serializers=[_CHECKLIST_AJOUT, _CHECKLIST_COCHE],
+            resource_type_field_name=None),
         responses={
             200: DossierWorkflowChecklistItemSerializer,
             201: DossierWorkflowChecklistItemSerializer,
         })
-    @action(detail=True, methods=['get', 'post'])
+    @action(detail=True, methods=['get', 'post'], pagination_class=None)
     def checklist(self, request, pk=None):
         """Lit la checklist, ou ajoute/coche une étape.
 
@@ -337,32 +344,25 @@ class DossierViewSet(CompanyScopedModelViewSet):
             return Response(DossierWorkflowChecklistItemSerializer(
                 items, many=True).data)
 
-        item_id = request.data.get('item_id')
-        if item_id is not None:
-            item = dossier.checklist.filter(pk=item_id).first()
+        coche = isinstance(request.data, dict) and 'item_id' in request.data
+        donnees = corps_valide(
+            request, _CHECKLIST_COCHE if coche else _CHECKLIST_AJOUT)
+        if coche:
+            item = dossier.checklist.filter(pk=donnees['item_id']).first()
             if item is None:
                 return Response(
                     {'item_id': 'Étape de checklist introuvable sur ce '
                                 'dossier.'},
                     status=status.HTTP_404_NOT_FOUND)
-            item.fait = bool(request.data.get('fait', True))
+            item.fait = donnees['fait']
             item.fait_par = request.user if item.fait else None
             item.fait_le = timezone.now() if item.fait else None
             item.save(update_fields=['fait', 'fait_par', 'fait_le',
                                      'updated_at'])
             return Response(DossierWorkflowChecklistItemSerializer(item).data)
 
-        libelle = (request.data.get('libelle') or '').strip()
-        if not libelle:
-            return Response(
-                {'libelle': 'Le libellé de l\'étape est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        try:
-            ordre = int(request.data.get('ordre') or 0)
-        except (TypeError, ValueError):
-            ordre = 0
         item = DossierChecklistItem.objects.create(
             company=dossier.company, dossier=dossier,
-            libelle=libelle[:200], ordre=max(ordre, 0))
+            libelle=donnees['libelle'], ordre=donnees.get('ordre', 0))
         return Response(DossierWorkflowChecklistItemSerializer(item).data,
                         status=status.HTTP_201_CREATED)
