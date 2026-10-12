@@ -4,7 +4,6 @@
 # proprietaires retirent leurs lignes : ADEP32, ADEP35-ADEP40...).
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_GRAPH_EOL_ALERT_MONTHS  # ADEP20 clé non déclarée
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_ROLLUP_AFTER_MONTHS  # ADEP20 clé non déclarée
-backend/django_core/apps/automation/actions.py::CONTACT_FROM_EMAIL  # ADEP20 clé non déclarée
 backend/django_core/apps/identity/anomaly.py::GEOIP2_CITY_DB  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_MINUTES_OUVREES  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_SCORE_THRESHOLD  # ADEP20 clé non déclarée
