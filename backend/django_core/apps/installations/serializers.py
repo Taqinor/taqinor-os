@@ -3,8 +3,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 
-# ENF11 — ChampsStrictsMixin (core.champs_stricts) via le module voisin : mur.
-from .serializers_stage import ChampsStrictsMixin, valider_unicite_societe
+from .serializers_stage import ChampsStrictsMixin, valider_unicite_societe  # ENF11 : mixin de core.champs_stricts
 
 from .models import (
     Equipe,
