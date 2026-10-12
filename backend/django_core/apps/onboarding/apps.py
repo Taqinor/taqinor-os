@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -18,4 +20,4 @@ class OnboardingConfig(AppConfig):
     def ready(self):
         # NTDMO12 — abonne l'auto-complétion des items de checklist aux
         # événements métier (core.events), sans importer ventes/crm/stock.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

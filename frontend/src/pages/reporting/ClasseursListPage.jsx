@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sheet, Plus, Trash2 } from 'lucide-react'
+import { Sheet, Plus } from 'lucide-react'
+import { colonneSupprimer } from './colonneSupprimer'
 import reportingApi from '../../api/reportingApi'
 import {
-  Button, DataTable, EmptyState, IconButton, Input, Spinner,
+  Button, DataTable, EmptyState, Input, Spinner,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
@@ -58,23 +59,14 @@ export default function ClasseursListPage() {
       .catch(() => toast.error('Suppression impossible.'))
   }
 
-  const columns = useMemo(() => [
+  const columns = [
     { id: 'titre', header: 'Titre', accessor: (r) => r.titre },
     {
       id: 'partage', header: 'Partagé', width: 100,
       accessor: (r) => (r.partage ? 'Oui' : 'Non'),
     },
-    {
-      id: 'actions', header: '', width: 100, align: 'right',
-      accessor: () => '',
-      cell: (v, r) => (
-        <IconButton variant="ghost" label="Supprimer" onClick={() => remove(r)}>
-          <Trash2 />
-        </IconButton>
-      ),
-    },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- remove recréé par rendu
-  ], [])
+    colonneSupprimer(remove),
+  ]
 
   return (
     <div className="page">

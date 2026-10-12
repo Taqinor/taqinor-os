@@ -377,6 +377,9 @@ class _Base(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
         self._k = itertools.count(1)
+        # ACRM55 — une seule touche OUVERTE par barreau (lead, cadence, ordre,
+        # devis) : chaque étape du fixture porte son propre `ordre`.
+        self._ordre = itertools.count(2)
 
     # ── fabriques ──
 
@@ -401,8 +404,8 @@ class _Base(TestCase):
                outcome='', cadence='contact', canal='appel', cle='',
                libelle='Appel de suivi', cree_le=None, nb_reports=0):
         etape = RelanceEtape.objects.create(
-            company=self.company, lead=lead, cadence=cadence, ordre=2,
-            canal=canal, cle=cle, libelle=libelle, due_at=_a(jour, heure),
+            company=self.company, lead=lead, cadence=cadence,
+            ordre=next(self._ordre), canal=canal, cle=cle, libelle=libelle, due_at=_a(jour, heure),
             due_date=jour, statut=statut, traite_le=fait_le,
             traite_par=(self.acteur if statut in (FAIT, SAUTEE) else None),
             outcome=outcome, nb_reports=nb_reports)

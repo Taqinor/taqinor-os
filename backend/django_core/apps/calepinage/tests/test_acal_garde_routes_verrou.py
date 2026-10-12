@@ -21,7 +21,6 @@ import copy
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-import apps.calepinage.urls  # noqa: F401 — rattache les @action au viewset
 from apps.calepinage.models import (
     Calepinage, CalepinageVariante, CalepinageVersion,
 )

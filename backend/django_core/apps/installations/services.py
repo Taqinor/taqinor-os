@@ -705,9 +705,10 @@ def _realigner_nomenclature_revision(chantier, devis):
     a_des_reservations = StockReservation.objects.filter(
         installation=chantier).exists()
 
-    chantier.bom = _freeze_bom(devis)
-    chantier.save(update_fields=['bom'])
-    nouveaux = _bom_quantities(chantier)
+    # AMET14 — DA déjà émises : marquées « à revoir (V2) », jamais modifiées.
+    from .revision_achats import figer_bom_revisee
+    nouveaux = figer_bom_revisee(
+        chantier, devis, _freeze_bom, _bom_quantities)
 
     if (not a_des_reservations
             and methode_reservation_stock(chantier.company)
@@ -1298,6 +1299,7 @@ def consume_reservations(installation, user):
     from apps.stock.services import (
         mouvement_type_sortie, record_stock_movement,
     )
+    from .sortie_quarantaine import detail_manques, sortie_hors_quarantaine
 
     consumed = 0
     manques = []
@@ -1320,7 +1322,10 @@ def consume_reservations(installation, user):
             # ERR80 — garde plancher : ne pilote jamais le stock en négatif. On
             # sort au plus le stock en main (borné à zéro), comme la
             # réconciliation terrain et les pièces SAV.
-            qte_sortie = min(resa.quantite, qte_avant) if qte_avant > 0 else 0
+            # ASTK249 — la part en quarantaine (rappel, réception non
+            # conforme) ne sort jamais au nom du chantier.
+            qte_sortie, en_q = sortie_hors_quarantaine(
+                installation.company, produit, qte_avant, resa.quantite)
             qte_apres = qte_avant - qte_sortie
             record_stock_movement(
                 company=installation.company, produit=produit,
@@ -1332,15 +1337,14 @@ def consume_reservations(installation, user):
                 created_by=user)
             manquant = resa.quantite - qte_sortie
             if manquant > 0:
-                manques.append((produit.sku or produit.nom, manquant))
+                manques.append((produit.sku or produit.nom, manquant, en_q))
             resa.consomme = True
             resa.date_consommation = timezone.now()
             resa.save(update_fields=['consomme', 'date_consommation'])
             consumed += 1
     if manques:
         from . import activity
-        detail = ', '.join(
-            f'{ref} (manque {manquant})' for ref, manquant in manques)
+        detail = detail_manques(manques)
         activity.log_note(
             installation, user,
             f"Consommation stock incomplète — {detail}.")
@@ -3882,7 +3886,10 @@ def seed_lignes_assemblage(ordre):
     création), quantités gonflées du taux de perte attendu (XMFG11). Idempotent :
     n'écrase jamais des lignes déjà présentes (même partiellement personnalisées)."""
     from .models import OrdreAssemblageLigne
-    if ordre.lignes.exists():
+    # ACHT100 — seules les lignes issues du kit verrouillent l'idempotence :
+    # une ligne ajoutée à la main ne doit pas empêcher la re-génération.
+    if ordre.lignes.filter(
+            origine=OrdreAssemblageLigne.Origine.KIT).exists():
         return list(ordre.lignes.all())
     lignes = [
         OrdreAssemblageLigne(
@@ -4021,8 +4028,10 @@ def recreer_nomenclature_ordre_assemblage(ordre, user=None):
     réservations composant sont re-semées (les non consommées des composants
     disparus sont libérées). La clôture consomme donc toujours la
     nomenclature du kit produit × la quantité produite."""
-    from .models import ReservationAssemblage
-    ordre.lignes.all().delete()
+    from .models import OrdreAssemblageLigne, ReservationAssemblage
+    # ACHT100 — seules les lignes issues du kit sont régénérées : les lignes
+    # ajoutées à la main (origine « ajout ») sont conservées telles quelles.
+    ordre.lignes.filter(origine=OrdreAssemblageLigne.Origine.KIT).delete()
     (ReservationAssemblage.objects
      .filter(ordre=ordre, active=True, consomme=False)
      .update(active=False))
@@ -4037,7 +4046,9 @@ def recreer_nomenclature_ordre_assemblage(ordre, user=None):
 def recreer_lignes_ordre_demontage(ordre_demontage):
     """ACHT17 — jumeau démontage : lignes recopiées depuis la BOM du kit
     courant × la quantité courante (ordre planifié)."""
-    ordre_demontage.lignes.all().delete()
+    # ACHT100 (jumeau) — les lignes ajoutées à la main sont conservées.
+    ordre_demontage.lignes.filter(
+        origine=ordre_demontage.lignes.model.Origine.KIT).delete()
     seed_lignes_demontage(ordre_demontage)
 
 
@@ -4046,7 +4057,8 @@ def seed_lignes_demontage(ordre_demontage):
     ATTENDUE = BOM × ordre.quantite ; RÉCUPÉRÉE par défaut = attendue, éditable
     ligne à ligne avant la clôture). Idempotent."""
     from .models import OrdreDemontageLigne
-    if ordre_demontage.lignes.exists():
+    if ordre_demontage.lignes.filter(
+            origine=OrdreDemontageLigne.Origine.KIT).exists():
         return list(ordre_demontage.lignes.all())
     lignes = [
         OrdreDemontageLigne(
@@ -4279,7 +4291,7 @@ def _log_transition_statut_chatter(instance, ancien, nouveau, *, user=None):
         log_field_change(
             instance, 'statut', ancien, nouveau, user=user,
             field_label='Statut')
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # best-effort, jamais bloquant
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P44 : journal chatter de transition échoué (%s %s)',
@@ -4376,7 +4388,7 @@ def emettre_demande_achat_approuvee(demande, *, user=None):
             company=demande.company,
             user=user,
             montant_estime=getattr(demande, 'montant_estime', None))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # best-effort, jamais bloquant
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P38 : émission demande_achat_approuvee échouée (demande %s)',
@@ -5947,7 +5959,7 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
             from . import field_capture
             with _tx.atomic():
                 field_capture.push_serials_to_parc(intervention, user)
-        except Exception:  # noqa: BLE001
+        except Exception:
             import logging
             logging.getLogger(__name__).warning(
                 'ACHT37: poussée des séries au parc échouée (intervention %s)',
@@ -6229,14 +6241,16 @@ def notifier_reception_solde_a_facturer(installation, user=None):
     return notifier_jalon_a_facturer(jalon, user)
 
 
-def chantiers_a_facturer(company):
+def chantiers_a_facturer(company, user=None):
     """YSERV7 — sélecteur : chantiers ayant au moins une tranche due (jalon
     atteint ou chantier réceptionné) non encore facturée. Renvoie une liste de
     dicts plats `{installation_id, reference, tranche, jalon_id}` — un par
     tranche due (un chantier peut apparaître plusieurs fois si plusieurs
-    tranches sont dues). Lecture seule ; import ventes via selectors seulement."""
+    tranches sont dues). Lecture seule ; import ventes via selectors seulement.
+    ``user`` (optionnel) borne aux chantiers de SA portée, comme la liste des
+    chantiers (``selectors.scoper_chantiers``)."""
     from apps.ventes.selectors import tranche_facturee
-    from .models import JalonProjet
+    from .models import Installation, JalonProjet
     out = []
     jalons = (
         JalonProjet.objects
@@ -6246,6 +6260,11 @@ def chantiers_a_facturer(company):
         .select_related('installation', 'installation__devis')
         .order_by('installation_id', 'ordre', 'id')
     )
+    if user is not None:
+        from .selectors import scoper_chantiers
+        visibles = scoper_chantiers(
+            Installation.objects.filter(company=company), user)
+        jalons = jalons.filter(installation__in=visibles)
     for jalon in jalons:
         installation = jalon.installation
         devis = getattr(installation, 'devis', None)
@@ -7105,7 +7124,7 @@ def _notifier_prochaine_etape_approbation_achat(demande):
                   f'Objet : {demande.objet}'),
             link='/approbations?source=installations',
             company=demande.company, reason=reason)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # jamais bloquant
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P45: notification étape suivante échouée (demande %s)',

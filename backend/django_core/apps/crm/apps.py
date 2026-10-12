@@ -1,3 +1,4 @@
+import importlib
 from django.apps import AppConfig
 from django.core.checks import Warning as DjangoWarning, register
 
@@ -45,7 +46,7 @@ class CrmConfig(AppConfig):
     def ready(self):
         # M6 — abonne le CRM aux événements métier (core.events) : avance
         # l'étape du lead à l'acceptation d'un devis sans couplage direct.
-        from . import receivers  # noqa: F401
+        importlib.import_module(f'{self.name}.receivers')
         # AG6 — enregistre les actions agentiques CRM dans le registre AG1.
         from .agent_actions import register_crm_actions
         register_crm_actions()
@@ -107,4 +108,4 @@ class CrmConfig(AppConfig):
         )
         # ARC18 — miroir one-way crm.Client → répertoire unifié tiers.Tiers
         # (l'import câble le récepteur post_save ; pont réversible).
-        from . import tiers_bridge  # noqa: F401
+        importlib.import_module(f'{self.name}.tiers_bridge')

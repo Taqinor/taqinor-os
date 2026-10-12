@@ -72,6 +72,15 @@ class PublicStatusEndpointTest(TestCase):
         titres = [r['titre'] for r in results]
         self.assertNotIn('Incident société Acme', titres)
 
+    def test_incidents_page_size_hors_schema_400(self):
+        # ERR-ENF11-FUZZ-STATUSPAGE — `?page_size=null&page_size=null`
+        # répondait 200 ; refusé par core.pagination (ERR-ENF11-FUZZ-PAGE-SIZE).
+        resp = self.client.get(
+            '/api/django/statuspage/public/incidents/'
+            '?page_size=null&page_size=null')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('page_size', resp.data)
+
     def test_public_status_response_is_cached_60_seconds(self):
         ComponentStatus.objects.create(
             nom='API', region='EU-West/Hetzner', company=None,

@@ -114,6 +114,15 @@ class TestSavSlaSettings(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn('sla_response_days', r.data)
 
+    def test_singleton_sans_pagination_declaree(self):
+        # CI #956 (fuzz « accepted schema-violating », ?page_size=null) : le
+        # singleton ne pagine pas, le schéma ne déclare donc plus page_size.
+        from apps.sav.views import SavSlaSettingsViewSet
+        self.assertIsNone(SavSlaSettingsViewSet.pagination_class)
+        r = self.api.get('/api/django/sav/sla-settings/?page_size=null')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('sla_response_days', r.data)
+
     def test_api_update_singleton(self):
         r = self.api.post('/api/django/sav/sla-settings/', {
             'sla_response_days': 2,
@@ -516,6 +525,14 @@ class TestPartsF89(TestCase):
         self.assertEqual(row['produit'], self.prod.pk)
         self.assertEqual(float(row['total_consomme']), 3.0)
         self.assertIn('qte_suggere_reappro', row)
+
+    def test_parts_forecast_months_invalide_repond_400(self):
+        # ENF11 — jamais 500 sur une fenêtre non numérique ou démesurée.
+        for valeur in ('abc', '0', '-3', '99999999999'):
+            r = self.api.get(
+                '/api/django/sav/insights/sav-parts-forecast/',
+                {'months': valeur})
+            self.assertEqual(r.status_code, 400, valeur)
 
     def test_parts_forecast_company_isolation(self):
         """FG89 — Les pièces d'une autre société n'apparaissent pas."""

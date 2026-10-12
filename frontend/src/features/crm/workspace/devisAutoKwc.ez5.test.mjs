@@ -21,7 +21,8 @@ import { panneauxPourKwc } from '../../ventes/solar.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (p) => readFileSync(path.join(__dirname, p), 'utf8')
 
-const tab = read('DevisTab.jsx')
+// ENF22 : la logique pure (devisIntent…) vit dans devisTabLogique.js, le composant dans DevisTab.jsx.
+const tab = read('DevisTab.jsx') + read('devisTabLogique.js')
 const workspace = read('LeadWorkspace.jsx')
 const panel = read('../../../pages/crm/leads/LeadDevisPanel.jsx')
 const autoQuote = read('../../ventes/autoQuote.js')

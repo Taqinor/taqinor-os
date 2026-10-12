@@ -19,6 +19,7 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_calx325_mention_verrou -v2
 """
+import importlib
 import copy
 import datetime
 import json
@@ -140,9 +141,9 @@ class MentionSurChaquePageTest(SimpleTestCase):
 
     def setUp(self):
         try:
-            import fitz  # noqa: F401
-            import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — bibliothèques natives absentes
+            importlib.import_module('fitz')
+            importlib.import_module('weasyprint')
+        except Exception:  # bibliothèques natives absentes
             self.skipTest('WeasyPrint ou PyMuPDF indisponible sur ce poste')
 
     def test_la_mention_figure_sur_chaque_page(self):

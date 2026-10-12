@@ -9,7 +9,8 @@ import { render, screen, cleanup } from '@testing-library/react'
    reconstruite ; (4) la carte n'est pas montée du tout quand aucun arrêt n'a de
    coordonnées. */
 
-import TourneeStops, { tourneeMarkers, tourneePath, stopLabel } from './TourneeStops'
+import TourneeStops from './TourneeStops'
+import { tourneeMarkers, tourneePath, stopLabel } from './TourneeStops.helpers'
 
 const STOPS = [
   { id: 1, client_nom: 'Client A', site_ville: 'Casablanca', gps_lat: '33.57', gps_lng: '-7.58', itineraire_url: 'https://maps.example/1' },

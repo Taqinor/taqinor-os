@@ -48,6 +48,15 @@ class DashboardViewSetTests(TestCase):
         self.assertEqual(dash.company, self.company)
         self.assertEqual(dash.owner, self.user)
 
+    def test_partage_booleen_strict(self):
+        # api-fuzz #956 : ``0`` n'est pas un booléen JSON → 400.
+        req = self.factory.post(
+            '/dashboards/', {'titre': 'D', 'partage': 0}, format='json')
+        force_authenticate(req, user=self.user)
+        resp = DashboardViewSet.as_view({'post': 'create'})(req)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('partage', resp.data)
+
     def test_scoping_personal_and_shared(self):
         Dashboard.objects.create(
             company=self.company, owner=self.user, titre='A perso')

@@ -829,6 +829,14 @@ class UxParametresApiTests(TestCase):
             self.BASE, {'roles_autorises_definir_defaut': [role_b.pk]}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_roles_autorises_non_liste_refuse(self):
+        # ENF11 — `{}` / chaîne passaient pour une liste vide (200).
+        for brut in ({}, {'a': 1}, 'abc', 5):
+            resp = auth(self.directeur).patch(
+                self.BASE, {'roles_autorises_definir_defaut': brut},
+                format='json')
+            self.assertEqual(resp.status_code, 400, (brut, resp.data))
+
     # ── Ce que le réglage GOUVERNE (NTUX1/NTUX2) ────────────────────────────
     def test_partage_desactive_refuse_une_nouvelle_vue_equipe(self):
         self._desactiver_partage()

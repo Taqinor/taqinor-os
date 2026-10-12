@@ -101,6 +101,9 @@ class _Base(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
         self._tel = itertools.count(1)
+        # ACRM55 — une seule touche OUVERTE par barreau (lead, cadence, ordre,
+        # devis) : chaque touche du fixture porte son propre `ordre`.
+        self._ordre = itertools.count(2)
         self.lead = self._lead()
 
     def _lead(self, owner=None):
@@ -114,7 +117,8 @@ class _Base(TestCase):
         jour = due_date or quand.astimezone(horaires.CASABLANCA).date()
         return RelanceEtape.objects.create(
             company=self.company, lead=lead or self.lead, cadence=cadence,
-            ordre=2, canal=canal, libelle=libelle, cle=cle, due_at=quand,
+            ordre=next(self._ordre), canal=canal, libelle=libelle, cle=cle,
+            due_at=quand,
             due_date=jour, **champs)
 
     def _devis(self, quand, **champs):

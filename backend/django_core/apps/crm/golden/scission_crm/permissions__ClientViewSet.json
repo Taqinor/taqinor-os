@@ -302,16 +302,6 @@
   ]
  },
  {
-  "action": "segments",
-  "methode": "GET",
-  "permissions": [
-   {
-    "attrs": {},
-    "classe": "IsAdminRole"
-   }
-  ]
- },
- {
   "action": "update",
   "methode": "PUT",
   "permissions": [

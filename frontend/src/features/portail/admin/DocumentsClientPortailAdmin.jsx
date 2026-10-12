@@ -11,7 +11,8 @@ import { formatDateTime } from '../../../lib/format'
 import { Check, FileText } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
-import { Button, Card, EmptyState, Skeleton, StatusPill, DataTable, toast } from '../../../ui'
+import EtatChargementAdmin from './EtatChargementAdmin'
+import { Button, EmptyState, StatusPill, DataTable, toast } from '../../../ui'
 
 const formatDateHeure = (iso) => formatDateTime(iso)
 
@@ -101,22 +102,17 @@ export default function DocumentsClientPortailAdmin() {
         périmètre de cet écran (aucun formulaire de dépôt côté ERP).
       </p>
 
-      {loading ? (
-        <Card className="space-y-2 p-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </Card>
-      ) : loadError ? (
-        <EmptyState title="Chargement impossible"
-                    description="Les documents client n'ont pas pu être chargés. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
-      ) : rows.length === 0 ? (
-        <EmptyState icon={FileText} title="Aucun document"
-                    description="Aucun document n'a encore été déposé depuis le portail client." />
-      ) : (
-        <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
-                   searchable={false} exportName="documents-client-portail"
-                   emptyTitle="Aucun document" />
-      )}
+      <EtatChargementAdmin loading={loading} loadError={loadError} onRetry={load}
+                           erreur="Les documents client n'ont pas pu être chargés. Réessayez.">
+        {rows.length === 0 ? (
+          <EmptyState icon={FileText} title="Aucun document"
+                      description="Aucun document n'a encore été déposé depuis le portail client." />
+        ) : (
+          <DataTable data={rows} columns={columns} getRowId={(r) => r.id}
+                     searchable={false} exportName="documents-client-portail"
+                     emptyTitle="Aucun document" />
+        )}
+      </EtatChargementAdmin>
     </div>
   )
 }

@@ -24,7 +24,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, Parrainage, RelanceEtape
-from apps.crm.cadence_messages import cle_identite_pour_lead, message_pour_etape
+from apps.crm.cadence_messages import _cle_identite_pour_lead, message_pour_etape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import (
     CLE_IDENTITE_PAR_CANAL, CLES_IDENTITE_PAR_ORIGINE,
@@ -127,8 +127,8 @@ class ChaqueCanalRendSonTexteTests(_Base):
             with self.subTest(canal=canal):
                 lead = self._lead(canal, nom=f'L-{canal or "vide"}')
                 self.assertEqual(
-                    cle_identite_pour_lead(lead, 'identite',
-                                           reference=AUJOURDHUI), cle)
+                    _cle_identite_pour_lead(lead, 'identite',
+                                            reference=AUJOURDHUI), cle)
 
     def test_aucune_AUTRE_cle_n_est_detournee(self):
         """Seule la touche d'identité change ; le reste passe intact."""
@@ -136,7 +136,7 @@ class ChaqueCanalRendSonTexteTests(_Base):
         for cle in ('valeur_j1', 'j9_validite', 'ma_cle_maison', ''):
             with self.subTest(cle=cle):
                 self.assertEqual(
-                    cle_identite_pour_lead(lead, cle, reference=AUJOURDHUI),
+                    _cle_identite_pour_lead(lead, cle, reference=AUJOURDHUI),
                     cle)
 
     def test_le_message_rendu_ne_pretend_AUCUN_formulaire(self):
@@ -193,7 +193,7 @@ class LAncienDossierTests(_Base):
         lead.refresh_from_db()
 
         self.assertEqual(
-            cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
+            _cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
             'identite_ancien_dossier')
 
         rendu = message_pour_etape(self._touche_identite(lead),
@@ -204,7 +204,7 @@ class LAncienDossierTests(_Base):
     def test_une_fiche_du_MOIS_EN_COURS_reste_une_demande_fraiche(self):
         lead = self._lead('site_web', nom='Frais')
         self.assertEqual(
-            cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
+            _cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
             'identite')
 
     def test_l_ancien_dossier_PRIME_sur_le_canal(self):
@@ -216,5 +216,5 @@ class LAncienDossierTests(_Base):
                 2026, 3, 4, 9, 0, tzinfo=horaires.CASABLANCA))
         lead.refresh_from_db()
         self.assertEqual(
-            cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
+            _cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
             'identite_ancien_dossier')

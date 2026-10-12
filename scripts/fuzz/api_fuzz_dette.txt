@@ -1085,6 +1085,7 @@ API rejected schema-compliant request|PUT /api/django/installations/regles-appro
 API rejected schema-compliant request|PUT /api/django/installations/sessions-comptage/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/unites-mesure/{id}/
+API rejected schema-compliant request|PATCH /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/records/tagged-items/{id}/
 API rejected schema-compliant request|PUT /api/django/reporting/saved-reports/{id}/

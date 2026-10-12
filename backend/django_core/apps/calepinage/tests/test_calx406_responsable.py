@@ -33,6 +33,12 @@ from django.test import SimpleTestCase
 from apps.calepinage.models import Calepinage
 from apps.calepinage.serializers import CalepinageSerializer
 from apps.calepinage.views import calepinages as vues
+from django.contrib.auth import get_user_model
+from apps.calepinage.models import ParametresCalepinage
+from apps.calepinage.permissions import CAL_GERER, CAL_VOIR
+from apps.roles.models import Role
+from .test_api_liste import URL, BaseApiCalepinage, url_detail
+from apps.calepinage import selectors as sel
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
@@ -126,14 +132,6 @@ class DetailContratTest(SimpleTestCase):
 
 
 # ── EN BASE — exige l'ORM (la CI est la gate de ces classes) ──────────────
-
-from django.contrib.auth import get_user_model  # noqa: E402
-
-from apps.calepinage.models import ParametresCalepinage  # noqa: E402
-from apps.calepinage.permissions import CAL_GERER, CAL_VOIR  # noqa: E402
-from apps.roles.models import Role  # noqa: E402
-
-from .test_api_liste import URL, BaseApiCalepinage, url_detail  # noqa: E402
 
 User = get_user_model()
 
@@ -253,8 +251,6 @@ class ResponsableEnBase(BaseApiCalepinage):
 # (ex-``ReglageSocieteTest`` / ``RestrictionTest`` : ils patchaient
 # ``views.calepinages.vue_restreinte_au_responsable`` ; réécrits ici sur
 # ``selectors`` et de vrais comptes, jamais supprimés.)
-
-from apps.calepinage import selectors as sel  # noqa: E402
 
 
 class ReglageSocieteEnBase(BaseApiCalepinage):

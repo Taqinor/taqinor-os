@@ -25,7 +25,7 @@
    "required": false
   },
   {
-   "classe": "DateTimeField",
+   "classe": "DateHeureRfc3339",
    "nom": "scheduled_at",
    "read_only": false,
    "required": true
@@ -61,13 +61,13 @@
    "required": false
   },
   {
-   "classe": "DateTimeField",
+   "classe": "DateHeureRfc3339",
    "nom": "date_creation",
    "read_only": true,
    "required": false
   },
   {
-   "classe": "DateTimeField",
+   "classe": "DateHeureRfc3339",
    "nom": "date_modification",
    "read_only": true,
    "required": false

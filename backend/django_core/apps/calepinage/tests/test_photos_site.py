@@ -26,6 +26,7 @@ import datetime
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -52,8 +53,8 @@ PNG = (b'\x89PNG\r\n\x1a\n' + b'\x00\x00\x00\rIHDR'
        + b'\x00' * 40)
 PAS_UNE_IMAGE = b'%PDF-1.4 ceci est un PDF, pas une photo'
 
-HIER = datetime.date.today() - datetime.timedelta(days=1)
-DEMAIN = datetime.date.today() + datetime.timedelta(days=1)
+HIER = timezone.localdate() - datetime.timedelta(days=1)
+DEMAIN = timezone.localdate() + datetime.timedelta(days=1)
 
 
 def _fichier(octets=PNG, nom='vol-drone.png'):

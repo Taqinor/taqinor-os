@@ -228,6 +228,13 @@ class TestCouverture(BaseArbre):
         sites = cfs.collect_sites()
         self.assertEqual(sites, [])
 
+    def test_read_only_fields_egal_fields_sort_du_perimetre(self):
+        # ENF28 — ``read_only_fields = fields`` : Meta toute en lecture seule.
+        self._monter(SER_READ_ONLY.replace(
+            "read_only_fields = ['produit', 'voisine']",
+            "read_only_fields = fields"))
+        self.assertEqual(cfs.collect_sites(), [])
+
     def test_allowlist_tolere_un_site_pre_existant(self):
         self._monter(
             SER_NU,

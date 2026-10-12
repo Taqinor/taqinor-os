@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -19,4 +21,4 @@ class GedConfig(AppConfig):
         # ZGED6 — abonne ged aux événements métier (core.events) : centralise
         # les fichiers d'autres apps (paie/rh/sav/ventes…) selon les réglages
         # RoutageDocumentaire, sans jamais importer ces apps directement.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

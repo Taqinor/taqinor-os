@@ -14,6 +14,7 @@ qui parcourt TOUTES les sociétés et notifie (in-app, best-effort via
 ``notifications.notify_many`` -> ``notifications.notify``) les admins/
 responsables dès qu'au moins une anomalie est détectée. Lecture seule : ne
 corrige RIEN automatiquement."""
+from importlib import import_module
 
 
 def run_controle_integrite_beat():
@@ -40,6 +41,6 @@ except ImportError:  # pragma: no cover - celery absent en environnement de test
 # l'importe ICI pour que ``app.autodiscover_tasks()`` (qui ne regarde que
 # ``tasks.py``) enregistre bien ``reporting.envoyer_rapports_planifies``.
 try:  # pragma: no cover - dépend de la présence de celery
-    from . import rapport_abonnements  # noqa: F401
+    import_module(f'{__package__}.rapport_abonnements')
 except ImportError:  # pragma: no cover
     pass

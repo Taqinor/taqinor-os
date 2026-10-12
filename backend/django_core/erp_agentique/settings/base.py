@@ -816,6 +816,7 @@ SPECTACULAR_SETTINGS = {
         'core.openapi_erreurs.declarer_enveloppe_erreur',
         # ENF11 (achats) — lignes non vides, quantités/montants > 0 : voir le module.
         'apps.stock.schema_contraintes.declarer_contraintes_achats',
+        'core.openapi_erreurs.aligner_motifs_sur_drf',  # ERR-ENF11-FUZZ-CORE
     ],
     # YAPIC6 — nommage STABLE des jeux de choix partagés. Sans ces entrées,
     # drf-spectacular baptise un jeu de choix ambigu avec un suffixe de hachage
@@ -835,6 +836,20 @@ SPECTACULAR_SETTINGS = {
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
+        # ACHT100 — `origine` (kit / ajout) : jeu IDENTIQUE sur
+        # OrdreAssemblageLigne et OrdreDemontageLigne. Nommage de schéma
+        # uniquement — aucun choix ne change.
+        'OrdreLigneOrigineEnum':
+            'apps.installations.models_kitting.OrdreAssemblageLigne.Origine',
+        # CI #956 (fuzz r13) — `Installation.dossier_statut` (non_concerne /
+        # a_deposer / depose / approuve / compteur_pose) et `Dossier.statut`
+        # (ouvert / en_cours / …) tombaient tous deux sur le nom
+        # « DossierStatutEnum » : le second écrasait le premier, le schéma
+        # annonçait « ouvert » comme choix valide du chantier et le fuzz
+        # voyait un 400 sur un corps « conforme ». Nommage de schéma
+        # uniquement — aucun choix ne change.
+        'InstallationDossierStatutEnum':
+            'apps.installations.models_installation.Installation.DossierStatut',
         # ALEA31 — `portee` est servi par UserSerializer ET MeSerializer
         # (/auth/me/) : même jeu, deux composants → le générateur ne savait
         # plus nommer l'enum (« PorteeB4dEnum »). On garde le nom historique.
@@ -1346,7 +1361,7 @@ CELERY_TASK_ROUTES = {
     'parametres.notifier_traductions_manquantes_hebdo': {
         'queue': 'scheduled'},
     # APAR34 — purge quotidienne de rétention des journaux d'audit.
-    'parametres.purger_audit': {'queue': 'scheduled'},
+    'parametres.purge_audit_retention': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
@@ -1989,3 +2004,9 @@ GED_PADES_KEY_PATH = os.environ.get('GED_PADES_KEY_PATH', '').strip()
 CMI_ENABLED = (
     os.environ.get('CMI_ENABLED', '').strip().lower() in ('1', 'true'))
 CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
+
+# ENF28 (ADEP20) — apps.notifications : seuils du filet « lead chaud non contacté »
+# (`sweeps._sweep_hot_leads`), mêmes valeurs que les défauts du module.
+HOT_LEAD_SCORE_THRESHOLD = 60
+HOT_LEAD_MINUTES_OUVREES = 30
+ICS_TOKEN_MAX_AGE_DAYS, BI_WIDGET_CACHE_TTL, AI_GUARD_MAX_CHARS, AI_TOXIC_TERMS, TENANT_TASK_RATE_LIMITS = 180, 300, 6000, None, None  # ENF28 : défauts de reporting.calendar et core (bi_cache, ai, tenant_ratelimit) ; None = repli du module

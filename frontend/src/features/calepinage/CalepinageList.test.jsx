@@ -37,7 +37,8 @@ vi.mock('../../api/crmApi', () => ({
   default: { getLeads: mocks.getLeads, searchClients: mocks.searchClients },
 }))
 
-import CalepinageList, { STATUTS_CALEPINAGE } from './CalepinageList'
+import CalepinageList from './CalepinageList'
+import { STATUTS_CALEPINAGE } from './CalepinageList.helpers'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 

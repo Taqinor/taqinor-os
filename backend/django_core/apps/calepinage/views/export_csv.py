@@ -65,7 +65,7 @@ __all__ = ['export_csv_simulation']
 
 
 @extend_schema(
-    responses={200: OpenApiTypes.BINARY},
+    responses={(200, 'text/csv'): OpenApiTypes.BINARY},
     parameters=[
         OpenApiParameter(
             name='quoi', type=OpenApiTypes.STR, required=False,

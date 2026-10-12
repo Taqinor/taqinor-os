@@ -81,7 +81,7 @@ LITERAL_EXEMPT = {
 LITERAL_ALLOW = {
     "backend/django_core/apps/crm/leads_selectors.py": 1,
     "backend/django_core/apps/crm/fiche_funnel.py": 3,
-    "backend/django_core/apps/crm/views.py": 1,
+    "backend/django_core/apps/crm/leads_views.py": 1,  # SPL77 : venu de crm/views.py (move only)
     "backend/django_core/core/win_probability.py": 6,
 }
 
@@ -218,7 +218,7 @@ def is_test_file(path: Path) -> bool:
 
 def load_canonical() -> list[str]:
     namespace: dict = {}
-    exec(STAGES_FILE.read_text(encoding="utf-8"), namespace)  # noqa: S102 — our own file
+    exec(STAGES_FILE.read_text(encoding="utf-8"), namespace)  # our own file
     stages = namespace.get("STAGES")
     if not isinstance(stages, (list, tuple)):
         sys.exit("STAGES.py must define STAGES as a list of stage names.")

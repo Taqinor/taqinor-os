@@ -11,7 +11,7 @@ import re
 
 from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
-from django.db.models import Value
+from django.db.models import F, Value
 
 from core.pdf import render_pdf
 
@@ -447,7 +447,7 @@ def classer_ia(texte):  # pragma: no cover - dépend d'un provider externe non c
         return ''
     provider = None
     try:
-        from . import classification_provider as provider  # noqa: F401
+        from . import classification_provider as provider
     except ImportError:
         provider = None
     if provider is None:
@@ -512,7 +512,7 @@ def compute_embedding(text):
     # n'est câblé, on reste no-op même flag activé — jamais d'appel fantôme.
     provider = None
     try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import embedding_provider as provider  # noqa: F401
+        from . import embedding_provider as provider
     except ImportError:
         provider = None
     if provider is None:
@@ -691,7 +691,7 @@ def assign_tag(document, tag, *, created_by=None):
     Le tag et le document doivent appartenir à la même société (jamais de fuite
     cross-société). Renvoie (assignment, created).
     """
-    from .models import DocumentTag, DocumentTagAssignment  # noqa: F401
+    from .models import DocumentTagAssignment
     if tag.company_id != document.company_id:
         raise ValueError("Le tag doit appartenir à la même société.")
     assignment, created = DocumentTagAssignment.objects.get_or_create(
@@ -744,7 +744,7 @@ def move_folder(folder, new_parent):
         new_path = folder.path
         # Réécrit le préfixe de chemin de chaque descendant.
         if old_path and old_path != new_path:
-            for desc in Folder.objects.filter(
+            for desc in Folder.objects.select_for_update().filter(
                     company=folder.company, path__startswith=old_path
             ).exclude(pk=folder.pk):
                 desc.path = new_path + desc.path[len(old_path):]
@@ -943,6 +943,7 @@ def versionner_si_modifie(document, contenu, *, filename='', mime='',
         size=meta.get('size') or len(contenu),
         mime=mime or meta.get('mime', ''),
         checksum=checksum, uploaded_by=uploaded_by)
+    update_search_vector(document)  # ADOC180 — trouvable comme create_document
     return version, True
 
 
@@ -2900,6 +2901,7 @@ def generer_document(modele, contexte, *, company, created_by=None,
         return existant, False
     pdf_bytes = rendre_modele(modele, contexte)
     if existant is not None:
+        assert_aucune_signature_en_attente(existant)  # ADOC178 (409, ADOC175)
         key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
         add_version(
             existant, file_key=key, company=existant.company,
@@ -3158,7 +3160,7 @@ def demander_signature(document, *, signataire_nom, signataire_email,
         # fantôme ni de dépendance nouvelle.
         prov = None
         try:
-            from . import esign_provider as prov  # noqa: F401
+            from . import esign_provider as prov
         except ImportError:
             prov = None
         if prov is not None:
@@ -3829,8 +3831,9 @@ def valider_code_otp_signataire(signataire, code):
     if signataire.otp_essais >= OTP_MAX_ESSAIS:
         raise ValueError("Nombre maximal d'essais atteint.")
     if _hash_otp((code or '').strip()) != signataire.otp_code_hash:
-        signataire.otp_essais += 1
+        signataire.otp_essais = F('otp_essais') + 1  # ENF28 : essai compté en base
         signataire.save(update_fields=['otp_essais', 'updated_at'])
+        signataire.refresh_from_db(fields=['otp_essais'])
         raise ValueError("Code d'authentification incorrect.")
     signataire.otp_valide = True
     signataire.otp_valide_le = timezone.now()
@@ -3948,16 +3951,15 @@ def annuler_demande(demande, *, user):
     from django.utils import timezone
     from .models import SIGNATURE_ANNULE, SIGNATURE_REFUSE, SIGNATURE_SIGNE
 
-    if demande.statut in (SIGNATURE_SIGNE, SIGNATURE_REFUSE):
-        raise ValueError(
-            "Une demande déjà signée ou refusée ne peut plus être annulée.")
-    if demande.statut == SIGNATURE_ANNULE:
-        return demande
-    demande.statut = SIGNATURE_ANNULE
-    demande.annule_le = timezone.now()
-    demande.annule_par = user
-    demande.save(update_fields=[
-        'statut', 'annule_le', 'annule_par', 'updated_at'])
+    with transaction.atomic():  # ENF28 : statut relu sous verrou
+        demande = type(demande).objects.select_for_update().get(pk=demande.pk)
+        if demande.statut in (SIGNATURE_SIGNE, SIGNATURE_REFUSE):
+            raise ValueError(
+                "Une demande déjà signée ou refusée ne peut plus être annulée.")
+        if demande.statut == SIGNATURE_ANNULE:
+            return demande
+        demande.statut, demande.annule_le, demande.annule_par = SIGNATURE_ANNULE, timezone.now(), user
+        demande.save(update_fields=['statut', 'annule_le', 'annule_par', 'updated_at'])
     return demande
 
 
@@ -4086,9 +4088,9 @@ def relancer_signataires_dus(company, *, now=None):
         if now - reference < timedelta(days=cadence):
             continue
         signataire.derniere_relance_le = now
-        signataire.nb_relances += 1
-        signataire.save(update_fields=[
-            'derniere_relance_le', 'nb_relances', 'updated_at'])
+        signataire.nb_relances = F('nb_relances') + 1  # ENF28 : incrément atomique
+        signataire.save(update_fields=['derniere_relance_le', 'nb_relances', 'updated_at'])
+        signataire.refresh_from_db(fields=['nb_relances'])
         _send_signataire_email(signataire, signataire.demande, relance=True)
         relances.append(signataire)
     return relances
@@ -4612,7 +4614,7 @@ def _pades_signer_disponible():
     reconstruite, etc.), le scellement dégrade proprement en no-op plutôt que
     de lever au chargement du module."""
     try:
-        import pyhanko  # noqa: F401
+        __import__('pyhanko')  # sonde de disponibilité de la lib
         return True
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
         return False
@@ -5097,22 +5099,20 @@ def matcher_depot_demandes(document):
                 statut=DEMANDE_DOC_EN_ATTENTE)
         .select_related('exigence')
         .order_by('created_at', 'id'))
-    # ADOC12 — le dépôt solde la demande de SA PROPRE pièce : celle dont le
-    # libellé (ou celui de son exigence) figure dans le nom du document. À
-    # défaut, seule une demande UNIQUE en attente est soldée (jamais la plus
-    # ancienne d'une autre pièce).
-    nom = (document.nom or '').casefold()
+    # ADOC12/ADOC177 — le dépôt ne solde que la demande de SA PROPRE pièce :
+    # tous les mots du libellé (ou de son exigence) sont des mots entiers du
+    # nom, sans accents ni casse. Jamais de sous-chaîne ni de repli.
+    from django.utils.text import slugify
+    mots_nom = set(slugify(document.nom or '').split('-'))
     demande = None
     for candidate in en_attente:
         libelles = [candidate.libelle or '']
         if candidate.exigence_id:
             libelles.append(candidate.exigence.libelle or '')
-        if any(lib.strip() and lib.strip().casefold() in nom
+        if any(slugify(lib) and set(slugify(lib).split('-')) <= mots_nom
                for lib in libelles):
             demande = candidate
             break
-    if demande is None and len(en_attente) == 1:
-        demande = en_attente[0]
     if demande is None:
         return None
     demande.statut = DEMANDE_DOC_SOLDEE
@@ -5158,10 +5158,10 @@ def relancer_demande_document(demande, *, now=None):
                 company=demande.company)
         except Exception:  # pragma: no cover - défensif.
             pass
-    demande.nombre_relances += 1
+    demande.nombre_relances = F('nombre_relances') + 1  # ENF28 : incrément atomique
     demande.derniere_relance_le = now or _tz.now()
-    demande.save(update_fields=[
-        'nombre_relances', 'derniere_relance_le', 'updated_at'])
+    demande.save(update_fields=['nombre_relances', 'derniere_relance_le', 'updated_at'])
+    demande.refresh_from_db(fields=['nombre_relances'])
     return demande
 
 
@@ -5224,7 +5224,7 @@ def checklist_dossier(folder):
 # s'abonne pas au registre de handlers générique (celui-ci route vers
 # leads/tickets, pas vers des documents).
 
-import re as _re_mod  # noqa: E402 — regroupé ici, section XGED9 auto-contenue.
+_re_mod = re  # alias local de la section XGED9 auto-contenue.
 
 # Clé réservée dans `Document.custom_data` traçant le Message-ID source d'un
 # import email — ancre d'idempotence (un même message retraité ne duplique pas).
@@ -5428,9 +5428,7 @@ def scinder_pdf(version, points_de_coupe, *, created_by=None):
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
-    data, err = _fetch_version_bytes(version)
-    if err:
-        raise ValueError(err)
+    data = _octets_version(version)
     _exiger_pdf(data)  # ADOC22
     src = fitz.open(stream=data, filetype='pdf')
     try:
@@ -5500,9 +5498,7 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
             version = selectors_latest_version(doc)
             if version is None:
                 raise ValueError(f"« {doc.nom} » n'a aucune version.")
-            data, err = _fetch_version_bytes(version)
-            if err:
-                raise ValueError(err)
+            data = _octets_version(version)
             _exiger_pdf(data)  # ADOC22
             seg = fitz.open(stream=data, filetype='pdf')
             out.insert_pdf(seg)
@@ -5540,6 +5536,23 @@ def _exiger_pdf(data):
     annoté) refusent un fichier non PDF par un 400 nommé, jamais une 500."""
     if not (data or b'').lstrip()[:5] == b'%PDF-':
         raise ValueError("Opération réservée aux PDF.")
+
+
+class FichierIndisponible(ValueError):
+    """CI #956 (fuzz r13) — les octets d'une version sont INTROUVABLES dans
+    le stockage (clé vide, objet absent, MinIO injoignable). Ce n'est pas une
+    entrée invalide (400) : la vue répond 404, comme le proxy de
+    téléchargement (``_lire_version``). Sous-classe de ``ValueError`` pour
+    que les appelants historiques (``except ValueError``) tiennent."""
+
+
+def _octets_version(version):
+    """Les octets d'une version, ou ``FichierIndisponible`` (jamais un
+    ``ValueError`` nu : « Fichier introuvable » n'est pas un 400)."""
+    data, err = _fetch_version_bytes(version)
+    if err:
+        raise FichierIndisponible(err)
+    return data
 
 
 def _fetch_version_bytes(version):
@@ -5595,7 +5608,7 @@ def _decoder_barcode(image):
 def barcode_lib_disponible():
     """XGED11 — True si `pyzbar` est installé (dégrade proprement sinon)."""
     try:
-        import pyzbar.pyzbar  # noqa: F401
+        __import__('pyzbar.pyzbar')  # sonde de disponibilité de la lib
     except Exception:
         return False
     return True
@@ -5883,9 +5896,7 @@ def exporter_pdf_annote(version):
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
-    data, err = _fetch_version_bytes(version)
-    if err:
-        raise ValueError(err)
+    data = _octets_version(version)
     _exiger_pdf(data)  # ADOC22
     doc = fitz.open(stream=data, filetype='pdf')
     try:
@@ -6286,13 +6297,13 @@ def executer_demande_disposition(demande, *, user):
 
     if demande.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Demande de disposition inaccessible.")
-    if demande.statut != DISPOSITION_APPROUVEE:
-        raise DemandeDispositionError(
-            "Seule une demande APPROUVÉE peut être exécutée.")
 
     certificats = []
     ignores = 0
-    with transaction.atomic():
+    with transaction.atomic():  # ENF28 : statut relu sous verrou (jamais exécutée deux fois)
+        demande = type(demande).objects.select_for_update().get(pk=demande.pk)
+        if demande.statut != DISPOSITION_APPROUVEE:
+            raise DemandeDispositionError("Seule une demande APPROUVÉE peut être exécutée.")
         for doc_id in (demande.documents or []):
             document = Document.objects.filter(
                 company=demande.company, pk=doc_id).first()
@@ -6302,7 +6313,10 @@ def executer_demande_disposition(demande, *, user):
                 continue  # protégé entre-temps — exclusion silencieuse.
             # ADOC22 — archivé légalement entre-temps : ni détruit ni
             # ré-archivé ; compté « ignoré », la demande ne reste plus bloquée.
-            if _document_archive_legalement(document):
+            # ADOC179 — idem pour un « archiver » sur un document en corbeille.
+            if _document_archive_legalement(document) or (
+                    demande.action == DISPOSITION_ACTION_ARCHIVER
+                    and document.supprime_le is not None):
                 ignores += 1
                 continue
             if demande.action == DISPOSITION_ACTION_ARCHIVER:
@@ -6344,7 +6358,7 @@ def executer_demande_disposition(demande, *, user):
         champs = ['statut', 'executee_le', 'updated_at']
         if ignores:
             note = (f'{ignores} document(s) ignoré(s) : archivé(s) '
-                    f'légalement.')
+                    f'légalement ou en corbeille.')
             demande.commentaire = (
                 f'{demande.commentaire}\n{note}'.strip()
                 if demande.commentaire else note)
@@ -6381,9 +6395,7 @@ def caviarder_document(version, zones, *, created_by=None):
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
-    data, err = _fetch_version_bytes(version)
-    if err:
-        raise ValueError(err)
+    data = _octets_version(version)
     if not zones:
         raise ValueError("Au moins une zone à caviarder est requise.")
     _exiger_pdf(data)  # ADOC22
@@ -6666,10 +6678,9 @@ def _resoudre_dossier_cible(routage, contexte):
     ]
     parent = None
     folder = None
-    for segment in segments:
-        folder, _created = Folder.objects.get_or_create(
-            company=routage.company, cabinet=routage.cabinet_cible,
-            parent=parent, nom=segment)
+    for segment in segments:  # ENF28 : un homonyme manuel → le plus ancien
+        f = dict(company=routage.company, cabinet=routage.cabinet_cible, parent=parent, nom=segment)
+        folder = Folder.objects.filter(**f).order_by('id').first() or Folder.objects.create(**f)
         parent = folder
     return folder
 

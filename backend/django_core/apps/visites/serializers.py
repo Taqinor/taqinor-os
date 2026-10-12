@@ -27,6 +27,14 @@ class VisiteTerrainSerializer(serializers.ModelSerializer):
             'id', 'statut', 'date_realisee',
         ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ENF11 — le dossier d'une visite est figé (``validate_lead``) : en
+        # ÉDITION (PUT) le lead n'est plus exigé, sinon un PUT conforme au
+        # schéma (qui ne déclare que ``notes``) répondait « lead obligatoire ».
+        if self.instance is not None and 'lead' in self.fields:
+            self.fields['lead'].required = False
+
     def validate_lead(self, value):
         """Le lead doit appartenir à la société de l'appelant (multi-tenant)."""
         request = self.context.get('request')

@@ -70,8 +70,33 @@ importe ``apps.audit``.
     interdite par ``core-foundation-is-a-base-layer``. ``core`` ne lit du
     journal que ``records.models`` (module sans dépendance métier), via
     ``core.feature_flags.journal_modules``.
+
+Contrat transactionnel des abonnés (APAR48)
+-------------------------------------------
+
+Les signaux sont SYNCHRONES : un abonné tourne DANS la transaction de
+l'émetteur. Un abonné ANNEXE (best-effort : notification, case « Premiers
+pas », ticket SAV, provision GR/IR…) porte ``@abonne_best_effort`` : il
+tourne dans son PROPRE point de sauvegarde, son erreur est journalisée
+(``logger.exception``) et n'annule ni l'action émettrice (encaissement,
+synchro terrain, étape BPM) ni les autres abonnés. Un abonné OBLIGATOIRE
+(lettrage compta, création du chantier, dés-acceptation) n'en porte pas :
+son erreur annule l'action en bloc. Jamais d'``except: pass`` nu.
+
+* ``facture_payee`` — best-effort : onboarding, notifications.
+* ``intervention_completed`` — best-effort : onboarding, sav.
+* ``workflow_etape_activee`` — best-effort : notifications (l'émetteur
+  ``core.workflow._emit_etape_activee`` isole aussi l'envoi).
+* ``reception_fournisseur_confirmee`` / ``reception_fournisseur_annulee`` /
+  ``bon_commande_cree`` / ``facture_fournisseur_creee`` — best-effort :
+  installations (GR/IR, séries, réservations, rattachement BC).
 """
+import functools
+import logging
+
 import django.dispatch
+from django.db import transaction as _transaction
+
 from .parked import *  # noqa: F401,F403
 from .facturation import *  # noqa: F401,F403
 from .devis import *  # noqa: F401,F403
@@ -81,6 +106,33 @@ from .acquisition import *  # noqa: F401,F403
 from .chantiers import *  # noqa: F401,F403
 from .sav import *  # noqa: F401,F403
 from .calepinage import *  # noqa: F401,F403
+
+_logger = logging.getLogger(__name__)
+
+
+def abonne_best_effort(func):
+    """APAR48 — isole un abonné ANNEXE du bus dans son point de sauvegarde.
+
+    L'abonné s'exécute sous ``transaction.atomic()`` : une erreur base (ou
+    toute autre exception) annule SEULEMENT ce qu'il a écrit, est journalisée
+    par ``logger.exception`` et n'est jamais remontée à l'émetteur — la
+    transaction englobante reste utilisable, les autres abonnés tournent.
+    À poser SOUS ``@receiver`` (c'est l'enveloppe qui est abonnée). Le
+    marqueur ``abonne_best_effort = True`` permet aux tests de distinguer
+    les abonnés annexes des obligatoires."""
+    nom = f'{func.__module__}.{func.__qualname__}'
+
+    @functools.wraps(func)
+    def enveloppe(*args, **kwargs):
+        try:
+            with _transaction.atomic():
+                return func(*args, **kwargs)
+        except Exception:  # noqa: BLE001 — best-effort, journalisé
+            _logger.exception('Abonné best-effort %s en échec (isolé)', nom)
+            return None
+
+    enveloppe.abonne_best_effort = True
+    return enveloppe
 
 
 # Émis par le kit DocumentMetier (SCA30, ``core.documents``) quand un document

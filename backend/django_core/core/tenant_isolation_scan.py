@@ -40,6 +40,7 @@ découverte d'URL elle-même, jamais un import statique d'``apps.*``).
 from __future__ import annotations
 
 import datetime
+import logging as _logging
 import re
 from dataclasses import dataclass
 from decimal import Decimal
@@ -441,8 +442,6 @@ def detail_get_actions(view_class, limit=3) -> list[str]:
 # rapport est remonté aux admins + journalisé en audit via un REPORTEUR
 # enregistré (core ne peut importer ni notifications ni audit — pattern hook,
 # comme core.retention / core.limits).
-
-import logging as _logging  # noqa: E402 — proche de son unique usage (scan)
 
 _logger = _logging.getLogger(__name__)
 

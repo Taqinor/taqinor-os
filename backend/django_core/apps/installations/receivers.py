@@ -15,7 +15,8 @@ duplique donc jamais le chantier. La création est company-scopée
 from django.dispatch import receiver
 
 from core.events import (
-    bon_commande_cree, devis_acceptation_annulee, devis_accepted,
+    abonne_best_effort, bon_commande_cree, devis_acceptation_annulee,
+    devis_accepted,
     reception_fournisseur_annulee,
     reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
@@ -88,84 +89,73 @@ def _ouvrir_dossier_8221_ci(devis, inst, user):
 
 @receiver(reception_fournisseur_confirmee,
           dispatch_uid="installations_provisionner_gr_ir_on_reception")
+@abonne_best_effort
 def _provisionner_gr_ir_on_reception(sender, reception, company, user,
                                      **kwargs):
     """YPROC3 — à la confirmation d'une réception fournisseur, provisionne la
     dette latente GR/IR (idempotent, no-op sans BCF lié)."""
-    try:
-        provisionner_gr_ir_reception(
-            reception=reception, company=company, user=user)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    provisionner_gr_ir_reception(
+        reception=reception, company=company, user=user)
 
 
 @receiver(reception_fournisseur_confirmee,
           dispatch_uid="installations_peupler_series_entrepot_on_reception")
+@abonne_best_effort
 def _peupler_series_entrepot_on_reception(sender, reception, company, user,
                                           **kwargs):
     """YSTCK7 — à la confirmation d'une réception fournisseur, peuple le
     registre entrepôt (SerieEntrepot) depuis les séries capturées à la ligne
     (idempotent, best-effort)."""
-    try:
-        peupler_series_entrepot_reception(
-            reception=reception, company=company, user=user)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    peupler_series_entrepot_reception(
+        reception=reception, company=company, user=user)
 
 
 @receiver(reception_fournisseur_confirmee,
           dispatch_uid="installations_reserver_stock_chantier_on_reception")
+@abonne_best_effort
 def _reserver_stock_chantier_on_reception(sender, reception, company, user,
                                           **kwargs):
     """YPROC10 — à la confirmation d'une réception fournisseur dont le BCF
     porte un `chantier_origine`, réserve les quantités reçues pour ce
     chantier (idempotent, plafonné au manque recalculé, no-op sans lien)."""
-    try:
-        reserver_stock_recu_pour_chantier(reception=reception)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    reserver_stock_recu_pour_chantier(reception=reception)
 
 
 @receiver(reception_fournisseur_annulee,
           dispatch_uid="installations_extourner_gr_ir_on_reception_annulee")
+@abonne_best_effort
 def _extourner_gr_ir_on_reception_annulee(sender, reception, company,
                                           user=None, **kwargs):
     """ASTK57 — jumeau d'annulation de YPROC3 : extourne la provision GR/IR
     ouverte de la réception annulée (idempotent)."""
-    try:
-        extourner_gr_ir_reception(reception=reception, company=company)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    extourner_gr_ir_reception(reception=reception, company=company)
 
 
 @receiver(reception_fournisseur_annulee,
           dispatch_uid="installations_retourner_series_on_reception_annulee")
+@abonne_best_effort
 def _retourner_series_on_reception_annulee(sender, reception, company,
                                            user=None, **kwargs):
     """ASTK57 — jumeau d'annulation de YSTCK7 : les séries « en stock » de
     la réception annulée passent « retourné » (idempotent)."""
-    try:
-        retourner_series_entrepot_reception(
-            reception=reception, company=company)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    retourner_series_entrepot_reception(
+        reception=reception, company=company)
 
 
 @receiver(reception_fournisseur_annulee,
           dispatch_uid="installations_replafonner_resa_on_reception_annulee")
+@abonne_best_effort
 def _replafonner_reservation_on_reception_annulee(sender, reception, company,
                                                   user=None, **kwargs):
     """ASTK57 — jumeau d'annulation de YPROC10 : la réservation du chantier
     d'origine ne dépasse plus le reçu net (idempotent)."""
-    try:
-        replafonner_reservation_recue_pour_chantier(
-            reception=reception, company=company)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    replafonner_reservation_recue_pour_chantier(
+        reception=reception, company=company)
 
 
 @receiver(bon_commande_cree,
           dispatch_uid="installations_rattacher_chantier_on_bon_commande_cree")
+@abonne_best_effort
 def _rattacher_chantier_on_bon_commande_cree(sender, instance, company,
                                              **kwargs):
     """CHT15 — à la création d'un bon de commande, rattache AUTOMATIQUEMENT
@@ -181,16 +171,14 @@ def _rattacher_chantier_on_bon_commande_cree(sender, instance, company,
     devis_id = getattr(instance, 'devis_id', None)
     if devis_id is None:
         return
-    try:
-        Installation.objects.filter(
-            devis_id=devis_id, company=company, bon_commande__isnull=True,
-        ).update(bon_commande=instance)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    Installation.objects.filter(
+        devis_id=devis_id, company=company, bon_commande__isnull=True,
+    ).update(bon_commande=instance)
 
 
 @receiver(facture_fournisseur_creee,
           dispatch_uid="installations_lettrer_gr_ir_on_facture")
+@abonne_best_effort
 def _lettrer_gr_ir_on_facture(sender, instance, company, user=None, **kwargs):
     """YPROC3 — à la création d'une facture fournisseur, lettre les
     provisions GR/IR ouvertes du même bon de commande (idempotent).
@@ -198,7 +186,4 @@ def _lettrer_gr_ir_on_facture(sender, instance, company, user=None, **kwargs):
     Contrat unifié du signal (core/events.py) : ``instance`` = la
     stock.FactureFournisseur, ``user`` optionnel (None pour une création
     système/hors-requête, ex. saisie manuelle via la vue)."""
-    try:
-        lettrer_gr_ir_facture(facture=instance, company=company, user=user)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+    lettrer_gr_ir_facture(facture=instance, company=company, user=user)

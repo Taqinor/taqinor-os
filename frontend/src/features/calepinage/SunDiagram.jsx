@@ -1,15 +1,7 @@
-/* eslint-disable react-refresh/only-export-components --
-   `COURBES_REPERE` (jours de repère + couleurs) est partagé par `HorizonPanel.jsx` et
-   `CourseSoleil.jsx` pour peindre la MÊME légende que ce composant trace — le séparer
-   dans un troisième fichier serait une indirection sans bénéfice pour deux consommateurs
-   du même repère. */
 import { useMemo } from 'react'
 import { sortedHorizonPoints, horizonHeightAtAzimuth } from '@rooflib/horizonEngine'
-import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
-
-/** Jours de repère de l'année (équinoxe, solstice d'été) — l'hiver vient du moteur. */
-const JOUR_EQUINOXE = 80
-const JOUR_SOLSTICE_ETE = 172
+import { sunDirection as sunPosition } from '@rooflib/roofPro2'
+import { COURBES_REPERE } from './SunDiagram.helpers'
 
 /** La course du soleil d'un jour, points AU-DESSUS de l'horizon seulement, tous les
  *  `stepH` heures — échantillonnée avec `sunDirection` du moteur (jamais une copie). */
@@ -49,12 +41,6 @@ function yDe(elevationDeg) {
   const clamped = Math.max(0, Math.min(90, elevationDeg))
   return HAUT_UTILE - (clamped / 90) * HAUT_UTILE
 }
-
-export const COURBES_REPERE = [
-  { jour: JOUR_SOLSTICE_ETE, label: 'Solstice d’été', couleur: '#e0b25c' },
-  { jour: JOUR_EQUINOXE, label: 'Équinoxe', couleur: '#8f9bb8' },
-  { jour: JOUR_SOLSTICE_HIVER, label: 'Solstice d’hiver', couleur: '#5c7ce0' },
-]
 
 /**
  * Le diagramme SVG azimut(x)/hauteur(y) : la course du soleil des trois jours de

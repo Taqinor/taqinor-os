@@ -103,14 +103,14 @@ def _refus_deja_rattache(lie):
     reference = lie.reference or f'#{lie.pk}'
     try:
         libelle_statut = lie.get_statut_display()
-    except Exception:  # noqa: BLE001 — un libellé manquant n'empêche pas le refus
+    except Exception:  # un libellé manquant n'empêche pas le refus
         libelle_statut = lie.statut
     message = (f"Ce calepinage est déjà rattaché au devis {reference} "
                f"({libelle_statut}) : utilisez « Resynchroniser le devis ».")
     try:
         revision_possible = bool(
             devis_modifiabilite(lie).get('revision_possible'))
-    except Exception:  # noqa: BLE001 — verdict illisible : jamais un 500
+    except Exception:  # verdict illisible : jamais un 500
         revision_possible = False
     return DevisRefuse(message, champ='devis', statut=409, donnees={
         'detail': message, 'devis': lie.pk, 'reference': lie.reference,
@@ -318,7 +318,7 @@ def _poser_affiche(calepinage, devis):
 
     try:
         poser_affiche_depuis(devis, cle)
-    except Exception:  # noqa: BLE001 — cf. docstring
+    except Exception:  # cf. docstring
         logger.warning('ACAL98 : affiche non copiée du calepinage %s',
                        getattr(calepinage, 'pk', None), exc_info=True)
 

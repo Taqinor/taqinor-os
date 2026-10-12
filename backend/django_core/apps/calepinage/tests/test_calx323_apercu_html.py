@@ -21,6 +21,14 @@ from __future__ import annotations
 import unittest
 
 from apps.calepinage.views.documents import apercu_document
+import copy
+from unittest import mock
+from apps.calepinage.models import Calepinage
+from apps.calepinage.services.documents import mise_en_page
+from apps.calepinage.services.rapport import html_du_rapport
+from .test_api_liste import BaseApiCalepinage, url_detail
+from .test_cal171_planche import LAYOUT
+from .test_calx308_diagramme_pertes_svg import RESULTAT
 
 
 class FauxRequest:
@@ -84,17 +92,6 @@ if __name__ == '__main__':  # pragma: no cover
 #
 # Écrit ici mais NON EXÉCUTÉ localement (pas de Postgres sur ce poste de
 # lane) : la CI valide.
-
-import copy  # noqa: E402 - après les essais purs
-from unittest import mock  # noqa: E402
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-from apps.calepinage.services.documents import mise_en_page  # noqa: E402
-from apps.calepinage.services.rapport import html_du_rapport  # noqa: E402
-
-from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
-from .test_cal171_planche import LAYOUT  # noqa: E402
-from .test_calx308_diagramme_pertes_svg import RESULTAT  # noqa: E402
 
 MIME_HTML_ATTENDU = 'text/html; charset=utf-8'
 

@@ -116,7 +116,7 @@ def _decoder_fichier(fichier):
         octets = fichier.read()
         try:
             fichier.seek(0)
-        except Exception:  # noqa: BLE001 — flux non rembobinable, lu une fois
+        except Exception:  # flux non rembobinable, lu une fois
             pass
         return bytes(octets), (getattr(fichier, 'name', '') or '')
     if isinstance(fichier, (bytes, bytearray)):

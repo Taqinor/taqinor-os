@@ -16,7 +16,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import MaterielElectrique, { libelleProvenance } from './MaterielElectrique'
+import MaterielElectrique from './MaterielElectrique'
+import { libelleProvenance } from './MaterielElectrique.helpers'
 
 const EXEMPLE = exempleContrat('calepinage', 'calepinage_entree_electrique')
 const VIDE = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide')

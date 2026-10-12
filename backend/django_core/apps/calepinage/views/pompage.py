@@ -37,6 +37,8 @@ from __future__ import annotations
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from core.pompage.selection import selection_pompe, selection_variateur, tension_produit
+from core.pompage.volumes import couverture_besoin_eau
 
 from ..permissions import PeutVoirCalepinage
 from ..services import pompage as dim
@@ -80,7 +82,7 @@ def _site(calepinage, request):
     """
     try:
         contexte = contexte_conception(calepinage, request)
-    except Exception:   # noqa: BLE001 — le pompage survit à une carte muette
+    except Exception:  # le pompage survit à une carte muette
         return None, None, None
     pin = ((contexte or {}).get('geometrie') or {}).get('pin') or {}
     ville = ((contexte or {}).get('calepinage') or {}).get('client_ville') or None
@@ -196,7 +198,7 @@ def pompage(self, request, pk=None):
             'aucune pompe ne peut être choisie sur sa courbe.')
 
     # ── 2. La pompe, puis le variateur assorti ─────────────────────────────
-    choix = dim.selection_pompe(
+    choix = selection_pompe(
         [_produit_pompage(p) for p in produits_par_type_equipement(
             calepinage.company, 'pompe', avec_prix=False)],
         hmt=hmt['hmt_m'], debit_souhaite_m3h=debit_souhaite,
@@ -211,7 +213,7 @@ def pompage(self, request, pk=None):
             'produit': produit.get('id'),
             'nom': produit.get('nom'),
             'pompe_kw': produit.get('pompe_kw'),
-            'tension_v': dim.tension_produit(produit),
+            'tension_v': tension_produit(produit),
             'debit_hmt_m3h': choix['debit_hmt_m3h'],
             'courbe': {
                 'debits_m3h': courbe.get('debits_m3h'),
@@ -226,7 +228,7 @@ def pompage(self, request, pk=None):
             'sans_prix': choix['sans_prix'],
             'ecart_phase': choix['ecart_phase'],
         }
-        assorti = dim.selection_variateur(
+        assorti = selection_variateur(
             [_produit_pompage(p) for p in produits_par_type_equipement(
                 calepinage.company, 'variateur', avec_prix=False)],
             choix['kw'], alim)
@@ -235,7 +237,7 @@ def pompage(self, request, pk=None):
                 'produit': assorti['variateur'].get('id'),
                 'nom': assorti['variateur'].get('nom'),
                 'pompe_kw': assorti['variateur'].get('pompe_kw'),
-                'tension_v': dim.tension_produit(assorti['variateur']),
+                'tension_v': tension_produit(assorti['variateur']),
                 'insuffisant': False,
             }
         elif assorti['insuffisant']:
@@ -287,7 +289,7 @@ def pompage(self, request, pk=None):
             salissure_pct=_salissure_societe(calepinage.company),
             profils_horaires=profils, source_irradiation=source_irradiation)
 
-    besoin = dim.couverture_besoin_eau(
+    besoin = couverture_besoin_eau(
         besoin_m3_jour=besoin_jour, besoin_m3_mois=besoin_mois,
         volume_reservoir_m3=reservoir,
         production_m3_mois=(volumes or {}).get('m3_mois_pvgis')

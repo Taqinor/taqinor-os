@@ -24,7 +24,7 @@ export default function MonitoringSection() {
   const load = () => monitoringApi.getSettings()
     .then((r) => {
       setSettings({
-        underperf_threshold_pct: r.data?.underperf_threshold_pct ?? 20,
+        underperf_threshold_pct: r.data?.underperf_threshold_pct ?? '20',
         auto_create_ticket: !!r.data?.auto_create_ticket,
       })
       setLoadError(false)

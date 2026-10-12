@@ -25,7 +25,7 @@ from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_plan import (
     CADENCE_DEUXIEME_AFFAIRE,
     demarrer_cadence_contact,
-    homonymes_signes,
+    _homonymes_signes,
 )
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS
@@ -154,7 +154,7 @@ class LeClientQuiRevientTests(_Base):
         self._lead('Benali', stage=stages.SIGNED)
         self._lead('Autre', stage=stages.CONTACTED, telephone='+212600000001')
         nouveau = self._lead('Benali')
-        signes = homonymes_signes(nouveau)
+        signes = _homonymes_signes(nouveau)
         self.assertEqual(len(signes), 1)
         self.assertEqual(signes[0].stage, stages.SIGNED)
 

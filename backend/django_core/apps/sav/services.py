@@ -5,11 +5,12 @@ Helpers SAV — arithmétique de garantie (sans dépendance externe).
 (calendar), avec recadrage du jour pour les fins de mois (ex. 31 jan + 1 mois
 → 28/29 fév). Sert au calcul des dates de fin de garantie des équipements.
 """
+import json
 import logging
+import os
 
+import requests
 from django.utils import timezone
-
-from .dateutils import add_months  # noqa: F401  (ré-export rétrocompat)
 
 logger = logging.getLogger(__name__)
 
@@ -1309,11 +1310,6 @@ def prets_en_retard(company):
 # `suggerer_triage_ticket` renvoie `{'disponible': False}` — jamais
 # d'exception, jamais de no-op cassant. TOUJOURS une proposition éditable,
 # JAMAIS auto-appliquée (pattern propose→confirm, groupe AG).
-
-import json  # noqa: E402
-import os  # noqa: E402
-
-import requests  # noqa: E402
 
 _GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
 _GROQ_MODEL_DEFAUT = 'llama-3.1-8b-instant'

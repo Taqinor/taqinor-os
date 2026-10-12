@@ -28,7 +28,7 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from apps.crm.models import Partenaire, RelanceEtape
-from apps.crm.serializers import RelanceEtapeSerializer
+from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from authentication.models import Company
 from core.dates import FUSEAU_METIER, aujourd_hui_local, maintenant_local
 

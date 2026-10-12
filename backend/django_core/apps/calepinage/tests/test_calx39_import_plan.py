@@ -27,6 +27,7 @@ Run ::
 """
 from __future__ import annotations
 
+import importlib
 import io
 import json
 import pathlib
@@ -120,7 +121,7 @@ def _appeler(octets=None, *, nom=NOM_FICHIER, vue=None, **donnees):
 
 
 def _actions():
-    from apps.calepinage import urls  # noqa: F401
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return {methode.__name__: methode

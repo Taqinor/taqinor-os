@@ -109,7 +109,7 @@ def compter_pages(octets_pdf):
         return 0
     try:
         document = fitz.open(stream=octets_pdf, filetype='pdf')
-    except Exception:  # noqa: BLE001 - un PDF illisible n'a pas de pages
+    except Exception:  # un PDF illisible n'a pas de pages
         return 0
     try:
         return document.page_count
@@ -198,7 +198,7 @@ def _rendre_pieces(calepinage, *, company=None, rendus=None, spec=SPEC_PIECES):
             continue
         try:
             octets = rendu()
-        except Exception as erreur:  # noqa: BLE001 - le MOTIF est reporté
+        except Exception as erreur:  # le MOTIF est reporté
             if obligatoire:
                 raise PackRefuse(
                     "Dossier technique : la pièce « %s » ne se rend pas — %s. "
@@ -264,7 +264,7 @@ def _fusionner_localement(pieces, refus):
         for code, libelle, octets, _pages in pieces:
             try:
                 segment = fitz.open(stream=octets, filetype='pdf')
-            except Exception as erreur:  # noqa: BLE001 - motif reporté
+            except Exception as erreur:  # motif reporté
                 raise refus("La pièce « %s » n'est pas un PDF lisible — %s."
                             % (libelle, erreur), piece=code)
             try:
@@ -360,7 +360,7 @@ def deposer_et_fusionner(calepinage, *, pieces, famille, nom, folder_nom,
             checksum=compute_checksum(octets), uploaded_by=created_by)
     except DatabaseError:
         raise
-    except Exception as erreur:  # noqa: BLE001 - panne GED NOMMÉE (400)
+    except Exception as erreur:  # panne GED NOMMÉE (400)
         if isinstance(erreur, refus):
             raise
         raise refus("Dépôt en GED impossible — %s" % erreur, piece='ged')

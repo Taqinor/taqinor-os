@@ -5,12 +5,14 @@ import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
-import DevisTab, {
-  devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
+import DevisTab from './DevisTab'
+import {
+  devisTrackCurrent, devisIntent, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
   TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
   lectureClientLabel,
-} from './DevisTab'
+} from './devisTabLogique'
+import { missingFieldTarget } from './missingFields'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
    `.num`, actions facture/chantier busy-par-id), CTA « Devis automatique »

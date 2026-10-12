@@ -22,6 +22,8 @@ CE QUI EST GARANTI, ET PAR QUI
 """
 from __future__ import annotations
 
+import importlib
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -31,11 +33,14 @@ from rest_framework.response import Response
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from .calepinages import CalepinageViewSet
 from .sorties import porte_execution  # ACAL116
+from drf_spectacular.utils import inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.renderers import JSONRenderer
 
 
 # ── CALX297 — le rapport d'étude (PDF) ──────────────────────────────────────
 @extend_schema(
-    responses={200: OpenApiTypes.BINARY},
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
@@ -82,7 +87,7 @@ CalepinageViewSet.rapport_etude_pdf = rapport_etude_pdf
 
 # ── CALX308 — le diagramme de pertes (SVG dessiné par le serveur) ──────────
 @extend_schema(
-    responses={200: OpenApiTypes.BINARY},
+    responses={(200, 'image/svg+xml'): OpenApiTypes.BINARY},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description='Langue des libellés (fr, en ; ar retombe sur fr).')],
@@ -119,8 +124,6 @@ CalepinageViewSet.diagramme_pertes_svg = diagramme_pertes_svg
 
 # ── CALX321 — l'inventaire des documents du lot 6, DONNÉE PAR DONNÉE ───────
 # Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
-from drf_spectacular.utils import inline_serializer  # noqa: E402
-from rest_framework import serializers as drf_serializers  # noqa: E402
 
 #: La forme du contrat ``calepinage_documents.json`` (CALX291), telle que
 #: ``services/documents.inventaire_des_documents`` la rend — jamais un
@@ -192,7 +195,7 @@ CalepinageViewSet.documents = documents
 
 # ── CALX323 — l'aperçu HTML d'un document, AVANT le PDF ─────────────────────
 @extend_schema(
-    responses={200: OpenApiTypes.STR},
+    responses={(200, 'text/html'): OpenApiTypes.STR},
     parameters=[
         OpenApiParameter(
             name='code', type=OpenApiTypes.STR, required=True,
@@ -260,7 +263,7 @@ def _refus_plan_cablage(refus):
                      str(refus)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'plan-cablage\.pdf',
         url_name='plan-cablage-pdf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_pdf(self, request, pk=None):
@@ -290,7 +293,7 @@ def plan_cablage_pdf(self, request, pk=None):
 CalepinageViewSet.plan_cablage_pdf = plan_cablage_pdf
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'image/vnd.dxf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'plan-cablage\.dxf',
         url_name='plan-cablage-dxf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_dxf(self, request, pk=None):
@@ -320,9 +323,6 @@ CalepinageViewSet.plan_cablage_dxf = plan_cablage_dxf
 
 # ── CALX312 — l'export JSON versionné du projet et de ses résultats ────────
 # Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
-from drf_spectacular.utils import inline_serializer  # noqa: E402
-from rest_framework import serializers as drf_serializers  # noqa: E402
-from rest_framework.renderers import JSONRenderer  # noqa: E402
 
 #: La forme du contrat ``export_projet.json`` (douze clés) — jamais un
 #: « type: object » vide, qui validerait tout (check_openapi_shapes, R1).
@@ -451,7 +451,7 @@ CalepinageViewSet.image_document = image_document
 
 # ── CALX317 — le rapport d'ombrage AUTONOME (matrice, horizon, carte) ──────
 @extend_schema(
-    responses={200: OpenApiTypes.BINARY},
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
@@ -495,7 +495,7 @@ CalepinageViewSet.rapport_ombrage_pdf = rapport_ombrage_pdf
 # ── CALX316 — le manuel du propriétaire, depuis le gabarit société ─────────
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'manuel-proprietaire\.pdf',
         url_name='manuel-proprietaire-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -528,7 +528,7 @@ CalepinageViewSet.manuel_proprietaire_pdf = manuel_proprietaire_pdf
 
 
 # ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'document-asbuilt\.pdf',
         url_name='document-asbuilt-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -557,7 +557,7 @@ CalepinageViewSet.document_asbuilt_pdf = document_asbuilt_pdf
 
 
 # ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'presentation-compacte\.pdf',
         url_name='presentation-compacte-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -666,4 +666,7 @@ CalepinageViewSet.dossier_fin_chantier = dossier_fin_chantier
 # ACAL222 — la REMISE explicite (``POST remettre-document``) : rattachée au
 # viewset par l'import de son module, ici en fin de fichier (donc avant
 # ``router.register``, via ``views/rattachements.py``).
-from . import remise_document as _remise_document_action  # noqa: E402,F401
+
+# Rattache l'action de remise du document (import pour effet de bord, exécuté
+# AVANT `router.register` comme avant).
+importlib.import_module(f'{__package__}.remise_document')

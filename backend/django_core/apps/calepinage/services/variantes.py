@@ -27,11 +27,7 @@ import copy
 # d'une autre app``
 # ferait rougir le contrat import-linter CAL5 (mesuré). On le RÉ-EXPORTE ici :
 # le chemin d'écriture unique reste le service.
-from ..garde_retenue import (  # noqa: F401
-    bascule_autorisee,
-    bascule_en_cours,
-    refuser_ecriture_directe,
-)
+from ..garde_retenue import bascule_autorisee
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ from authentication.models import Company
 from apps.crm.models import Client, SalleVente, SalleVenteItem
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.quote_engine.builder import display_totals
+from apps.parametres.models import CompanyProfile
 
 # Composition à deux VRAIES options (réseau ET hybride+batterie), miroir de
 # ``test_qj30_multivilla_render.py::FULL_LINES`` — la même fixture qui rend
@@ -49,6 +50,9 @@ class SalleVenteTotalAfficheTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor QJR23', slug='taqinor-qjr23')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client QJR23')
 

@@ -89,6 +89,12 @@ class ParametresRequeteTests(TestCase):
         self.assertIn('aa, zz', reponse.data['detail'])
         self.assertIn('aa, zz', erreur['message'])
 
+    def test_methode_non_servie_405_prime(self):
+        # ERR-ENF11-FUZZ-CORE — POST sur une vue GET seule : le 405 de DRF
+        # n'est plus masqué par le 400 « paramètre non déclaré ».
+        reponse = _VueDeclaree.as_view()(factory.post('/x/?zz=1'))
+        self.assertEqual(reponse.status_code, 405)
+
     def test_parametre_declare_par_extend_schema_accepte(self):
         reponse = _VueDeclaree.as_view()(factory.get('/x/', {'periode': '2026'}))
         self.assertEqual(reponse.status_code, 200)

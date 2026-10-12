@@ -1,8 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   `estPerime` est une fonction PURE (un `layout_stale` du contrat → un
-   booléen strict) : le test jumeau l'exerce directement, sans monter React —
-   même dérogation que `RemplissageProuve.jsx` (CAL79) du même module. */
-
 /* ============================================================================
    CAL188 — LE BADGE « CALEPINAGE PÉRIMÉ » DANS L'ERP (parité PVUNI).
    ----------------------------------------------------------------------------
@@ -25,13 +20,7 @@
        n'a rien pu mesurer).
    ========================================================================== */
 
-/**
- * `true` UNIQUEMENT si le serveur a AFFIRMÉ la péremption — jamais sur
- * `null`/`undefined`/toute autre valeur que le booléen `true` strict.
- */
-export function estPerime(layoutStale) {
-  return layoutStale === true
-}
+import { estPerime } from './BadgePerime.helpers'
 
 export default function BadgePerime({ layoutStale, layoutNbPanneaux = null }) {
   if (!estPerime(layoutStale)) return null

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'PlanificationPage.jsx'), 'utf8')
 const API = readFileSync(join(HERE, '../../api/installationsApi.js'), 'utf8')
+const HELPERS = readFileSync(join(HERE, 'PlanificationPage.helpers.js'), 'utf8')
 
 test('zéro écriture serveur nouvelle : le seul PATCH est updateIntervention', () => {
   const appels = [...SRC.matchAll(/installationsApi\.(\w+)\(/g)].map((m) => m[1])
@@ -36,9 +37,9 @@ test('un dépôt sur un créneau passe par une CONFIRMATION avant d\'écrire', (
 })
 
 test('le créneau écrit une fenêtre XFSM5 — jamais une durée devinée', () => {
-  assert.match(SRC, /export function payloadDeplacement\(toKey, jourCible, heure\)/)
-  const payload = SRC.slice(SRC.indexOf('export function payloadDeplacement'),
-    SRC.indexOf('// Chevauchements RÉELS'))
+  assert.match(HELPERS, /export function payloadDeplacement\(toKey, jourCible, heure\)/)
+  const payload = HELPERS.slice(HELPERS.indexOf('export function payloadDeplacement'),
+    HELPERS.indexOf('// Chevauchements RÉELS'))
   assert.match(payload, /fenetre_debut: heureEnTime\(heure\)/)
   assert.match(payload, /fenetre_fin: heureEnTime\(heure \+ 1\)/)
   // Aucune durée/heure n'est écrite quand aucun créneau n'est visé.

@@ -2,6 +2,11 @@
 
 Critère d'acceptation : le fichier exporté contient le même classement que
 l'endpoint JSON, colonnes rang/nom/score.
+
+ACRM67 (D-ACRM-6 (iv)=(a), 09/10/2026) : la ROUTE ``defis/<id>/export-xlsx/``
+est retirée (aucun appelant front) — son 404 vit dans
+``tests_acrm_routes_retirees``. Le rendu ``export_defi_classement_xlsx``
+reste couvert ici.
 """
 import datetime
 import io
@@ -10,7 +15,6 @@ import openpyxl
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework.test import APIClient
 
 from authentication.models import Company
 from apps.crm.exports import export_defi_classement_xlsx
@@ -49,14 +53,3 @@ class ExportDefiClassementTests(TestCase):
         self.assertEqual(len(rows), len(classement))
         self.assertEqual(rows[0], (1, self.com1.get_username(), '3'))
         self.assertEqual(rows[1], (2, self.com2.get_username(), '1'))
-
-    def test_endpoint_export_xlsx(self):
-        api = APIClient()
-        api.force_authenticate(self.com1)
-        resp = api.get(f'/api/django/crm/defis/{self.defi.pk}/export-xlsx/')
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn('spreadsheetml', resp['Content-Type'])
-        wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-        ws = wb.active
-        rows = list(ws.iter_rows(min_row=2, values_only=True))
-        self.assertEqual(len(rows), 2)

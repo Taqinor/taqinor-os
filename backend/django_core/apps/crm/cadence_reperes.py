@@ -275,7 +275,7 @@ _LIBELLES_FILET_HORS_GABARIT = frozenset({
 })
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
-#: étape (``est_etape_de_filet``/``q_filet``), seulement pour les nommer.
+#: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.
 _LIBELLES_FILET = (cadence_config.libelles_par_defaut(*CLES_APRES_CONTACT)
                    | _LIBELLES_FILET_HORS_GABARIT)
 
@@ -330,7 +330,7 @@ def q_visite():
     return q_etape(*CLES_VISITE)
 
 
-def q_filet():
+def _q_filet():
     """``est_etape_de_filet`` en requête : les étapes du gabarit « Après
     l'appel » (par clé, ou libellé par défaut) et les deux hors gabarit."""
     from django.db.models import Q
@@ -342,7 +342,7 @@ def q_filet():
 def q_etape_moteur():
     """Toute étape posée par le moteur À CÔTÉ du protocole (filet ou
     visite) — jamais un barreau de gabarit de plan."""
-    return q_filet() | q_visite()
+    return _q_filet() | q_visite()
 
 
 def annuler_etapes_moteur_ouvertes(lead, *cles, note):

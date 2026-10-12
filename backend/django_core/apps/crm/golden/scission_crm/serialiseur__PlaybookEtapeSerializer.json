@@ -7,7 +7,7 @@
    "required": false
   },
   {
-   "classe": "PrimaryKeyRelatedField",
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
    "nom": "playbook",
    "read_only": false,
    "required": true

@@ -31,9 +31,8 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 vi.mock('../../ui/confirm', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import PlanificationPage, {
-  blocGeometry, chevauchements, minutesDeHeure, heureEnTime, payloadDeplacement,
-} from './PlanificationPage'
+import PlanificationPage from './PlanificationPage'
+import { blocGeometry, chevauchements, minutesDeHeure, heureEnTime, payloadDeplacement } from './PlanificationPage.helpers'
 
 function renderPage() {
   const store = configureStore({ reducer: { auth: () => ({ role: 'responsable' }) } })

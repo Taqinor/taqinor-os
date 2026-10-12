@@ -30,6 +30,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from .calepinages import CalepinageViewSet
 
 __all__ = ['versions_diff']
 
@@ -85,8 +86,6 @@ def versions_diff(self, request, pk=None, version_id=None):
                             status=status.HTTP_404_NOT_FOUND)
     return Response(comparer_versions(gauche, droite))
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7 / bug de classe #105).

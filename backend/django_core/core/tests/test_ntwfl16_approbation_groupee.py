@@ -238,6 +238,15 @@ class ApprobationGroupeeApiTests(TenantAPITestCase):
             URL_MASSE, {'commentaire': 'rien'}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
+    def test_corps_hors_schema_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE — corps tableau (500 avant) et liste vide
+        # (``minItems: 1`` désormais publié).
+        client = self.client_as(role=CustomUser.ROLE_ADMIN)
+        for corps in ([None, None], {'step_ids': []}):
+            with self.subTest(corps=corps):
+                r = client.post(URL_MASSE, corps, format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+
     def test_selection_heterogene_refusee_avec_message(self):
         steps = self._steps(self.company, 'api-hetero', nb=2)
         instance = steps[0].instance

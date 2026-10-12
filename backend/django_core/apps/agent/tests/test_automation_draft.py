@@ -113,3 +113,29 @@ class AutomationDraftEndpointTest(TestCase):
         rule = AutomationRule.objects.get(pk=resp.data['id'])
         self.assertEqual(rule.company_id, self.company.id)
         self.assertNotEqual(rule.company_id, self.other_company.id)
+
+    def test_corps_hors_schema_rejete_400(self):
+        # ERR-ENF11-FUZZ-AGENT — le corps est validé contre le schéma publié.
+        base = {'nom': 'Brouillon', 'trigger_type': 'devis_accepted',
+                'action_type': 'create_activity'}
+        for corps in ({**base, 'action_type': '0'},
+                      {**base, 'trigger_config': ['pas', 'un', 'objet']},
+                      {**base, 'nom': 'x' * 256}):
+            with self.subTest(corps=corps):
+                resp = _auth(self.user).post(URL, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_schema_publie_le_catalogue_ferme(self):
+        # Le schéma énumère exactement le catalogue fermé (parqués exclus) :
+        # une valeur conforme au schéma n'est jamais refusée par le service.
+        from apps.automation.selectors import closed_rule_catalogue
+        from drf_spectacular.drainage import get_override
+
+        from apps.agent.views import BrouillonAutomationSerializer
+
+        catalogue = closed_rule_catalogue()
+        champs = BrouillonAutomationSerializer().fields
+        for nom, cle in (('trigger_type', 'trigger_types'),
+                         ('action_type', 'action_types')):
+            schema = get_override(champs[nom], 'field')
+            self.assertEqual(schema['allOf'][0]['enum'], catalogue[cle])

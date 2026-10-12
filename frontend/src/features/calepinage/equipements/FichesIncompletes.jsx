@@ -1,10 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   `impactChamp` est une fonction PURE (un champ → la phrase du calcul qu'il
-   débloque) : elle est exportée pour que le test jumeau puisse PARCOURIR les
-   `champs_manquants` du contrat committé et exiger une phrase pour chacun. La
-   sortir dans un `.js` voisin séparerait la table de son unique lecteur pour
-   satisfaire une règle de fast-refresh qui ne s'applique pas à une constante ;
-   même dérogation que `module.config.jsx` du même module. */
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
@@ -12,6 +5,7 @@ import {
   CHAMPS_REQUIS_PAR_TYPE,
 } from '../../../pages/stock/ficheCompletude'
 import RetourAtelier from '../atelier/RetourAtelier'
+import { impactChamp } from './FichesIncompletes.helpers'
 
 /* ============================================================================
    CAL121 — LE PANNEAU « FICHES INCOMPLÈTES » DU CALEPINAGE.
@@ -43,82 +37,6 @@ import RetourAtelier from '../atelier/RetourAtelier'
    du contrat COMMITTÉ et exige une phrase d'impact pour CHACUN.
    ========================================================================== */
 
-/* ── L'IMPACT, champ par champ ─────────────────────────────────────────────
-   Chaque entrée dit ce que le calepinage NE PEUT PAS produire sans ce champ.
-   Les clés sont celles du contrat CAL243 (les specs du bloc `specs`, telles
-   que `apps.stock.selectors.specs_for_produit` les publie), pas les clés
-   préfixées du catalogue — la correspondance est faite par `PREFIXE_FICHE`. */
-const IMPACT = {
-  panneau: {
-    longueur_mm: 'sans longueur : aucun calepinage — le pas de pose est inconnu',
-    largeur_mm: 'sans largeur : aucun calepinage — le pas de pose est inconnu',
-    epaisseur_mm: 'sans épaisseur : pas de hauteur de rail ni de garde au vent',
-    poids_kg: 'sans poids : aucune descente de charge sur la toiture',
-    pmax_wc: 'sans Pmax : aucune puissance crête, donc aucun productible',
-    rendement_pct: 'sans rendement : aucune surface utile par kWc',
-    voc_v: 'sans Voc : aucun verdict de tension de chaîne',
-    vmp_v: 'sans Vmp : aucun placement dans la plage MPPT',
-    isc_a: 'sans Isc : aucun verdict de courant d’entrée',
-    imp_a: 'sans Imp : aucun courant de chaîne au point de puissance',
-    temp_coeff_voc_pct_c: 'sans coefficient de température Voc : aucune tension à froid, donc aucun verdict de tension maximale',
-    temp_coeff_pmax_pct_c: 'sans coefficient de température Pmax : aucune perte thermique, donc un productible surévalué',
-    noct_c: 'sans NOCT : pas de modèle thermique — la température de cellule n’est pas calculable',
-    uc_w_m2k: 'sans coefficient Uc : pas de modèle thermique au vent (Faiman)',
-    uv_w_m3sk: 'sans coefficient Uv : pas de modèle thermique au vent (Faiman)',
-    techno_cellule: 'sans technologie de cellule : aucun modèle de faible éclairement',
-    bifacial: 'sans le caractère bifacial : aucun gain de face arrière n’est pris en compte',
-    bifacialite_pct: 'sans taux de bifacialité : aucun gain de face arrière chiffré',
-    degradation_annuelle_pct: 'sans dégradation annuelle : aucun productible à 10 ou 25 ans',
-    degradation_annee1_pct: 'sans dégradation de première année : aucun productible d’année 1',
-    garantie_pct_a_10_ans: 'sans garantie à 10 ans : aucun plancher de production contractuel à 10 ans',
-    garantie_pct_a_25_ans: 'sans garantie à 25 ans : aucun plancher de production contractuel à 25 ans',
-    // CALX60 — champs lus par la chaîne de pertes (lot 3)
-    rendement_par_irradiance: 'sans courbe de rendement par irradiance : l’étape « niveau d’irradiance » s’omet, aucune perte à faible éclairement',
-    tolerance_pmax_min_pct: 'sans tolérance Pmax minimale : aucune perte de mismatch fabricant chiffrée',
-    tolerance_pmax_max_pct: 'sans tolérance Pmax maximale : aucune perte de mismatch fabricant chiffrée',
-  },
-  onduleur: {
-    n_mppt: 'sans nombre de MPPT : aucune répartition des chaînes',
-    mppt_v_min: 'sans tension MPPT minimale : aucun verdict de plage MPPT à chaud',
-    mppt_v_max: 'sans tension MPPT maximale : aucun verdict de plage MPPT à froid',
-    v_max_abs: 'sans tension maximale absolue : aucun verdict de sécurité de tension',
-    v_demarrage_v: 'sans tension de démarrage : aucune heure de démarrage au lever du jour',
-    i_max_mppt_a: 'sans courant MPPT maximal : aucun verdict de courant par entrée',
-    isc_max_mppt_a: 'sans Isc maximal par MPPT : aucun verdict de courant de court-circuit',
-    entrees_par_mppt: 'sans entrées par MPPT : aucun câblage de chaînes vérifiable',
-    chaines_max_par_mppt: 'sans chaînes maximales par MPPT : aucun verdict de nombre de chaînes',
-    ac_kw: 'sans puissance AC : aucun taux de surdimensionnement DC/AC',
-    dc_max_kwc: 'sans puissance DC admissible : aucune limite de champ photovoltaïque',
-    s_max_kva: 'sans puissance apparente maximale : aucun dimensionnement de raccordement',
-    phases: 'sans nombre de phases : aucun verdict de raccordement mono/triphasé',
-    rendement_euro_pct: 'sans rendement européen : aucune perte de conversion au productible',
-    bat_max_charge_kw: 'sans puissance de charge batterie : aucun profil de charge',
-    bat_max_decharge_kw: 'sans puissance de décharge batterie : aucun profil de décharge',
-    // CALX60 — champs lus par la chaîne de pertes (lot 3)
-    rendement_par_charge: 'sans courbe de rendement par charge : l’étape « onduleur » s’omet, aucune perte de conversion heure par heure',
-    rendement_max_pct: 'sans rendement maximal : aucune perte de conversion à pleine charge',
-    rendement_cec_pct: 'sans rendement CEC : aucune perte de conversion pondérée au profil réel',
-    conso_nuit_w: 'sans consommation de nuit : aucune perte d’auxiliaires nocturne',
-  },
-  batterie: {
-    kwh_nominal: 'sans capacité nominale : aucune autonomie calculable',
-    dod_pct: 'sans profondeur de décharge : aucune énergie réellement utilisable',
-    kwh_utile: 'sans énergie utile : aucune autonomie calculable',
-    v_nominal: 'sans tension nominale : aucun verdict de compatibilité onduleur',
-    p_charge_kw: 'sans puissance de charge : aucun temps de recharge',
-    p_decharge_kw: 'sans puissance de décharge : aucune pointe soutenable',
-    cycles: 'sans nombre de cycles : aucune durée de vie chiffrée',
-    rendement_pct: 'sans rendement : aucune perte de stockage au bilan',
-  },
-  optimiseur: {
-    p_max_wc: 'sans puissance maximale : aucun appairage au panneau',
-    v_entree_max: 'sans tension d’entrée maximale : aucun verdict de compatibilité panneau',
-    v_sortie_max: 'sans tension de sortie maximale : aucune longueur de chaîne admissible',
-    i_entree_max_a: 'sans courant d’entrée maximal : aucun verdict de courant',
-    rendement_pct: 'sans rendement : aucune perte d’optimisation au bilan',
-  },
-}
-
 /* Les quatre familles de l'agrégat CAL243, dans l'ordre où elles se posent sur
    une toiture. Le libellé est celui qu'un poseur emploie. */
 const FAMILLES = [
@@ -147,11 +65,6 @@ function champsRequis(famille) {
     prefixe && cle.startsWith(prefixe) ? cle.slice(prefixe.length) : cle,
     label,
   ]))
-}
-
-/** La phrase d'impact d'un champ. Jamais un message générique de remplissage. */
-export function impactChamp(famille, champ) {
-  return IMPACT[famille]?.[champ] ?? null
 }
 
 function LigneChamp({ famille, champ, requis }) {
@@ -249,6 +162,10 @@ const PROVENANCES = {
 function MaterielDuCalcul({ materiel, panneauDevis }) {
   if (!materiel) return null
   const module = materiel.module
+  /* ACAL359 — une ligne par pan dès qu'un pan porte un autre module, ou que
+     la fiche d'un pan manque ; un champ mono-module garde la ligne « Module ». */
+  const lignes = Array.isArray(materiel.modules_par_pan) ? materiel.modules_par_pan : []
+  const parPan = lignes.length > 1 || lignes.some((l) => !l.fiche_resolue) ? lignes : []
   const ecart = module && panneauDevis
     && module.produit_id != null && panneauDevis.produit != null
     && String(module.produit_id) !== String(panneauDevis.produit)
@@ -280,6 +197,26 @@ function MaterielDuCalcul({ materiel, panneauDevis }) {
           )
         })}
       </ul>
+      {parPan.length > 0 && (
+        <ul className="mt-2 space-y-1" data-testid="cal-fiches-modules-par-pan">
+          {parPan.map((ligne) => (
+            <li key={ligne.pan} className="text-sm text-lune-soft"
+              data-testid={`cal-fiches-module-pan-${ligne.pan}`}>
+              <span className="text-lune">Pan {ligne.pan}</span>
+              {' — '}
+              {ligne.designation || 'module sans désignation'}
+              {!ligne.fiche_resolue && (
+                <span className="text-red-300">
+                  {' '}— sans fiche : chaîné avec la fiche du module par défaut
+                </span>
+              )}
+              {ligne.fiche_resolue && !ligne.fiche_complete && (
+                <span className="text-red-300"> — fiche incomplète</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {ecart && (
         <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-ecart-module">
           Le calcul utilise « {module.designation} », le devis chiffre

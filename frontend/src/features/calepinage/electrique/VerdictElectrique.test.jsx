@@ -38,10 +38,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import { ongletParCle } from '../atelier/onglets'
-import VerdictElectrique, {
-  CLE_ONGLET, DOMAINE_AUTRE, DOMAINES, domaineDuMotif, grouperMotifs,
-  libelleStatut, motifsRefusants, statutRefuse, tonStatut,
-} from './VerdictElectrique'
+import VerdictElectrique, { CLE_ONGLET } from './VerdictElectrique'
+import { DOMAINE_AUTRE, DOMAINES, domaineDuMotif, grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
 
 /** Un motif, dans la forme EXACTE de `_motif_publication` — quatre clés. */
 const motif = (code, statut, libelle, source = '') => ({

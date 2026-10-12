@@ -27,10 +27,8 @@ from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
-from apps.calepinage.services.variantes import (
-    bascule_autorisee,
-    bascule_en_cours,
-)
+from apps.calepinage.garde_retenue import bascule_en_cours
+from apps.calepinage.services.variantes import bascule_autorisee
 from apps.crm.models import Client
 from authentication.models import Company
 

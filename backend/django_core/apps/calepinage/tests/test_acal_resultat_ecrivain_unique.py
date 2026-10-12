@@ -165,7 +165,7 @@ class VerrouDeLigne(_Base, TransactionTestCase):
                     resultat['a'] = 1
                 modifier_resultat(Calepinage.objects.get(pk=calepinage.pk),
                                   _lent)
-            except Exception as exc:  # noqa: BLE001 — remonté au test
+            except Exception as exc:  # remonté au test
                 erreurs.append(exc)
             finally:
                 connections.close_all()
@@ -177,7 +177,7 @@ class VerrouDeLigne(_Base, TransactionTestCase):
                 modifier_resultat(
                     Calepinage.objects.get(pk=calepinage.pk),
                     lambda resultat: resultat.__setitem__('b', 2))
-            except Exception as exc:  # noqa: BLE001 — remonté au test
+            except Exception as exc:  # remonté au test
                 erreurs.append(exc)
             finally:
                 connections.close_all()

@@ -44,9 +44,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import Raccordement, {
-  CHAMPS, corpsDeSaisie, erreursParChamp, libelleStatut,
-} from './Raccordement'
+import Raccordement from './Raccordement'
+import { CHAMPS, corpsDeSaisie, erreursParChamp, libelleStatut } from './Raccordement.helpers'
 
 const servir = (data) => {
   calepinageApi.calepinages.raccordement.mockResolvedValue({ data })

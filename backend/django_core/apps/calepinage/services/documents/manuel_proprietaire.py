@@ -161,7 +161,7 @@ def _designation_modules(calepinage):
 
     try:
         equipements = equipements_du_calepinage(calepinage) or {}
-    except Exception:  # noqa: BLE001 — le manuel n'exige pas de devis lié
+    except Exception:  # le manuel n'exige pas de devis lié
         return ''
     bloc = equipements.get('panneau') if isinstance(equipements, dict) \
         else None

@@ -10,6 +10,7 @@ import {
   Button, Input,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
+import ArretCadenceChamps from '../../features/crm/relances/ArretCadenceChamps'
 import { PARCOURS } from '../../features/crm/relances/parcours'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -46,7 +47,8 @@ function todayCasa() {
 // millisecondes, qui glisserait d'un jour autour d'un changement d'heure.
 function decalerJours(yyyyMmDd, delta) {
   const [y, m, d] = yyyyMmDd.split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d + delta)).toISOString().slice(0, 10)
+  // ENF15 : formatage en-CA (AAAA-MM-JJ) ancré UTC — pas de 	oISOString.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d + delta)))
 }
 
 // Titre de groupe « lundi 7 septembre » — minuit LOCAL (comme `formatDateFr`
@@ -459,31 +461,13 @@ function AnnulerArreterControl({ etape, onAnnuler, onArreter }) {
           Annuler
         </Button>
       )}
-      {arretable && !ouvert && (
-        <Button
-          type="button" size="sm" variant="outline" disabled={busy}
-          onClick={() => setOuvert(true)}
-        >
-          Arrêter la cadence
-        </Button>
-      )}
-      {arretable && ouvert && (
-        <>
-          <Input
-            placeholder="Motif d'arrêt (obligatoire)" value={motif}
-            onChange={(e) => setMotif(e.target.value)}
-            data-testid="cad50-arreter-motif"
-          />
-          <Button
-            type="button" size="sm" variant="outline" disabled={busy}
-            onClick={() => { setOuvert(false); setMotif('') }}
-          >
-            Annuler
-          </Button>
-          <Button type="button" size="sm" disabled={busy || !motif.trim()} onClick={confirmerArret}>
-            Confirmer
-          </Button>
-        </>
+      {arretable && (
+        <ArretCadenceChamps
+          ouvert={ouvert} motif={motif} busy={busy}
+          onOuvrir={() => setOuvert(true)}
+          onFermer={() => { setOuvert(false); setMotif('') }}
+          onMotif={setMotif} onConfirmer={confirmerArret}
+        />
       )}
     </li>
   )

@@ -1,8 +1,9 @@
 """ARC36 — récepteurs du satellite monitoring sur le bus ``core.events``.
 
 ``abonnement_monitoring_resilie`` (YSUBS4) est émis par
-``compta.services.resilier_abonnement_monitoring`` quand un abonnement de
-supervision est résilié. Effet aval DÉCOUPLÉ ici : couper la supervision
+``apps.monitoring.services.resilier_abonnement_monitoring`` (ASAV100 — l'ancien
+émetteur ``compta.services`` est parqué) quand un abonnement de supervision est
+résilié depuis l'écran SAV/monitoring. Effet aval DÉCOUPLÉ ici : couper la supervision
 automatique du système lié (``MonitoringConfig.enabled=False`` pour
 ``abonnement.installation_id``) — le client ne paie plus, on arrête la
 synchro fournisseur. ``monitoring`` n'importe JAMAIS ``compta`` :
@@ -53,7 +54,7 @@ def _semer_attendu_a_reception(sender, installation, user, ancien_statut,
     # une exception ici remonterait à l'émetteur). On avale/loggue.
     try:
         seed_expected_annual_kwh(installation)
-    except Exception:  # noqa: BLE001 — effet aval best-effort, jamais bloquant
+    except Exception:  # effet aval best-effort, jamais bloquant
         logger.warning(
             'YSERV8 : semis production attendue ignoré pour installation %s',
             getattr(installation, 'pk', '?'), exc_info=True)

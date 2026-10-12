@@ -8,6 +8,7 @@ from authentication.models import Company
 from apps.crm.models import Lead, SalleVente
 from apps.crm.selectors import salle_vente_analytics, salle_vente_summary_for_lead
 from apps.roles.models import Role
+from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
 
@@ -16,6 +17,9 @@ class SalleVenteAnalyticsSelectorTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM19', slug='taqinor-ntcrm19')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.lead = Lead.objects.create(company=self.company, nom='Lead SV19')
         self.salle = SalleVente.objects.create(
             company=self.company, lead=self.lead, titre='Salle NTCRM19')
@@ -52,6 +56,9 @@ class SalleVenteAnalyticsEndpointTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM19b', slug='taqinor-ntcrm19b')
+        # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'salles_vente_actif': True})
         self.role = Role.objects.create(
             company=self.company, nom='Commercial', permissions=['crm_voir', 'crm_creer'])
         self.user = User.objects.create_user(

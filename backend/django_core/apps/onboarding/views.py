@@ -47,43 +47,37 @@ _ProductTourSerializer = inline_serializer('ProductTour', {
 }).__class__
 
 
+# ERR-ENF11-FUZZ-ONBOARDING — champs TYPES du résumé (``selectors.
+# resume_pour_utilisateur``) : des ``JSONField(allow_null=True)`` sans type
+# donnaient un schéma ``nullable`` sans ``type`` que la réponse réelle
+# (liste / entiers / booléens) ne satisfaisait pas pour le contrôle api-fuzz.
+_CHAMPS_RESUME_PROGRESSION = {
+    'items': drf_serializers.ListField(child=drf_serializers.DictField()),
+    'faits': drf_serializers.IntegerField(),
+    'total': drf_serializers.IntegerField(),
+    'pourcentage': drf_serializers.IntegerField(),
+    'termine': drf_serializers.BooleanField(),
+    'assistant_demarrage_auto': drf_serializers.BooleanField(),
+}
+
+
 _VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetMarquerFaitReponse', {
-    'items': drf_serializers.JSONField(allow_null=True),
-    'faits': drf_serializers.JSONField(allow_null=True),
-    'total': drf_serializers.JSONField(allow_null=True),
-    'pourcentage': drf_serializers.JSONField(allow_null=True),
-    'termine': drf_serializers.JSONField(allow_null=True),
-    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+    **_CHAMPS_RESUME_PROGRESSION,
 })
 
 
 _VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_TOUT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerToutReponse', {
-    'items': drf_serializers.JSONField(allow_null=True),
-    'faits': drf_serializers.JSONField(allow_null=True),
-    'total': drf_serializers.JSONField(allow_null=True),
-    'pourcentage': drf_serializers.JSONField(allow_null=True),
-    'termine': drf_serializers.JSONField(allow_null=True),
-    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+    **_CHAMPS_RESUME_PROGRESSION,
 })
 
 
 _VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerReponse', {
-    'items': drf_serializers.JSONField(allow_null=True),
-    'faits': drf_serializers.JSONField(allow_null=True),
-    'total': drf_serializers.JSONField(allow_null=True),
-    'pourcentage': drf_serializers.JSONField(allow_null=True),
-    'termine': drf_serializers.JSONField(allow_null=True),
-    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+    **_CHAMPS_RESUME_PROGRESSION,
 })
 
 
 _VIEWS_ONBOARDING_PROGRESS_VIEW_SET_LIST_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetListReponse', {
-    'items': drf_serializers.JSONField(allow_null=True),
-    'faits': drf_serializers.JSONField(allow_null=True),
-    'total': drf_serializers.JSONField(allow_null=True),
-    'pourcentage': drf_serializers.JSONField(allow_null=True),
-    'termine': drf_serializers.JSONField(allow_null=True),
-    'assistant_demarrage_auto': drf_serializers.JSONField(allow_null=True),
+    **_CHAMPS_RESUME_PROGRESSION,
 })
 
 

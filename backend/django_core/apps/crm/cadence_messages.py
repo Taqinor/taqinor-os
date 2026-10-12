@@ -431,7 +431,7 @@ def journaliser_message_visite_ouvert(lead, user, *, cle, langue, etape=None):
 # ouverte ici sans texte validé derrière elle (CAD64 — ni l'anglais ni l'arabe
 # classique tant que la relance n'en a pas).
 
-def langues_relance():
+def _langues_relance():
     """CAD63 — les langues qu'on peut CHOISIR pour le message d'une touche :
     les valeurs du champ ``Lead.langue_preferee`` (lues sur le modèle, jamais
     recopiées)."""
@@ -443,7 +443,7 @@ def refus_langue_relance(langue):
     ``None``. Le message NOMME la valeur reçue et les langues proposées
     (règle fondateur du 08/09/2026 : jamais un refus muet)."""
     langue = (langue or '').strip()
-    if langue in langues_relance():
+    if langue in _langues_relance():
         return None
     proposees = ', '.join(
         f'« {valeur} » ({libelle})'
@@ -500,7 +500,7 @@ def langue_relance_du_lead(lead):
         company=getattr(lead, 'company', None))
 
 
-def texte_en_repli_de_langue(company, cle, langue):
+def _texte_en_repli_de_langue(company, cle, langue):
     """CAD64 — le texte de ``cle`` retombe-t-il sur le FRANÇAIS faute
     d'exister dans ``langue`` ?
 
@@ -530,7 +530,7 @@ def texte_en_repli_de_langue(company, cle, langue):
 _RE_CROCHET = _re.compile(r'\[[^\[\]\n]{1,80}\]')
 
 
-def crochets_a_completer(texte):
+def _crochets_a_completer(texte):
     """CAD69 — les blancs ``[…]`` encore présents dans ``texte``, dans l'ordre
     d'apparition, sans doublon (``[]`` si aucun)."""
     vus = []
@@ -547,7 +547,7 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     Forme `relance_etape_message` (contrat MRY25) :
     ``{message, wa_url, langue, phone, placeholders_manquants}``.
 
-    CAD63 — ``langue`` (une de ``langues_relance()``, validée par
+    CAD63 — ``langue`` (une de ``_langues_relance()``, validée par
     l'appelant) force la langue du rendu pour CE message, sans toucher la
     fiche : c'est l'aperçu qu'on bascule FR ↔ darija au téléphone.
 
@@ -581,15 +581,15 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     # de remplir notre formulaire » est faux pour un lead venu par téléphone,
     # en boutique, par recommandation ou d'un message entrant. La clé est
     # choisie d'après le canal déjà enregistré, AVANT de lire le gabarit.
-    cle_rendue = cle_identite_pour_lead(lead, template_cle,
-                                        reference=etape.due_date)
+    cle_rendue = _cle_identite_pour_lead(lead, template_cle,
+                                         reference=etape.due_date)
     corps = MessageTemplate.get_corps(
         lead.company, cle_rendue, langue) if cle_rendue else ''
     # CAD64 — le texte n'existe pas dans la langue demandée : c'est la version
     # FRANÇAISE qui part, et on le DIT. Le texte est alors rendu comme un
     # texte français (civilité « M. »/« Mme » — CAD65 —, variante de
     # segment), jamais un « السي » collé dans une phrase française.
-    repli_langue = texte_en_repli_de_langue(lead.company, cle_rendue, langue)
+    repli_langue = _texte_en_repli_de_langue(lead.company, cle_rendue, langue)
     langue_texte = 'fr' if repli_langue else langue
     # CAD126 — variante de SEGMENT par exception : « sur votre toit » ne part
     # pas à un pompage au bord d'un forage, « en famille » pas à une
@@ -600,12 +600,17 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     # français, neutre de segment) ; sans forme pour sa clé — ou dans une
     # autre langue que le français —, le texte de la clé tient lieu de corps
     # (comme `relance_email_j10`), sans objet.
+    # APAR56 — un texte que la société a PERSONNALISÉ prime sur la forme
+    # e-mail codée (seul l'objet par défaut de la forme est gardé) : le client
+    # reçoit le texte écrit par la société, quel que soit le canal.
     est_email = (etape.canal == RelanceEtape.Canal.EMAIL and not cle)
     forme = None
     if est_email and langue_texte == 'fr':
-        from apps.parametres.models_messages import forme_email
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS, forme_email)
         forme = forme_email(template_cle)
-    if forme:
+    if forme and (corps or '').strip() == (
+            MESSAGE_TEMPLATE_DEFAULTS.get(cle_rendue, '') or '').strip():
         corps = forme['corps']
     else:
         corps = _corps_pour_segment(corps, cle_rendue, lead, langue_texte)
@@ -738,7 +743,7 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         'repli_langue': repli_langue,
         # CAD69 — les blancs `[…]` à compléter à la main avant tout envoi
         # (l'aperçu bloque « Ouvrir WhatsApp » tant qu'il y en a).
-        'crochets': crochets_a_completer(message),
+        'crochets': _crochets_a_completer(message),
         # CAD70 — `True` : le texte demande une preuve (J4) et la société n'a
         # AUCUNE réalisation publiée — jamais une preuve inventée ni un
         # chantier mélangé : l'aperçu remplace l'envoi par l'aide.
@@ -801,7 +806,7 @@ _GABARITS_REGLAGE_REQUIS = {
 }
 
 
-def verifier_gabarit_assignable(company, template_cle):
+def _verifier_gabarit_assignable(company, template_cle):
     """CAD71 — lève ``GabaritNonAssignable`` si ``template_cle`` exige un
     réglage société (``CompanyProfile``) qui est vide ; ne fait rien pour un
     gabarit sans exigence (comportement historique inchangé). À appeler
@@ -1271,7 +1276,7 @@ def _mois_dossier_francais(lead):
     return f'{_MOIS_FR[locale.month - 1]} {locale.year}'
 
 
-def cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
+def _cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
     """La clé de message à RENDRE pour cette touche — souvent ``cle_gabarit``.
 
     Ne change QUE la touche d'identité (`identite`) : toutes les autres clés
@@ -1292,7 +1297,7 @@ def cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
         return cle_gabarit
     try:
         from apps.parametres.models_messages import CLE_IDENTITE_PAR_CANAL
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except ImportError:
         return cle_gabarit
 
     ouverture = getattr(lead, 'date_creation', None)

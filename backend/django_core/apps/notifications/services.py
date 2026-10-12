@@ -15,6 +15,7 @@ NO-OP silencieux (comportement actuel préservé).
 import logging
 
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from .models import (
@@ -675,11 +676,15 @@ def notify(user, event_type, title, body='', link=None, company=None,
         if not (prefs.get('in_app') or hors_app):
             return None
         try:
-            ligne = Notification.objects.create(
-                company=company, recipient=user, event_type=event_type,
-                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-                link=str(link or '')[:512], reason=reason,
-                programmee_pour=programmee_pour)
+            # APAR48 — point de sauvegarde : un échec d'écriture n'interrompt
+            # jamais la transaction de l'émetteur (encaissement, signature…).
+            with transaction.atomic():
+                ligne = Notification.objects.create(
+                    company=company, recipient=user, event_type=event_type,
+                    title=str(title)[:255],
+                    body=str(body or '')[:MAX_BODY_LEN],
+                    link=str(link or '')[:512], reason=reason,
+                    programmee_pour=programmee_pour)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification différée échouée : %s', exc)
             return None
@@ -688,10 +693,13 @@ def notify(user, event_type, title, body='', link=None, company=None,
     created = None
     if prefs.get('in_app'):
         try:
-            created = Notification.objects.create(
-                company=company, recipient=user, event_type=event_type,
-                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-                link=str(link or '')[:512], reason=reason)
+            # APAR48 — création in-app sous point de sauvegarde (cf. plus haut).
+            with transaction.atomic():
+                created = Notification.objects.create(
+                    company=company, recipient=user, event_type=event_type,
+                    title=str(title)[:255],
+                    body=str(body or '')[:MAX_BODY_LEN],
+                    link=str(link or '')[:512], reason=reason)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)
             created = None
@@ -1234,10 +1242,10 @@ def sweep_annonce_reminders(company, *, delay_days=None, today=None):
                     user, EventType.ANNONCE_READ_REMINDER,
                     f"Lecture obligatoire en attente : {annonce.titre}",
                     body=annonce.corps, link=link, company=company)
-                relance.relances_envoyees = (relance.relances_envoyees or 0) + 1
-                relance.derniere_relance_le = timezone.now()
-                relance.save(update_fields=[
-                    'relances_envoyees', 'derniere_relance_le'])
+                # ENF28 — incrément atomique (F) : pas de lecture-modif-écriture.
+                AnnonceRelance.objects.filter(pk=relance.pk).update(
+                    relances_envoyees=F('relances_envoyees') + 1,
+                    derniere_relance_le=timezone.now())
                 count += 1
         except Exception:  # pragma: no cover - défensif
             logger.warning('sweep_annonce_reminders: annonce %s échouée',

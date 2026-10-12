@@ -16,5 +16,3 @@
 #
 # La signature est `module:Classe.methode` — jamais `fichier:ligne`, qu'un
 # simple decalage de lignes invaliderait (lecon du depot).
-apps.portail.views_externes:tableau_de_bord_fournisseur
-apps.portail.views_externes:tableau_de_bord_partenaire

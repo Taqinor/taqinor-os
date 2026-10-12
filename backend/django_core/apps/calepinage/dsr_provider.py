@@ -228,7 +228,7 @@ def on_lead_erased(sender, **kwargs):
                        .order_by('pk')):
         try:
             anonymiser_calepinage(calepinage)
-        except Exception:  # noqa: BLE001 — journalisé, jamais propagé
+        except Exception:  # journalisé, jamais propagé
             logger.exception('ACAL301 : calepinage %s non anonymisé '
                              '(lead %s effacé)', calepinage.pk, lead_id)
 

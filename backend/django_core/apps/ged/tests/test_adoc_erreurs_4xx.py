@@ -116,6 +116,61 @@ class ErreursMetierTests(TestCase):
             self.assertEqual(resp.status_code, 400, resp.content)
         self.assertEqual(Document.objects.count(), avant)
 
+    def test_detagger_tag_obligatoire_400(self):
+        # CI #956 (fuzz r13, « accepted schema-violating » sur detagger/) —
+        # `tag` est obligatoire au schéma (TAG_CORPS) : sans corps ou mal
+        # formé, 400 nommant le champ (avant : 200, retrait de rien).
+        from apps.ged.models import DocumentTag, DocumentTagAssignment
+        doc = Document.objects.create(company=self.co, folder=self.folder,
+                                      nom='t.pdf')
+        tag = DocumentTag.objects.create(company=self.co, nom='Important',
+                                         slug='important')
+        services.assign_tag(doc, tag, created_by=self.admin)
+        for corps in ({}, {'tag': 'abc'}):
+            resp = self.api.post(f'{BASE}documents/{doc.pk}/detagger/',
+                                 corps, format='json')
+            self.assertEqual(resp.status_code, 400, resp.data)
+            self.assertIn('tag', resp.data)
+        self.assertTrue(DocumentTagAssignment.objects.filter(
+            document=doc, tag=tag).exists())
+        resp = self.api.post(f'{BASE}documents/{doc.pk}/detagger/',
+                             {'tag': tag.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(DocumentTagAssignment.objects.filter(
+            document=doc, tag=tag).exists())
+
+    def test_fichier_introuvable_404_pas_400(self):
+        # CI #956 (fuzz r13, « rejected schema-compliant request » sur
+        # scinder/) — des octets ABSENTS du stockage ne sont pas une entrée
+        # invalide : 404 (comme le proxy de téléchargement), jamais 400 ; même
+        # règle sur caviarder, fusionner et l'export annoté.
+        docs = []
+        for nom in ('a.pdf', 'b.pdf'):
+            d = Document.objects.create(company=self.co, folder=self.folder,
+                                        nom=nom)
+            services.add_version(d, file_key=f'attachments/{nom}',
+                                 company=self.co, mime='application/pdf')
+            docs.append(d)
+        avant = Document.objects.count()
+        with mock.patch('apps.ged.services._fetch_version_bytes',
+                        return_value=(None, 'Fichier introuvable.')):
+            resp = self.api.post(f'{BASE}documents/{docs[0].pk}/scinder/',
+                                 {'points_de_coupe': []}, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            self.assertEqual(resp.data['detail'], 'Fichier introuvable.')
+            resp = self.api.post(f'{BASE}documents/{docs[0].pk}/caviarder/', {
+                'zones': [{'page': 0, 'x0': 0, 'y0': 0, 'x1': 10,
+                           'y1': 10}]}, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            resp = self.api.post(f'{BASE}documents/fusionner/', {
+                'documents': [d.pk for d in docs]}, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            version = docs[0].versions.first()
+            resp = self.api.get(
+                f'{BASE}annotations/export-annote/?version={version.pk}')
+            self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(Document.objects.count(), avant)
+
     def test_disposition_ignore_archive(self):
         PolitiqueRetention.objects.create(
             company=self.co, nom='Globale', duree_conservation_jours=30)
@@ -141,6 +196,31 @@ class ErreursMetierTests(TestCase):
         self.assertTrue(ArchivageLegal.objects.filter(document=archive).exists())
         self.assertEqual(DemandeDisposition.objects.count(), 1)
 
+    def test_disposition_archiver_ignore_corbeille(self):
+        """ADOC179 (sonde C-ADOC-VER-005) — « archiver » sur un document mis
+        en corbeille entre-temps : compté ignoré, jamais un 500 ; le lot
+        mixte archive les autres."""
+        jete = Document.objects.create(company=self.co, folder=self.folder,
+                                       nom='jete.pdf')
+        vivant = Document.objects.create(company=self.co, folder=self.folder,
+                                         nom='vivant.pdf')
+        demande = services.creer_demande_disposition(
+            self.co, libelle='Archivage', action='archiver',
+            document_ids=[jete.pk, vivant.pk], user=self.admin)
+        services.approuver_demande_disposition(demande, user=self.admin2)
+        services.mettre_en_corbeille(jete, self.admin)
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'abc', None)):
+            resp = auth(self.admin2).post(
+                f'{BASE}demandes-disposition/{demande.pk}/executer/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, 'executee')
+        self.assertIn('1 document(s) ignoré(s)', demande.commentaire)
+        self.assertFalse(ArchivageLegal.objects.filter(document=jete).exists())
+        self.assertIsNotNone(Document.objects.get(pk=jete.pk).supprime_le)
+        self.assertTrue(ArchivageLegal.objects.filter(document=vivant).exists())
+
     def test_archiver_corbeille_400(self):
         doc = Document.objects.create(company=self.co, folder=self.folder,
                                       nom='jete.pdf')
@@ -165,6 +245,13 @@ class Enf7ContratGedTests(TestCase):
         self.folder = Folder.objects.create(
             company=self.co, cabinet=self.cab, nom='R')
         self.api = auth(self.admin)
+
+    def test_archivage_corps_hors_schema_400(self):
+        # ENF11 (api-fuzz) — `document: [null, null]` répondait 500.
+        resp = self.api.post(f'{BASE}archivages-legaux/', {
+            'document': [None, None], 'motif': '',
+            'retain_until': '2000-01-01'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_identifiants_non_numeriques_jamais_500(self):
         for route in ('archivages-legaux/', 'legal-holds/'):
@@ -210,6 +297,24 @@ class Enf7ContratGedTests(TestCase):
             {'nom': 'Client', 'peut_changer_signataire': False},
             format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_methode_non_servie_405_avant_le_parseur(self):
+        # CI #956 (fuzz « Unsupported methods ») : PUT sur `versions/` (hors
+        # http_method_names, historique immuable ADOC17) répondait 415 car le
+        # garde « objet JSON » lisait le corps multipart avant le 405 de DRF.
+        resp = self.api.put(f'{BASE}versions/', {'document': '0'},
+                            format='multipart')
+        self.assertEqual(resp.status_code, 405, resp.content)
+        self.assertNotIn('PUT', resp['Allow'])
+        resp = self.api.patch(f'{BASE}versions/', {}, format='json')
+        self.assertEqual(resp.status_code, 405, resp.content)
+        # PUT sur une route de LISTE (aucun gestionnaire) : 405 aussi.
+        resp = self.api.put(f'{BASE}cabinets/', {'nom': 'X'},
+                            format='multipart')
+        self.assertEqual(resp.status_code, 405, resp.content)
+        # Une méthode SERVIE garde le 400 « Objet JSON attendu ».
+        resp = self.api.post(f'{BASE}cabinets/', [1], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_lien_vers_cible_introuvable_404(self):
         doc = self.api.post(f'{BASE}documents/', {

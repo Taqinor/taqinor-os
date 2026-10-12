@@ -77,3 +77,8 @@ class RegleValiderTests(TestCase):
         res = self.api.post(URL_VALIDER, {}, format='json')
         self.assertEqual(res.status_code, 200, res.data)
         self.assertFalse(res.data['ok'])
+
+    def test_corps_non_objet_400(self):
+        # ERR-ENF11-FUZZ-CORE — `[null, null]` répondait 200 {ok: false}.
+        res = self.api.post(URL_VALIDER, [None, None], format='json')
+        self.assertEqual(res.status_code, 400, res.data)

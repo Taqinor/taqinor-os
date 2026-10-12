@@ -23,7 +23,7 @@ Run :
 """
 import unittest
 
-from apps.calepinage.services.pompage import hmt_puits_iteree
+from core.pompage.hydraulique import hmt_puits_iteree
 
 COURBE = {'debits_m3h': [0, 5, 10, 15], 'hmt_m': [100, 80, 60, 40]}
 

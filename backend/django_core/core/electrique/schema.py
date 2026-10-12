@@ -47,9 +47,11 @@ FORMAT_A3_PAYSAGE = (1587.0, 1122.0)
 #: Trois rangées de quatre organes couvrent la chaîne canonique complète (champ →
 #: compteur ONEE, batterie comprise) : une installation courante reste donc en A4,
 #: et seul un dossier à chaîne longue (plusieurs onduleurs, organes additionnels)
-#: réclame l'A3.
+#: réclame l'A3. Convention de mise en page, pas un seuil électrique.
 RANGEES_MAX_A4 = 3
 
+#: Convention de mise en page de la planche (px CSS à 96 ppp) pour tout ce bloc,
+#: jusqu'à la prochaine ligne vide : géométrie de dessin, aucun seuil électrique.
 _MARGE = 28.0
 _BLOC_L = 132.0
 _BLOC_H = 68.0

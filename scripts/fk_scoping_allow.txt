@@ -9,7 +9,6 @@
 # variantes, CPQ, contacts) N'Y SONT PAS : elles sont validées dans le code.
 #
 # Format : chemin::Serializer.champ  (une ligne par champ)
-backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.activity_type
 # SPL72 — 95 sites PRÉEXISTANTS que la garde ne voyait pas (découverte étendue à
 # serializers*.py / *_serializers.py / models*.py et héritage résolu à l'échelle de l'app) :
 # installations 66, stock 17, ventes 8, sav 4 (72 dans des serializers.py d'autres apps,
@@ -17,31 +16,8 @@ backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.activit
 # ils sont résorbés par la ligne ERR-SPL72-FK-SCOPING-95 de docs/ERROR_PLAN.md.
 
 # AANA47 - sites PRE-EXISTANTS releves le 2026-10-07 (M2M, FK utilisateur/role, serialiseurs hors serializers*.py). CONSTATES, pas approuves : chaque ligne retiree = une fuite fermee ; correction par proprietaire.
-backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.assigne_par_defaut
-backend/django_core/apps/crm/serializers.py::ForecastSnapshotSerializer.owner
-backend/django_core/apps/crm/serializers.py::SavedViewSerializer.user
-backend/django_core/apps/ged/serializers.py::CertificatDestructionSerializer.detruit_par
-backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.created_by
-backend/django_core/apps/ged/serializers.py::JournalAccesSerializer.utilisateur
-backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.created_by
-backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_definition
 
 # ASTK9 - pre-existant (releve 2026-10-07) : FK meme-app vers modele a societe, sites hors stock ; CONSTATES, pas approuves
-backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.plan
-backend/django_core/apps/crm/serializers.py::LeadPlaybookProgressSerializer.lead
-backend/django_core/apps/crm/serializers.py::PlaybookEtapeSerializer.playbook
-backend/django_core/apps/crm/serializers.py::SalleVenteItemSerializer.salle
-backend/django_core/apps/crm/serializers.py::VisiteExterneSerializer.lead
-backend/django_core/apps/crm/serializers.py::WebsiteLeadPayloadSerializer.lead
-backend/django_core/apps/ged/serializers.py::CertificatDestructionSerializer.demande
-backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.document
-backend/django_core/apps/ged/serializers.py::ExecutionRegleDossierSerializer.document
-backend/django_core/apps/ged/serializers.py::ExecutionRegleDossierSerializer.regle
-backend/django_core/apps/ged/serializers.py::JournalAccesSerializer.document
-backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.modele
-backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.demande
-backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.role_signataire
-backend/django_core/apps/reporting/saved_reports_api.py::EnvoiRapportSerializer.saved_report
 # ASEC46 — FactureWriteSerializer déclare ses champs par Meta.exclude (invisible avant ASEC46) : 8 FK
 # écrivables non bornées CONSTATÉES, à corriger par la lane ventes (same_company_fields) ; chaque ligne
 # se retire dès que son champ est borné (sinon « ligne d'allowlist inutile »).

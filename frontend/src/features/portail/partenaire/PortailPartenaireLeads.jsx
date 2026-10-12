@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Handshake } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
+import { useListePortail } from '../useListePortail'
 import {
   Badge, Button, Card, EmptyState, Form, FormField, Input, Spinner, toast,
 } from '../../../ui'
@@ -40,29 +41,12 @@ const VIDE = {
 }
 
 export default function PortailPartenaireLeads() {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [erreur, setErreur] = useState(false)
   const [agree, setAgree] = useState(true)
   const [form, setForm] = useState(VIDE)
   const [erreursChamps, setErreursChamps] = useState({})
   const [busy, setBusy] = useState(false)
 
-  const charger = () => {
-    setLoading(true)
-    portailApi.partenaire.soumissions.liste()
-      .then((r) => {
-        setRows(r.data?.results ?? [])
-        setErreur(false)
-      })
-      .catch(() => setErreur(true))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    // Différé d'un microtask (react-hooks/set-state-in-effect).
-    Promise.resolve().then(charger)
-  }, [])
+  const { rows, loading, erreur, charger } = useListePortail(portailApi.partenaire.soumissions.liste)
 
   // NTPRT32 — l'AGRÉMENT commande le droit de déposer une affaire. Le serveur
   // reste l'autorité (403 motivé) ; on lit ici le statut déjà publié par le

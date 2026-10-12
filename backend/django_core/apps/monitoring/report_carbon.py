@@ -182,3 +182,23 @@ def render_carbon_report_pdf_client(company, client_id, *,
         until=until)
     entreprise_nom = getattr(company, 'nom', '') or ''
     return render_pdf(html=_build_html(data, entreprise_nom=entreprise_nom))
+
+
+def tco2_evitees_periode(company, *, installation=None, client_id=None,
+                         since, until):
+    """ASAV102 — tCO₂ évitées MESURÉES d'une cible sur une période, pour
+    l'émission d'un certificat du registre (NTNRG27). Même calcul que
+    l'attestation PDF ci-dessus (aucun second calcul, aucune saisie) : un
+    système (``installation``) OU un client consolidé (``client_id``).
+
+    Renvoie ``(tonnes: Decimal à 0,001, has_data: bool)``."""
+    from decimal import Decimal
+
+    if installation is not None:
+        data = build_carbon_report_data_site(
+            installation, since=since, until=until)
+    else:
+        data = build_carbon_report_data_client(
+            company, client_id, since=since, until=until)
+    tonnes = Decimal(str(data['co2_tonnes'])).quantize(Decimal('0.001'))
+    return tonnes, bool(data['has_data'])

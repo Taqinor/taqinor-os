@@ -46,6 +46,11 @@ class _Base(TestCase):
             owner=self.acteur)
 
     def _touche(self):
+        # ACRM55 — une seule touche OUVERTE par barreau : un second rendu
+        # dans le même test libère d'abord le barreau J4.
+        RelanceEtape.objects.filter(
+            lead=self.lead, cadence='apres_devis', ordre=4,
+            statut=RelanceEtape.Statut.A_FAIRE).delete()
         return RelanceEtape.objects.create(
             company=self.company, lead=self.lead, ordre=4, canal='whatsapp',
             due_date=LUNDI.date(), due_at=LUNDI, cadence='apres_devis',

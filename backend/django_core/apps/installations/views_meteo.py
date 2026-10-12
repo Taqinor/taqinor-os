@@ -73,9 +73,9 @@ def _message(forecast):
                      description='Longitude du point (degrés décimaux).'),
 ], responses=inline_serializer('MeteoTerrainReponse', {
     'disponible': drf_serializers.BooleanField(),
-    'message': drf_serializers.CharField(required=False),
-    'precipitation_mm': drf_serializers.FloatField(required=False),
-    'windgusts_kmh': drf_serializers.FloatField(required=False),
+    'message': drf_serializers.CharField(required=False, allow_null=True),
+    'precipitation_mm': drf_serializers.FloatField(required=False, allow_null=True),
+    'windgusts_kmh': drf_serializers.FloatField(required=False, allow_null=True),
 }))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])

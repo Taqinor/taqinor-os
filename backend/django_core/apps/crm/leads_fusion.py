@@ -5,6 +5,8 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 """
 import logging
 
+from apps.records.provenance import ecrire_si_libre
+
 from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .leads_doublons import _MERGE_FILL_FIELDS, _est_vide
 from .leads_score import recompute_lead_score
@@ -153,6 +155,11 @@ def merge_leads(survivor, others, user):
     # survivant garde la sienne, les devis de l'autre restent sur l'autre.
     deux_clients = []
     with transaction.atomic():
+        # ENF15 — verrou des fiches fusionnées (ordre de clé primaire : pas
+        # d'interblocage) : deux fusions simultanées ne s'écrasent plus la note.
+        list(Lead.objects.select_for_update()
+             .filter(pk__in=[survivor.pk] + [o.pk for o in others])
+             .order_by('pk').values_list('pk', flat=True))
         for absorbed in others:
             if (survivor.client_id and absorbed.client_id
                     and survivor.client_id != absorbed.client_id):
@@ -203,7 +210,8 @@ def merge_leads(survivor, others, user):
                 if _est_vide(survivor, field, cur):
                     val = getattr(absorbed, field, None)
                     if not _est_vide(absorbed, field, val):
-                        setattr(survivor, field, val)
+                        # AMET21 — une clé SAISIE du survivant n'est jamais remplacée.
+                        ecrire_si_libre(survivor, field, val, user=user)
             # 7) Fusionner les tags (union).
             tags = set()
             for src in (survivor, absorbed):

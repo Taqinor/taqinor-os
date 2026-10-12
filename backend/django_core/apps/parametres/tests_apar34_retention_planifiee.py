@@ -1,5 +1,5 @@
 """APAR34 — la rétention d'audit « armée » s'applique sans commande manuelle
-(C-APAR-048, D-APAR-3) : tâche Celery ``parametres.purger_audit`` au beat
+(C-APAR-048, D-APAR-3) : tâche Celery ``parametres.purge_audit_retention`` au beat
 quotidien, routée ``scheduled``, appelant l'UNIQUE purgeur au plancher 365 j.
 """
 from django.test import SimpleTestCase, TestCase
@@ -11,7 +11,7 @@ from apps.parametres.retention import PURGE_FIELD, PURGE_SECTION
 from apps.parametres.scheduled import purger_audit
 from authentication.models import Company
 
-TACHE = 'parametres.purger_audit'
+TACHE = 'parametres.purge_audit_retention'
 
 
 def _age(model, obj, days):

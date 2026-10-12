@@ -11,7 +11,7 @@
 // confirme ; la création + le rattachement partent en UN SEUL appel
 // transactionnel (`creer-depuis-regroupement`), donc jamais un problème créé
 // à moitié rattaché.
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import savApi from '../../api/savApi'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
@@ -82,8 +82,10 @@ export default function ProblemesPage() {
       .catch(() => setErreur('Chargement impossible pour le moment.'))
       .finally(() => setChargement(false))
   }
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { charger() }, [])
+  // ENF28 — chargement au montage : différé d'une microtâche (aucun setState
+  // synchrone dans l'effet) ; l'effet-événement lit toujours le `charger` courant.
+  const chargerAuMontage = useEffectEvent(charger)
+  useEffect(() => { Promise.resolve().then(() => chargerAuMontage()) }, [])
 
   const chargerTicketsLies = (id) => savApi.getProblemeTickets(id)
     .then((rep) => setTicketsLies(liste(rep)))

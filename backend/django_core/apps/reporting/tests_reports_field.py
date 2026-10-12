@@ -180,3 +180,17 @@ class TestFieldServiceReport(FieldReportBase):
             if p['technicien_id'] == self.tech.id)
         self.assertEqual(entry['total_tickets'], 1)
         self.assertEqual(entry['pct_ftf'], 100.0)
+
+
+class TestParametresStrictsFuzzR12(FieldReportBase):
+    """api-fuzz r12 (CI #956) — ``?to=`` vide accepté (schéma ``DATE_OU_VIDE``) ;
+    ``technicien``/``equipe`` illisibles ou 0 → 400 nommant le paramètre."""
+
+    def test_date_vide_et_identifiants_stricts(self):
+        resp = self.api.get(URL + '?from=&to=')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        for nom in ('technicien', 'equipe'):
+            for valeur in ('abc', '0'):
+                resp = self.api.get(URL, {nom: valeur})
+                self.assertEqual(resp.status_code, 400, (nom, valeur, resp.content))
+                self.assertIn(nom, resp.data)

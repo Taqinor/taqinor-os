@@ -107,6 +107,11 @@ class SalutationRendueTests(TestCase):
             owner=self.acteur, telephone='+212661650065')
 
     def _rendu(self):
+        # ACRM55 — une seule touche OUVERTE par barreau : le rendu précédent
+        # (même sous-test) libère le barreau avant le suivant.
+        RelanceEtape.objects.filter(
+            lead=self.lead, cadence='contact', ordre=1,
+            statut=RelanceEtape.Statut.A_FAIRE).delete()
         etape = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, ordre=1,
             canal=RelanceEtape.Canal.WHATSAPP, due_date=LUNDI.date(),

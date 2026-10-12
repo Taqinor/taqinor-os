@@ -14,6 +14,7 @@ des chaînes.
 Run :
     python manage.py test apps.calepinage.tests.test_acal_routes_resolues -v2
 """
+import importlib
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import resolve, reverse
@@ -32,7 +33,7 @@ BASE = '/api/django/calepinage/calepinages/'
 
 
 def _actions():
-    from apps.calepinage import urls  # noqa: F401 — exécute les greffes
+    importlib.import_module('apps.calepinage.urls')
     from apps.calepinage.views.calepinages import CalepinageViewSet
 
     return CalepinageViewSet.get_extra_actions()

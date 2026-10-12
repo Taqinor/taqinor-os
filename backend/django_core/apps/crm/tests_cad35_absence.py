@@ -5,16 +5,20 @@ En régime RÉACTIF les touches naissent quand même, elles échoient pendant le
 congé, et `selectors._a_lheure` comptait un manquement pour chacune : le
 cockpit d'adhérence (CKP3) reprochait à quelqu'un ses propres vacances.
 
+ACRM64 (décision fondateur D-ACRM-6 (i)=(a), 09/10/2026) a retiré les
+agrégats ``kpi_adherence`` / ``mes_stats_relance`` et leurs routes. La règle
+d'absence SURVIT dans ``selectors._a_lheure_ou_excusee`` (lue par
+``controle_suivi``, le survivant du « en retard ») : c'est elle que ce fichier
+verrouille désormais.
+
 Ce que ce fichier verrouille :
-  * une touche échue PENDANT une absence déclarée n'est comptée en retard
-    NULLE PART dans CKP3 (adhérence globale, touches en retard ouvertes,
-    tuiles personnelles, série de jours sans retard) ;
+  * une touche échue PENDANT une absence déclarée de la personne responsable
+    du lead est EXCUSÉE (jamais comptée en retard) ;
   * le GARDE-FOU : aucune touche n'est supprimée, aucune n'est avancée,
     aucune n'est décalée — l'absence neutralise une MESURE, pas le suivi ;
   * l'absence de QUELQU'UN D'AUTRE n'excuse personne, et une fermeture de
     société (sans utilisateur) couvre tout le monde ;
-  * la période est VISIBLE : le cockpit la sert dans `absences_declarees`,
-    avec la personne qui reprend les dossiers, sans aucun prénom en dur.
+  * une société ne voit jamais les absences d'une autre.
 
 Le temps est GELÉ : « échue pendant », « en retard » et « les 7 derniers
 jours » sont exactement les questions qu'une horloge vivante rend instables.
@@ -29,9 +33,10 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, stages
+from apps.crm import cadence_absence
 from apps.crm.cadence_absence import CouvertureAbsences
 from apps.crm.models import Lead, PeriodeAbsence, RelanceEtape
-from apps.crm.selectors import kpi_adherence, mes_stats_relance
+from apps.crm.selectors import _a_lheure_ou_excusee
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -143,7 +148,7 @@ class _Base(TestCase):
 
 
 class ToucheEchuePendantUneAbsenceTests(_Base):
-    """LE Done de CAD35."""
+    """LE Done de CAD35, sur la règle survivante ``_a_lheure_ou_excusee``."""
 
     slug = 'cad35-echue'
 
@@ -153,39 +158,42 @@ class ToucheEchuePendantUneAbsenceTests(_Base):
         self.retard = self._touche(
             statut='fait', due_jours=5, traite_jours=2, ordre=1)
         # Une touche due et faite le même jour : à l'heure, témoin.
-        self._touche(statut='fait', due_jours=1, traite_jours=1, ordre=2)
+        self.temoin = self._touche(
+            statut='fait', due_jours=1, traite_jours=1, ordre=2)
+
+    def _excusee(self, etape, company=None):
+        company = company or self.company
+        absences = cadence_absence.couverture(company, _jour(30), AUJOURDHUI)
+        return _a_lheure_ou_excusee(
+            etape, absences, {etape.lead_id: etape.lead.owner_id})
 
     def test_sans_absence_la_touche_en_retard_est_un_manquement(self):
-        """Le décor : sans période déclarée, le comportement d'aujourd'hui
-        est INCHANGÉ — une sur deux à l'heure."""
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(kpi['a_lheure_pct'], 50.0)
+        """Le décor : sans période déclarée, le retard reste un retard ; le
+        témoin à l'heure reste à l'heure."""
+        self.assertFalse(self._excusee(self.retard))
+        self.assertTrue(self._excusee(self.temoin))
 
     def test_une_touche_echue_pendant_une_absence_nest_pas_en_retard(self):
         self._absence(debut_jours=6, fin_jours=3)
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(kpi['a_lheure_pct'], 100.0)
+        self.assertTrue(self._excusee(self.retard))
 
     def test_labsence_dun_COLLEGUE_ne_neutralise_rien(self):
         collegue = User.objects.create_user(
             username=f'{self.slug}-autre', password='x',
             role_legacy='normal', company=self.company)
         self._absence(debut_jours=6, fin_jours=3, utilisateur=collegue)
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(kpi['a_lheure_pct'], 50.0)
+        self.assertFalse(self._excusee(self.retard))
 
     def test_une_fermeture_de_societe_neutralise_pour_tous(self):
         self._absence(debut_jours=6, fin_jours=3, utilisateur=None)
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(kpi['a_lheure_pct'], 100.0)
+        self.assertTrue(self._excusee(self.retard))
 
     def test_AUCUNE_touche_nest_supprimee_avancee_ni_decalee(self):
         """Le garde-fou de la tâche, vérifié sur la ligne elle-même."""
         avant = (self.retard.due_at, self.retard.due_date,
                  self.retard.statut)
         self._absence(debut_jours=6, fin_jours=3)
-        kpi_adherence(self.company, self.acteur, 30)
-        mes_stats_relance(self.company, self.acteur)
+        self._excusee(self.retard)
         self.retard.refresh_from_db()
         self.assertEqual(
             (self.retard.due_at, self.retard.due_date, self.retard.statut),
@@ -193,75 +201,24 @@ class ToucheEchuePendantUneAbsenceTests(_Base):
         self.assertEqual(
             RelanceEtape.objects.filter(lead=self.lead).count(), 2)
 
-
-class TouchesOuvertesEtTuilesTests(_Base):
-    """« En retard » là où le mot est écrit : les touches ouvertes et les
-    tuiles personnelles."""
-
-    slug = 'cad35-ouvertes'
-
-    def setUp(self):
-        super().setUp()
-        self.ouverte = self._touche(statut='a_faire', due_jours=4, ordre=1)
-
-    def test_une_touche_ouverte_echue_pendant_une_absence_sort_du_compte(
-            self):
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(kpi['touches_en_retard_ouvertes'], 1)
-        self._absence(debut_jours=6, fin_jours=3)
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(kpi['touches_en_retard_ouvertes'], 0)
-
-    def test_ma_tuile_en_retard_ne_compte_pas_mes_jours_dabsence(self):
-        stats = mes_stats_relance(self.company, self.acteur)
-        self.assertEqual(stats['en_retard'], 1)
-        self._absence(debut_jours=6, fin_jours=3)
-        stats = mes_stats_relance(self.company, self.acteur)
-        self.assertEqual(stats['en_retard'], 0)
-
-    def test_la_touche_reste_A_FAIRE_dans_la_file(self):
-        """Elle n'est pas comptée en retard — elle reste à faire : l'absence
-        neutralise une MESURE, elle n'éteint pas le suivi."""
-        self._absence(debut_jours=6, fin_jours=3)
-        stats = mes_stats_relance(self.company, self.acteur)
-        self.assertEqual(stats['a_faire_maintenant'], 1)
-        self.ouverte.refresh_from_db()
-        self.assertEqual(self.ouverte.statut, 'a_faire')
-
-
-class AbsenceVisibleDansLeCockpitTests(_Base):
-    """(b) de CAD35 : l'absence se VOIT, avec la reprise des dossiers."""
-
-    slug = 'cad35-cockpit'
-
-    def test_le_cockpit_sert_les_periodes_declarees(self):
-        remplacant = User.objects.create_user(
-            username=f'{self.slug}-remplacant', password='x',
-            role_legacy='normal', company=self.company)
-        absence = self._absence(debut_jours=6, fin_jours=3,
-                                remplacant=remplacant)
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(len(kpi['absences_declarees']), 1)
-        ligne = kpi['absences_declarees'][0]
-        self.assertEqual(ligne['id'], absence.pk)
-        self.assertEqual(ligne['utilisateur_id'], self.acteur.pk)
-        self.assertEqual(ligne['remplacant_id'], remplacant.pk)
-        self.assertEqual(ligne['motif'], 'conge')
-        self.assertEqual(ligne['date_debut'], _jour(6).isoformat())
-        self.assertEqual(ligne['date_fin'], _jour(3).isoformat())
-
-    def test_sans_absence_la_liste_est_vide_jamais_absente(self):
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(kpi['absences_declarees'], [])
-
-    def test_la_forme_reste_celle_de_lechantillon(self):
-        import json
-        from pathlib import Path
-        echantillon = json.loads(
-            (Path(__file__).resolve().parent / 'contract_samples'
-             / 'kpi_adherence.json').read_text(encoding='utf-8'))
-        kpi = kpi_adherence(self.company, self.acteur, 30)
-        self.assertEqual(set(kpi), set(echantillon['exemple']))
+    def test_une_societe_ne_voit_pas_labsence_de_lautre(self):
+        autre = _company(f'{self.slug}-bis')
+        autre_user = User.objects.create_user(
+            username=f'{self.slug}-bis-u', password='x',
+            role_legacy='responsable', company=autre)
+        autre_lead = Lead.objects.create(
+            company=autre, nom='Karim', ville='Casablanca',
+            stage=stages.CONTACTED, owner=autre_user)
+        due = _quand(5)
+        etape = RelanceEtape.objects.create(
+            company=autre, lead=autre_lead, cadence='contact', ordre=1,
+            due_at=due, due_date=due.date(),
+            canal=RelanceEtape.Canal.APPEL, libelle='Appel d’ouverture',
+            statut='fait', traite_le=_quand(2), traite_par=autre_user)
+        # Absence déclarée dans MA société (fermeture : couvre tout le monde
+        # chez moi) : elle n'excuse rien chez l'autre.
+        self._absence(debut_jours=6, fin_jours=3, utilisateur=None)
+        self.assertFalse(self._excusee(etape, company=autre))
 
 
 class PeriodeAbsenceModeleTests(_Base):
@@ -284,23 +241,3 @@ class PeriodeAbsenceModeleTests(_Base):
         periode.clean()
         self.assertTrue(periode.couvre(_jour(2)))
         self.assertFalse(periode.couvre(_jour(1)))
-
-    def test_une_societe_ne_voit_pas_labsence_de_lautre(self):
-        autre = _company(f'{self.slug}-bis')
-        autre_user = User.objects.create_user(
-            username=f'{self.slug}-bis-u', password='x',
-            role_legacy='responsable', company=autre)
-        autre_lead = Lead.objects.create(
-            company=autre, nom='Karim', ville='Casablanca',
-            stage=stages.CONTACTED, owner=autre_user)
-        due = _quand(5)
-        RelanceEtape.objects.create(
-            company=autre, lead=autre_lead, cadence='contact', ordre=1,
-            due_at=due, due_date=due.date(),
-            canal=RelanceEtape.Canal.APPEL, libelle='Appel d’ouverture',
-            statut='fait', traite_le=_quand(2), traite_par=autre_user)
-        # Absence déclarée dans MA société : elle n'excuse rien chez l'autre.
-        self._absence(debut_jours=6, fin_jours=3)
-        kpi = kpi_adherence(autre, autre_user, 30)
-        self.assertEqual(kpi['absences_declarees'], [])
-        self.assertEqual(kpi['a_lheure_pct'], 0.0)

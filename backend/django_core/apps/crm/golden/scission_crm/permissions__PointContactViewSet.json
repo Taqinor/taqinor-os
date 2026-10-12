@@ -20,16 +20,6 @@
   ]
  },
  {
-  "action": "attribution",
-  "methode": "GET",
-  "permissions": [
-   {
-    "attrs": {},
-    "classe": "IsAnyRole"
-   }
-  ]
- },
- {
   "action": "create",
   "methode": "POST",
   "permissions": [

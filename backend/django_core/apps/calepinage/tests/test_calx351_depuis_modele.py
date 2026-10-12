@@ -30,6 +30,16 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import creation
 from apps.calepinage.tests._m0_en_attente import EN_ATTENTE_DETAIL, sans
+from django.contrib.contenttypes.models import ContentType
+from apps.calepinage.models import Calepinage
+from apps.calepinage.services.modeles import marquer_modele
+from apps.calepinage.services.parametres import (
+    enregistrer_parametres,
+)
+from apps.crm.models import Client
+from apps.records.models import Activity
+from apps.ventes.models import Devis
+from .test_api_liste import URL, BaseApiCalepinage
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT_DETAIL = json.loads(
@@ -130,19 +140,6 @@ class ChampsDuCorpsTest(SimpleTestCase):
 
 
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
-
-from django.contrib.contenttypes.models import ContentType  # noqa: E402
-
-from apps.calepinage.models import Calepinage  # noqa: E402
-from apps.calepinage.services.modeles import marquer_modele  # noqa: E402
-from apps.calepinage.services.parametres import (  # noqa: E402
-    enregistrer_parametres,
-)
-from apps.crm.models import Client  # noqa: E402
-from apps.records.models import Activity  # noqa: E402
-from apps.ventes.models import Devis  # noqa: E402
-
-from .test_api_liste import URL, BaseApiCalepinage  # noqa: E402
 
 URL_DEPUIS_MODELE = f'{URL}depuis-modele/'
 

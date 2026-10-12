@@ -35,6 +35,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
+from .calepinages import CalepinageViewSet
 
 __all__ = ['etiquettes']
 
@@ -74,8 +75,6 @@ def etiquettes(self, request, pk=None):
         return Response({refus.champ or 'tag_id': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
 
-
-from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7 / bug de classe #105).

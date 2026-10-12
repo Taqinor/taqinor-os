@@ -149,6 +149,14 @@ class TestNwayMerge(TestCase):
             role_legacy='responsable', company=self.company)
         self.api = make_api(self.user)
 
+    def test_merge_others_non_entiers_400(self):
+        # ENF11 (api-fuzz) — `others: [{}]` cassait `pk__in` en 500.
+        survivor = Lead.objects.create(company=self.company, nom='S')
+        resp = self.api.post(
+            f'/api/django/crm/leads/{survivor.id}/merge/',
+            {'others': [{}]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_merge_three_leads_archives_others_and_fills_blanks(self):
         survivor = Lead.objects.create(company=self.company, nom='Survivant',
                                        telephone='0612345678')

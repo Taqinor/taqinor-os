@@ -105,6 +105,17 @@ class ApiReglagesPompageTest(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn('regle_fda_pompage', resp.data)
 
+    def test_null_vaut_vide_pas_400(self):
+        # api-fuzz #956 : un JSON null (schéma : valeur libre) = « vide ».
+        resp = self.api.patch(URL_MAJ, {
+            'charges_pompage_solaire': None, 'regle_fda_pompage': None,
+            'sensibilites_ci': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lu = self.api.get(URL).data
+        self.assertEqual(lu['charges_pompage_solaire'], [])
+        self.assertEqual(lu['regle_fda_pompage'], {})
+        self.assertEqual(lu['sensibilites_ci'], [])
+
     def test_exemple_du_contrat_aller_retour_identique(self):
         reglages = _reglages_contrat()
         corps = {

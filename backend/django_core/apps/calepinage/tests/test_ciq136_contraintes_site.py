@@ -14,9 +14,9 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.degagements import (
-    PRESET_FM_DS_1_15, ContraintesSiteInvalides, degagement_effectif,
-    normaliser_contraintes_site,
+    ContraintesSiteInvalides, degagement_effectif, normaliser_contraintes_site,
 )
+from apps.calepinage.services.preset_fm_ds_1_15 import PRESET_FM_DS_1_15
 from apps.calepinage.services.traduction import entree_depuis_layout
 
 from .test_api_liste import BaseApiCalepinage, url_detail
@@ -126,6 +126,14 @@ class ContraintesApiTests(BaseApiCalepinage):
         self.assertEqual(r.status_code, 400)
         self.assertIn('contraintes_site', r.data)
         self.assertIn('source', str(r.data['contraintes_site']))
+
+    def test_null_vaut_aucune_contrainte(self):
+        # api-fuzz #956 : null = {} (normalisé), jamais un 400.
+        r = self.api.patch(url_detail(self.cal.pk), {
+            'contraintes_site': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.cal.refresh_from_db()
+        self.assertEqual(self.cal.contraintes_site, {})
 
     def test_fm_charge_le_preset_et_detail_l_expose(self):
         r = self.api.patch(url_detail(self.cal.pk), {

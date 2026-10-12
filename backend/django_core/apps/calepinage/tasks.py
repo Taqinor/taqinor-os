@@ -117,7 +117,7 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
                              'statut': 'failed', 'motif': str(erreur),
                              'resultat': None})
             continue
-        except Exception as erreur:  # noqa: BLE001 — un élément ne casse pas le lot
+        except Exception as erreur:  # un élément ne casse pas le lot
             logger.exception('calepinage.calculer : élément %s en échec',
                              repere)
             elements.append({'index': index, 'repere': repere,
@@ -220,7 +220,7 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
         _publier_echec(job, calepinage, refus.champ or 'simulation',
                        refus.motif)
         return {'statut': 'failed', 'champ': refus.champ}
-    except Exception as erreur:  # noqa: BLE001 — l'issue est publiée, pas avalée
+    except Exception as erreur:  # l'issue est publiée, pas avalée
         logger.exception('calepinage.simuler : calepinage #%s en échec',
                          calepinage_id)
         _publier_echec(job, calepinage, '', str(erreur))

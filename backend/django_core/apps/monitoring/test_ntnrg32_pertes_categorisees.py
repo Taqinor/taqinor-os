@@ -98,3 +98,64 @@ class TestPertesCategorisees(TestCase):
         # (comportement de `soiling_assessment` inchangé, jamais réimplémenté
         # ici).
         self.assertIsNone(result['soiling_pct'])
+
+
+class TestAsav103PertesApi(TestCase):
+    """ASAV103 — pertes catégorisées rendues utilisables : action
+    company-scopée (responsable/admin) conforme au contrat partagé
+    ``contract_samples/pertes_categorisees.json``."""
+
+    def setUp(self):
+        import json
+        from pathlib import Path
+
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.monitoring.models import MonitoringConfig
+
+        User = get_user_model()
+        self.contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'pertes_categorisees.json').read_text(encoding='utf-8'))
+        self.company, _ = Company.objects.get_or_create(
+            slug='asav103-co', defaults={'nom': 'ASAV103 Co'})
+        self.autre, _ = Company.objects.get_or_create(
+            slug='asav103-b', defaults={'nom': 'ASAV103 B'})
+        inst = make_inst(self.company, 'ASAV103-1')
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=inst)
+        UnderperformanceFlag.objects.create(
+            company=self.company, installation=inst,
+            ratio_pct=Decimal('60'), is_open=True)
+        aujourdhui = timezone.localdate()
+        ProductionReading.objects.create(
+            company=self.company, installation=inst,
+            date=aujourdhui - timedelta(days=1), energy_kwh=Decimal('5'),
+            motif_limitation='Écrêtement réseau')
+
+        def client_de(username, role, company):
+            api = APIClient()
+            api.force_authenticate(User.objects.create_user(
+                username=username, password='x', role_legacy=role,
+                company=company))
+            return api
+        self.api = client_de('asav103_resp', 'responsable', self.company)
+        self.api_b = client_de('asav103_b', 'admin', self.autre)
+        self.api_normal = client_de('asav103_n', 'normal', self.company)
+        self.url = f'/api/django/monitoring/configs/{self.config.id}/pertes/'
+
+    def test_pertes_affirment_le_contrat_partage(self):
+        r = self.api.get(self.url + '?window_days=30')
+        self.assertEqual(r.status_code, 200, r.data)
+        corps = r.json()
+        self.assertEqual(set(corps), set(self.contrat['exemple']))
+        self.assertEqual(corps['window_days'], 30)
+        self.assertIsNone(corps['ombrage_pct'])
+        # Nombres servis en JSON ; panne et écrêtement mesurés (> 0).
+        self.assertGreater(corps['panne_pct'], 0)
+        self.assertGreater(corps['curtailment_pct'], 0)
+
+    def test_autre_societe_404_et_normal_403(self):
+        self.assertEqual(self.api_b.get(self.url).status_code, 404)
+        self.assertEqual(self.api_normal.get(self.url).status_code, 403)

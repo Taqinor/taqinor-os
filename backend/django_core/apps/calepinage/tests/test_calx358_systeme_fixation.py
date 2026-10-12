@@ -35,6 +35,11 @@ from apps.calepinage.services.catalogue_fixation import (
     BASES, erreur_de_regle,
 )
 from core.models import TenantModel
+from django.test import TestCase
+from apps.calepinage.services.catalogue_fixation import (
+    composants_du_systeme, systeme_de_societe, systemes_actifs,
+)
+from authentication.models import Company
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 MIGRATION = RACINE_APP / 'migrations' / '0014_calx358_systeme_fixation.py'
@@ -182,13 +187,6 @@ class DecouplageTest(SimpleTestCase):
 
 
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
-
-from django.test import TestCase  # noqa: E402
-
-from apps.calepinage.services.catalogue_fixation import (  # noqa: E402
-    composants_du_systeme, systeme_de_societe, systemes_actifs,
-)
-from authentication.models import Company  # noqa: E402
 
 
 class CatalogueEnBase(TestCase):

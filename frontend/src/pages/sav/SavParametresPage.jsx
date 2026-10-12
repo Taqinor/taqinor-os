@@ -13,6 +13,7 @@ import {
   Button, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, EmptyState, Skeleton, Switch, toast,
 } from '../../ui'
+import { BoutonsEdition } from './SavCommun'
 import SimpleRefListEditor from './SimpleRefListEditor'
 
 // ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
@@ -104,10 +105,7 @@ function ReponsesTypeSection() {
                 <div className="flex flex-col gap-2">
                   <Input value={edit.titre} onChange={(e) => setEdit((s) => ({ ...s, titre: e.target.value }))} />
                   <Textarea rows={3} value={edit.corps} onChange={(e) => setEdit((s) => ({ ...s, corps: e.target.value }))} />
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={saveEdit}><Check /> Enregistrer</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEdit(null)}><X /></Button>
-                  </div>
+                  <BoutonsEdition onSave={saveEdit} onCancel={() => setEdit(null)} />
                 </div>
               ) : (
                 <div className="flex items-start justify-between gap-2">

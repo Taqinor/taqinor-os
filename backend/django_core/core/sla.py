@@ -29,7 +29,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import generics, serializers, status
-from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
+from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes,
 )
@@ -489,6 +489,10 @@ class SlaSnapshotListView(generics.ListAPIView):
     serializer_class = SlaSnapshotSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
+    # ERR-ENF11-FUZZ-CORE — la liste est une fenêtre FIXE de 12 mois (une
+    # liste Python) : ``?ordering=`` des filtres par défaut levait
+    # AttributeError (500). Aucun filtre, aucun paramètre publié.
+    filter_backends = []
 
     def get_queryset(self):
         return list(
@@ -515,7 +519,9 @@ def _sla_pdf_html(snapshot, company):
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'periode', {'type': 'string', 'pattern': r'^\d{4}-(0[1-9]|1[0-2])$'},
+        # ERR-ENF11-FUZZ-CORE — année 0000 exclue (aucune date possible : 400).
+        'periode', {'type': 'string',
+                    'pattern': r'^[1-9]\d{3}-(0[1-9]|1[0-2])$'},
         OpenApiParameter.PATH, description='Période AAAA-MM.')],
     responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @api_view(['GET'])
@@ -596,11 +602,12 @@ class SlaCreditsDusListView(generics.ListAPIView):
         return qs
 
 
-@extend_schema(
-    request=inline_serializer('SlaCreditStatutRequete', {
-        'statut': serializers.ChoiceField(choices=['emis', 'refuse']),
-    }),
-    responses=SlaSnapshotSerializer)
+_REQUETE_CREDIT_STATUT = inline_serializer('SlaCreditStatutRequete', {
+    'statut': serializers.ChoiceField(choices=['emis', 'refuse']),
+})
+
+
+@extend_schema(request=_REQUETE_CREDIT_STATUT, responses=SlaSnapshotSerializer)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, FiabilitePermission])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
@@ -616,18 +623,18 @@ def sla_credit_statut(request, pk):
     une LECTURE de pilotage cross-tenant, inchangée). Un pk d'une autre
     société est 404 (introuvable), jamais un 403 qui révélerait son
     existence."""
-    nouveau_statut = request.data.get('statut')
-    valides = (SlaSnapshot.CreditStatut.EMIS, SlaSnapshot.CreditStatut.REFUSE)
-    if nouveau_statut not in valides:
-        return Response(
-            {'detail': "statut doit être 'emis' ou 'refuse'."},
-            status=status.HTTP_400_BAD_REQUEST)
+    # ERR-ENF11-FUZZ-CORE — corps validé par le serializer déclaré (un corps
+    # non objet levait AttributeError) ; le 404 porte un corps JSON (il était
+    # vide, sans Content-Type : « JSON deserialization error » au fuzz).
+    from .parseurs import corps_valide
+    nouveau_statut = corps_valide(request, _REQUETE_CREDIT_STATUT)['statut']
 
     try:
         snapshot = SlaSnapshot.objects.get(
             pk=pk, company=request.user.company)
     except SlaSnapshot.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Crédit SLA introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
 
     ancien_statut = snapshot.credit_statut
     snapshot.credit_statut = nouveau_statut

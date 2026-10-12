@@ -119,8 +119,17 @@ export default function TicketWorksheetPanel({ ticketId }) {
     return () => { cancelled = true }
   }, [ticketId, loadModeles])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
-  useEffect(() => load(), [load])
+  // ENF28 — chargement au montage différé d'une microtâche (aucun setState
+  // synchrone dans l'effet) ; le nettoyage annule toujours la lecture en cours.
+  useEffect(() => {
+    let actif = true
+    let annuler = null
+    Promise.resolve().then(() => { if (actif) annuler = load() })
+    return () => {
+      actif = false
+      if (annuler) annuler()
+    }
+  }, [load])
 
   const modeleCourant = worksheet
     ? modeles.find((m) => m.id === worksheet.modele)

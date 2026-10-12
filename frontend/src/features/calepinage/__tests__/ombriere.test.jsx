@@ -119,9 +119,8 @@ vi.mock('@roofpro/scene3d', () => ({
   construireOmbriere: (...args) => construireOmbriere(...args),
 }))
 
-const {
-  default: Ombriere, totauxParBatiment, coupeOmbriere,
-} = await import('../Ombriere')
+const { default: Ombriere } = await import('../Ombriere')
+const { totauxParBatiment, coupeOmbriere } = await import('../Ombriere.helpers')
 const { documentSurfacePose } = await import('../surfacePose')
 /** ACAL25 — un seul survivant : l'ombrière est `documentSurfacePose(…, 'ombriere')`. */
 const documentOmbriere = (saisie, reponse) => documentSurfacePose(saisie, reponse, 'ombriere')
