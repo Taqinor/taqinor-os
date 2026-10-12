@@ -102,3 +102,50 @@ class NumeroRecuTests(TestCase):
             pass
         p2 = self._paiement(co, f)
         self.assertIn('n° REC-0002', self._rendre(p2))
+
+
+class RecuPdfVueTests(TestCase):
+    """VNT43 — ``GET paiements/<id>/recu-pdf/`` nomme le fichier
+    ``Quittance_<numero_recu>.pdf`` (comme l'e-mail), jamais par l'id ; un
+    rendu en échec répond un message générique (jamais l'exception brute)."""
+    _societe = NumeroRecuTests._societe
+    _paiement = NumeroRecuTests._paiement
+    _rendre = NumeroRecuTests._rendre
+
+    def _api(self, company):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        user = get_user_model().objects.create_user(
+            username=f'vnt43_{_nxt()}', password='x',
+            role_legacy='responsable', company=company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_nom_de_fichier_par_numero_de_recu(self):
+        from apps.ventes.models import Paiement
+        co, f = self._societe()
+        for _ in range(2):
+            self._rendre(self._paiement(co, f))
+        p = self._paiement(co, f)
+        r = self._api(co).get(f'/api/django/ventes/paiements/{p.pk}/recu-pdf/')
+        self.assertEqual(r.status_code, 200)
+        numero = Paiement.objects.get(pk=p.pk).numero_recu
+        self.assertEqual(numero, 'REC-0003')
+        self.assertIn('Quittance_REC-0003.pdf', r['Content-Disposition'])
+        self.assertNotIn(f'Quittance_{p.pk}.pdf', r['Content-Disposition'])
+
+    def test_echec_de_rendu_message_generique(self):
+        from unittest.mock import patch
+        co, f = self._societe()
+        p = self._paiement(co, f)
+        with patch('apps.ventes.utils.pdf.generate_recu_pdf',
+                   side_effect=RuntimeError('chemin /opt/secret introuvable')):
+            r = self._api(co).get(
+                f'/api/django/ventes/paiements/{p.pk}/recu-pdf/')
+        self.assertEqual(r.status_code, 500)
+        self.assertNotIn('/opt/secret', str(r.data))
+        self.assertNotIn('RuntimeError', str(r.data))
+        self.assertTrue(r.data.get('detail'))

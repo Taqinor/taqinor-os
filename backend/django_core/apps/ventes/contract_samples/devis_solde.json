@@ -7,7 +7,7 @@
     "porte_facturation": "NOUVELLE clé : 'libre' (aucune facture active : « Facturer » le devis entier est ouvert), 'tranche' (un échéancier est en cours : seule la tranche suivante peut être facturée), 'aucune' (tout est facturé, ou plus rien à facturer : aucune nouvelle facture possible).",
     "restant": "total_ttc − paye − avoirs (restant DÛ, pas restant à facturer) ; texte décimal.",
     "additif": "porte_facturation est ajoutée ; aucune clé existante du bloc n'est retirée ni renommée.",
-    "vnt5": "VNT5 (PACT10, Groupe VNT, P0) — trois clés ADDITIVES SCALAIRES (chaînes) : `emis` (total TTC des factures ÉMISES), `brouillons` (total TTC des brouillons), `reste_a_facturer` (prix convenu − émis − brouillons). Jamais une liste : `solde` est un DictField(child=CharField()), une liste y deviendrait une chaîne repr. Sémantique corrigée : `facture` = émis NET des avoirs CORRECTION ; `tranches_facturees` = tranches ÉMISES (un brouillon ne compte pas) ; `facturation_terminee` = 'True' quand émis + brouillons = plan (chaîne 'True'/'False', AMET9) ; `restant` = prix − payé − avoirs de réduction. Les 9 clés existantes sont gardées, aucune retirée ni renommée.",
+    "vnt5": "VNT5 (PACT10, Groupe VNT, P0) — trois clés ADDITIVES SCALAIRES (chaînes) : `emis` (total TTC des factures ÉMISES), `brouillons` (total TTC des brouillons), `reste_a_facturer` (prix convenu − émis − brouillons). Jamais une liste : `solde` est un DictField(child=CharField()), une liste y deviendrait une chaîne repr. Sémantique corrigée : `facture` = émis NET des avoirs CORRECTION ; `tranches_facturees` = tranches ÉMISES (un brouillon ne compte pas) ; `facturation_terminee` = 'True' quand émis + brouillons = plan (chaîne 'True'/'False', AMET9) ; `restant` = prix − payé − avoirs de réduction. Les 9 clés existantes sont gardées, aucune retirée ni renommée. VNT19 (producteur, solde_devis projeté depuis plan_facturation) : les trois clés sont servies — déplacées de cles_m1 dans les exemples.",
     "brouillon_n_est_pas_facture": "brouillon ≠ facturé ; le plan vit dans `vente` (vente_etat.json) et dans `GET facturer/` (devis_facturer.json).",
     "facturation_terminee": "AMET9 (C-AMET-002) — 'True' dès qu'une facture complète / de BC / consolidée existe OU que toutes les tranches sont facturées (= porte_facturation 'aucune'), sinon 'False'. TEXTE (str() de get_solde) : comparer à 'True' — la chaîne 'False' est vraie en JS. tranches_facturees reste '0' après une facture complète : ne plus en déduire « facturé »."
   },
@@ -23,7 +23,10 @@
       "tranches_total": "3",
       "tranches_facturees": "1",
       "porte_facturation": "tranche",
-      "facturation_terminee": "False"
+      "facturation_terminee": "False",
+      "emis": "36000.00",
+      "brouillons": "0.00",
+      "reste_a_facturer": "84000.00"
     }
   },
   "exemple_vide": {
@@ -38,7 +41,10 @@
       "tranches_total": "0",
       "tranches_facturees": "0",
       "porte_facturation": "libre",
-      "facturation_terminee": "False"
+      "facturation_terminee": "False",
+      "emis": "0.00",
+      "brouillons": "0.00",
+      "reste_a_facturer": "54000.00"
     }
   },
   "exemple_tout_facture": {
@@ -53,27 +59,10 @@
       "tranches_total": "0",
       "tranches_facturees": "1",
       "porte_facturation": "aucune",
-      "facturation_terminee": "True"
-    }
-  },
-  "cles_m1": {
-    "pourquoi": "VNT5 : clés AJOUTÉES à `solde` par la tâche productrice de M1 (plan_facturation / etat_vente) ; tenues hors des exemples tant que le serveur ne les sert pas, car test_atot_portes_facturation compare les clés servies à `exemple.solde`. La tâche productrice les déplace dans `exemple.solde` dans le même commit.",
-    "exemples": {
-      "exemple": {
-        "emis": "36000.00",
-        "brouillons": "0.00",
-        "reste_a_facturer": "84000.00"
-      },
-      "exemple_vide": {
-        "emis": "0.00",
-        "brouillons": "0.00",
-        "reste_a_facturer": "54000.00"
-      },
-      "exemple_tout_facture": {
-        "emis": "54000.00",
-        "brouillons": "0.00",
-        "reste_a_facturer": "0.00"
-      }
+      "facturation_terminee": "True",
+      "emis": "54000.00",
+      "brouillons": "0.00",
+      "reste_a_facturer": "0.00"
     }
   }
 }

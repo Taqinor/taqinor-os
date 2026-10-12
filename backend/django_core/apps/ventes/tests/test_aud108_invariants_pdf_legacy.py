@@ -294,6 +294,42 @@ class TestAucunPrixAchatDansLesCinqDocuments(_BaseDocumentsLegacy):
     def test_pdf_facture(self):
         self._assert_absent(self._rendu_facture(), 'facture')
 
+    def test_pdf_facture_de_tranche_objet_vente(self):
+        """VNT35 — le bloc « Objet de la vente » d'une facture de tranche
+        recopie les lignes du devis (produits à ``prix_achat`` semé) : ni le
+        bloc vivant (brouillon) ni l'instantané figé n'en portent la trace."""
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        from apps.ventes.models import Devis, LigneDevis
+        from apps.ventes.utils.pdf import contexte_vente_facture
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-AUD108-{_nxt()}',
+            client=self.client_obj, statut='accepte', created_by=self.user,
+            taux_tva=Decimal('20.00'), remise_globale=Decimal('15.00'))
+        for produit, taux in ((self.panneaux, '10.00'),
+                              (self.onduleur, '20.00')):
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom,
+                quantite=Decimal('1'), prix_unitaire=Decimal('10000'),
+                remise=Decimal('0'), taux_tva=Decimal(taux))
+        tranche = Facture.objects.create(
+            company=self.company, reference=f'FAC-AUD108-T{_nxt()}',
+            client=self.client_obj, devis=devis,
+            statut=Facture.Statut.BROUILLON, type_facture='acompte',
+            montant_ht=Decimal('5000'), montant_tva=Decimal('750'),
+            montant_ttc=Decimal('5750'))
+        for _etape in ('brouillon', 'emise'):
+            tranche.refresh_from_db()
+            ctx = self._ctx()
+            ctx['facture'] = tranche
+            ctx.update(contexte_vente_facture(tranche))
+            html = _render_html('facture.html', ctx)
+            self.assertIn('Objet de la vente', html)
+            self.assertIn('20000.00 MAD', html)
+            self._assert_absent(html, f'facture de tranche ({_etape})')
+            if _etape == 'brouillon':
+                emettre_facture(tranche, source='test_aud108_vnt35')
+        self.assertNotIn('7777', repr(tranche.objet_vente))
+
     def test_pdf_avoir(self):
         self._assert_absent(self._rendu_avoir(), 'avoir')
 

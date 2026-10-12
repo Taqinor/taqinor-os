@@ -28,6 +28,25 @@
   'voir_ventilation': 'voir ventilation',
   'date_livraison': 'Date de livraison / prestation',
   'page': 'Page',
+  'filigrane_brouillon': 'BROUILLON',
+  'filigrane_sans_valeur': 'Sans valeur comptable',
+  'objet_vente': 'Objet de la vente', 'devis': 'devis', 'version': 'version',
+  'pour_information': 'pour information, non refacturé', 'marque': 'Marque',
+  'prix_devis_lignes': 'Prix du devis : lignes',
+  'prix_devis_remise': 'Prix du devis : remise',
+  'prix_devis_arrondi': 'Prix du devis : arrondi',
+  'prix_devis_ht': 'Prix du devis hors taxes',
+  'prix_devis_tva': 'Prix du devis : TVA',
+  'prix_devis_ttc': 'Prix du devis toutes taxes comprises',
+  'ttc': 'TTC', 'du_prix_convenu': 'du prix convenu',
+  'reste_de_la_vente': 'reste de la vente',
+  'garanties': 'Garanties', 'duree': 'Durée', 'detail': 'Détail',
+  'situation_vente_au': 'Situation de la vente au',
+  'prix_convenu': 'Prix convenu', 'cette_facture': 'Cette facture',
+  'total_facture': 'Total facturé', 'paye_sur_la_vente': 'Payé sur la vente',
+  'reste_du_sur_la_vente': 'Reste dû sur la vente',
+  'reste_a_facturer': 'Reste à facturer', 'reste_du': 'reste dû',
+  'prochaines_echeances': 'Prochaines échéances',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -84,6 +103,22 @@
     .totaux-row.reste-a-payer { font-size: 14px; font-weight: bold; color: #1e293b; border-top: 2px solid #1e293b; border-bottom: none; padding-top: 8px; }
     .totaux-row.total-ttc { font-size: 16px; font-weight: bold; color: {{ couleur_principale }}; border-top: 2px solid {{ couleur_principale }}; border-bottom: none; padding-top: 10px; margin-top: 4px; }
 
+    /* VNT33 — filigrane d'un BROUILLON (répété sur chaque page par
+       ``position: fixed``) ; jamais sur une facture émise. Aucune capitale
+       CSS : le texte imprimé est celui que lit l'extraction. */
+    .filigrane-brouillon {
+      position: fixed; top: 38%; left: 0; right: 0; text-align: center;
+      transform: rotate(-28deg); color: rgba(220, 38, 38, 0.16);
+      font-size: 72px; font-weight: bold; line-height: 1.1; z-index: 0;
+    }
+    .filigrane-brouillon .filigrane-sous { display: block; font-size: 26px; }
+
+    /* VNT35 — « Objet de la vente » (facture de tranche, pour information). */
+    .objet-vente { margin-bottom: 24px; }
+    .objet-vente-titre { font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 8px; }
+    .objet-vente table { margin-bottom: 8px; }
+    .objet-vente-prix { margin-left: auto; width: 340px; font-size: 11px; color: #4b5563; }
+    .objet-vente-prix div { display: flex; justify-content: space-between; padding: 3px 0; }
     .note-block { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 12px 14px; margin-bottom: 24px; font-size: 11px; line-height: 1.5; }
 
     .rib-block { margin-top: 20px; background: #f0fdf4; border-radius: 6px; padding: 14px 16px; font-size: 11px; line-height: 1.7; border-left: 3px solid {{ couleur_principale }}; }
@@ -146,6 +181,9 @@
 </head>
 <body>
 <div class="page">
+  {# VNT33 — une facture BROUILLON n'a aucune valeur comptable : filigrane
+     FR/AR conditionné par le statut ; une facture émise n'en porte jamais. #}
+  {% if facture.statut == 'brouillon' %}<div class="filigrane-brouillon">{{ _L('filigrane_brouillon') }}<span class="filigrane-sous">{{ _L('filigrane_sans_valeur') }}</span></div>{% endif %}
   {# APDF31 (D-APDF-3) — document non traduit dans la langue du client : la mention de repli est IMPRIMÉE, jamais silencieuse. #}
   {% if mention_repli %}<div style="margin-bottom: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 4px; font-size: 10px; color: #475569;">{{ mention_repli }}</div>{% endif %}
 
@@ -282,9 +320,57 @@
     </tbody>
   </table>
 
+  {# VNT36 — la part de la vente CALCULÉE au rendu (``utils/pdf.part_vente_pdf``) :
+     jamais lue du libellé ni de ``Facture.pourcentage``. #}
+  {% if part_vente %}
+  <div class="part-vente" style="margin: -12px 0 20px; font-size: 11px; color: #374151;">{{ _L(part_vente.libelle) }} : {{ part_vente.ttc }} MAD {{ _L('ttc') }} ({% if part_vente.derniere %}{{ _L('reste_de_la_vente') }}{% else %}{{ part_vente.pourcentage }} % {{ _L('du_prix_convenu') }} {{ part_vente.prix_convenu }} MAD{% endif %})</div>
+  {% endif %}
+
   <!-- Note -->
   {% if facture.note %}
   <div class="note-block"><strong>{{ _L('note') }} :</strong> {{ facture.note }}</div>
+  {% endif %}
+
+  {# VNT35 — facture de TRANCHE : le matériel de la vente, POUR INFORMATION
+     (non refacturé). Figé à l'émission, vivant en brouillon (``objet_vente``
+     calculé par ``utils/pdf.objet_vente_pdf``). Libellés « Prix du devis… »
+     hors de la fenêtre des lecteurs de la chaîne (jamais « Sous-total HT »,
+     « Total TTC » ni un libellé commençant par « TVA ») ; montants en texte
+     serveur, aucune arithmétique ici. #}
+  {% if objet_vente %}
+  <div class="objet-vente">
+    <div class="objet-vente-titre">{{ _L('objet_vente') }} — {{ _L('devis') }} {{ objet_vente.devis_reference }} ({{ _L('version') }} {{ objet_vente.devis_version }}), {{ _L('pour_information') }}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ _L('designation') }}</th>
+          <th>{{ _L('marque') }}</th>
+          <th class="text-right">{{ _L('qte') }}</th>
+          <th class="text-right">{{ _L('pu_ht') }}</th>
+          <th class="text-right">{{ _L('total_ht') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in objet_vente.lignes %}
+        <tr>
+          <td>{{ l.designation }}</td>
+          <td>{{ l.marque }}</td>
+          <td class="text-right">{{ l.quantite }}</td>
+          <td class="text-right">{{ l.prix_unitaire_ht }} MAD</td>
+          <td class="text-right">{{ l.total_ht }} MAD</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="objet-vente-prix">
+      <div><span>{{ _L('prix_devis_lignes') }}</span><span>{{ objet_vente.sous_total_ht }} MAD</span></div>
+      {% if objet_vente.remise_montant != '0.00' %}<div><span>{{ _L('prix_devis_remise') }} ({{ objet_vente.remise_pct }} %)</span><span>−{{ objet_vente.remise_montant }} MAD</span></div>{% endif %}
+      {% if objet_vente.arrondi != '0.00' %}<div><span>{{ _L('prix_devis_arrondi') }}</span><span>−{{ objet_vente.arrondi }} MAD</span></div>{% endif %}
+      <div><span>{{ _L('prix_devis_ht') }}</span><span>{{ objet_vente.total_ht }} MAD</span></div>
+      {% for b in objet_vente.tva_par_taux %}<div><span>{{ _L('prix_devis_tva') }} {{ b.taux }} %</span><span>{{ b.tva }} MAD</span></div>{% endfor %}
+      <div><span>{{ _L('prix_devis_ttc') }}</span><span>{{ objet_vente.total_ttc }} MAD</span></div>
+    </div>
+  </div>
   {% endif %}
 
   <!-- Totaux -->
@@ -370,6 +456,97 @@
   </div>
   {% endif %}
 
+  {# VNT40 — « Situation de la vente » APRÈS le Total TTC : factures ÉMISES de
+     la vente (``utils/pdf.situation_vente_pdf`` = sous-ensemble d'``etat_vente``),
+     vivante comme « Déjà payé ». Libellés distincts de ceux du bloc des
+     règlements de CETTE facture ; montants en texte serveur. #}
+  {% if situation_vente %}
+  {% set sv = situation_vente %}
+  <div class="totaux situation-vente" style="width: 360px;">
+    <div class="totaux-row deja-paye-titre">
+      <span>{{ _L('situation_vente_au') }} {{ now.strftime('%d/%m/%Y') }}</span>
+      <span></span>
+    </div>
+    <div class="totaux-row">
+      <span>{{ _L('prix_convenu') }}</span>
+      <span>{{ sv.prix_convenu_ttc }} MAD</span>
+    </div>
+    {% for f in sv.factures if f.id != facture.id %}
+    {% set d = f.date_emission or '' %}
+    <div class="totaux-row reglement">
+      <span>{{ f.reference }} · {% if d %}{{ d[8:10] }}/{{ d[5:7] }}/{{ d[0:4] }}{% endif %} · {{ f.total_ttc }} MAD · {% if f.statut == 'payee' %}{{ _L('Payée') }}{% else %}{{ _L('reste_du') }} {{ f.reste_du_ttc }} MAD{% endif %}</span>
+      <span></span>
+    </div>
+    {% endfor %}
+    <div class="totaux-row">
+      <span>{{ _L('cette_facture') }}</span>
+      <span>{{ "%.2f"|format(facture.total_ttc) }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>{{ _L('total_facture') }}</span>
+      <span>{{ sv.emis_ttc }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>{{ _L('paye_sur_la_vente') }}</span>
+      <span>{{ sv.paye_ttc }} MAD</span>
+    </div>
+    <div class="totaux-row reste-a-payer">
+      <span>{{ _L('reste_du_sur_la_vente') }}</span>
+      <span>{{ sv.reste_a_payer_ttc }} MAD</span>
+    </div>
+    {% if sv.reste_a_facturer_ttc != '0.00' %}
+    <div class="totaux-row">
+      <span>{{ _L('reste_a_facturer') }}</span>
+      <span>{{ sv.reste_a_facturer_ttc }} MAD</span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# VNT41 (D-VNT-6) — « Prochaines échéances » d'une tranche NON dernière :
+     libellé de l'échéancier du devis et TTC projeté par le plan
+     (``utils/pdf.prochaines_echeances_pdf``) ; aucune date ni événement. #}
+  {% if prochaines_echeances %}
+  <div class="totaux prochaines-echeances" style="width: 360px;">
+    <div class="totaux-row deja-paye-titre">
+      <span>{{ _L('prochaines_echeances') }}</span>
+      <span></span>
+    </div>
+    {% for e in prochaines_echeances %}
+    <div class="totaux-row reglement">
+      <span>{{ _L(e.libelle) }} : {{ e.montant_ttc }} MAD {{ _L('ttc') }}</span>
+      <span></span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# VNT38 — garanties RÉELLES de la vente (fiches produit), figées à
+     l'émission, vivantes en brouillon (``utils/pdf.garanties_pdf``) ;
+     tableau omis quand la liste est vide (jamais une durée inventée). #}
+  {% if garanties_vente %}
+  <div class="garanties-vente">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ _L('garanties') }}</th>
+          <th>{{ _L('duree') }}</th>
+          <th>{{ _L('detail') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in garanties_vente %}
+        <tr>
+          <td>{{ g.libelle }}</td>
+          <td>{{ g.duree }}</td>
+          <td>{{ g.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   <!-- Coordonnées bancaires -->
   {% if rib %}
   <div class="rib-block">
@@ -418,6 +595,8 @@
     {% if entreprise_email %} — {{ entreprise_email }}{% endif %}
     {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
     <div class="footer-legal">
+      {# VNT39 — raison sociale, forme et capital (figés à l'émission). #}
+      {% if entreprise_mention_capital %}{{ entreprise_mention_capital }}<br />{% endif %}
       {# Identifiants légaux marocains (ICE obligatoire sur facture). #}
       {% if entreprise_ice %}ICE : {{ entreprise_ice }}{% endif %}
       {% if entreprise_if %} | IF : {{ entreprise_if }}{% endif %}
