@@ -10,10 +10,13 @@ Ces fonctions sont des helpers de fondation (``authentication``) ; elles lisent
 le profil via un import paresseux pour ne créer aucun cycle au chargement.
 """
 import hashlib
+import logging
 import re
 
 from django.conf import settings
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 def get_policy(company):
@@ -106,6 +109,7 @@ def _plancher_verrouille(user, ip):
     try:
         return bool(cache.get(_cle_plancher(user, ip, 'verrou')))
     except Exception:  # noqa: BLE001 — cache en panne : pas de verrou
+        logger.warning("password_policy : cache indisponible, verrou plancher ignoré", exc_info=True)
         return False
 
 
@@ -149,6 +153,7 @@ def _plancher_echec(user, ip):
         cache.delete(cle)
         return True
     except Exception:  # noqa: BLE001
+        logger.warning("password_policy : cache indisponible, compteur plancher ignoré", exc_info=True)
         return False
 
 
@@ -211,7 +216,7 @@ def reset_failed_login(user, ip=None):
         from django.core.cache import cache
         cache.delete(_cle_plancher(user, ip, 'echecs'))
     except Exception:  # noqa: BLE001
-        pass
+        logger.warning("password_policy : cache indisponible, compteur plancher non remis à zéro", exc_info=True)
     if (user.failed_login_count or 0) == 0 and user.locked_until is None:
         return
     user.failed_login_count = 0

@@ -1,0 +1,41 @@
+{
+  "endpoint": "PUT /api/django/ventes/devis/<int:pk>/echeancier/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VNT6 (PACT10, Groupe VNT, P1) — écrire l'échéancier d'un devis ACCEPTÉ. Aujourd'hui l'échéancier n'est écrivable que sur brouillon/envoyé (modifiabilite ENTETE ; 400 « Devis figé ») : en prod `echeancier` est vide sur les versions acceptées. Contrat posé SEUL sur main AVANT la vue. La requête REMPLACE le plan de tranches ; la réponse 200 est le devis avec son `echeancier`. Montants et valeurs en TEXTE décimal. Permission : arbitrage 5 (le rôle autorisé est tranché dans l'arbitrage, pas ici).",
+  "requete": {
+    "tranches": [
+      {"cle": "acompte", "libelle": "Acompte", "unite": "pct", "valeur": "30.00"},
+      {"cle": "intermediaire_1", "libelle": "Livraison du matériel", "unite": "pct", "valeur": "60.00"},
+      {"cle": "solde", "libelle": "Solde", "unite": "pct", "valeur": "10.00"}
+    ]
+  },
+  "regles": {
+    "unite": "`unite` ∈ pct | montant, par tranche.",
+    "derniere_tranche": "la DERNIÈRE tranche est le reste : sa valeur est recalculée par le serveur (prix convenu − somme des autres).",
+    "somme": "Σ des tranches NON dernières ≤ prix convenu ; tout en pourcentage ⇒ total = 100 ; sinon 400 `somme_invalide`.",
+    "tranche_facturee": "une tranche déjà facturée (émise ou brouillon) ne peut être ni supprimée ni modifiée : 409 `tranche_facturee`."
+  },
+  "exemple": {
+    "id": 412,
+    "reference": "DEV-202610-0011",
+    "statut": "accepte",
+    "echeancier": [
+      {"cle": "acompte", "libelle": "Acompte", "unite": "pct", "valeur": "30.00"},
+      {"cle": "intermediaire_1", "libelle": "Livraison du matériel", "unite": "pct", "valeur": "60.00"},
+      {"cle": "solde", "libelle": "Solde", "unite": "pct", "valeur": "10.00"}
+    ]
+  },
+  "erreurs_400": {
+    "somme_invalide": {
+      "detail": "Les tranches ne totalisent pas le prix convenu.",
+      "code": "somme_invalide"
+    }
+  },
+  "erreurs_409": {
+    "tranche_facturee": {
+      "detail": "La tranche « Acompte » est déjà facturée : elle ne peut plus être modifiée.",
+      "code": "tranche_facturee",
+      "tranche": {"cle": "acompte", "libelle": "Acompte"}
+    }
+  }
+}

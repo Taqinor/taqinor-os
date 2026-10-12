@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from core.admin_scoping import CompanyScopedAdminMixin
 
+from .admin_login import AdminLoginForm, admin_has_permission
 from .models import CustomUser, Company
 
 
@@ -150,8 +151,6 @@ class CustomUserAdmin(CompanyScopedAdminMixin, UserAdmin):
 # ``admin.site`` (monté par erp_agentique/urls.py) n'est PAS remplacé : on lui
 # pose le formulaire (mot de passe + verrou + TOTP + UserSession) et la règle
 # d'accès (superuser seulement). Voir ``authentication/admin_login.py``.
-from .admin_login import AdminLoginForm, admin_has_permission  # noqa: E402
-
 admin.site.login_form = AdminLoginForm
 admin.site.login_template = 'authentication/admin_login.html'
 admin.site.has_permission = admin_has_permission

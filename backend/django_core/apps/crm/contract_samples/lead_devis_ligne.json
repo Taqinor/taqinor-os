@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR500 (M0 du Groupe QJR5 ; D-QJR5-1, D-QJR5-2) — UN SEUL échantillon pour la ligne devis du lead (il remplace les deux échantillons jumeaux prévus). Chaque élément de `devis[]` du GET lead garde ses clés actuelles (id, reference, statut, total_ttc, date_creation, option_acceptee, chantier{id,reference,statut}, share_link, lecture ; crm/serializers.py:1366-1377) et GAGNE : `modifiable`, `raison_non_modifiable`, `revision_possible` (mêmes règles que ventes/devis_modifiabilite.json) + `is_active`, `version`, `superseded_by` (id|null), `corrige_le` (ISO|null — date de etude_params.resync_apres_envoi, jamais updated_at). Additif : aucune clé existante retirée.",
+  "pourquoi": "QJR500 (M0 du Groupe QJR5 ; D-QJR5-1, D-QJR5-2) — UN SEUL échantillon pour la ligne devis du lead (il remplace les deux échantillons jumeaux prévus). Chaque élément de `devis[]` du GET lead garde ses clés actuelles (id, reference, statut, total_ttc, date_creation, option_acceptee, chantier{id,reference,statut}, share_link, lecture ; crm/serializers.py:1366-1377) et GAGNE : `modifiable`, `raison_non_modifiable`, `revision_possible` (mêmes règles que ventes/devis_modifiabilite.json) + `is_active`, `version`, `superseded_by` (id|null), `corrige_le` (ISO|null — date de etude_params.resync_apres_envoi, jamais updated_at). Additif : aucune clé existante retirée. VNT7 (Groupe VNT) : chaque élément GAGNE `solde` (bloc de ventes/devis_solde.json) et `vente` (ventes/vente_etat.json), tous deux null sur un devis brouillon/envoyé ; non-null sur un devis accepté (variante `exemple_accepte`). Additif : aucune clé retirée.",
   "notes": {
     "corrige_le": "null tant que le devis n'a pas été corrigé après envoi.",
     "superseded_by": "id du devis remplaçant, null si le devis est la version courante.",
@@ -46,5 +46,130 @@
         "corrige_le": null
       }
     ]
+  },
+  "exemple_accepte": {
+    "devis": [
+      {
+        "id": 502,
+        "reference": "DEV-202610-0021",
+        "statut": "accepte",
+        "total_ttc": "49000.00",
+        "date_creation": "2026-10-10T09:00:00+00:00",
+        "option_acceptee": null,
+        "chantier": null,
+        "share_link": null,
+        "lecture": null,
+        "modifiable": false,
+        "raison_non_modifiable": "Devis accepté : créez une révision.",
+        "revision_possible": true,
+        "is_active": true,
+        "version": 2,
+        "superseded_by": null,
+        "corrige_le": null
+      }
+    ]
+  },
+  "cles_m1": {
+    "pourquoi": "VNT7 : clés `solde` et `vente` AJOUTÉES à chaque élément de `devis[]` par la tâche productrice de M1 (VNT21/VNT23 : détail du lead seulement) ; tenues hors des exemples tant que le serveur ne les sert pas, car tests_lead_devis_corrige_le épingle les clés de `exemple.devis[0]`. La tâche productrice les déplace dans les exemples et met le test à jour dans le même commit.",
+    "exemples": {
+      "exemple.devis[0]": {
+        "solde": null,
+        "vente": null
+      },
+      "exemple.devis[1]": {
+        "solde": null,
+        "vente": null
+      },
+      "exemple_accepte.devis[0]": {
+        "solde": {
+          "total_ttc": "49000.00",
+          "facture": "15000.00",
+          "paye": "15000.00",
+          "avoirs": "0.00",
+          "restant": "34000.00",
+          "tranches_total": "3",
+          "tranches_facturees": "1",
+          "porte_facturation": "tranche",
+          "facturation_terminee": "False",
+          "emis": "15000.00",
+          "brouillons": "0.00",
+          "reste_a_facturer": "34000.00"
+        },
+        "vente": {
+          "prix_convenu_ttc": "49000.00",
+          "emis_ttc": "15000.00",
+          "brouillons_ttc": "0.00",
+          "paye_ttc": "15000.00",
+          "reste_a_facturer_ttc": "34000.00",
+          "reste_a_payer_ttc": "34000.00",
+          "acompte_propose": "15000.00",
+          "factures": [
+            {
+              "id": 118,
+              "reference": "FAC-202610-0007",
+              "nature": "acompte",
+              "statut": "payee",
+              "total_ttc": "15000.00",
+              "montant_paye": "15000.00",
+              "date_emission": "2026-10-12",
+              "paiements": [
+                {
+                  "id": 301,
+                  "montant": "15000.00",
+                  "date_paiement": "2026-10-12",
+                  "mode_paiement": "virement",
+                  "statut": "valide",
+                  "peut": {
+                    "recu": true
+                  }
+                }
+              ],
+              "peut": {
+                "emettre": false,
+                "pdf": true,
+                "envoyer": true,
+                "encaisser": false,
+                "annuler": true,
+                "supprimer": false,
+                "modifier_montant": false
+              }
+            }
+          ],
+          "versions": [
+            {
+              "id": 502,
+              "reference": "DEV-202610-0021",
+              "version": 2,
+              "statut": "accepte",
+              "is_active": true
+            }
+          ],
+          "est_tete": true,
+          "tete_id": 502,
+          "revision_en_cours": null,
+          "prochaine_action": "intermediaire",
+          "raison_bloquee": "",
+          "prochaines_echeances": [
+            {
+              "cle": "intermediaire_1",
+              "libelle": "Livraison du matériel",
+              "montant_ttc": "29400.00"
+            },
+            {
+              "cle": "solde",
+              "libelle": "Solde",
+              "montant_ttc": "4600.00"
+            }
+          ],
+          "peut": {
+            "facturer_acompte": false,
+            "facturer_solde": true,
+            "facturer_complete": false,
+            "prix_negocie": true,
+            "modifier_echeancier": true
+          }
+        }
+      }
+    }
   }
 }

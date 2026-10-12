@@ -368,6 +368,20 @@ class PorteePRTests(unittest.TestCase):
         self.assertEqual(self.m.proprietaires_modifies(
             ['backend/django_core/authentication/views.py']), ['authentication'])
 
+    def test_contrats_et_dette_gelee_n_elargissent_pas_le_perimetre(self):
+        # VNT M0 (12/10/2026) : un échantillon de contrat (PACT10) et la dette
+        # gelée ne changent aucun comportement HTTP ; les compter relançait
+        # crm/core/authentication à chaque tour (treadmill de gels).
+        self.assertEqual(self.m.proprietaires_modifies([
+            'backend/django_core/apps/crm/contract_samples/lead_devis_ligne.json',
+            'backend/django_core/apps/ventes/contract_samples/README.md',
+            'scripts/fuzz/api_fuzz_dette.txt',
+        ]), [])
+        self.assertEqual(self.m.proprietaires_modifies([
+            'scripts/fuzz/api_fuzz_dette.txt',
+            'backend/django_core/apps/ventes/domain/facturation_ops.py',
+        ]), ['apps.ventes'])
+
     def test_proprietaire_du_module(self):
         self.assertEqual(self.m.proprietaire_du_module('apps.stock.views.produit'),
                          'apps.stock')

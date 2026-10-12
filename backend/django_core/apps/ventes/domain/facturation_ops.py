@@ -173,6 +173,9 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
             from ..utils.pdf import identite_vendeur_courante
             facture.identite_vendeur = identite_vendeur_courante(
                 facture.company)
+        # VNT9 — couture : objet_vente + garanties figés (no-op, VNT35/38).
+        from .instantanes_facture import figer_a_l_emission
+        figer_a_l_emission(facture)
         facture.save()
 
     from core.events import facture_emise

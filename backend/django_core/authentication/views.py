@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.http import HttpResponse
 from django.utils.text import slugify
@@ -39,6 +41,8 @@ from .throttles import (
 )
 from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
 from core.throttling import CookieRefreshThrottle
+
+logger = logging.getLogger(__name__)
 
 # ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
 # Les jetons JWT sont posés en cookies ``httpOnly`` (jamais lisibles par JS, ce
@@ -1365,7 +1369,7 @@ class UserViewSet(viewsets.ModelViewSet):
         target = self.get_object()
         if target == request.user:
             return Response(
-                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},  # noqa: E501
+                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if target.is_protected:
@@ -1535,7 +1539,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 f'Mode présentation {etat} par {actor}.',
                 company=company)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+            logger.warning("mode présentation : note de chatter non écrite", exc_info=True)
 
     def _log_audit_mode_presentation(self, company, user):
         """NTDMO40 — ``audit.AuditLog`` (journal plateforme), en plus du
@@ -1555,7 +1559,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 company=company, user=user,
                 detail=f'Mode présentation {etat}.')
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+            logger.warning("mode présentation : audit non enregistré", exc_info=True)
 
     @extend_schema(request=None, responses=inline_serializer(
         'ResetDemoReponse', {
@@ -1605,7 +1609,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 detail=f'Société démo "{slug}" réinitialisée par '
                        f'{actor_username}.')
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+            logger.warning("démo : audit de réinitialisation non enregistré", exc_info=True)
         recorder.end_request()
         _run_demo_reset(slug)
         request.user = AnonymousUser()
@@ -1638,7 +1642,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 f'{actor_username}.',
                 company=fraiche)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+            logger.warning("démo : note de réinitialisation non écrite", exc_info=True)
 
     # ── NTDMO22/23/24 — kit de démonstration (scénario, pas un devis client) ─
     def _demo_kit_contexte(self, company):
@@ -1760,7 +1764,8 @@ class CompanyViewSet(viewsets.ModelViewSet):
             'inline; filename="kit-demo.pdf"')
         return response
 
-    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
+    @extend_schema(responses={
+        (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     def demo_kit_export_xlsx(self, request, pk=None):
         """NTDMO24 — journal des 12 mois de démo en 4 onglets (Leads, Devis,
         Chantiers, Factures), pour vérification hors-ligne avant un
