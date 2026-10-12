@@ -59,6 +59,9 @@ REGISTRE_REMISE = {
     'plan_masse_pdf': ('plan_masse_pdf', 'pdf', MIME_PDF),
     'note_calcul_pdf': ('note_calcul_pdf', 'pdf', MIME_PDF),
 }
+#: Codes de pièce remettables — nommés « CodeRemiseDocumentEnum » dans ENUM_NAME_OVERRIDES
+#: (collision de schéma avec le « code » des paliers API).
+CODES_REMISE = list(REGISTRE_REMISE)
 
 
 class _RequeteDeRendu:
@@ -110,7 +113,7 @@ REMISE_SCHEMA = inline_serializer('CalepinageRemiseDocument', {
 
 @extend_schema(
     request=inline_serializer('CalepinageRemettreDocumentCorps', {
-        'code': drf_serializers.ChoiceField(choices=list(REGISTRE_REMISE)),
+        'code': drf_serializers.ChoiceField(choices=CODES_REMISE),
         'langue': drf_serializers.CharField(required=False)}),
     responses={201: REMISE_SCHEMA, 200: REMISE_SCHEMA})
 @action(detail=True, methods=['post'], url_path='remettre-document',

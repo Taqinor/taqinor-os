@@ -838,6 +838,14 @@ SPECTACULAR_SETTINGS = {
         # EventType) : sans nom propre, drf-spectacular signalait une collision
         # « event_type ». Nommage de schéma uniquement — aucun choix ne change.
         'EvenementRoutableEnum': 'apps.notifications.services.EVENEMENTS_ROUTABLES_CHOIX',
+        # Le jeu COMPLET `event_type` (Notification, NotificationPreference,
+        # NotificationRoutingRule) garde son nom historique.
+        'EventTypeEnum': 'apps.notifications.types_evenements.EventType',
+        # Vague 6 (ERR-ENF11-FUZZ-CALEPINAGE) — le corps de `remettre-document` énumère
+        # ses codes de pièce ; le « code » des paliers API (core.ApiUsagePlan) garde
+        # son nom historique « CodeEnum ». Nommage de schéma uniquement.
+        'CodeEnum': 'core.models.ApiUsagePlan.Palier',
+        'CodeRemiseDocumentEnum': 'apps.calepinage.views.remise_document.CODES_REMISE',
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
