@@ -1048,3 +1048,18 @@ class NTUX30DigestFavorisObsoletesTests(TestCase):
 
         taches = {v['task'] for v in celery_app.conf.beat_schedule.values()}
         self.assertIn('uxviews.digest_favoris_obsoletes_hebdo', taches)
+
+
+class FavoriModeleSchemaExactTests(TestCase):
+    """ERR-ENF11-FUZZ-UXVIEWS — ``modele`` publie le vocabulaire fermé des types
+    favorisables (au lieu d'un texte libre) et refuse tout autre."""
+
+    def test_modele_est_un_choix_ferme(self):
+        from .serializers import TYPES_FAVORISABLES, FavoriUtilisateurSerializer
+        champ = FavoriUtilisateurSerializer().fields['modele']
+        self.assertEqual(set(champ.choices), set(TYPES_FAVORISABLES))
+        self.assertTrue(champ.write_only)
+        ser = FavoriUtilisateurSerializer(data={
+            'modele': 'authentication.customuser', 'object_id': 1})
+        self.assertFalse(ser.is_valid())
+        self.assertIn('modele', ser.errors)
