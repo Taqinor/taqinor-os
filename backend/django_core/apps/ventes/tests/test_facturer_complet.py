@@ -211,6 +211,29 @@ class TestFacturerComplet(TestCase):
                 self.assertEqual(resp.status_code, 400, resp.data)
         self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
 
+    # ── VNT65 — les portes d'hier enveloppent facturer_vente ─────────────
+
+    def test_vnt65_version_remplacee_400_nommee_aux_deux_portes(self):
+        Devis.objects.filter(pk=self.devis.pk).update(is_active=False)
+        tranche = f'/api/django/ventes/devis/{self.devis.id}/generer-facture/'
+        for url, corps in ((self._url(), {'paiements': []}), (tranche, {})):
+            with self.subTest(url=url):
+                resp = self.api.post(url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data['code'], 'version_remplacee')
+                self.assertIn('successeur', resp.data)
+        self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
+
+    def test_vnt65_brouillons_a_remplacer_rendu_en_400(self):
+        from apps.ventes.domain.facturation_vente import facturer_vente
+        brouillon, _ = facturer_vente(self.devis, nature='acompte',
+                                      user=self.user)
+        resp = self._post([])
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['code'], 'brouillons_a_remplacer')
+        self.assertIn(brouillon.reference, str(resp.data))
+        self.assertEqual(Facture.objects.filter(devis=self.devis).count(), 1)
+
     def test_isolation_societe(self):
         autre = Company.objects.create(nom='Autre', slug=f'fcp-autre-{_nxt()}')
         autre_user = User.objects.create_user(

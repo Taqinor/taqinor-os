@@ -1,13 +1,10 @@
 """SPL141 — ``convertir-bc``, ``generer-facture`` et ``proforma-pdf`` du
-devis (flux devis → BC → facture, propriétaire facturation), déplacement
-pur depuis ``views/devis.py`` : corps octet-identiques, routes inchangées.
-
-Les imports function-locaux des corps (``from ..services import
-reserver_stock_devis_facture…``, ``from ..utils.echeancier import
-creer_facture_tranche``, ``from ..utils.pdf import generate_proforma_pdf``,
-``from .. import activity``) restent dans les corps.
+devis (flux devis → BC → facture, propriétaire facturation) ; routes
+inchangées. VNT65 — ``generer-facture`` / ``facturer-complet`` = ENVELOPPES
+de ``facturer_vente(emettre=True)`` : 409 rendu en 400 (contrat « Refus
+400 »), version remplacée comprise ; stock U9 sorti à l'émission (VNT21).
+Retrait des deux portes dès que le panneau (VNT75/VNT79) les remplace.
 """
-from django.db import transaction
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
@@ -35,6 +32,16 @@ CLES_VENTE_FACTURER = ('prix_convenu_ttc', 'emis_ttc', 'brouillons_ttc',
 CHAMPS_FACTURER_VENTE = ('nature', 'montant_ttc', 'pourcentage',
                          'cle_attendue', 'libelle', 'emettre', 'paiements',
                          'remplacer_brouillons', 'utiliser_avances')
+
+
+def refus_porte_historique(exc):
+    """VNT65 — refus de ``facturer_vente`` par une porte d'hier : 409 → 400
+    (``detail`` + ``code``) ; 403 inchangé, ``credit_hold`` comme hier."""
+    corps = dict(exc.corps)
+    if exc.status == 403:
+        corps['credit_hold'] = corps.get('code') == 'credit_hold'
+        return Response(corps, status=status.HTTP_403_FORBIDDEN)
+    return Response(corps, status=status.HTTP_400_BAD_REQUEST)
 
 
 def _texte(valeur):
@@ -130,21 +137,16 @@ class DevisFacturationActionsMixin:
         permission_classes=[IsResponsableOrAdmin],
     )
     def generer_facture(self, request, pk=None):
-        """Génère la PROCHAINE facture de tranche de l'échéancier du devis.
-
-        1er appel → facture d'acompte (30 % ou 50 % selon le mode) ; appels
-        suivants → tranche matériel puis solde. Chaque facture est numérotée
-        sans collision et créée « Émise » (postée). L'échéancier vient de
-        l'unique mapping PAYMENT_TERMS_BY_MODE.
-        """
+        """Génère et ÉMET la PROCHAINE tranche de la vente — VNT65 :
+        ``utils.echeancier.facturer_tranche_suivante`` (acompte, le brouillon
+        automatique repris, puis matériel et solde)."""
         devis = self.get_object()
-        from ..utils.echeancier import creer_facture_tranche
+        from ..domain.facturation_vente import FacturationVenteRefusee
+        from ..utils.echeancier import facturer_tranche_suivante
         from ..services import (
-            reserver_stock_devis_facture, StockInsuffisantError,
             verifier_credit_hold, CreditHoldError,
             verifier_sale_warnings, SaleWarningError,
         )
-        company = request.user.company
         # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op.
         if devis.client_id is not None:
             override = bool(request.data.get('override_credit'))
@@ -174,24 +176,10 @@ class DevisFacturationActionsMixin:
                  'sale_warning': True},
                 status=status.HTTP_403_FORBIDDEN)
         try:
-            # U9 — la facturation directe par échéancier court-circuite le bon
-            # de commande : on réserve/consomme ici le stock matériel du devis,
-            # comme le ferait la livraison d'un BC, dans la MÊME transaction que
-            # la facture (rollback atomique si la réservation échoue). La garde
-            # anti-double-comptage du service évite de re-décompter quand un BC
-            # livré existe déjà ou qu'une tranche antérieure a déjà réservé.
-            with transaction.atomic():
-                reserver_stock_devis_facture(
-                    devis=devis, user=request.user, company=company)
-                facture = creer_facture_tranche(
-                    devis, request.user, company,
-                    create_with_reference,
-                )
-        except StockInsuffisantError as exc:
-            return Response(
-                {'detail': exc.message}, status=status.HTTP_400_BAD_REQUEST,
-            )
-        except ValueError as exc:
+            facture = facturer_tranche_suivante(devis, request.user)
+        except FacturationVenteRefusee as exc:
+            return refus_porte_historique(exc)
+        except ValueError as exc:  # DevisDejaFacture (ATOT2)
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST,
             )
@@ -216,22 +204,21 @@ class DevisFacturationActionsMixin:
         (numéro définitif) puis consigne les paiements DÉJÀ reçus (0 à 5 :
         montant, date passée possible, mode, référence) — le tout atomique.
         Contrat : ``contract_samples/devis_facturer_complet.json``. Mêmes
-        gardes que ``generer-facture`` (blocage crédit XFAC28, avertissement
-        de vente ZSAL9, réservation de stock U9). Jamais de prix d'achat ni de
-        marge dans la réponse.
+        gardes que ``generer-facture`` (XFAC28, ZSAL9). VNT65 — enveloppe de
+        ``facturer_vente(nature='complete', emettre=True)``. Jamais de prix
+        d'achat ni de marge dans la réponse.
         """
         devis = self.get_object()
         valider_corps(request, D.FacturerCompletRequest)
         from ..models import Facture
-        from ..domain.encaissements import EncaissementRefuse
-        from ..domain.facturation_ops import (
-            EmissionRefusee, FacturationRefusee, facturer_devis_complet,
-        )
+        from ..domain.facturation_vente import (
+            FacturationVenteRefusee, facturer_vente)
+        from ..selectors_facturation import (
+            DevisDejaFacture, exiger_devis_facturable)
         from ..services import (
-            StockInsuffisantError, verifier_credit_hold, CreditHoldError,
+            verifier_credit_hold, CreditHoldError,
             verifier_sale_warnings, SaleWarningError,
         )
-        company = request.user.company
         if devis.client_id is not None:
             try:
                 verifier_credit_hold(
@@ -261,21 +248,15 @@ class DevisFacturationActionsMixin:
                  'sale_warning': True},
                 status=status.HTTP_403_FORBIDDEN)
         try:
-            facture, paiements = facturer_devis_complet(
-                devis=devis, user=request.user, company=company,
+            exiger_devis_facturable(devis, 'complete')  # ATOT2 nomme la facture
+            facture, paiements = facturer_vente(
+                devis, nature='complete', user=request.user, emettre=True,
                 paiements=request.data.get('paiements') or [])
-        except (FacturationRefusee, EncaissementRefuse,
-                EmissionRefusee) as exc:
+        except DevisDejaFacture as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
-        except StockInsuffisantError as exc:
-            return Response({'detail': exc.message},
-                            status=status.HTTP_400_BAD_REQUEST)
-        except CreditHoldError as exc:
-            return Response(
-                {'detail': f'Client en blocage crédit : {exc.motif}.',
-                 'credit_hold': True},
-                status=status.HTTP_403_FORBIDDEN)
+        except FacturationVenteRefusee as exc:
+            return refus_porte_historique(exc)
         from decimal import Decimal
         cent = Decimal('0.01')
         montant_paye = Decimal(str(facture.montant_paye))
