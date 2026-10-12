@@ -205,7 +205,12 @@ class ChatterViewSetMixin:
         from .models import Activity
         from .services import log_activity
         target = self.get_object()
-        body = (request.data.get('body') or '').strip()
+        if not isinstance(request.data, dict):
+            return Response(
+                {'detail': 'Corps illisible : un objet JSON est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        corps_brut = request.data.get('body')
+        body = corps_brut.strip() if isinstance(corps_brut, str) else ''
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)

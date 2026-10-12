@@ -1345,6 +1345,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         sur une facture close. La réponse porte désormais `montant_a_payer`
         (reste dû à l'instant T, ce que le client paiera réellement) à côté de
         `montant` (la trace figée à la création)."""
+        if not isinstance(request.data, dict):
+            return Response(
+                {'detail': 'Corps illisible : un objet JSON est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
         facture = self.get_object()
         from ..services import LinkError, create_payment_link
         from ..domain.encaissements import url_page_paiement
@@ -2195,8 +2199,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         Les erreurs par facture n'interrompent pas le batch.
         """
         request.user.company
-        action_name = (request.data.get('action') or '').strip()
-        ids = request.data.get('ids') or []
+        donnees = request.data if isinstance(request.data, dict) else {}
+        action_brute = donnees.get('action')
+        # ENF11 — une action qui n'est pas un texte est invalide (jamais un 500).
+        action_name = action_brute.strip() if isinstance(action_brute, str) else ''
+        ids = donnees.get('ids') or []
 
         VALID_ACTIONS = {'emettre', 'relancer', 'envoyer-email', 'generer-pdf'}
         if action_name not in VALID_ACTIONS:

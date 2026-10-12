@@ -1623,3 +1623,11 @@ API accepted schema-violating request|POST /api/django/facturation/factures/{id}
 API accepted schema-violating request|POST /api/django/roles/
 API rejected schema-compliant request|POST /api/django/stock/categories-fournisseur/
 Response violates schema|POST /api/django/facturation/factures/{id}/envoyer-email/
+API accepted schema-violating request|PATCH /api/django/records/activity-types/{id}/
+API accepted schema-violating request|POST /api/django/ventes/factures/{id}/exclure-relance/
+API accepted schema-violating request|PUT /api/django/roles/{id}/
+API accepted schema-violating request|PUT /api/django/stock/unites-logistiques/{id}/
+Server error|POST /api/django/facturation/factures/bulk/
+Server error|POST /api/django/facturation/factures/{id}/lien-paiement/
+Server error|POST /api/django/records/comments/
+Server error|POST /api/django/ventes/factures/bulk/
