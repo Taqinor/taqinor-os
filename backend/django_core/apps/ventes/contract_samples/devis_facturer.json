@@ -1,0 +1,95 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/facturer/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VNT3 (PACT10, Groupe VNT, P0) — « Facturer la vente » : UN seul guichet devis→facture qui connaît la nature de la facture (acompte, intermédiaire, solde, complète) et un montant libre. Contrat posé SEUL sur main AVANT la vue et l'écran. Aujourd'hui `FacturerDevisDialog` ne sait faire que 100 % + « paiements déjà reçus » ; `devis_facturer_complet.json` ne connaît que la facture complète. Le GET rend l'aperçu (plan, prochaine tranche, acompte proposé, état de la vente) ; le POST crée la facture. Montants en TEXTE décimal à 2 décimales (« 15000.00 »), jamais un flottant. Exemple : acompte de 15 000,00 sur une vente à 49 000,00 TTC, libellé « Acompte » (règle de libellé unique de l'arbitrage 6). Jamais de prix d'achat ni de marge.",
+  "requete": {
+    "regle": "`nature` ∈ acompte | intermediaire | solde | complete ; `montant_ttc` XOR `pourcentage` (jamais les deux) ; `cle_attendue` = clé de la tranche que l'écran croit facturer (défense contre un plan modifié entre-temps) ; `emettre` = vrai pour émettre tout de suite (numéro définitif), faux pour laisser en brouillon ; `remplacer_brouillons` et `utiliser_avances` = confirmations explicites.",
+    "nature": "acompte",
+    "montant_ttc": "15000.00",
+    "pourcentage": null,
+    "cle_attendue": "acompte",
+    "libelle": null,
+    "emettre": true,
+    "paiements": [
+      {"montant": "15000.00", "date_paiement": "2026-10-12", "mode_paiement": "virement", "reference": "VIR-1012"}
+    ],
+    "remplacer_brouillons": false,
+    "utiliser_avances": false
+  },
+  "exemple": {
+    "facture": {
+      "id": 118,
+      "reference": "FAC-202610-0007",
+      "statut": "emise",
+      "total_ttc": "15000.00",
+      "nature": "acompte"
+    },
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "15000.00",
+      "brouillons_ttc": "0.00",
+      "paye_ttc": "15000.00",
+      "reste_a_facturer_ttc": "34000.00",
+      "reste_a_payer_ttc": "34000.00"
+    }
+  },
+  "apercu_get": {
+    "endpoint": "GET /api/django/ventes/devis/<int:pk>/facturer/",
+    "reponse_200": {
+      "plan": [
+        {"cle": "acompte", "libelle": "Acompte", "unite": "montant", "valeur": "15000.00", "montant_ttc": "15000.00", "statut": "emise"},
+        {"cle": "intermediaire_1", "libelle": "Livraison du matériel", "unite": "pct", "valeur": "40.00", "montant_ttc": "19600.00", "statut": "brouillon"},
+        {"cle": "solde", "libelle": "Solde", "unite": "montant", "valeur": "14400.00", "montant_ttc": "14400.00", "statut": "a_faire"}
+      ],
+      "prochaine": {"cle": "intermediaire_1", "libelle": "Livraison du matériel", "montant_ttc": "19600.00"},
+      "acompte_propose": "14700.00",
+      "vente": {
+        "prix_convenu_ttc": "49000.00",
+        "emis_ttc": "15000.00",
+        "brouillons_ttc": "19600.00",
+        "paye_ttc": "15000.00",
+        "reste_a_facturer_ttc": "14400.00",
+        "reste_a_payer_ttc": "34000.00"
+      }
+    }
+  },
+  "notes": {
+    "types": "tous les montants et valeurs sont du TEXTE décimal ; `statut` d'une ligne du plan ∈ emise | brouillon | a_faire ; `unite` ∈ pct | montant.",
+    "libelle": "règle de libellé unique (arbitrage 6) : le serveur compose le libellé depuis la nature et la clé ; `libelle` de la requête ne sert qu'à le surcharger.",
+    "statuts": "aucune nouvelle valeur de statut Devis ou Facture (règle #4)."
+  },
+  "erreurs_400": {
+    "montant_depasse_reste": {"detail": "Le montant dépasse le reste à facturer.", "code": "montant_depasse_reste"},
+    "rien_a_facturer": {"detail": "Il n'y a plus rien à facturer sur cette vente.", "code": "rien_a_facturer"},
+    "paiements_invalides": {"detail": "Les paiements saisis dépassent le montant de la facture.", "code": "paiements_invalides"},
+    "montant_invalide": {"detail": "Montant invalide.", "code": "montant_invalide"}
+  },
+  "erreurs_409": {
+    "deja_facture": {"detail": "Cette vente est déjà entièrement facturée.", "code": "deja_facture"},
+    "brouillons_a_remplacer": {
+      "detail": "Des brouillons existent : confirmez leur remplacement.",
+      "code": "brouillons_a_remplacer",
+      "brouillons": [{"id": 117, "reference": "BROUILLON-117", "total_ttc": "19600.00"}]
+    },
+    "tranche_en_brouillon": {
+      "detail": "Cette tranche existe déjà en brouillon.",
+      "code": "tranche_en_brouillon",
+      "facture": {"id": 117, "reference": "BROUILLON-117"}
+    },
+    "tranche_deja_creee": {"detail": "Cette tranche est déjà facturée.", "code": "tranche_deja_creee"},
+    "cle_inattendue": {
+      "detail": "Le plan a changé : rechargez avant de facturer.",
+      "code": "cle_inattendue",
+      "cle_attendue": "intermediaire_1"
+    },
+    "version_remplacee": {
+      "detail": "Cette version du devis a été remplacée par une révision.",
+      "code": "version_remplacee",
+      "successeur": {"id": 503, "reference": "DEV-202610-0022"}
+    }
+  },
+  "erreurs_403": {
+    "credit_hold": {"detail": "Le client est en blocage crédit.", "code": "credit_hold"},
+    "sale_warning": {"detail": "Un avertissement de vente bloque la facturation.", "code": "sale_warning"}
+  }
+}
