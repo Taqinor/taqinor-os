@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.utils import timezone
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
@@ -601,7 +602,10 @@ class MaintenanceChecklistItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
-class MaintenanceChecklistTemplateSerializer(serializers.ModelSerializer):
+class MaintenanceChecklistTemplateSerializer(ChampsStrictsMixin,
+                                             serializers.ModelSerializer):
+    # ENF11 (api-fuzz) — ``nom``/``actif``/``protege`` stricts : un ``0`` pour un
+    # booléen (ou un nombre pour le nom) → 400, comme le schéma le déclare.
     items = MaintenanceChecklistItemSerializer(many=True, read_only=True)
 
     class Meta:

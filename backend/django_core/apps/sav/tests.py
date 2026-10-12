@@ -22,7 +22,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -624,3 +624,50 @@ class ContratsFiltreClientTest(TestCase):
                          {'client': 'abc'})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(self._ids(r)), 2)
+
+
+class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
+    """ENF11 (api-fuzz) — corps et paramètres de ``sav/tickets`` validés par
+    leur schéma : jamais une coercition silencieuse, toujours un 400 nommé."""
+
+    def test_override_doit_etre_un_vrai_booleen_json(self):
+        from rest_framework.exceptions import ValidationError
+        from apps.sav.views import SavFacturerRequete
+        self.assertEqual(
+            SavFacturerRequete().run_validation({'override': True}),
+            {'override': True})
+        self.assertNotIn('override', SavFacturerRequete().run_validation({}))
+        for corps in ({'override': {}}, {'override': 'true'}, {'override': 1},
+                      [], 0):
+            with self.assertRaises(ValidationError, msg=repr(corps)):
+                SavFacturerRequete().run_validation(corps)
+
+    def test_at_de_premiere_reponse_est_une_date_heure_ou_absent(self):
+        from rest_framework.exceptions import ValidationError
+        from apps.sav.views import SavPremierReponseRequete
+        ok = SavPremierReponseRequete().run_validation(
+            {'at': '2026-01-02T10:00:00Z'})
+        self.assertEqual((ok['at'].year, ok['at'].hour), (2026, 10))
+        self.assertNotIn('at', SavPremierReponseRequete().run_validation({}))
+        for corps in ({'at': ''}, {'at': None}, {'at': 0}, {'at': 'hier'}, 0):
+            with self.assertRaises(ValidationError, msg=repr(corps)):
+                SavPremierReponseRequete().run_validation(corps)
+
+    def test_champs_du_modele_de_checklist_stricts(self):
+        from rest_framework.exceptions import ValidationError
+        from apps.sav.serializers import MaintenanceChecklistTemplateSerializer
+        champs = MaintenanceChecklistTemplateSerializer().fields
+        self.assertIs(champs['protege'].run_validation(False), False)
+        self.assertEqual(champs['nom'].run_validation('Entretien'), 'Entretien')
+        for champ, valeur in (('protege', 0), ('actif', 'False'), ('nom', 0)):
+            with self.assertRaises(ValidationError, msg=champ):
+                champs[champ].run_validation(valeur)
+
+    def test_limit_des_similaires_entier_strict_minimum_un(self):
+        from rest_framework.exceptions import ValidationError
+        from core.champs_stricts import entier_ou_400
+        self.assertEqual(entier_ou_400(None, 'limit', defaut=5, mini=1), 5)
+        self.assertEqual(entier_ou_400('3', 'limit', defaut=5, mini=1), 3)
+        for brut in ('null', '0', '-1', 'abc'):
+            with self.assertRaises(ValidationError, msg=brut):
+                entier_ou_400(brut, 'limit', defaut=5, mini=1)
