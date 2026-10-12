@@ -1,11 +1,11 @@
-from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import ENTITE, qint, qstr
 from datetime import date as _date
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from .facture_cycle import FactureCycleActionsMixin
 from . import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers as drf_serializers
@@ -139,7 +139,7 @@ PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
     # VNT14 — seul un « BROUILLON-<id> » se supprime : 400 sinon.
     destroy=extend_schema(
         responses={204: None, 400: D.ErreurSuppressionFacture}))
-class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
+class FactureViewSet(FactureCycleActionsMixin, EntiteScopeMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
