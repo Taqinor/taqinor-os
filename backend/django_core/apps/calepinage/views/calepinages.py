@@ -189,10 +189,11 @@ _REFUS_VENTES = OpenApiResponse(
     description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
                 "charge, mot pour mot.")
 _PARAM_IF_MATCH = OpenApiParameter(
-    'If-Match', OpenApiTypes.STR, OpenApiParameter.HEADER, required=True,
+    'If-Match', OpenApiTypes.STR, OpenApiParameter.HEADER, required=False,
     description="Empreinte « document » lue avec la conception (GET "
                 "``layout``) ; l'ETag vide ``\"\"`` pour un document vide. "
-                "Absent : 428, rien n'est écrit.")
+                "Exigé pour écrire : absent, 428 et rien n'est écrit (mais un "
+                "calepinage archivé ou un corps invalide est refusé avant).")
 _CREATION_COMMUNE = {
     'titre': drf_serializers.CharField(required=False, allow_blank=True),
     'responsable': drf_serializers.IntegerField(required=False,

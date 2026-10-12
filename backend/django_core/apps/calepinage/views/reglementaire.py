@@ -217,7 +217,8 @@ def generer_dossier(self, request, pk=None):
         pack = construire_pack_dossier(dossier, created_by=request.user)
     except DossierRefuse as refus:
         return Response({refus.piece or 'dossier': [str(refus)]},
-                        status=status.HTTP_409_CONFLICT)
+                        status=(status.HTTP_400_BAD_REQUEST if refus.entree
+                                else status.HTTP_409_CONFLICT))
 
     document = pack.get('document')
     dossier.document_id = getattr(document, 'pk', None)

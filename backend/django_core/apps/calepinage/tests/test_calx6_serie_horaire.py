@@ -208,7 +208,8 @@ class RefusQuiNommeLeChampTest(SimpleTestCase):
         """Le défaut du serveur reste ``horaire`` — le panneau s'y fie."""
         reponse = _appeler(_Calepinage(resultat={}))
 
-        self.assertEqual(reponse.status_code, 400)
+        # Série absente = ÉTAT du calepinage (409), le champ ``points`` nommé.
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('points', reponse.data)
 
 
