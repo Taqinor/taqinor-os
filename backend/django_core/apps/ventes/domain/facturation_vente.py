@@ -627,3 +627,59 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
                                utiliser_avances=bool(utiliser_avances))
             facture.refresh_from_db()
     return facture, crees
+
+
+# ── VNT66 — l'échéancier d'une vente (contrat ``devis_echeancier.json``) ────
+
+def echeancier_du_contrat(devis):
+    """``[{cle, libelle, unite, valeur}]`` (valeur en texte décimal) : les
+    tranches de ``devis`` à la forme du contrat ``devis_echeancier.json``."""
+    from apps.ventes.utils.echeancier import (
+        cles_tranches, tranches_normalisees)
+    tranches = tranches_normalisees(devis)
+    return [{'cle': cle, 'libelle': t['libelle'], 'unite': t['unite'],
+             'valeur': f"{_q(t['valeur']):.2f}"}
+            for cle, t in zip(cles_tranches(tranches), tranches)]
+
+
+def modifier_echeancier_vente(devis, tranches, *, user):
+    """VNT66 — ``PUT devis/<id>/echeancier/`` : REMPLACE l'échéancier par
+    ``tranches`` (forme du contrat) sous le geste ÉCHÉANCIER de VNT25
+    (``controler_echeancier_vente`` : brouillon / envoyé / ACCEPTÉ, tranches
+    couvertes inchangées, Σ des non dernières ≤ prix convenu, dernière =
+    reste) ; trace « corrigé après envoi / acceptation ». Rend le devis
+    relu ; lève :class:`FacturationVenteRefusee` (400 ``echeancier_invalide``
+    / ``somme_invalide`` ; 409 ``tranche_facturee``, ``version_remplacee``,
+    ``devis_non_modifiable``). Aucun statut écrit (règle #4)."""
+    from apps.ventes.models import Devis
+    from .modifiabilite import (
+        DevisNonModifiable, EcheancierRefuse, consigner_correction_apres_envoi,
+        controler_echeancier_vente, corps_version_remplacee)
+    if not isinstance(tranches, list) or not tranches:
+        raise FacturationVenteRefusee(
+            '« tranches » : une liste non vide de tranches est attendue.',
+            code='echeancier_invalide')
+    with transaction.atomic():
+        devis = next(d for d in verrouiller_vente(devis) if d.pk == devis.pk)
+        if not devis.is_active:
+            corps = corps_version_remplacee(devis)
+            raise _conflit(corps['code'], corps['detail'],
+                           successeur=corps['successeur'])
+        try:
+            entrees = controler_echeancier_vente(devis, tranches)
+        except EcheancierRefuse as exc:
+            corps = exc.corps()
+            raise FacturationVenteRefusee(corps.pop('detail'),
+                                          status=exc.status, **corps)
+        except DevisNonModifiable as exc:
+            raise _conflit('devis_non_modifiable', exc.detail,
+                           statut=exc.statut)
+        if entrees != devis.echeancier:
+            Devis.objects.filter(pk=devis.pk, company_id=devis.company_id
+                                 ).update(echeancier=entrees)
+            devis.echeancier = entrees
+            consigner_correction_apres_envoi(
+                devis, user=user, objet='echeancier',
+                resume='échéancier modifié',
+                apres_acceptation=devis.statut == 'accepte')
+    return devis

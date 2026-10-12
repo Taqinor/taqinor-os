@@ -15,7 +15,7 @@ from . import openapi_docs as D
 from ..models import Devis
 from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsResponsableOrAdmin,
 )
 from ..utils.references import create_with_reference
 from ..utils.corps import valider_corps
@@ -333,6 +333,33 @@ class DevisFacturationActionsMixin:
                         'nature': facture.type_facture},
             'vente': {cle: etat[cle] for cle in CLES_VENTE_FACTURER},
         }, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=OpenApiTypes.OBJECT,
+                   responses={200: OpenApiTypes.OBJECT, 400: D.ErreurDetail,
+                              409: D.ErreurDetail})
+    # api-only: l'écran (panneau de vente, échéancier d'un accepté) arrive
+    # avec les lanes frontend du lot M2 (contrat devis_echeancier.json).
+    @action(detail=True, methods=['put'], url_path='echeancier',
+            permission_classes=[IsAdminOrResponsableTier,
+                                IsResponsableOrAdmin])
+    def echeancier_vente(self, request, pk=None):
+        """VNT66 — ``PUT devis/<id>/echeancier/`` (contrat
+        ``devis_echeancier.json``, arbitrage 5 : palier responsable/admin ET
+        code d'écriture ventes) : ``facturation_vente.
+        modifier_echeancier_vente`` ; 200 = ``{id, reference, statut,
+        echeancier}`` ; refus rendus tels quels (400 / 409)."""
+        from ..domain.facturation_vente import (
+            FacturationVenteRefusee, echeancier_du_contrat,
+            modifier_echeancier_vente)
+        devis = self.get_object()
+        try:
+            devis = modifier_echeancier_vente(
+                devis, request.data.get('tranches'), user=request.user)
+        except FacturationVenteRefusee as exc:
+            return Response(exc.corps, status=exc.status)
+        return Response({'id': devis.pk, 'reference': devis.reference,
+                         'statut': devis.statut,
+                         'echeancier': echeancier_du_contrat(devis)})
 
     @extend_schema(request=None, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(
