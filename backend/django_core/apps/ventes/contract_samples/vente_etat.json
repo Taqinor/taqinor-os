@@ -1,0 +1,434 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VNT7 (PACT10, Groupe VNT, P0) — clé ADDITIVE `vente` : l'état de la vente (prix convenu, émis, brouillons, payé, reste à facturer / à payer, factures et leurs gestes autorisés, versions, tête de chaîne, prochaine action) DITE par le serveur, posée SEULE avant sa vue ; l'écran ne redérive plus rien des montants. Servie par la fiche devis (GET ventes/devis/<id>/) ; la ligne devis du lead porte `solde` + `vente` (crm/contract_samples/lead_devis_ligne.json). Sous-bloc commun : mêmes noms que `devis_facturer.json` (bloc `vente` du POST/GET facturer). Montants en TEXTE décimal ; jamais de prix d'achat ni de marge. Valeurs sur le panier réel 49 000,00 TTC (acompte 15 000,00 / livraison 29 400,00 / solde 4 600,00).",
+  "notes": {
+    "nature": "nature d'une facture ∈ acompte | intermediaire | solde | complete | bc | consolidee.",
+    "prochaine_action": "∈ acompte | intermediaire | solde | complete | aucune ; `raison_bloquee` dit pourquoi aucune action n'est ouverte (chaîne vide sinon).",
+    "peut": "gestes autorisés dits par le serveur : l'écran n'en redérive aucun.",
+    "versions": "toute la chaîne ; `est_tete` vrai quand ce devis est la tête, `tete_id` = id de la tête ; `revision_en_cours` = brouillon de révision ouvert ou null.",
+    "statuts": "aucun statut nouveau (règle #4)."
+  },
+  "exemple": {
+    "id": 502,
+    "reference": "DEV-202610-0021",
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "0.00",
+      "brouillons_ttc": "0.00",
+      "paye_ttc": "0.00",
+      "reste_a_facturer_ttc": "49000.00",
+      "reste_a_payer_ttc": "49000.00",
+      "acompte_propose": "15000.00",
+      "factures": [],
+      "versions": [
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "version": 2,
+          "statut": "accepte",
+          "is_active": true
+        }
+      ],
+      "est_tete": true,
+      "tete_id": 502,
+      "revision_en_cours": null,
+      "prochaine_action": "acompte",
+      "raison_bloquee": "",
+      "prochaines_echeances": [
+        {
+          "cle": "acompte",
+          "libelle": "Acompte",
+          "montant_ttc": "15000.00"
+        },
+        {
+          "cle": "intermediaire_1",
+          "libelle": "Livraison du matériel",
+          "montant_ttc": "29400.00"
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "montant_ttc": "4600.00"
+        }
+      ],
+      "peut": {
+        "facturer_acompte": true,
+        "facturer_solde": false,
+        "facturer_complete": true,
+        "prix_negocie": true,
+        "modifier_echeancier": true
+      }
+    }
+  },
+  "exemple_acompte_brouillon": {
+    "id": 502,
+    "reference": "DEV-202610-0021",
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "0.00",
+      "brouillons_ttc": "15000.00",
+      "paye_ttc": "0.00",
+      "reste_a_facturer_ttc": "34000.00",
+      "reste_a_payer_ttc": "49000.00",
+      "acompte_propose": "15000.00",
+      "factures": [
+        {
+          "id": 117,
+          "reference": "BROUILLON-117",
+          "nature": "acompte",
+          "statut": "brouillon",
+          "total_ttc": "15000.00",
+          "montant_paye": "0.00",
+          "date_emission": null,
+          "paiements": [],
+          "peut": {
+            "emettre": true,
+            "pdf": true,
+            "envoyer": false,
+            "encaisser": false,
+            "annuler": false,
+            "supprimer": true,
+            "modifier_montant": true
+          }
+        }
+      ],
+      "versions": [
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "version": 2,
+          "statut": "accepte",
+          "is_active": true
+        }
+      ],
+      "est_tete": true,
+      "tete_id": 502,
+      "revision_en_cours": null,
+      "prochaine_action": "acompte",
+      "raison_bloquee": "L'acompte est en brouillon : émettez-le.",
+      "prochaines_echeances": [
+        {
+          "cle": "intermediaire_1",
+          "libelle": "Livraison du matériel",
+          "montant_ttc": "29400.00"
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "montant_ttc": "4600.00"
+        }
+      ],
+      "peut": {
+        "facturer_acompte": false,
+        "facturer_solde": false,
+        "facturer_complete": false,
+        "prix_negocie": true,
+        "modifier_echeancier": true
+      }
+    }
+  },
+  "exemple_acompte_paye_solde_a_faire": {
+    "id": 502,
+    "reference": "DEV-202610-0021",
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "15000.00",
+      "brouillons_ttc": "0.00",
+      "paye_ttc": "15000.00",
+      "reste_a_facturer_ttc": "34000.00",
+      "reste_a_payer_ttc": "34000.00",
+      "acompte_propose": "15000.00",
+      "factures": [
+        {
+          "id": 118,
+          "reference": "FAC-202610-0007",
+          "nature": "acompte",
+          "statut": "payee",
+          "total_ttc": "15000.00",
+          "montant_paye": "15000.00",
+          "date_emission": "2026-10-12",
+          "paiements": [
+            {
+              "id": 301,
+              "montant": "15000.00",
+              "date_paiement": "2026-10-12",
+              "mode_paiement": "virement",
+              "statut": "valide",
+              "peut": {
+                "recu": true
+              }
+            }
+          ],
+          "peut": {
+            "emettre": false,
+            "pdf": true,
+            "envoyer": true,
+            "encaisser": false,
+            "annuler": true,
+            "supprimer": false,
+            "modifier_montant": false
+          }
+        }
+      ],
+      "versions": [
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "version": 2,
+          "statut": "accepte",
+          "is_active": true
+        }
+      ],
+      "est_tete": true,
+      "tete_id": 502,
+      "revision_en_cours": null,
+      "prochaine_action": "intermediaire",
+      "raison_bloquee": "",
+      "prochaines_echeances": [
+        {
+          "cle": "intermediaire_1",
+          "libelle": "Livraison du matériel",
+          "montant_ttc": "29400.00"
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "montant_ttc": "4600.00"
+        }
+      ],
+      "peut": {
+        "facturer_acompte": false,
+        "facturer_solde": true,
+        "facturer_complete": false,
+        "prix_negocie": true,
+        "modifier_echeancier": true
+      }
+    }
+  },
+  "exemple_tout_facture": {
+    "id": 502,
+    "reference": "DEV-202610-0021",
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "49000.00",
+      "brouillons_ttc": "0.00",
+      "paye_ttc": "49000.00",
+      "reste_a_facturer_ttc": "0.00",
+      "reste_a_payer_ttc": "0.00",
+      "acompte_propose": "0.00",
+      "factures": [
+        {
+          "id": 118,
+          "reference": "FAC-202610-0007",
+          "nature": "acompte",
+          "statut": "payee",
+          "total_ttc": "15000.00",
+          "montant_paye": "15000.00",
+          "date_emission": "2026-10-12",
+          "paiements": [
+            {
+              "id": 301,
+              "montant": "15000.00",
+              "date_paiement": "2026-10-12",
+              "mode_paiement": "virement",
+              "statut": "valide",
+              "peut": {
+                "recu": true
+              }
+            }
+          ],
+          "peut": {
+            "emettre": false,
+            "pdf": true,
+            "envoyer": true,
+            "encaisser": false,
+            "annuler": true,
+            "supprimer": false,
+            "modifier_montant": false
+          }
+        },
+        {
+          "id": 119,
+          "reference": "FAC-202610-0008",
+          "nature": "intermediaire",
+          "statut": "payee",
+          "total_ttc": "29400.00",
+          "montant_paye": "29400.00",
+          "date_emission": "2026-10-20",
+          "paiements": [
+            {
+              "id": 302,
+              "montant": "29400.00",
+              "date_paiement": "2026-10-12",
+              "mode_paiement": "virement",
+              "statut": "valide",
+              "peut": {
+                "recu": true
+              }
+            }
+          ],
+          "peut": {
+            "emettre": false,
+            "pdf": true,
+            "envoyer": false,
+            "encaisser": false,
+            "annuler": true,
+            "supprimer": false,
+            "modifier_montant": false
+          }
+        },
+        {
+          "id": 120,
+          "reference": "FAC-202610-0009",
+          "nature": "solde",
+          "statut": "payee",
+          "total_ttc": "4600.00",
+          "montant_paye": "4600.00",
+          "date_emission": "2026-11-05",
+          "paiements": [
+            {
+              "id": 303,
+              "montant": "4600.00",
+              "date_paiement": "2026-10-12",
+              "mode_paiement": "virement",
+              "statut": "valide",
+              "peut": {
+                "recu": true
+              }
+            }
+          ],
+          "peut": {
+            "emettre": false,
+            "pdf": true,
+            "envoyer": false,
+            "encaisser": false,
+            "annuler": true,
+            "supprimer": false,
+            "modifier_montant": false
+          }
+        }
+      ],
+      "versions": [
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "version": 2,
+          "statut": "accepte",
+          "is_active": true
+        }
+      ],
+      "est_tete": true,
+      "tete_id": 502,
+      "revision_en_cours": null,
+      "prochaine_action": "aucune",
+      "raison_bloquee": "",
+      "prochaines_echeances": [],
+      "peut": {
+        "facturer_acompte": false,
+        "facturer_solde": false,
+        "facturer_complete": false,
+        "prix_negocie": true,
+        "modifier_echeancier": false
+      }
+    }
+  },
+  "exemple_version_remplacee": {
+    "id": 501,
+    "reference": "DEV-202610-0020",
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "0.00",
+      "brouillons_ttc": "0.00",
+      "paye_ttc": "0.00",
+      "reste_a_facturer_ttc": "49000.00",
+      "reste_a_payer_ttc": "49000.00",
+      "acompte_propose": "15000.00",
+      "factures": [],
+      "versions": [
+        {
+          "id": 501,
+          "reference": "DEV-202610-0020",
+          "version": 1,
+          "statut": "accepte",
+          "is_active": false
+        },
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "version": 2,
+          "statut": "accepte",
+          "is_active": true
+        }
+      ],
+      "est_tete": false,
+      "tete_id": 502,
+      "revision_en_cours": null,
+      "prochaine_action": "aucune",
+      "raison_bloquee": "Cette version a été remplacée : travaillez sur la version en cours.",
+      "prochaines_echeances": [],
+      "peut": {
+        "facturer_acompte": false,
+        "facturer_solde": false,
+        "facturer_complete": false,
+        "prix_negocie": false,
+        "modifier_echeancier": false
+      }
+    }
+  },
+  "exemple_revision_en_cours": {
+    "id": 502,
+    "reference": "DEV-202610-0021",
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "0.00",
+      "brouillons_ttc": "0.00",
+      "paye_ttc": "0.00",
+      "reste_a_facturer_ttc": "49000.00",
+      "reste_a_payer_ttc": "49000.00",
+      "acompte_propose": "15000.00",
+      "factures": [],
+      "versions": [
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "version": 2,
+          "statut": "accepte",
+          "is_active": true
+        }
+      ],
+      "est_tete": true,
+      "tete_id": 502,
+      "revision_en_cours": {
+        "id": 504,
+        "reference": "DEV-202610-0023"
+      },
+      "prochaine_action": "aucune",
+      "raison_bloquee": "Une révision est en cours : terminez-la avant de facturer.",
+      "prochaines_echeances": [
+        {
+          "cle": "acompte",
+          "libelle": "Acompte",
+          "montant_ttc": "15000.00"
+        },
+        {
+          "cle": "intermediaire_1",
+          "libelle": "Livraison du matériel",
+          "montant_ttc": "29400.00"
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "montant_ttc": "4600.00"
+        }
+      ],
+      "peut": {
+        "facturer_acompte": false,
+        "facturer_solde": false,
+        "facturer_complete": false,
+        "prix_negocie": false,
+        "modifier_echeancier": false
+      }
+    }
+  }
+}
