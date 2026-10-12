@@ -127,6 +127,14 @@ class ContraintesApiTests(BaseApiCalepinage):
         self.assertIn('contraintes_site', r.data)
         self.assertIn('source', str(r.data['contraintes_site']))
 
+    def test_null_vaut_aucune_contrainte(self):
+        # api-fuzz #956 : null = {} (normalisé), jamais un 400.
+        r = self.api.patch(url_detail(self.cal.pk), {
+            'contraintes_site': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.cal.refresh_from_db()
+        self.assertEqual(self.cal.contraintes_site, {})
+
     def test_fm_charge_le_preset_et_detail_l_expose(self):
         r = self.api.patch(url_detail(self.cal.pk), {
             'contraintes_site': {'assureur': 'fm_global'}}, format='json')

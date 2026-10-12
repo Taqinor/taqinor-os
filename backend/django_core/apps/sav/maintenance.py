@@ -27,6 +27,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.parseurs import PARSEURS_JSON
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from .models import ContratMaintenance, Ticket
@@ -239,6 +240,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
     queryset = ContratMaintenance.objects.select_related(
         'client', 'installation').all()
     serializer_class = ContratMaintenanceSerializer
+    parser_classes = PARSEURS_JSON  # aucun upload : JSON seul (api-fuzz #956)
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'a_venir', 'tournee'):

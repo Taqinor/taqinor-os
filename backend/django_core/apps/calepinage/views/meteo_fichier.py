@@ -55,6 +55,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
@@ -101,6 +102,17 @@ def _forme():
         # ACAL148 — le fichier REMPLACÉ ({nom, depose_le}) ou null.
         'remplace': serializers.DictField(allow_null=True),
     })
+
+
+class _RenduJsonNull(JSONRenderer):
+    """ACAL146 — un 200 « aucun fichier retenu » rend le JSON ``null`` :
+    ``JSONRenderer`` rendrait un corps VIDE, sans Content-Type (api-fuzz)."""
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        reponse = (renderer_context or {}).get('response')
+        if data is None and getattr(reponse, 'status_code', None) == 200:
+            return b'null'
+        return super().render(data, accepted_media_type, renderer_context)
 
 
 def _refus(champ, message, ligne=None):
@@ -236,7 +248,8 @@ def _retirer(calepinage, user):
         url_path='meteo-fichier',
         url_name='meteo-fichier',
         permission_classes=[PeutLireOuEcrireCalepinage],
-        parser_classes=[MultiPartParser, FormParser])
+        parser_classes=[MultiPartParser, FormParser],
+        renderer_classes=[_RenduJsonNull])
 def meteo_fichier(self, request, pk=None):
     """CALX62 — ``POST /calepinages/<pk>/meteo-fichier/``.
 

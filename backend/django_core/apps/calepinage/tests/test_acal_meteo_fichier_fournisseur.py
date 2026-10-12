@@ -81,6 +81,9 @@ class MeteoFichierFournisseurTest(BaseApiCalepinage):
         vide = self.api.get(self.url)
         self.assertEqual(vide.status_code, 200)
         self.assertIsNone(vide.data)
+        # JSON `null`, jamais un corps vide sans Content-Type (api-fuzz #956).
+        self.assertEqual(vide.content, b'null')
+        self.assertEqual(vide['Content-Type'], 'application/json')
 
         depot = self._deposer()
         servi = self.api.get(self.url)
