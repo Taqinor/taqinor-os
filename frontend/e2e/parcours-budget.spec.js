@@ -67,7 +67,7 @@
 // (`stock.spec.js`) : le contrat est écrit, visible dans le rapport comme
 // TODO, et n'immobilise pas la matrice.
 import { test, expect } from '@playwright/test'
-import { gotoLeads, uniq, boutonNouveauLead } from './helpers'
+import { gotoLeads, uniq, boutonNouveauLead, monterVenteAcceptee } from './helpers'
 
 // Viewport DÉCLARÉ : un budget de clics se mesure à une taille connue (une
 // largeur différente peut replier une barre d'actions dans un menu, donc
@@ -315,6 +315,60 @@ test('EZ17 — appel noté + relance posée : ≤4 interactions (chemin rapide)'
   await expect(page.locator('.lv-call-nudge')).toHaveCount(0)
 
   await b.cloturer('appel journalisé + relance datée posée')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TRAJETS 3 ET 4 — LE COMMERCIAL : « le client a signé, je facture l'acompte »
+// ═══════════════════════════════════════════════════════════════════════════
+// DÉPART  : la fiche du lead (devis ACCEPTÉ monté par API, `monterVenteAcceptee`)
+//           est ouverte ; l'onglet Devis n'est pas encore choisi.
+// ARRIVÉE : la facture d'acompte est visible dans le panneau de vente.
+// BUDGETS : (a) acompte PROPOSÉ par le serveur, aucune saisie : 3 interactions
+//           (onglet Devis, « Facturer l'acompte », « Créer la facture ») ;
+//           (b) acompte LIBRE déjà encaissé : 5 (+ le montant tapé + l'interrupteur
+//           « Déjà payé »). Le compteur test et le compteur navigateur `isTrusted`
+//           doivent concorder ; l'arrivée est AFFIRMÉE (`expect`), jamais sautée.
+async function ouvrirDevisDeLaFiche(page, leadId) {
+  await page.goto(`/crm/leads/${leadId}`)
+  await expect(page.getByRole('tab', { name: /^Devis/ })).toBeVisible({ timeout: 30_000 })
+}
+
+test('VNT82 — acompte proposé facturé depuis la fiche lead : ≤3 interactions (0 saisie)', async ({ page }, info) => {
+  test.slow()
+  await armerCompteurNavigateur(page)
+  const { leadId } = await monterVenteAcceptee(page, { nom: uniq('VNT82 Proposé'), facture: 900 })
+  await ouvrirDevisDeLaFiche(page, leadId)
+
+  const b = new Budget(page, 'acompte proposé → facture créée', 3, info)
+  await b.demarrer('fiche du lead ouverte, devis accepté, onglet Devis non choisi')
+
+  await b.clic(page.getByRole('tab', { name: /^Devis/ }), 'onglet Devis')
+  await b.clic(page.getByRole('button', { name: /Facturer l.acompte/ }), 'Facturer l’acompte')
+  await b.clic(page.getByRole('button', { name: 'Créer la facture' }), 'Créer la facture')
+
+  await expect(page.locator('[data-testid^="vente-facture-"]').first()).toBeVisible({ timeout: 30_000 })
+  await b.cloturer('facture d’acompte visible dans le panneau de vente')
+})
+
+test('VNT82 — acompte libre déjà encaissé : ≤5 interactions', async ({ page }, info) => {
+  test.slow()
+  await armerCompteurNavigateur(page)
+  const { leadId } = await monterVenteAcceptee(page, { nom: uniq('VNT82 Libre'), facture: 900 })
+  await ouvrirDevisDeLaFiche(page, leadId)
+
+  const b = new Budget(page, 'acompte libre déjà payé → facture émise payée', 5, info)
+  await b.demarrer('fiche du lead ouverte, devis accepté, onglet Devis non choisi')
+
+  await b.clic(page.getByRole('tab', { name: /^Devis/ }), 'onglet Devis')
+  await b.clic(page.getByRole('button', { name: /Facturer l.acompte/ }), 'Facturer l’acompte')
+  await b.saisie(page.getByLabel('Montant (MAD)'), '15000', 'acompte libre 15 000')
+  await b.clic(page.getByRole('switch', { name: 'Déjà payé' }), 'Déjà payé')
+  await b.clic(page.getByRole('button', { name: 'Créer la facture' }), 'Créer la facture')
+
+  const ligne = page.locator('[data-testid^="vente-facture-"]').first()
+  await expect(ligne).toBeVisible({ timeout: 30_000 })
+  await expect(ligne).toContainText('Payée')
+  await b.cloturer('facture d’acompte émise et payée visible dans le panneau')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
