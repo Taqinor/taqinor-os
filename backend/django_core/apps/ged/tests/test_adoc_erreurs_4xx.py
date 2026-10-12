@@ -243,6 +243,24 @@ class Enf7ContratGedTests(TestCase):
             format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
 
+    def test_methode_non_servie_405_avant_le_parseur(self):
+        # CI #956 (fuzz « Unsupported methods ») : PUT sur `versions/` (hors
+        # http_method_names, historique immuable ADOC17) répondait 415 car le
+        # garde « objet JSON » lisait le corps multipart avant le 405 de DRF.
+        resp = self.api.put(f'{BASE}versions/', {'document': '0'},
+                            format='multipart')
+        self.assertEqual(resp.status_code, 405, resp.content)
+        self.assertNotIn('PUT', resp['Allow'])
+        resp = self.api.patch(f'{BASE}versions/', {}, format='json')
+        self.assertEqual(resp.status_code, 405, resp.content)
+        # PUT sur une route de LISTE (aucun gestionnaire) : 405 aussi.
+        resp = self.api.put(f'{BASE}cabinets/', {'nom': 'X'},
+                            format='multipart')
+        self.assertEqual(resp.status_code, 405, resp.content)
+        # Une méthode SERVIE garde le 400 « Objet JSON attendu ».
+        resp = self.api.post(f'{BASE}cabinets/', [1], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_lien_vers_cible_introuvable_404(self):
         doc = self.api.post(f'{BASE}documents/', {
             'folder': self.folder.pk, 'nom': 'd.pdf'}, format='json')

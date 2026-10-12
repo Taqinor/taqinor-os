@@ -730,7 +730,9 @@ class ClientViewSet(CompanyScopedModelViewSet):
     def export_xlsx(self, request):
         """Exporte une sélection de clients en .xlsx (société courante)."""
         from .exports import export_clients_xlsx
-        ids = request.data.get('ids') or []
+        # CI #956 (fuzz) — `{"ids": {}}` passait (objet vide « falsy » lu comme
+        # « tout exporter ») : seule l'ABSENCE de la clé vaut tout exporter.
+        ids = request.data.get('ids', [])
         try:
             ids = coerce_id_list(ids)
         except ValueError:

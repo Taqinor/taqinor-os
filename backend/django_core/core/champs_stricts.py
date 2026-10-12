@@ -92,6 +92,43 @@ class TexteLie(serializers.CharField):
             return None if self.default is empty else self.default
 
 
+#: Heure telle que DRF la REND (``time.isoformat()`` d'une heure naïve) :
+#: ``HH:MM:SS`` avec microsecondes éventuelles, jamais de décalage.
+MOTIF_HEURE_RENDUE = r'^\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$'
+
+
+class _HeureRendueSansFuseau(OpenApiSerializerFieldExtension):
+    """CI #956 (api-fuzz « Response violates schema », parametres/delete-logo) —
+    drf-spectacular publie un ``TimeField`` en ``format: time``, que le
+    validateur lit comme une « full-time » RFC 3339 (décalage obligatoire,
+    ``09:00:00Z``) ; DRF rend ``"09:00:00"``. Côté RÉPONSE le schéma dit le
+    motif réellement rendu ; côté requête rien ne change (``format: time``)."""
+    target_class = 'rest_framework.fields.TimeField'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'response' or schema.get('format') != 'time':
+            return schema
+        schema = dict(schema)
+        schema.pop('format')
+        schema['pattern'] = MOTIF_HEURE_RENDUE
+        return schema
+
+
+def drapeau_ou_400(valeur, nom):
+    """Drapeau de requête déclaré ``enum=['1']`` : absent → ``False`` ;
+    ``'1'`` → ``True`` ; toute autre valeur → 400 nommant le paramètre (elle
+    était lue en silence comme « non »)."""
+    if valeur is None:
+        return False
+    if valeur == '1':
+        return True
+    raise serializers.ValidationError(
+        {nom: ['Seule la valeur « 1 » est acceptée.']})
+
+
 class BooleenStrict(serializers.BooleanField):
     """``BooleanField`` qui n'accepte que de vrais booléens JSON (``0``/``1``
     ou ``"true"`` étaient convertis en silence)."""

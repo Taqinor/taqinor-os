@@ -1085,6 +1085,18 @@ class TestActivitesPersonnelles(TestCase):
         data2 = listed.data['results'] if 'results' in listed.data else listed.data
         self.assertEqual(len(data2), 0)
 
+    def test_drapeaux_de_liste_stricts(self):
+        # CI #956 (fuzz « accepted schema-violating ») : `personnelle`/`open`
+        # sont déclarés enum ['1'] ; une autre valeur répond 400 nommé.
+        for params in ({'personnelle': 'AAA'}, {'open': '0'},
+                       {'personnelle': 'true'}):
+            resp = self.api.get('/api/django/records/activities/', params)
+            self.assertEqual(resp.status_code, 400, (params, resp.data))
+            self.assertIn(next(iter(params)), resp.data)
+        resp = self.api.get('/api/django/records/activities/',
+                            {'personnelle': '1', 'open': '1'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+
 
 # ── ZSAL1 — Enchaînement d'activités sur les types d'activité ───────────────
 class TestEnchainementActivites(TestCase):

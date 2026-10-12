@@ -147,8 +147,14 @@ class CorpsObjetMixin:
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if request.method in ('POST', 'PUT', 'PATCH') and not isinstance(
-                request.data, Mapping):
+        # CI #956 (fuzz) — une méthode NON servie (PUT sur ``versions/``, hors
+        # ``http_method_names`` ; PUT sur une route de liste, sans gestionnaire)
+        # ne lit pas le corps : lire ``request.data`` répondait 415 (parseur)
+        # avant le 405 que DRF doit rendre.
+        if (request.method in ('POST', 'PUT', 'PATCH')
+                and request.method.lower() in self.http_method_names
+                and hasattr(self, request.method.lower())
+                and not isinstance(request.data, Mapping)):
             raise drf_serializers.ValidationError(
                 {"detail": "Objet JSON attendu."})
 

@@ -39,7 +39,7 @@ from .models import (
     WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
 )
 from .dateutils import add_months
-from .query_params import entier_param
+from .query_params import ENTIER_ID, entier_param
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
     DowntimeEntreeSerializer, EquipementSerializer, TicketSerializer, TicketActivitySerializer,
@@ -171,13 +171,15 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 @extend_schema_view(list=extend_schema(
     parameters=[
-        OpenApiParameter('produit', OpenApiTypes.INT, required=False),
+        # CI #956 (fuzz) — identifiants lus par ``entier_param`` (1..ID_MAX) :
+        # le schéma publie ces bornes, ``?produit=0`` n'est plus « conforme ».
+        OpenApiParameter('produit', ENTIER_ID, required=False),
         OpenApiParameter('marque', OpenApiTypes.STR, required=False),
-        OpenApiParameter('installation', OpenApiTypes.INT, required=False),
-        OpenApiParameter('client', OpenApiTypes.INT, required=False),
+        OpenApiParameter('installation', ENTIER_ID, required=False),
+        OpenApiParameter('client', ENTIER_ID, required=False),
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
         OpenApiParameter('garantie', OpenApiTypes.STR, required=False, enum=['non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie', 'legale_uniquement']),
-        OpenApiParameter('categorie', OpenApiTypes.INT, required=False),
+        OpenApiParameter('categorie', ENTIER_ID, required=False),
         OpenApiParameter('rebut', OpenApiTypes.STR, required=False, enum=['only', 'tous']),
     ]))
 class EquipementViewSet(CompanyScopedModelViewSet):
@@ -2799,6 +2801,9 @@ class SavSlaSettingsViewSet(CompanyScopedModelViewSet):
     enregistrement ; écriture responsable/admin."""
     queryset = SavSlaSettings.objects.all()
     serializer_class = SavSlaSettingsSerializer
+    # CI #956 (fuzz) — singleton : ``list`` ne pagine pas, donc le schéma ne
+    # déclare plus ``page``/``page_size`` (``?page_size=null`` passait en 200).
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -2809,8 +2814,7 @@ class SavSlaSettingsViewSet(CompanyScopedModelViewSet):
         company = request.user.company
         if company is None:
             return Response({})
-        obj = SavSlaSettings.get(company)
-        return Response(self.get_serializer(obj).data)
+        return Response(self.get_serializer(SavSlaSettings.get(company)).data)
 
     @extend_schema(responses={200: SavSlaSettingsSerializer})
     def create(self, request, *args, **kwargs):

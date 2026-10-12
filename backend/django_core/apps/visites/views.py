@@ -33,6 +33,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import HasPermissionOrLegacy
+from core.champs_stricts import entier_ou_400
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -237,9 +238,12 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def filter_queryset(self, queryset):
         queryset = super().filter_queryset(queryset)
         if self.action == 'list':
-            lead = str(self.request.query_params.get('lead', '')).strip()
-            if lead.isdigit():
-                queryset = queryset.filter(lead_id=int(lead))
+            # CI #956 (fuzz) — ``lead`` est déclaré entier : ``?lead=null``
+            # (ou ``abc``) répond 400 « Entier attendu. », plus un filtre
+            # ignoré en silence ; vide = pas de filtre.
+            lead = entier_ou_400(self.request.query_params.get('lead'), 'lead')
+            if lead is not None:
+                queryset = queryset.filter(lead_id=lead)
         return queryset
 
     @extend_schema(

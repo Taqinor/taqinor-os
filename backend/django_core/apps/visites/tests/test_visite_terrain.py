@@ -614,11 +614,22 @@ class ListeFiltreLeadTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual([r['id'] for r in resp.data], [visite_id])
 
-    def test_lead_invalide_ignore(self):
+    def test_lead_non_entier_400(self):
+        # CI #956 (api-fuzz « accepted schema-violating », ?lead=null → 200) :
+        # `lead` est déclaré entier au schéma ; une valeur illisible est un
+        # 400 nommé — plus un filtre ignoré (l'ancien test attendait 200).
         self.creer_visite()
-        resp = self.api.get('/api/django/visites/visites/', {'lead': 'abc'})
+        for brut in ('abc', 'null', '1.5'):
+            resp = self.api.get('/api/django/visites/visites/', {'lead': brut})
+            self.assertEqual(resp.status_code, 400, (brut, resp.data))
+            self.assertIn('lead', resp.data)
+        # Vide = pas de filtre ; un id inconnu = liste vide, jamais 404.
+        resp = self.api.get('/api/django/visites/visites/', {'lead': ''})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(resp.data), 1)
+        resp = self.api.get('/api/django/visites/visites/', {'lead': '0'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data, [])
 
 
 class ModificationSansLeadTests(VisiteTerrainBase):

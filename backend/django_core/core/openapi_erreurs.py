@@ -157,6 +157,20 @@ def motif_decimal_strict(motif):
 MOTIF_NON_BLANC = r'\S'
 
 
+# CI #956 (api-fuzz « Response violates schema », parametres/delete-logo) — un
+# ``EmailField``/``URLField`` à blanc autorisé est publié « adresse valide OU
+# chaîne vide » (``anyOf``, extension ``apps.crm.champs_api``) ; mais
+# drf-spectacular REPOSE ensuite ``format: uri|email`` à la racine depuis les
+# validateurs du champ (``_map_field_validators``), et ``""`` violait de
+# nouveau le schéma. Le ``format`` racine qu'une branche ``anyOf`` porte déjà
+# est redondant : il est retiré, la branche fait foi.
+def _format_racine_redondant(noeud):
+    forme = noeud.get('format')
+    return bool(forme) and any(
+        isinstance(b, dict) and b.get('format') == forme
+        for b in noeud.get('anyOf') or ())
+
+
 def _chaine_non_blanche(noeud):
     return (noeud.get('type') == 'string' and noeud.get('minLength', 0) >= 1
             and not any(cle in noeud for cle in ('pattern', 'format', 'enum')))
@@ -178,6 +192,8 @@ def aligner_motifs_sur_drf(result, generator=None, request=None,
                     noeud['pattern'] = strict
             elif _chaine_non_blanche(noeud):
                 noeud['pattern'] = MOTIF_NON_BLANC
+            if _format_racine_redondant(noeud):
+                del noeud['format']
             pile.extend(noeud.values())
         elif isinstance(noeud, list):
             pile.extend(noeud)
