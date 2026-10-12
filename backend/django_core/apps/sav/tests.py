@@ -647,7 +647,8 @@ class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
         from apps.sav.views import SavPremierReponseRequete
         ok = SavPremierReponseRequete().run_validation(
             {'at': '2026-01-02T10:00:00Z'})
-        self.assertEqual((ok['at'].year, ok['at'].hour), (2026, 10))
+        from datetime import datetime, timezone as dt_tz
+        self.assertEqual(ok['at'], datetime(2026, 1, 2, 10, tzinfo=dt_tz.utc))
         self.assertNotIn('at', SavPremierReponseRequete().run_validation({}))
         for corps in ({'at': ''}, {'at': None}, {'at': 0}, {'at': 'hier'}, 0):
             with self.assertRaises(ValidationError, msg=repr(corps)):
