@@ -29,6 +29,8 @@ est révisable (D-QJR5-2).
   lignes depuis un calepinage et l'application d'une taille d'offre
   corrigent un envoyé SUR PLACE, tracées par ``fin_de_geste_devis`` —
   chatter « corrigé après envoi : calepinage » / « : taille d'offre »).
+* ``ECHEANCIER`` — brouillon + envoyé + ACCEPTÉ (VNT25, D-VNT-3) ; la règle
+  d'argent est :func:`controler_echeancier_vente`.
 
 Ce module LIT le statut, il ne l'écrit jamais (règle #4). Les tuples de CYCLE
 DE VIE (acceptation, expiration, gammes…) n'en font PAS partie : ce prédicat ne
@@ -42,9 +44,11 @@ OPTIONS = 'OPTIONS'
 ETUDE = 'ETUDE'
 CALEPINAGE = 'CALEPINAGE'
 TAILLE = 'TAILLE'
+ECHEANCIER = 'ECHEANCIER'
 
 _BROUILLON = 'brouillon'
 _ENVOYE = 'envoye'
+_ACCEPTE = 'accepte'
 
 #: La table unique geste → statuts qui l'acceptent.
 GESTES = {
@@ -57,6 +61,8 @@ GESTES = {
     # par « appliquer une taille d'offre » (accepté/refusé/expiré → Réviser).
     CALEPINAGE: frozenset({_BROUILLON, _ENVOYE}),
     TAILLE: frozenset({_BROUILLON, _ENVOYE}),
+    # VNT25 (D-VNT-3) — l'échéancier se réécrit même sur un ACCEPTÉ.
+    ECHEANCIER: frozenset({_BROUILLON, _ENVOYE, _ACCEPTE}),
 }
 
 #: Les statuts CLOS (document engagé ou abandonné) : révisables, jamais
@@ -216,6 +222,128 @@ def corps_version_remplacee(devis, detail=None):
     successeur = successeur_actif(devis)
     return {'detail': detail or message_version_remplacee(devis, successeur),
             'code': CODE_VERSION_REMPLACEE, 'successeur': successeur}
+
+
+# ── VNT25 — LE GESTE ÉCHÉANCIER (brouillon / envoyé / ACCEPTÉ) ─────────────
+#
+# D-VNT-3 : la valeur d'acompte tapée écrit l'échéancier du devis, même
+# accepté. Règle (AGNR12 étendue) : une tranche COUVERTE par une facture
+# (émise ; brouillon aussi par défaut) reste inchangée ; Σ des tranches NON
+# dernières ≤ prix convenu et un acompte ≥ prix convenu est refusé ; la
+# DERNIÈRE vaut le reste (en MAD hors tout-%) ; tout en % ⇒ total 100.
+# 15 000 MAD + 60 % (29 400) = 44 400 ≤ 49 000 : permis (« Σ des valeurs
+# déclarées ≤ TTC » refusait 49 300). Le statut n'est jamais écrit (règle #4).
+
+CODE_SOMME_INVALIDE = 'somme_invalide'
+CODE_TRANCHE_FACTUREE = 'tranche_facturee'
+CODE_ECHEANCIER_INVALIDE = 'echeancier_invalide'
+_DETAIL_SOMME = 'Les tranches ne totalisent pas le prix convenu.'
+
+
+class EcheancierRefuse(Exception):
+    """Refus du geste ÉCHÉANCIER : ``corps()`` = ``{detail, code[, tranche]}``
+    (contrat ``devis_echeancier.json``) ; ``status`` = 400 ou 409."""
+
+    def __init__(self, detail, *, code, status=400, tranche=None):
+        super().__init__(detail)
+        self.detail, self.code, self.status = detail, code, status
+        self.tranche = tranche
+
+    def corps(self):
+        corps = {'detail': self.detail, 'code': self.code}
+        if self.tranche is not None:
+            corps['tranche'] = self.tranche
+        return corps
+
+
+def _entree_stockee(entree):
+    """Une tranche du contrat ``{cle, libelle, unite, valeur}`` sous la forme
+    stockée ``{type, libelle, unite, pct_or_montant}`` (le reste intouché)."""
+    if not isinstance(entree, dict) or 'pct_or_montant' in entree \
+            or 'valeur' not in entree:
+        return entree
+    sortie = {k: v for k, v in entree.items() if k not in ('cle', 'valeur')}
+    sortie['pct_or_montant'] = entree['valeur']
+    if entree.get('cle') and not sortie.get('type'):
+        sortie['type'] = str(entree['cle']).split('#')[0]
+    return sortie
+
+
+def regle_somme_vente(tranches, prix_convenu):
+    """PURE — ``(montants TTC des tranches NON dernières, reste de la
+    dernière)`` en ``Decimal`` ; lève :class:`EcheancierRefuse`
+    ``somme_invalide``. Tout en % : total 100 (AGNR12) ; toujours Σ des non
+    dernières ≤ prix convenu et un acompte < prix convenu."""
+    from decimal import Decimal, ROUND_HALF_UP
+
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, UNITE_PCT, EcheancierInvalide, controler_somme_echeancier)
+    prix = Decimal(str(prix_convenu))
+    if not tranches:
+        raise EcheancierRefuse(_DETAIL_SOMME, code=CODE_SOMME_INVALIDE)
+    if all(t['unite'] == UNITE_PCT for t in tranches):
+        try:
+            controler_somme_echeancier(None, tranches)
+        except EcheancierInvalide as exc:
+            raise EcheancierRefuse(str(exc), code=CODE_SOMME_INVALIDE)
+    montants = [(Decimal(str(t['valeur'])) if t['unite'] == UNITE_MONTANT
+                 else prix * Decimal(str(t['valeur'])) / 100).quantize(
+                     Decimal('0.01'), rounding=ROUND_HALF_UP)
+                for t in tranches[:-1]]
+    total = sum(montants, Decimal('0'))
+    if total > prix or (montants and montants[0] >= prix):
+        raise EcheancierRefuse(_DETAIL_SOMME, code=CODE_SOMME_INVALIDE)
+    return montants, prix - total
+
+
+def _exiger_couvertes_inchangees(plan, tranches, figer_brouillons):
+    """409 ``tranche_facturee`` si une tranche couverte (émise ; brouillon
+    quand ``figer_brouillons``) disparaît ou change (unité, valeur, libellé)."""
+    from decimal import Decimal
+
+    from apps.ventes.utils.echeancier import cles_tranches
+    neuves = dict(zip(cles_tranches(tranches), tranches))
+    figes = ('emise', 'brouillon') if figer_brouillons else ('emise',)
+    for t in plan['tranches']:
+        n = neuves.get(t['cle'])
+        if t['statut'] not in figes or (
+                n is not None and n['unite'] == t['unite']
+                and n['libelle'] == t['libelle']
+                and Decimal(str(n['valeur'])) == Decimal(str(t['valeur']))):
+            continue
+        raise EcheancierRefuse(
+            f"La tranche « {t['libelle']} » est déjà facturée : elle ne peut "
+            'plus être modifiée.', code=CODE_TRANCHE_FACTUREE, status=409,
+            tranche={'cle': t['cle'], 'libelle': t['libelle']})
+
+
+def controler_echeancier_vente(devis, entries, *, figer_brouillons=True):
+    """VNT25 — LE contrôle du geste ÉCHÉANCIER (lecture seule). Rend les
+    entrées À ÉCRIRE dans ``Devis.echeancier`` (forme stockée ; hors tout-%
+    la dernière devient le reste en MAD). Lève :class:`DevisNonModifiable`
+    (statut ou version hors jeu) ou :class:`EcheancierRefuse` (400
+    ``echeancier_invalide`` / ``somme_invalide``, 409 ``tranche_facturee``).
+    ``figer_brouillons=False`` : l'écrivain d'acompte (VNT28) qui édite son
+    propre brouillon dans le même geste. Sur un accepté, l'écrivain trace par
+    ``consigner_correction_apres_envoi(..., apres_acceptation=True)``."""
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, UNITE_PCT, EcheancierInvalide, valider_echeancier)
+    from apps.ventes.vente_facturation import plan_facturation
+    exiger_modifiable(devis, ECHEANCIER)
+    entrees = [_entree_stockee(e) for e in (entries or [])]
+    try:
+        tranches = valider_echeancier(entrees, controler_somme=False)
+    except EcheancierInvalide as exc:
+        raise EcheancierRefuse(str(exc), code=CODE_ECHEANCIER_INVALIDE)
+    plan = plan_facturation(devis)
+    _montants, reste = regle_somme_vente(tranches, plan['prix_convenu_ttc'])
+    if any(t['unite'] != UNITE_PCT for t in tranches):
+        entrees[-1] = dict(entrees[-1], pct_or_montant=float(reste),
+                           unite=UNITE_MONTANT)
+        tranches[-1] = dict(tranches[-1], valeur=float(reste),
+                            unite=UNITE_MONTANT)
+    _exiger_couvertes_inchangees(plan, tranches, figer_brouillons)
+    return entrees
 
 
 # ── QJR518 — UNE CORRECTION APRÈS ENVOI EST TRACÉE À UN SEUL POINT ─────────
@@ -380,7 +508,7 @@ def fin_de_geste_devis(devis, user=None, *, avant=None, objet=''):
 
 
 def consigner_correction_apres_envoi(devis, *, user=None, objet='',
-                                     resume=''):
+                                     resume='', apres_acceptation=False):
     """La TRACE d'une correction après envoi, en un seul point :
 
     * une ``DevisActivity`` « Corrigé après envoi — <resume> » ;
@@ -390,18 +518,30 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
     * un reflet best-effort sur le chatter du lead
       (``crm.services.noter_devis_corrige``).
 
-    Référence, jeton et statut inchangés (règle #4). No-op hors ENVOYÉ."""
+    Référence, jeton et statut inchangés (règle #4). No-op hors ENVOYÉ —
+    VNT25 : ``apres_acceptation=True`` trace aussi un ACCEPTÉ (geste
+    ÉCHÉANCIER) : « Corrigé après acceptation — <resume> », clauses signées
+    jamais re-gelées."""
     from django.utils import timezone
 
     from apps.ventes import activity
-    from apps.ventes.models import Devis
+    from apps.ventes.models import Devis, DevisActivity
     from apps.ventes.domain.etude_schema import CALEPINAGE, ecrire
 
     frais = Devis.objects.select_related('lead').filter(pk=devis.pk).first()
-    if frais is None or frais.statut != Devis.Statut.ENVOYE:
+    statuts = ((Devis.Statut.ENVOYE, Devis.Statut.ACCEPTE)
+               if apres_acceptation else (Devis.Statut.ENVOYE,))
+    if frais is None or frais.statut not in statuts:
         return None
     libelle = resume or objet or 'contenu'
-    entree = activity.log_devis_correction_apres_envoi(frais, user, libelle)
+    accepte = frais.statut == Devis.Statut.ACCEPTE
+    entree = (DevisActivity.objects.create(
+        company=frais.company, devis=frais, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='correction_apres_acceptation',
+        field_label='Corrigé après acceptation', new_value=libelle,
+        body=f'Corrigé après acceptation — {libelle}.') if accepte else
+        activity.log_devis_correction_apres_envoi(frais, user, libelle))
     ecrire(frais, proprietaire=CALEPINAGE,
            resync_apres_envoi={'date': timezone.now().isoformat()})
     # L'instance de l'appelant suit (sa réponse sérialise le marqueur) : on ne
@@ -411,13 +551,15 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
             frais.etude_params or {}).get('resync_apres_envoi')
     # QJR668 — les clauses/CGV gelées à l'envoi sont RE-gelées sur le contenu
     # corrigé (le PDF les imprime telles quelles) ; l'instance suit.
-    from apps.ventes.domain.envoi import figer_clauses_devis
-    figer_clauses_devis(frais)
-    devis.clauses_appliquees = frais.clauses_appliquees
+    if not accepte:
+        from apps.ventes.domain.envoi import figer_clauses_devis
+        figer_clauses_devis(frais)
+        devis.clauses_appliquees = frais.clauses_appliquees
     if frais.lead_id:
         try:
             from apps.crm.services import noter_devis_corrige
-            noter_devis_corrige(frais.reference, frais.lead, libelle)
+            noter_devis_corrige(frais.reference, frais.lead, (
+                f'{libelle}, après acceptation' if accepte else libelle))
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             logger.warning(
                 "modifiabilite.consigner_correction_apres_envoi : erreur ignorée (mode dégradé)", exc_info=True)

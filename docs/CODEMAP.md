@@ -2,8 +2,11 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 29cd341e23bc5f5d57b8413c3dc9398f416596278698309b525623cd3a3f4925
-Plan fingerprint: 2fd9e2226f33c64af57f015bfec2c851f606583f05a1283e646e6bf77872612e
+Plan fingerprint: c1eacc3b1319d3dc74bfb347cec63bccc4ad2fc72c0df4e458566ce7d396345a
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> dev-vnt-m1
 =======
 >>>>>>> dev-vnt-m1
 
@@ -578,7 +581,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1207)**
+**Done (1208)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1779,6 +1782,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT22` — Créer `devis_signes_en_vigueur(company=None, *, lead_ids=None)` (dernier ACCEPTÉ de…
 - `VNT23` — Composer `etat_vente(devis, user=None)` et `etat_vente_map(rows, user)` dans…
 - `VNT24` — Une seule forme `successeur {id, reference}` (TÊTE de chaîne) dans…
+- `VNT25` — Geste `ECHEANCIER` permis sur brouillon / envoyé / ACCEPTÉ : tranches couvertes…
 - `VNT33` — Filigrane « BROUILLON — sans valeur comptable » (FR/AR) sur le PDF d'une facture…
 - `VNT34` — Ne pas émettre `document_produit` (archivage GED) au rendu PDF d'une facture brouillon
 - `VNT37` — Créer `apps/ventes/utils/garanties.py::garanties_de_la_vente(devis, langue)` : agricole…
@@ -1788,7 +1792,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT69` — Sortir `get_devis` de `crm/serializers.py` (2 952 l.) vers `crm/lead_devis_payload.py`…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (205)**
+**Open — to build (204)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1916,7 +1920,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
 - `VNT11` — Annuler une facture à référence LÉGALE = avoir de contre-passation CORRECTION…
 - `VNT12` — Directive `garder_en_avance` : une PAYÉE s'annule, ses paiements deviennent une avance…
-- `VNT25` — Geste `ECHEANCIER` permis sur brouillon / envoyé / ACCEPTÉ : tranches couvertes…
 - `VNT26` — Service `facturer_vente(devis, *, nature, montant_ttc|pourcentage, cle_attendue, user…
 - `VNT27` — Verrouiller racine ET version facturée (`Q(pk=racine)|Q(pk=devis.pk)`, `of=('self',)`…
 - `VNT28` — Nature `acompte` (MAD TTC ou %) : le brouillon d'acompte existant est MODIFIÉ (sinon…
