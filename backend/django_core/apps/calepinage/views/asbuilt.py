@@ -22,12 +22,15 @@ de devis ne bouge.
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import status
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
+from ..serializers import forme_du_contrat
 from ..services.asbuilt import (
     PoseRefusee, enregistrer_pose, etat_pose_reelle, supprimer_pose,
     version_depuis_ecarts,
@@ -45,6 +48,21 @@ def _demande_de_version(corps):
     return str(valeur or '').strip().lower() in ('1', 'true', 'vrai', 'oui')
 
 
+_FORME_POSE_REELLE = forme_du_contrat(
+    'CalepinagePoseReelle', 'calepinage_asbuilt_ecarts.json')
+
+
+@extend_schema(methods=['GET'], responses=_FORME_POSE_REELLE)
+@extend_schema(
+    methods=['POST'],
+    request=inline_serializer('CalepinagePoseReelleCorps', {
+        'creer_version': serializers.BooleanField(required=False),
+        'pan': serializers.CharField(required=False),
+        'modules_poses': serializers.IntegerField(required=False),
+        'ecarts_position': serializers.CharField(required=False,
+                                                 allow_blank=True),
+        'releve_le': serializers.CharField(required=False)}),
+    responses={200: _FORME_POSE_REELLE, 201: _FORME_POSE_REELLE})
 @action(detail=True, methods=['get', 'post'], url_path='pose-reelle',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def pose_reelle(self, request, pk=None):

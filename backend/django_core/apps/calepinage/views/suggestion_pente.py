@@ -34,7 +34,9 @@ from ..services.lidar_ign import (
     VALIDEE, ServiceIndisponible, accepter_suggestion, refuser_suggestion,
     suggerer_pentes,
 )
-from .calepinages import CalepinageViewSet, _reponse_ecriture
+from .calepinages import (
+    _FORME_ECRITURE_LAYOUT, CalepinageViewSet, _reponse_ecriture,
+)
 
 __all__ = ['suggestions_pente']
 
@@ -122,7 +124,7 @@ def _decider(calepinage, base, zone_id, operation, user):
             choices=['proposer', 'accepter', 'refuser']),
         'base_empreinte': drf_serializers.CharField(),
         'zone_id': drf_serializers.CharField(required=False),
-    }))
+    }), responses=_FORME_ECRITURE_LAYOUT)
 @action(detail=True, methods=['post'], url_path='suggestions-pente',
         permission_classes=[PeutGererCalepinage])
 def suggestions_pente(self, request, pk=None):

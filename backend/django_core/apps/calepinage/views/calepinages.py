@@ -35,7 +35,8 @@ import json
 from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+    OpenApiParameter, OpenApiResponse, PolymorphicProxySerializer,
+    extend_schema, extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, status
 from rest_framework import serializers as drf_serializers
@@ -46,6 +47,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
+from apps.records.serializers import ChatterActivitySerializer
 from apps.records.views import ChatterViewSetMixin
 from authentication.permissions import IsResponsableOrAdmin
 from core.idempotency import (
@@ -62,7 +64,11 @@ from ..permissions import (
     PeutApprouverCalepinage, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
     PeutVoirCalepinage,
 )
-from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
+from ..serializers import (
+    CalepinageLectureSerializer, CalepinageSerializer,
+    CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, forme_du_contrat,
+    forme_reponse,
+)
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
 # (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
 from .photos import PhotosSiteMixin
@@ -170,6 +176,51 @@ def _param_chemin(nom, description):
                             description=description)
 
 
+#: ERR-ENF11-FUZZ-CALEPINAGE — les formes de réponse PARTAGÉES de ce fichier
+#: (clés de premier niveau ; les sous-documents restent libres).
+_FORME_ECRITURE_LAYOUT = forme_reponse(
+    'CalepinageLayoutEcrit', 'roof_layout', 'layout_hash', 'inchange',
+    'version', 'empreinte_document')
+_FORME_LAYOUT_LU = forme_reponse(
+    'CalepinageLayoutLu', 'roof_layout', 'layout_hash', 'empreinte_document')
+_PUBLICATION_DEVIS = forme_du_contrat(
+    'CalepinagePublicationDevis', 'calepinage_publication.json')
+_REFUS_VENTES = OpenApiResponse(
+    description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
+                "charge, mot pour mot.")
+_PARAM_IF_MATCH = OpenApiParameter(
+    'If-Match', OpenApiTypes.STR, OpenApiParameter.HEADER, required=True,
+    description="Empreinte « document » lue avec la conception (GET "
+                "``layout``) ; l'ETag vide ``\"\"`` pour un document vide. "
+                "Absent : 428, rien n'est écrit.")
+_CREATION_COMMUNE = {
+    'titre': drf_serializers.CharField(required=False, allow_blank=True),
+    'responsable': drf_serializers.IntegerField(required=False,
+                                                allow_null=True),
+    'contraintes_site': drf_serializers.JSONField(required=False,
+                                                  allow_null=True),
+    'custom_data': drf_serializers.JSONField(required=False),
+}
+#: Un calepinage se crée par un LEAD ou par un CLIENT (jamais sans l'un des
+#: deux : 400 ``client``) — deux formes, ``oneOf``.
+_CORPS_CREATION = PolymorphicProxySerializer(
+    component_name='CalepinageCreation', resource_type_field_name=None,
+    serializers=[
+        inline_serializer('CalepinageCreationParLead', {
+            'lead': drf_serializers.IntegerField(), **_CREATION_COMMUNE}),
+        inline_serializer('CalepinageCreationParClient', {
+            'client': drf_serializers.IntegerField(), **_CREATION_COMMUNE}),
+    ])
+_VERSION_LIGNE = inline_serializer('CalepinageVersionLigne', {
+    'id': drf_serializers.IntegerField(),
+    'libelle': drf_serializers.CharField(allow_blank=True),
+    'layout_hash': drf_serializers.CharField(allow_null=True),
+    'cree_le': drf_serializers.CharField(allow_null=True),
+    'cree_par': drf_serializers.JSONField(required=False, allow_null=True),
+    'a_un_resultat': drf_serializers.BooleanField(),
+}, many=True)
+
+
 #: ACAL120 — DELETE / PUT sur ``calepinages/<pk>/`` : 405, archiver est
 #: l'unique geste (le renommage passe par PATCH).
 MESSAGE_DELETE_REFUSE = ('Un calepinage ne se supprime pas : archivez le '
@@ -193,7 +244,10 @@ class _OrdreStatutDerive(filters.OrderingFilter):
         return super().filter_queryset(request, queryset, view)
 
 
-@extend_schema_view(list=extend_schema(parameters=[
+@extend_schema_view(
+    partial_update=extend_schema(responses=CalepinageLectureSerializer),
+    list=extend_schema(responses=CalepinageLectureSerializer(many=True),
+                       parameters=[
         OpenApiParameter('q', OpenApiTypes.STR, OpenApiParameter.QUERY,
                          required=False,
                          description="Recherche libre (titre, référence, client)."),
@@ -215,7 +269,8 @@ class _OrdreStatutDerive(filters.OrderingFilter):
         OpenApiParameter('etiquette', OpenApiTypes.STR, OpenApiParameter.QUERY,
                          required=False,
                          description="Identifiant(s) d'étiquette, séparés par des virgules (ET logique)."),
-]))
+    ]),
+)
 class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
                         ElectriqueActionsMixin, SortiesMixin,
@@ -274,6 +329,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return permissions
 
     # ── ACAL293 — une note du chatter notifie le responsable ───────────────
+    @extend_schema(
+        request=inline_serializer('CalepinageNoteCorps', {
+            'body': drf_serializers.CharField()}),
+        responses={201: ChatterActivitySerializer})
     @action(detail=True, methods=['post'], url_path='chatter/noter',
             permission_classes=[IsResponsableOrAdmin])
     def chatter_noter(self, request, pk=None):
@@ -346,7 +405,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
             refuser_ecriture_si_archive(calepinage)
         return calepinage
 
-    @extend_schema(responses={201: CalepinageSerializer,
+    @extend_schema(request=_CORPS_CREATION,
+                   responses={201: CalepinageLectureSerializer,
                               409: inline_serializer(
                                   'CalepinageCreationConflit', {
                                       'lead': drf_serializers.CharField(
@@ -495,6 +555,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
+    @extend_schema(responses=FORME_DETAIL_CALEPINAGE)
     def retrieve(self, request, *args, **kwargs):
         """CAL17 — TOUT ce que la fiche calepinage affiche, en UN appel.
 
@@ -508,6 +569,13 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(detail_calepinage(self.get_object(), request))
 
     # ── La conception elle-même ────────────────────────────────────────────
+    @extend_schema(methods=['GET'], responses=_FORME_LAYOUT_LU)
+    @extend_schema(
+        methods=['POST'], parameters=[_PARAM_IF_MATCH],
+        request=inline_serializer('CalepinageLayoutCorps', {
+            'roof_layout': drf_serializers.JSONField(required=False),
+            'layout': drf_serializers.JSONField(required=False)}),
+        responses=_FORME_ECRITURE_LAYOUT)
     @action(detail=True, methods=['get', 'post'], url_path='layout',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def layout(self, request, pk=None):
@@ -565,6 +633,14 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_reponse_ecriture(calepinage, resultat))
 
+    @extend_schema(
+        request=inline_serializer('CalepinageLayoutSectionCorps', {
+            'cle': drf_serializers.CharField(),
+            'valeur': drf_serializers.JSONField(required=False),
+            'zone_id': drf_serializers.CharField(required=False),
+            'champs': drf_serializers.JSONField(required=False),
+            'base_empreinte': drf_serializers.CharField(required=False)}),
+        responses=_FORME_ECRITURE_LAYOUT)
     @action(detail=True, methods=['post'], url_path='layout/section',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def layout_section(self, request, pk=None):
@@ -597,6 +673,14 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(_reponse_ecriture(calepinage, resultat))
 
     # ── Le pont vers le devis : appeler, jamais refaire ────────────────────
+    @extend_schema(
+        request=inline_serializer('CalepinageGenererDevisCorps', {
+            'taux_tva': drf_serializers.JSONField(required=False),
+            'remise_globale': drf_serializers.JSONField(required=False),
+            'derogation_electrique': drf_serializers.JSONField(
+                required=False)}),
+        responses={200: _PUBLICATION_DEVIS, 201: _PUBLICATION_DEVIS,
+                   422: _REFUS_VENTES})
     @action(detail=True, methods=['post'], url_path='generer-devis',
             permission_classes=[PeutGererCalepinage])
     def generer_devis(self, request, pk=None):
@@ -641,6 +725,14 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
              'electrique': journal.get('electrique')},
             status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
 
+    @extend_schema(
+        request=inline_serializer('CalepinageSyncDevisCorps', {
+            'derogation_electrique': drf_serializers.JSONField(
+                required=False)}),
+        responses={200: forme_reponse(
+            'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
+            'batterie', 'lignes_modifiees', 'lignes_ajoutees',
+            'avertissements'), 422: _REFUS_VENTES})
     @action(detail=True, methods=['post'], url_path='sync-devis',
             permission_classes=[PeutGererCalepinage])
     def sync_devis(self, request, pk=None):
@@ -667,8 +759,13 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(resultat)
 
     # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────
+    @extend_schema(methods=['GET'],
+                   responses=CalepinageVarianteSerializer(many=True))
+    @extend_schema(methods=['POST'], request=CalepinageVarianteSerializer,
+                   responses={201: CalepinageVarianteSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='variantes',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuEcrireCalepinage],
+            pagination_class=None)
     def variantes(self, request, pk=None):
         """CAL21 — liste (GET) ou crée (POST) une variante, la RETENUE en tête.
 
@@ -694,7 +791,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[_param_chemin(
-        'variante_id', "L'identifiant de la variante de ce calepinage.")])
+        'variante_id', "L'identifiant de la variante de ce calepinage.")],
+        request=CalepinageVarianteSerializer,
+        responses={200: CalepinageVarianteSerializer, 204: None})
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -728,7 +827,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(CalepinageVarianteSerializer(variante).data)
 
     @extend_schema(parameters=[_param_chemin(
-        'variante_id', "L'identifiant de la variante à retenir.")])
+        'variante_id', "L'identifiant de la variante à retenir.")],
+        request=None, responses={200: CalepinageVarianteSerializer})
     @action(detail=True, methods=['post'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)/retenir',
             permission_classes=[PeutGererCalepinage])
@@ -756,6 +856,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
 
         return self.executer_idempotent(request, basculer)
 
+    @extend_schema(responses=forme_du_contrat(
+        'CalepinageComparaisonVariantes', 'variantes_comparer.json'))
     @action(detail=True, methods=['get'], url_path='comparer',
             permission_classes=[PeutVoirCalepinage])
     def comparer(self, request, pk=None):
@@ -767,8 +869,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(selectors.comparer_variantes(self.get_object()))
 
     # ── L'historique : visible, et REJOUABLE sans être réécrit ─────────────
+    @extend_schema(responses=_VERSION_LIGNE)
     @action(detail=True, methods=['get'], url_path='versions',
-            permission_classes=[PeutVoirCalepinage])
+            permission_classes=[PeutVoirCalepinage], pagination_class=None)
     def versions(self, request, pk=None):
         """CAL20 — l'historique, du plus récent au plus ancien.
 
@@ -783,7 +886,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         ])
 
     @extend_schema(parameters=[_param_chemin(
-        'version_id', "L'identifiant de la version à rejouer.")])
+        'version_id', "L'identifiant de la version à rejouer.")],
+        request=None, responses=forme_reponse(
+            'CalepinageVersionRestauree', 'restauree', 'version',
+            'layout_hash', 'inchange'))
     @action(detail=True, methods=['post'],
             url_path=r'versions/(?P<version_id>[^/.]+)/restaurer',
             permission_classes=[PeutGererCalepinage])
@@ -815,6 +921,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
             'inchange': resultat['inchange'],
         })
 
+    @extend_schema(responses=forme_du_contrat(
+        'CalepinageDesignContext', 'calepinage_design_context.json'))
     @action(detail=True, methods=['get'], url_path='design-context',
             permission_classes=[PeutVoirCalepinage])
     def design_context(self, request, pk=None):
@@ -841,6 +949,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_reponse_ecriture(calepinage, resultat))
 
+    @extend_schema(request=None, responses=_FORME_ECRITURE_LAYOUT)
     @action(detail=True, methods=['post'], url_path='recentrer-sur-lead',
             permission_classes=[PeutGererCalepinage])
     def recentrer_sur_lead(self, request, pk=None):
@@ -850,6 +959,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return self._geste_repere(request,
                                   service_repere.recentrer_sur_lead)
 
+    @extend_schema(request=None, responses=_FORME_ECRITURE_LAYOUT)
     @action(detail=True, methods=['post'], url_path='garder-repere',
             permission_classes=[PeutGererCalepinage])
     def garder_repere(self, request, pk=None):
@@ -866,6 +976,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     # ``roof_layout['outline']`` (v2 canonique), et le tracé sur carte reste la
     # voie normale de le poser.
 
+    @extend_schema(
+        request=inline_serializer('CalepinageRoofImageCorps', {
+            'image': drf_serializers.ImageField()}),
+        responses={201: forme_reponse('CalepinageRoofImageDepot',
+                                      'roof_image', 'url')})
     @action(detail=True, methods=['post'], url_path='roof-image',
             permission_classes=[PeutGererCalepinage],
             parser_classes=[MultiPartParser, FormParser])

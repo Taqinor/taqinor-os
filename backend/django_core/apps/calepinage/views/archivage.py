@@ -24,18 +24,25 @@ société, inclut les archivés) plutôt que ``self.get_object()``.
 """
 from __future__ import annotations
 
-from rest_framework import status
 from drf_spectacular.utils import extend_schema
+from rest_framework import serializers as drf_serializers
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
 from ..selectors import calepinages_visibles
+from ..serializers import forme_reponse
 from ..services.archivage import ArchivageInvalide, restaurer
 from ..services.archivage import archiver as archiver_service
 from .calepinages import CalepinageViewSet
 
 __all__ = ['archiver', 'restaurer_corbeille']
+
+
+_FORME_ARCHIVAGE = forme_reponse(
+    'CalepinageArchivage', calepinage=drf_serializers.IntegerField(),
+    archive=drf_serializers.BooleanField())
 
 
 def _attacher(viewset_classe):
@@ -53,7 +60,7 @@ def _cible(request, pk):
             .select_related('client', 'devis').first())
 
 
-@extend_schema(request=None)
+@extend_schema(request=None, responses=_FORME_ARCHIVAGE)
 @action(detail=True, methods=['post'], url_path='archiver',
         permission_classes=[PeutGererCalepinage])
 def archiver(self, request, pk=None):
@@ -70,7 +77,7 @@ def archiver(self, request, pk=None):
     return Response({'calepinage': calepinage.pk, 'archive': True})
 
 
-@extend_schema(request=None)
+@extend_schema(request=None, responses=_FORME_ARCHIVAGE)
 @action(detail=True, methods=['post'], url_path='restaurer-corbeille',
         permission_classes=[PeutGererCalepinage])
 def restaurer_corbeille(self, request, pk=None):
