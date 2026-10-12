@@ -140,5 +140,5 @@ class TestAvoirUnhappyPath(TenantAPITestCase):
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'x'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertFalse(Avoir.objects.filter(facture=self.facture).exists())

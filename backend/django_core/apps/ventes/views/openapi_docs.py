@@ -8,7 +8,7 @@ un champ requis). Le moteur de devis (règle #4) n'est pas touché.
 from decimal import Decimal
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import inline_serializer
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
 
 from core.champs_stricts import BooleenStrict, ChaineStricte
@@ -875,14 +875,41 @@ ErreurEnvoiEmail = _ser('FactureErreurEnvoiEmail', {
     'email_log_id': s.IntegerField(required=False),
 })
 
+# Tour 3 M1 — bornes = celles de ``_montants_ligne_corrective`` (vue
+# facture), publiées DANS le motif du décimal-chaîne (drf-spectacular n'émet
+# ni minimum ni maximum pour une chaîne) : un corps conforme au schéma n'est
+# plus refusé en 400, un corps hors bornes l'est par le sérialiseur.
+_MONTANT_LIGNE_MAX = Decimal('99999999.99')
+_MOTIF_STRICT_POSITIF = r'^0*(?:[1-9]\d{0,7}(?:\.\d{0,2})?|\.(?:[1-9]\d?|0[1-9]))$'
+_MOTIF_POSITIF = r'^(?:\d{1,8}(?:\.\d{0,2})?|\.\d{1,2})$'
+_MOTIF_POURCENT = r'^(?:100(?:\.0{0,2})?|\d{1,2}(?:\.\d{0,2})?|\.\d{1,2})$'
+
+
+def _decimal_publie(motif):
+    """Classe ``DecimalField`` dont le schéma publié est ``motif``."""
+    return extend_schema_field(
+        {'type': 'string', 'format': 'decimal', 'pattern': motif})(
+        type('DecimalBorne', (s.DecimalField,), {}))
+
+
+_QuantiteLigne = _decimal_publie(_MOTIF_STRICT_POSITIF)
+_MontantLigne = _decimal_publie(_MOTIF_POSITIF)
+_PourcentLigne = _decimal_publie(_MOTIF_POURCENT)
 LigneAvoirCorrective = _ser('FactureLigneAvoirCorrective', {
     'produit': s.IntegerField(),
     'designation': s.CharField(),
-    'quantite': s.DecimalField(max_digits=12, decimal_places=2),
-    'prix_unitaire': s.DecimalField(max_digits=12, decimal_places=2),
-    'remise': s.DecimalField(max_digits=5, decimal_places=2,
-                             required=False),
-    'taux_tva': s.DecimalField(max_digits=5, decimal_places=2,
+    'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
+                               min_value=Decimal('0.01'),
+                               max_value=_MONTANT_LIGNE_MAX),
+    'prix_unitaire': _MontantLigne(max_digits=12, decimal_places=2,
+                                   min_value=Decimal('0'),
+                                   max_value=_MONTANT_LIGNE_MAX),
+    'remise': _PourcentLigne(max_digits=5, decimal_places=2,
+                             min_value=Decimal('0'),
+                             max_value=Decimal('100'), required=False),
+    'taux_tva': _PourcentLigne(max_digits=5, decimal_places=2,
+                               min_value=Decimal('0'),
+                               max_value=Decimal('100'),
                                required=False, allow_null=True),
 })
 CreerAvoirRequest = _ser('FactureCreerAvoirRequest', {

@@ -22,7 +22,7 @@ from ..serializers_facturation import (
 )
 from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
 from ..serializers import EmailLogSerializer
-from ..utils.corps import valider_corps
+from ..utils.corps import valider_corps, valider_corps_lignes
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -30,6 +30,7 @@ from authentication.permissions import (
     IsAdminOrResponsableTier,
     HasPermissionOrLegacy,
 )
+from core.conflit_etat import ConflitEtat
 from core.permissions import declared_action_permissions
 
 # ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
@@ -322,7 +323,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ``ConflitEtat`` (ENF11, ``core/conflit_etat.py``), jamais un 400.
         """
         from django.db.models import ProtectedError
-        from core.conflit_etat import ConflitEtat
         from core.numbering import est_reference_provisoire
 
         if instance.statut != Facture.Statut.BROUILLON:
@@ -351,6 +351,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )})
 
     def perform_update(self, serializer):
+        # Refus d'ÉTAT (facture non brouillon) : 409 ConflitEtat (ENF11).
         # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
         # (défaut) → comportement actuel byte-identique. Flag ON et facture
         # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
@@ -370,7 +371,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         argent_touche = argent_modifie(
             facture, serializer.validated_data, FACTURE_CHAMPS_ARGENT)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),
             })
@@ -382,7 +383,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     set(serializer.validated_data.keys())
                     & FACTURE_CHAMPS_FINANCIERS)
                 if champs_touches:
-                    raise ValidationError({
+                    raise ConflitEtat({
                         'detail': (
                             "Facture immuable : les champs financiers d'une "
                             "facture émise ne peuvent plus être modifiés. "
@@ -1157,23 +1158,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reprend TOUTES les lignes de la facture à l'identique (les `lignes`
         du corps sont ignorées) et, à son émission, la facture d'origine
         passe ``annulee`` avec un ``FactureActivity`` liant les deux pièces.
-        Refusé (400) si la facture a déjà des paiements (dû négatif évité)."""
+        Refusé (409) si la facture a déjà des paiements (dû négatif évité)."""
         facture = self.get_object()
+        # Tour 3 M1 — corps validé (types, listes, enums) AVANT toute lecture.
+        valider_corps_lignes(request, D.CreerAvoirRequest)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un avoir ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
+        # `mode` ∈ enum garanti par le corps validé ; refus d'ÉTAT = 409 (ENF11).
         mode = (request.data.get('mode') or 'correction').strip()
-        if mode not in ('correction', 'contre_passation'):
-            return Response(
-                {'detail': "mode doit être 'correction' ou 'contre_passation'."},
-                status=status.HTTP_400_BAD_REQUEST)
         if mode == 'contre_passation' and facture.montant_paye > 0:
             return Response(
                 {'detail': ("Contre-passation refusée : cette facture a déjà "
                             "des paiements enregistrés.")},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # AFAC32 (D-AFAC-C4) — la contre-passation ANNULE la facture : ses
         # notes de débit actives s'annulent d'abord (par avoir de ND).
         from ..domain.facturation_ops import notes_debit_actives
@@ -1182,7 +1182,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': ("Contre-passation refusée : la facture porte une "
                             "note de débit active — annulez-la d'abord."),
                  'code': 'note_debit_active'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
         lignes = None if mode == 'contre_passation' \
@@ -1204,10 +1204,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if isinstance(lignes, list) and lignes:
             clean_lignes = []
             for i, ligne in enumerate(lignes, start=1):
-                if not isinstance(ligne, dict):
-                    return Response(
-                        {'detail': f'Ligne {i} invalide.'},
-                        status=status.HTTP_400_BAD_REQUEST)
                 designation = (ligne.get('designation') or '').strip()
                 if not designation:
                     return Response(
@@ -1252,7 +1248,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 type_avoir=str(request.data.get('type') or '').strip() or None)
         except AvoirRefuse as exc:
             return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf

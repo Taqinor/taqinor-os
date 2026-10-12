@@ -78,12 +78,12 @@ class XFAC24FactureImmuableTests(TestCase):
 
     def test_flag_off_facture_freely_editable_byte_identical(self):
         # ATOT9 — comportement INVERSÉ par la tâche (D-ATOT-1) : flag OFF, un
-        # champ d'ARGENT d'une facture émise reste figé (400, rien écrit) ;
+        # champ d'ARGENT d'une facture émise reste figé (409, rien écrit) ;
         # un champ non financier reste librement modifiable.
         r = self.api.patch(
             f'/api/django/ventes/factures/{self.facture.id}/',
             {'remise_globale': '10'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.remise_globale, Decimal('0'))
         r = self.api.patch(
@@ -96,7 +96,7 @@ class XFAC24FactureImmuableTests(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/factures/{self.facture.id}/',
             {'remise_globale': '10'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.remise_globale, Decimal('0'))
 

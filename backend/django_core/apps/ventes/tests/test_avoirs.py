@@ -157,7 +157,7 @@ class TestAvoirs(TestCase):
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'x'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_avoir_exceeding_remaining_rejected(self):
         # Une ligne d'avoir à 20 000 HT (24 000 TTC) dépasse les 17 000 TTC
@@ -170,7 +170,7 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '20000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('dépasse', resp.data['detail'])
         self.assertEqual(Avoir.objects.count(), 0)
 
@@ -188,8 +188,30 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '5000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(r2.status_code, 409)
         self.assertEqual(Avoir.objects.count(), 1)
+
+    def test_corps_hors_schema_400_jamais_500(self):
+        # CI M1 tour 3 (api-fuzz run 38295727060) — corps EXACT du fuzzeur :
+        # ``designation`` liste → ``.strip()`` levait AttributeError (500).
+        api = self._api(self.admin)
+        url = f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/'
+        corps = {'mode': 'correction', 'motif': '', 'type': 'correction',
+                 'lignes': [{'produit': 0, 'designation': [None, None],
+                             'quantite': '0', 'prix_unitaire': '0',
+                             'remise': '0', 'taux_tva': '0'}]}
+        resp = api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('Ligne 1', resp.data['detail'])
+        self.assertEqual(resp.data['code'], 'ligne_invalide')
+        for corps in ([1, 2], {'lignes': 'abc'}, {'mode': 'bogus'},
+                      {'lignes': [{'produit': self.onduleur.id,
+                                   'designation': 'X', 'quantite': '',
+                                   'prix_unitaire': '1'}]}):
+            with self.subTest(corps=corps):
+                resp = api.post(url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(Avoir.objects.count(), 0)
 
     # ── AUD126 — la garde de plafond est SÉRIALISÉE ──
     def test_creer_avoir_verrouille_la_facture_avant_de_lire_le_plafond(self):

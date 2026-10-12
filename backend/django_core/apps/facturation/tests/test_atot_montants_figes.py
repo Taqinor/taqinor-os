@@ -70,7 +70,7 @@ class MontantsFigesTests(TestCase):
             pourcentage=Decimal('30'))
         r = self.api.patch(f'/api/django/ventes/factures/{facture.id}/',
                            {'montant_ttc': '1.00'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Montant figé', str(r.data))
         facture.refresh_from_db()
         self.assertEqual(facture.montant_ttc, Decimal('1200.00'))
