@@ -221,13 +221,13 @@ class ErreursMetierTests(TestCase):
         self.assertIsNotNone(Document.objects.get(pk=jete.pk).supprime_le)
         self.assertTrue(ArchivageLegal.objects.filter(document=vivant).exists())
 
-    def test_archiver_corbeille_400(self):
+    def test_archiver_corbeille_409(self):
         doc = Document.objects.create(company=self.co, folder=self.folder,
                                       nom='jete.pdf')
         services.mettre_en_corbeille(doc, self.admin)
         resp = self.api.post(f'{BASE}archivages-legaux/',
                              {'document': doc.pk}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertFalse(ArchivageLegal.objects.filter(document=doc).exists())
 
 
@@ -418,3 +418,106 @@ class Enf11FuzzGedParametresTests(TestCase):
             '?format=csv')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertTrue(resp['Content-Type'].startswith('text/csv'))
+
+
+class Enf11FuzzGedCorpsTests(TestCase):
+    """ERR-ENF11-FUZZ-GED — corps JSON des actions lues à la main, validés par
+    sérialiseur (le schéma OpenAPI = le comportement) : 500 -> 400, données
+    invalides refusées, refus d'état -> 409."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='enf11-ged-c', defaults={'nom': 'ENF11 GED C'})[0]
+        self.admin = User.objects.create_user(
+            username='enf11-ged-c-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='d.pdf')
+        self.api = auth(self.admin)
+
+    def _post(self, route, corps):
+        return self.api.post(f'{BASE}{route}', corps, format='json')
+
+    def test_operations_lot_corps_strict(self):
+        route = 'documents/operations-lot/'
+        for corps in (
+                {'documents': [self.doc.pk], 'operation': 'inconnue'},
+                {'documents': ['a'], 'operation': 'corbeille'},
+                {'documents': [], 'operation': 'corbeille'},
+                {'documents': [self.doc.pk], 'operation': 'tagger',
+                 'params': {'tag': []}},
+                {'documents': [self.doc.pk], 'operation': 'deplacer',
+                 'params': {}},
+                {'documents': [self.doc.pk], 'operation': 'corbeille',
+                 'params': 'x'},
+                {'documents': [self.doc.pk], 'operation': 'demander_signature',
+                 'params': {'signataire_nom': 'x' * 300}}):
+            resp = self._post(route, corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self._post(route, {
+            'documents': [self.doc.pk], 'operation': 'corbeille'})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_demande_signature_texte_trop_long_ou_nul_400(self):
+        base = {'document': self.doc.pk, 'signataire_nom': 'Ali',
+                'signataire_email': 'ali@example.com'}
+        for modif in ({'signataire_nom': 'x' * 256},
+                      {'signataire_nom': 'a' + chr(0)},
+                      {'signataire_email': 'pas-un-courriel'},
+                      {'signataire_email': 5},
+                      {'document': 2 ** 40}):
+            resp = self._post('demandes-signature/', {**base, **modif})
+            self.assertEqual(resp.status_code, 400, (modif, resp.content))
+
+    def test_legal_hold_corps_strict(self):
+        for corps in ({'document': self.doc.pk, 'motif': None},
+                      {'document': str(self.doc.pk)},
+                      {'document': 2 ** 40}, {}):
+            resp = self._post('legal-holds/', corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self._post(f'documents/{self.doc.pk}/placer-legal-hold/',
+                          {'motif': None})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self._post('legal-holds/', {'document': self.doc.pk})
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_classer_apres_vente_corps_strict(self):
+        base = {'nom': 'N', 'source_type': 'sav.ticket', 'source_id': 1}
+        for modif in ({'description': {}}, {'source_id': 'abc'},
+                      {'cabinet': 5}, {'nom': 'x' * 256}, {'file_key': None}):
+            resp = self._post('documents/classer-apres-vente/',
+                              {**base, **modif})
+            self.assertEqual(resp.status_code, 400, (modif, resp.content))
+
+    def test_archiver_legalement_corps_et_conflit(self):
+        route = f'documents/{self.doc.pk}/archiver-legalement/'
+        for corps in ({'motif': None}, {'retain_until': ''},
+                      {'retain_until': 'null'}, {'retain_until': '2026-1-1'}):
+            resp = self._post(route, corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'abc', None)):
+            resp = self._post(route, {'retain_until': None})
+            self.assertEqual(resp.status_code, 201, resp.content)
+            # Déjà archivé : conflit d'état (409), pas une saisie invalide.
+            resp = self._post(route, {})
+            self.assertEqual(resp.status_code, 409, resp.content)
+            resp = self._post('archivages-legaux/', {'document': self.doc.pk})
+            self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_disposition_corps_strict_et_lot_non_eligible_409(self):
+        for corps in ({'libelle': 'x', 'documents': [{}]},
+                      {'libelle': 'x', 'documents': ['a']},
+                      {'libelle': 'x', 'documents': []},
+                      {'libelle': 'x', 'documents': [self.doc.pk],
+                       'action': 'autre'},
+                      {'libelle': 'x' * 201, 'documents': [self.doc.pk]}):
+            resp = self._post('demandes-disposition/', corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self._post('demandes-disposition/', {
+            'libelle': 'x', 'action': 'archiver',
+            'documents': [self.doc.pk + 1000]})
+        self.assertEqual(resp.status_code, 409, resp.content)

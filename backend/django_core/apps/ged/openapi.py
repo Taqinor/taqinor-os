@@ -112,21 +112,10 @@ IMPORT_MASSE_CORPS = S('ImportMasseCorps', {
     'csv': s.FileField(),
     'zip': s.FileField(required=False),
 })
-APRES_VENTE_CORPS = S('ClasserApresVenteCorps', {
-    'nom': s.RegexField(r'\S'),
-    'source_type': s.RegexField(r'\S'),
-    'source_id': s.IntegerField(),
-    'file_key': s.CharField(required=False, allow_blank=True),
-    'cabinet': s.CharField(required=False, allow_blank=True),
-    'dossier': s.CharField(required=False, allow_blank=True),
-    'description': s.CharField(required=False, allow_blank=True),
-})
 OCR_CORPS = S('OcrPieceCorps', {
     'type_piece': s.CharField(required=False, allow_blank=True)})
 VERSION_CORPS = S('VersionRestaurerCorps', {'version': s.IntegerField()})
 FICHIER_CORPS = S('FichierCorps', {'file': s.FileField()})
-MOTIF_CORPS = S('MotifCorps', {
-    'motif': s.CharField(required=False, allow_blank=True)})
 COMMENTAIRE_CORPS = S('CommentaireCorps', {
     'commentaire': s.CharField(required=False, allow_blank=True)})
 CYCLE_VIE_CORPS = S('CycleVieCorps', {
@@ -134,10 +123,6 @@ CYCLE_VIE_CORPS = S('CycleVieCorps', {
 REVUE_CORPS = S('DemanderRevueCorps', {
     'approbateur': s.IntegerField(required=False, allow_null=True),
     'commentaire': s.CharField(required=False, allow_blank=True),
-})
-ARCHIVER_CORPS = S('ArchiverLegalementCorps', {
-    'motif': s.CharField(required=False, allow_blank=True),
-    'retain_until': s.DateField(required=False, allow_null=True),
 })
 ZONE = S('ZoneCaviardage', {
     'page': s.IntegerField(min_value=0),
@@ -157,13 +142,6 @@ FUSIONNER_CORPS = S('FusionnerCorps', {
     'cible': s.IntegerField(required=False, allow_null=True),
     'nom': s.CharField(required=False, allow_blank=True),
 })
-OPERATIONS_LOT_CORPS = S('OperationsLotCorps', {
-    'documents': s.ListField(child=s.IntegerField(), allow_empty=False),
-    'operation': s.ChoiceField(choices=[
-        'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
-        'partager', 'demander_signature', 'demander_revue']),
-    'params': s.DictField(required=False),
-})
 PLANIFIER_CORPS = S('PlanifierCorps', {
     'libelle': s.RegexField(r'\S'),
     'echeance': s.DateField(),
@@ -179,10 +157,6 @@ ARCHIVAGE_CORPS = S('ArchivageLegalCorps', {
     'motif': s.CharField(required=False, allow_blank=True),
     'retain_until': s.DateField(required=False, allow_null=True),
 })
-LEGAL_HOLD_CORPS = S('LegalHoldCorps', {
-    'document': s.IntegerField(),
-    'motif': s.CharField(required=False, allow_blank=True),
-})
 VERSION_CREATION_CORPS = S('VersionCreationCorps', {
     'document': s.IntegerField(),
     'file': s.FileField(),
@@ -190,21 +164,11 @@ VERSION_CREATION_CORPS = S('VersionCreationCorps', {
 SERVICE_INDISPO = S('ServiceIndisponible', {'detail': s.CharField()})
 CONTEXTE_CORPS = S('ContexteFusionCorps', {
     'contexte': s.DictField(required=False)})
-SIGNATURE_CORPS = S('DemandeSignatureCorps', {
-    'document': s.IntegerField(),
-    'signataire_nom': s.RegexField(r'\S'),
-    'signataire_email': s.RegexField(r'\S'),
-})
 MARQUER_SIGNE_CORPS = S('MarquerSigneCorps', {
     'provider_ref': s.CharField(required=False, allow_blank=True)})
 PROLONGER_CORPS = S('ProlongerCorps', {'expires_at': s.DateTimeField()})
 VALIDER_OCR_CORPS = S('ValiderOcrCorps', {
     'champs_corriges': s.DictField(required=False)})
-DISPOSITION_CORPS = S('DemandeDispositionCorps', {
-    'libelle': s.RegexField(r'\S'),
-    'action': s.ChoiceField(choices=['detruire', 'archiver'], required=False),
-    'documents': s.ListField(child=s.IntegerField(), allow_empty=False),
-})
 ENVOI_MASSE_CORPS = S('EnvoiMasseCorps', {
     'modele': s.IntegerField(),
     'libelle': s.CharField(required=False, allow_blank=True),

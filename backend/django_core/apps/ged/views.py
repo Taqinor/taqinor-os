@@ -46,7 +46,10 @@ from apps.records.serializers import CibleIntrouvable, resolve_target
 
 from . import openapi as oa, selectors, services
 from .corps_requete import (
-    _date_iso, _entier_borne, _id_filtre, _pk, _pks, _txt,
+    GedArchiverLegalementCorps, GedClasserApresVenteCorps,
+    GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
+    GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
+    _pk, _pks, _txt, corps_valide,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
@@ -1066,7 +1069,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
              'erreurs': result['erreurs']}, status=http)
 
     @extend_schema(
-        request=oa.APRES_VENTE_CORPS,
+        request=GedClasserApresVenteCorps,
         responses={200: DocumentSerializer, 201: DocumentSerializer})
     @action(detail=False, methods=['post'], url_path='classer-apres-vente')
     def classer_apres_vente(self, request):
@@ -1083,18 +1086,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
 
         Point d'entrée de réception : le câblage SAV (appel à l'émission d'un
         document après-vente) est une tâche FUTURE distincte."""
-        nom = _txt(request.data.get('nom'), 'nom')
-        source_type = _txt(request.data.get('source_type'), 'source_type')
-        source_id = request.data.get('source_id')
-        if not nom:
-            return Response({'nom': 'Le nom du document est requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        if not source_type or source_id in (None, ''):
-            return Response(
-                {'detail': 'source_type et source_id sont requis '
-                           '(idempotence par objet SAV source).'},
-                status=status.HTTP_400_BAD_REQUEST)
-        file_key = _txt(request.data.get('file_key'), 'file_key')
+        corps = corps_valide(GedClasserApresVenteCorps, request)
+        nom = corps['nom'].strip()
+        source_type = corps['source_type'].strip()
+        source_id = corps['source_id']
+        file_key = corps.get('file_key', '').strip()
         # ASEC37 — une clé d'un autre locataire (préfixe étranger ou clé plate
         # jamais enregistrée chez nous) est refusée : on ne classe jamais le
         # fichier d'une autre société.
@@ -1108,9 +1104,9 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             nom=nom,
             source_type=source_type,
             source_id=source_id,
-            cabinet=(request.data.get('cabinet') or 'Après-vente'),
-            dossier=(request.data.get('dossier') or 'Après-vente'),
-            description=(request.data.get('description') or ''),
+            cabinet=(corps.get('cabinet') or 'Après-vente'),
+            dossier=(corps.get('dossier') or 'Après-vente'),
+            description=corps.get('description', ''),
             created_by=request.user,
         )
         # GED11/GED12 — indexe le document déposé (no-op sémantique sans clé).
@@ -1623,7 +1619,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
-    @extend_schema(request=oa.MOTIF_CORPS, responses=DocumentSerializer)
+    @extend_schema(request=GedMotifCorps, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='verrouiller')
     def verrouiller(self, request, pk=None):
         """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours
@@ -1827,7 +1823,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             qs, many=True, context={'request': request}).data
         return Response(data)
 
-    @extend_schema(request=oa.ARCHIVER_CORPS,
+    @extend_schema(request=GedArchiverLegalementCorps,
                    responses={201: ArchivageLegalSerializer})
     @action(detail=True, methods=['post'], url_path='archiver-legalement')
     def archiver_legalement(self, request, pk=None):
@@ -1846,20 +1842,16 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         responsable/admin."""
         document = self.get_object()
         # `retain_until` optionnel — date du verrou objet (YYYY-MM-DD).
-        retain_until = None
-        raw_retain = request.data.get('retain_until')
-        if raw_retain not in (None, '', 'null'):
-            retain_until = _date_iso(raw_retain)
-            if retain_until is None:
-                return Response(
-                    {'retain_until': 'Date invalide (format attendu : '
-                                     'AAAA-MM-JJ).'},
-                    status=status.HTTP_400_BAD_REQUEST)
+        corps = corps_valide(GedArchiverLegalementCorps, request)
         try:
             archivage = services.archiver_legalement(
                 document, user=request.user,
-                motif=_txt(request.data.get('motif'), 'motif'),
-                retain_until=retain_until)
+                motif=corps.get('motif', '').strip(),
+                retain_until=corps.get('retain_until'))
+        except services.ArchivageConflitError as exc:
+            # Déjà archivé / en corbeille : conflit d'ÉTAT, pas une saisie fausse.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1871,7 +1863,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=oa.MOTIF_CORPS,
+    @extend_schema(request=GedMotifCorps,
                    responses={201: LegalHoldSerializer})
     @action(detail=True, methods=['post'], url_path='placer-legal-hold')
     def placer_legal_hold(self, request, pk=None):
@@ -1885,10 +1877,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         IDEMPOTENT : un hold actif existant est renvoyé tel quel (pas de
         doublon). Écriture : ``ged_gouvernance`` (direction seule, WIR174)."""
         document = self.get_object()
+        corps = corps_valide(GedMotifCorps, request)
         try:
             hold = services.placer_legal_hold(
                 document, user=request.user,
-                motif=_txt(request.data.get('motif'), 'motif'))
+                motif=corps.get('motif', '').strip())
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -2102,7 +2095,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(selectors.comparer_versions(v1, v2))
 
     @extend_schema(
-        request=oa.OPERATIONS_LOT_CORPS,
+        request=GedOperationsLotCorps,
         responses={200: oa.OPERATIONS_LOT_REPONSE,
                    (200, 'application/zip'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'], url_path='operations-lot')
@@ -2117,14 +2110,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         tout-ou-rien silencieux). `telecharger_zip` renvoie directement un ZIP
         binaire ; les autres opérations renvoient un rapport JSON. Écriture :
         responsable/admin (sauf `telecharger_zip`, lecture)."""
-        ids = request.data.get('documents') or []
-        operation = request.data.get('operation')
-        params = request.data.get('params') or {}
-        if not ids or not operation:
-            return Response(
-                {'detail': 'documents et operation sont requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        qs = selectors.documents_visible_to_user(request.user).filter(pk__in=_pks(ids))
+        corps = corps_valide(GedOperationsLotCorps, request)
+        operation = corps['operation']
+        params = corps.get('params') or {}
+        qs = selectors.documents_visible_to_user(request.user).filter(
+            pk__in=corps['documents'])
         documents = list(qs)
         if operation == 'telecharger_zip':
             zip_bytes, erreurs = services.zipper_documents(documents)
@@ -2968,6 +2958,9 @@ class ArchivageLegalViewSet(CorpsObjetMixin, TenantMixin,
                 document, user=request.user,
                 motif=(corps.validated_data.get('motif') or '').strip(),
                 retain_until=corps.validated_data.get('retain_until'))
+        except services.ArchivageConflitError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -3001,7 +2994,7 @@ class ArchivageLegalViewSet(CorpsObjetMixin, TenantMixin,
 
 @extend_schema_view(
     list=extend_schema(parameters=[oa.Q_DOCUMENT, oa.Q_ACTIF]),
-    create=extend_schema(request=oa.LEGAL_HOLD_CORPS,
+    create=extend_schema(request=GedLegalHoldCorps,
                          responses={201: LegalHoldSerializer}),
 )
 class LegalHoldViewSet(CorpsObjetMixin, TenantMixin,
@@ -3060,13 +3053,9 @@ class LegalHoldViewSet(CorpsObjetMixin, TenantMixin,
         la société (404 cross-société). `company`/`place_par` sont posés côté
         serveur (jamais lus du corps). Pose IDEMPOTENTE (hold actif existant
         renvoyé tel quel)."""
-        document_id = request.data.get('document')
-        if not document_id:
-            return Response(
-                {'document': 'Le document à geler est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        corps = corps_valide(GedLegalHoldCorps, request)
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=_pk(document_id, 'document')).first())
+                    .filter(pk=corps['document']).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3074,7 +3063,7 @@ class LegalHoldViewSet(CorpsObjetMixin, TenantMixin,
         try:
             hold = services.placer_legal_hold(
                 document, user=request.user,
-                motif=_txt(request.data.get('motif'), 'motif'))
+                motif=corps.get('motif', '').strip())
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -3231,7 +3220,7 @@ class ModeleDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet)
 
 @extend_schema_view(
     list=extend_schema(parameters=[oa.Q_DOCUMENT, oa.Q_STATUT]),
-    create=extend_schema(request=oa.SIGNATURE_CORPS,
+    create=extend_schema(request=GedDemandeSignatureCorps,
                          responses={201: DemandeSignatureDocumentSerializer}),
 )
 class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
@@ -3288,19 +3277,11 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         "signataire_email": "<email>"}`. Le document est borné à la société (404
         cross-société). `company`/`created_by` posés côté serveur (jamais lus du
         corps). Mode STUB no-op tant qu'aucun provider e-sign n'est configuré."""
-        document_id = request.data.get('document')
-        nom = _txt(request.data.get('signataire_nom'), 'signataire_nom')
-        email = _txt(request.data.get('signataire_email'), 'signataire_email')
-        if not document_id:
-            return Response(
-                {'document': 'Le document à signer est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        if not nom or not email:
-            return Response(
-                {'signataire': 'Le nom et l\'email du signataire sont requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        corps = corps_valide(GedDemandeSignatureCorps, request)
+        nom = corps['signataire_nom'].strip()
+        email = corps['signataire_email'].strip()
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=_pk(document_id, 'document')).first())
+                    .filter(pk=corps['document']).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -4335,7 +4316,7 @@ class RegleAclMetadonneeViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
 
 @extend_schema_view(
     list=extend_schema(parameters=[oa.Q_STATUT]),
-    create=extend_schema(request=oa.DISPOSITION_CORPS,
+    create=extend_schema(request=GedDemandeDispositionCorps,
                          responses={201: DemandeDispositionSerializer}),
 )
 class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
@@ -4378,8 +4359,9 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
         Body : `{"libelle": "<str>", "action": "detruire|archiver",
         "documents": [<id>, …]}`. Les holds actifs (GED24) sont exclus
         d'office ; `company`/`demandeur` posés côté serveur."""
-        libelle = _txt(request.data.get('libelle'), 'libelle')
-        action_disp = request.data.get('action') or 'detruire'
+        corps = corps_valide(GedDemandeDispositionCorps, request)
+        libelle = corps['libelle'].strip()
+        action_disp = corps.get('action') or 'detruire'
         # ADOC7 — proposer une DESTRUCTION exige ged_gouvernance.
         if action_disp == 'detruire':
             garde = HasPermissionOrLegacy(GED_GOUVERNANCE)()
@@ -4387,19 +4369,17 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
                 return Response(
                     {'detail': "Droit de gouvernance documentaire requis."},
                     status=status.HTTP_403_FORBIDDEN)
-        document_ids = request.data.get('documents') or []
-        if not libelle or not document_ids:
-            return Response(
-                {'detail': 'libelle et documents (liste) sont requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        document_ids = corps['documents']
         try:
             demande = services.creer_demande_disposition(
                 request.user.company, libelle=libelle,
                 document_ids=document_ids, action=action_disp,
                 user=request.user)
         except ValueError as exc:
+            # Lot non éligible (document non échu, introuvable ou sous legal
+            # hold) : conflit d'ÉTAT, la saisie, elle, est valide.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             DemandeDispositionSerializer(
                 demande, context={'request': request}).data,

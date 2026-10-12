@@ -2220,6 +2220,11 @@ def _try_set_object_lock(version, retain_until):
         return False
 
 
+class ArchivageConflitError(ValueError):
+    """Archivage légal refusé par l'ÉTAT du document (déjà archivé, en
+    corbeille) : un conflit (409), pas une saisie invalide (400)."""
+
+
 def archiver_legalement(document, *, user, motif='', retain_until=None):
     """GED23 — Archive un document à VALEUR PROBANTE (write-once / object-lock).
 
@@ -2247,11 +2252,11 @@ def archiver_legalement(document, *, user, motif='', retain_until=None):
         raise PermissionError("Document inaccessible.")
     # ADOC22 — un document en corbeille ne s'archive pas (400 nommé).
     if document.supprime_le is not None:
-        raise ValueError(
+        raise ArchivageConflitError(
             "Un document en corbeille ne peut pas être archivé légalement.")
     # Write-once : un document n'est archivé légalement qu'une seule fois.
     if ArchivageLegal.objects.filter(document=document).exists():
-        raise ValueError("Ce document est déjà archivé légalement.")
+        raise ArchivageConflitError("Ce document est déjà archivé légalement.")
     # Version courante figée (la plus récente) — sert au hash + à l'object-lock.
     version = (DocumentVersion.objects
                .filter(document=document)
@@ -2272,7 +2277,7 @@ def archiver_legalement(document, *, user, motif='', retain_until=None):
         # Re-vérifie sous transaction (la contrainte d'unicité protège aussi en
         # base, mais on renvoie une erreur métier propre en cas de course).
         if ArchivageLegal.objects.filter(document=document).exists():
-            raise ValueError("Ce document est déjà archivé légalement.")
+            raise ArchivageConflitError("Ce document est déjà archivé légalement.")
         archivage = ArchivageLegal.objects.create(
             company=document.company,
             document=document,

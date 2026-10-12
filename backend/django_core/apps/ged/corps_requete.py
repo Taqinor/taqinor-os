@@ -1,6 +1,11 @@
 """ERR-ENF11-FUZZ-GED — lecture SÛRE des identifiants, dates et textes d'un corps JSON
 (``views.py`` est un fichier-mur : les aides vivent ici, importées par les vues)."""
+from django.core.validators import RegexValidator
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers as drf_serializers
+
+from core.champs_stricts import ChaineStricte, EntierStrict
 
 
 # Aucune clé primaire GED ne dépasse un entier PostgreSQL 32 bits : au-delà, la
@@ -123,3 +128,122 @@ def _entier_borne(params, nom, *, defaut, mini, maxi):
             return n
     raise drf_serializers.ValidationError(
         {nom: [f'Entier entre {mini} et {maxi} attendu.']})
+
+
+# ── Corps JSON VALIDÉS des actions lues à la main ────────────────────────────
+# Ces serialiseurs sont aussi la déclaration OpenAPI : le composant garde le nom
+# ``Ged…Corps`` de l'ancien ``inline_serializer`` (``openapi.py`` les ré-exporte).
+
+def corps_valide(classe, request):
+    """Valide ``request.data`` par ``classe`` (400 sinon) et rend les données."""
+    serialiseur = classe(data=request.data)
+    serialiseur.is_valid(raise_exception=True)
+    return serialiseur.validated_data
+
+
+def _id_corps(**kw):
+    return EntierStrict(min_value=1, max_value=_PK_MAX, **kw)
+
+
+def _non_vide(**kw):
+    return ChaineStricte(validators=[RegexValidator(r'\S')], **kw)
+
+
+class _CourrielStrict(drf_serializers.EmailField):
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+@extend_schema_field(OpenApiTypes.DATE)
+class _DateIsoStricte(drf_serializers.Field):
+    """Date ``AAAA-MM-JJ`` stricte (le schéma dit ``format: date``)."""
+
+    default_error_messages = {
+        'invalid': 'Date invalide (format attendu : AAAA-MM-JJ).'}
+
+    def to_internal_value(self, data):
+        valeur = _date_iso(data)
+        if valeur is None:
+            self.fail('invalid')
+        return valeur
+
+    def to_representation(self, value):
+        return value.isoformat()
+
+
+class GedClasserApresVenteCorps(drf_serializers.Serializer):
+    nom = _non_vide(max_length=255)
+    source_type = _non_vide()
+    source_id = EntierStrict()
+    file_key = ChaineStricte(required=False, allow_blank=True, max_length=500)
+    cabinet = ChaineStricte(required=False, allow_blank=True, max_length=150)
+    dossier = ChaineStricte(required=False, allow_blank=True, max_length=200)
+    description = ChaineStricte(required=False, allow_blank=True)
+
+
+class GedDemandeSignatureCorps(drf_serializers.Serializer):
+    document = _id_corps()
+    signataire_nom = _non_vide(max_length=255)
+    signataire_email = _CourrielStrict(max_length=254)
+
+
+class GedLegalHoldCorps(drf_serializers.Serializer):
+    document = _id_corps()
+    motif = ChaineStricte(required=False, allow_blank=True)
+
+
+class GedMotifCorps(drf_serializers.Serializer):
+    motif = ChaineStricte(required=False, allow_blank=True)
+
+
+class GedArchiverLegalementCorps(drf_serializers.Serializer):
+    motif = ChaineStricte(required=False, allow_blank=True)
+    retain_until = _DateIsoStricte(required=False, allow_null=True)
+
+
+class GedDemandeDispositionCorps(drf_serializers.Serializer):
+    libelle = _non_vide(max_length=200)
+    action = drf_serializers.ChoiceField(
+        choices=['detruire', 'archiver'], required=False)
+    documents = drf_serializers.ListField(
+        child=_id_corps(), allow_empty=False)
+
+
+class _ParamsTag(drf_serializers.Serializer):
+    tag = _id_corps()
+
+
+class _ParamsDossier(drf_serializers.Serializer):
+    folder = _id_corps()
+
+
+class _ParamsSignature(drf_serializers.Serializer):
+    signataire_nom = ChaineStricte(
+        required=False, allow_blank=True, max_length=255)
+    signataire_email = _CourrielStrict(
+        required=False, allow_blank=True, max_length=254)
+
+
+_PARAMS_PAR_OPERATION = {
+    'tagger': _ParamsTag, 'detaguer': _ParamsTag, 'deplacer': _ParamsDossier,
+    'demander_signature': _ParamsSignature,
+}
+
+
+class GedOperationsLotCorps(drf_serializers.Serializer):
+    documents = drf_serializers.ListField(
+        child=_id_corps(), allow_empty=False)
+    operation = drf_serializers.ChoiceField(choices=[
+        'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
+        'partager', 'demander_signature', 'demander_revue'])
+    params = drf_serializers.DictField(required=False)
+
+    def validate(self, attrs):
+        classe = _PARAMS_PAR_OPERATION.get(attrs['operation'])
+        if classe is not None:
+            sous = classe(data=attrs.get('params') or {})
+            sous.is_valid(raise_exception=True)
+            attrs['params'] = dict(sous.validated_data)
+        return attrs
