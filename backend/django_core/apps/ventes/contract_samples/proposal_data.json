@@ -2242,5 +2242,23 @@
     "offre_expiree": false,
     "date_expiration": "2026-10-15",
     "pdf_disponible": true
+  },
+  "notes_vnt2": {
+    "pourquoi": "VNT2 (PACT10, Groupe VNT) — clé ADDITIVE `avenant`, posée SEULE avant sa vue : un avenant (V2 issue d'un prix négocié) accepté en interne mais pas encore signé par le client. `a_signer` = vrai tant que le client n'a pas signé cet avenant ; `remplace.reference` = référence de la version qu'il remplace ; `signe_le` = horodatage ISO de la signature, null tant que non signé. Clé ABSENTE (jamais null) sur les propositions qui ne sont pas des avenants : les exemples existants ne la portent pas.",
+    "avenant": "{a_signer: bool, remplace: {reference}, signe_le: ISO|null} — fragments `exemple_avenant_a_signer` et `exemple_avenant_signe`."
+  },
+  "exemple_avenant_a_signer": {
+    "avenant": {
+      "a_signer": true,
+      "remplace": {"reference": "DEV-202610-0012"},
+      "signe_le": null
+    }
+  },
+  "exemple_avenant_signe": {
+    "avenant": {
+      "a_signer": false,
+      "remplace": {"reference": "DEV-202610-0012"},
+      "signe_le": "2026-10-12T09:30:00+00:00"
+    }
   }
 }
