@@ -412,6 +412,16 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     # ENF11 — PUT et DELETE répondent 405 PAR DESIGN (ACAL120) : ces méthodes ne
     # sont pas des opérations de l'API, elles ne figurent donc pas au schéma
     # (PATCH + `archiver/` sont les seuls gestes).
+    #: Méthodes que le détail REFUSE (405) tout en restant routées : ``update``
+    #: sert le PATCH, ``destroy`` garde le 404 d'isolation société.
+    METHODES_REFUSEES = ('PUT', 'DELETE')
+
+    def _allowed_methods(self):
+        """CI #956 (fuzz) — l'en-tête ``Allow`` (OPTIONS, 405) annonçait PUT et
+        DELETE, absents du schéma : il ne liste que les méthodes servies."""
+        return [m for m in super()._allowed_methods()
+                if m not in self.METHODES_REFUSEES]
+
     @extend_schema(exclude=True)
     def update(self, request, *args, **kwargs):
         """ACAL180 — un refus de rattachement répond 409 avec le corps du
