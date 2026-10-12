@@ -88,7 +88,7 @@ function InstallBanner() {
   const install = async () => {
     if (!deferred) return
     deferred.prompt()
-    try { await deferred.userChoice } catch { /* ignore */ }
+    try { await deferred.userChoice } catch (err) { console.warn('PwaPrompts.install : ignore', err) }
     setDeferred(null)
     setShow(false)
   }

@@ -63,7 +63,7 @@ export default function PdfCanvas({ blob, onError }) {
 
     return () => {
       cancelled = true
-      if (pdf) { try { pdf.destroy() } catch { /* ignore */ } }
+      if (pdf) { try { pdf.destroy() } catch (err) { console.warn('PdfCanvas.run : ignore', err) } }
     }
   }, [blob, onError])
 

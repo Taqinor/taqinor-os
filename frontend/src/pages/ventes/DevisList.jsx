@@ -409,7 +409,10 @@ export default function DevisList() {
         const n = Math.round(parseFloat(pct))
         if (Number.isFinite(n)) setVariantePct(String(n))
       }
-    } catch { /* repli : 20 % par défaut déjà posé */ } finally {
+    } catch (err) {
+      // Repli : 20 % par défaut déjà posé.
+      console.warn('DevisList.openVarianteModal : config de variante indisponible', err)
+    } finally {
       setVarianteLoadingCfg(false)
     }
   }

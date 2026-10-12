@@ -67,7 +67,7 @@ export function usePanScroll() {
       if (!p.armed) {
         if (!exceedsPanThreshold(dx, dy)) return
         p.armed = true
-        try { board.setPointerCapture(e.pointerId) } catch { /* déjà relâché */ }
+        try { board.setPointerCapture(e.pointerId) } catch (err) { console.warn('usePanScroll.onPointerMove : déjà relâché', err) }
         board.classList.add('kb-board-panning')
       }
       board.scrollLeft = p.scrollLeft - dx
@@ -79,7 +79,7 @@ export function usePanScroll() {
       if (p.armed) {
         try {
           if (board.hasPointerCapture?.(e.pointerId)) board.releasePointerCapture(e.pointerId)
-        } catch { /* déjà relâché */ }
+        } catch (err) { console.warn('usePanScroll.release : déjà relâché', err) }
       }
       board.classList.remove('kb-board-panning')
       panRef.current = null

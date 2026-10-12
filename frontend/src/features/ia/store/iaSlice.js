@@ -45,7 +45,8 @@ function tryParseObject(s) {
       return obj
     }
   } catch {
-    /* pas du JSON — ignoré */
+    // Sondage attendu : un texte libre n'est pas du JSON — ce n'est pas une erreur à montrer.
+    return null
   }
   return null
 }

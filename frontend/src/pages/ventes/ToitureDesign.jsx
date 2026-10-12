@@ -333,7 +333,10 @@ function AtelierToiture({
   const marquerSceneEnregistree = (layout) => {
     try {
       hashSceneReferenceRef.current = layout == null ? hacherScene() : hacherLayout(layout)
-    } catch { /* référence inchangée */ }
+    } catch (err) {
+      // Référence inchangée.
+      console.warn('ToitureDesign.marquerSceneEnregistree : référence de scène inchangée', err)
+    }
     setSceneModifiee(false)
   }
 
@@ -472,7 +475,10 @@ function AtelierToiture({
         // rendu par la dernière écriture.
         setEmpreinteEcrite(null)
       }
-    } catch { /* best-effort : le contexte précédent reste affiché */ }
+    } catch (err) {
+      // Best-effort : le contexte précédent reste affiché.
+      console.warn('ToitureDesign.rafraichirContexte : contexte non relu', err)
+    }
   }
 
   // ACAL87 — capture (asynchrone : lue APRÈS un rendu réel, null si l'image est

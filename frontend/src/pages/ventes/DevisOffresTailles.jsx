@@ -479,7 +479,10 @@ export default function DevisOffresTailles({
         try {
           const { data } = await ventesApi.regenererOffreTaille(devisId, cle)
           setBlock(data)
-        } catch { /* le rechargement suivant remettra l'écran d'aplomb */ }
+        } catch (err) {
+          // Le rechargement suivant remettra l'écran d'aplomb.
+          console.warn('DevisOffresTailles.appliquer : régénération non affichée', err)
+        }
       }
     } finally {
       setTailleEnCours(null)

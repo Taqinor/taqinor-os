@@ -37,7 +37,7 @@ export const lireLastTva = () => {
 }
 export const ecrireLastTva = (v) => {
   try { if (v !== '' && v != null) window.localStorage.setItem(LAST_TVA_KEY, String(v)) }
-  catch { /* no-op silencieux */ }
+  catch (err) { console.warn('ecranDefauts.ecrireLastTva : dernier taux de TVA non mémorisé', err) }
 }
 
 // QJR581 — durée pendant laquelle les états posés par le mappeur `?edit=` (et
