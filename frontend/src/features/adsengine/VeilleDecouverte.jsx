@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Plus, Play, RefreshCw } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -73,6 +73,10 @@ function valider(lignes, plafondAppels, plafondPages) {
 export default function VeilleDecouverte({ couverture = [], decouverteId = null, onSelection }) {
   const [decouvertes, setDecouvertes] = useState([])
   const [courante, setCourante] = useState(null)
+  // ENF15 — la liste complète (fetchAllPages) peut se résoudre dans la même
+  // micro-tâche qu'un lancement : la réf est posée SYNCHRONEMENT dans
+  // `selectionner` (un effet arriverait après), jamais écrasée par le chargement initial.
+  const couranteRef = useRef(null)
   const [lignes, setLignes] = useState([LIGNE_VIDE])
   const [mode, setMode] = useState('KEYWORD_UNORDERED')
   const [plafondAppels, setPlafondAppels] = useState('')
@@ -84,6 +88,7 @@ export default function VeilleDecouverte({ couverture = [], decouverteId = null,
   const paysDisponibles = couverture.filter(l => l.statut !== 'non_couvert')
 
   const selectionner = useCallback((dec) => {
+    couranteRef.current = dec
     setCourante(dec)
     if (dec && onSelection) onSelection(dec.id)
   }, [onSelection])
@@ -94,7 +99,7 @@ export default function VeilleDecouverte({ couverture = [], decouverteId = null,
         const liste = Array.isArray(res) ? res : (res?.results || [])
         setDecouvertes(liste)
         const choisie = liste.find(d => d.id === decouverteId) || liste[0] || null
-        selectionner(choisie)
+        if (!couranteRef.current) selectionner(choisie)
       })
       .catch(() => setErrServeur('Découvertes illisibles pour le moment.'))
   // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage seulement

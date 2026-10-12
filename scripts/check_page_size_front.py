@@ -27,14 +27,6 @@ PAGINATION = Path("backend") / "django_core" / "core" / "pagination.py"
 FRONT = Path("frontend") / "src"
 # Dette connue (cliquet) : 'fichier::fonction' -> raison. Corriger = sortir.
 DETTES = {
-    "frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadSuggestions":
-        "page_size: 1000 sur getProduits, lu sans fetchAllPages (stock : a corriger)",
-    "frontend/src/pages/stock/FacturesFournisseur.jsx::reload":
-        "page_size: 1000 sur getBonsCommandeFournisseur (stock : a corriger)",
-    "frontend/src/pages/stock/ModelesBcf.jsx::reload":
-        "page_size: 1000 sur getProduits (stock : a corriger)",
-    "frontend/src/pages/stock/ReceptionsFournisseur.jsx::reload":
-        "page_size: 1000 sur getBonsCommandeFournisseur (stock : a corriger)",
 }
 _RE_PAGE_SIZE = re.compile(r"""page_size['"]?\s*[:=]\s*(\d+)""")
 _RE_RESULTS = re.compile(r"\bresults\b")
