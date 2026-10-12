@@ -69,6 +69,13 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
                 {'detail': 'produit et file sont requis.',
                  'champ': 'file' if upload is None else 'produit'},
                 status=status.HTTP_400_BAD_REQUEST)
+        try:
+            produit_id = int(produit_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'produit doit être un identifiant entier.',
+                 'champ': 'produit'},
+                status=status.HTTP_400_BAD_REQUEST)
         produit = Produit.objects.filter(
             pk=produit_id, company=request.user.company).first()
         if produit is None:

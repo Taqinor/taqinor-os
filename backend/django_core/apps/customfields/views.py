@@ -13,7 +13,8 @@ from .models import (
 )
 from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
-    FieldRolePermissionSerializer, _module_model,
+    FieldRolePermissionSerializer, ReordonnerDefinitionsSerializer,
+    _module_model,
 )
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
@@ -186,9 +187,7 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(field_def).data)
 
     @extend_schema(
-        request=inline_serializer('CustomFieldReorderRequete', {
-            'ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField())}),
+        request=ReordonnerDefinitionsSerializer,
         responses=inline_serializer('CustomFieldReorderReponse', {
             'ok': drf_serializers.BooleanField(),
             'count': drf_serializers.IntegerField()}))
@@ -198,9 +197,9 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
         d'ids dans l'ordre voulu ({"ids": [3, 1, 2]}). `ordre` est posé selon
         la position ; seules les définitions de la société courante sont
         affectées."""
-        ids = request.data.get('ids') or []
-        if not isinstance(ids, list):
-            return Response({'detail': 'Liste d’ids attendue.'}, status=400)
+        entree = ReordonnerDefinitionsSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        ids = entree.validated_data['ids']
         defs = {d.id: d for d in self.get_queryset().filter(id__in=ids)}
         for position, def_id in enumerate(ids):
             d = defs.get(def_id)

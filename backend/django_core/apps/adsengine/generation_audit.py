@@ -68,6 +68,7 @@ def lift_quarantine(company, template_key):
     try:
         cache.delete(_quarantine_key(company, template_key))
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning("generation_audit.lift_quarantine : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     return True
 
@@ -81,6 +82,7 @@ def is_template_quarantined(company, template_key):
     try:
         return bool(cache.get(_quarantine_key(company, template_key)))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquer une génération
+        logger.warning("generation_audit.is_template_quarantined : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 

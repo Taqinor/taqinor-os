@@ -52,6 +52,19 @@ class FG23SecurityEventsTest(TestCase):
         self.assertIn('login', actions)
         self.assertNotIn('create', actions)
 
+    def test_enf11_limit_invalide_400_pas_500(self):
+        """ENF11 — `limit` négatif / illisible = 400 (le slice négatif
+        levait une 500) ; > 500 reste plafonné, valeur valide inchangée."""
+        for url in ('/api/django/audit/security/',
+                    '/api/django/audit/portail/'):
+            for bad in ('-29404', '0', 'abc'):
+                r = self.api.get(url + '?limit=' + bad)
+                self.assertEqual(r.status_code, 400, (url, bad, r.content))
+            self.assertEqual(self.api.get(url + '?limit=9999').status_code, 200)
+        r = self.api.get('/api/django/audit/security/?limit=1')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data['results']), 1)
+
     def test_security_endpoint_requires_directeur(self):
         viewer = User.objects.create_user(
             username='fg23_viewer', password='pw', role_legacy='utilisateur',

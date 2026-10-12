@@ -223,3 +223,13 @@ class TestEndpointsUniteLogistique(Ntwms6Base):
         resp = auth(intrus).get(
             f'/api/django/stock/unites-logistiques/{colis.id}/')
         self.assertEqual(resp.status_code, 404)
+
+    def test_dimensions_trop_longues_ou_corps_liste_400_jamais_500(self):
+        """ENF11 — validation des champs simples par le sérialiseur."""
+        url = '/api/django/stock/unites-logistiques/'
+        resp = self.api.post(
+            url, {'type_unite': 'colis', 'poids_kg': '',
+                  'dimensions': '0' * 200}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(url, [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)

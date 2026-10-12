@@ -117,6 +117,18 @@ class TestSyncLayout(TestCase):
             f'/api/django/ventes/devis/{devis.id}/sync-layout/',
             corps, format='json')
 
+    def test_corps_multipart_refuse_415(self):
+        # ENF11/D2 — le calepinage est un document JSON : un corps multipart
+        # (QueryDict de listes) traversait ``enregistrer_layout`` et finissait
+        # en 500 ; il est désormais refusé en 415, ``sync-layout`` comme
+        # ``layout``.
+        devis = self._devis(panneaux=12)
+        for suffixe in ('sync-layout', 'layout'):
+            resp = self.api.post(
+                f'/api/django/ventes/devis/{devis.id}/{suffixe}/',
+                {'cle': 'valeur'}, format='multipart')
+            self.assertEqual(resp.status_code, 415, (suffixe, resp.content))
+
     # ── Les quatre comportements de statut ─────────────────────────────────
     def test_brouillon_applique_le_calepinage(self):
         devis = self._devis(panneaux=12)

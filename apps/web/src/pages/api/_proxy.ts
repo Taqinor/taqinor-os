@@ -9,6 +9,7 @@
  * Jamais LEAD_WEBHOOK_URL ici (secret réservé à la capture, cf. WJ109).
  */
 import * as cf from 'cloudflare:workers';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 const API_BASE_PAR_DEFAUT = 'https://api.taqinor.ma';
 
@@ -39,4 +40,32 @@ export async function relayJson(url: string, init: RequestInit): Promise<RelayRe
   }
   const payload: unknown = await reponse.json().catch(() => null);
   return { status: reponse.status, payload };
+}
+
+/**
+ * Garde commune des proxys `proposition-*` : limite de débit par IP, corps JSON, jeton de
+ * proposition. Renvoie la réponse d'erreur à retourner telle quelle, sinon `{ body, token }`.
+ */
+export async function corpsAvecToken(
+  request: Request,
+  cle: string,
+  limit: number,
+): Promise<Response | { body: Record<string, unknown>; token: string }> {
+  const rl = rateLimit(`${cle}:${clientIpFromRequest(request)}`, { limit, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return jsonResponse({ ok: false, status: 429, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return jsonResponse({ ok: false, status: 400, detail: 'Requête invalide.' }, 400);
+  }
+
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  if (!token) return jsonResponse({ ok: false, status: 400, detail: 'Lien de proposition manquant.' }, 400);
+  return { body, token };
 }

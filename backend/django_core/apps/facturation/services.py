@@ -12,18 +12,3 @@ devis→facture reste orchestré ICI (frontière services), jamais par un import
 direct des ViewSets/modèles. ``facturation`` lit crm/ventes/stock QUE via leurs
 selectors/services ou par référence opaque.
 """
-
-from apps.ventes.services import (  # noqa: F401
-    abandonner_solde_facture,
-    anomalies_emission_facture,
-    consolider_factures,
-    creer_facture_acompte_situation,
-    creer_facture_classique,
-    creer_facture_contrat,
-    creer_facture_regie,
-    enregistrer_paiement,
-    facture_montant_du,
-    get_facture_or_none,
-    reset_relance_escalation,
-    ventiler_avance,
-)

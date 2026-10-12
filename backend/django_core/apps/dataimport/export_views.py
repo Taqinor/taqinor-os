@@ -17,10 +17,12 @@ s'ajoute à côté sans rien remplacer.
 import datetime
 
 from django.http import HttpResponse
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes)
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
+from core.parseurs import PARSEURS_JSON
 
 from .schema_fields import champ_choix
 from .exporters import (
@@ -58,11 +60,23 @@ def _clean_objects(raw):
     return keys or list(DEFAULT_OBJECTS)
 
 
-def _clean_format(raw):
-    fmt = (raw or DEFAULT_FORMAT)
-    if isinstance(fmt, str):
-        fmt = fmt.lower().strip()
-    return fmt if fmt in FORMATS else DEFAULT_FORMAT
+def _clean_format(raw, repli=False):
+    """Format demandé ; absent (None) → défaut. ENF11 — une valeur FOURNIE
+    mais hors ``FORMATS`` (chaîne vide, type faux) est refusée (``None``) au
+    lieu d'être remplacée en silence par le défaut. ``repli`` : export d'UN
+    objet, où une chaîne inconnue retombe sur le défaut (comportement
+    documenté et déclaré) ; un type faux reste refusé."""
+    if raw is None:
+        return DEFAULT_FORMAT
+    if not isinstance(raw, str):
+        return None
+    fmt = raw.lower().strip()
+    if fmt in FORMATS:
+        return fmt
+    return DEFAULT_FORMAT if repli else None
+
+
+_FORMAT_INVALIDE = {'format': 'Format invalide (csv, xlsx ou json).'}
 
 
 @extend_schema(responses=inline_serializer('ExportObjetsListe', {
@@ -83,10 +97,13 @@ def export_objects_list(request):
 @extend_schema(
     request=inline_serializer('ExportObjetRequete', {
         'object': champ_choix(REGISTRY),
-        'format': champ_choix(FORMATS, required=False)}),
+        'format': serializers.CharField(
+            required=False,
+            help_text='csv, xlsx ou json ; valeur inconnue ⇒ csv.')}),
     responses=_FICHIERS_EXPORT)
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
+@parser_classes(PARSEURS_JSON)
 def export_object(request):
     """Exporte UN type d'objet de la société -> fichier téléchargeable."""
     company = _company_of(request.user)
@@ -96,7 +113,9 @@ def export_object(request):
     key = (request.data.get('object') or '').strip()
     if key not in REGISTRY:
         return Response({'detail': 'Objet inconnu.'}, status=400)
-    fmt = _clean_format(request.data.get('format'))
+    fmt = _clean_format(request.data.get('format'), repli=True)
+    if fmt is None:
+        return Response(_FORMAT_INVALIDE, status=400)
 
     spec = REGISTRY[key]
     data = export_bytes(spec, company, fmt)
@@ -115,6 +134,7 @@ def export_object(request):
     responses={(200, 'application/zip'): OpenApiTypes.BINARY})
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
+@parser_classes(PARSEURS_JSON)
 def sauvegarde(request):
     """Sauvegarde complète : bundle ZIP des objets choisis (un fichier/objet).
 
@@ -127,6 +147,8 @@ def sauvegarde(request):
 
     keys = _clean_objects(request.data.get('objects'))
     fmt = _clean_format(request.data.get('format'))
+    if fmt is None:
+        return Response(_FORMAT_INVALIDE, status=400)
     stamp = datetime.date.today().isoformat()
     specs = [REGISTRY[k] for k in keys]
 

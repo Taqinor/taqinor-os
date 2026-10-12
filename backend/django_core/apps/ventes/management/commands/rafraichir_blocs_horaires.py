@@ -29,6 +29,9 @@ impose l'accord EXPLICITE du fondateur sur ce diff avant toute application en
 production (ciblez alors avec ``--refs``).
 """
 from django.core.management.base import BaseCommand, CommandError
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Statuts dont le document est déjà entre les mains du client.
 STATUTS_CLIENT = ('envoye', 'accepte')
@@ -69,6 +72,7 @@ def _chiffres(devis):
     except _Annuler:
         pass
     except Exception as exc:  # noqa: BLE001 — un devis n'arrête pas le lot
+        logger.warning("rafraichir_blocs_horaires._chiffres : erreur ignorée (mode dégradé)", exc_info=True)
         return {'erreur': f'{type(exc).__name__}: {str(exc)[:160]}'}
     return resultat
 
@@ -155,6 +159,8 @@ class Command(BaseCommand):
             except _Annuler:
                 pass
             except Exception as exc:  # noqa: BLE001 — un devis n'arrête rien
+                logger.warning(
+                    "rafraichir_blocs_horaires.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 echecs += 1
                 self.stdout.write('! %s — ÉCHEC : %s: %s'
                                   % (devis.reference, type(exc).__name__, exc))

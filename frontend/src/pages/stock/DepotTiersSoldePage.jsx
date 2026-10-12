@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import NoIndex from '../../components/NoIndex'
 import publicStockApi from '../../features/stock/publicStockApi'
 import { messageServeur } from '../../features/stock/api/erreurs'
+import { AlerteErreurStock } from './BandeauxListeStock'
 
 /* ASTK223 — page PUBLIQUE « solde du dépositaire » (/depot-tiers/:token).
 
@@ -31,11 +32,7 @@ export default function DepotTiersSoldePage() {
     <main className="mx-auto max-w-2xl space-y-4 p-6">
       <NoIndex />
       <h1 className="text-2xl font-semibold">Solde de votre stock</h1>
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
+      <AlerteErreurStock error={erreur} />
       {solde && (
         <section className="space-y-3">
           <p className="text-lg font-medium">{solde.tiers_nom}</p>

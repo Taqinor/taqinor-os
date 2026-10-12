@@ -6,58 +6,23 @@
 // comme repli quand le formulaire n'est pas encore un devis valide
 // (`validate()` échoue) — jamais le chemin normal.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduits: vi.fn(() => Promise.resolve({ data: [] })),
-    dupliquerProduit: vi.fn(),
-  },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    // PVMRQ — DevisGenerator interroge ce singleton au montage (best-effort) ;
-    // sans lui, l'effet lève sur un mock partiel avant même le premier rendu.
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    // Site prefill (chemin client SANS lead) — best-effort, best-caught, mais
-    // sans mock l'appel lève sur `undefined(...)` avant même son `.catch()`.
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    // TAILLES (fondateur 26/08/2026) — DevisOffresTailles (monté sous DevisGenerator
-    // en résidentiel/édition) interroge ce endpoint au montage (best-effort,
-    // même patron PVMRQ ci-dessus) ; sans mock l'effet lève sur `undefined(...)`.
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    // QJR214/215 — le panneau Surcharges charge le registre au montage en
-    // édition (même patron PVMRQ) ; sans mock l'effet lève sur `undefined(...)`.
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-  },
-}))
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiDuplication())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiEdition())
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { declarerBeforeEachDevis, makeDevisStore } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue volontairement MAIGRE (aucun panneau ni onduleur) : suffisant
 // pour peupler l'effet lead-depuis-l'URL + les lignes par défaut, jamais
@@ -78,17 +43,7 @@ const PRODUIT_ONDULEUR = {
   is_archived: false, prix_achat: 10000,
 }
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const makeStore = () => makeDevisStore('normal', 'Commercial')
 
 function renderGenerator(entree) {
   return render(
@@ -108,20 +63,7 @@ function renderGenerator(entree) {
 
 // jsdom : shims requis par le générateur (scrollIntoView, matchMedia,
 // ResizeObserver via recharts) — mêmes shims que DevisGeneratorRename.test.jsx.
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+declarerBeforeEachDevis({ stockApi, crmApi, ventesApi })
 
 describe('PV23bis — « Concevoir en 3D » travaille sur le devis, pas sur un lead déconnecté', () => {
   it('le bouton apparaît même sans repère GPS et retombe en mode lead quand le devis n\'est pas encore valide', async () => {

@@ -100,6 +100,7 @@ def variante_pre_save(sender, instance, **kwargs):
         ancienne = sender.objects.filter(pk=instance.pk).values_list(
             'retenue', flat=True).first()
     except Exception:  # noqa: BLE001 — jamais bloquant pour la sauvegarde
+        logger.warning("calepinage_event_receivers.variante_pre_save : erreur ignorée (mode dégradé)", exc_info=True)
         ancienne = None
     setattr(instance, _OLD_RETENUE_ATTR, ancienne)
 

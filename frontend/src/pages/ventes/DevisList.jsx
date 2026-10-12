@@ -15,11 +15,12 @@ import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import {
   Button, Card, EmptyState, Spinner,
-  Skeleton, SkeletonTableRow,
+  Skeleton,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, toast,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
   Textarea,
 } from '../../ui'
+import { PageListeChargement } from './ElementsListeVentes'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
@@ -63,36 +64,15 @@ import {
   estDevisCi, corpsAcceptation, raisonSocialeConnue, ENTREPRISE_VIDE,
 } from '../../features/ventes/quote/acceptationEntreprise'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import ListeTableSkeleton from './ListeTableSkeleton'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
 // carte que le tableau réel, en gardant l'en-tête de page visible.
+const DEVISTABLESKELETON_ENTETES = [['Référence'], ['Client'], ['Créé le'], ['Validité'], ['Total TTC', 'ta-right'], ['Statut'], ['Actions']]
+
 function DevisTableSkeleton() {
-  return (
-    <Card className="mt-4 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th className="w-8" />
-              <th>Référence</th>
-              <th>Client</th>
-              <th>Créé le</th>
-              <th>Validité</th>
-              <th className="ta-right">Total TTC</th>
-              <th>Statut</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: 6 }).map((unused, i) => (
-              <SkeletonTableRow key={i} columns={8} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  )
+  return <ListeTableSkeleton largeurSelection="w-8" entetes={DEVISTABLESKELETON_ENTETES} />
 }
 
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
@@ -859,28 +839,19 @@ export default function DevisList() {
 
   if (loading) {
     return (
-      <div className="page">
-        {pageHeader}
-        {showSpinner && (
-          <div className="mt-4 flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-            <Spinner /> Chargement des devis…
-          </div>
-        )}
-        {showSkeleton && (
-          <>
-            {/* Bandeau de résumé squelette (5 cartes statut). */}
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-              {Array.from({ length: 5 }).map((unused, i) => (
-                <div key={i} className="rounded-lg border border-border bg-card p-3">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="mt-2 h-3 w-16" />
-                </div>
-              ))}
+      <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
+        showSkeleton={showSkeleton} libelle="Chargement des devis…">
+        {/* Bandeau de résumé squelette (5 cartes statut). */}
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((unused, i) => (
+            <div key={i} className="rounded-lg border border-border bg-card p-3">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="mt-2 h-3 w-16" />
             </div>
-            <DevisTableSkeleton />
-          </>
-        )}
-      </div>
+          ))}
+        </div>
+        <DevisTableSkeleton />
+      </PageListeChargement>
     )
   }
   if (error) {

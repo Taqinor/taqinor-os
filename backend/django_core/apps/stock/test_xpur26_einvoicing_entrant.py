@@ -7,7 +7,7 @@ Couvre :
   * le numéro de clearance DGI se stocke et pilote statut_conformite_dgi ;
   * un fichier illisible / sans fournisseur matchable échoue proprement, sans
     créer de facture (dégradation propre) ;
-  * tout est INERTE (400, no-op) tant que
+  * tout est INERTE (409, no-op) tant que
     `AchatsParametres.einvoicing_entrant_actif` reste OFF (défaut) — aucune
     régression pour les sociétés qui n'ont pas activé le flag ;
   * l'endpoint `depuis-ubl` crée le brouillon une fois le flag activé.
@@ -192,12 +192,12 @@ class TestCreerFactureDepuisUbl(Xpur26Base):
 
 
 class TestDepuisUblEndpoint(Xpur26Base):
-    def test_endpoint_400_quand_flag_off(self):
+    def test_endpoint_409_quand_flag_off(self):
         # Défaut = OFF : total no-op, aucune facture créée.
         resp = self.api.post(
             '/api/django/stock/factures-fournisseur/depuis-ubl/',
             {'file': _ubl_file()}, format='multipart')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertEqual(FactureFournisseur.objects.count(), 0)
 
     def test_endpoint_cree_brouillon_quand_flag_actif(self):

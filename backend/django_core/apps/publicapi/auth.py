@@ -13,6 +13,9 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from . import portees
 from .models import ApiKey, hash_key
+import logging
+
+logger = logging.getLogger(__name__)
 
 AUTH_KEYWORD = 'Api-Key'
 
@@ -359,6 +362,7 @@ def _safe(fonction, *args, **kwargs):
     try:
         return fonction(*args, **kwargs)
     except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning("auth._safe : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
             'Quota API : %s a échoué (requête laissée passer)',

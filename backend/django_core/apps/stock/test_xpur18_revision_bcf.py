@@ -85,7 +85,7 @@ class TestEditionDirecteRefusee(Xpur18Base):
         resp = self.api.patch(
             f'/api/django/stock/bons-commande-fournisseur/{bc.id}/',
             {'note': 'Modif directe'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_patch_direct_toujours_permis_en_brouillon(self):
         bc = BonCommandeFournisseur.objects.create(

@@ -2610,7 +2610,7 @@ class FavorisCatalogueAchat(TenantModel):
 # Définis dans `models_wms.py` pour ne pas alourdir ce fichier (même pratique
 # que `installations/models_kitting.py`) ; ré-exportés ici pour que
 # `from apps.stock.models import VaguePicking` fonctionne partout.
-from .models_wms import (  # noqa: E402,F401
+from .models_wms import (  # noqa: E402
     AffectationCrossDock,
     AlerteRappel,
     BlocageQualite,
@@ -2630,42 +2630,54 @@ from .models_wms import (  # noqa: E402,F401
 )
 
 # ── NTWMS34 — contrôle qualité à réception (plan d'échantillonnage). ───────
-from .models_qualite_reception import (  # noqa: E402,F401
+from .models_qualite_reception import (  # noqa: E402
     ControleReception,
     PlanEchantillonnage,
 )
 
 # ── NTWMS37 — réception à quantité/poids VARIABLE (catch-weight). ──────────
-from .models_catch_weight import PeseeLigneReception  # noqa: E402,F401
+from .models_catch_weight import PeseeLigneReception  # noqa: E402
 
 # ── NTWMS38 — compatibilité casier ↔ classe de danger (hazmat). ────────────
-from .models_hazmat import CompatibiliteHazmatCasier  # noqa: E402,F401
+from .models_hazmat import CompatibiliteHazmatCasier  # noqa: E402
 
 # ── NTWMS39 — journal léger des casiers (plan d'entrepôt). ─────────────────
-from .models_historique_casier import HistoriqueCasier  # noqa: E402,F401
+from .models_historique_casier import HistoriqueCasier  # noqa: E402
 
 # ── NTWMS40 — réappro d'un casier picking depuis le stockage. ──────────────
-from .models_reappro_casier import (  # noqa: E402,F401
+from .models_reappro_casier import (  # noqa: E402
     SeuilReapproCasier,
     TacheReapproInterne,
 )
 
 # ── NTSCM9 — incidents qualité fournisseur (alimente scorecard + TCO). ─────
-from .models_incident_fournisseur import (  # noqa: E402,F401
+from .models_incident_fournisseur import (  # noqa: E402
     IncidentQualiteFournisseur,
 )
 
 # ── Groupe NTDST — NÉGOCE (consignation, RFA, van sales, paramètres). ──────
-from .models_negoce_params import ParametresNegoce  # noqa: E402,F401
-from .models_consignation import (  # noqa: E402,F401
+from .models_negoce_params import ParametresNegoce  # noqa: E402
+from .models_consignation import (  # noqa: E402
     DeclarationConsommation,
     DepotConsignation,
 )
-from .models_rfa import AccordRFAFournisseur  # noqa: E402,F401
-from .models_van_sales import StockVehicule  # noqa: E402,F401
+from .models_rfa import AccordRFAFournisseur  # noqa: E402
+from .models_van_sales import StockVehicule  # noqa: E402  (enregistrement du modèle van-sales)
+
+__all__ = [
+    'StockVehicule',
+    'AccordRFAFournisseur', 'AffectationCrossDock', 'AlerteRappel', 'BlocageQualite',
+    'CompatibiliteHazmatCasier', 'ControleReception', 'DeclarationConsommation',
+    'DepotConsignation', 'ExpeditionTransporteur', 'HistoriqueCasier',
+    'IncidentQualiteFournisseur', 'LignePicking', 'LigneRetourClient', 'MouvementRebut',
+    'ParametresNegoce', 'PeseeLigneReception', 'PlanChargement', 'PlanComptageTournant',
+    'PlanEchantillonnage', 'PortailTiersToken', 'Quai', 'RendezVousTransporteur', 'RetourClient',
+    'SeuilReapproCasier', 'TacheReapproInterne', 'UniteLogistique', 'UniteLogistiqueLigne',
+    'VaguePicking',
+]
 
 # ── Groupe NTPRT — PORTAIL FOURNISSEUR (comptes réels, annonces de livraison) ─
-from .models_portail_fournisseur import (  # noqa: E402,F401
+from .models_portail_fournisseur import (  # noqa: E402
     AnnonceLivraisonFournisseur,
     CompteFournisseurPortail,
 )
@@ -2674,7 +2686,7 @@ from .models_portail_fournisseur import (  # noqa: E402,F401
 # Définis dans `models_fiche_technique.py` (move only) ; ré-exportés ici :
 # Django enregistre les modèles par models.py et la migration
 # 0159_calx60_fiche_chaine_pertes référence `apps.stock.models.valider_courbe_*`.
-from .models_fiche_technique import (  # noqa: E402,F401
+from .models_fiche_technique import (  # noqa: E402
     FicheTechnique,
     valider_courbe_irradiance,
     valider_courbe_rendement_onduleur,
@@ -2692,7 +2704,7 @@ from .models_fiche_technique import (  # noqa: E402,F401
 # code/migrations historiques (``from apps.stock.models import
 # BonCommandeFournisseur``, admin, tests) fonctionnels ; à retirer en ODX22
 # une fois tous les appelants re-pointés sur ``apps.achats``.
-from apps.achats.models import (  # noqa: E402,F401
+from apps.achats.models import (  # noqa: E402
     BonCommandeFournisseur,
     DeviseAchat,
     FactureFournisseur,
@@ -2706,6 +2718,14 @@ from apps.achats.models import (  # noqa: E402,F401
     ReceptionFournisseur,
     RetourFournisseur,
 )
+
+__all__ += [
+    'AnnonceLivraisonFournisseur', 'BonCommandeFournisseur', 'CompteFournisseurPortail',
+    'DeviseAchat', 'FactureFournisseur', 'FicheTechnique', 'ImputationAcompteFournisseur',
+    'LigneBonCommandeFournisseur', 'LigneFactureFournisseur', 'LigneReceptionFournisseur',
+    'LigneRetourFournisseur', 'PaiementFournisseur', 'PrixFournisseur', 'ReceptionFournisseur',
+    'RetourFournisseur', 'valider_courbe_irradiance', 'valider_courbe_rendement_onduleur',
+]
 
 
 # ── NTWFL2 — pont matrice d'approbation (NTWFL1) → moteur BPM (core.workflow) ─

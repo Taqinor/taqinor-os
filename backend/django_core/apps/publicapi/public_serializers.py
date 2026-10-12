@@ -5,6 +5,7 @@ propre des objets métier. Aucun prix d'achat / marge n'est jamais sérialisé :
 les lignes n'exposent que prix_unitaire (prix de VENTE) et totaux, jamais
 `Produit.prix_achat`.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.crm.models import Lead
@@ -103,6 +104,7 @@ class PublicProduitSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(serializers.IntegerField())
     def get_quantite_disponible(self, obj):
         from apps.stock.services import available_quantity
         return available_quantity(obj)
@@ -130,12 +132,14 @@ class BulkJobSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_resultat_url(self, obj):
         if obj.statut != BulkJob.STATUT_TERMINE or not obj.resultat_file_key:
             return None
         from apps.records.storage import presign_export_result
         return presign_export_result(obj.resultat_file_key, expires=900)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_erreurs_url(self, obj):
         if not obj.erreurs_file_key:
             return None

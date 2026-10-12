@@ -344,7 +344,8 @@ def reconcilier(devis, intention):
             raise SyncLayoutError('Devis introuvable.')
         # ADEV30 — compte de panneaux AVANT toute écriture : un envoyé n'est
         # re-tarifé que si la resynchronisation le change.
-        from .lignes import comptes_panneaux_du_devis
+        from .lignes import (comptes_panneaux_du_devis, porter_quantite,
+                             poser_prix_unitaire)
         comptes_avant = comptes_panneaux_du_devis(verrou)
 
         # PVMRQ — gamme RÉELLE de ce devis, calculée une fois et transmise à
@@ -604,8 +605,7 @@ def reconcilier(devis, intention):
                         'de panneaux de l\'option « %s » : elle a été ramenée '
                         'à 0, les autres lignes n\'ont pas été touchées.'
                         % variante)
-                dominante.quantite = Decimal(str(nouvelle))
-                dominante.save(update_fields=['quantite'])
+                porter_quantite(dominante, Decimal(str(nouvelle)))
                 lignes_modifiees += 1
                 panneaux_ont_change = True
             total_panneaux = _total_de(VARIANTE_SANS)
@@ -637,8 +637,7 @@ def reconcilier(devis, intention):
                         'Le retrait demandé dépasse la plus grosse ligne de '
                         'panneaux : elle a été ramenée à 0, les autres lignes '
                         'n\'ont pas été touchées.')
-                dominante.quantite = Decimal(str(nouvelle))
-                dominante.save(update_fields=['quantite'])
+                porter_quantite(dominante, Decimal(str(nouvelle)))
                 lignes_modifiees += 1
                 total_panneaux = sum(
                     int(li.quantite or 0) for li in lignes_panneau)
@@ -717,8 +716,7 @@ def reconcilier(devis, intention):
             nouvelle = Decimal(str(cible))
             if Decimal(str(dominante.quantite or 0)) == nouvelle:
                 return False
-            dominante.quantite = nouvelle
-            dominante.save(update_fields=['quantite'])
+            porter_quantite(dominante, nouvelle)
             return True
 
         if panneaux_ont_change and kwc > 0:
@@ -949,7 +947,7 @@ def reconcilier(devis, intention):
                 return False
             ligne.produit = remplacant
             ligne.designation = remplacant.nom
-            ligne.prix_unitaire = Decimal(remplacant.prix_vente)
+            poser_prix_unitaire(ligne, Decimal(remplacant.prix_vente))
             ligne.save(update_fields=['produit', 'designation',
                                       'prix_unitaire'])
             return True
@@ -1250,6 +1248,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
     sans fiche)."""
     from apps.ventes.domain.etape_composer import refus_modeles_designes
     from apps.ventes.domain.geometrie import _produit_designe
+    from apps.ventes.domain.lignes import porter_quantite
 
     refus = refus_modeles_designes(verrou.company, [
         m for m in modeles if m.get('produit_id') and not any(
@@ -1277,8 +1276,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
             return
         dominante = max(libres, key=lambda li: Decimal(str(li.quantite or 0)))
         nouvelle = max(0, int(dominante.quantite or 0) + (cible - total))
-        dominante.quantite = Decimal(str(nouvelle))
-        dominante.save(update_fields=['quantite'])
+        porter_quantite(dominante, Decimal(str(nouvelle)))
         modifiees += 1
         change = True
 
@@ -1337,8 +1335,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
         avertissements.append(
             'La ligne de panneaux « %s » ne correspond à aucun module posé '
             'sur le calepinage : elle a été ramenée à 0.' % ligne.designation)
-        ligne.quantite = Decimal('0')
-        ligne.save(update_fields=['quantite'])
+        porter_quantite(ligne, Decimal('0'))
         modifiees += 1
         change = True
     return modifiees, change, residuel
@@ -1389,6 +1386,7 @@ def emettre_layout_finalise(devis, user):
         layout_finalise.send(sender='ventes.views.devis', devis=devis,
                              user=user)
     except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+        logger.warning("resynchronisation.emettre_layout_finalise : erreur ignorée (mode dégradé)", exc_info=True)
         logging.getLogger(__name__).exception(
             'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
 
@@ -1518,8 +1516,8 @@ def ecrire_conception_du_devis(devis, layout, user=None, *,
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402,F401
-from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402
+from apps.ventes.domain.catalogue import (  # noqa: E402
     SOCLES_PAR_PANNEAU,
     STRUCTURES_PAR_PANNEAU,
     _arrondi_js,
@@ -1538,7 +1536,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     metre_cable_dc,
     metre_cable_terre,
 )
-from apps.ventes.domain.composition import (  # noqa: E402,F401
+from apps.ventes.domain.composition import (  # noqa: E402
     VARIANTE_AVEC,
     VARIANTE_SANS,
     _completer_kit_residentiel,
@@ -1546,8 +1544,8 @@ from apps.ventes.domain.composition import (  # noqa: E402,F401
     _refuser_couple_panneau_onduleur_impossible,
     _v_txt,
 )
-from apps.ventes.domain.gammes import gamme_nom  # noqa: E402,F401
-from apps.ventes.domain.geometrie import (  # noqa: E402,F401
+from apps.ventes.domain.gammes import gamme_nom  # noqa: E402
+from apps.ventes.domain.geometrie import (  # noqa: E402
     _cible_panneaux_du_layout,
     _watt_du_layout,
     extract_roof_config,
@@ -1555,7 +1553,7 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     modeles_designes,
     scenario_du_layout,
 )
-from apps.ventes.domain.lignes import (  # noqa: E402,F401
+from apps.ventes.domain.lignes import (  # noqa: E402
     _classe_ligne,
     _lignes_produit,
     creer_ligne,
@@ -1565,17 +1563,17 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
 # a pas de cycle : ``pipeline`` n'importe CE module que depuis l'intérieur de
 # son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
 # toujours complètement chargé quand cette ligne s'exécute.
-from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+from apps.ventes.domain.pipeline import (  # noqa: E402
     MODE_RECONCILIER,
     ORIGINE_RESYNCHRONISATION,
     IntentionDevis,
     appliquer,
 )
-from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
+from apps.ventes.domain.etape_composer import (  # noqa: E402
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
 )
-from apps.ventes.domain.scenario import (  # noqa: E402,F401
+from apps.ventes.domain.scenario import (  # noqa: E402
     SCENARIO_LES_DEUX,
     puissance_kwc_du_devis,
     scenario_effectif,

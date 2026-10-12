@@ -20,6 +20,7 @@ donc elle ne passe évidemment PAS par le moteur de devis premium ni par
 ``/proposal`` (règle #4) et ne touche aucun statut.
 """
 from drf_spectacular.utils import extend_schema
+from . import openapi_shapes as SH
 from .openapi_params import qstr
 import re
 
@@ -56,7 +57,17 @@ class PdfRenderer(BaseRenderer):
     render_style = 'binary'
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
-        return data
+        # ENF11 — une ERREUR (404 devis inconnu, 401/403…) arrive ici comme un
+        # dict : la rendre « telle quelle » donnait les NOMS de clés en
+        # ``application/pdf`` (``detailerror``). Les erreurs sortent en JSON,
+        # avec leur vrai Content-Type — celui que le contrat déclare.
+        if isinstance(data, (bytes, bytearray)):
+            return data
+        from rest_framework.renderers import JSONRenderer
+        reponse = (renderer_context or {}).get('response')
+        if reponse is not None:
+            reponse['Content-Type'] = 'application/json'
+        return JSONRenderer().render(data, 'application/json', renderer_context)
 
 
 #: Les renderers PAR DÉFAUT du projet + le PDF — la négociation existante
@@ -122,7 +133,9 @@ def _pdf_response(svg, nom_fichier):
     return reponse
 
 
-@extend_schema(parameters=[qstr('format')])
+@extend_schema(parameters=[qstr('format', enum=['json', 'pdf'])],
+               request=SH.SchemaUnifilaireRequest,
+               responses=SH.SCHEMA_UNIFILAIRE_RESPONSES)
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)
@@ -143,7 +156,8 @@ def schema_unifilaire(request):
     return _svg_response(svg)
 
 
-@extend_schema(parameters=[qstr('format')])
+@extend_schema(parameters=[qstr('format', enum=['json', 'pdf'])],
+               responses=SH.SCHEMA_UNIFILAIRE_RESPONSES)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)

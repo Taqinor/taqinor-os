@@ -53,6 +53,48 @@ def _not_found():
     ))
 
 
+@extend_schema(request=None, responses={
+    200: inline_serializer('StockPortailFournisseurDocuments', {
+        'fournisseur_nom': serializers.CharField(),
+        'bons_commande': serializers.ListField(child=inline_serializer(
+            'StockPortailFournisseurBcf', {
+                'id': serializers.IntegerField(),
+                'reference': serializers.CharField(),
+                'statut': serializers.CharField(),
+                'statut_display': serializers.CharField(),
+                'date_commande': serializers.CharField(allow_null=True),
+                'date_livraison_prevue': serializers.CharField(
+                    allow_null=True),
+                'date_confirmee_fournisseur': serializers.CharField(
+                    allow_null=True),
+                'lignes': serializers.ListField(
+                    child=serializers.DictField()),
+            })),
+        'receptions': serializers.ListField(child=inline_serializer(
+            'StockPortailFournisseurReception', {
+                'id': serializers.IntegerField(),
+                'reference': serializers.CharField(),
+                'bon_commande_reference': serializers.CharField(
+                    allow_null=True),
+                'statut': serializers.CharField(),
+                'date_reception': serializers.CharField(allow_null=True),
+            })),
+        'factures': serializers.ListField(child=inline_serializer(
+            'StockPortailFournisseurFacture', {
+                'id': serializers.IntegerField(),
+                'reference': serializers.CharField(),
+                'date_facture': serializers.CharField(allow_null=True),
+                'date_echeance': serializers.CharField(allow_null=True),
+                'montant_ttc': serializers.CharField(),
+                'statut': serializers.CharField(),
+                'statut_display': serializers.CharField(),
+                'solde_du': serializers.CharField(),
+            })),
+    }),
+    404: inline_serializer('StockPortailFournisseurErreur', {
+        'detail': serializers.CharField(),
+    }),
+})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -70,6 +112,33 @@ def portail_fournisseur_documents_view(request, token):
     return _noindex(Response(portail_fournisseur_documents(token_obj)))
 
 
+@extend_schema(
+    request=inline_serializer('StockPortailFournisseurConfirmationCorps', {
+        'date_confirmee_fournisseur': serializers.DateField(),
+        'numero_confirmation_fournisseur': serializers.CharField(
+            required=False, allow_blank=True),
+    }),
+    responses={
+        200: inline_serializer('StockPortailFournisseurConfirmation', {
+            'id': serializers.IntegerField(),
+            'reference': serializers.CharField(),
+            'date_confirmee_fournisseur': serializers.CharField(
+                allow_null=True),
+            'numero_confirmation_fournisseur': serializers.CharField(
+                allow_null=True),
+        }),
+        400: inline_serializer('StockPortailFournisseurConfirmerRefus', {
+            # `detail` pour un corps/date manquant, sinon les erreurs par champ
+            # (`exc.erreurs`) — jamais un objet sans propriété (ENF11).
+            'detail': serializers.CharField(required=False),
+        }),
+        404: inline_serializer('StockPortailFournisseurErreurConfirmer', {
+            'detail': serializers.CharField(),
+        }),
+        409: inline_serializer('StockPortailFournisseurConflit', {
+            'detail': serializers.CharField(),
+        }),
+    })
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])

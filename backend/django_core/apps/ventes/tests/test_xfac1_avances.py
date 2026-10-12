@@ -86,6 +86,32 @@ class XFAC1AvancesTests(TestCase):
             }, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_enregistrer_avance_entrees_invalides_repondent_400(self):
+        # ENF11 — ``client`` non entier / date / mode / montant démesuré
+        # finissaient en 500 (ValueError, DataError) : 400 nommés.
+        url = '/api/django/ventes/paiements/enregistrer-avance/'
+        base = {'client': self.client_obj.id, 'montant': '10',
+                'date_paiement': timezone.now().date().isoformat(),
+                'mode': 'virement'}
+        for corps in (
+                dict(base, client='None'),
+                dict(base, date_paiement='pas-une-date'),
+                dict(base, mode='0'),
+                dict(base, montant='1e20'),
+                dict(base, reference='x' * 121)):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+
+    def test_avances_non_affectees_client_non_entier_400(self):
+        # ENF11 — ``?client=abc`` levait ValueError (500).
+        r = self.api.get(
+            '/api/django/ventes/paiements/avances-non-affectees/?client=abc')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.get(
+            '/api/django/ventes/paiements/avances-non-affectees/'
+            f'?client={self.client_obj.id}')
+        self.assertEqual(r.status_code, 200, r.data)
+
     # ── 2. Ventiler une avance sur 2 factures ──
     def test_ventiler_avance_across_two_factures(self):
         avance = Paiement.objects.create(

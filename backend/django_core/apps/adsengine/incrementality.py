@@ -45,11 +45,15 @@ from __future__ import annotations
 import datetime
 import math
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.permissions import _user_has_or_legacy
+
+from . import schema_docs as sd
 
 # Fenêtre de recul (jours) appliquée EN AMONT de la période baseline pour lire
 # les leads : ``reporting_lead_rows`` filtre sur la date de CRÉATION du lead,
@@ -300,6 +304,18 @@ class GeoHoldoutReportView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(parameters=[
+        OpenApiParameter('villes', str, OpenApiParameter.QUERY, required=False,
+                         description='Villes de la zone tenue (CSV).'),
+        OpenApiParameter('baseline_debut', OpenApiTypes.DATE, OpenApiParameter.QUERY, required=False,
+                         description='Début de la période de référence (AAAA-MM-JJ).'),
+        OpenApiParameter('baseline_fin', OpenApiTypes.DATE, OpenApiParameter.QUERY, required=False,
+                         description='Fin de la période de référence (AAAA-MM-JJ).'),
+        OpenApiParameter('test_debut', OpenApiTypes.DATE, OpenApiParameter.QUERY, required=False,
+                         description='Début de la période test (AAAA-MM-JJ).'),
+        OpenApiParameter('test_fin', OpenApiTypes.DATE, OpenApiParameter.QUERY, required=False,
+                         description='Fin de la période test (AAAA-MM-JJ).'),
+    ], responses=sd.GEO_HOLDOUT)
     def get(self, request):
         if not _user_has_or_legacy(request.user, 'adsengine_view'):
             return Response({'detail': 'Permission refusée.'}, status=403)

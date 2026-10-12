@@ -1,10 +1,9 @@
-from django.db import transaction  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import INT, OBJET, P, PID, STR
+from ..openapi_helpers import DATE, INT, OBJET, P, PID, SchemaObjetUnique
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
     DocumentConformiteFournisseur, AchatsParametres,
@@ -14,12 +13,7 @@ from ..serializers import (
     DocumentConformiteFournisseurSerializer, AchatsParametresSerializer,
     ToleranceRapprochementCategorieSerializer,
 )
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsAdminRole,
-    IsResponsableOrAdmin,
-    HasPermissionOrLegacy,
-)
+from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -70,6 +64,7 @@ class AchatsParametresViewSet(viewsets.ViewSet):
     le met à jour. ``company`` toujours dérivée de l'utilisateur, jamais du
     corps de requête."""
     permission_classes = [IsAnyRole]
+    schema = SchemaObjetUnique()
 
     def list(self, request):
         obj = AchatsParametres.for_company(request.user.company)
@@ -89,7 +84,8 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         serializer.save()
         return Response(serializer.data)
 
-    @extend_schema(parameters=[P('periode', STR, False, 'AAAA-MM'), P('seuil_jours', INT)], responses=OBJET)
+    @extend_schema(parameters=[P('periode', DATE, False, 'Date de référence (AAAA-MM-JJ)'),
+                               P('seuil_jours', INT)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='checklist-cloture')
     def checklist_cloture(self, request):
         """NTP2P30 — wizard de clôture de fin de mois achats : agrège en
@@ -110,11 +106,10 @@ class AchatsParametresViewSet(viewsets.ViewSet):
                     {'detail': 'Paramètre periode invalide (attendu '
                                'YYYY-MM-DD).'},
                     status=status.HTTP_400_BAD_REQUEST)
-        seuil_jours = request.query_params.get('seuil_jours', 15)
-        try:
-            seuil_jours = int(seuil_jours)
-        except (TypeError, ValueError):
-            seuil_jours = 15
+        from ..utils.params import entier_ou_400
+        seuil_jours = entier_ou_400(
+            request.query_params.get('seuil_jours'), 'seuil_jours', 15, 0,
+            3650)
         return Response(checklist_cloture_achats(
             request.user.company, periode, seuil_jours=seuil_jours))
 

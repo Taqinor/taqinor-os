@@ -1,42 +1,19 @@
 from django.db import transaction
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
-from rest_framework import viewsets, filters, status  # noqa: F401
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import BasePermission
 from ..openapi_helpers import BINARY, DATE, INT, P, XLSX
+from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
-from apps.ventes.utils.references import create_with_reference  # noqa: F401
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
-)
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
-)
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsAdminRole,
-    IsResponsableOrAdmin,
-    HasPermissionOrLegacy,
-)
+from ..models import FactureFournisseur, PaiementFournisseur
+from ..serializers import PaiementFournisseurSerializer
+from authentication.permissions import IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -119,8 +96,10 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        facture_id = self.request.query_params.get('facture')
-        if facture_id:
+        from ..utils.params import entier_ou_400
+        facture_id = entier_ou_400(
+            self.request.query_params.get('facture'), 'facture')
+        if facture_id is not None:
             qs = qs.filter(facture_id=facture_id)
         return qs
 
@@ -151,8 +130,9 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
             except FactureFournisseur.DoesNotExist:
                 pass
             except ValueError as exc:
+                # ENF11 — fournisseur bloqué / conformité / exception = état (409).
                 return Response(
-                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         self._escompte_flag = None
         response = super().create(request, *args, **kwargs)
         # XPUR6 — informatif (jamais déduit automatiquement) : ce paiement
@@ -163,7 +143,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     def perform_create(self, serializer):
-        from rest_framework.exceptions import ValidationError
+        from ..erreurs_achats import ConflitEtat
         from ..services import (
             recompute_facture_fournisseur_statut, compute_ras_tva,
         )
@@ -183,7 +163,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
                 facture = verrouiller_facture_fournisseur_et_verifier_solde(
                     facture, montant)
             except ValueError as exc:
-                raise ValidationError({'montant': str(exc)})
+                raise ConflitEtat(str(exc))
             # XPUR2 — RAS-TVA calculée côté serveur, jamais depuis le corps.
             taux, montant_ras = compute_ras_tva(
                 self.request.user.company, facture, montant)
@@ -211,7 +191,9 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
                         paiement.date_paiement):
                     self._escompte_flag = str(fournisseur.escompte_pct)
             except Exception:  # noqa: BLE001 — informatif, jamais bloquant
-                pass
+                logger.warning(
+                    "paiement_fournisseur.PaiementFournisseurViewSet.perform_create "
+                    ": erreur ignorée (mode dégradé)", exc_info=True)
 
     def perform_destroy(self, instance):
         from ..services import recompute_facture_fournisseur_statut
@@ -231,5 +213,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         from ..services import export_ras_tva_xlsx
         return export_ras_tva_xlsx(
             request.user.company,
-            date_debut=request.query_params.get('date_debut'),
-            date_fin=request.query_params.get('date_fin'))
+            date_debut=date_ou_400(
+                request.query_params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(
+                request.query_params.get('date_fin'), 'date_fin'))

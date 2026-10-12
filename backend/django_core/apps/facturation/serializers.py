@@ -7,15 +7,3 @@ et les nouvelles routes ``/api/django/facturation/…`` ; ODX22 re-logera leur
 corps ici. Les routes historiques ``/api/django/ventes/…`` continuent d'utiliser
 les MÊMES classes.
 """
-
-from apps.ventes.serializers_facturation import (  # noqa: F401
-    AvoirSerializer,
-    FactureActivitySerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    FollowupLevelSerializer,
-    LigneAvoirSerializer,
-    LigneFactureSerializer,
-    NoteDebitSerializer,
-    PaiementSerializer,
-)

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 
 /* SIG4 — extension ADDITIVE du dashboard ENG23 : onglet Signaux avec les DEUX
    scores de santé (créatif/opérations, bandes FR), le quadrant de garde-fous
@@ -27,15 +26,13 @@ vi.mock('./adsengineApi', () => ({
 }))
 
 import DashboardScreen from './DashboardScreen'
+import { renderDashboard, seedDashboardBase } from './DashboardScreen.testHelpers.jsx'
 
-const renderScreen = () => render(<MemoryRouter><DashboardScreen /></MemoryRouter>)
+const renderScreen = () => renderDashboard(DashboardScreen)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.dashboard.mockResolvedValue({ data: {
-    cost_per_signature: 1850, spend: 4200, cpl: 95, frequency: 1.8 } })
-  mocks.alerts.mockResolvedValue({ data: { alerts: [] } })
-  mocks.leads.mockResolvedValue({ data: [] })
+  seedDashboardBase(mocks)
   mocks.signalsGet.mockResolvedValue({ data: {
     creatif: { score: 0.72, bande: 'vert', bande_display: 'Vert' },
     operations: { score: 0.42, bande: 'orange', bande_display: 'Orange' },

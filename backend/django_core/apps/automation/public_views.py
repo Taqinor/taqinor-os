@@ -46,6 +46,7 @@ def _throttled(token):
     try:
         return not throttle.allow_request(None, None)
     except Exception:  # pragma: no cover - défensif, jamais bloquant
+        logger.warning("public_views._throttled : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -83,6 +84,7 @@ def _throttled_ip(request):
     try:
         return not _WebhookIpThrottle().allow_request(request, None)
     except Exception:  # pragma: no cover - défensif, jamais bloquant
+        logger.warning("public_views._throttled_ip : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 

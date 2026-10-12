@@ -8,6 +8,8 @@ sans argument garde la même chaîne MRO. Les imports function-locaux des corps
 restent dans les corps (les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi).
 """
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
@@ -38,6 +40,9 @@ from .devis_gardes import (
 from ..domain.pipeline import (
     MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _garde_kwh_declare(devis):
@@ -197,6 +202,7 @@ MSG_ECRITURE_REFUSEE = ('Enregistrement refusé : une quantité, un prix ou une 
 class DevisEditionActionsMixin:
     """SPL135 — actions d'édition de ``DevisViewSet`` (mixin, aucune base)."""
 
+    @extend_schema(request=D.DevisAtomic, responses={201: DevisSerializer})
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
     def atomic(self, request):
@@ -310,6 +316,8 @@ class DevisEditionActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         except Exception:  # noqa: BLE001
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
+            logger.warning(
+                "devis_edition.DevisEditionActionsMixin._creer_atomique : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': MSG_ECRITURE_REFUSEE},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -345,6 +353,7 @@ class DevisEditionActionsMixin:
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.ReplaceLinesRequest, responses=DevisSerializer)
     @action(detail=True, methods=['post'], url_path='replace-lines',
             permission_classes=[IsResponsableOrAdmin])
     def replace_lines(self, request, pk=None):
@@ -466,6 +475,8 @@ class DevisEditionActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         except Exception:  # noqa: BLE001 — rollback : lignes d'origine
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
+            logger.warning(
+                "devis_edition.DevisEditionActionsMixin.replace_lines : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': MSG_ECRITURE_REFUSEE},
                             status=status.HTTP_400_BAD_REQUEST)
         # CJ2b — C'EST LE CHEMIN D'ENREGISTREMENT DU GÉNÉRATEUR. L'écran de

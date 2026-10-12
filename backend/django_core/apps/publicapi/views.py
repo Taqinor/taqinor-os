@@ -5,9 +5,8 @@ Montées sous /api/django/publicapi/. Authentifiées par la session/JWT normaux
 société vient TOUJOURS de l'utilisateur connecté, jamais du corps de requête.
 """
 from django.db.models import Q
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_serializer, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
@@ -27,6 +26,9 @@ from .serializers import (
 from . import delivery as delivery_service
 from rest_framework.parsers import JSONParser
 
+from core.champs_stricts import ChaineStricte
+from core.parseurs import PARSEURS_JSON
+
 
 def _no_store(response):
     """ERR89 — Empêche toute mise en cache d'une réponse révélant un secret
@@ -45,12 +47,36 @@ class _CompanyScopedMixin:
         return super().get_queryset().filter(company=self.request.user.company)
 
 
+_CATALOGUE_REPONSE = inline_serializer('PublicApiCatalogue', {
+    'scopes': drf_serializers.ListField(
+        child=drf_serializers.DictField(child=drf_serializers.CharField())),
+    'events': drf_serializers.ListField(
+        child=drf_serializers.DictField(child=drf_serializers.CharField()))})
+
+
 class CatalogueView(APIView):
     """Catalogue des scopes & évènements pour peupler l'écran Paramètres."""
     permission_classes = [IsAdminOrResponsableTier]
 
+    @extend_schema(responses=_CATALOGUE_REPONSE)
     def get(self, request):
         return Response(scope_catalogue())
+
+
+_DOCS_REPONSE = inline_serializer('PublicApiReference', {
+    'titre': drf_serializers.CharField(),
+    'version': drf_serializers.CharField(),
+    'base_url': drf_serializers.CharField(),
+    'introduction': drf_serializers.CharField(),
+    'authentification': drf_serializers.JSONField(),
+    'scopes': drf_serializers.JSONField(),
+    'parametres_communs': drf_serializers.JSONField(),
+    'endpoints': drf_serializers.JSONField(),
+    'sous_ressources': drf_serializers.JSONField(),
+    'endpoints_ecriture': drf_serializers.JSONField(),
+    'endpoints_bulk': drf_serializers.JSONField(),
+    'endpoints_lecture_simple': drf_serializers.JSONField(),
+    'webhooks': drf_serializers.JSONField()})
 
 
 class DocsView(APIView):
@@ -64,6 +90,7 @@ class DocsView(APIView):
     """
     permission_classes = [IsAdminOrResponsableTier]
 
+    @extend_schema(responses=_DOCS_REPONSE)
     def get(self, request):
         from .docs import public_api_reference
         return Response(public_api_reference())
@@ -110,15 +137,27 @@ class OcrToCrmSerializer(drf_serializers.Serializer):
     mode = drf_serializers.ChoiceField(choices=['lead', 'devis'], required=False)
     fields = drf_serializers.DictField(required=False)
 
+    def validate_fields(self, value):
+        # Le service CRM lit `fournisseur` / `client` comme du texte : un
+        # autre type levait AttributeError (500) — 400 qui nomme la clé.
+        for cle in ('fournisseur', 'client'):
+            if not isinstance(value.get(cle) or '', str):
+                raise drf_serializers.ValidationError(
+                    f'« {cle} » : texte attendu.')
+        return value
+
 
 class RotationCleSerializer(drf_serializers.Serializer):
-    grace_jours = drf_serializers.IntegerField(required=False, min_value=0)
+    # ENF11 — bornes déclarées ET appliquées (un jour négatif ou démesuré
+    # était accepté puis ramené à 1, ou levait OverflowError).
+    grace_jours = drf_serializers.IntegerField(
+        required=False, min_value=0, max_value=3650)
 
 
 class ServiceAccountCreerSerializer(drf_serializers.Serializer):
     nom = drf_serializers.CharField(max_length=120)
     scopes = drf_serializers.ListField(
-        child=drf_serializers.CharField(), required=False)
+        child=ChaineStricte(), required=False)
     expire_le = drf_serializers.DateTimeField(required=False, allow_null=True)
 
 
@@ -137,6 +176,7 @@ class OcrToCrmView(APIView):
     Réservée au palier admin/responsable (même portée que la validation OCR).
     """
     permission_classes = [IsAdminOrResponsableTier]
+    parser_classes = PARSEURS_JSON  # ENF11 — D2 : vue sans fichier = JSON seul
 
     @extend_schema(request=OcrToCrmSerializer, responses={201: inline_serializer(
         'OcrToCrmReponse', {
@@ -150,16 +190,10 @@ class OcrToCrmView(APIView):
         from apps.ventes.services import create_draft_devis_from_ocr
 
         company = request.user.company
-        mode = (request.data.get('mode') or 'lead').strip().lower()
-        fields = request.data.get('fields') or {}
-        if not isinstance(fields, dict):
-            return Response(
-                {'detail': "Le champ « fields » doit être un objet."},
-                status=status.HTTP_400_BAD_REQUEST)
-        if mode not in ('lead', 'devis'):
-            return Response(
-                {'detail': "Mode invalide (attendu « lead » ou « devis »)."},
-                status=status.HTTP_400_BAD_REQUEST)
+        corps = OcrToCrmSerializer(data=request.data)
+        corps.is_valid(raise_exception=True)
+        mode = corps.validated_data.get('mode', 'lead')
+        fields = corps.validated_data.get('fields') or {}
 
         try:
             lead = create_draft_lead_from_ocr(
@@ -176,6 +210,21 @@ class OcrToCrmView(APIView):
         return Response(payload, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_serializer(component_name='PublicApiUsagePlanAvecUsage')
+class _PlanAvecUsageSerializer(ApiUsagePlanSerializer):
+    """GET du plan : le plan + l'usage consommé (NTAPI22), ajoutés par la vue."""
+    usage_jour = drf_serializers.JSONField()
+    usage_mois = drf_serializers.JSONField()
+
+    class Meta(ApiUsagePlanSerializer.Meta):
+        fields = list(ApiUsagePlanSerializer.Meta.fields) + [
+            'usage_jour', 'usage_mois']
+        read_only_fields = fields
+
+
+_PLAN_AVEC_USAGE = _PlanAvecUsageSerializer
+
+
 class ApiUsagePlanView(APIView):
     """NTAPI7 — plan d'API nommé (gratuit/pro/entreprise) de la société.
 
@@ -189,7 +238,9 @@ class ApiUsagePlanView(APIView):
     l'admin du tenant le LIT, seul un superuser plateforme le modifie
     (``PATCH`` → 403 sinon, rien n'est écrit)."""
     permission_classes = [IsAdminOrResponsableTier]
+    parser_classes = PARSEURS_JSON
 
+    @extend_schema(responses=_PLAN_AVEC_USAGE)
     def get(self, request):
         from core.api_usage import usage_jour, usage_mois
         plan = plan_pour_societe(request.user.company)
@@ -200,6 +251,8 @@ class ApiUsagePlanView(APIView):
         data['usage_mois'] = usage_mois(request.user.company)
         return Response(data)
 
+    @extend_schema(request=ApiUsagePlanSerializer,
+                   responses=ApiUsagePlanSerializer)
     def patch(self, request):
         if not request.user.is_superuser:
             return Response(
@@ -218,9 +271,12 @@ class ApiUsagePlanView(APIView):
     summary=(
         "NTAPI39 — tableau de bord de monitoring des intégrations de la société."),
     parameters=[OpenApiParameter(
-        name='jours', type=OpenApiTypes.INT, location=OpenApiParameter.QUERY,
+        name='jours',
+        # ENF11 — bornes exprimées dans le schéma (1 à FENETRE_JOURS_MAX).
+        type={'type': 'integer', 'minimum': 1, 'maximum': 90},
+        location=OpenApiParameter.QUERY,
         required=False,
-        description="Fenêtre d'analyse en jours (défaut et maximum bornés).")],
+        description="Fenêtre d'analyse en jours (1 à 90, défaut 30).")],
     responses=inline_serializer('PublicApiMonitoring', {
         'fenetre_jours': drf_serializers.IntegerField(),
         'depuis': drf_serializers.CharField(),
@@ -371,11 +427,9 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         (`grace_jours`, défaut 7). L'ancienne continue de fonctionner (avec
         l'en-tête `Deprecation`) jusqu'à l'échéance, puis seule la nouvelle."""
         instance = self.get_object()
-        grace_jours = request.data.get('grace_jours')
-        try:
-            grace_jours = int(grace_jours) if grace_jours is not None else 7
-        except (TypeError, ValueError):
-            grace_jours = 7
+        corps = RotationCleSerializer(data=request.data)
+        corps.is_valid(raise_exception=True)
+        grace_jours = corps.validated_data.get('grace_jours', 7)
         new_instance, raw_key = instance.rotate(
             grace_jours=grace_jours, created_by=request.user)
         data = ApiKeySerializer(new_instance).data
@@ -599,12 +653,11 @@ class SandboxTryView(APIView):
             'results': drf_serializers.ListField(
                 child=drf_serializers.DictField())}))
     def post(self, request):
-        resource = (request.data.get('resource') or 'leads').strip().lower()
-        if resource not in self._RESOURCES:
-            return Response(
-                {'detail': f"Ressource non démontrable : « {resource} » "
-                           f"(disponible : {', '.join(self._RESOURCES)})."},
-                status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 — corps non objet / ressource de mauvais type : 400 (le
+        # ``.strip()`` direct sur un dict ou un nombre répondait 500).
+        entree = SandboxEssaiSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        resource = entree.validated_data.get('resource') or 'leads'
 
         from .services import get_or_create_sandbox
         from .public_serializers import PublicLeadSerializer

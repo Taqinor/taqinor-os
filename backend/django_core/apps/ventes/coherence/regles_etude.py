@@ -20,6 +20,9 @@ import math
 from .contexte import num
 from .registre import (GRAVITE_AVERTISSEMENT, GRAVITE_CRITIQUE, PORTEE_DEVIS,
                        TOLERANCES, regle)
+import logging
+
+logger = logging.getLogger(__name__)
 
 TOL = TOLERANCES
 
@@ -86,7 +89,7 @@ def factures_reelles(devis, ep):
         if serie:
             return [float(v) for v in serie], 'lead_hiver_ete'
     except Exception:  # noqa: BLE001 — pas de factures lisibles = pas de règle
-        pass
+        logger.warning("regles_etude.factures_reelles : erreur ignorée (mode dégradé)", exc_info=True)
     return None, None
 
 

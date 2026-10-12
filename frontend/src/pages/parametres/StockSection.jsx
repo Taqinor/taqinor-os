@@ -7,7 +7,7 @@ import {
   createFournisseur, updateFournisseur, deleteFournisseur,
 } from '../../features/stock/store/stockSlice'
 import { Card, CardContent, Input, Button, IconButton, Switch } from '../../ui'
-import { SectionTitle, ReferentielBlock } from './peComponents'
+import { SectionTitle, ReferentielBlock, CarteSection } from './peComponents'
 import NomenclaturesCodeBarresSection from './NomenclaturesCodeBarresSection'
 import { toastError } from '../../lib/toast'
 
@@ -21,8 +21,7 @@ export default function StockSection({
       {/* ZSTK13 — capacités stock (lots/séries, colisage, scan) : True par
           défaut = comportement actuel byte-identique. Désactiver masque
           l'affichage correspondant côté écrans stock, aucune donnée détruite. */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Stock — Capacités"
                         icon={<><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></>}/>
           <p className="mb-3.5 text-[11.5px] text-muted-foreground">
@@ -50,11 +49,9 @@ export default function StockSection({
               Scan code-barres (panneaux de réception scan-first)
             </label>
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
       {/* Stock — Marques */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
+      <CarteSection>
           <SectionTitle label="Stock — Marques" icon={<><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></>}/>
           <p className="mb-3.5 text-[11.5px] text-muted-foreground">
             Marques proposées sur les produits (ajout libre possible). Une
@@ -78,8 +75,7 @@ export default function StockSection({
                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMarque() } }} />
             <Button type="button" onClick={addMarque}><Plus className="size-4" aria-hidden="true" /></Button>
           </div>
-        </CardContent>
-      </Card>
+      </CarteSection>
       <div className="pe-grid-2">
         <ReferentielBlock
           title="Catégories produit"

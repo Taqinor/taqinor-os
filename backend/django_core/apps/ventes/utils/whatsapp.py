@@ -10,6 +10,9 @@ import re
 from urllib.parse import quote
 
 from .phone import normalize_phone_e164
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def render_message_template(text, ctx):
@@ -41,6 +44,7 @@ def marque_societe(company):
         from apps.parametres.selectors import company_identity
         nom = (company_identity(company).get('nom') or '').strip()
     except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais
+        logger.warning("whatsapp.marque_societe : erreur ignorée (mode dégradé)", exc_info=True)
         nom = ''
     return nom or (getattr(company, 'nom', '') or '').strip()
 
@@ -81,6 +85,7 @@ def _lien_rdv_for(lead, request):
         from apps.crm.services import public_booking_url
         return public_booking_url(lead, request=request)
     except Exception:  # noqa: BLE001 — jamais bloquer l'envoi du devis
+        logger.warning("whatsapp._lien_rdv_for : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
 

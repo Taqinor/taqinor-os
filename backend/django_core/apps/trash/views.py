@@ -87,11 +87,11 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         if type_libelle:
             qs = qs.filter(type_libelle__iexact=type_libelle)
         depuis = params.get('depuis')
-        if depuis:
+        if depuis is not None:  # ENF11 : `?depuis=` vide = 400, pas ignoré
             qs = qs.filter(
                 supprime_le__gte=_borne_temporelle(depuis, 'depuis'))
         jusqua = params.get('jusqua')
-        if jusqua:
+        if jusqua is not None:  # ENF11 : `?jusqua=` vide = 400, pas ignoré
             qs = qs.filter(
                 supprime_le__lte=_borne_temporelle(jusqua, 'jusqua'))
         return qs

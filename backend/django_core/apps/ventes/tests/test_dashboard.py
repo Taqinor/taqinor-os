@@ -104,6 +104,19 @@ class TestDashboardBasic(TestCase):
         r = self.api.get(URL)
         self.assertEqual(r.status_code, 200)
 
+    def test_periode_mal_formee_400(self):
+        # ENF11 — start/end/month illisibles : 400 (ils finissaient en 500
+        # dans ``date_creation__date__range``).
+        for params in ('?start=abc&end=2026-01-31', '?start=2026-01-01&end=x',
+                       '?month=2026-13', '?month=abc', '?start=20260101'):
+            r = self.api.get(URL + params)
+            self.assertEqual(r.status_code, 400, (params, r.data))
+        self.assertEqual(
+            self.api.get(URL + '?month=2026-06').status_code, 200)
+        self.assertEqual(
+            self.api.get(URL + '?start=2026-01-01&end=2026-06-30').status_code,
+            200)
+
     def test_dashboard_keys_present(self):
         r = self.api.get(URL)
         self.assertIn('devis', r.data)

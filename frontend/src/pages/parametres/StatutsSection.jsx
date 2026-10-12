@@ -13,7 +13,8 @@ import { ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, Save, CheckCircle2 } fr
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, IconButton, Button, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { toast } from '../../ui/confirm'
+import { BoutonEnregistrer } from './SectionEnregistrement'
+import { marquerEnregistre, toastEnregistrementImpossible } from './enregistrement'
 
 // Les 3 domaines configurables (libellés FR). L'ordre d'apparition à l'écran.
 const DOMAINES = [
@@ -84,13 +85,8 @@ function DomaineList({ domaine, label, hint, icon }) {
       }))
       const res = await parametresApi.saveStatuts(domaine, payload)
       setRows((res.data?.results ?? payload).map(x => ({ ...x })))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
-    } finally {
-      setSaving(false)
-    }
+      marquerEnregistre(setSaved)
+    } catch (e) { toastEnregistrementImpossible(e) } finally { setSaving(false) }
   }
 
   return (
@@ -152,12 +148,7 @@ function DomaineList({ domaine, label, hint, icon }) {
               ))}
             </div>
 
-            <Button type="button" size="sm" onClick={save} loading={saving}
-              disabled={saving} variant={saved ? 'success' : 'default'}>
-              {saved
-                ? <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
-                : <><Save className="size-4" aria-hidden="true" /> Enregistrer</>}
-            </Button>
+            <BoutonEnregistrer save={save} saving={saving} saved={saved} />
           </>
         )}
       </CardContent>

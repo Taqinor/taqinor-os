@@ -93,7 +93,8 @@ HELPER_TOUTES_LES_PAGES = HELPER_UNPAGE.replace(
 
 
 class Depot(unittest.TestCase):
-    def _monter(self, fichiers, backend=None, allow="", dossier="features"):
+    def _monter(self, fichiers, backend=None, allow="", dossier="features",
+                registre=""):
         tmp = Path(tempfile.mkdtemp())
         feat = tmp / "frontend" / "src" / "features"
         for nom, contenu in fichiers.items():
@@ -107,8 +108,11 @@ class Depot(unittest.TestCase):
         (tmp / "scripts").mkdir()
         (tmp / "scripts" / "liste_page1_allow.txt").write_text(
             allow, encoding="utf-8")
+        (tmp / "scripts" / "liste_page1_non_paginees.txt").write_text(
+            registre, encoding="utf-8")
         sauve = (guard.ROOT, guard.FRONTEND_FEATURES, guard.BACKEND,
-                 guard.ALLOWLIST_PATH)
+                 guard.ALLOWLIST_PATH, guard.NON_PAGINEES_PATH)
+        guard.NON_PAGINEES_PATH = tmp / "scripts" / "liste_page1_non_paginees.txt"
         guard.ROOT = tmp
         guard.FRONTEND_FEATURES = feat
         guard.BACKEND = tmp / "backend" / "django_core"
@@ -116,7 +120,7 @@ class Depot(unittest.TestCase):
 
         def restaurer():
             (guard.ROOT, guard.FRONTEND_FEATURES, guard.BACKEND,
-             guard.ALLOWLIST_PATH) = sauve
+             guard.ALLOWLIST_PATH, guard.NON_PAGINEES_PATH) = sauve
         self.addCleanup(restaurer)
 
     @staticmethod
@@ -196,6 +200,58 @@ class TestAllowlist(Depot):
                      allow=self.CLE + "\n")
         code, out = self._main()
         self.assertEqual(code, 0, out)
+
+
+class TestRegistreNonPagine(Depot):
+    """ERR-LISTES-PAGE1-17-SITES : registre explicite des endpoints non paginés."""
+    CLE = "frontend/src/features/portail/ComptesPortailAdmin.jsx::charger"
+    VUE = ("class V(ViewSet):\n"
+           "    @action(detail=True, pagination_class=None)\n"
+           "    def x(self): ...\n")
+    PAGINEE = "class V(ViewSet):\n    def x(self): ...\n"
+    CITE = "backend/django_core/apps/portail/views.py"
+
+    def _ligne(self, ligne_vue=2):
+        return f"{self.CLE}  portail/comptes/  non paginé @{self.CITE}:{ligne_vue}\n"
+
+    def test_site_du_registre_vert(self):
+        self._monter({"portail/ComptesPortailAdmin.jsx": PAGE1},
+                     backend={"views.py": self.VUE}, registre=self._ligne())
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+        self.assertIn("1 endpoint(s) non paginé(s)", out)
+
+    def test_entree_morte_rouge(self):
+        self._monter({"portail/ComptesPortailAdmin.jsx": TOUTES_LES_PAGES},
+                     backend={"views.py": self.VUE}, registre=self._ligne())
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("non_paginees.txt", out)
+        self.assertIn("MORTES", out)
+
+    def test_citation_sans_preuve_refusee(self):
+        # La vue citée est paginée (ni pagination_class = None, ni tranche, ni @api_view).
+        self._monter({"portail/ComptesPortailAdmin.jsx": PAGE1},
+                     backend={"views.py": self.PAGINEE}, registre=self._ligne())
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("peut-être paginé", out)
+
+    def test_citation_absente_refusee(self):
+        self._monter({"portail/ComptesPortailAdmin.jsx": PAGE1},
+                     backend={"views.py": self.VUE},
+                     registre=f"{self.CLE}  portail/comptes/  non paginé\n")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("citation backend", out)
+
+    def test_double_inscription_refusee(self):
+        self._monter({"portail/ComptesPortailAdmin.jsx": PAGE1},
+                     backend={"views.py": self.VUE}, registre=self._ligne(),
+                     allow=self.CLE + "\n")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("à la fois", out)
 
 
 SLICE = """

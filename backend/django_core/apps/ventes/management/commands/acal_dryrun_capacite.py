@@ -20,6 +20,9 @@ n'est réécrit.
 import copy
 
 from django.core.management.base import BaseCommand
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Les clés que l'estimateur d'AVANT ACAL272 ne lisait pas.
 _CLES_IGNOREES_AVANT = ('setbacksM', 'exclusionZones', 'alleeTechnique',
@@ -84,6 +87,7 @@ class Command(BaseCommand):
                 apres = co.capacite_du_layout(layout, libres,
                                               contraintes=layout)
             except Exception as exc:  # noqa: BLE001 — signalé, jamais fatal
+                logger.warning("acal_dryrun_capacite.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 self.stdout.write(f'  {devis.reference} : illisible ({exc})')
                 continue
             if avant == apres:

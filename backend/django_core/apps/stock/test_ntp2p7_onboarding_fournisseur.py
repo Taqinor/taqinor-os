@@ -138,7 +138,7 @@ class OnboardingObligatoireTests(TestCase):
             'lignes': [{'produit': self.produit.pk, 'quantite': 1,
                         'prix_achat_unitaire': '800.00'}],
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('Onboarding', resp.data['detail'])
 
     def test_dossier_incomplet_le_bcf_est_refuse(self):
@@ -151,7 +151,7 @@ class OnboardingObligatoireTests(TestCase):
             'lignes': [{'produit': self.produit.pk, 'quantite': 1,
                         'prix_achat_unitaire': '800.00'}],
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('Onboarding', resp.data['detail'])
 
     def test_dossier_valide_le_bcf_passe(self):

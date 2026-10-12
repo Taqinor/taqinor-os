@@ -148,6 +148,7 @@ def _localisation(devis):
         from apps.crm.selectors import site_location_for_devis
         loc = site_location_for_devis(devis) or {}
     except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+        logger.warning("courbes_journalieres._localisation : erreur ignorée (mode dégradé)", exc_info=True)
         return None, None, None
     return loc.get('site_ville'), loc.get('gps_lat'), loc.get('gps_lng')
 
@@ -159,6 +160,7 @@ def _equipements_lead(devis):
         from apps.crm.selectors import equipements_pour_devis
         return equipements_pour_devis(devis) or {}
     except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+        logger.warning("courbes_journalieres._equipements_lead : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
 
 
@@ -169,6 +171,7 @@ def _occupation_jour_lead(devis):
         from apps.crm.selectors import occupation_jour_pour_devis
         return occupation_jour_pour_devis(devis)
     except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+        logger.warning("courbes_journalieres._occupation_jour_lead : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -269,6 +272,7 @@ def _occupation(devis, data):
         from apps.crm.selectors import profil_activite_pour_devis
         profil = profil_activite_pour_devis(devis)
     except Exception:  # noqa: BLE001 — signal absent → on retombe sur le défaut
+        logger.warning("courbes_journalieres._occupation : erreur ignorée (mode dégradé)", exc_info=True)
         profil = None
     if profil in ('day', 'day_evening', 'continuous'):
         return OCCUPATION_PRESENCE, 'lead_profil_activite:%s' % profil

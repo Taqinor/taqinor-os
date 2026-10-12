@@ -7,7 +7,10 @@
    des statuts backend (demandes d'approbation/signature) vivent ici, source de
    vérité unique pour les listes et les filtres.
    ========================================================================== */
+import { useEffect, useState } from 'react'
+import { CheckCircle2, Trash2, XCircle } from 'lucide-react'
 import { statusPill } from '../../../ui/module'
+import { toast } from '../../../ui'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 
 /** ADOC31 — lit une liste GED paginée EN ENTIER (StandardPagination : 50 par
@@ -32,6 +35,68 @@ export function errMessage(err, fallback = 'Une erreur est survenue — réessay
     if (typeof first === 'string' && first) return first
   }
   return err?.detail ?? fallback
+}
+
+/** Réponse DRF paginée ou tableau brut -> tableau. */
+export function unpage(data) {
+  if (Array.isArray(data)) return data
+  return data?.results ?? []
+}
+
+/** Résumé lisible de la 1re condition d'un groupe (`champ opérateur valeur`). */
+export function resumeCondition(conditionGroup, operateurs) {
+  const leaf = conditionGroup?.conditions?.[0]
+  if (!leaf?.field) return '—'
+  if (leaf.operator === 'exists') return `${leaf.field} existe`
+  const val = Array.isArray(leaf.value) ? leaf.value.join(', ') : leaf.value
+  const op = operateurs.find((o) => o.value === leaf.operator)?.label || leaf.operator
+  return `${leaf.field} ${op} ${val ?? ''}`.trim()
+}
+
+/** Chargement d'un écran GED : `fetcher` lit et range les données ; l'état
+ *  `loading`/`error` et la relecture `load` sont communs à tous les écrans. */
+export function useChargementGed(fetcher, messageErreur) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      await fetcher()
+    } catch (err) {
+      setError(errMessage(err, messageErreur))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement
+  }, [])
+
+  return { loading, error, load }
+}
+
+/** Exécute une action serveur, confirme par un toast puis recharge. */
+export async function actionAvecToast(action, messageSucces, recharger) {
+  try { await action(); toast.success(messageSucces); recharger() }
+  catch (err) { toast.error(errMessage(err)) }
+}
+
+/** Menu de ligne commun : activer/désactiver puis supprimer. */
+export function actionsActivation(r, toggleActif, supprimer) {
+  return [
+    r.actif
+      ? { id: 'desactiver', label: 'Désactiver', icon: XCircle, onClick: () => toggleActif(r) }
+      : { id: 'activer', label: 'Activer', icon: CheckCircle2, onClick: () => toggleActif(r) },
+    {
+      id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
+      onClick: () => supprimer(r),
+    },
+  ]
 }
 
 /** Formate une taille en octets en Ko/Mo/Go lisibles (jamais d'exception). */

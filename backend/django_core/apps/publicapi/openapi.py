@@ -16,6 +16,8 @@ une note de doc oubliée.
 """
 import re
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -394,5 +396,13 @@ class PublicOpenApiSchemaView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [OpenApiPublicThrottle]
 
+    @extend_schema(responses=inline_serializer('PublicOpenApiDocument', {
+        'openapi': serializers.CharField(),
+        'info': serializers.JSONField(),
+        'servers': serializers.JSONField(),
+        'components': serializers.JSONField(),
+        'security': serializers.JSONField(),
+        'paths': serializers.JSONField(),
+        'webhooks': serializers.JSONField()}))
     def get(self, request):
         return Response(build_openapi_schema())

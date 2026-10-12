@@ -22,6 +22,9 @@ Variants:
               finance page → 4 pages, correctly numbered).
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def keys():
@@ -51,6 +54,7 @@ def _demo_roof_b64() -> str:
             return ("data:image/jpeg;base64,"
                     + base64.b64encode(p.read_bytes()).decode())
     except Exception:
+        logger.warning("sample_data._demo_roof_b64 : erreur ignorée (mode dégradé)", exc_info=True)
         pass
     return ""
 

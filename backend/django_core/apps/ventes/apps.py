@@ -2,6 +2,9 @@ import os
 
 from django.apps import AppConfig
 from django.core.checks import Warning as DjangoWarning, register
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @register()
@@ -18,6 +21,7 @@ def _qx10_esign_otp_channel_check(app_configs, **kwargs):
             from apps.ventes.email_service import is_email_configured
             email_ok = is_email_configured()
         except Exception:  # noqa: BLE001
+            logger.warning("apps._qx10_esign_otp_channel_check : erreur ignorée (mode dégradé)", exc_info=True)
             email_ok = False
         if not email_ok:
             warnings.append(DjangoWarning(
@@ -82,6 +86,10 @@ class VentesConfig(AppConfig):
         # app qui s'enregistre. Idempotent (le registre est un dict par nom).
         from . import dsr_provider
         dsr_provider.register()
+        # ENF11 — déclarations OpenAPI des vues publiques dont l'AST est figé
+        # par les goldens de déplacement (SPL246/252/253) : posées ici.
+        from . import schema_apply
+        schema_apply.appliquer_schemas()
         # ADOC131 (D-ADOC-4) — à la réception du chantier, le lien public de
         # suivi reçoit son échéance réception + 90 jours (bus M6, idempotent).
         from core.events import chantier_receptionne

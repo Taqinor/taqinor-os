@@ -1141,3 +1141,15 @@ class TestLeadStructureProduitSTKCAT9(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         lead.refresh_from_db()
         self.assertIsNone(lead.structure_produit_id)
+
+
+class TestIdentiteClientHookFlagOff(TestCase):
+    """ARC21 (déplacé de apps.tiers.tests) — flag TIERS_SOURCE_ECRITURE OFF :
+    le hook d'écriture identité client est un NO-OP strict."""
+
+    def test_client_hook_noop_when_off(self):
+        from apps.crm.services import ecrire_identite_client
+        client = Client.objects.create(
+            company=make_company(), nom='ClientAvant', email='c@example.ma')
+        client.refresh_from_db()  # le miroir ARC18 a posé client.tiers
+        self.assertFalse(ecrire_identite_client(client))

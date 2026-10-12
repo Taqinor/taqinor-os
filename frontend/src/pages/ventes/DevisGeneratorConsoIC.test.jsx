@@ -6,49 +6,23 @@
 // (Remplace QJR582 : la facture réelle résidentielle n'est plus montée en C&I.)
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorConsoIC.test.jsx
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-    patchEtudeParams: vi.fn(),
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiAvecLead())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiEdition({
     etudeCiPreview: vi.fn(),
-  },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { declarerBeforeEachDevis, makeDevisStore, mockEcrituresDevisOk, renderEditionPage } from './devisGenerator.testHelpers.jsx'
 
 const PANNEAU = { id: 101, nom: 'Panneau Canadien Solar 710W', prix_vente: 1100, tva: 10, is_archived: false }
 const ONDULEUR = { id: 102, nom: 'Onduleur réseau 50kW Triphasé', prix_vente: 60000, tva: 20, is_archived: false }
@@ -70,55 +44,23 @@ function devisIndustriel(mode = 'industriel') {
   }
 }
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const makeStore = () => makeDevisStore('normal', 'Commercial')
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-  stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR] })
-  // Lead SANS facture : aucune autre source de consommation.
-  crmApi.getLead.mockResolvedValue({ data: { id: 8, nom: 'Usine', prenom: 'Atlas' } })
-  ventesApi.getDevisById.mockResolvedValue(devisIndustriel())
-  ventesApi.patchDevis.mockResolvedValue({ data: {} })
-  ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
-  ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
-  ventesApi.etudeCiPreview.mockResolvedValue(reponseContrat('ventes', 'etude_ci_preview'))
+declarerBeforeEachDevis({
+  stockApi, crmApi, ventesApi, produits: [PANNEAU, ONDULEUR], localStorage: true,
+  extra: () => {
+    // Lead SANS facture : aucune autre source de consommation.
+    crmApi.getLead.mockResolvedValue({ data: { id: 8, nom: 'Usine', prenom: 'Atlas' } })
+    ventesApi.getDevisById.mockResolvedValue(devisIndustriel())
+    mockEcrituresDevisOk(ventesApi)
+    ventesApi.etudeCiPreview.mockResolvedValue(reponseContrat('ventes', 'etude_ci_preview'))
+  },
 })
 
 const KWH = exempleContrat('ventes', 'etude_ci_preview').entrees_resolues.kwh_mensuels.valeur
 
 function rendre() {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=55']}>
-        <Routes>
-          <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
-          <Route path="*" element={<div>APRES</div>} />
-        </Routes>
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderEditionPage(DevisGenerator, makeStore(), 55)
 }
 
 /** Réponse du contrat SANS consommation résolue (lead sans kWh). */

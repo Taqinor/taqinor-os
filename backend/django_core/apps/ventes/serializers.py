@@ -14,6 +14,9 @@ from .models import (
     ParametresGammes,  # PVMRQ
     PlanCommission,  # WIR281/XSAL6
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _fallback_taux_tva(company, designation):
@@ -49,6 +52,7 @@ def _fallback_taux_tva(company, designation):
         from apps.parametres.models_taxes import TauxTVA
         referentiel = TauxTVA.default_taux(company)
     except Exception:
+        logger.warning("serializers._fallback_taux_tva : erreur ignorée (mode dégradé)", exc_info=True)
         referentiel = None
     if referentiel is not None:
         return referentiel
@@ -805,6 +809,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
             # « A / B » viennent du repli léger déjà calculé par display_totals
             # (chaîne canonique, mêmes prédicats). Le ROI, lui, exige le moteur
             # → None, jamais un chiffre approximé.
+            logger.warning("serializers.DevisSerializer.get_comparaison_options "
+                           ": erreur ignorée (mode dégradé)", exc_info=True)
             repli = d.get('comparaison_repli')
             if not repli:
                 return None
@@ -838,6 +844,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         try:
             return obj.signature is not None
         except Exception:
+            logger.warning("serializers.DevisSerializer.get_est_signe : erreur ignorée (mode dégradé)", exc_info=True)
             return False
 
     @extend_schema_field(serializers.DictField(allow_null=True))
@@ -846,6 +853,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         try:
             sig = obj.signature
         except Exception:
+            logger.warning("serializers.DevisSerializer.get_signature_info "
+                           ": erreur ignorée (mode dégradé)", exc_info=True)
             return None
         if sig is None:
             return None
@@ -1026,6 +1035,14 @@ class DevisWriteSerializer(SameCompanyFKSerializerMixin,
     (400 « objet inexistant ») au lieu du « Client/Lead inconnu. » de la vue.
     """
     same_company_fields = ('client', 'lead', 'entite')
+
+    # ENF11 — lecture seule (posée par ``/accepter/``) : DRF retire
+    # ``allow_blank`` d'un champ de modèle en lecture seule, donc le schéma
+    # n'annonçait que les deux options alors que le serveur sert ``""`` tant
+    # qu'aucune n'est retenue. Déclaré explicitement pour dire la vérité.
+    option_acceptee = serializers.ChoiceField(
+        choices=Devis.OptionAcceptee.choices, allow_blank=True,
+        read_only=True)
 
     class Meta:
         model = Devis
@@ -1237,6 +1254,17 @@ class RegleListePrixSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id']
 
 
+class _BooleenStrict(serializers.BooleanField):
+    """ENF11 — un VRAI booléen JSON seulement. ``BooleanField`` de DRF accepte
+    aussi « 0 », « on », « yes »… : le schéma dit ``boolean``, la vue prenait
+    en silence une chaîne que le contrat ne prévoit pas."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            return data
+        self.fail('invalid', input=data)
+
+
 class ListePrixSerializer(serializers.ModelSerializer):
     """XSAL1/XSAL2 — liste de prix clients + ses règles de paliers.
     `company` toujours forcée côté serveur (jamais acceptée du body — voir
@@ -1244,6 +1272,7 @@ class ListePrixSerializer(serializers.ModelSerializer):
     lignes = LignePrixListeSerializer(many=True, read_only=True)
     regles = RegleListePrixSerializer(many=True, read_only=True)
     est_active = serializers.BooleanField(read_only=True)
+    archived = _BooleenStrict(required=False)
 
     class Meta:
         model = ListePrix

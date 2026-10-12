@@ -126,6 +126,12 @@ class MobileHomeRouteApiTests(TestCase):
         self.alice.refresh_from_db()
         self.assertIsNone(self.alice.mobile_home_route)
 
+    def test_enf11_corps_non_objet_ou_route_non_texte_400(self):
+        for corps in ([None, None], {'route': 5}, {'route': {}}):
+            res = self.client.post(
+                '/api/django/auth/mobile-home-route/', corps, format='json')
+            self.assertEqual(res.status_code, 400, (corps, res.content))
+
     def test_only_affects_current_user(self):
         self.client.post(
             '/api/django/auth/mobile-home-route/',

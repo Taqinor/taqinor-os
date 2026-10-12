@@ -222,3 +222,21 @@ class TestCashFlowRowSorting(TestCase):
         rows = r.data['rows']
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]['bucket'], 'en_retard')
+
+
+class TestCashFlowModeValide(TestCase):
+    """ENF11 — ``?mode=`` inconnu répond 400 (il était ignoré en silence)."""
+
+    def setUp(self):
+        self.co = _company(slug='cf-mode', nom='CF Mode')
+        self.api = _auth(_user(self.co, username='cf_mode_user'))
+
+    def test_mode_inconnu_400(self):
+        for brut in ('nimporte', '', 'COMPORTEMENT'):
+            r = self.api.get(URL + f'?mode={brut}')
+            self.assertEqual(r.status_code, 400, (brut, r.data))
+
+    def test_mode_comportement_et_absent_200(self):
+        self.assertEqual(self.api.get(URL).status_code, 200)
+        self.assertEqual(
+            self.api.get(URL + '?mode=comportement').status_code, 200)

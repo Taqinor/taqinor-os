@@ -18,9 +18,11 @@ tout explicitement un chemin déjà versionné (404) : sans cette garde, un
 ``/api/public/v1/inconnu`` serait redirigé vers ``/api/public/v1/v1/inconnu``
 puis à l'infini.
 """
-from django.http import Http404, HttpResponsePermanentRedirect
+from django.http import HttpResponsePermanentRedirect, JsonResponse
 from django.urls import re_path
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 from .constants import (
     PUBLIC_API_BASE,
@@ -37,15 +39,28 @@ class _PermanentRedirect308(HttpResponsePermanentRedirect):
     status_code = 308
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LegacyPublicApiRedirectView(View):
-    """Redirige la racine non versionnée vers la racine versionnée courante."""
+    """Redirige la racine non versionnée vers la racine versionnée courante.
+
+    ENF11 — ``csrf_exempt`` : cette vue ne lit ni ne modifie rien (redirection
+    ou 404). Sans cela, un POST/PATCH vers un chemin versionné non résolu
+    (identifiant mal formé) recevait la page HTML 403 du middleware CSRF au
+    lieu d'un 404 ; le 404 est désormais rendu en JSON (enveloppe publique)."""
 
     def dispatch(self, request, rest='', *args, **kwargs):
         premier_segment = (rest or '').split('/', 1)[0]
         if premier_segment in PUBLIC_API_VERSIONS:
             # Déjà versionné : c'est un 404 de route, jamais une redirection
             # (sinon boucle `/v1/v1/v1/…`).
-            raise Http404('Route inconnue de cette version de l’API publique.')
+            return JsonResponse({'error': {
+                'type': 'invalid_request_error',
+                'code': 'not_found',
+                'message': 'Route inconnue de cette version de l’API publique.',
+                'param': None,
+                'doc_url': '/api/public/v1/errors/#not_found',
+                'request_id': getattr(request, 'request_id', None),
+            }}, status=404)
         cible = f'{PUBLIC_API_BASE}{rest or ""}'
         query = request.META.get('QUERY_STRING', '')
         if query:

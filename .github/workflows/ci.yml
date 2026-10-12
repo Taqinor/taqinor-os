@@ -321,6 +321,9 @@ jobs:
             # se soit JAMAIS validee elle-meme. Garde de non-regression :
             # scripts/tests/test_ci_changes_filter.py (job `stage-names`).
             grep -qE '^scripts/'     <<< "$changed" && backend=true  || true
+            # ENF11 — configuration du fuzz API (racine) : lue par le job
+            # `api-fuzz-pr`, qui ne tourne que sur backend == true.
+            grep -qE '^schemathesis\.toml$' <<< "$changed" && backend=true || true
             # Everything else (docs/**, *.md, top-level state files, etc.)
             # affects none of the heavy jobs — only the always-on stage-names
             # guard, which is not gated here.
@@ -1239,8 +1242,222 @@ jobs:
             tests.test_asec42_agent_sql_formes 2>&1 \
             | python ../../scripts/verifier_sortie_unittest.py --plancher 78
 
+  # ---------------------------------------------------------------------------
+  # ENF11 (11/10/2026) — SOUS-ENSEMBLE PR DU FUZZ API (Schemathesis), BLOQUANT.
+  #
+  # Règle fondateur du 09/10 (docs/claude-memory/enforce-all-checks.md) : api-fuzz
+  # bloquant au nocturne (`release-verify.yml`, job `api-fuzz`, zéro constat
+  # exigé) ET sur un sous-ensemble PR. Ce job est ce sous-ensemble :
+  #   * PORTÉE : les opérations dont la VUE vit dans un paquet que la PR modifie
+  #     (`git diff` -> `apps/<x>` / `core` / `authentication`, résolution Django
+  #     chemin -> module de la vue — `scripts/fuzz/api_fuzz_scope.py`). Une PR
+  #     sans code d'API (tests seuls, docs, front) n'installe rien et sort verte.
+  #     Le harnais (`scripts/fuzz/`, `schemathesis.toml`) et la plateforme
+  #     (`erp_agentique/`, requirements) fuzzent `core` + `authentication`.
+  #   * PHASE : `coverage` seule (cas limites déterministes, positifs ET
+  #     négatifs), `--checks all`, plafond `--max-time 300` (~5 min de fuzz).
+  #   * VERDICT : rouge sur tout constat (check|opération) ABSENT de la dette
+  #     gelée `scripts/fuzz/api_fuzz_dette.txt` (nocturne du 11/10, run
+  #     38129616897, 1 627 lignes, qui ne fait que rétrécir — chaque famille
+  #     portée par une ligne ERR-ENF11-* de docs/ERROR_PLAN.md). Une régression
+  #     nouvelle bloque la fusion ; la dette existante n'empêche pas de livrer.
+  #     Le nocturne, lui, n'a pas de dette.
+  #
+  # REQUIS sans nouveau contexte : suivi par l'agrégateur `backend-tests` (même
+  # patron que `fastapi-security`) et par `ci-gate`. Budget de jobs simultanés :
+  # +1 sur un diff backend, démarré APRÈS `ci-image-check`/`backend-testdb`,
+  # quand `changes`, `backend-lint-fast` et les shards rapides libèrent leurs
+  # créneaux. Même conteneur, même base restaurée (`erp_db`) et même harnais
+  # (`prepare_fuzz_env.py`, `schemathesis_hooks.py`, `gunicorn_fuzz.py`) que le
+  # nocturne : un constat PR se rejoue à l'identique (`st replay <id>`).
+  # ---------------------------------------------------------------------------
+  api-fuzz-pr:
+    needs: [changes, ci-image-check, backend-testdb]
+    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      API_QUERY_PARAMS_STRICT: '1'
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      TENANT_RATE_LIMIT: '0'
+      FUZZ_BASE_URL: http://127.0.0.1:8000
+      FUZZ_USERNAME: fuzz_admin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Portée — paquets d'API modifiés par la PR (ENF11)
+        id: portee
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE"; head="$PR_HEAD" ;;
+            merge_group)  base="$MG_BASE"; head="$MG_HEAD" ;;
+            *)            base="$PUSH_BEFORE"; head="$PUSH_AFTER" ;;
+          esac
+          # Plage introuvable (nouvelle branche, force-push) : même repli que
+          # `changes` côté sûr — la plateforme (core + authentication).
+          if [ -n "$base" ] && [ -n "$head" ] \
+             && git cat-file -e "${base}^{commit}" 2>/dev/null \
+             && git cat-file -e "${head}^{commit}" 2>/dev/null; then
+            fichiers="$(git diff --name-only "$base" "$head")"
+          else
+            fichiers="backend/django_core/erp_agentique/urls.py"
+          fi
+          proprietaires="$(python scripts/fuzz/api_fuzz_scope.py proprietaires <<< "$fichiers" | tr '\n' ' ' | sed 's/ *$//')"
+          echo "Paquets d'API modifiés : ${proprietaires:-aucun}"
+          echo "proprietaires=$proprietaires" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/backend-env
+        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+      - name: Schéma OpenAPI en arrière-plan + migrate + seed (repris du nocturne)
+        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        working-directory: backend/django_core
+        run: |
+          set -euo pipefail
+          # Générateur WOW-CI3 (un seul passage d'introspection, JSON) lancé
+          # PENDANT migrate + seed : les deux ne se partagent que le CPU.
+          # Code de sortie écrit dans un fichier : l'étape qui le lit est un
+          # autre shell (pas de `wait` possible sur ce processus).
+          ( python manage.py spectacular --format openapi-json \
+              --generator-class erp_agentique.openapi_check.SchemaGeneratorAliasV1 \
+              --file "$GITHUB_WORKSPACE/openapi-brut.json" \
+              > "$GITHUB_WORKSPACE/spectacular.log" 2>&1
+            echo $? > "$GITHUB_WORKSPACE/spectacular.rc" ) &
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+      - name: Compte de fuzz dédié + ids FK connus (ENF1)
+        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        working-directory: backend/django_core
+        run: |
+          set -euo pipefail
+          FUZZ_PASSWORD="Fz9-$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$FUZZ_PASSWORD"
+          echo "FUZZ_PASSWORD=$FUZZ_PASSWORD" >> "$GITHUB_ENV"
+          FUZZ_STATE_FILE="$GITHUB_WORKSPACE/fuzz-state.json"
+          echo "FUZZ_STATE_FILE=$FUZZ_STATE_FILE" >> "$GITHUB_ENV"
+          export FUZZ_PASSWORD FUZZ_STATE_FILE
+          python ../../scripts/fuzz/prepare_fuzz_env.py "$FUZZ_STATE_FILE"
+      - name: Démarrer Django (gunicorn, throttles coupés — ENF1)
+        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        working-directory: backend/django_core
+        run: |
+          gunicorn -c ../../scripts/fuzz/gunicorn_fuzz.py erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
+            > "$GITHUB_WORKSPACE/gunicorn-fuzz.log" 2>&1 &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then
+              echo "Django prêt (HTTP $code)"; break
+            fi
+            echo "Attente Django ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+      - name: Schéma fuzzé — opérations des paquets modifiés + liens stateful (ENF11)
+        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        working-directory: backend/django_core
+        run: |
+          set -euo pipefail
+          # Attend le générateur (au plus 15 min) ; un schéma non généré fait
+          # échouer l'étape — jamais un fuzz sur un fichier absent.
+          for i in $(seq 1 180); do
+            [ -s "$GITHUB_WORKSPACE/spectacular.rc" ] && break
+            sleep 5
+          done
+          rc_schema=$(cat "$GITHUB_WORKSPACE/spectacular.rc" 2>/dev/null || echo absent)
+          if [ "$rc_schema" != "0" ]; then
+            echo "Génération du schéma : code $rc_schema"
+            cat "$GITHUB_WORKSPACE/spectacular.log"
+            exit 1
+          fi
+          python ../../scripts/fuzz/api_fuzz_scope.py schema \
+            --in "$GITHUB_WORKSPACE/openapi-brut.json" \
+            --out "$GITHUB_WORKSPACE/openapi-fuzz.json" \
+            --proprietaires ${{ steps.portee.outputs.proprietaires }}
+      - name: schemathesis run (phase coverage, tous les checks — ~5 min)
+        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        run: |
+          set -uo pipefail
+          export SCHEMATHESIS_HOOKS="$GITHUB_WORKSPACE/scripts/fuzz/schemathesis_hooks.py"
+          # Le code 1 de Schemathesis (« des constats ») est TRANCHÉ par
+          # l'étape suivante contre la dette gelée ; tout autre code (schéma
+          # illisible, crash) fait échouer ICI.
+          rc=0
+          schemathesis run \
+            --url "$FUZZ_BASE_URL" \
+            --checks all \
+            --phases coverage \
+            --mode all \
+            --max-time 300 \
+            --report junit,json \
+            --report-dir schemathesis-report \
+            openapi-fuzz.json \
+            2>&1 | tee schemathesis-output.log || rc=$?
+          echo "schemathesis : code $rc"
+          if [ "$rc" -gt 1 ]; then exit "$rc"; fi
+      - name: Verdict — aucun constat hors de la dette gelée (BLOQUANT)
+        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        run: |
+          set -euo pipefail
+          rapport=$(ls schemathesis-report/json-*.json | tail -1)
+          python scripts/fuzz/api_fuzz_scope.py verdict --rapport "$rapport"
+      - name: Upload le rapport Schemathesis
+        if: ${{ !cancelled() && steps.portee.outputs.proprietaires != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemathesis-report-pr
+          path: |
+            schemathesis-report/
+            schemathesis-output.log
+            gunicorn-fuzz.log
+          retention-days: 7
+          if-no-files-found: warn
+
   backend-tests:
-    needs: [changes, ci-image-check, backend-testdb, backend-tests-shard, fastapi-security]
+    needs: [changes, ci-image-check, backend-testdb, backend-tests-shard, fastapi-security, api-fuzz-pr]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -1283,6 +1500,15 @@ jobs:
         if: ${{ needs.fastapi-security.result == 'failure' || needs.fastapi-security.result == 'cancelled' }}
         run: |
           echo "fastapi-security did not pass (result=${{ needs.fastapi-security.result }})."
+          exit 1
+      # ENF11 — le sous-ensemble PR du fuzz API fait partie du check REQUIS : un
+      # constat hors dette gelée (ou une annulation) rougit `backend-tests`.
+      # Sauté (diff non backend) = reste vert ; sans paquet d'API modifié, le
+      # job tourne et sort vert sans fuzzer.
+      - name: Fail if the API fuzz PR subset failed or was cancelled
+        if: ${{ needs.api-fuzz-pr.result == 'failure' || needs.api-fuzz-pr.result == 'cancelled' }}
+        run: |
+          echo "api-fuzz-pr did not pass (result=${{ needs.api-fuzz-pr.result }})."
           exit 1
       - name: All shards passed (or were skipped)
         run: echo "backend-tests-shard result=${{ needs.backend-tests-shard.result }} — gate OK."
@@ -2006,6 +2232,7 @@ jobs:
       - backend-openapi
       - backend-tests-shard
       - fastapi-security
+      - api-fuzz-pr
       - frontend-static
       - frontend-vitest-shard
       - stage-names
@@ -2022,6 +2249,7 @@ jobs:
           echo "backend-openapi=${{ needs.backend-openapi.result }}"
           echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
           echo "fastapi-security=${{ needs.fastapi-security.result }}"
+          echo "api-fuzz-pr=${{ needs.api-fuzz-pr.result }}"
           echo "frontend-static=${{ needs.frontend-static.result }}"
           echo "frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }}"
           echo "e2e-shard=${{ needs.e2e-shard.result }}"

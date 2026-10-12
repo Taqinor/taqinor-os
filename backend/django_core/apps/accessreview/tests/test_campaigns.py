@@ -93,7 +93,25 @@ class AccessReviewTests(TenantAPITestCase):
         r = self._admin().post(
             f'{self.BASE}{my_campaign.id}/attester/',
             {'item': foreign_item.id, 'decision': 'revoque'}, format='json')
+        self.assertEqual(r.status_code, 404)
+
+    def test_enf11_attester_corps_invalide_400_pas_500(self):
+        """ENF11 — decision objet / item non entier ou hors bornes = 400."""
+        c = AccessReviewCampaign.objects.create(
+            company=self.company, nom='c', perimetre='all')
+        for corps in ({'item': 0, 'decision': {}},
+                      {'item': 'abc', 'decision': 'maintenu'},
+                      {'item': 10 ** 30, 'decision': 'maintenu'},
+                      {'item': 1, 'decision': 'maintenu', 'commentaire': 5}):
+            r = self._admin().post(
+                f'{self.BASE}{c.id}/attester/', corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        r = self._admin().post(f'{self.BASE}{c.id}/attester/', [1], format='json')
         self.assertEqual(r.status_code, 400)
+        r = self._admin().post(
+            f'{self.BASE}{c.id}/attester/',
+            {'item': 999999, 'decision': 'maintenu'}, format='json')
+        self.assertEqual(r.status_code, 404)
 
     def test_enf17_item_fk_bornees_societe(self):
         """ENF17 — campagne / compte d'une autre société = id absent (400)."""

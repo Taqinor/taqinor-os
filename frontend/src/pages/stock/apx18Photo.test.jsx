@@ -23,6 +23,7 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 import { CatalogueTable } from './CatalogueTable.jsx'
+import { produitStockBase } from './catalogue.testHelpers.js'
 import { ProduitDetail } from './ProduitDetail.jsx'
 import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
@@ -39,19 +40,8 @@ function wrapper({ children }) {
 }
 
 const produit = (over = {}) => ({
-  id: 1,
-  nom: 'Panneau 550 Wc',
-  sku: 'PAN-550',
-  marque: 'JA Solar',
-  prix_vente: '1000',
+  ...produitStockBase,
   prix_achat: '742.5',
-  tva: 20,
-  quantite_stock: 12,
-  quantite_reservee: 0,
-  quantite_disponible: 12,
-  seuil_alerte: 5,
-  is_low_stock: false,
-  is_archived: false,
   categorie: { id: 3, nom: 'Panneaux photovoltaïques', ordre: 1 },
   image_url: null,
   ...over,

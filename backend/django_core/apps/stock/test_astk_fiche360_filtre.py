@@ -86,8 +86,13 @@ class FiltreFournisseurTests(TestCase):
         self.assertEqual(ids(rep), [self.retour7.id])
 
     def test_fournisseur_autre_societe_liste_vide(self):
+        # Un id d'une autre société est indiscernable d'un id inconnu : liste
+        # vide, 200. Un filtre qui n'est pas un entier est une erreur de
+        # validation (ENF11 : 400, jamais un 200 trompeur ni un 500).
         for url in ('bons-commande-fournisseur', 'retours-fournisseur'):
-            for valeur in (self.f_autre.id, 99999999, 'pas-un-id'):
+            for valeur in (self.f_autre.id, 99999999):
                 rep = self.api.get(f'{BASE}/{url}/', {'fournisseur': valeur})
                 self.assertEqual(rep.status_code, 200, (url, valeur))
                 self.assertEqual(ids(rep), [], (url, valeur))
+            rep = self.api.get(f'{BASE}/{url}/', {'fournisseur': 'pas-un-id'})
+            self.assertEqual(rep.status_code, 400, (url, rep.content))

@@ -1,42 +1,21 @@
 from django.db import transaction
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
-from rest_framework import viewsets, filters, status  # noqa: F401
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
+from ..erreurs_achats import EtatIncompatible, IntrouvableMetier
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
-)
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
-)
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsAdminRole,
-    IsResponsableOrAdmin,
-    HasPermissionOrLegacy,
-)
+from ..models import Fournisseur, BonCommandeFournisseur, ReceptionFournisseur
+from ..serializers import BonCommandeFournisseurSerializer, FactureFournisseurSerializer
+from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -78,9 +57,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         # ASTK178 — `?fournisseur=<id>` filtré côté serveur (fiche 360).
         from ..selectors import filtrer_par_fournisseur
+        from ..utils.params import entier_ou_400
         return filtrer_par_fournisseur(
-            super().get_queryset(),
-            self.request.query_params.get('fournisseur'))
+            super().get_queryset(), entier_ou_400(
+                self.request.query_params.get('fournisseur'), 'fournisseur'))
 
     def get_permissions(self):
         # QS1 — le PDF (interne) est une LECTURE : il rend exactement les
@@ -201,7 +181,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             record(AuditLog.Action.WHATSAPP, instance=bc,
                    detail=f'Lien WhatsApp BCF {bc.reference} préparé')
         except Exception:  # noqa: BLE001 — l'audit ne casse jamais l'action
-            pass
+            logger.warning(
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.whatsapp "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'url': url,
@@ -248,7 +230,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             attachment = generate_bcf_pdf(bc)
             attachment_name = f'{bc.reference}.pdf'
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning(
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
 
         fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else ''
         sujet = ((request.data.get('sujet') or '').strip()
@@ -271,7 +255,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             record(AuditLog.Action.EMAIL, instance=bc,
                    detail=f'Email BCF {bc.reference} envoyé à {to_email}')
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning(
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
             'detail': (f'Email envoyé à {to_email}.' if ok
                        else "Échec de l'envoi de l'email."),
@@ -302,7 +288,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             from ..services import default_other_information_bcf
             default_other_information_bcf(bc)
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning(
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet.perform_create "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
 
     def perform_destroy(self, instance):
         """AUD207 — `AcompteFournisseur.bon_commande` est désormais PROTECT
@@ -346,8 +334,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             except Fournisseur.DoesNotExist:
                 pass
             except ValueError as exc:
+                # ENF11 — fournisseur bloqué = état (409), pas un corps invalide.
                 return Response(
-                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
             # NTP2P7 — onboarding OBLIGATOIRE (réglage société, OFF par
             # défaut) : un fournisseur au dossier incomplet/non validé ne peut
             # pas recevoir de nouveau BCF. No-op tant que le flag est OFF.
@@ -356,7 +345,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 request.user.company, fournisseur_id)
             if not autorise:
                 return Response({'detail': motif},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
         # XPUR1 — WARNING (non bloquant) si le fournisseur a un document de
         # conformité manquant/expiré ; ajouté à la réponse sans jamais
         # empêcher la création du BCF.
@@ -370,7 +359,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 if warning:
                     response.data['conformite_warning'] = warning
             except Exception:  # noqa: BLE001 — le warning ne casse jamais
-                pass
+                logger.warning(
+                    "bon_commande_fournisseur.BonCommandeFournisseurViewSet.create "
+                    ": erreur ignorée (mode dégradé)", exc_info=True)
             self._attach_prix_warnings(response, request)
         return response
 
@@ -388,7 +379,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': (
                     "Ce BCF a été envoyé : utilisez l'action « réviser » "
                     'pour le modifier (traçabilité + ré-approbation).')},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
             self._attach_prix_warnings(response, request)
@@ -453,7 +444,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             if prix_warnings:
                 response.data['prix_warnings'] = prix_warnings
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
-            pass
+            logger.warning(
+                "bon_commande_fournisseur.BonCommandeFournisseurViewSet._attach_prix_warnings "
+                ": erreur ignorée (mode dégradé)", exc_info=True)
 
     @extend_schema(request=None, responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='envoyer')
@@ -616,9 +609,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         prix dépasse le prix convenu du contrat en vigueur, filtrable par
         fournisseur/période. LECTURE SEULE."""
         from ..services import rapport_achats_hors_contrat
-        fournisseur_id = request.query_params.get('fournisseur')
-        date_debut = request.query_params.get('date_debut')
-        date_fin = request.query_params.get('date_fin')
+        from ..utils.params import date_ou_400, entier_ou_400
+        fournisseur_id = entier_ou_400(
+            request.query_params.get('fournisseur'), 'fournisseur')
+        date_debut = date_ou_400(
+            request.query_params.get('date_debut'), 'date_debut')
+        date_fin = date_ou_400(request.query_params.get('date_fin'), 'date_fin')
         rapport = rapport_achats_hors_contrat(
             request.user.company, fournisseur_id=fournisseur_id,
             date_debut=date_debut, date_fin=date_fin)
@@ -641,7 +637,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(suggestions)
 
     @extend_schema(responses=BonCommandeFournisseurSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='en-retard')
+    @action(detail=False, methods=['get'], url_path='en-retard',
+            pagination_class=None)
     def en_retard(self, request):
         """XPUR7 — liste des BCF ENVOYE en retard (prévue/confirmée dépassée
         sans réception complète). LECTURE SEULE."""
@@ -831,7 +828,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=corps('BcfFusionnerCorps',
-                                 bons_commande=serializers.ListField(child=serializers.IntegerField())),
+                                 bons_commande=serializers.ListField(child=serializers.IntegerField(),
+                                                                     min_length=2)),
                    responses={201: BonCommandeFournisseurSerializer})
     @action(detail=False, methods=['post'], url_path='fusionner')
     def fusionner(self, request):
@@ -840,13 +838,21 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         produit ; les BCF sources passent en `annule` avec une note de
         fusion. Corps : ``{"bons_commande": [id, id, ...]}`` (≥ 2 requis)."""
         from ..services import fusionner_bcf
-        ids = request.data.get('bons_commande') or []
-        if not isinstance(ids, list):
+        ids = (request.data.get('bons_commande') or []
+               if isinstance(request.data, dict) else [])
+        if not isinstance(ids, list) or any(
+                isinstance(i, bool) or not isinstance(i, int) for i in ids):
             return Response(
                 {'detail': 'bons_commande doit être une liste d\'ids.'},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             cible = fusionner_bcf(request.user.company, request.user, ids)
+        except IntrouvableMetier as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except EtatIncompatible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

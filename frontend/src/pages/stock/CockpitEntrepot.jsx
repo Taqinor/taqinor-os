@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Boxes, ClipboardList, Send, Timer } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { Badge, Button, Input, Spinner } from '../../ui'
-import { PageHeader } from '../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { EnteteStock } from './EnteteStock'
 // NTI18N1 — rollout i18n : premier écran Stock migré (titre/sous-titre du cockpit).
 import { useT } from '../../i18n'
+import { frErrDetail as frErr } from '../../lib/frErr'
 
 /* NTWMS29 — Tableau de bord entrepôt (cockpit WMS).
 
@@ -17,14 +17,6 @@ import { useT } from '../../i18n'
    what-if, lui aussi en lecture.
 
    Aucun `useSelector` ici : l'écran se monte sans <Provider> dans ses tests. */
-
-function frErr(err, fallback = 'Une erreur est survenue.') {
-  const data = err?.response?.data
-  if (!data) return fallback
-  if (typeof data === 'string') return data
-  if (data.detail) return data.detail
-  return fallback
-}
 
 function Section({ icon, titre, compteur, children }) {
   // Classe lint maison #23b : le rename de destructuration (`icon: Icon`)
@@ -134,10 +126,7 @@ export default function CockpitEntrepot() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
+      <EnteteStock
         icon={Boxes}
         title={t('stock.cockpit.title', null, 'Tableau de bord entrepôt')}
         subtitle={t('stock.cockpit.subtitle', null, 'Remplissage, vagues en retard, comptages dus, expéditions et péremptions.')}

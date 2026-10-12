@@ -11,6 +11,7 @@ import _exceptions_permanentes as ep  # noqa: E402
 CATEGORIES_APPROUVEES = {
     "migration_safety", "safe_migrations", "tenant_exempt_models",
     "dockerignore_racine", "money_decimal_places", "tests_sautes_environnement",
+    "except_large_journalisant",  # D-ENF22-BLE001 (11/10/2026)
 }
 
 

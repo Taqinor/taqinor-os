@@ -84,6 +84,7 @@ def _cache_old(field):
             old = sender.objects.filter(pk=instance.pk).values_list(
                 field, flat=True).first()
         except Exception:
+            logger.warning("signals._cache_old.handler : erreur ignorée (mode dégradé)", exc_info=True)
             old = None
         setattr(instance, _OLD, old)
     return _safe(handler)
@@ -268,6 +269,7 @@ def connect():
         try:
             return django_apps.get_model(app_label, name)
         except Exception:
+            logger.warning("signals.connect.model : erreur ignorée (mode dégradé)", exc_info=True)
             return None
 
     Lead = model('crm', 'Lead')

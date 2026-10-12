@@ -49,7 +49,7 @@ class _Ligne:
 
 
 class _Devis:
-    class lignes:  # noqa: N801 — imite le manager ``devis.lignes``
+    class lignes:  # imite le manager ``devis.lignes``
         @staticmethod
         def all():
             return [_Ligne()]

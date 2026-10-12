@@ -26,6 +26,30 @@ class TestPeriodBounds(TestCase):
         self.assertEqual((d, f), (date(2026, 4, 1), date(2026, 7, 1)))
 
 
+class TestPeriodeHorsCalendrier(TestCase):
+    """ENF11 — ``end=9999-12-31`` (+ 1 jour) dépassait le calendrier :
+    OverflowError → 500 ; c'est une période invalide (ValueError → 400)."""
+
+    def test_period_bounds_overflow_est_une_valeur_invalide(self):
+        with self.assertRaises(ValueError):
+            period_bounds({'start': '2026-01-01', 'end': '9999-12-31'})
+
+    def test_vues_repondent_400(self):
+        company = Company.objects.get_or_create(
+            slug='jr-ovf', defaults={'nom': 'JR Ovf'})[0]
+        user = User.objects.create_user(
+            username='jr_ovf', password='x', role_legacy='responsable',
+            company=company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        for chemin in ('journal-ventes', 'export-comptable',
+                       'etats/analyse-facturation'):
+            resp = api.get(f'/api/django/ventes/{chemin}/'
+                           '?start=2026-01-01&end=9999-12-31')
+            self.assertEqual(resp.status_code, 400, (chemin, resp.content))
+
+
 class TestJournalExport(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(

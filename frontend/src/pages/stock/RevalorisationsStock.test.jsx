@@ -1,11 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import authReducer from '../../features/auth/store/authSlice'
+import { makeAuthStore, renderStockPage } from './stockPage.testHelpers.jsx'
 
 /* ============================================================================
    WIR109 — XSTK14 : revalorisation manuelle du stock (document tracé,
@@ -26,27 +22,9 @@ vi.mock('../../api/stockApi', () => ({
 import stockApi from '../../api/stockApi'
 import RevalorisationsStock from './RevalorisationsStock'
 
-function makeStore({ role = 'admin' } = {}) {
-  return configureStore({
-    reducer: { auth: authReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role, role_nom: role, permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const makeStore = (o) => makeAuthStore({ permissions: [], ...o })
 
-function renderPage(store = makeStore()) {
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ThemeProvider><RevalorisationsStock /></ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderPage = (store = makeStore()) => renderStockPage(RevalorisationsStock, store)
 
 describe('RevalorisationsStock (WIR109)', () => {
   it('refuse un rôle non admin', async () => {

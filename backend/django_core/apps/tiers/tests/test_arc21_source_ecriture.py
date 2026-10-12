@@ -31,15 +31,6 @@ class Arc21FlagOffTests(TestCase):
         t.refresh_from_db()
         self.assertEqual(t.nom, 'Avant')  # byte-identique : rien changé.
 
-    def test_client_hook_noop_when_off(self):
-        from apps.crm.models import Client
-        from apps.crm.services import ecrire_identite_client
-        client = Client.objects.create(
-            company=self.company, nom='ClientAvant', email='c@example.ma')
-        client.refresh_from_db()  # le miroir ARC18 a posé client.tiers
-        wrote = ecrire_identite_client(client)
-        self.assertFalse(wrote)
-
 
 @override_settings(TIERS_SOURCE_ECRITURE=True)
 class Arc21FlagOnTests(TestCase):

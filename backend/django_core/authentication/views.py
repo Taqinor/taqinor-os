@@ -16,6 +16,11 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from .corps_requetes import (
+    CalendrierHegirienRequete, LangueInterfaceRequete, MobileHomeRouteRequete,
+    REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
+    TwoFactorDisableRequete, TwoFactorEnableRequete,
+)
 from .models import CustomUser, Company, UserSession
 from .serializers import (
     MeSerializer,
@@ -638,8 +643,7 @@ class SwitchCompanyView(APIView):
     parser_classes = [JSONParser]
 
     @extend_schema(
-        request=inline_serializer('SwitchCompanyRequete', {
-            'company_id': drf_serializers.IntegerField()}),
+        request=SwitchCompanyRequete,
         responses=inline_serializer('SwitchCompanyReponse', {
             'detail': drf_serializers.CharField(),
             'company_id': drf_serializers.IntegerField(),
@@ -647,19 +651,9 @@ class SwitchCompanyView(APIView):
         }))
     def post(self, request):
         user = request.user
-        company_id = request.data.get('company_id')
-        if company_id in (None, ''):
-            return Response(
-                {'detail': 'Le champ « company_id » est requis.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            company_id = int(company_id)
-        except (TypeError, ValueError):
-            return Response(
-                {'detail': 'Identifiant de société invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        entree = SwitchCompanyRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        company_id = entree.validated_data['company_id']
         # Garde d'appartenance STRICTE : jamais de switch vers une société non
         # autorisée (défense contre l'escalade cross-tenant).
         if not user.peut_operer_societe(company_id):
@@ -706,6 +700,7 @@ class SwitchCompanyView(APIView):
 
 
 # ── Inscription d'un utilisateur dans une entreprise existante ─
+@extend_schema(responses={201: RegisterSerializer, 400: REPONSE_400_COMPTE})
 class RegisterView(generics.CreateAPIView):
     """Admin cree un utilisateur dans sa propre entreprise."""
     queryset = CustomUser.objects.all()
@@ -913,17 +908,16 @@ class MobileHomeRouteView(APIView):
     parser_classes = [JSONParser]
 
     @extend_schema(
-        request=inline_serializer('MobileHomeRouteRequete', {
-            'route': drf_serializers.CharField(
-                required=False, allow_null=True, allow_blank=True)}),
+        request=MobileHomeRouteRequete,
         responses=inline_serializer('MobileHomeRouteReponse', {
             'mobile_home_route': drf_serializers.CharField(
                 allow_null=True, allow_blank=True)}))
     def post(self, request):
         from authentication.selectors import MOBILE_HOME_ALLOWED_ROUTES
-        route = request.data.get('route', '')
+        entree = MobileHomeRouteRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        route = entree.validated_data.get('route', '')
         if route is not None:
-            route = str(route)
             if route not in MOBILE_HOME_ALLOWED_ROUTES:
                 return Response(
                     {'detail': 'Route inconnue.'},
@@ -947,16 +941,15 @@ class LangueInterfaceView(APIView):
     parser_classes = [JSONParser]
 
     @extend_schema(
-        request=inline_serializer('LangueInterfaceRequete', {
-            'langue_interface': drf_serializers.ChoiceField(
-                choices=['fr', 'en', 'ar']),
-        }),
+        request=SCHEMA_PATCH_LANGUE,
         responses=inline_serializer('LangueInterfaceReponse', {
             'langue_interface': drf_serializers.CharField(),
         }))
     def patch(self, request):
         from authentication.models import CustomUser
-        langue = request.data.get('langue_interface')
+        entree = LangueInterfaceRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        langue = entree.validated_data['langue_interface']
         valides = dict(CustomUser.LangueInterface.choices)
         if langue not in valides:
             return Response(
@@ -986,19 +979,14 @@ class CalendrierHegirienView(APIView):
     parser_classes = [JSONParser]
 
     @extend_schema(
-        request=inline_serializer('CalendrierHegirienRequete', {
-            'calendrier_hegirien': drf_serializers.BooleanField(),
-        }),
+        request=SCHEMA_PATCH_HEGIRIEN,
         responses=inline_serializer('CalendrierHegirienReponse', {
             'calendrier_hegirien': drf_serializers.BooleanField(),
         }))
     def patch(self, request):
-        valeur = request.data.get('calendrier_hegirien')
-        if not isinstance(valeur, bool):
-            return Response(
-                {'detail': 'calendrier_hegirien doit être un booléen.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        entree = CalendrierHegirienRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        valeur = entree.validated_data['calendrier_hegirien']
         request.user.calendrier_hegirien = valeur
         request.user.save(update_fields=['calendrier_hegirien'])
         return Response({'calendrier_hegirien': request.user.calendrier_hegirien})
@@ -1095,6 +1083,8 @@ _ACTIONS_ECRITURE_COMPTES = frozenset({
 })
 
 
+@extend_schema_view(create=extend_schema(
+    responses={201: UserSerializer, 400: REPONSE_400_COMPTE}))
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
@@ -1770,6 +1760,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
             'inline; filename="kit-demo.pdf"')
         return response
 
+    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     def demo_kit_export_xlsx(self, request, pk=None):
         """NTDMO24 — journal des 12 mois de démo en 4 onglets (Leads, Devis,
         Chantiers, Factures), pour vérification hors-ligne avant un
@@ -1896,8 +1887,7 @@ class TwoFactorEnableView(APIView):
     parser_classes = [JSONParser]
 
     @extend_schema(
-        request=inline_serializer('TwoFactorEnableRequete', {
-            'code': drf_serializers.CharField()}),
+        request=TwoFactorEnableRequete,
         responses=inline_serializer('TwoFactorEnableReponse', {
             'detail': drf_serializers.CharField(),
             'recovery_codes': drf_serializers.ListField(
@@ -1908,15 +1898,17 @@ class TwoFactorEnableView(APIView):
         if user.totp_enabled:
             return Response(
                 {'detail': 'La double authentification est déjà activée.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         if not user.totp_secret:
             return Response(
                 {'detail': "Aucune configuration en cours. Démarrez d'abord "
                            "la configuration de la double authentification."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
-        code = str(request.data.get('code', '')).strip().replace(' ', '')
+        entree = TwoFactorEnableRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        code = entree.validated_data.get('code', '').strip().replace(' ', '')
         # ASEC5 — même vérification que la connexion : le pas est consommé
         # (le code d'activation ne resservira pas à se connecter).
         if not code or not user.verify_totp(code):
@@ -1954,9 +1946,7 @@ class TwoFactorDisableView(APIView):
     parser_classes = [JSONParser]
 
     @extend_schema(
-        request=inline_serializer('TwoFactorDisableRequete', {
-            'code': drf_serializers.CharField(required=False),
-            'password': drf_serializers.CharField(required=False)}),
+        request=TwoFactorDisableRequete,
         responses=inline_serializer('TwoFactorDisableReponse', {
             'detail': drf_serializers.CharField()}))
     def post(self, request):
@@ -1964,10 +1954,12 @@ class TwoFactorDisableView(APIView):
         if not user.totp_enabled:
             return Response(
                 {'detail': 'La double authentification n\'est pas activée.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
-        code = request.data.get('code', '')
-        password = request.data.get('password', '')
+        entree = TwoFactorDisableRequete(data=request.data)
+        entree.is_valid(raise_exception=True)
+        code = entree.validated_data.get('code', '')
+        password = entree.validated_data.get('password', '')
         ok = False
         if code and user.verify_totp(code):
             ok = True

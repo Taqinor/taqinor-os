@@ -13,49 +13,18 @@
 // teste QUE l'AFFICHAGE d'un `totalTtcRemise` déjà calculé, reçu en prop.
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { wrap, baseProps } from './devisLineRow.testHelpers.jsx'
 import DevisLineRow from './DevisLineRow'
 
 vi.mock('../../components/ProduitPicker', () => ({
   default: (props) => <div data-testid="produit-picker-mock">{props.value ?? 'aucun'}</div>,
 }))
 
-function wrap(ui) {
-  return <ThemeProvider>{ui}</ThemeProvider>
-}
-
 // Mêmes valeurs que DevisLineRow.test.jsx (baseLine) : quantite=4,
 // prix_unit_ttc=1500 ⇒ lineTtc = 6 000. `totalTtcRemise=5700` simule une
 // remise globale de 5 % déjà répartie par le miroir (6000 × 0,95 = 5700,
 // sans reste à distribuer sur cette fixture — la répartition réelle est
 // testée ailleurs, voir DevisGeneratorRemiseParLigne.test.jsx).
-const baseLine = {
-  _key: 'l1', designation: 'Panneau solaire 450W', produit: '10',
-  quantite: '4', prix_unit_ttc: '1500', taux_tva: '20',
-}
-
-const noop = () => {}
-function baseProps(overrides = {}) {
-  return {
-    line: baseLine,
-    produits: [{ id: 10, nom: 'Panneau solaire 450W' }],
-    multiMode: 'none',
-    villaGroups: [],
-    canRenameLine: true,
-    tarifBadge: undefined,
-    tvaPanneaux: 10,
-    tvaStandard: 20,
-    onSetField: noop,
-    onDesignationBlur: noop,
-    onProduitChange: noop,
-    onProduitCreated: noop,
-    onQuantiteChange: noop,
-    onSetGroupe: noop,
-    onRemove: noop,
-    ...overrides,
-  }
-}
-
 function renderRow(overrides = {}) {
   render(
     <table><tbody>{wrap(<DevisLineRow {...baseProps(overrides)} />)}</tbody></table>,

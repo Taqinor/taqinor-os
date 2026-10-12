@@ -10,6 +10,7 @@ from ..openapi_params import qint, qstr
 import re
 import uuid
 
+from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -188,6 +189,7 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
     # et matrice 401/403/404 INCHANGÉS (règle #4 : couche additive, aucun statut
     # de devis touché, aucun prix exposé).
     """FG268 — CRUD dossier réglementaire + génération de checklist par régime."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = RegulatoryDossier.objects.select_related(
         'devis', 'chantier', 'created_by').prefetch_related(
@@ -247,6 +249,7 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
     parameters=[qint('dossier')]))
 class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG268 — CRUD pièces/étapes de checklist (scopé société)."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = DossierChecklistItem.objects.select_related('dossier').all()
     serializer_class = DossierChecklistItemSerializer
@@ -293,6 +296,7 @@ class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note
     parameters=[qint('dossier'), qstr('type_echange')]))
 class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG269 — journal de la navette opérateur (scopé société)."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = DossierExchange.objects.select_related(
         'dossier', 'created_by').all()
@@ -343,6 +347,7 @@ class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-d
     parameters=[qint('devis'), qstr('programme'), qstr('statut')]))
 class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG270 — éligibilité & suivi des subventions (scopé société)."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = SubventionDossier.objects.select_related(
         'devis', 'created_by').all()
@@ -399,6 +404,7 @@ class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci
     parameters=[qint('devis'), qstr('statut')]))
 class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG271 — workflow de régularisation Article 33 (scopé société)."""
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
     queryset = Regularisation8221.objects.select_related(
         'devis', 'chantier', 'created_by').all()

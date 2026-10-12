@@ -124,10 +124,13 @@ class FavorisCatalogueTests(TestCase):
             format='json')
         self.assertEqual(resp.data['epingles'], [self.produits[0].pk])
 
-    def test_charge_utile_invalide_ne_casse_pas(self):
-        resp = self.api.put(f'{CATALOGUE}/favoris/',
-                            {'produit_ids': 'pas-une-liste'}, format='json')
-        self.assertEqual(resp.status_code, 200)
+    def test_charge_utile_invalide_est_refusee_400(self):
+        # ENF11 : corps non conforme au schéma = 400 (plus de 200 silencieux).
+        for corps in ({'produit_ids': 'pas-une-liste'}, {'produit_ids': ['a']},
+                      {'produit_ids': [True]}, {}, [1, 2]):
+            resp = self.api.put(f'{CATALOGUE}/favoris/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, corps)
+        resp = self.api.get(f'{CATALOGUE}/favoris/')
         self.assertEqual(resp.data['epingles'], [])
 
     def test_favoris_isoles_par_utilisateur(self):

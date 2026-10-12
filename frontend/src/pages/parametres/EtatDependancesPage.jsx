@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import useLectureSeule from './useLectureSeule'
+import { EtatPageLecture } from './EtatsSection'
 import { Cable } from 'lucide-react'
 import coreApi from '../../api/coreApi'
-import { Badge, Card, CardContent, Spinner } from '../../ui'
+import { Badge, Card, CardContent } from '../../ui'
 
 /* ============================================================================
    NTOBS11 — Paramètres → Fiabilité → État des dépendances. Combine les
@@ -24,25 +25,12 @@ const STATUT_TONE = {
 }
 
 export default function EtatDependancesPage() {
-  const [dependances, setDependances] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [erreur, setErreur] = useState('')
+  const { data: dependances, loading, erreur } = useLectureSeule(
+    () => coreApi.degradedMode.getStatus(),
+    [], [],
+    "Impossible de charger l'état des dépendances.")
 
-  useEffect(() => {
-    let active = true
-    coreApi.degradedMode.getStatus()
-      .then((r) => { if (active) setDependances(r.data ?? []) })
-      .catch(() => { if (active) setErreur("Impossible de charger l'état des dépendances.") })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [])
-
-  if (loading) {
-    return <div className="flex items-center justify-center py-16"><Spinner /></div>
-  }
-  if (erreur) {
-    return <div className="p-6 text-sm text-destructive">{erreur}</div>
-  }
+  if (loading || erreur) return <EtatPageLecture loading={loading} erreur={erreur} />
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">

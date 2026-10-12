@@ -1,6 +1,4 @@
 from django.db import transaction
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
@@ -9,34 +7,12 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
-from apps.ventes.utils.references import create_with_reference  # noqa: F401
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
-)
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
-)
-from authentication.permissions import (  # noqa: F401
-    IsAnyRole,
-    IsAdminRole,
-    IsResponsableOrAdmin,
-    HasPermissionOrLegacy,
-)
+from ..models import Produit, MouvementStock
+from ..serializers import MouvementStockSerializer
+from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -46,9 +22,9 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('type_mouvement', STR, False, 'Type de mouvement'), P('produit',
-                                                                                                           INT, False,
-                                                                                                           'Produit (id)'), P('date_min', DATE), P('date_max', DATE)]))
+@extend_schema_view(list=extend_schema(parameters=[P('type_mouvement', STR, False, 'Type de mouvement'),
+                                                   P('produit', INT, False, 'Produit (id)'),
+                                                   P('date_min', DATE), P('date_max', DATE)]))
 class MouvementStockViewSet(CompanyScopedModelViewSet):
     # ARC4 — sweep : base transverse unique (TenantMixin + ModelViewSet, via
     # CompanyScopedModelViewSet). get_queryset AJOUTE le garde-fou
@@ -103,11 +79,14 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(date__date__lte=date_max)
         return qs
 
-    @extend_schema(request=None, parameters=[P('type_mouvement', STR, False, 'Type de mouvement'), P('produit', INT,
-                                                                                                     False,
-                                                                                                     'Produit (id)'),
-                                             P('date_min', DATE), P('date_max', DATE)], responses={XLSX: BINARY,
-                                                                                                   202: corps('MouvementsExportAsyncReponse', detail=serializers.CharField(), job_id=serializers.IntegerField(), statut=serializers.CharField(), status=serializers.CharField(), rows=serializers.IntegerField(), status_url=serializers.CharField())})
+    @extend_schema(request=None, parameters=[P('type_mouvement', STR, False, 'Type de mouvement'),
+                                             P('produit', INT, False, 'Produit (id)'),
+                                             P('date_min', DATE), P('date_max', DATE)],
+                   responses={XLSX: BINARY,
+                              202: corps('MouvementsExportAsyncReponse', detail=serializers.CharField(),
+                                         job_id=serializers.IntegerField(), statut=serializers.CharField(),
+                                         status=serializers.CharField(), rows=serializers.IntegerField(),
+                                         status_url=serializers.CharField())})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
@@ -137,6 +116,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                 company=request.user.company, user=request.user,
                 mouvement_ids=ids)
         except Exception:  # noqa: BLE001 — broker down : job déjà en échec
+            logger.warning(
+                "mouvement.MouvementStockViewSet.export_xlsx : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(
                 {'detail': "L'export n'a pas pu être lancé, réessayez."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)

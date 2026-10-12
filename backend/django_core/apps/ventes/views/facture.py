@@ -1,41 +1,28 @@
 from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import ENTITE, qint, qstr
+from datetime import date as _date
 from decimal import Decimal, InvalidOperation
-from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from . import openapi_docs as D
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers as drf_serializers
-from rest_framework import viewsets, status, filters  # noqa: F401
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework import status, filters
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, mouvement_type_entree, record_stock_movement,
+from ..models import (
+    Facture, Paiement, Avoir, RelanceLog, EmailLog, NoteDebit, LigneNoteDebit,
 )
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-    NoteDebit, LigneNoteDebit,
+from ..serializers_facturation import (
+    FactureSerializer, FactureWriteSerializer, PaiementSerializer,
+    AvoirSerializer, NoteDebitSerializer, RelanceLogSerializer,
 )
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    LigneDevisSerializer,
-    DevisActivitySerializer,
-)
-from ..serializers_facturation import (  # noqa: F401
-    BonCommandeSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    NoteDebitSerializer,
-    RelanceLogSerializer,
-)
+from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
+from ..serializers import EmailLogSerializer
+from ..utils.corps import valider_corps
 from rest_framework.permissions import BasePermission
 from authentication.permissions import (
     IsAnyRole,
@@ -45,10 +32,16 @@ from authentication.permissions import (
 )
 from core.permissions import declared_action_permissions
 
-from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
-from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
-from ..utils.references import create_with_reference  # noqa: F401
+# ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
+from ..domain.encaissements import arrondir_au_pas, proposer_arrondi_caisse
+from authentication.scoping import scope_queryset
+from core.viewsets import CompanyScopedModelViewSet
+from core.entite_scoping import EntiteScopeMixin
 from ..utils.company_settings import create_numbered, create_provisoire
+import logging
+
+logger = logging.getLogger(__name__)
+__all__ = ['arrondir_au_pas']  # ré-export ZFAC11
 #: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
 #: (Administrateur, Directeur, Commercial et Commercial responsable par
 #: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
@@ -79,18 +72,6 @@ FACTURE_CHAMPS_ARGENT = frozenset([
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
     '(ou remettez la facture en brouillon).')
-
-
-# ZFAC11 — `arrondir_au_pas` / `proposer_arrondi_caisse` vivent désormais dans
-# le service d'encaissement (`domain/encaissements.py`) ; ré-exportés ici
-# pour les appelants historiques (tests ZFAC11, action `arrondi-caisse`).
-from ..domain.encaissements import (  # noqa: E402,F401
-    arrondir_au_pas, proposer_arrondi_caisse,
-)
-
-
-from authentication.scoping import scope_queryset  # noqa: E402
-from core.mixins import company_qs  # noqa: E402,F401
 
 
 #: AFAC66 — refus nommé de la cinquième porte de facturation d'un devis.
@@ -163,6 +144,7 @@ class IsSuperuserOnly(BasePermission):
 @extend_schema_view(list=extend_schema(
     parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]))
 class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
     # get_permissions SURCHARGENT la base : scoping société et matrice 401/403/404
@@ -443,20 +425,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                           f'{avant[champ]} -> {apres}.'),
                 )
 
+    @extend_schema(request=None,
+                   responses={200: D.FactureEmise, 403: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
         facture = self.get_object()
         if facture.statut != Facture.Statut.BROUILLON:
             return Response(
                 {'detail': 'Seule une facture brouillon peut être émise.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         if not facture.lignes.exists():
             return Response(
                 {'detail': (
                     'La facture doit contenir au moins une ligne.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AUD101 — l'émission (workflow de revue XFAC18, verrou de période,
         # blocage crédit XFAC28, dérivation d'échéance XFAC23, pose du statut
@@ -478,6 +462,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             data['anomalies'] = anomalies
         return Response(data)
 
+    @extend_schema(request=None, responses=FactureSerializer)
     @action(detail=True, methods=['post'], url_path='remettre-brouillon',
             permission_classes=[IsResponsableOrAdmin])
     def remettre_brouillon(self, request, pk=None):
@@ -507,7 +492,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'Seule une facture émise (sans paiement ni avoir) peut '
                         'être remise en brouillon.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             if facture.paiements.exists():
                 return Response(
@@ -515,14 +500,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'Impossible : cette facture a déjà au moins un '
                         'paiement enregistré.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
                 return Response(
                     {'detail': (
                         'Impossible : cette facture a un avoir actif.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             argent = decrire_argent_rattache(argent_rattache(facture))
             if argent:
@@ -532,7 +517,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         f'est rattaché à cette facture ({argent}). Corrigez '
                         'par un avoir ou une note de débit.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             from apps.parametres.models import CompanyProfile
             profile = CompanyProfile.get(company=facture.company)
@@ -543,7 +528,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         "pour cette société — corrigez par un avoir puis une "
                         "nouvelle facture."
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             ancien = facture.statut
             facture.statut = Facture.Statut.BROUILLON
@@ -553,6 +538,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
         return Response(FactureSerializer(facture).data)
 
+    @extend_schema(request=D.MarquerPayeeRequest, responses=FactureSerializer)
     @action(detail=True, methods=['post'], url_path='marquer-payee',
             permission_classes=[IsAdminRole])
     def marquer_payee(self, request, pk=None):
@@ -588,14 +574,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'Seule une facture émise ou en retard '
                     'peut être marquée payée.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AFAC9 — LA porte unique (acompte CAD122 avant J+7).
         from ..domain.encaissements import motif_non_encaissable
         motif_refus = motif_non_encaissable(facture)
         if motif_refus:
             return Response({'detail': motif_refus},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         motif = ((request.data or {}).get('motif') or '').strip()
         if not motif:
             return Response(
@@ -624,7 +610,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     f'l\'encaissement.'
                 ),
                  'action_attendue': 'abandonner-solde'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AUD102 (P1) — la bascule passe par LE service unique. ``force`` : un
         # passage MANUEL « marquer payée » est un geste responsable/admin
@@ -946,7 +932,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             sender=Facture, instance=facture, company=facture.company)
         return Response(FactureSerializer(facture).data)
 
-    @action(detail=True, methods=['get'], url_path='paiements',
+    @extend_schema(responses=PaiementSerializer(many=True))
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='paiements',
             permission_classes=[IsAnyRole])
     def paiements(self, request, pk=None):
         """Liste les paiements enregistrés sur cette facture."""
@@ -957,7 +944,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             ).data
         )
 
-    @extend_schema(parameters=[qstr('mode')])
+    @extend_schema(parameters=[qstr('mode')],
+                   responses=D.ArrondiCaisseResponse)
     @action(detail=True, methods=['get'], url_path='arrondi-caisse',
             permission_classes=[IsAnyRole])
     def arrondi_caisse(self, request, pk=None):
@@ -981,6 +969,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'pas': str(prop['pas'] or Decimal('0')),
         })
 
+    @extend_schema(request=PaiementSerializer,
+                   responses={201: FactureSerializer})
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
             permission_classes=[PeutEncaisser])
     def enregistrer_paiement(self, request, pk=None):
@@ -1016,6 +1006,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(request=D.AbandonnerSoldeRequest,
+                   responses=D.FactureAbandonnee)
     @action(detail=True, methods=['post'], url_path='abandonner-solde',
             permission_classes=[PeutEncaisser])
     def abandonner_solde(self, request, pk=None):
@@ -1028,9 +1020,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         responsable/admin.
         """
         facture = self.get_object()
-        motif = (request.data or {}).get('motif')
+        corps = request.data if isinstance(request.data, dict) else {}
+        motif = corps.get('motif')
         motifs_valides = dict(Facture.MotifAbandon.choices)
-        if motif not in motifs_valides:
+        if not isinstance(motif, str) or motif not in motifs_valides:
             return Response(
                 {'detail': (
                     'Motif obligatoire (irrecouvrable / geste_commercial / '
@@ -1042,7 +1035,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail':
                  'Impossible d\'abandonner le solde d\'une facture annulée.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         with transaction.atomic():
             locked = Facture.objects.select_for_update().get(pk=facture.pk)
@@ -1050,7 +1043,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 return Response(
                     {'detail': 'Cette facture n\'a aucun résiduel à '
                                'abandonner.'},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             from ..services import abandonner_solde_facture
             from ..domain.encaissements import FactureNonEncaissable
@@ -1060,12 +1053,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )
             except FactureNonEncaissable as exc:
                 return Response({'detail': exc.motif},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
             locked.refresh_from_db()
         return Response(
             {**FactureSerializer(locked).data, 'montant_abandonne': montant},
         )
 
+    @extend_schema(request=D.ReprendreAbandonRequest,
+                   responses={200: D.FactureAbandonRepris,
+                              400: D.ErreurRetenue})
     @action(detail=True, methods=['post'], url_path='reprendre-abandon',
             permission_classes=[PeutEncaisser])
     def reprendre_abandon(self, request, pk=None):
@@ -1077,11 +1073,33 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..domain.recouvrement import (
             RepriseAbandonRefusee, reprendre_abandon_creance,
         )
+        # ENF11 — corps illisible (liste, texte, motif non texte, identifiant
+        # d'abandon non entier) : 400 qui nomme le champ, jamais 500.
+        corps = request.data
+        if not isinstance(corps, dict):
+            return Response(
+                {'detail': 'Corps JSON objet attendu : {motif, abandon?}.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        erreur = None
+        motif = corps.get('motif')
+        if motif is not None and not isinstance(motif, str):
+            erreur = {'detail': 'motif : texte attendu.', 'champ': 'motif'}
+        abandon_id = corps.get('abandon')
+        if abandon_id in ('', None):
+            abandon_id = None
+        elif isinstance(abandon_id, bool) or not (
+                isinstance(abandon_id, int)
+                or (isinstance(abandon_id, str) and abandon_id.strip().isdigit())):
+            erreur = erreur or {
+                'detail': 'abandon : entier attendu.', 'champ': 'abandon'}
+        else:
+            abandon_id = int(abandon_id)
+        if erreur:
+            return Response(erreur, status=status.HTTP_400_BAD_REQUEST)
         try:
             abandon = reprendre_abandon_creance(
-                facture, user=request.user,
-                motif=(request.data or {}).get('motif'),
-                abandon_id=(request.data or {}).get('abandon'))
+                facture, user=request.user, motif=motif,
+                abandon_id=abandon_id)
         except RepriseAbandonRefusee as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1090,6 +1108,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                          'abandon_repris': abandon.id,
                          'montant_repris': str(abandon.montant)})
 
+    @extend_schema(request=D.LibererRetenueRequest,
+                   responses={200: FactureSerializer,
+                              400: D.ErreurRetenue})
     @action(detail=True, methods=['post'], url_path='liberer-retenue',
             permission_classes=[IsResponsableOrAdmin])
     def liberer_retenue(self, request, pk=None):
@@ -1144,6 +1165,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @extend_schema(responses=D.PdfBinaire)
     @action(detail=True, methods=['get'], url_path='telecharger-pdf',
             permission_classes=[IsResponsableOrAdmin])
     def telecharger_pdf(self, request, pk=None):
@@ -1158,6 +1180,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             cle = cle_facture_pdf_a_jour(facture)
         except Exception:  # noqa: BLE001
+            logger.warning("facture.FactureViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             cle = facture.fichier_pdf
         if not cle:
             return Response(
@@ -1167,6 +1190,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             pdf_bytes = download_pdf(cle)
         except Exception:
+            logger.warning("facture.FactureViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},
                 status=status.HTTP_404_NOT_FOUND,
@@ -1183,6 +1207,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         )
         return response
 
+    @extend_schema(responses=D.UblXml)
     @action(detail=True, methods=['get'], url_path='ubl',
             permission_classes=[IsResponsableOrAdmin])
     def ubl(self, request, pk=None):
@@ -1205,6 +1230,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         )
         return response
 
+    @extend_schema(responses=D.UblXml)
     @action(detail=True, methods=['get'], url_path='dgi-export',
             permission_classes=[IsResponsableOrAdmin])
     def dgi_export(self, request, pk=None):
@@ -1227,6 +1253,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         )
         return response
 
+    @extend_schema(responses=D.DgiConformiteResponse)
     @action(detail=True, methods=['get'], url_path='dgi-conformite',
             permission_classes=[IsResponsableOrAdmin])
     def dgi_conformite(self, request, pk=None):
@@ -1245,6 +1272,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(
             {'conforme': not problemes, 'problemes': problemes})
 
+    @extend_schema(request=None, responses=D.DgiTransmissionResponse)
     @action(detail=True, methods=['post'], url_path='dgi-transmettre',
             permission_classes=[IsResponsableOrAdmin])
     def dgi_transmettre(self, request, pk=None):
@@ -1289,8 +1317,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        modele = request.data.get('modele', 'facture')
-        langue = request.data.get('langue', 'fr')
+        saisie = valider_corps(request, D.FactureWhatsappRequest)
+        modele, langue = saisie.get('modele', 'facture'), saisie.get('langue', 'fr')
         message, link = build_facture_whatsapp(request, facture, modele, langue)
         # L856 — trace l'action dans le chatter de la facture (Historique).
         # Acteur et société posés côté serveur, jamais lus du corps de requête.
@@ -1317,6 +1345,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         sur une facture close. La réponse porte désormais `montant_a_payer`
         (reste dû à l'instant T, ce que le client paiera réellement) à côté de
         `montant` (la trace figée à la création)."""
+        if not isinstance(request.data, dict):
+            return Response(
+                {'detail': 'Corps illisible : un objet JSON est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
         facture = self.get_object()
         from ..services import LinkError, create_payment_link
         from ..domain.encaissements import url_page_paiement
@@ -1382,6 +1414,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'statut': lien.statut,
         })
 
+    @extend_schema(request=D.EnvoyerEmailFactureRequest,
+                   responses={202: D.EnvoyerEmailFactureResponse,
+                              400: D.ErreurEnvoiEmail})
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])
     def envoyer_email(self, request, pk=None):
@@ -1393,14 +1428,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         être surchargés dans le body de la requête."""
         from ..email_service import send_document_email
         facture = self.get_object()
+        saisie = valider_corps(request, D.EnvoyerEmailFactureRequest)
         log = send_document_email(
-            facture,
-            to_email=(request.data.get('to_email') or '').strip() or None,
-            sujet=(request.data.get('sujet') or '').strip() or None,
-            corps=(request.data.get('corps') or '').strip() or None,
-            user=request.user,
-            attach_pdf=request.data.get('attach_pdf', True),
-        )
+            facture, user=request.user,
+            to_email=saisie.get('to_email', '').strip() or None,
+            sujet=saisie.get('sujet', '').strip() or None,
+            corps=saisie.get('corps', '').strip() or None,
+            attach_pdf=saisie.get('attach_pdf', True))
         if log.statut == EmailLog.Statut.ECHEC:
             return Response(
                 {'detail': log.erreur or 'Envoi impossible.',
@@ -1412,6 +1446,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @extend_schema(request=D.CreerAvoirRequest,
+                   responses={201: AvoirSerializer})
     @action(detail=True, methods=['post'], url_path='creer-avoir',
             permission_classes=[PeutEncaisser])
     def creer_avoir(self, request, pk=None):
@@ -1527,7 +1563,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             generate_avoir_pdf(avoir.id)
             avoir.refresh_from_db()
         except Exception:
-            pass
+            logger.warning("facture.FactureViewSet.creer_avoir : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(AvoirSerializer(avoir).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1665,10 +1701,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             generate_note_debit_pdf(note_debit.id)
             note_debit.refresh_from_db()
         except Exception:
-            pass
+            logger.warning("facture.FactureViewSet.creer_note_debit : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(NoteDebitSerializer(note_debit).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.RetourClientRequest,
+                   responses={201: AvoirSerializer})
     @action(detail=True, methods=['post'], url_path='retour-client',
             permission_classes=[IsResponsableOrAdmin])
     def retour_client(self, request, pk=None):
@@ -1715,10 +1753,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             generate_avoir_pdf(avoir.id)
             avoir.refresh_from_db()
         except Exception:
-            pass
+            logger.warning("facture.FactureViewSet.retour_client : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(AvoirSerializer(avoir).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=RelancerFactureSerializer,
+                   responses=D.FactureRelancee)
     @action(detail=True, methods=['post'], url_path='relancer',
             permission_classes=[IsResponsableOrAdmin])
     def relancer(self, request, pk=None):
@@ -1749,8 +1789,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..recouvrement import (
             ensure_default_followup_levels, facture_relancable,
         )
-        from ..serializers_facturation import RelancerFactureSerializer
-
         facture = self.get_object()
         # AUD131 — garde d'état AVANT toute écriture.
         ok, motif = facture_relancable(facture)
@@ -1803,6 +1841,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         data['email_log_id'] = email_log_id
         return Response(data)
 
+    @extend_schema(responses=D.RelanceApercuResponse)
     @action(detail=True, methods=['get'], url_path='relance-apercu',
             permission_classes=[IsResponsableOrAdmin])
     def relance_apercu(self, request, pk=None):
@@ -1821,10 +1860,16 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     def exclure_relance(self, request, pk=None):
         """Bascule l'exclusion de la facture des listes d'impayés."""
         facture = self.get_object()
-        facture.exclu_relances = bool(request.data.get('exclu', True))
+        corps = request.data if isinstance(request.data, dict) else {}
+        exclu = corps.get('exclu', True)
+        if not isinstance(exclu, bool):
+            raise ValidationError({'exclu': ['Booléen attendu.']})
+        facture.exclu_relances = exclu
         facture.save(update_fields=['exclu_relances'])
         return Response(FactureSerializer(facture).data)
 
+    @extend_schema(request=None,
+                   responses={201: FactureSerializer, 403: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='facturer-penalites',
             permission_classes=[IsResponsableOrAdmin])
     def facturer_penalites(self, request, pk=None):
@@ -1966,7 +2011,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(kpis_factures(self.filter_queryset(
             self.get_queryset())))
 
-    @action(detail=True, methods=['get'], url_path='relances',
+    @extend_schema(responses=RelanceLogSerializer(many=True))
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='relances',
             permission_classes=[IsAnyRole])
     def relances(self, request, pk=None):
         """Historique des relances consignées sur cette facture."""
@@ -1974,7 +2020,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(
             RelanceLogSerializer(facture.relances.all(), many=True).data)
 
-    @action(detail=True, methods=['get'], url_path='emails',
+    @extend_schema(responses=EmailLogSerializer(many=True))
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='emails',
             permission_classes=[IsAnyRole])
     def emails(self, request, pk=None):
         """Fil des emails (envoyés/reçus) consignés sur cette facture (N87/N88)."""
@@ -1983,7 +2030,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(
             EmailLogSerializer(facture.email_logs.all(), many=True).data)
 
-    @action(detail=True, methods=['get'], url_path='historique',
+    @extend_schema(responses=FactureActivitySerializer(many=True))
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
         """Chatter de la facture : avoirs créés + paiements encaissés (qui,
@@ -1994,6 +2042,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             FactureActivitySerializer(
                 facture.activites.all(), many=True).data)
 
+    @extend_schema(request=D.ConsoliderRequest,
+                   responses={201: FactureSerializer})
     @action(detail=False, methods=['post'], url_path='consolider',
             permission_classes=[IsResponsableOrAdmin])
     def consolider(self, request):
@@ -2001,7 +2051,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         acceptés du MÊME client. Body : ``{devis_ids: [...]}``."""
         from ..services import consolider_factures
 
-        devis_ids = request.data.get('devis_ids') or []
+        corps = request.data
+        devis_ids = (corps.get('devis_ids') if isinstance(corps, dict)
+                     else None) or []
         try:
             devis_ids = [int(x) for x in devis_ids]
         except (TypeError, ValueError):
@@ -2017,7 +2069,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['post'], url_path='encaissement-groupe',
+    @extend_schema(request=D.EncaissementGroupeRequest,
+                   responses={201: PaiementSerializer(many=True)})
+    @action(pagination_class=None, detail=False, methods=['post'], url_path='encaissement-groupe',
             permission_classes=[PeutEncaisser])
     def encaissement_groupe(self, request):
         """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
@@ -2044,10 +2098,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if client is None:
             return Response(
                 {'detail': 'Client introuvable.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         try:
             montant = Decimal(str(request.data.get('montant')))
         except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {'detail': 'Montant invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 — montant fini et borné (NaN levait InvalidOperation à la
+        # comparaison ci-dessous), mode connu, date lisible, ids entiers :
+        # sinon 500 (InvalidOperation/DataError, ValueError).
+        if not montant.is_finite() or montant >= Decimal('1e10'):
             return Response(
                 {'detail': 'Montant invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -2055,13 +2116,34 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Le montant doit être positif.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        mode = (request.data.get('mode') or 'virement').strip()
+        mode = str(request.data.get('mode') or 'virement').strip()
+        if mode not in Paiement.Mode.values:
+            return Response(
+                {'detail': 'Mode de paiement inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
         date_paiement = request.data.get('date') or timezone.now().date()
-        reference = (request.data.get('reference') or '').strip()
+        if not isinstance(date_paiement, _date):
+            try:
+                date_paiement = _date.fromisoformat(str(date_paiement))
+            except ValueError:
+                return Response(
+                    {'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        reference = str(request.data.get('reference') or '').strip()
+        if len(reference) > 120:
+            return Response(
+                {'detail': 'La référence tient en 120 caractères au plus.'},
+                status=status.HTTP_400_BAD_REQUEST)
         facture_ids = request.data.get('factures') or []
         if not isinstance(facture_ids, list) or not facture_ids:
             return Response(
-                {'detail': 'factures (liste d\'ids) requis.'},
+                {'detail': "factures (liste d'ids) requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            facture_ids = [int(x) for x in facture_ids]
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "factures doit être une liste d'ids entiers."},
                 status=status.HTTP_400_BAD_REQUEST)
 
         # AFAC55 — portée du rôle (`get_queryset`) en plus de la société.
@@ -2070,7 +2152,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Une ou plusieurs factures sont introuvables '
                            'pour cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         autres_clients = [f for f in factures if f.client_id != client.id]
         if autres_clients:
             return Response(
@@ -2103,6 +2185,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             PaiementSerializer(paiements, many=True).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.BulkRequest, responses=D.BulkResponse)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
     def bulk(self, request):
@@ -2116,8 +2199,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         Les erreurs par facture n'interrompent pas le batch.
         """
         request.user.company
-        action_name = (request.data.get('action') or '').strip()
-        ids = request.data.get('ids') or []
+        donnees = request.data if isinstance(request.data, dict) else {}
+        action_brute = donnees.get('action')
+        # ENF11 — une action qui n'est pas un texte est invalide (jamais un 500).
+        action_name = action_brute.strip() if isinstance(action_brute, str) else ''
+        ids = donnees.get('ids') or []
 
         VALID_ACTIONS = {'emettre', 'relancer', 'envoyer-email', 'generer-pdf'}
         if action_name not in VALID_ACTIONS:
@@ -2136,16 +2222,16 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # Borner aux factures de la société (scoping multi-tenant). AFAC55
         # (C-AFAC-048) — ET à la portée du rôle (`get_queryset` : créées par
         # soi / l'équipe) : un id invisible répond « Introuvable. ».
-        factures_qs = self.get_queryset().filter(id__in=ids)
-        factures_by_id = {f.id: f for f in factures_qs}
+        # ENF11 — le schéma déclare des ids ENTIERS : tout autre élément
+        # (texte, objet, booléen) est refusé en 400 avant toute lecture.
+        if any(type(brut) is not int for brut in ids):
+            return Response({'detail': "ids : liste d'entiers attendue."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        factures_by_id = {f.id: f for f in self.get_queryset().filter(
+            id__in=[i for i in ids if abs(i) < 2 ** 31])}
 
         results = {}
-        for fid in ids:
-            try:
-                fid_int = int(fid)
-            except (ValueError, TypeError):
-                results[fid] = {'ok': False, 'detail': 'ID invalide.'}
-                continue
+        for fid_int in ids:
             facture = factures_by_id.get(fid_int)
             if facture is None:
                 results[fid_int] = {'ok': False, 'detail': 'Introuvable.'}
@@ -2226,6 +2312,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'reference': facture.reference}
 
             except Exception as exc:  # noqa: BLE001 — batch: no single failure kills all
+                logger.warning("facture.FactureViewSet.bulk : erreur ignorée (mode dégradé)", exc_info=True)
                 results[fid_int] = {'ok': False, 'detail': str(exc)}
 
         return Response(results)

@@ -27,6 +27,9 @@ from .serializers import (
     AdminOpsSettingsSerializer, ConfigPackageSerializer,
     SandboxEnvironmentSerializer,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 _VIEWS_HEALTH_SCORE_VIEW_REPONSE = inline_serializer('ViewsHealthScoreViewReponse', {
@@ -94,8 +97,18 @@ def tracker_usage_view(request):
     return Response({'ok': True}, status=201)
 
 
+class _TexteStrict(drf_serializers.CharField):
+    """ENF11 — refuse un nombre/booléen là où le schéma déclare une chaîne
+    (``CharField`` DRF coerce ``0`` en ``"0"`` et l'accepte en silence)."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
 class ExporterConfigSerializer(drf_serializers.Serializer):
-    nom = drf_serializers.CharField(max_length=150, required=False)
+    nom = _TexteStrict(max_length=150, required=False)
 
 
 class ContenuConfigSerializer(drf_serializers.Serializer):
@@ -108,6 +121,8 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SandboxEnvironmentSerializer
     permission_classes = [IsAdministrateur]
     parser_classes = [JSONParser]
+    # ENF11 — type du paramètre de chemin ``id`` (get_queryset reste la source).
+    queryset = SandboxEnvironment.objects.none()
 
     def get_queryset(self):
         return SandboxEnvironment.objects.filter(
@@ -152,7 +167,8 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
                 'create', instance=env, company=env.company, user=env.cree_par,
                 detail=f'Sandbox {action_label}')
         except Exception:
-            pass
+            logger.warning(
+                "views.SandboxEnvironmentViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
@@ -163,7 +179,8 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
                     body=f"L'environnement sandbox a été {action_label} avec succès.",
                     company=env.company)
         except Exception:
-            pass
+            logger.warning(
+                "views.SandboxEnvironmentViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 _VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE = inline_serializer(
@@ -187,6 +204,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ConfigPackageSerializer
     permission_classes = [IsAdministrateur]
     parser_classes = [JSONParser]
+    # ENF11 — type du paramètre de chemin ``id`` (get_queryset reste la source).
+    queryset = ConfigPackage.objects.none()
 
     def get_queryset(self):
         return ConfigPackage.objects.filter(
@@ -213,7 +232,9 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                    responses=_VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE)
     @action(detail=False, methods=['post'])
     def previsualiser(self, request):
-        contenu = request.data.get('contenu')
+        # ENF11 — un corps JSON non objet (liste, null) répondait 500.
+        contenu = (request.data.get('contenu')
+                   if isinstance(request.data, dict) else None)
         if not isinstance(contenu, dict):
             return Response({'detail': 'contenu (JSON) requis.'}, status=400)
         diff = config_package_service.previsualiser_import(
@@ -237,7 +258,9 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': "Permission 'adminops_config_package_importer' requise."},
                 status=403)
-        contenu = request.data.get('contenu')
+        # ENF11 — un corps JSON non objet (liste, null) répondait 500.
+        contenu = (request.data.get('contenu')
+                   if isinstance(request.data, dict) else None)
         if not isinstance(contenu, dict):
             return Response({'detail': 'contenu (JSON) requis.'}, status=400)
         diff = config_package_service.appliquer_import(
@@ -253,7 +276,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                 user=package.cree_par,
                 detail=f'Package de configuration {action_label} : {package.nom}')
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
@@ -263,7 +287,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                     f'Package de configuration {action_label}',
                     body=package.nom, company=package.company)
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier : erreur ignorée (mode dégradé)", exc_info=True)
 
     def _audit_et_notifier_import(self, company, contenu, user):
         try:
@@ -272,7 +297,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                 'update', company=company, user=user,
                 detail='Package de configuration importé')
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier_import : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
@@ -281,7 +307,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
                     user, EventType.DIGEST, 'Package de configuration appliqué',
                     body=contenu.get('_nom', ''), company=company)
         except Exception:
-            pass
+            logger.warning(
+                "views.ConfigPackageViewSet._audit_et_notifier_import : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 class AdminOpsSettingsView(APIView):
@@ -346,7 +373,7 @@ def support_bundle_view(request):
                 'detail': row['detail'][:200],
             })
     except Exception:
-        pass
+        logger.warning("views.support_bundle_view : erreur ignorée (mode dégradé)", exc_info=True)
 
     buf = BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:

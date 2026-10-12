@@ -11,6 +11,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from ..openapi_helpers import BINARY, BOOL, DATE, INT, OBJET, P, PDF, STR, corps
+from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
@@ -32,6 +33,11 @@ from ..serializers_wms import (
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+CORPS_IMPORT_ASN = corps('UniteImportAsnCorps', version=ChaineStricte(required=False),
+                         unite=serializers.DictField(required=False),
+                         lignes=serializers.ListField(child=serializers.DictField(), required=False),
+                         totaux=serializers.DictField(required=False))
 
 
 def _relations_scopees(view, request, noms):
@@ -98,12 +104,13 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         """Crée la vague à partir des besoins fournis (multi-source) — le
         service pose la référence, résout les casiers et TRIE par parcours."""
         from ..services import creer_vague_depuis_besoins
+        donnees = request.data if isinstance(request.data, dict) else {}
         try:
             vague = creer_vague_depuis_besoins(
                 company=request.user.company, user=request.user,
-                besoins=request.data.get('besoins'),
-                installations=request.data.get('installations'),
-                note=request.data.get('note') or '')
+                besoins=donnees.get('besoins'),
+                installations=donnees.get('installations'),
+                note=donnees.get('note') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -210,14 +217,24 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         company = request.user.company
         # ASTK6 — parent et vague bornés par les champs scopés du sérialiseur
         # (une vague étrangère n'est plus silencieusement ignorée).
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         liens = _relations_scopees(self, request, ['parent', 'vague'])
+        # Types / longueurs des champs simples validés par le sérialiseur
+        # (une `dimensions` trop longue levait une 500 en base).
+        simples = self.get_serializer(data={
+            'type_unite': request.data.get('type_unite') or 'colis',
+            'poids_kg': request.data.get('poids_kg') or None,
+            'dimensions': request.data.get('dimensions') or ''})
+        simples.is_valid(raise_exception=True)
         try:
             unite = creer_unite_logistique(
                 company=company,
-                type_unite=request.data.get('type_unite') or 'colis',
+                type_unite=simples.validated_data['type_unite'],
                 parent=liens['parent'], vague=liens['vague'],
-                poids_kg=request.data.get('poids_kg') or None,
-                dimensions=request.data.get('dimensions') or '')
+                poids_kg=simples.validated_data.get('poids_kg'),
+                dimensions=simples.validated_data.get('dimensions') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -364,10 +381,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 f'attachment; filename="asn-{unite.sscc}.json"')
         return reponse
 
-    @extend_schema(request=corps('UniteImportAsnCorps', version=serializers.CharField(required=False),
-                                 unite=serializers.DictField(required=False),
-                                 lignes=serializers.ListField(child=serializers.DictField(), required=False),
-                                 totaux=serializers.DictField(required=False)), responses={
+    @extend_schema(request=CORPS_IMPORT_ASN, responses={
         200: inline_serializer('StockUniteAsnImport', {
             'valide': serializers.BooleanField(),
             'erreurs': serializers.ListField(child=serializers.CharField()),
@@ -381,6 +395,11 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         """NTWMS27 — import MIROIR d'un bordereau ASN : valide et rapproche,
         n'écrit RIEN (contrôle de cohérence, pas une intégration EDI)."""
         from ..services import importer_asn
+        # ENF11 : la STRUCTURE déclarée (version texte, unite/totaux objets,
+        # lignes = liste d'objets) est exigée en 400 ; le CONTENU incohérent
+        # reste rendu en 200 `valide: false` (import miroir).
+        entree = CORPS_IMPORT_ASN.__class__(data=request.data)
+        entree.is_valid(raise_exception=True)
         return Response(importer_asn(request.user.company, request.data))
 
     @extend_schema(request=None, responses=UniteLogistiqueSerializer)
@@ -910,14 +929,19 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         company = request.user.company
         # ASTK6 — FK bornées société ; un id étranger répond 400.
         liens = _relations_scopees(self, request, ['livraison', 'expedition'])
+        # ENF11 — corps validé par le sérialiseur strict (texte/booléens) :
+        # une note entière répond 400 au lieu d'un 500 sur .strip().
+        corps = self.get_serializer(data=request.data, partial=True)
+        corps.is_valid(raise_exception=True)
+        valides = corps.validated_data
 
         plan = creer_plan_chargement(
             company=company, user=request.user,
             livraison=liens['livraison'],
             expedition=liens['expedition'],
-            capacite_kg=request.data.get('capacite_kg') or None,
-            capacite_m3=request.data.get('capacite_m3') or None,
-            note=request.data.get('note') or '')
+            capacite_kg=valides.get('capacite_kg') or None,
+            capacite_m3=valides.get('capacite_m3') or None,
+            note=valides.get('note') or '')
         return Response(self.get_serializer(plan).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1149,9 +1173,16 @@ class PortailTiersTokenViewSet(CompanyScopedModelViewSet):
                         cree_par=self.request.user)
 
 
-def _date_param(valeur):
-    """Convertit ``YYYY-MM-DD`` en date, ou ``None`` (jamais une exception)."""
+#: NTWMS18 — description OpenAPI d'une date de période tolérante.
+_DATE_TOLEREE = 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'
+
+
+def _date_param(valeur, nom='date', *, ignorer_illisible=False):
+    """Convertit ``YYYY-MM-DD`` en date ; ``None`` si absente ; 400 nommant
+    ``nom`` si illisible (ENF11 : plus d'entrée invalide ignorée) — sauf
+    ``ignorer_illisible`` (tolérance DÉCLARÉE de NTWMS18 : ``None``)."""
     import datetime
+    from rest_framework.exceptions import ValidationError
 
     valeur = (valeur or '').strip()
     if not valeur:
@@ -1159,7 +1190,9 @@ def _date_param(valeur):
     try:
         return datetime.date.fromisoformat(valeur)
     except ValueError:
-        return None
+        if ignorer_illisible:
+            return None
+        raise ValidationError({nom: ['Date AAAA-MM-JJ attendue.']})
 
 
 @extend_schema(parameters=[P('emplacement', INT, True, 'Emplacement (id)'), P('symbology', STR, False, 'Symbologie',
@@ -1249,8 +1282,8 @@ def reslotting_suggestions_view(request):
 
     from ..selectors import suggerer_reslotting
 
-    fin = _date_param(request.query_params.get('fin')) or timezone.localdate()
-    debut = (_date_param(request.query_params.get('debut'))
+    fin = _date_param(request.query_params.get('fin'), 'fin') or timezone.localdate()
+    debut = (_date_param(request.query_params.get('debut'), 'debut')
              or fin - datetime.timedelta(days=365))
     return Response({
         'suggestions': suggerer_reslotting(
@@ -1278,8 +1311,8 @@ def entrepot_pertes_view(request):
     """
     from ..services import rapport_pertes_entrepot
 
-    debut = _date_param(request.query_params.get('debut'))
-    fin = _date_param(request.query_params.get('fin'))
+    debut = _date_param(request.query_params.get('debut'), 'debut')
+    fin = _date_param(request.query_params.get('fin'), 'fin')
     rapport = rapport_pertes_entrepot(
         request.user.company, debut=debut, fin=fin)
     # ERR-STK-PRIX-ACHAT-SUITE — valeurs au coût d'achat : prix_achat_voir ;
@@ -1296,7 +1329,7 @@ def entrepot_pertes_view(request):
     return Response(rapport)
 
 
-@extend_schema(parameters=[P('debut', DATE), P('fin', DATE)], responses={
+@extend_schema(parameters=[P('debut', STR, False, _DATE_TOLEREE), P('fin', STR, False, _DATE_TOLEREE)], responses={
     200: inline_serializer('StockEntrepotProductivite', {
         'debut': serializers.CharField(allow_null=True),
         'fin': serializers.CharField(allow_null=True),
@@ -1314,8 +1347,12 @@ def entrepot_productivite_view(request):
     """
     from ..selectors import productivite_operateur
 
-    debut = _date_param(request.query_params.get('debut'))
-    fin = _date_param(request.query_params.get('fin'))
+    # NTWMS18 — une date illisible est IGNORÉE (période ouverte), jamais un
+    # 400 : tolérance déclarée dans l'OpenAPI (``_DATE_TOLEREE``).
+    debut = _date_param(request.query_params.get('debut'), 'debut',
+                        ignorer_illisible=True)
+    fin = _date_param(request.query_params.get('fin'), 'fin',
+                      ignorer_illisible=True)
     return Response({
         'debut': debut.isoformat() if debut else None,
         'fin': fin.isoformat() if fin else None,

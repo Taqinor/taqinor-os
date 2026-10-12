@@ -261,4 +261,5 @@ def session_depuis_requete(request):
             return demande
         return None
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("impersonation_service.session_depuis_requete : erreur ignorée (mode dégradé)", exc_info=True)
         return None

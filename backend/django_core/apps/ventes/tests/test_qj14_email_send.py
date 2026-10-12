@@ -157,6 +157,17 @@ class TestEnvoyerEmailAction(TestCase):
         self.assertIsNotNone(log)
         self.assertEqual(log.to_email, 'autre@dest.ma')
 
+    def test_corps_mal_type_400_sans_envoi(self):
+        """ENF11 — un champ de mauvais type (entier, null) ou un corps non
+        objet est refusé (400) AVANT tout effet : pas d'EmailLog, pas d'envoi."""
+        devis = make_devis(self.company, self.user, self.client_obj, 'brouillon',
+                           'DEV-QJ14-005B')
+        for corps in ({'to_email': 5}, {'sujet': None}, {'pdf_mode': 1},
+                      {'gamme_envoi': []}, [1, 2]):
+            resp = self.api.post(url(devis.id), corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        self.assertFalse(EmailLog.objects.filter(devis=devis).exists())
+
     def test_missing_email_returns_400_and_logs_echec(self):
         """No client email + no to_email in body → 400 + EmailLog echec."""
         client_no_email = Client.objects.create(

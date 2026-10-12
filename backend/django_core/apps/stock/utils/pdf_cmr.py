@@ -19,6 +19,9 @@ partagé ``templates/pdf/``.
 from decimal import Decimal
 
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _esc(value):
@@ -32,6 +35,7 @@ def _dec(value):
     try:
         return Decimal(str(value))
     except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash.
+        logger.warning("pdf_cmr._dec : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('0')
 
 

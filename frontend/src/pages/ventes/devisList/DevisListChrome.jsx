@@ -7,6 +7,7 @@ import {
   Stat,
   Input, Segmented,
 } from '../../../ui/index.js'
+import { BasculeAffichage } from '../ElementsListeVentes'
 import { formatMAD } from '../../../lib/format.js'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob.js'
 import ViewsManagerPopover from '../../../features/uxviews/ViewsManagerPopover'
@@ -175,25 +176,8 @@ export default function DevisListChrome({
         {/* APX15(b) — bascule Liste/Board, parité exacte avec celle des
             factures (ZFAC9). Le board consomme `filteredDevis`, déjà en
             mémoire : aucune donnée nouvelle, aucun appel réseau. */}
-        <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5"
-             role="group" aria-label="Mode d’affichage">
-          <Button
-            type="button" size="sm"
-            variant={viewMode === 'liste' ? 'secondary' : 'ghost'}
-            aria-pressed={viewMode === 'liste'}
-            onClick={() => setViewMode('liste')}
-          >
-            <LayoutList className="size-4" aria-hidden="true" /> Liste
-          </Button>
-          <Button
-            type="button" size="sm"
-            variant={viewMode === 'board' ? 'secondary' : 'ghost'}
-            aria-pressed={viewMode === 'board'}
-            onClick={() => setViewMode('board')}
-          >
-            <LayoutGrid className="size-4" aria-hidden="true" /> Board
-          </Button>
-        </div>
+        <BasculeAffichage viewMode={viewMode} setViewMode={setViewMode}
+          autreMode="board" autreLabel="Board" />
       </div>
     )}
 

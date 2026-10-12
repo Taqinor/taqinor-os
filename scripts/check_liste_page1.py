@@ -21,6 +21,14 @@ CE QUI EST EXCLU
   * un endpoint NON paginé : la liste des segments d'URL est DÉRIVÉE du code
     (classes backend ayant ``pagination_class = None`` + leurs
     ``router.register(r'<segment>', Classe)``), jamais écrite à la main ;
+  * les sites listés dans ``scripts/liste_page1_non_paginees.txt`` (registre explicite
+    d'endpoints NON paginés que la dérivation ci-dessus ne voit pas : action
+    ``pagination_class=None`` sur un @action, liste plafonnée, ``@api_view``). Format :
+    ``fichier::fonction  <endpoint>  <raison> @<fichier_backend>:<ligne>`` ; la
+    citation est VÉRIFIÉE (le fichier existe et la ligne porte ``pagination_class = None``,
+    une tranche ``[:N]`` ou ``@api_view``) ; une entrée dont le site n'est plus
+    signalé est MORTE (rouge), comme l'allow-list. Limite : la garde ne prouve pas
+    que la ligne citée appartient bien à CET endpoint (revue humaine) ;
   * les fonctions listées dans ``scripts/liste_page1_allow.txt`` (passif gelé,
     ``fichier::fonction``) — il ne peut que DÉCROÎTRE : une clé morte (la
     fonction n'est plus signalée) fait échouer la garde.
@@ -40,6 +48,9 @@ ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_FEATURES = ROOT / "frontend" / "src" / "features"
 BACKEND = ROOT / "backend" / "django_core"
 ALLOWLIST_PATH = ROOT / "scripts" / "liste_page1_allow.txt"
+NON_PAGINEES_PATH = ROOT / "scripts" / "liste_page1_non_paginees.txt"
+_PREUVE_RE = re.compile(r"pagination_class\s*=\s*None\b|\[:\d+\]|@api_view\b")
+_CITATION_RE = re.compile(r"@(\S+?\.py):(\d+)\s*$")
 
 _RESULTS_RE = re.compile(r"\bdata\??\.results\b")
 _HTTP_RE = re.compile(
@@ -169,6 +180,38 @@ def _load_allowlist() -> set:
     return out
 
 
+def _load_non_paginees():
+    """({cle: endpoint}, [erreurs]) du registre ; chaque citation backend est vérifiée."""
+    out, erreurs = {}, []
+    if not NON_PAGINEES_PATH.is_file():
+        return out, erreurs
+    for ligne in NON_PAGINEES_PATH.read_text(encoding="utf-8").splitlines():
+        ligne = ligne.split("#", 1)[0].strip()
+        if not ligne:
+            continue
+        parts = ligne.split(None, 2)
+        if len(parts) < 3:
+            erreurs.append(f"{ligne} : format `fichier::fonction  endpoint  raison @fichier.py:ligne`")
+            continue
+        cle, endpoint, raison = parts
+        m = _CITATION_RE.search(raison)
+        if not m:
+            erreurs.append(f"{cle} : citation backend `@fichier.py:ligne` manquante")
+            continue
+        cible = ROOT / m.group(1)
+        try:
+            texte = cible.read_text(encoding="utf-8").splitlines()[int(m.group(2)) - 1]
+        except (OSError, UnicodeDecodeError, IndexError):
+            erreurs.append(f"{cle} : citation {m.group(1)}:{m.group(2)} introuvable")
+            continue
+        if not _PREUVE_RE.search(texte):
+            erreurs.append(f"{cle} : {m.group(1)}:{m.group(2)} ne porte ni pagination_class = None, "
+                           "ni tranche [:N], ni @api_view — endpoint peut-être paginé")
+            continue
+        out[cle] = endpoint
+    return out, erreurs
+
+
 def main(argv) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -180,8 +223,12 @@ def main(argv) -> int:
             print(f"{cle}  (ligne {ligne})")
         return 0
     allow = _load_allowlist()
-    nouveaux = {k: v for k, v in trouves.items() if k not in allow}
+    registre, erreurs = _load_non_paginees()
+    nouveaux = {k: v for k, v in trouves.items()
+                if k not in allow and k not in registre}
     morts = sorted(allow - set(trouves))
+    morts_registre = sorted(set(registre) - set(trouves))
+    doubles = sorted(allow & set(registre))
     if nouveaux:
         print("check_liste_page1: liste paginée lue sur la page 1 "
               "(ni fetchAllPages, ni lecture de `next`) :")
@@ -194,9 +241,23 @@ def main(argv) -> int:
               "(la fonction n'est plus signalée — retirez la ligne) :")
         for cle in morts:
             print(f"  - {cle}")
-    if nouveaux or morts:
+    if erreurs:
+        print("check_liste_page1: registre scripts/liste_page1_non_paginees.txt invalide :")
+        for e in erreurs:
+            print(f"  - {e}")
+    if morts_registre:
+        print("check_liste_page1: entrées MORTES de scripts/liste_page1_non_paginees.txt "
+              "(le site n'est plus signalé — retirez la ligne) :")
+        for cle in morts_registre:
+            print(f"  - {cle}")
+    if doubles:
+        print("check_liste_page1: sites à la fois dans l'allow-list et le registre non paginé :")
+        for cle in doubles:
+            print(f"  - {cle}")
+    if nouveaux or morts or erreurs or morts_registre or doubles:
         return 1
-    print(f"check_liste_page1: OK — {len(trouves)} site(s) historique(s) gelé(s), "
+    print(f"check_liste_page1: OK — {len(trouves)} site(s) historique(s) gelé(s) "
+          f"(dont {len(registre)} endpoint(s) non paginé(s) du registre), "
           "aucune nouvelle liste lue sur la page 1.")
     return 0
 

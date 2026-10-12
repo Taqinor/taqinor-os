@@ -71,6 +71,17 @@ class DossierExchangeApiTest(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_detail_non_texte_refuse_en_chaine(self):
+        # ENF11 — le champ s'appelle ``detail`` : son erreur reste une chaîne
+        # (schéma ``ErreurApi``), pas une liste sur la clé ``detail``.
+        resp = self.api.post(self.url, {
+            'dossier': self.dossier.id, 'sens': 'envoi',
+            'type_echange': 'depot', 'date_echange': '2026-06-01',
+            'detail': {},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIsInstance(resp.data['detail'], str)
+
     def test_filter_by_type_echange(self):
         DossierExchange.objects.create(
             company=self.company, dossier=self.dossier, sens='recu',

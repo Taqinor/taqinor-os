@@ -14,6 +14,9 @@ Invariants portés par ce module :
   * le quota ``50 publications / 24 h`` est LU (``publishing_limit``) et surfacé.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_dt(value):
@@ -98,6 +101,7 @@ def publishing_limit(client):
     try:
         limit = getter() or {}
     except Exception:  # noqa: BLE001 — le quota n'empêche jamais l'affichage
+        logger.warning("instagram.publishing_limit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     used = limit.get('used')
     total = limit.get('total')

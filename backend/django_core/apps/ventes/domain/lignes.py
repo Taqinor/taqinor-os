@@ -31,6 +31,9 @@ précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
 """
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ── PV16 — la CIBLE de calepinage se lit dans les LIGNES du devis ───────────
@@ -94,6 +97,7 @@ def _pmax_wc_du_produit(produit):
     try:
         from apps.stock import selectors as _stock_selectors
     except Exception:  # noqa: BLE001 — app absente / import cassé : on ignore
+        logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     lire = getattr(_stock_selectors, 'specs_for_produit', None)
     if lire is None:
@@ -105,8 +109,10 @@ def _pmax_wc_du_produit(produit):
         try:
             specs = lire(getattr(produit, 'id', None))
         except Exception:  # noqa: BLE001
+            logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
             return None
     except Exception:  # noqa: BLE001
+        logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if specs is None:
         return None
@@ -731,6 +737,32 @@ def prix_negocie(ligne, *, prix_reference):
         return True
 
 
+def porter_quantite(ligne, quantite):
+    """QJR6 — l'ÉCRIVAIN SANCTIONNÉ d'une quantité recalculée par le serveur.
+
+    Pose ``quantite`` TELLE QUELLE (l'appelant l'a déjà convertie) et persiste
+    cette SEULE colonne (``update_fields=['quantite']``) : ni statut, ni prix,
+    ni autre ligne ne bougent (règle #4). La garde des quantités TAPÉES
+    (QJR60 / D12, ``quantite_manuelle``) reste chez l'appelant, qui filtre son
+    vivier avant d'appeler.
+    """
+    ligne.quantite = quantite
+    ligne.save(update_fields=['quantite'])
+
+
+def poser_prix_unitaire(ligne, prix):
+    """QJR6 — l'ÉCRIVAIN SANCTIONNÉ d'un prix unitaire qui suit le catalogue.
+
+    Pose ``prix`` TEL QUEL, SANS persister : chaque appelant enregistre la
+    ligne avec ses autres colonnes (produit, désignation, TVA) en UN seul
+    ``save``. ``None`` (produit sans prix catalogue) laisse la ligne intacte.
+    La garde du prix NÉGOCIÉ (:func:`prix_negocie`, ``prix_manuel``) reste chez
+    l'appelant.
+    """
+    if prix is not None:
+        ligne.prix_unitaire = prix
+
+
 def avertissement_forfait_verrouille(designation, nb_panneaux, attendu):
     """Le message FR d'un forfait au barème que ``prix_manuel`` protège."""
     return ('« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur '
@@ -1299,7 +1331,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     porte_bareme_par_panneau,
     prix_forfait_ht,
 )
-from apps.ventes.domain.composition import (  # noqa: E402,F401
+from apps.ventes.domain.composition import (  # noqa: E402
     VARIANTE_AVEC,
     VARIANTE_COMMUNE,
     VARIANTE_SANS,

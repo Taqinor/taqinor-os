@@ -10,7 +10,7 @@ la totalité : une créance de 40 000 MAD disparaissait de la balance âgée
 d'un clic, sans qu'aucun écran ne dise qui, quand ni pourquoi.
 
 Trois tests ROUGES (sans motif → 400 ; résiduel au-dessus de la tolérance →
-400 vers ``abandonner-solde`` ; le cas légitime doit produire exactement une
+409 vers ``abandonner-solde`` ; le cas légitime doit produire exactement une
 ``FactureActivity`` nommant l'auteur et le motif), plus la permission
 dédiée.
 """
@@ -84,7 +84,7 @@ class TestAUD124MarquerPayee(TestCase):
         r = self.api.post(
             self._url(facture), {'motif': 'Le client dit avoir payé'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data.get('action_attendue'), 'abandonner-solde')
         self.assertIn('abandonner-solde', r.data['detail'])
         facture.refresh_from_db()

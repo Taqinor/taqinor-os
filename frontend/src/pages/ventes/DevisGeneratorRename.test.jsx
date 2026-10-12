@@ -4,7 +4,7 @@
 // « renommer ici seulement » vs « créer un nouveau produit dans le stock »
 // (clone serveur via stockApi.dupliquerProduit — prix d'achat côté serveur).
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -14,33 +14,17 @@ import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 
 // APIs mockées (aucun appel réseau réel au montage).
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduits: vi.fn(() => Promise.resolve({ data: [] })),
-    dupliquerProduit: vi.fn(),
-  },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiDuplication())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock({
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    // PVMRQ — DevisGenerator interroge ce singleton au montage (best-effort) ;
-    // sans lui, l'effet lève sur un mock partiel avant même le premier rendu.
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-  },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
+import { declarerBeforeEachDevis } from './devisGenerator.testHelpers.jsx'
 
 // Un catalogue minimal : le Smart Meter devient une ligne à produit lié dans la
 // table par défaut (defaultProductLines), donc renommable.
@@ -75,20 +59,7 @@ function renderGenerator(authState) {
 
 // jsdom : shims requis par le générateur (scrollIntoView, matchMedia,
 // ResizeObserver via recharts).
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+declarerBeforeEachDevis({ stockApi, crmApi })
 
 // Trouve l'input de désignation du Smart Meter (ligne à produit lié).
 async function findSmartMeterDesignation() {

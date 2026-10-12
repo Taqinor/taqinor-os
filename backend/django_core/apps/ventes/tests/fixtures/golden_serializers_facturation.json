@@ -1455,7 +1455,7 @@
      false
     ],
     "frais_fixes": [
-     "DecimalField",
+     "DecimalStricte",
      false,
      false,
      null,
@@ -1490,7 +1490,7 @@
      false
     ],
     "taux_interet_annuel": [
-     "DecimalField",
+     "DecimalStricte",
      false,
      false,
      null,

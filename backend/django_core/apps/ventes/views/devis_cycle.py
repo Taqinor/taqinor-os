@@ -13,12 +13,15 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
+from ..utils.corps import valider_corps
 from rest_framework import status
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..models import Devis
-from ..serializers import DevisSerializer, DevisActivitySerializer
+from ..serializers import (
+    DevisSerializer, DevisActivitySerializer, DevisPresetSerializer,
+)
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -64,6 +67,8 @@ class _LotCreationSerializer(serializers.Serializer):
 class DevisCycleActionsMixin:
     """SPL136 — actions de cycle de vie de ``DevisViewSet`` (mixin, aucune base)."""
 
+    @extend_schema(request=D.SavePresetRequest,
+                   responses={201: DevisPresetSerializer})
     @action(detail=True, methods=['post'], url_path='save-preset',
             permission_classes=[IsResponsableOrAdmin])
     def save_preset(self, request, pk=None):
@@ -77,7 +82,6 @@ class DevisCycleActionsMixin:
         Retourne le preset créé (id, nom, mode_installation, lignes_snapshot…).
         """
         from ..services import save_devis_as_preset
-        from ..serializers import DevisPresetSerializer
         devis = self.get_object()
         nom = (request.data.get('nom') or '').strip()
         if not nom:
@@ -122,6 +126,9 @@ class DevisCycleActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST)
         return None
 
+    @extend_schema(request=None,
+                   responses={200: D.DeriveResponse,
+                              400: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='reappliquer-lead',
             permission_classes=[IsResponsableOrAdmin])
     def reappliquer_lead(self, request, pk=None):
@@ -139,6 +146,9 @@ class DevisCycleActionsMixin:
                                     company=request.user.company)
         return self._reponse_derive(request, devis, resultat)
 
+    @extend_schema(request=None,
+                   responses={200: D.DeriveResponse,
+                              400: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='acquitter-derive',
             permission_classes=[IsResponsableOrAdmin])
     def acquitter_derive(self, request, pk=None):
@@ -155,8 +165,9 @@ class DevisCycleActionsMixin:
             'champs_repris': [], 'corrige_apres_envoi': False,
             'avertissements': []})
 
-    @extend_schema(request=D.DupliquerVarianteRequest, responses={201: DevisSerializer(many=True)})
-    @action(detail=True, methods=['post'], url_path='dupliquer-variante',
+    @extend_schema(request=D.DupliquerVarianteRequest,
+                   responses={201: DevisSerializer(many=True)})
+    @action(pagination_class=None, detail=True, methods=['post'], url_path='dupliquer-variante',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer_variante(self, request, pk=None):
         """QJ15 — Crée 2–3 variantes de taille du devis pour comparaison
@@ -299,12 +310,12 @@ class DevisCycleActionsMixin:
             GAMME_NOMS_DEFAUT, creer_variante_gamme, gamme_info,
         )
         source = self.get_object()
+        corps = valider_corps(request, D.DupliquerVarianteGammeRequest)
         nom = (str(request.data.get('nom') or '').strip()
                or GAMME_NOMS_DEFAUT[1])
         nom_source = (str(request.data.get('nom_source') or '').strip()
                       or None)
-        recommandee = request.data.get('recommandee') in (
-            True, 'true', 'True', '1', 1, 'on')
+        recommandee = bool(corps.get('recommandee', False))
         try:
             soeur = creer_variante_gamme(
                 source, nom, user=request.user,
@@ -323,7 +334,8 @@ class DevisCycleActionsMixin:
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=True, methods=['get'], url_path='variantes',
+    @extend_schema(responses=DevisSerializer(many=True))
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='variantes',
             permission_classes=[IsResponsableOrAdmin])
     def variantes(self, request, pk=None):
         """QJ15 — Liste les variantes liées à ce devis (même version_parent,
@@ -387,6 +399,8 @@ class DevisCycleActionsMixin:
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 
+    @extend_schema(request=None,
+                   responses={201: DevisSerializer, 409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='reviser',
             permission_classes=[IsResponsableOrAdmin])
     def reviser(self, request, pk=None):
@@ -410,7 +424,9 @@ class DevisCycleActionsMixin:
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[qint('a'), qint('b')])
+    @extend_schema(parameters=[qint('a'), qint('b')],
+                   responses={200: D.HistoriqueConfigurationResponse,
+                              404: D.ErreurDetail})
     @action(detail=True, methods=['get'],
             url_path='historique-configuration',
             permission_classes=[IsResponsableOrAdmin])
@@ -442,6 +458,15 @@ class DevisCycleActionsMixin:
         }
         a_id = request.query_params.get('a')
         b_id = request.query_params.get('b')
+        # ENF11 — ``a`` / ``b`` présents mais non entiers : 400 (ils étaient
+        # ignorés en silence quand l'un des deux manquait).
+        for cle, brut in (('a', a_id), ('b', b_id)):
+            if brut is not None:
+                try:
+                    int(brut)
+                except (TypeError, ValueError):
+                    return Response({cle: 'Entier attendu.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
         if a_id and b_id:
             index = {str(s.id): s for s in snapshots}
             a = index.get(str(a_id))
@@ -452,6 +477,9 @@ class DevisCycleActionsMixin:
             payload['diff'] = diff_configurations_devis(a, b)
         return Response(payload)
 
+    @extend_schema(methods=['GET'], responses=D.LotsResponse)
+    @extend_schema(methods=['POST'], request=D.LotCreationRequest,
+                   responses={201: D.LotsResponse})
     @action(detail=True, methods=['get', 'post'], url_path='lots',
             permission_classes=[IsResponsableOrAdmin])
     def lots(self, request, pk=None):
@@ -503,6 +531,7 @@ class DevisCycleActionsMixin:
 
     # api-only: TEMPORAIRE (QJR667) — aucun bouton « Renouveler » du devis n'appelle
     # encore cette action ; retirer ce marqueur dès que l'écran la câble.
+    @extend_schema(request=None, responses={201: DevisSerializer})
     @action(detail=True, methods=['post'], url_path='renouveler',
             permission_classes=[IsResponsableOrAdmin])
     def renouveler(self, request, pk=None):
@@ -518,6 +547,9 @@ class DevisCycleActionsMixin:
             DevisSerializer(nouveau, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.AccepterRequest,
+                   responses={200: DevisSerializer, 403: D.ErreurGarde,
+                              409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='accepter',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
@@ -528,6 +560,7 @@ class DevisCycleActionsMixin:
         from datetime import date as _date
         from ..services import accept_devis, AcceptError
         devis = self.get_object()
+        valider_corps(request, D.AccepterRequest)
         nom = (request.data.get('nom') or '').strip()
         date_str = (request.data.get('date') or '').strip()
         try:
@@ -599,6 +632,8 @@ class DevisCycleActionsMixin:
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 
+    @extend_schema(request=D.RefuserRequest,
+                   responses={200: DevisSerializer, 409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='refuser',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def refuser(self, request, pk=None):
@@ -640,6 +675,7 @@ class DevisCycleActionsMixin:
         # rangé sous son libellé exact ; un nom inconnu/archivé ⇒ 400 et le
         # devis reste en l'état. Un refus SANS motif reste accepté tant que la
         # question fondateur AGRM37 (motif obligatoire ?) est ouverte.
+        valider_corps(request, D.RefuserRequest)
         motif_saisi = (request.data.get('motif') or '').strip()
         motif = ''
         if motif_saisi:
@@ -678,7 +714,8 @@ class DevisCycleActionsMixin:
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 
-    @action(detail=True, methods=['get'], url_path='historique',
+    @extend_schema(responses=DevisActivitySerializer(many=True))
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
         """Chatter du devis (notes + acceptation)."""
@@ -686,6 +723,8 @@ class DevisCycleActionsMixin:
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
 
+    @extend_schema(request=D.NoterRequest,
+                   responses={201: DevisActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):

@@ -15,6 +15,7 @@ from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
@@ -71,6 +72,10 @@ def _ecrire_conception(devis, payload, request):
 class DevisCalepinageActionsMixin:
     """SPL140 — actions calepinage / conception de ``DevisViewSet`` (mixin, aucune base)."""
 
+    @extend_schema(request=D.FromLayoutRequest,
+                   responses={200: D.FromLayoutResponse,
+                              201: D.FromLayoutResponse,
+                              422: D.ErreurFromLayout})
     @action(detail=False, methods=['post'], url_path='from-layout',
             permission_classes=[IsResponsableOrAdmin])
     def from_layout(self, request):
@@ -268,6 +273,7 @@ class DevisCalepinageActionsMixin:
         }
         return Response(corps, status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=D.DesignContextResponse)
     @action(detail=True, methods=['get'], url_path='design-context',
             permission_classes=[IsResponsableOrAdmin])
     def design_context(self, request, pk=None):
@@ -293,7 +299,10 @@ class DevisCalepinageActionsMixin:
                             status=status.HTTP_404_NOT_FOUND)
         return Response(contexte)
 
-    @action(detail=True, methods=['post'], url_path='sync-layout',
+    @extend_schema(request=D.LayoutRequest,
+                   responses={200: D.SyncLayoutResponse,
+                              409: D.ErreurSyncLayout})
+    @action(parser_classes=[JSONParser], detail=True, methods=['post'], url_path='sync-layout',
             permission_classes=[IsResponsableOrAdmin])
     def sync_layout(self, request, pk=None):
         """PV18 — resynchronise les LIGNES du devis sur un nouveau calepinage.
@@ -397,6 +406,8 @@ class DevisCalepinageActionsMixin:
             toucher(devis)
         return Response(design)
 
+    @extend_schema(request=D.SimulerRequest,
+                   responses={202: D.SimulerResponse})
     @action(detail=True, methods=['post'], url_path='simuler',
             permission_classes=[IsResponsableOrAdmin])
     def simuler(self, request, pk=None):
@@ -549,7 +560,11 @@ class DevisCalepinageActionsMixin:
     # ACAL97 a retiré le re-POST de ToitureDesign : from-layout range déjà la
     # conception ENRICHIE, ce second envoi l'écrasait. Porte gardée (GET/POST).
     # api-only: plus d'appelant écran depuis ACAL97 (intégrations/scripts)
+    @extend_schema(methods=['GET'], responses=D.LayoutResponse)
+    @extend_schema(methods=['POST'], request=D.LayoutRequest,
+                   responses=D.LayoutResponse)
     @action(
+        parser_classes=[JSONParser],
         detail=True,
         methods=['get', 'post'],
         url_path='layout',
@@ -593,7 +608,10 @@ class DevisCalepinageActionsMixin:
         devis.refresh_from_db(fields=['roof_layout'])
         return Response({'roof_layout': devis.roof_layout})
 
+    @extend_schema(request=D.RoofImageRequest,
+                   responses={201: D.RoofImageResponse})
     @action(
+        parser_classes=[MultiPartParser, FormParser],
         detail=True,
         methods=['post'],
         url_path='roof-image',

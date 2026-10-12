@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import useLectureSeule from './useLectureSeule'
+import { EtatPageLecture } from './EtatsSection'
 import { ShieldCheck } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
-import { Card, CardContent, Spinner } from '../../ui'
+import { Card, CardContent } from '../../ui'
 
 /* ============================================================================
    NTOBS16 — Paramètres → Fiabilité → SLA. Destination du lien « Voir le
@@ -20,25 +21,12 @@ function formatPeriode(iso) {
 }
 
 export default function SlaReportPage() {
-  const [snapshots, setSnapshots] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [erreur, setErreur] = useState('')
+  const { data: snapshots, loading, erreur } = useLectureSeule(
+    () => parametresApi.getSlaSnapshots(),
+    [], [],
+    'Impossible de charger le rapport SLA.')
 
-  useEffect(() => {
-    let active = true
-    parametresApi.getSlaSnapshots()
-      .then((r) => { if (active) setSnapshots(r.data ?? []) })
-      .catch(() => { if (active) setErreur('Impossible de charger le rapport SLA.') })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [])
-
-  if (loading) {
-    return <div className="flex items-center justify-center py-16"><Spinner /></div>
-  }
-  if (erreur) {
-    return <div className="p-6 text-sm text-destructive">{erreur}</div>
-  }
+  if (loading || erreur) return <EtatPageLecture loading={loading} erreur={erreur} />
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">

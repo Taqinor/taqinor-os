@@ -108,6 +108,19 @@ class Ntapi23KeyRotationTests(TestCase):
         self.assertEqual(
             _key_client(new_raw).get('/api/public/v1/leads/').status_code, 200)
 
+    def test_rotate_grace_jours_hors_bornes_ou_mal_type_400(self):
+        # ENF11 — la borne (0 à 3650) est appliquée, plus de repli silencieux.
+        admin = User.objects.create_user(
+            username='ntapi23-admin3', password='x', company=self.co,
+            role_legacy='admin')
+        api = _session_client(admin)
+        url = f'/api/django/publicapi/keys/{self.old_key.id}/rotate/'
+        for mauvais in (-1, 99999, 'abc', {}, [1]):
+            resp = api.post(url, {'grace_jours': mauvais}, format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.content))
+        self.old_key.refresh_from_db()
+        self.assertIsNone(self.old_key.expire_le)
+
     def test_rotate_endpoint_cross_tenant_404(self):
         other_co = _company('ntapi23-other2', 'NTAPI23 Other 2')
         admin = User.objects.create_user(

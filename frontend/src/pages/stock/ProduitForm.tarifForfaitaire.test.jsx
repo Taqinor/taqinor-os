@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
    L-STOCKUI (fondateur 24/08) — bloc « Tarification forfaitaire
@@ -24,54 +20,12 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    ProduitForm.pvondFicheTechnique.test.jsx et n'a été vérifié qu'à la
    syntaxe. Le CI normal l'exécutera réellement. */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })), post: vi.fn() },
-}))
-
-const {
-  getFichesTechniques, createProduitApi, updateProduitApi,
-} = vi.hoisted(() => ({
-  getFichesTechniques: vi.fn(() => Promise.resolve({ data: [] })),
-  // `stockSlice.createProduit`/`updateProduit` (createAsyncThunk RÉELS, non
-  // mockés) appellent `stockApi.createProduit`/`stockApi.updateProduit` — les
-  // stubber ICI suffit, pas besoin de mocker le slice.
-  createProduitApi: vi.fn((data) => Promise.resolve({ data: { id: 42, ...data } })),
-  updateProduitApi: vi.fn((id, data) => Promise.resolve({ data: { id, ...data } })),
-}))
-
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduitPrixFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerTcoFournisseurs: () => Promise.resolve({ data: { fournisseurs: [] } }),
-    createPrixFournisseur: () => Promise.resolve({ data: {} }),
-    updatePrixFournisseur: () => Promise.resolve({ data: {} }),
-    deletePrixFournisseur: () => Promise.resolve({ data: {} }),
-    uploadProduitImage: () => Promise.resolve({ data: {} }),
-    getFichesTechniques: (...args) => getFichesTechniques(...args),
-    createFicheTechnique: () => Promise.resolve({ data: { id: 501 } }),
-    updateFicheTechnique: () => Promise.resolve({ data: {} }),
-    createProduit: (...args) => createProduitApi(...args),
-    updateProduit: (...args) => updateProduitApi(...args),
-  },
-}))
+vi.mock('../../api/axios', async () => (await import('./ProduitForm.testHelpers.jsx')).axiosMock)
+vi.mock('../../ui', async (importActual) => (await import('./ProduitForm.testHelpers.jsx')).uiMock(await importActual()))
+vi.mock('../../api/stockApi', async () => (await import('./ProduitForm.testHelpers.jsx')).stockApiMock)
 
 import ProduitForm from './ProduitForm.jsx'
-
-const store = configureStore({
-  reducer: {
-    auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
-    stock: (s = { categories: [], fournisseurs: [], produits: [] }) => s,
-  },
-})
-
-function wrapper({ children }) {
-  return (
-    <Provider store={store}>
-      <MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter>
-    </Provider>
-  )
-}
+import { getFichesTechniques, createProduitApi, updateProduitApi, wrapper } from './ProduitForm.testHelpers.jsx'
 
 // Produit générique, NON classifié (pas onduleur/panneau/batterie/pompe) —
 // le bloc doit rester visible même là où « Fiche technique » ne s'affiche pas.

@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: ba02b822124536c55c02dff0f50c4c9074de3b14648e543cc706f76f9b5d26c8
-Plan fingerprint: bac550c471360accf6a33fb2b0007a1e640c2d2d5c44be5f02b34539463304f4
+Structure fingerprint: 671ff6136f80c74eb316663ae385548b8936220497e4aef0b4cb7b8d5fca7296
+Plan fingerprint: 69e45ee1a8a48325a8741ea984e57b18fe57a8376b788a906b0ae6c84a4841bf
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1175)**
+**Done (1177)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1184,6 +1184,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
 - `ENF26` — ENF17 + ENF18, tranche des apps tenues (claims 10/10)
 - `ENF27` — ENF15 + ENF17 + ENF18, tranche des apps tenues par le poste laptop (claims 11/10 …
+- `ENF29` — ENF19 + ENF20 + ENF21 + ENF22 + ENF23, tranche laptop 2 (11/10)
+- `ENF30` — ENF11, tranche laptop (11/10) : api-fuzz bloquant en PR et au nocturne
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé

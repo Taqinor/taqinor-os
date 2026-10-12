@@ -304,7 +304,7 @@ class MoneyChainPureInvariants(SimpleTestCase):
                 Decimal('10'))],
         taux_fallback=Decimal('10'))
     @given(specs=lignes_specs_st, taux_fallback=taux_st)
-    def test_facture_total_ht_arrondi_sans_remise_globale_ERR_QAH_VENTES_FACTURE_HT_NON_ARRONDI(  # noqa: E501
+    def test_facture_total_ht_arrondi_sans_remise_globale_ERR_QAH_VENTES_FACTURE_HT_NON_ARRONDI(
             self, specs, taux_fallback):
         """CORRIGÉ — ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI.
 

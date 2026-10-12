@@ -28,6 +28,9 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Avg, Count, Sum
 
 from .models import AdCampaignMirror, InsightSnapshot
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── ADSDEEP6 — Objectif de campagne → métrique « résultats » homogène ─────────
 # Meta rapporte ``results`` selon l'objectif, mais l'objectif lui-même n'a pas
@@ -520,6 +523,7 @@ def _signed_ca_daily(company, start_date, end_date):
         from .odoo_selectors import signed_deals
         deals = signed_deals(since=start_date, company=company)
     except Exception:  # noqa: BLE001 — jamais un 500 sur une panne Odoo
+        logger.warning("metrics._signed_ca_daily : erreur ignorée (mode dégradé)", exc_info=True)
         return {'configured': True, 'daily': {}}
 
     daily = {}
@@ -957,7 +961,7 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
         odoo_configured = bool(odoo_result.get('configured'))
         odoo_by_ad = {row['ad_id']: row for row in odoo_result.get('ads', [])}
     except Exception:  # noqa: BLE001 — le cockpit ne casse jamais sur Odoo
-        pass
+        logger.warning("metrics.ads_cockpit_rows : erreur ignorée (mode dégradé)", exc_info=True)
     # FIXPUB6 — leads Odoo attribués PAR AD (coût-par-lead), additif au coût-par-
     # signature ci-dessus. Best-effort : le cockpit ne casse jamais sur Odoo.
     odoo_leads_by_ad_map = {}
@@ -967,7 +971,7 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
         odoo_leads_by_ad_map = {
             row['ad_id']: row for row in leads_result.get('ads', [])}
     except Exception:  # noqa: BLE001 — le cockpit ne casse jamais sur Odoo
-        pass
+        logger.warning("metrics.ads_cockpit_rows : erreur ignorée (mode dégradé)", exc_info=True)
 
     rows = []
     for ad in ads:

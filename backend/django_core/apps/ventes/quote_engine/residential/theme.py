@@ -10,6 +10,9 @@ import base64
 import functools
 from html import escape
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── SCA27 — littéraux d'identité du fondateur (repli byte-identique) ──────────
 # Reproduisent EXACTEMENT la ligne de pied de page historique. Tant qu'aucune
@@ -104,6 +107,7 @@ def _png_b64(uri: str) -> str:
         img.convert("RGBA").save(buf, "PNG")
         return base64.b64encode(buf.getvalue()).decode()
     except Exception:  # noqa: BLE001 — SVG / corrompu : traité comme absent
+        logger.warning("theme._png_b64 : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
 
 
@@ -229,6 +233,7 @@ def qr_data_uri(url: str, *, logo: bool = True, correction: str = "H",
         return "data:image/png;base64," + base64.b64encode(
             buf.getvalue()).decode()
     except Exception:
+        logger.warning("theme.qr_data_uri : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
 
 
@@ -387,6 +392,7 @@ def warranties_for(d):
         # d'être recopiée ici.
         from apps.ventes.utils.options import texte_classement
     except Exception:  # noqa: BLE001 — jamais casser le rendu d'un PDF
+        logger.warning("theme.warranties_for : erreur ignorée (mode dégradé)", exc_info=True)
         return list(WARRANTIES)
     rows = _composition_rows(d)
     if not rows:
@@ -535,6 +541,7 @@ def valid_until(date_str, days) -> str:
         d0 = _dt.datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
         return (d0 + _dt.timedelta(days=int(days))).strftime("%d/%m/%Y")
     except Exception:
+        logger.warning("theme.valid_until : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
 
 

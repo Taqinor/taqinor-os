@@ -11,8 +11,9 @@ inexistant », indiscernable d'un id qui n'existe pas.
 """
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from rest_framework.fields import SkipField
 
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from .permissions import MasqueMontantsAchatMixin
 
 from .models_wms import (
@@ -23,15 +24,28 @@ from .models_wms import (
 )
 
 
+class TexteLie(serializers.CharField):
+    """Texte d'un objet lié, ``''`` si le lien est vide — TOUJOURS servi.
+
+    ``default=''`` seul est ignoré par DRF lors d'un PATCH (réponse partielle) :
+    la clé disparaissait alors que le schéma la déclare obligatoire (ENF11)."""
+
+    def get_attribute(self, instance):
+        try:
+            return super().get_attribute(instance)
+        except SkipField:
+            return ''
+
+
 class LignePickingSerializer(CompanyScopedRelationsMixin,
                              serializers.ModelSerializer):
     """NTWMS4 — ligne d'une vague de prélèvement (lecture)."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True)
-    bin_code = serializers.CharField(
+    bin_code = TexteLie(
         source='bin.code', read_only=True, default='')
-    numero_lot = serializers.CharField(
+    numero_lot = TexteLie(
         source='lot.numero_lot', read_only=True, default='')
     reste_a_prelever = serializers.IntegerField(read_only=True)
 
@@ -54,7 +68,7 @@ class VaguePickingSerializer(CompanyScopedRelationsMixin,
     côté serveur (`core.numbering`), jamais acceptée du client."""
 
     lignes = LignePickingSerializer(many=True, read_only=True)
-    cree_par_username = serializers.CharField(
+    cree_par_username = TexteLie(
         source='cree_par.username', read_only=True, default='')
     nb_lignes = serializers.SerializerMethodField()
 
@@ -81,7 +95,7 @@ class UniteLogistiqueLigneSerializer(CompanyScopedRelationsMixin,
     """NTWMS6 — contenu d'un colis / d'une palette."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    numero_lot = serializers.CharField(
+    numero_lot = TexteLie(
         source='lot.numero_lot', read_only=True, default='')
 
     class Meta:
@@ -93,7 +107,7 @@ class UniteLogistiqueLigneSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['unite', 'scanne_le', 'scanne_par']
 
 
-class UniteLogistiqueSerializer(CompanyScopedRelationsMixin,
+class UniteLogistiqueSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     """NTWMS6 — colis / palette adressable. Le SSCC est GÉNÉRÉ côté serveur
     (norme GS1) : jamais accepté du client."""
@@ -139,7 +153,7 @@ class QuaiSerializer(CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
     """NTWMS7 — quai de réception/expédition."""
 
-    emplacement_nom = serializers.CharField(
+    emplacement_nom = TexteLie(
         source='emplacement.nom', read_only=True, default='')
 
     class Meta:
@@ -166,15 +180,15 @@ class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
     ``RendezVousTransporteur.save()``) : ce sérialiseur ne fait que traduire
     le refus en 400 lisible."""
 
-    quai_nom = serializers.CharField(
+    quai_nom = TexteLie(
         source='quai.nom', read_only=True, default='')
-    transporteur_nom = serializers.CharField(
+    transporteur_nom = TexteLie(
         source='transporteur.nom', read_only=True, default='')
     # ASTK192 — fournisseur et BCF d'un rendez-vous réservé par jeton :
     # LECTURE SEULE (posés par le serveur à la réservation publique).
-    fournisseur_nom = serializers.CharField(
+    fournisseur_nom = TexteLie(
         source='fournisseur.nom', read_only=True, default='')
-    bon_commande_reference = serializers.CharField(
+    bon_commande_reference = TexteLie(
         source='bon_commande.reference', read_only=True, default='')
 
     class Meta:
@@ -220,9 +234,9 @@ class ExpeditionTransporteurSerializer(MasqueMontantsAchatMixin,
     connecteur) : jamais acceptés du client."""
 
     champs_montants_achat = ('cout_reel',)  # ERR-STK-PRIX-ACHAT-SUITE
-    sscc = serializers.CharField(
+    sscc = TexteLie(
         source='unite_logistique.sscc', read_only=True, default='')
-    transporteur_nom = serializers.CharField(
+    transporteur_nom = TexteLie(
         source='transporteur.nom', read_only=True, default='')
     a_une_etiquette = serializers.SerializerMethodField()
 
@@ -270,7 +284,7 @@ class AlerteRappelSerializer(CompanyScopedRelationsMixin,
     serveur (jamais acceptés du corps de requête)."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    numero_lot = serializers.CharField(
+    numero_lot = TexteLie(
         source='lot.numero_lot', read_only=True, default='')
     # ASTK199 — blocages qualité posés par ce rappel (levés à la clôture).
     blocages = serializers.SerializerMethodField()
@@ -302,7 +316,7 @@ class AlerteRappelSerializer(CompanyScopedRelationsMixin,
         } for blocage in blocages_du_rappel(obj)]
 
 
-class PortailTiersTokenSerializer(CompanyScopedRelationsMixin,
+class PortailTiersTokenSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                   serializers.ModelSerializer):
     """NTWMS20 — jeton du portail 3PL. Le jeton lui-même est GÉNÉRÉ côté
     serveur et n'est jamais accepté du client ; il n'est lisible que par les
@@ -335,7 +349,7 @@ class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
     posés côté serveur ; la levée passe par l'action dédiée."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    bin_code = serializers.CharField(
+    bin_code = TexteLie(
         source='bin.code', read_only=True, default='')
 
     class Meta:
@@ -350,7 +364,7 @@ class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class PlanChargementSerializer(CompanyScopedRelationsMixin,
+class PlanChargementSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTWMS26 — plan de chargement camion. La référence est posée côté
     serveur ; les unités s'ajoutent par l'action dédiée (qui renvoie
@@ -380,7 +394,7 @@ class MouvementRebutSerializer(CompanyScopedRelationsMixin,
     la valeur reste INTERNE."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    bin_code = serializers.CharField(
+    bin_code = TexteLie(
         source='bin.code', read_only=True, default='')
     motif_libelle = serializers.CharField(
         source='get_motif_display', read_only=True)
@@ -402,7 +416,7 @@ class LigneRetourClientSerializer(CompanyScopedRelationsMixin,
     """NTWMS23 — ligne d'un retour client (lecture)."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    bin_code = serializers.CharField(
+    bin_code = TexteLie(
         source='bin.code', read_only=True, default='')
 
     class Meta:

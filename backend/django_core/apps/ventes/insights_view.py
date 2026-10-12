@@ -12,7 +12,9 @@ Buckets renvoyés :
   - au_dela : tout ce qui dépasse les buckets ci-dessus
   - sans_echeance : factures actives sans date_echeance fixée
 """
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.types import OpenApiTypes
+from . import openapi_shapes as SH
 from .openapi_params import PERIODE, qstr
 from decimal import Decimal
 from datetime import timedelta
@@ -40,7 +42,8 @@ def _start_of_next_month(d):
     return d.replace(month=d.month + 1, day=1)
 
 
-@extend_schema(parameters=[qstr('mode', enum=['comportement'])])
+@extend_schema(parameters=[qstr('mode', enum=['comportement'])],
+               responses=SH.CashFlowResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def cash_flow_forecast(request):
@@ -84,7 +87,13 @@ def cash_flow_forecast(request):
     today = timezone.now().date()
     # XFAC15 — mode comportemental : décale les buckets vers la date
     # d'encaissement prévue plutôt que l'échéance théorique.
-    mode_comportement = request.query_params.get('mode') == 'comportement'
+    # ENF11 — ``mode`` inconnu = 400 (il était ignoré en silence).
+    mode = request.query_params.get('mode')
+    if mode is not None and mode != 'comportement':
+        return Response(
+            {'mode': 'Mode inconnu : « comportement » est la seule valeur '
+                     'acceptée.'}, status=400)
+    mode_comportement = mode == 'comportement'
     scores_cache = {}
 
     # Bornes des buckets temporels.
@@ -203,7 +212,16 @@ def cash_flow_forecast(request):
     })
 
 
-@extend_schema(parameters=[qstr('debut'), qstr('fin'), qstr('export', enum=['csv'])] + PERIODE)
+@extend_schema(
+    parameters=[
+        OpenApiParameter('debut', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('fin', OpenApiTypes.DATE, required=False),
+        qstr('export', enum=['csv'])] + PERIODE,
+    responses={
+        (200, 'application/json'): SH.AnalyseFacturationLigne,
+        (200, 'text/csv'): OpenApiTypes.STR,
+        403: SH.DetailResponse,
+    })
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def analyse_facturation_view(request):

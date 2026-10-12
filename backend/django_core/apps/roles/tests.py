@@ -150,6 +150,21 @@ class RolesRbacTest(TestCase):
             sorted(new_value['ajoutees']), ['stock_creer', 'stock_voir'])
         self.assertEqual(new_value['retirees'], [])
 
+    def test_permissions_liste_de_textes_sinon_400(self):
+        # ENF11 — `permissions` null / objet / texte / code non texte : 400
+        # qui nomme le champ ; le rôle n'est pas modifié.
+        role = Role.objects.create(
+            company=self.company, nom='Strict', permissions=['stock_voir'])
+        url = f'/api/django/roles/{role.id}/'
+        for mauvais in (None, {}, 'stock_voir', [1], [None]):
+            for methode in (self.api.patch, self.api.put):
+                resp = methode(url, {'nom': 'Strict', 'permissions': mauvais},
+                               format='json')
+                self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+                self.assertIn('permissions', resp.data)
+        role.refresh_from_db()
+        self.assertEqual(role.permissions, ['stock_voir'])
+
     def test_company_is_forced_server_side_on_create(self):
         other = Company.objects.create(nom='Autre', slug='autre-co')
         resp = self.api.post(
@@ -347,6 +362,15 @@ class RevueAccesTest(TestCase):
         self.assertEqual(resp.data['dormant_days'], 1)
         rows = self._rows_by_username(resp.data)
         self.assertTrue(rows['recent_user']['dormant'])
+
+    def test_erreur_revue_acces_reste_en_json(self):
+        """ENF11 — ``dormant_days`` illisible ou négatif = 400, et une erreur
+        n'est JAMAIS rendue en ``text/csv`` (même avec ``?format=csv``)."""
+        for qs in ('dormant_days=abc', 'format=csv&dormant_days=-1'):
+            resp = self.api.get(f'/api/django/roles/revue-acces/?{qs}')
+            self.assertEqual(resp.status_code, 400, qs)
+            self.assertIn('application/json', resp['Content-Type'], qs)
+            self.assertIn('dormant_days', resp.json(), qs)
 
     def test_csv_export(self):
         resp = self.api.get('/api/django/roles/revue-acces/?format=csv')

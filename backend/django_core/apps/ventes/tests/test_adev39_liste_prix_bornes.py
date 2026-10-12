@@ -52,3 +52,15 @@ class ListePrixBornesTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
         ligne = LignePrixListe.objects.get(liste=self.liste)
         self.assertEqual(ligne.prix_unitaire, Decimal('99999999.99'))
+
+    def test_archived_vrai_booleen_seulement(self):
+        # ENF11 — ``archived`` est un booléen JSON : « 0 », « on »… (que DRF
+        # convertit en silence) répondent 400 ; true/false passent.
+        url = '/api/django/ventes/listes-prix/%s/' % self.liste.pk
+        for brut in ('0', 'on', 'oui', 2, None):
+            resp = self.api.patch(url, {'archived': brut}, format='json')
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+        resp = self.api.patch(url, {'archived': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.liste.refresh_from_db()
+        self.assertTrue(self.liste.archived)

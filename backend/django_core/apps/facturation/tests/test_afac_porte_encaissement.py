@@ -156,7 +156,7 @@ class PorteEncaissementTests(TestCase):
         f = self._facture(Facture.Statut.BROUILLON)
         r = self.api.post(f'{BASE}{f.id}/abandonner-solde/',
                           {'motif': 'irrecouvrable'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.BROUILLON)
         self.assertIsNone(f.abandon_montant)

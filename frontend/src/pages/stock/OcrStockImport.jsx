@@ -13,6 +13,7 @@ import {
   Input, Segmented, Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { OptionsProduits } from './ComposantsStock'
 // NTMOB13 — scan de document structuré vers OCR (recadrage auto/manuel).
 import DocumentScanCapture from '../../features/pwa/DocumentScanCapture'
 import {
@@ -38,6 +39,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import OptionsTypeMouvement from './OptionsTypeMouvement'
 
 const DOC_LABELS = {
   bon_livraison: 'Bon de livraison',
@@ -805,11 +807,7 @@ function Step2Validate({
             <label className="text-xs font-semibold text-foreground" htmlFor="ocr-mvt">Type de mouvement</label>
             <Select value={mouvementType} onValueChange={setMouvementType}>
               <SelectTrigger id="ocr-mvt"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="entree">Entrée (ajoute au stock)</SelectItem>
-                <SelectItem value="sortie">Sortie (retire du stock)</SelectItem>
-                <SelectItem value="ajustement">Ajustement (fixe le stock)</SelectItem>
-              </SelectContent>
+              <OptionsTypeMouvement />
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -1003,11 +1001,7 @@ function LigneCard({ ligne, produits, categories, onChange, docType, canCreatePr
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none">— Sélectionner un produit existant —</SelectItem>
-              {produits.map(p => (
-                <SelectItem key={p.id} value={String(p.id)}>
-                  {p.nom}{p.sku ? ` (${p.sku})` : ''} — stock : {p.quantite_stock}
-                </SelectItem>
-              ))}
+              <OptionsProduits produits={produits} detail />
             </SelectContent>
           </Select>
           {hasMatchError && <p className="text-xs text-destructive">Sélectionnez un produit existant</p>}

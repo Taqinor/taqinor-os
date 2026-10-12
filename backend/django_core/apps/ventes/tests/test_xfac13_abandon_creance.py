@@ -69,6 +69,17 @@ class XFAC13AbandonCreanceTests(TestCase):
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
 
+    def test_manual_abandon_motif_mal_type_ou_corps_non_objet_400(self):
+        # ENF11 — un motif objet/liste levait TypeError (500, clé non
+        # hachable) ; un corps liste levait AttributeError : 400 nommé.
+        url = (f'/api/django/ventes/factures/{self.facture.id}/'
+               'abandonner-solde/')
+        for corps in ({'motif': {}}, {'motif': [1]}, {'motif': 3}, [None]):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
+
     def test_manual_abandon_with_motif_soldes_facture(self):
         r = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/'
@@ -88,7 +99,7 @@ class XFAC13AbandonCreanceTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/'
             'abandonner-solde/', {'motif': 'irrecouvrable'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_abandon_with_no_residual_refused(self):
         self.facture.statut = Facture.Statut.PAYEE
@@ -96,7 +107,7 @@ class XFAC13AbandonCreanceTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/'
             'abandonner-solde/', {'motif': 'irrecouvrable'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_auto_writeoff_under_tolerance_on_payment(self):
         """Tolérance société activée : un résiduel de 0,50 MAD sous le seuil

@@ -19,15 +19,18 @@
 // (IsAdminOrResponsableTier). `company` n'est JAMAIS envoyée : imposée côté
 // serveur (TenantMixin).
 import { useEffect, useState } from 'react'
-import { CalendarClock, Play, Plus, Trash2 } from 'lucide-react'
+import { CalendarClock, Play, Plus } from 'lucide-react'
 import api from '../../api/axios'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
-  Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Card, CardContent, Input, Button, Badge, EmptyState, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import {
+  ChargementTexte, ErreurChargementListe, BoutonSupprimerLigne, ZoneCreation, LigneChamps,
+} from './EtatsSection'
 import { formatDateTime } from '../../lib/format'
 
 // Miroir de ScheduledExport.FORMAT_CHOICES / DEST_CHOICES.
@@ -140,16 +143,9 @@ export default function ExportsPlanifiesSection() {
     }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
+  if (loading) return <ChargementTexte />
   if (loadError) {
-    return (
-      <EmptyState title="Impossible de charger les exports planifiés"
-        description="Une erreur est survenue lors du chargement." className="py-6" />
-    )
+    return <ErreurChargementListe title="Impossible de charger les exports planifiés" />
   }
 
   return (
@@ -205,11 +201,8 @@ export default function ExportsPlanifiesSection() {
                         </Button>
                       )}
                       {canManage && (
-                        <IconButton size="sm" variant="outline" label="Supprimer l'export planifié"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => supprimer(row)}>
-                          <Trash2 className="size-4" aria-hidden="true" />
-                        </IconButton>
+                        <BoutonSupprimerLigne label="Supprimer l'export planifié"
+                          onClick={() => supprimer(row)} />
                       )}
                     </div>
                   </div>
@@ -242,9 +235,8 @@ export default function ExportsPlanifiesSection() {
             })}
           </div>
 
-          {canManage && (
-            <div className="mt-3 rounded-lg border border-dashed border-border p-3">
-              <div className="flex flex-wrap gap-1.5">
+          <ZoneCreation visible={canManage}>
+              <LigneChamps>
                 <Input className="min-w-[160px] flex-[2_1_160px]"
                   placeholder="Titre (ex. Ventes du mois vers le comptable)"
                   value={draft.titre}
@@ -259,7 +251,7 @@ export default function ExportsPlanifiesSection() {
                     <option key={d.name} value={d.name}>{d.label ?? d.name}</option>
                   ))}
                 </datalist>
-              </div>
+              </LigneChamps>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <div className="min-w-[120px] flex-1">
                   <Select value={draft.format}
@@ -291,8 +283,7 @@ export default function ExportsPlanifiesSection() {
                   <Plus className="size-4" aria-hidden="true" /> Créer l'export
                 </Button>
               </div>
-            </div>
-          )}
+            </ZoneCreation>
         </CardContent>
       </Card>
     </div>

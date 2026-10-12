@@ -36,6 +36,9 @@ import unicodedata
 # ni Django, ni modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_classification as _sc
 from core.product_roles import est_panneau as _est_panneau
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def marque_preferee(company, gamme_nom, role):
@@ -444,6 +447,7 @@ def _onduleur_complet(produit) -> bool:
         from apps.stock.selectors import onduleur_specs_manquantes
         return not onduleur_specs_manquantes(produit)
     except Exception:  # noqa: BLE001 — jamais bloquer une composition
+        logger.warning("catalogue._onduleur_complet : erreur ignorée (mode dégradé)", exc_info=True)
         return True
 
 
@@ -740,6 +744,8 @@ def porte_bareme_par_panneau(produit):
 _KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
 _TRI_RE = re.compile(r"tri\s*phas", re.IGNORECASE)
+# ENF20 — lecteur de kWh unique, défini dans la feuille pure ``lignes_classement``.
+from apps.ventes.domain.kwh_lecture import _parse_kwh  # noqa: E402,F401  (ré-export SPL162)
 
 
 def _sans_accents(texte):
@@ -786,11 +792,6 @@ def _parse_kw(nom):
     """Puissance kW/kVA lue dans un nom — les « kWh » sont retirés d'abord
     (sans quoi « Batterie 5 kWh » passerait pour un onduleur de 5 kW)."""
     m = _KW_RE.search(_KWH_RE.sub(' ', nom or ''))
-    return float(m.group(1).replace(',', '.')) if m else None
-
-
-def _parse_kwh(nom):
-    m = _KWH_RE.search(nom or '')
     return float(m.group(1).replace(',', '.')) if m else None
 
 

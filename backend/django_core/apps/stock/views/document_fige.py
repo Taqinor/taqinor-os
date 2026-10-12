@@ -24,7 +24,7 @@ from rest_framework.response import Response
 
 
 class DocumentFigeMixin:
-    #: {statut figé: message 400 renvoyé à toute tentative de modification}.
+    #: {statut figé: message 409 renvoyé à toute tentative de modification}.
     messages_document_fige = {}
 
     def update(self, request, *args, **kwargs):
@@ -34,5 +34,5 @@ class DocumentFigeMixin:
             getattr(document, 'statut', None))
         if message is not None:
             return Response(
-                {'detail': message}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': message}, status=status.HTTP_409_CONFLICT)
         return super().update(request, *args, **kwargs)

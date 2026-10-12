@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 
 /* PUB54 — Aide contextuelle FR (« ? ») sur chaque métrique du Dashboard :
    héro + tuiles, MER mixte, pacing (4 métriques), réconciliation, signaux
@@ -33,16 +32,14 @@ vi.mock('./adsengineApi', () => ({
 }))
 
 import DashboardScreen from './DashboardScreen'
+import { renderDashboard, seedDashboardBase } from './DashboardScreen.testHelpers.jsx'
 
-const renderScreen = () => render(<MemoryRouter><DashboardScreen /></MemoryRouter>)
+const renderScreen = () => renderDashboard(DashboardScreen)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.dashboard.mockResolvedValue({ data: {
-    cost_per_signature: 1850, spend: 4200, cpl: 95, frequency: 1.8 } })
+  seedDashboardBase(mocks)
   mocks.dashboardV2.mockResolvedValue({ data: null })
-  mocks.alerts.mockResolvedValue({ data: { alerts: [] } })
-  mocks.leads.mockResolvedValue({ data: [] })
   mocks.pacing.mockResolvedValue({ data: {
     enveloppe_mad: 30000, depense_mad: 12000, projection_mad: 31500,
     jours_restants: 12, etat: 'sur_rythme', etat_display: 'Sur le rythme', lignes: [] } })

@@ -24,10 +24,11 @@ import coreApi from '../../api/coreApi'
 import api from '../../api/axios'
 import { downloadBlob, filenameFromResponse } from '../../api/importApi'
 import {
-  Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Card, CardContent, Input, Button, IconButton, Badge, EmptyState, Select,
+  SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { ChargementTexte, ErreurChargementListe } from './EtatsSection'
 
 const KIND_LABELS = {
   acces: 'Accès (export)',
@@ -89,16 +90,9 @@ function RegistreTraitements() {
     } catch { /* best-effort */ }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
+  if (loading) return <ChargementTexte />
   if (loadError) {
-    return (
-      <EmptyState title="Impossible de charger le registre"
-        description="Une erreur est survenue lors du chargement." className="py-6" />
-    )
+    return <ErreurChargementListe title="Impossible de charger le registre" />
   }
 
   return (
@@ -205,16 +199,9 @@ function DsrRequests() {
     finally { setTraitingId(null) }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
+  if (loading) return <ChargementTexte />
   if (loadError) {
-    return (
-      <EmptyState title="Impossible de charger les demandes"
-        description="Une erreur est survenue lors du chargement." className="py-6" />
-    )
+    return <ErreurChargementListe title="Impossible de charger les demandes" />
   }
 
   return (
@@ -337,16 +324,9 @@ function ConsentRecords() {
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
 
-  if (loading) return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
+  if (loading) return <ChargementTexte />
   if (loadError) {
-    return (
-      <EmptyState title="Impossible de charger le registre de consentement"
-        description="Une erreur est survenue lors du chargement." className="py-6" />
-    )
+    return <ErreurChargementListe title="Impossible de charger le registre de consentement" />
   }
 
   return (

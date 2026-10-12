@@ -115,6 +115,22 @@ class SuggererBcfPourFactureTests(TestCase):
         resp = self.api.get(f'{BASE}/factures-fournisseur/suggestions-bcf/')
         self.assertEqual(resp.status_code, 400)
 
+    def test_enf11_fournisseur_zero_valide_liste_vide(self):
+        resp = self.api.get(
+            f'{BASE}/factures-fournisseur/suggestions-bcf/',
+            {'fournisseur': 0})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
+
+    def test_enf11_parametres_hors_forme_400(self):
+        url = f'{BASE}/factures-fournisseur/suggestions-bcf/'
+        for params in ({'fournisseur': ' 5'}, {'fournisseur': '+5'},
+                       {'fournisseur': '1_0'},
+                       {'fournisseur': 1, 'montant': '1_0'},
+                       {'fournisseur': 1, 'montant': ' 3'}):
+            self.assertEqual(self.api.get(url, params).status_code, 400,
+                             params)
+
 
 class ConfirmationBonCommandeTests(TestCase):
     """SOLMVP12 (20/09/2026) — l'évaluation immédiate du rapprochement 3

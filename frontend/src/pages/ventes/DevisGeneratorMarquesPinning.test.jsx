@@ -11,32 +11,14 @@
 // DevisGeneratorTarif.test.jsx (rendu réel, mocks des couches api) mais n'a
 // PAS été exécuté ici — seule la vérification de syntaxe (esbuild) l'a été.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+import { screen, fireEvent } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduits: vi.fn(() => Promise.resolve({ data: [] })),
-    dupliquerProduit: vi.fn(),
-  },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiDuplication())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock({
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
     getPrixApplicable: vi.fn(() => Promise.resolve({
       data: { source: 'standard' },
@@ -66,66 +48,19 @@ vi.mock('../../api/ventesApi', () => ({
         marques: { Essentielle: { panneau: 'Jinko' }, Premium: {} },
       },
     })),
-  },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { PRODUITS_COMPOSITION as PRODUITS, bancCreation } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue solaire complet — SAUF un panneau Jinko : la seule marque de
 // panneau en stock est Canadian Solar, jamais épinglée.
-const PRODUITS = [
-  { id: 1, nom: 'Onduleur réseau Huawei 10kW Triphasé', prix_vente: 16666.67, tva: 20, is_archived: false },
-  { id: 2, nom: 'Panneau Canadien Solar 710W', prix_vente: 1166.67, tva: 10, is_archived: false, marque: 'Canadian Solar' },
-  { id: 3, nom: 'Structures acier', prix_vente: 416.67, tva: 20, is_archived: false },
-  { id: 4, nom: 'Socles', prix_vente: 66.67, tva: 20, is_archived: false },
-  { id: 5, nom: 'Accessoires', prix_vente: 1666.67, tva: 20, is_archived: false },
-  { id: 6, nom: 'Tableau De Protection AC/DC', prix_vente: 1666.67, tva: 20, is_archived: false },
-  { id: 7, nom: 'Installation', prix_vente: 4000, tva: 20, is_archived: false },
-  { id: 8, nom: 'Transport', prix_vente: 833.33, tva: 20, is_archived: false },
-]
 
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Directeur', permissions: ['stock_creer'],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
+const { renderGenerator } = bancCreation({ DevisGenerator, crmApi, stockApi, produits: PRODUITS })
 
-function renderGenerator() {
-  crmApi.getClients.mockResolvedValue({ data: [] })
-  crmApi.getLeads.mockResolvedValue({ data: [] })
-  stockApi.getProduits.mockResolvedValue({ data: PRODUITS })
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter>
-        <DevisGenerator />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
 
 describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
   // CIQ127 — l'écran ne charge plus le réglage « Gammes & marques » : plus

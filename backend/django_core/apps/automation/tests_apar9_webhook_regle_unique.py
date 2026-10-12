@@ -69,7 +69,7 @@ class WebhookRegleUniqueTests(TestCase):
 
     def test_creation_sur_regle_non_webhook_refusee(self):
         resp = self._api().post(BASE, {'rule': self.d.pk}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('rule', resp.data)
         self.assertFalse(
             IncomingWebhookTrigger.objects.filter(rule=self.d).exists())
@@ -83,7 +83,7 @@ class WebhookRegleUniqueTests(TestCase):
     def test_secret_pour_declencheur_existant_explicite(self):
         resp = self._api().post(
             BASE, {'rule': self.a.pk, 'hmac_secret': 'nouveau'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('hmac_secret', resp.data)
         self.trig_a.refresh_from_db()
         self.assertEqual(self.trig_a.hmac_secret, '')

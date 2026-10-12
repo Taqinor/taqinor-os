@@ -63,6 +63,7 @@ def _capture_old_statut(model, instance):
         old = model.objects.filter(pk=instance.pk).values_list(
             'statut', flat=True).first()
     except Exception:  # noqa: BLE001
+        logger.warning("signals._capture_old_statut : erreur ignorée (mode dégradé)", exc_info=True)
         old = None
     setattr(instance, _OLD_STATUT_ATTR, old)
 
@@ -85,6 +86,7 @@ def lead_pre_save(sender, instance, **kwargs):
         old = Lead.objects.filter(pk=instance.pk).values_list(
             'stage', 'perdu').first()
     except Exception:  # noqa: BLE001
+        logger.warning("signals.lead_pre_save : erreur ignorée (mode dégradé)", exc_info=True)
         old = None
     setattr(instance, _OLD_STAGE_ATTR, old[0] if old else None)
     setattr(instance, _OLD_PERDU_ATTR, old[1] if old else None)

@@ -73,6 +73,10 @@ const RELAIS: Record<string, { charger: () => Promise<Module>; corps: unknown }>
     charger: () => import('./proposition-option') as Promise<Module>,
     corps: { token: 'jeton-proposition-1234', ligne_id: 3 },
   },
+  'proposition-virement': {
+    charger: () => import('./proposition-virement') as Promise<Module>,
+    corps: { token: 'jeton-proposition-1234' },
+  },
 };
 
 /** Lecture des imports : quels modules importent `forwardLead` / `_proxy`. */

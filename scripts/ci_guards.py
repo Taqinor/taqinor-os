@@ -259,6 +259,13 @@ GARDES = {
         ('Test the page-1-list checker itself (ADOC38)',
          'python -m unittest scripts.tests.test_check_liste_page1 -v',
          '.'),
+        # ENF22 / D-ENF22-BLE001 — except large : journalise ou re-lève, jamais silencieux.
+        ('Check except larges journalisants (aucun handler silencieux, ENF22)',
+         'python scripts/check_except_larges.py',
+         '.'),
+        ('Test the broad-except checker itself (ENF22)',
+         'python -m unittest scripts.tests.test_check_except_larges -v',
+         '.'),
         # AACQ77 — écrans publicité : pas de liste lue sur la page 1, pas d'échec avalé.
         ('Check écrans publicité (page 1 / échec de chargement avalé, AACQ77)',
          'python scripts/check_adsengine_ecrans.py',

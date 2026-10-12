@@ -19,6 +19,7 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+import { AlerteErreur } from '../../ui/AlertesServeur'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -351,11 +352,7 @@ export default function PaiementsPage() {
                      onChange={(e) => choisirFichier(e.target.files?.[0])} />
             </div>
 
-            {importErreur && (
-              <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                {importErreur}
-              </div>
-            )}
+            <AlerteErreur error={importErreur} />
 
             {/* ── Étape 1 : l'aperçu (aucune écriture) ─────────────────── */}
             {apercu && (

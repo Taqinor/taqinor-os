@@ -7,6 +7,9 @@ from core.models import TenantModel
 # tuple sans pouvoir importer ``apps.ventes``. Voir ``ROLES_AUTO_COMPOSITION``
 # plus bas : le nom historique reste, la copie a disparu.
 from core.product_roles import ROLES_DEVIS
+import logging
+
+logger = logging.getLogger(__name__)
 
 # M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
 # imports no sibling app's models at load time (breaks the crm⇄ventes /
@@ -1105,7 +1108,7 @@ class ShareLink(models.Model):
     # PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR — le jeton reste
     # imprévisible + expirant, et le lien n'est JAMAIS exposé dans l'UI client.
     bon_commande_fournisseur = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: lien sans objet si BC fournisseur supprimé
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: lien sans objet si BC supprimé
         null=True, blank=True, related_name='share_links')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(default=_default_share_expiry)
@@ -1390,6 +1393,7 @@ class ShareLink(models.Model):
         try:
             fin = date_expiration(devis)
         except Exception:  # noqa: BLE001 — jamais une date inventée
+            logger.warning("models.ShareLink.expiration_pour_devis : erreur ignorée (mode dégradé)", exc_info=True)
             fin = None
         if fin is None:
             return base
@@ -1947,7 +1951,7 @@ class FicheTechnique(models.Model):
     # Un produit du catalogue porte au plus UNE fiche normalisée par société.
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.PROTECT,  # on_delete: PROTECT — la fiche porte des paramètres constructeur saisis à la main + le PDF datasheet (catalogue RÉEL, non reconstructible) ; refuser la suppression du produit
+        on_delete=models.PROTECT,  # on_delete: PROTECT — paramètres saisis + PDF datasheet ; refuser la suppression
         related_name='fiches_techniques',
         verbose_name='Produit',
     )
@@ -2101,7 +2105,7 @@ class LignePrixListe(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='lignes')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — prix unitaire convenu dans une liste de prix (donnée réelle) ; refuser la suppression du produit plutôt que d'effacer la ligne tarifaire
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — prix convenu réel, produit non supprimable
         related_name='lignes_liste_prix')
     prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -2134,7 +2138,7 @@ class RegleListePrix(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='regles')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — règle de prix réelle ; SET_NULL serait DANGEREUX ici (produit=NULL = portée « tout le catalogue » : une règle produit deviendrait une remise globale silencieuse)
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — règle réelle ; SET_NULL = remise silencieuse
         null=True, blank=True,
         related_name='regles_liste_prix')
     categorie_nom = models.CharField(max_length=150, blank=True, default='')

@@ -1,45 +1,28 @@
 from django.db import transaction
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
+from django.db.models import ProtectedError, Count
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
-from rest_framework import viewsets, filters, status  # noqa: F401
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
-from ..openapi_helpers import PTOKEN, BINARY, DATE, INT, LISTE, OBJET, P, STR, XLSX, corps
+from ..openapi_helpers import PTOKEN, BINARY, INT, LISTE, OBJET, P, STR, XLSX, corps
 from ..serializers import PortailFournisseurTokenSerializer
 from core.viewsets import CompanyScopedModelViewSet
-from apps.ventes.utils.references import create_with_reference  # noqa: F401
-from ..models import (  # noqa: F401
-    Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur, CategorieFournisseur, ContactFournisseur,
+from ..models import (
+    Fournisseur, BonCommandeFournisseur, RetourFournisseur, FactureFournisseur,
+    CategorieFournisseur, ContactFournisseur,
 )
-from ..serializers import (  # noqa: F401
-    ProduitSerializer,
-    CategorieSerializer,
-    FournisseurSerializer,
-    MouvementStockSerializer,
-    MarqueSerializer,
-    BonCommandeFournisseurSerializer,
-    EmplacementStockSerializer,
-    TransfertStockSerializer,
-    PrixFournisseurSerializer,
-    RetourFournisseurSerializer,
-    ReceptionFournisseurSerializer,
-    FactureFournisseurSerializer,
-    PaiementFournisseurSerializer,
-    CategorieFournisseurSerializer,
-    ContactFournisseurSerializer,
-)
+from ..serializers import FournisseurSerializer, CategorieFournisseurSerializer, ContactFournisseurSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -167,6 +150,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(responses={204: None, 200: corps(
+        'FournisseurArchiveReponse', archived=serializers.BooleanField(),
+        detail=serializers.CharField(),
+        bloquants=serializers.ListField(child=serializers.CharField()))})
     def destroy(self, request, *args, **kwargs):
         """Supprime le fournisseur — ou l'ARCHIVE quand la suppression est
         refusée par une FK PROTECT.
@@ -316,7 +303,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                     f"Attention : l'ICE {ice} est déjà utilisé par "
                     f'« {dup.nom} ».')
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
-            pass
+            logger.warning(
+                "fournisseur.FournisseurViewSet._attach_ice_warning : erreur ignorée (mode dégradé)", exc_info=True)
 
     @extend_schema(request=corps('FournisseurDeciderCandidatureCorps', valider=serializers.BooleanField()),
                    responses=corps('FournisseurDeciderCandidatureReponse', id=serializers.IntegerField(),
@@ -334,8 +322,11 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         """
         from ..services import decider_candidature_fournisseur
         fournisseur = self.get_object()
-        valider = parse_bool_strict(request.data.get('valider'))
-        if valider is None:
+        # ENF11 : un VRAI booléen JSON, comme le schéma le déclare (« 1 »,
+        # « on », « true » texte ne valident plus un tiers externe).
+        valider = (request.data.get('valider')
+                   if isinstance(request.data, dict) else None)
+        if not isinstance(valider, bool):
             return Response(
                 {'detail': 'Le champ « valider » (true/false) est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -422,6 +413,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     @extend_schema(methods=['GET'], responses=PortailFournisseurTokenSerializer(many=True))
     @extend_schema(methods=['POST'], request=None, responses={201: PortailFournisseurTokenSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='portail-tokens',
+            pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def portail_tokens(self, request, *args, **kwargs):
         """XPUR22 — GET : liste les jetons portail de ce fournisseur (tous,
@@ -492,8 +484,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'progression': stock_selectors.progression_onboarding(dossier),
         })
 
-    @extend_schema(parameters=[P('debut', DATE), P('fin', DATE), P('export', STR, False, 'xlsx pour télécharger',
-                                                                   ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
+    @extend_schema(parameters=[
+        P('debut', STR, False, 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'),
+        P('fin', STR, False, 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'),
+        P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='export-conformite')
     def export_conformite(self, request):
         """NTP2P19 — audit achats : conformité par fournisseur actif.
@@ -518,6 +512,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             try:
                 return _d.fromisoformat(valeur)
             except ValueError:
+                # NTP2P19 — date illisible IGNORÉE (l'export ne casse jamais),
+                # tolérance déclarée dans l'OpenAPI ci-dessus.
                 return None
 
         debut, fin = _date('debut'), _date('fin')
@@ -561,7 +557,9 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         sélecteur pur, aucune mutation."""
         from .. import selectors as stock_selectors
 
-        within = request.query_params.get('within', 30)
+        from ..utils.params import entier_ou_400
+        within = entier_ou_400(
+            request.query_params.get('within'), 'within', 30, 0, 36500)
         return Response(stock_selectors.documents_fournisseur_expirant(
             request.user.company, within_days=within))
 

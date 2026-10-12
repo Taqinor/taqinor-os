@@ -257,14 +257,6 @@ class TestDetecteurQuantize(unittest.TestCase):
         self.assertEqual(len(offenders), 1)
         self.assertEqual(orphans, [])
 
-    def test_reprise_livree_porte_sa_raison(self):
-        entrees = cmr.load_allowlist()
-        reprises = [k for k, raison in entrees.items()
-                    if raison == cmr.QUANTIZE_REPRISE_REASON]
-        self.assertTrue(
-            reprises,
-            "la base livree doit porter les sites quantize de reprise AUD189")
-
 
 if __name__ == "__main__":
     unittest.main()

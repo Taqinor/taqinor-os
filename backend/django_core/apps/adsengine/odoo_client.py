@@ -36,6 +36,9 @@ import os
 import time
 
 import httpx
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Endpoint JSON-RPC standard d'une instance Odoo.
 _JSONRPC_PATH = 'jsonrpc'
@@ -71,6 +74,7 @@ def _setting(name):
         from django.conf import settings
         val = getattr(settings, name, None)
     except Exception:  # noqa: BLE001 — utilisable hors contexte Django
+        logger.warning("odoo_client._setting : erreur ignorée (mode dégradé)", exc_info=True)
         val = None
     return (val or os.environ.get(name, '') or '').strip()
 

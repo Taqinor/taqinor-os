@@ -909,25 +909,29 @@ class PreseanceR4AAtteintLeVendeurTests(_ParcoursBase):
         self.assertEqual(verdict.quantite_ligne, 14)
 
     def test_la_resynchro_fait_remonter_l_avertissement_a_l_ecran(self):
-        """L'avertissement atteint la RÉPONSE que l'écran affiche déjà."""
+        """L'avertissement atteint le dict que ``sync-layout`` rend tel quel à
+        l'écran (``sync_devis_from_layout`` = le geste que la route appelle).
+
+        ENF23 : ce test passait par la route HTTP puis SAUTAIT sur tout statut
+        autre que 200 (calepinage adopté/créé, garde électrique, approbation :
+        autant de refus légitimes étrangers à ce qu'il épingle). Il appelle
+        donc directement le geste de resynchro — déterministe, sans saut ; la
+        route elle-même est exercée par ``test_acal_layout_enrichi``."""
+        from apps.ventes.domain.resynchronisation import (
+            sync_devis_from_layout)
+
         parcours = Parcours(self)
         self._verrouiller(parcours)
         self.poser(parcours, 'taille.nb_panneaux', 10)
 
-        # Un layout DIFFÉRENT de celui déjà posé : sinon ``sync-layout``
-        # court-circuite sur ``inchange`` et n'exécute pas la resynchro.
+        # Un layout DIFFÉRENT de celui déjà posé : sinon la resynchro
+        # court-circuite sur ``inchange`` et n'exécute pas le lecteur de kWc.
         layout = _layout()
         layout['result'] = dict(layout['result'], annualKwh=15100)
-        reponse = self.api.post(
-            f'/api/django/ventes/devis/{parcours.devis.id}/sync-layout/',
-            layout, format='json')
-        self.assertIn(reponse.status_code, (200, 400, 409),
-                      getattr(reponse, 'data', reponse))
-        if reponse.status_code != 200 or reponse.data.get('inchange'):
-            self.skipTest('sync-layout n\'a pas resynchronisé ce devis '
-                          '(refus ou layout inchangé) : le câblage de '
-                          "l'avertissement est déjà épinglé au lecteur de kWc.")
-        messages = ' '.join(reponse.data.get('avertissements') or ())
+        resultat = sync_devis_from_layout(parcours.recharger(), layout,
+                                          self.user)
+        self.assertFalse(resultat['inchange'], resultat)
+        messages = ' '.join(resultat.get('avertissements') or ())
         self.assertIn('Panneau Canadian Solar 710W', messages)
 
     def test_la_ligne_panneau_dominante_est_la_plus_grande(self):

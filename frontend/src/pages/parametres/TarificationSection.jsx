@@ -23,6 +23,7 @@ import {
   Card, CardContent, Input, Button, IconButton, Spinner, Switch,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { BoutonEnregistrer, ChargementSection } from './SectionEnregistrement'
 import { toast } from '../../ui/confirm'
 // VX233 — feed d'audit extrait, verrouillé sur la section « tarification ».
 import SettingsAuditFeed from './SettingsAuditFeed'
@@ -250,11 +251,7 @@ export default function TarificationSection() {
   }
 
   if (form === null) {
-    return (
-      <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-        <Spinner className="size-4 text-primary" /> Chargement…
-      </div>
-    )
+    return <ChargementSection />
   }
 
   return (
@@ -447,12 +444,7 @@ export default function TarificationSection() {
         </div>
       )}
 
-      <Button type="button" size="sm" onClick={save} loading={saving}
-        disabled={saving} variant={saved ? 'success' : 'default'}>
-        {saved
-          ? <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
-          : <><Save className="size-4" aria-hidden="true" /> Enregistrer</>}
-      </Button>
+      <BoutonEnregistrer save={save} saving={saving} saved={saved} />
 
       {/* VX233 — historique des changements de la TARIFICATION (section
           « tarification » seule) : qui a changé le barème/ROI, quand,

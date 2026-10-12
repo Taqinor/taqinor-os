@@ -128,6 +128,7 @@ def _empreinte_lignes(devis):
         rangs = list(
             lignes.all().order_by('pk').values_list(*_COLONNES_LIGNE))
     except Exception:  # noqa: BLE001 — devis détaché, base indisponible
+        logger.warning("taille_detail._empreinte_lignes : erreur ignorée (mode dégradé)", exc_info=True)
         return _LIGNES_ILLISIBLES
     graine = json.dumps(rangs, sort_keys=True, default=str)
     return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]

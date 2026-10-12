@@ -6,6 +6,8 @@ import {
 } from '../../ui'
 // VX75 — tout horodatage passe par lib/format.js (jamais un toLocaleString nu).
 import { formatDateTime } from '../../lib/format'
+import { useFiltresPaginees } from './useFiltresPaginees'
+import PaginationPrecedentSuivant from './PaginationPrecedentSuivant'
 
 /* ============================================================================
    WIR270/FG10 — Centre de pièces jointes de la société.
@@ -47,9 +49,7 @@ function tailleLisible(octets) {
 export default function PiecesJointesPage() {
   // `saisie` = ce que l'utilisateur tape ; `filtres` = ce qui a été appliqué.
   // Sans cette séparation, chaque frappe déclencherait une requête.
-  const [saisie, setSaisie] = useState(FILTRES_VIDES)
-  const [filtres, setFiltres] = useState(FILTRES_VIDES)
-  const [page, setPage] = useState(1)
+  const { saisie, filtres, page, setPage, appliquer, reinitialiser, set } = useFiltresPaginees(FILTRES_VIDES)
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -83,19 +83,6 @@ export default function PiecesJointesPage() {
     charger()
   }, [charger])
 
-  const appliquer = (e) => {
-    e.preventDefault()
-    setPage(1)
-    setFiltres(saisie)
-  }
-
-  const reinitialiser = () => {
-    setPage(1)
-    setSaisie(FILTRES_VIDES)
-    setFiltres(FILTRES_VIDES)
-  }
-
-  const set = (cle) => (e) => setSaisie((p) => ({ ...p, [cle]: e.target.value }))
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
@@ -188,19 +175,7 @@ export default function PiecesJointesPage() {
             </tbody>
           </table>
 
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <Button type="button" size="sm" variant="outline"
-                    disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Précédent
-            </Button>
-            <span data-testid="pieces-jointes-pagination">
-              Page {page} / {pages}
-            </span>
-            <Button type="button" size="sm" variant="outline"
-                    disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-              Suivant
-            </Button>
-          </div>
+          <PaginationPrecedentSuivant page={page} pages={pages} setPage={setPage} testId="pieces-jointes-pagination" />
         </>
       )}
     </div>

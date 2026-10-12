@@ -186,6 +186,22 @@ class ManagementEndpointTests(TestCase):
         self.admin = make_user(self.co, 'pa-admin', 'admin')
         self.normal = make_user(self.co, 'pa-normal', 'normal')
 
+    def test_sandbox_try_corps_invalide_400_jamais_500(self):
+        """ENF11 — ressource non textuelle / corps non objet : 400."""
+        api = session_auth(self.admin)
+        for corps in ({'resource': {}}, {'resource': 'devis'}, [1, 2], 3.5):
+            resp = api.post(
+                '/api/django/publicapi/sandbox/try/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_webhook_http_refuse_par_le_schema(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/webhooks/', {
+            'label': 'x', 'target_url': 'http://8.8.8.8/hook',
+            'events': [EVENT_LEAD_CREATED]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('target_url', resp.data)
+
     def test_admin_creates_key_returns_raw_once(self):
         api = session_auth(self.admin)
         resp = api.post('/api/django/publicapi/keys/', {
@@ -203,6 +219,17 @@ class ManagementEndpointTests(TestCase):
         listing = api.get('/api/django/publicapi/keys/')
         for r in rows(listing):
             self.assertNotIn('key', r)
+
+    def test_cle_libelle_strictement_texte(self):
+        # ENF11 — un libellé non texte (0, null, liste) est refusé en 400,
+        # plus converti en chaîne ; aucune clé n'est émise.
+        api = session_auth(self.admin)
+        avant = ApiKey.objects.count()
+        for mauvais in (0, None, [1], True):
+            resp = api.post('/api/django/publicapi/keys/', {
+                'label': mauvais, 'scopes': []}, format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.content))
+        self.assertEqual(ApiKey.objects.count(), avant)
 
     def test_non_admin_forbidden(self):
         api = session_auth(self.normal)
@@ -819,6 +846,20 @@ class OcrToCrmBridgeTests(TestCase):
         resp = api.post('/api/django/publicapi/ocr-to-crm/',
                         {'mode': 'facture', 'fields': self.fields}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_mode_et_champs_mal_types_repondent_400(self):
+        # ENF11 — `mode` liste/nombre levait AttributeError (500) ; `fields`
+        # non objet ou fournisseur non texte : 400 qui nomme le champ.
+        api = session_auth(self.admin)
+        for corps in ({'mode': [None, None], 'fields': self.fields},
+                      {'mode': 3, 'fields': self.fields},
+                      {'mode': 'lead', 'fields': 'x'},
+                      {'mode': 'lead', 'fields': {'fournisseur': {}}},
+                      {'mode': 'lead', 'fields': {'client': 7}},
+                      [None, None]):
+            resp = api.post('/api/django/publicapi/ocr-to-crm/', corps,
+                            format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
 
     def test_empty_fields_is_400(self):
         # Aucun nom exploitable → 400 (jamais un lead anonyme).

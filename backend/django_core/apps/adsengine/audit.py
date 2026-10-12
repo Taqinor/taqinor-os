@@ -444,6 +444,7 @@ def run_account_audit(company, *, now=None):
     try:
         sections['fenetres_donnees'] = _audit_data_windows()
     except Exception:  # pragma: no cover - défensif, purement statique
+        logger.warning("audit.run_account_audit : erreur ignorée (mode dégradé)", exc_info=True)
         sections['fenetres_donnees'] = {
             'statut': STATUT_INCONNU, 'resume': 'Section indisponible.',
             'items': [], 'lien': '',

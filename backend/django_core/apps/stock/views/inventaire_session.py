@@ -9,7 +9,6 @@ Remplace l'action `inventaire` one-shot par un workflow draft/valider :
 INTERNE — admin uniquement ; les écarts de stock ne sont jamais exposés
 au client.
 """
-from django.db import transaction  # noqa: F401
 from drf_spectacular.utils import extend_schema
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, status

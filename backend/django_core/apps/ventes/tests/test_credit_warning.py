@@ -115,6 +115,16 @@ class TestCreditWarning(TestCase):
         self.assertIsNotNone(r.data['encours_avec_nouveau'])
         self.assertIn('Plafond', r.data['message'])
 
+    def test_endpoint_montant_ttc_vide_ou_invalide(self):
+        """ENF11 — ``?montant_ttc=`` vide = absent (200) ; une valeur non
+        numérique répondait 500 (Decimal) : 400 nommé."""
+        r = self.api.get(self._url() + '?montant_ttc=')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['encours_avec_nouveau'])
+        for brut in ('abc', 'NaN', 'Infinity'):
+            r = self.api.get(self._url() + f'?montant_ttc={brut}')
+            self.assertEqual(r.status_code, 400, (brut, r.data))
+
     def test_endpoint_paid_facture_not_counted(self):
         """Une facture payée ne fait pas partie de l'encours."""
         self.client_obj.plafond_credit = Decimal('50000')

@@ -14,6 +14,9 @@ Champs vérifiés (cadre Article 145 CGI marocain + cohérence comptable) :
   * Cohérence des totaux : HT + TVA = TTC (réconciliés au centime).
 """
 from decimal import Decimal, ROUND_HALF_UP
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _q2(value):
@@ -95,6 +98,7 @@ def validate_dgi_conformity(facture, profile=None):
                 "Incohérence des totaux : HT + TVA ≠ TTC "
                 f"({ht} + {tva} ≠ {ttc}).")
     except Exception:
+        logger.warning("dgi_validator.validate_dgi_conformity : erreur ignorée (mode dégradé)", exc_info=True)
         problemes.append("Totaux HT/TVA/TTC illisibles ou incohérents.")
 
     return problemes

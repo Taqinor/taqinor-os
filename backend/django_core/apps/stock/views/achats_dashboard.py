@@ -8,6 +8,7 @@ dupliquée ici, cette vue ne fait que router la requête HTTP.
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from ..openapi_helpers import DATE, P
+from ..utils.params import date_ou_400
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -34,6 +35,6 @@ def tableau_bord_achats_view(request):
 
     return Response(tableau_bord_achats(
         request.user.company,
-        debut=request.query_params.get('debut'),
-        fin=request.query_params.get('fin'),
+        debut=date_ou_400(request.query_params.get('debut'), 'debut'),
+        fin=date_ou_400(request.query_params.get('fin'), 'fin'),
     ))

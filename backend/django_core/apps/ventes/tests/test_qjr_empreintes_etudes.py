@@ -95,8 +95,7 @@ class ProfilsComparatifsEmpreinteTests(_EmpreintesBase):
         """ROUGE avant QJR44 : le calcul tournait à chaque appel."""
         devis = self._devis('qjr44-stable')
         premier = rafraichir_profils_comparatifs_devis(devis)
-        if premier is None:
-            self.skipTest('catalogue trop pauvre pour composer les variantes')
+        self.assertIsNotNone(premier)
         devis.refresh_from_db()
 
         patch, appels = self._espion_balayage()
@@ -108,8 +107,7 @@ class ProfilsComparatifsEmpreinteTests(_EmpreintesBase):
     def test_facture_modifiee_le_bloc_se_recalcule(self):
         devis = self._devis('qjr44-facture')
         premier = rafraichir_profils_comparatifs_devis(devis)
-        if premier is None:
-            self.skipTest('catalogue trop pauvre pour composer les variantes')
+        self.assertIsNotNone(premier)
         empreinte_1 = premier['_empreinte']
 
         devis.lead.facture_hiver = 3400
@@ -149,8 +147,7 @@ class EtudeHoraireEmpreinteTests(_EmpreintesBase):
     def test_le_bloc_range_porte_son_estampille(self):
         devis = self._devis('qjr44-eh-pose')
         bloc = rafraichir_etude_horaire_devis(devis, force=True)
-        if bloc is None:
-            self.skipTest('étude horaire non calculable sur cette fixture')
+        self.assertIsNotNone(bloc)
         devis.refresh_from_db()
         self.assertTrue(
             devis.etude_params['etude_horaire'].get('_empreinte_entrees'))
@@ -160,8 +157,7 @@ class EtudeHoraireEmpreinteTests(_EmpreintesBase):
         « à jour » (ROUGE avant QJR44)."""
         devis = self._devis('qjr44-eh-facture')
         bloc = rafraichir_etude_horaire_devis(devis, force=True)
-        if bloc is None:
-            self.skipTest('étude horaire non calculable sur cette fixture')
+        self.assertIsNotNone(bloc)
         devis.refresh_from_db()
         kwc = devis.etude_params['etude_horaire']['kwc']
         self.assertTrue(_bloc_horaire_deja_a_jour(devis, kwc))
@@ -174,8 +170,7 @@ class EtudeHoraireEmpreinteTests(_EmpreintesBase):
     def test_bloc_sans_estampille_n_est_pas_a_jour(self):
         devis = self._devis('qjr44-eh-legacy')
         bloc = rafraichir_etude_horaire_devis(devis, force=True)
-        if bloc is None:
-            self.skipTest('étude horaire non calculable sur cette fixture')
+        self.assertIsNotNone(bloc)
         devis.refresh_from_db()
         kwc = devis.etude_params['etude_horaire']['kwc']
         etude = dict(devis.etude_params)
@@ -191,8 +186,7 @@ class EtudeHoraireEmpreinteTests(_EmpreintesBase):
         contre laquelle le moteur a calculé."""
         devis = self._devis('qjr44-eh-date')
         bloc = rafraichir_etude_horaire_devis(devis, force=True)
-        if bloc is None:
-            self.skipTest('étude horaire non calculable sur cette fixture')
+        self.assertIsNotNone(bloc)
         from apps.ventes.domain.entrees import (
             empreinte_entrees, entrees_depuis_devis)
         devis.refresh_from_db()
@@ -207,8 +201,7 @@ class EtudeHoraireEmpreinteTests(_EmpreintesBase):
 
         devis = self._devis('qjr44-eh-tol')
         bloc = rafraichir_etude_horaire_devis(devis, force=True)
-        if bloc is None:
-            self.skipTest('étude horaire non calculable sur cette fixture')
+        self.assertIsNotNone(bloc)
         devis.refresh_from_db()
         kwc = float(devis.etude_params['etude_horaire']['kwc'])
         dedans = kwc * (1 + _HORAIRE_TOLERANCE_KWC / 2)
@@ -249,8 +242,7 @@ class ForceRetireTests(_EmpreintesBase):
         """Le recalcul a toujours lieu quand il DOIT avoir lieu."""
         devis = self._devis('qjr47-fraicheur')
         premier = rafraichir_etudes_du_devis(devis)
-        if premier.get('etude_horaire') is None:
-            self.skipTest('étude horaire non calculable sur cette fixture')
+        self.assertIsNotNone(premier.get('etude_horaire'))
         devis = Devis.objects.get(pk=devis.pk)
         kwc_avant = devis.etude_params['etude_horaire']['kwc']
 

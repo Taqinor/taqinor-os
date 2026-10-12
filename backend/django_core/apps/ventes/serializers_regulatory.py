@@ -112,6 +112,22 @@ class DossierExchangeSerializer(SameCompanyFKSerializerMixin,
             'id', 'sens_label', 'type_label', 'created_at',
         ]
 
+    def to_internal_value(self, data):
+        # ENF11 — le champ s'appelle ``detail`` : son erreur (liste) se posait
+        # sur la clé ``detail`` de l'enveloppe d'erreur commune, qui est une
+        # CHAÎNE (schéma ``ErreurApi``). On la replie en une phrase.
+        try:
+            return super().to_internal_value(data)
+        except serializers.ValidationError as exc:
+            erreurs = exc.detail
+            if isinstance(erreurs, dict) and isinstance(
+                    erreurs.get('detail'), list):
+                erreurs = dict(erreurs)
+                erreurs['detail'] = ' '.join(
+                    str(m) for m in erreurs['detail'])
+                raise serializers.ValidationError(erreurs)
+            raise
+
 
 class SubventionDossierSerializer(SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):

@@ -18,6 +18,9 @@ aucun statut de devis.
 from __future__ import annotations
 
 from html import escape
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _client_block(client):
@@ -114,6 +117,8 @@ def build_declaration_data(devis, *, chantier=None, diagram_params=None,
         try:
             diagram_params = diagram_params_from_devis(devis)
         except Exception:
+            logger.warning(
+                "connection_declaration.build_declaration_data : erreur ignorée (mode dégradé)", exc_info=True)
             diagram_params = {}
 
     etude = getattr(devis, 'etude_params', None) or {}
