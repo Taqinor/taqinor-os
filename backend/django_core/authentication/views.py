@@ -1365,7 +1365,7 @@ class UserViewSet(viewsets.ModelViewSet):
         target = self.get_object()
         if target == request.user:
             return Response(
-                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},  # noqa: E501
+                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if target.is_protected:
