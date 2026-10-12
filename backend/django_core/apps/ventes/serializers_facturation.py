@@ -387,6 +387,52 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
     # la règle « encaissable » vit au serveur (LA porte unique), l'écran la lit.
     encaissable = serializers.SerializerMethodField()
     motif_non_encaissable = serializers.SerializerMethodField()
+    # VNT91 — contrat `facturation/contract_samples/facture_situation_vente.json` :
+    # les blocs de la vente du PDF, servis au DÉTAIL (``retrieve``) par LA
+    # fonction du PDF (``utils.pdf.contexte_vente_facture``). Liste et
+    # documents imbriqués : instantanés figés tels quels, situation et
+    # échéances nulles — aucune lecture de la vente par ligne (N+1).
+    objet_vente = serializers.SerializerMethodField()
+    garanties = serializers.SerializerMethodField()
+    situation_vente = serializers.SerializerMethodField()
+    prochaines_echeances = serializers.SerializerMethodField()
+
+    def _vente_pdf(self, obj):
+        """Le contexte « vente » du PDF de ``obj`` sur le détail seulement
+        (drapeau de contexte : ``view.action == 'retrieve'``), lu une fois."""
+        vue = self.context.get('view')
+        if (getattr(vue, 'action', None) != 'retrieve'
+                or self.parent is not None):
+            return None
+        cache = self.__dict__.setdefault('_vente_pdf_lu', {})
+        if obj.pk not in cache:
+            from .utils.pdf import contexte_vente_facture
+            cache[obj.pk] = contexte_vente_facture(obj)
+        return cache[obj.pk]
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_objet_vente(self, obj):
+        contexte = self._vente_pdf(obj)
+        return obj.objet_vente if contexte is None else contexte.get(
+            'objet_vente')
+
+    @extend_schema_field(serializers.ListField(
+        child=serializers.DictField(child=serializers.CharField()),
+        allow_null=True))
+    def get_garanties(self, obj):
+        contexte = self._vente_pdf(obj)
+        return obj.garanties if contexte is None else contexte.get(
+            'garanties_vente')
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_situation_vente(self, obj):
+        return (self._vente_pdf(obj) or {}).get('situation_vente')
+
+    @extend_schema_field(serializers.ListField(
+        child=serializers.DictField(child=serializers.CharField()),
+        allow_null=True))
+    def get_prochaines_echeances(self, obj):
+        return (self._vente_pdf(obj) or {}).get('prochaines_echeances')
 
     def _motif_encaissement(self, obj):
         # Même fonction que la porte serveur ; aucune requête hors le
