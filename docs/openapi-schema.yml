@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4826, operations: 7584, components: 3392}
+counts: {paths: 4826, operations: 7584, components: 3481}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -633,13 +633,13 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/suggestions-pente/ -> django_calepinage_calepinages_suggestions_pente_create
 - post /api/django/calepinage/calepinages/{id}/sync-devis/ -> django_calepinage_calepinages_sync_devis_create
 - get /api/django/calepinage/calepinages/{id}/troncons/ -> django_calepinage_calepinages_troncons_retrieve
-- get /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_retrieve
+- get /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_list
 - post /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_create
 - delete /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_destroy
-- get /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_retrieve_2
+- get /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_retrieve
 - patch /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_partial_update
 - post /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/retenir/ -> django_calepinage_calepinages_variantes_retenir_create
-- get /api/django/calepinage/calepinages/{id}/versions/ -> django_calepinage_calepinages_versions_retrieve
+- get /api/django/calepinage/calepinages/{id}/versions/ -> django_calepinage_calepinages_versions_list
 - get /api/django/calepinage/calepinages/{id}/versions/{version_id}/diff/ -> django_calepinage_calepinages_versions_diff_retrieve
 - post /api/django/calepinage/calepinages/{id}/versions/{version_id}/restaurer/ -> django_calepinage_calepinages_versions_restaurer_create
 - get /api/django/calepinage/gabarits-dossiers/ -> django_calepinage_gabarits_dossiers_list
@@ -4464,13 +4464,13 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/suggestions-pente/ -> v1_calepinage_calepinages_suggestions_pente_create
 - post /api/v1/calepinage/calepinages/{id}/sync-devis/ -> v1_calepinage_calepinages_sync_devis_create
 - get /api/v1/calepinage/calepinages/{id}/troncons/ -> v1_calepinage_calepinages_troncons_retrieve
-- get /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_retrieve
+- get /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_list
 - post /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_create
 - delete /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_destroy
-- get /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_retrieve_2
+- get /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_retrieve
 - patch /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_partial_update
 - post /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/retenir/ -> v1_calepinage_calepinages_variantes_retenir_create
-- get /api/v1/calepinage/calepinages/{id}/versions/ -> v1_calepinage_calepinages_versions_retrieve
+- get /api/v1/calepinage/calepinages/{id}/versions/ -> v1_calepinage_calepinages_versions_list
 - get /api/v1/calepinage/calepinages/{id}/versions/{version_id}/diff/ -> v1_calepinage_calepinages_versions_diff_retrieve
 - post /api/v1/calepinage/calepinages/{id}/versions/{version_id}/restaurer/ -> v1_calepinage_calepinages_versions_restaurer_create
 - get /api/v1/calepinage/gabarits-dossiers/ -> v1_calepinage_gabarits_dossiers_list
@@ -7710,7 +7710,7 @@ query_params:
   get /api/django/automation/rules/: enabled ordering page page_size trigger_type
   get /api/django/automation/runs/: ordering page page_size rule status
   get /api/django/calepinage/calepinages/: client depuis etiquette lead ordering page page_size q responsable statut
-  get /api/django/calepinage/calepinages/modeles/: ordering page page_size
+  get /api/django/calepinage/calepinages/modeles/: ordering
   get /api/django/calepinage/calepinages/{id}/apercu-document/: code langue
   get /api/django/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/django/calepinage/calepinages/{id}/chatter/historique/: ordering
@@ -7721,6 +7721,8 @@ query_params:
   get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/resultat/: variante
+  get /api/django/calepinage/calepinages/{id}/variantes/: ordering
+  get /api/django/calepinage/calepinages/{id}/versions/: ordering
   get /api/django/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
   get /api/django/calepinage/gabarits-dossiers/: ordering search
   get /api/django/companies/: ordering page page_size search
@@ -8491,7 +8493,7 @@ query_params:
   get /api/v1/automation/rules/: enabled ordering page page_size trigger_type
   get /api/v1/automation/runs/: ordering page page_size rule status
   get /api/v1/calepinage/calepinages/: client depuis etiquette lead ordering page page_size q responsable statut
-  get /api/v1/calepinage/calepinages/modeles/: ordering page page_size
+  get /api/v1/calepinage/calepinages/modeles/: ordering
   get /api/v1/calepinage/calepinages/{id}/apercu-document/: code langue
   get /api/v1/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/v1/calepinage/calepinages/{id}/chatter/historique/: ordering
@@ -8502,6 +8504,8 @@ query_params:
   get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/resultat/: variante
+  get /api/v1/calepinage/calepinages/{id}/variantes/: ordering
+  get /api/v1/calepinage/calepinages/{id}/versions/: ordering
   get /api/v1/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
   get /api/v1/calepinage/gabarits-dossiers/: ordering search
   get /api/v1/companies/: ordering page page_size search
@@ -9164,6 +9168,7 @@ components:
 - AccessReviewCampaignRequest
 - AccessReviewCampaignStatutEnum
 - AccessReviewItem
+- AccessReviewItemDecisionEnum
 - AccessReviewItemRequest
 - AccordClientEnum
 - AccordRFAFournisseur
@@ -9549,13 +9554,30 @@ components:
 - CalendrierOuvre
 - CalendrierReglementaire
 - CalendrierResume
-- Calepinage
+- CalepinageAppliquerCote
+- CalepinageAppliquerCoteCorpsRequest
+- CalepinageApprobation
+- CalepinageApprobationRequeteDecisionEnum
 - CalepinageApprobationRequeteRequest
+- CalepinageArchivage
+- CalepinageChampsDossierCorpsParDossierRequest
+- CalepinageChampsDossierCorpsParGabaritRequest
+- CalepinageChampsDossierCorpsRequest
+- CalepinageComparaisonProjets
+- CalepinageComparaisonVariantes
 - CalepinageComparerProjetsRequeteRequest
 - CalepinageConsommationProposee
+- CalepinageConsommationProposerCorpsRequest
+- CalepinageConsommationProposerCorpsSourceEnum
 - CalepinageCreationConflit
+- CalepinageCreationParClientRequest
+- CalepinageCreationParLeadRequest
+- CalepinageCreationRequest
 - CalepinageDepuisLeadReponse
 - CalepinageDepuisLeadRequeteRequest
+- CalepinageDepuisModeleCorpsRequest
+- CalepinageDesignContext
+- CalepinageDetail
 - CalepinageDocumentAuteur
 - CalepinageDocumentEntree
 - CalepinageDocumentImage
@@ -9567,21 +9589,55 @@ components:
 - CalepinageDossiersReglementaires
 - CalepinageDupliquerReponse
 - CalepinageDupliquerRequeteRequest
+- CalepinageEntreeElectrique
+- CalepinageEntreeElectriqueCorpsRequest
+- CalepinageEquipementsDevis
+- CalepinageEtiquetteCorpsRequest
+- CalepinageEtiquetteParIdRequest
+- CalepinageEtiquetteParNomRequest
+- CalepinageEtiquettes
+- CalepinageEvaluationElectrique
 - CalepinageEvaluerElectriqueRequeteRequest
+- CalepinageExportLayout
 - CalepinageExportProjet
+- CalepinageFixationBom
+- CalepinageFixationChoix
 - CalepinageFixationRequeteRequest
 - CalepinageFondPlan
+- CalepinageFondPlanCorpsRequest
 - CalepinageGabaritDepose
 - CalepinageGabaritDossier
 - CalepinageGabaritDossierCorpsRequest
+- CalepinageGabaritsListe
+- CalepinageGenererDevisCorpsRequest
 - CalepinageGenererDossier
+- CalepinageGenererDossierCorpsParDossierRequest
+- CalepinageGenererDossierCorpsParGabaritRequest
+- CalepinageGenererDossierCorpsRequest
 - CalepinageHorizon
+- CalepinageImageDocumentCorpsRequest
 - CalepinageImageDocumentDepot
+- CalepinageImportLayout
+- CalepinageImportLayoutCorpsRequest
 - CalepinageImportPlan
 - CalepinageImportProjet
+- CalepinageImportProjetCorpsRequest
+- CalepinageImporterPlanCorpsRequest
 - CalepinageJoindrePiece
+- CalepinageJoindrePieceCorpsParDossierRequest
+- CalepinageJoindrePieceCorpsParGabaritRequest
+- CalepinageJoindrePieceCorpsRequest
+- CalepinageLayoutCorpsRequest
+- CalepinageLayoutEcrit
+- CalepinageLayoutLu
+- CalepinageLayoutSectionCorpsRequest
+- CalepinageLecture
+- CalepinageMasseLestage
 - CalepinageMeteoFichier
+- CalepinageMeteoFichierCorpsRequest
 - CalepinageMeteoFichierRetenu
+- CalepinageModeleBascule
+- CalepinageModulesDisponibles
 - CalepinageMoteurAccuseTravailLong
 - CalepinageMoteurCalculerReponse
 - CalepinageMoteurCalculerRequeteRequest
@@ -9589,21 +9645,53 @@ components:
 - CalepinageMoteurPoseReponse
 - CalepinageMoteurPoseRequeteRequest
 - CalepinageMoteurResultatReponse
+- CalepinageNoteCorpsRequest
+- CalepinagePackTechnique
 - CalepinageParametresEcrite
 - CalepinageParametresReponse
 - CalepinageParametresRequeteRequest
+- CalepinagePhotoCorpsRequest
+- CalepinagePhotoSite
+- CalepinagePhotosSite
 - CalepinagePlanImporte
+- CalepinagePompageCorpsRequest
+- CalepinagePompageReponse
+- CalepinagePoseReelle
+- CalepinagePoseReelleCorpsRequest
+- CalepinagePublicationDevis
+- CalepinageRaccordement
+- CalepinageRaccordementCorpsRequest
 - CalepinageRecalculSimulations
 - CalepinageRegistreReponse
+- CalepinageReleveCorpsRequest
+- CalepinageReleveTerrain
+- CalepinageRemettreDocumentCorpsCodeEnum
+- CalepinageRemettreDocumentCorpsRequest
 - CalepinageRemiseDocument
+- CalepinageRepriseVisite
 - CalepinageRepriseVisiteRequeteRequest
-- CalepinageRequest
+- CalepinageResultatServi
+- CalepinageRoofImageCorpsRequest
+- CalepinageRoofImageDepot
+- CalepinageSchemaEditionCorpsRequest
+- CalepinageSchemaUnifilaire
 - CalepinageSimulationAccuse
+- CalepinageSimulationDejaCalculee
+- CalepinageSimulerCorpsRequest
+- CalepinageSortiesInventaire
 - CalepinageSuggestionPenteDemandeRequest
 - CalepinageSuggestionPenteDocumentRequest
 - CalepinageSuggestionPenteReponse
 - CalepinageSuggestionsPenteRequeteOperationEnum
 - CalepinageSuggestionsPenteRequeteRequest
+- CalepinageSyncDevis
+- CalepinageSyncDevisCorpsRequest
+- CalepinageTroncons
+- CalepinageVariante
+- CalepinageVarianteRequest
+- CalepinageVersionLigne
+- CalepinageVersionRestauree
+- CalepinageVersionsDiff
 - Canal
 - Canal419Enum
 - CanalA95Enum
@@ -9688,7 +9776,7 @@ components:
 - CocherOutilRequeteRequest
 - CocherSafetyRequeteRequest
 - CocherToolReturnRequeteRequest
-- CodeEnum
+- Code8dcEnum
 - Coffre
 - CoffreRequest
 - Colis
@@ -9903,7 +9991,6 @@ components:
 - DeciderEnMasseRequest
 - DeciderPushRequest
 - DecideurEnum
-- DecisionEnum
 - DecisionEtapeAchatRequeteRequest
 - DecisionLog
 - DeclarationConsommation
@@ -10400,6 +10487,7 @@ components:
 - GenererDevisReserveRequeteRequest
 - GenererDusReponse
 - GenererRetourLivraisonRequeteRequest
+- GenreEnum
 - GeoGeoPointsReponse
 - GeofenceAlert
 - GpsConsentRecord
@@ -10513,6 +10601,7 @@ components:
 - LeadActivityKindEnum
 - LeadActivityOutcomeEnum
 - LeadAffinerProResponse
+- LeadApercu
 - LeadPhotoToit
 - LeadRefLookupResponse
 - LeadRequest
@@ -10837,7 +10926,7 @@ components:
 - PaginatedBulkJobList
 - PaginatedCabinetList
 - PaginatedCadenceRelanceEtapeList
-- PaginatedCalepinageList
+- PaginatedCalepinageLectureList
 - PaginatedCanalList
 - PaginatedCatalogueAchatList
 - PaginatedCategorieEquipementList
@@ -11240,7 +11329,11 @@ components:
 - PatchedCadenceRelanceEtapeRequest
 - PatchedCalageRequest
 - PatchedCalepinageGabaritDossierCorpsRequest
+- PatchedCalepinagePhotoCalageCorpsRequest
+- PatchedCalepinagePhotoModifCorpsRequest
+- PatchedCalepinageReleveModifCorpsRequest
 - PatchedCalepinageRequest
+- PatchedCalepinageVarianteRequest
 - PatchedCanalRequest
 - PatchedCategorieEquipementRequest
 - PatchedCategorieFournisseurRequest
