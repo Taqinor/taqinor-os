@@ -85,6 +85,7 @@ PLACE = {
     'cycle': 'facture_cycle.py',  # VNT97
     'encaissement': 'facture_encaissement.py',  # VNT98
     'gardes': 'facture_gardes.py',  # VNT98
+    'rectificatifs': 'facture_rectificatifs.py',  # VNT99
 }
 
 #: Actions standard du ``ModelViewSet`` (non décorées).
