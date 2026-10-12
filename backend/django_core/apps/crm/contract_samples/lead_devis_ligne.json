@@ -25,9 +25,7 @@
         "is_active": true,
         "version": 2,
         "superseded_by": null,
-        "corrige_le": "2026-09-29T14:05:00+00:00",
-        "solde": null,
-        "vente": null
+        "corrige_le": "2026-09-29T14:05:00+00:00"
       },
       {
         "id": 411,
@@ -45,9 +43,7 @@
         "is_active": false,
         "version": 1,
         "superseded_by": 413,
-        "corrige_le": null,
-        "solde": null,
-        "vente": null
+        "corrige_le": null
       }
     ]
   },
@@ -69,7 +65,22 @@
         "is_active": true,
         "version": 2,
         "superseded_by": null,
-        "corrige_le": null,
+        "corrige_le": null
+      }
+    ]
+  },
+  "cles_m1": {
+    "pourquoi": "VNT7 : clés `solde` et `vente` AJOUTÉES à chaque élément de `devis[]` par la tâche productrice de M1 (VNT21/VNT23 : détail du lead seulement) ; tenues hors des exemples tant que le serveur ne les sert pas, car tests_lead_devis_corrige_le épingle les clés de `exemple.devis[0]`. La tâche productrice les déplace dans les exemples et met le test à jour dans le même commit.",
+    "exemples": {
+      "exemple.devis[0]": {
+        "solde": null,
+        "vente": null
+      },
+      "exemple.devis[1]": {
+        "solde": null,
+        "vente": null
+      },
+      "exemple_accepte.devis[0]": {
         "solde": {
           "total_ttc": "49000.00",
           "facture": "15000.00",
@@ -159,6 +170,6 @@
           }
         }
       }
-    ]
+    }
   }
 }
