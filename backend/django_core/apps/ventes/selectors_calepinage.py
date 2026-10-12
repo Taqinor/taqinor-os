@@ -11,6 +11,8 @@ aucun import de ``.selectors`` en tête (cycle).
 
 
 import logging
+
+
 def conception_pour_lead(lead, company):
     """PV78 — la conception 3D la plus RÉCENTE d'un lead, en lecture seule.
 
