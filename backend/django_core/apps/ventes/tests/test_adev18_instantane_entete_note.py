@@ -8,6 +8,10 @@ contenu était identique au précédent) alors que le chatter disait « corrigé
 après envoi — en-tête ». « Revenir à cette version » ne pouvait donc rien
 rétablir de l'en-tête.
 
+VNT103 — ``acompte_pct`` / ``acompte_montant`` sont retirés du modèle : la
+sonde d'en-tête passe par ``date_validite`` ; un ANCIEN instantané qui porte
+encore ces deux clés se restaure sans erreur (clés ignorées).
+
 La restauration rejoue l'appel de l'écran : ``POST replace-lines`` avec les
 lignes de l'instantané et ``entete`` = ``contenu.entete`` + ``note``
 (contrat QJR504 ``devis_replace_lines_entete.json``).
@@ -63,7 +67,7 @@ class InstantaneEnteteNoteTests(TestCase):
             company=self.company, reference=f'DEV-{MONTH}-0018',
             client=self.client_obj, statut=Devis.Statut.ENVOYE,
             taux_tva=Decimal('20'), created_by=self.user,
-            note='Pose prévue en mars.', acompte_pct=Decimal('30'),
+            note='Pose prévue en mars.',
             date_validite=timezone.localdate() + datetime.timedelta(days=30))
         LigneDevis.objects.create(
             devis=self.devis, produit=self.produit,
@@ -94,24 +98,25 @@ class InstantaneEnteteNoteTests(TestCase):
         for snap in snaps[-2:]:
             self.assertIn('entete', snap.contenu)
 
-    def test_acompte_cree_instantane(self):
+    def test_entete_cree_instantane(self):
+        avant = self.devis.date_validite
+        apres = avant + datetime.timedelta(days=15)
         self._patch(note='Pose reportée en avril.')
         n1 = len(self._snaps())
-        self._patch(acompte_pct='40')
+        self._patch(date_validite=apres.isoformat())
         snaps = self._snaps()
         self.assertEqual(len(snaps), n1 + 1)
-        self.assertEqual(
-            Decimal(snaps[-1].contenu['entete']['acompte_pct']),
-            Decimal('40'))
-        self.assertEqual(
-            Decimal(snaps[-2].contenu['entete']['acompte_pct']),
-            Decimal('30'))
+        self.assertEqual(snaps[-1].contenu['entete']['date_validite'],
+                         apres.isoformat())
+        self.assertEqual(snaps[-2].contenu['entete']['date_validite'],
+                         avant.isoformat())
+        self.assertNotIn('acompte_pct', snaps[-1].contenu['entete'])
+        self.assertNotIn('acompte_montant', snaps[-1].contenu['entete'])
 
     def test_restauration_reapplique_entete(self):
         nouvelle_validite = timezone.localdate() + datetime.timedelta(days=60)
         self._patch(note='Pose reportée en avril.')
-        self._patch(acompte_pct='40',
-                    date_validite=nouvelle_validite.isoformat())
+        self._patch(date_validite=nouvelle_validite.isoformat())
         origine = self._snaps()[0].contenu
         self.assertEqual(origine['note'], 'Pose prévue en mars.')
         # Rejoue « Revenir à cette version » (écran) : lignes + entete + note.
@@ -122,6 +127,10 @@ class InstantaneEnteteNoteTests(TestCase):
             lignes.append(copie)
         entete = dict(origine['entete'])
         entete['note'] = origine['note']
+        # VNT103 — un instantané d'AVANT le retrait porte encore les deux clés
+        # d'acompte : la restauration les ignore, sans erreur.
+        entete['acompte_pct'] = '30.00'
+        entete['acompte_montant'] = None
         r = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/replace-lines/',
             {'lignes': lignes, 'entete': entete}, format='json')
@@ -129,7 +138,6 @@ class InstantaneEnteteNoteTests(TestCase):
         # CLAUSE PERSISTANCE : relire en base.
         frais = Devis.objects.get(pk=self.devis.pk)
         self.assertEqual(frais.note, 'Pose prévue en mars.')
-        self.assertEqual(frais.acompte_pct, Decimal('30'))
         self.assertEqual(frais.date_validite.isoformat(),
                          origine['entete']['date_validite'])
         self.assertEqual(frais.taux_tva, Decimal('20'))

@@ -255,11 +255,11 @@ class LesTroisCopiesNePublientPlusLesChiffresDuSource(_SourceAvecEtudeMarquee):
         from apps.ventes.models import Devis
         from apps.ventes.domain.revision import renouveler_devis
 
-        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.statut = Devis.Statut.EXPIRE  # VNT106 : un accepté → 409
         self.devis.save(update_fields=['statut'])
 
         nouveau = renouveler_devis(self.devis, user=self.user)
         self._verifier_la_copie(nouveau, 'renouvellement')
         # La chaîne du SOURCE est intacte : renouveler ne le déclasse pas.
         self.devis.refresh_from_db()
-        self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
+        self.assertEqual(self.devis.statut, Devis.Statut.EXPIRE)

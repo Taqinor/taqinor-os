@@ -176,7 +176,8 @@ def photographier(company, lead_id, garde):
 # ── Contrôles (avant toute écriture) ─────────────────────────────────────────
 
 def _racine(devis):
-    return devis.version_parent_id or devis.pk
+    from apps.ventes.selectors import racine_groupe
+    return racine_groupe(devis).pk
 
 
 def _factures_cibles(vente):

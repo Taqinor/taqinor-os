@@ -1,4 +1,8 @@
-"""NTCPQ13 — Renouvellement d'un devis accepté (distinct de « réviser »)."""
+"""NTCPQ13 — Renouvellement d'un devis EXPIRÉ (distinct de « réviser »).
+
+VNT106 (arbitrage 7) — un devis ACCEPTÉ ne se renouvelle plus : une deuxième
+vente est une deuxième affaire (nouvelle fiche lead) ; 409 ``deuxieme_affaire``,
+rien n'est créé, le source reste intact."""
 from decimal import Decimal
 
 from django.test import TestCase
@@ -28,7 +32,7 @@ class TestRenouvelerDevis(TestCase):
         self.produit = ProduitFactory(
             company=self.company, prix_vente=Decimal('1000.00'))
         self.devis = DevisFactory(
-            company=self.company, statut=Devis.Statut.ACCEPTE)
+            company=self.company, statut=Devis.Statut.EXPIRE)
         LigneDevis.objects.create(
             devis=self.devis, produit=self.produit,
             designation=self.produit.nom, quantite=Decimal('2'),
@@ -48,7 +52,7 @@ class TestRenouvelerDevis(TestCase):
         n1 = renouveler_devis(self.devis, user=self.user)
         self.assertEqual(n1.devis_origine_id, self.devis.id)
         self.assertEqual(n1.numero_renouvellement, 1)
-        n1.statut = Devis.Statut.ACCEPTE
+        n1.statut = Devis.Statut.EXPIRE
         n1.save(update_fields=['statut'])
         n2 = renouveler_devis(n1, user=self.user)
         # La racine reste le devis d'origine, le compteur s'incrémente.
@@ -58,7 +62,7 @@ class TestRenouvelerDevis(TestCase):
     def test_devis_source_reste_intact(self):
         renouveler_devis(self.devis, user=self.user)
         self.devis.refresh_from_db()
-        self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
+        self.assertEqual(self.devis.statut, Devis.Statut.EXPIRE)
         self.assertTrue(self.devis.is_active)
         self.assertIsNone(self.devis.superseded_by_id)
 
@@ -75,6 +79,46 @@ class TestRenouvelerDevis(TestCase):
         with self.assertRaises(ValidationError):
             renouveler_devis(brouillon, user=self.user)
 
+    def test_refus_409_sur_un_devis_accepte_rien_cree(self):
+        """VNT106 — un accepté ⇒ ``ConflitEtat`` (409, ``deuxieme_affaire``),
+        aucun devis créé, aucune note, le source intact."""
+        from core.conflit_etat import ConflitEtat
+        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.save(update_fields=['statut'])
+        avant = Devis.objects.filter(company=self.company).count()
+        with self.assertRaises(ConflitEtat) as ctx:
+            renouveler_devis(self.devis, user=self.user)
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(str(ctx.exception.detail['code']),
+                         'deuxieme_affaire')
+        self.assertIn('deuxième affaire', str(ctx.exception.detail['detail']))
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), avant)
+        self.assertFalse(self.devis.activites.filter(
+            body__icontains='Renouvelé par le devis').exists())
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
+        self.assertTrue(self.devis.is_active)
+
+    def test_endpoint_refuse_un_accepte_en_409(self):
+        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.save(update_fields=['statut'])
+        avant = Devis.objects.filter(company=self.company).count()
+        resp = auth(self.user).post(
+            f'/api/django/ventes/devis/{self.devis.id}/renouveler/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['code'], 'deuxieme_affaire')
+        self.assertIn('Prix négocié', resp.data['detail'])
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), avant)
+
+    def test_refus_400_sur_un_devis_envoye(self):
+        envoye = DevisFactory(
+            company=self.company, statut=Devis.Statut.ENVOYE)
+        with self.assertRaises(ValidationError):
+            renouveler_devis(envoye, user=self.user)
+
     def test_endpoint_renouveler(self):
         resp = auth(self.user).post(
             f'/api/django/ventes/devis/{self.devis.id}/renouveler/',
@@ -85,7 +129,7 @@ class TestRenouvelerDevis(TestCase):
 
     def test_endpoint_isole_les_societes(self):
         autre = DevisFactory(
-            company=CompanyFactory(), statut=Devis.Statut.ACCEPTE)
+            company=CompanyFactory(), statut=Devis.Statut.EXPIRE)
         resp = auth(self.user).post(
             f'/api/django/ventes/devis/{autre.id}/renouveler/',
             {}, format='json')
