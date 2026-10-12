@@ -802,6 +802,7 @@ source_modules =
     apps.ventes.tasks
     apps.ventes.urls
     apps.ventes.utils
+    apps.ventes.vente_facturation
     apps.ventes.views
     apps.ventes.weather_feed
 forbidden_modules =
@@ -819,3 +820,64 @@ forbidden_modules =
 # chaque ligne retiree par ADEV56 doit sortir d'ici (import-linter refuse une
 # exception sans correspondance : "No matches for ignored import").
 ignore_imports =
+
+# VNT9 (Groupe VNT, lot M0) — LA lecture de la vente est PURE : le module unique
+# `apps.ventes.vente_facturation` (plan_facturation, etat_vente,
+# factures_de_la_vente, chaine_vente ; propriétaire facturation J5) n'importe
+# aucune couche d'écriture ni de présentation de ventes. Un module interdit pas
+# encore créé (facturation_vente, annulation_facture, negociation) est accepté
+# par import-linter ; le module SOURCE, lui, doit exister (créé vide par VNT9).
+# Seuls les imports DIRECTS sont jugés.
+[importlinter:contract:lecture-de-vente-pure]
+name = La lecture de la vente (apps.ventes.vente_facturation) n'importe aucune couche d'ecriture (VNT9)
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    apps.ventes.vente_facturation
+forbidden_modules =
+    apps.ventes.services
+    apps.ventes.views
+    apps.ventes.serializers
+    apps.ventes.serializers_facturation
+    apps.ventes.domain.facturation_ops
+    apps.ventes.domain.encaissements
+    apps.ventes.domain.facturation_vente
+    apps.ventes.domain.annulation_facture
+    apps.ventes.domain.negociation
+
+# VNT9 (Groupe VNT, lot M0) — la vente se lit par la FAÇADE : crm,
+# installations, sav, stock, reporting, portail, publicapi et calepinage ne
+# lisent jamais en direct les sommes de factures ni les écritures de la vente
+# (échéancier, sélecteurs de facturation, module de lecture, domaine de
+# facturation) ; ils passent par `apps.ventes.selectors` / `apps.ventes.services`
+# (CLAUDE.md, « Cross-app boundary »). Seuls les imports DIRECTS sont jugés.
+# `ignore_imports` : les 4 arêtes de TESTS existantes (sonde R3-E du 12/10/2026 :
+# sans la 4e, le contrat est BROKEN), nommées une à une, jamais un joker ; la
+# liste ne peut que rétrécir.
+[importlinter:contract:vente-lue-par-la-facade]
+name = Les autres domaines lisent la vente par la facade ventes, jamais ses internes de facturation (VNT9)
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    apps.crm
+    apps.installations
+    apps.sav
+    apps.stock
+    apps.reporting
+    apps.portail
+    apps.publicapi
+    apps.calepinage
+forbidden_modules =
+    apps.ventes.utils.echeancier
+    apps.ventes.selectors_facturation
+    apps.ventes.vente_facturation
+    apps.ventes.domain.facturation_ops
+    apps.ventes.domain.encaissements
+    apps.ventes.domain.recouvrement
+    apps.ventes.domain.facturation_vente
+    apps.ventes.domain.annulation_facture
+ignore_imports =
+    apps.crm.tests_crx20_stage_events -> apps.ventes.domain.recouvrement
+    apps.crm.tests_mry7_apres_devis -> apps.ventes.domain.recouvrement
+    apps.installations.tests_astk_garde_sortie_unique -> apps.ventes.domain.facturation_ops
+    apps.stock.test_produit_nom_unique -> apps.ventes.domain.facturation_ops
