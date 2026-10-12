@@ -177,8 +177,22 @@ class DossierApiTests(TestCase):
         reponse = LIER(
             appeler(self.user, cle_modele='pasune.app', object_id=1),
             pk=dossier_id)
-        self.assertEqual(reponse.status_code, 400)
+        # ERR-ENF11-FUZZ-CORE — forme valide, type inexistant : cible
+        # introuvable (404 documenté) ; une forme invalide reste 400.
+        self.assertEqual(reponse.status_code, 404)
         self.assertIn('cle_modele', reponse.data)
+        for corps in ({'cle_modele': 'pasunecle', 'object_id': 1},
+                      {'cle_modele': 'crm.lead', 'object_id': 0}):
+            with self.subTest(corps=corps):
+                self.assertEqual(
+                    LIER(appeler(self.user, **corps), pk=dossier_id).status_code,
+                    400)
+
+    def test_checklist_corps_vide_400(self):
+        # ERR-ENF11-FUZZ-CORE — `{}` n'est conforme à aucune des deux formes.
+        dossier_id = self._creer_dossier()
+        self.assertEqual(
+            CHECKLIST(appeler(self.user), pk=dossier_id).status_code, 400)
 
     def test_isolation_tenant(self):
         dossier_id = self._creer_dossier()

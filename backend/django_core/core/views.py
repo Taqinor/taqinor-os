@@ -1212,7 +1212,7 @@ class BulkEditViewSet(viewsets.ViewSet):
         # qui déclare ses PROPRES permissions ci-dessus n'est pas concernée.
         return [IsAdminOrResponsableTier(), PeutExecuterEditionMasse()]
 
-    @extend_schema(responses={200: _OBJET})
+    @extend_schema(responses={200: _LISTE_OBJETS})  # ERR-ENF11 : une liste
     @action(detail=False, methods=['get'])
     def targets(self, request):
         return Response(bulk_edit_infra.list_bulk_targets())
@@ -1299,7 +1299,9 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
-    @extend_schema(responses={200: _LISTE_OBJETS})
+    # ERR-ENF11-FUZZ-CORE — l'action ``list`` est déjà publiée en tableau :
+    # ``_LISTE_OBJETS`` donnait un tableau de tableaux.
+    @extend_schema(responses={200: _OBJET})
     def list(self, request):
         from . import feature_flags
         company = request.user.company
@@ -1317,8 +1319,11 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
             actives = feature_flags.activer_module(
                 company, pk, user=request.user)
         except feature_flags.DependencyError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ERR-ENF11-FUZZ-CORE — module inconnu = introuvable (404).
+            return Response({'detail': str(exc)}, status=(
+                status.HTTP_404_NOT_FOUND
+                if isinstance(exc, feature_flags.ModuleInconnu)
+                else status.HTTP_400_BAD_REQUEST))
         return Response({'actives': actives})
 
     @extend_schema(
@@ -1339,10 +1344,12 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
         except feature_flags.DependencyError as exc:
             return Response(
                 {'detail': str(exc), 'dependants': exc.dependents},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=(status.HTTP_404_NOT_FOUND
+                        if isinstance(exc, feature_flags.ModuleInconnu)
+                        else status.HTTP_400_BAD_REQUEST))
         return Response({'desactives': desactives})
 
-    @extend_schema(responses={200: _OBJET})
+    @extend_schema(responses={200: _LISTE_OBJETS})  # ERR-ENF11 : une liste
     @action(detail=False, methods=['get'], url_path='journal')
     def journal(self, request):
         """ODY25 — journal d'installation de la société de l'appelant.
@@ -1496,9 +1503,10 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             dsr.traiter_demande(dsr_request)
         except dsr.TransitionInterdite as exc:
-            # NTGRC3 — transition illégale ⇒ 400 explicite (jamais 500), le
-            # message nomme le statut courant et le statut visé.
-            return Response({'statut': str(exc)}, status=400)
+            # NTGRC3 — transition illégale ⇒ réponse explicite (jamais 500),
+            # le message nomme les statuts. ERR-ENF11-FUZZ-CORE : 409 (conflit
+            # d'ÉTAT, la requête elle-même est conforme), plus 400.
+            return Response({'statut': str(exc)}, status=409)
         except dsr.EffacementBloque as exc:
             # NTGRC8 — une garde (mise sous séquestre) refuse l'effacement :
             # 409 (conflit d'état) avec le motif, jamais un échec silencieux.
@@ -1512,14 +1520,14 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
 
         Étape obligatoire avant de livrer les données de quelqu'un : on
         s'assure d'abord que le demandeur est bien la personne concernée. Une
-        transition illégale renvoie 400 (jamais 500).
+        transition illégale renvoie 409 (conflit d'état, jamais 500).
         """
         from . import dsr
         dsr_request = self.get_object()
         try:
             dsr.prendre_en_charge(dsr_request)
         except dsr.TransitionInterdite as exc:
-            return Response({'statut': str(exc)}, status=400)
+            return Response({'statut': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
 
     @extend_schema(responses=inline_serializer('DsrEnRetard', {

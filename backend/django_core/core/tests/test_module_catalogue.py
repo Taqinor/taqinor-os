@@ -128,6 +128,16 @@ class CatalogueEndpointTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertIn('crm', resp.data['desactives'])
 
+    def test_module_inconnu_404(self):
+        # ERR-ENF11-FUZZ-CORE — clé de module inconnue = ressource introuvable.
+        for action in ('activer', 'desactiver'):
+            with self.subTest(action=action):
+                req = self.factory.post(f'/modules/0/{action}/')
+                force_authenticate(req, user=self.admin)
+                resp = ModuleCatalogViewSet.as_view(
+                    {'post': action})(req, pk='0')
+                self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
     def test_activer_endpoint(self):
         ModuleToggle.objects.create(
             company=self.company, module='pos', actif=False)
