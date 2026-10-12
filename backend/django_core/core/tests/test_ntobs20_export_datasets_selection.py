@@ -99,8 +99,9 @@ class DeclencherExportDatasetsForwardingTest(TestCase):
         # export : refusé en 400 AVANT toute ligne d'historique.
         with mock.patch(
                 'core.tasks.export_reversibilite_tenant.delay') as delay:
-            resp = self.client_api.post(
-                '/api/django/core/export-reversibilite/',
-                {'datasets': ['']}, format='json')
-        self.assertEqual(resp.status_code, 400)
+            for datasets in ([''], [0]):
+                resp = self.client_api.post(
+                    '/api/django/core/export-reversibilite/',
+                    {'datasets': datasets}, format='json')
+                self.assertEqual(resp.status_code, 400, datasets)
         self.assertFalse(delay.called)

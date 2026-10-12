@@ -137,7 +137,7 @@ _PERIODE_TYPE = {
 # (``corps_valide`` : ``task`` non texte = 400, 500 avant) ; une tâche hors
 # planification est une ressource introuvable : 404 documenté.
 _RUN_JOB = inline_serializer('ScheduledJobRunRequest', {
-    'task': drf_serializers.CharField(),
+    'task': ChaineStricte(),
 })
 
 
@@ -417,7 +417,7 @@ _APPROBATION_GROUPEE = inline_serializer(
     fields={
         'step_ids': drf_serializers.ListField(
             child=drf_serializers.IntegerField(), min_length=1),
-        'commentaire': drf_serializers.CharField(
+        'commentaire': ChaineStricte(
             required=False, allow_blank=True),
     },
 )
@@ -850,7 +850,7 @@ _ROWS = inline_serializer('SavedQueryRows', {
 # ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré : un
 # ``dataset`` non texte levait une erreur de hachage (500).
 _REQUETE_ADHOC = inline_serializer('SavedQueryAdhocRequest', {
-    'dataset': drf_serializers.CharField(),
+    'dataset': ChaineStricte(),
     'spec': ObjetJSON(required=False, allow_null=True),
 })
 
@@ -1154,7 +1154,7 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 # ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré (500 avant sur
 # ``target`` non texte).
 _REQUETE_BULK = inline_serializer('BulkEditAppliquerRequest', {
-    'target': drf_serializers.CharField(),
+    'target': ChaineStricte(),
     'ids': drf_serializers.ListField(
         child=drf_serializers.IntegerField(), required=False),
     'changes': drf_serializers.DictField(required=False),

@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 from authentication.permissions import IsAnyRole
 
 from . import dashboard_data, data_explorer
+from .champs_stricts import ChaineStricte
 from .parseurs import corps_valide
 
 __all__ = ['DrillDownView', 'LIMITE_MAX_LIGNES']
@@ -43,7 +44,7 @@ LIMITE_DEFAUT = 200
 # ``dataset`` non texte levait une erreur de hachage (500). ``limite`` est
 # bornée au schéma comme dans ``dashboard_data.drill`` (1..LIMITE_MAX_LIGNES).
 _REQUETE_DRILL = inline_serializer('DrillRequete', {
-    'dataset': drf_serializers.CharField(),
+    'dataset': ChaineStricte(),
     'group_by': drf_serializers.DictField(required=False),
     'filtres': drf_serializers.DictField(required=False),
     'limite': drf_serializers.IntegerField(

@@ -43,6 +43,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
 from core.throttling import PublicExportThrottle
+from .champs_stricts import ChaineStricte
 
 from .models import TenantModel
 
@@ -259,7 +260,7 @@ def _emettre_export_reversibilite_declenche(run, user):
 # la ligne d'historique : ``datasets: [""]`` (hors schéma) lançait un export.
 _REQUETE_EXPORT = inline_serializer('ExportReversibiliteRequete', {
     'datasets': serializers.ListField(
-        child=serializers.CharField(), required=False),
+        child=ChaineStricte(), required=False),
 })
 
 
