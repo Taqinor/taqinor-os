@@ -624,12 +624,13 @@ class TestResolveTargetErrors(TestCase):
         data = resp.data['results'] if 'results' in resp.data else resp.data
         self.assertEqual(len(data), 0)
 
-    def test_attachments_count_bad_type_id_is_clean_zero(self):
+    def test_attachments_count_bad_type_id_is_400(self):
+        # ERR-ENF11-FUZZ-RECORDS (2e tour) : id est un entier au schema -> 400
+        # nommant le parametre (c etait un 200 count: 0).
         resp = self.api.get(
             '/api/django/records/attachments-count/'
             '?model=crm.lead&id=pas-un-entier')
-        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
-        self.assertEqual(resp.data['count'], 0)
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
 
 
 class TestVentesAttachmentTargets(TestCase):
@@ -1387,3 +1388,116 @@ class AttachmentUploadedByLectureSeuleTests(TestCase):
         # Rien n'est inscriptible sur ce sérialiseur (pièce posée par l'upload).
         self.assertEqual(
             [nom for nom, champ in champs.items() if not champ.read_only], [])
+
+
+# ── ERR-ENF11-FUZZ-RECORDS (2e tour) — entrées hors schéma = 400 ──────────
+class Enf11Records2eTourTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(nom='ENF11 R2')
+        self.user = User.objects.create_user(
+            username='enf11_r2', password='pw', company=self.company,
+            role_legacy='admin')
+        self.type = ActivityType.objects.create(
+            company=self.company, nom='Appel', icone='📞')
+        self.lead = Lead.objects.create(company=self.company, nom='Lead R2')
+        self.api = auth(self.user)
+        self.act = Activity.objects.create(
+            company=self.company, activity_type=self.type, summary='A',
+            assigned_to=self.user, created_by=self.user,
+            content_type=ContentType.objects.get_for_model(Lead),
+            object_id=self.lead.id)
+
+    def test_filtre_de_cible_hors_schema_400(self):
+        for liste in ('activities', 'attachments', 'comments', 'followers',
+                      'tagged-items', 'attachments-count'):
+            base = f'/api/django/records/{liste}/'
+            for requete in ('?model=zzz.zzz&id=1', '?model=crm.lead&id=abc',
+                            '?model=CRM.Lead&id=1'):
+                r = self.api.get(base + requete)
+                self.assertEqual(r.status_code, 400, (liste, requete))
+            ok = self.api.get(base + f'?model=crm.lead&id={self.lead.id}')
+            self.assertEqual(ok.status_code, 200, (liste, ok.content))
+
+    def test_resolved_booleen_strict(self):
+        base = '/api/django/records/comments/'
+        self.assertEqual(self.api.get(base + '?resolved=maybe').status_code, 400)
+        for valeur in ('true', 'false'):
+            self.assertEqual(
+                self.api.get(base + f'?resolved={valeur}').status_code, 200)
+
+    def test_id_de_cible_mal_type_400_mais_chaine_numerique_toleree(self):
+        url = '/api/django/records/comments/'
+        for id_ in (True, 1.5, [1], {'a': 1}, 'x1'):
+            r = self.api.post(url, {
+                'model': 'crm.lead', 'id': id_, 'body': 'n'}, format='json')
+            self.assertEqual(r.status_code, 400, (id_, r.content))
+        r = self.api.post(url, {
+            'model': 'crm.lead', 'id': str(self.lead.id), 'body': 'n'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self.api.post(url, {
+            'model': ['crm.lead'], 'id': self.lead.id, 'body': 'n'},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_tag_mal_type_400(self):
+        tag = Tag.objects.create(company=self.company, nom='T')
+        url = '/api/django/records/tagged-items/'
+        for tag_id in (1.5, 'abc', True, 2 ** 40):
+            r = self.api.post(url, {
+                'model': 'crm.lead', 'id': self.lead.id, 'tag': tag_id},
+                format='json')
+            self.assertEqual(r.status_code, 400, (tag_id, r.content))
+        r = self.api.post(url, {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_done_suite_illisible_400_et_suite_valide_creee(self):
+        url = f'/api/django/records/activities/{self.act.id}/done/'
+        for suite in ('x', [1], {'activity_type': 'abc'},
+                      {'activity_type': self.type.id, 'due_date': 'pas-une-date'}):
+            r = self.api.post(url, {'next': suite}, format='json')
+            self.assertEqual(r.status_code, 400, (suite, r.content))
+        self.act.refresh_from_db()
+        self.assertFalse(self.act.done)
+        r = self.api.post(url, {'next': {
+            'activity_type': self.type.id, 'summary': 'Suite',
+            'due_date': '2030-01-01'}}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['next']['summary'], 'Suite')
+
+    def test_snooze_date_hors_schema_400(self):
+        url = f'/api/django/records/activities/{self.act.id}/snooze/'
+        for valeur in ('', 0, False, 'demain', 5):
+            r = self.api.post(url, {'snoozed_until': valeur}, format='json')
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+        r = self.api.post(url, {'snoozed_until': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_snooze_approbation_id_mal_type_400(self):
+        url = '/api/django/records/activities/snooze-approbation/'
+        for id_ in ('5', 5.5, 0, -1, True, 2 ** 40):
+            r = self.api.post(url, {
+                'source': 'installations', 'id': id_}, format='json')
+            self.assertEqual(r.status_code, 400, (id_, r.content))
+
+    def test_set_phase_corps_non_objet_400(self):
+        att = Attachment.objects.create(
+            company=self.company, uploaded_by=self.user,
+            content_type=ContentType.objects.get_for_model(Lead),
+            object_id=self.lead.id, file_key='attachments/p.pdf',
+            filename='p.pdf', size=1, mime='application/pdf')
+        url = f'/api/django/records/attachments/{att.id}/phase/'
+        for corps in ([], ['avant'], 'avant'):
+            r = self.api.patch(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        r = self.api.patch(url, {'phase': 3}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_attachments_all_since_borne_sans_500(self):
+        base = '/api/django/records/attachments/all/'
+        for since in ('2020-01-01', '0001-01-01T00:00:00+14:00',
+                      '9999-12-31T23:59:59-14:00', 'pas-une-date'):
+            r = self.api.get(base, {'since': since})
+            self.assertEqual(r.status_code, 200, (since, r.content))

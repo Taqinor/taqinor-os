@@ -43,7 +43,22 @@ class ParsersParActionMixin:
 
 
 class CibleModelField(serializers.CharField):
-    """« app.modele » d'une cible autorisée (enum résolu à la génération)."""
+    """« app.modele » d'une cible autorisée (enum résolu à la génération).
+
+    ERR-ENF11-FUZZ-RECORDS (2e passe) — à la LECTURE d'un paramètre de requête
+    la valeur doit appartenir à l'énumération publiée (``resolve_target``
+    tolérait la casse et rendait une liste vide pour le reste : 200 sur un
+    paramètre que le schéma déclare invalide)."""
+    default_error_messages = {
+        'invalid_choice': "« {input} » n'est pas une cible autorisée."}
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        valeur = super().to_internal_value(data)
+        if valeur not in cibles_autorisees():
+            self.fail('invalid_choice', input=valeur)
+        return valeur
 
 
 class CibleModelFieldExtension(OpenApiSerializerFieldExtension):
@@ -60,6 +75,33 @@ class CibleQuerySerializer(serializers.Serializer):
         help_text="Cible « app.modele » (avec ``id``).")
     id = serializers.IntegerField(
         required=False, help_text="Identifiant de la cible (avec ``model``).")
+
+
+def cible_requete_ou_400(request):
+    """``(model, id)`` du filtre de cible d'une liste, VALIDÉS selon le schéma
+    (``model`` ∈ cibles autorisées, ``id`` entier) : 400 nommant le paramètre
+    sinon. Chaque moitié est facultative (comme le schéma) ; sans les deux, le
+    filtre n'est pas appliqué."""
+    ser = CibleQuerySerializer(data=request.query_params)
+    ser.is_valid(raise_exception=True)
+    return ser.validated_data.get('model'), ser.validated_data.get('id')
+
+
+def cible_corps_ou_400(data):
+    """``(model, id)`` d'un corps de création rattaché à une cible, typés selon
+    le schéma : ``model`` chaîne, ``id`` entier (un entier écrit en chaîne reste
+    toléré — clients d'écran qui lisent l'id dans l'URL ; un multipart ne
+    porte que des chaînes). Booléen, flottant, liste, objet ou chaîne non
+    numérique → 400 nommant le champ (ils étaient lus en silence)."""
+    model, oid = data.get('model'), data.get('id')
+    if model is not None and not isinstance(model, str):
+        raise serializers.ValidationError({'model': ['Chaîne attendue.']})
+    if oid is not None:
+        if isinstance(oid, str) and oid.isascii() and oid.isdigit():
+            oid = int(oid)
+        if isinstance(oid, bool) or not isinstance(oid, int):
+            raise serializers.ValidationError({'id': ['Entier attendu.']})
+    return model, oid
 
 
 class CibleBodySerializer(serializers.Serializer):
