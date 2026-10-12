@@ -213,6 +213,11 @@ _CONFLIT_PROFIL = inline_serializer('ProfilConflit', {
 @permission_classes([IsAdminOrResponsableTier,
                      HasPermissionOrLegacy('parametres_modifier')])
 def update_profile(request):
+    # ENF11 (api-fuzz) — un corps JSON non-objet (``0``, liste…) cassait le
+    # verrou (`in request.data`) en 500 : 400 français, comme tout corps hors schéma.
+    if not isinstance(request.data, dict):
+        raise serializers.ValidationError(
+            {'non_field_errors': ['Corps attendu : un objet JSON.']})
     profile = _profile(request)
     conflit = _conflit_verrou(request, profile)
     if conflit is not None:
