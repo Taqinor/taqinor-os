@@ -102,3 +102,45 @@ class IdentiteVendeurFigeeTests(TestCase):
         self._changer_rib(R2, 'Banque Deux')
         texte = self._pdf(ancienne)
         self.assertIn(R2, texte)
+
+    def test_capital_et_forme_figes_a_l_emission(self):
+        """VNT39 — « <raison sociale> <forme> au capital de <capital> » en
+        tête de la bande légale : la facture émise APRÈS (instantané complet)
+        et le brouillon l'impriment ; une émise AVANT (instantané sans ces
+        clés) et une émise SANS instantané n'impriment JAMAIS le capital du
+        jour ; ICE/IF/RC/Patente inchangés."""
+        self.profile.nom = 'Soleil Atlas'
+        self.profile.forme_juridique = 'SARLAU'
+        self.profile.capital_social = '100 000,00 MAD'
+        for champ, valeur in (('ice', '001122334455667'),
+                              ('identifiant_fiscal', 'IF-39'),
+                              ('rc', 'RC-39'), ('patente', 'PAT-39')):
+            setattr(self.profile, champ, valeur)
+        self.profile.save()
+        avant = self._facture('FAC-APAR61-0390', statut='emise')
+        avant.identite_vendeur = {'entreprise_nom': 'Soleil Atlas',
+                                  'rib': R1, 'banque': 'Banque Une'}
+        avant.save(update_fields=['identite_vendeur'])
+        sans = self._facture('FAC-APAR61-0391', statut='emise')
+        apres = self._emettre(self._facture('FAC-APAR61-0392'))
+        brouillon = self._facture('FAC-APAR61-0393')
+        phrase = 'Soleil Atlas SARLAU au capital de 100 000,00 MAD'
+        self.assertEqual(apres.identite_vendeur['entreprise_capital_social'],
+                         '100 000,00 MAD')
+        self.profile.capital_social = '200 000,00 MAD'
+        self.profile.save()
+        textes = {nom: self._pdf(f) for nom, f in (
+            ('avant', avant), ('sans', sans), ('apres', apres),
+            ('brouillon', brouillon))}
+        self.assertIn(phrase, textes['apres'])
+        self.assertIn('Soleil Atlas SARLAU au capital de 200 000,00 MAD',
+                      textes['brouillon'])
+        for nom in ('avant', 'sans'):
+            with self.subTest(facture=nom):
+                self.assertNotIn('au capital de', textes[nom])
+                self.assertNotIn('SARLAU', textes[nom])
+        for nom, texte in textes.items():
+            with self.subTest(identifiants=nom):
+                for attendu in ('ICE : 001122334455667', 'IF : IF-39',
+                                'RC : RC-39', 'Patente : PAT-39'):
+                    self.assertIn(attendu, texte)
