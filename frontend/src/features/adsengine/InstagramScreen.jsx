@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { erreurServeur } from './adsengine'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ADSDEEP56 — Écran Instagram (compte Business relié).
@@ -24,6 +26,7 @@ const MEDIA_TYPES = [
 ]
 
 export default function InstagramScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [media, setMedia] = useState([])
   const [comments, setComments] = useState([])
   const [quota, setQuota] = useState(null)
@@ -47,9 +50,9 @@ export default function InstagramScreen() {
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
-      adsengineApi.instagram.media().then(r => r.data).catch(() => []),
-      adsengineApi.instagram.comments().then(r => r.data).catch(() => []),
-      adsengineApi.instagram.quota().then(r => r.data).catch(() => null),
+      adsengineApi.instagram.media().then(r => r.data).catch(() => { setLoadErrors(markLoadError("les médias Instagram")); return [] }),
+      adsengineApi.instagram.comments().then(r => r.data).catch(() => { setLoadErrors(markLoadError("les commentaires Instagram")); return [] }),
+      adsengineApi.instagram.quota().then(r => r.data).catch(() => { setLoadErrors(markLoadError("le quota de publication")); return null }),
     ]).then(([m, c, q]) => {
       setMedia(Array.isArray(m) ? m : (m?.results || []))
       setComments(Array.isArray(c) ? c : (c?.results || []))
@@ -138,6 +141,7 @@ export default function InstagramScreen() {
         </div>
       )}
 
+      <LoadErrorNotice errors={loadErrors} />
       {err && <p data-testid="ae-ig-err" style={{ color: '#dc2626' }}>{err}</p>}
 
       {/* Composeur de publication */}

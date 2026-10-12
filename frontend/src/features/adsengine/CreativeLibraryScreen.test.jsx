@@ -181,3 +181,12 @@ describe('CreativeLibraryScreen (ENG27)', () => {
     await waitFor(() => expect(mocks.generateVariants).toHaveBeenCalledWith(2))
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('CreativeLibraryScreen — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.list.mockRejectedValue(new Error('boom'))
+    renderScreen()
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

@@ -17,6 +17,8 @@ import SyncStatusBanner from './SyncStatusBanner'
 // FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
 import UpdateBanner from './UpdateBanner'
 import { normalizeSyncStatus, syncStatusFor, formatAge } from './syncStatus'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ENG23 — Dashboard « un chiffre » du moteur publicitaire.
@@ -166,6 +168,7 @@ const SIGNAL_CARDS = [
 const SIGNAL_METRIC_HELP_KEY = { creatif: 'sante_creative', operations: 'sante_operations' }
 
 export default function DashboardScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [metrics, setMetrics] = useState(null)
   // ADSDEEP61 — tuiles Dashboard v2 (conversations + MER mixte), optionnelles.
   const [v2, setV2] = useState(null)
@@ -225,7 +228,7 @@ export default function DashboardScreen() {
     if (dashboardV2Fn) {
       dashboardV2Fn()
         .then(r => setV2(r.data || null))
-        .catch(() => setV2(null))
+        .catch(() => { setV2(null); setLoadErrors(markLoadError("le tableau de bord v2")) })
     }
     // PUB41 — statut de fraîcheur (endpoint optionnel : garde `?.` pour ne
     // pas casser les écrans/tests qui mockent une API réduite).
@@ -233,7 +236,7 @@ export default function DashboardScreen() {
     if (syncStatusFn) {
       syncStatusFn()
         .then(r => setSyncStatus(normalizeSyncStatus(r.data)))
-        .catch(() => setSyncStatus(null))
+        .catch(() => { setSyncStatus(null); setLoadErrors(markLoadError("l'état de synchronisation")) })
     }
   }, [range])
 
@@ -246,7 +249,7 @@ export default function DashboardScreen() {
     setLeads([])
     adsengineApi.metrics.leads(num.metric)
       .then(r => setLeads(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setLeads([]))
+      .catch(() => { setLeads([]); setLoadErrors(markLoadError("les leads")) })
       .finally(() => setLeadsLoading(false))
   }
   const closeDrill = () => { setDrill(null); setLeads([]) }
@@ -258,19 +261,19 @@ export default function DashboardScreen() {
       pacingLoaded.current = true
       adsengineApi.metrics.pacing()
         .then(r => setPacing(normalizePacing(r.data)))
-        .catch(() => setPacing(normalizePacing(null)))
+        .catch(() => { setPacing(normalizePacing(null)); setLoadErrors(markLoadError("le rythme de dépense")) })
     }
     if (next === 'reconciliation' && !reconLoaded.current) {
       reconLoaded.current = true
       adsengineApi.reconciliation.list()
         .then(r => setRecon(normalizeReconciliation(r.data)))
-        .catch(() => setRecon([]))
+        .catch(() => { setRecon([]); setLoadErrors(markLoadError("la réconciliation")) })
     }
     if (next === 'signaux' && !signalsLoaded.current) {
       signalsLoaded.current = true
       adsengineApi.signals.get()
         .then(r => setSignals(normalizeSignals(r.data)))
-        .catch(() => setSignals(normalizeSignals(null)))
+        .catch(() => { setSignals(normalizeSignals(null)); setLoadErrors(markLoadError("les signaux")) })
     }
   }
 
@@ -300,7 +303,7 @@ export default function DashboardScreen() {
     setCohorts([])
     adsengineApi.signals.cohort({ signal: key })
       .then(r => setCohorts(normalizeCohorts(r.data)))
-      .catch(() => setCohorts([]))
+      .catch(() => { setCohorts([]); setLoadErrors(markLoadError("les cohortes")) })
       .finally(() => setCohortsLoading(false))
   }
   const closeSignalDrill = () => { setSignalDrill(null); setCohorts([]) }
@@ -333,6 +336,7 @@ export default function DashboardScreen() {
       <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <LoadErrorNotice errors={loadErrors} />
       <SyncStatusBanner />
 
       {/* PUB40 — sélecteur de période + comparaison (spend/CPL/fréquence,

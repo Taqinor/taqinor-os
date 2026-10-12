@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -21,7 +23,7 @@ class SemanticConfig(AppConfig):
         # `MetricDefinition` (API, admin, seeder, script : les quatre chemins
         # d'édition). Import LOCAL : `ready()` est le seul endroit où les
         # modèles sont chargés.
-        from . import receivers  # noqa: F401
+        import_module('.receivers', __package__)
 
         # NTDATA34 — c'est SEMANTIC qui vient se brancher sur la fondation,
         # jamais l'inverse : `core` ne peut pas importer une app (contrat

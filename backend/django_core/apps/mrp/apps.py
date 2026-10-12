@@ -26,7 +26,10 @@ class MrpConfig(AppConfig):
         'icone': 'wrench',
         'depends': [],
         'installable': True,
-        'description': 'Postes de charge, gammes opératoires, ordres de fabrication capacitaires, calcul des besoins nets (MRP), ordonnancement à capacité finie, terminal atelier et coût de revient standard (Groupe NTMFG).',
+        'description': (
+            'Postes de charge, gammes opératoires, ordres de fabrication capacitaires, calcul des besoins '
+            'nets (MRP), ordonnancement à capacité finie, terminal atelier et coût de revient standard '
+            '(Groupe NTMFG).'),
         'categorie': 'Stock',
         'parked': True,
     }

@@ -122,3 +122,13 @@ describe('CommandPalette (PUB51)', () => {
     await waitFor(() => expect(screen.queryByTestId('ae-command-palette')).toBeNull())
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('CommandPalette — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.campaignsList.mockRejectedValue(new Error('boom'))
+    renderPalette()
+    openWithCtrlK()
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

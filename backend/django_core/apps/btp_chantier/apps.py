@@ -25,7 +25,10 @@ class BtpChantierConfig(AppConfig):
         'label': 'BTP Chantier',
         'icone': 'hard-hat',
         'depends': [],
-        'description': 'Vertical BTP/EPC : réserves géo-localisées sur plan, RFI, visas de documents techniques, journal de chantier, avenants, DGD.',
+        'description': (
+            'Vertical BTP/EPC : réserves géo-localisées sur plan, RFI, visas de documents techniques, journal de '
+            'chantier, avenants, DGD.'
+        ),
         'categorie': 'Verticaux',
         'parked': True,
     }

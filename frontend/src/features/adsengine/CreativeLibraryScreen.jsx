@@ -5,6 +5,8 @@ import fetchAllPages from '../../utils/fetchAllPages'
 import {
   policyPassed, formatMAD, formatNumber,
 } from './adsengine'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ENG27 — Bibliothèque créative du moteur publicitaire.
@@ -35,6 +37,7 @@ const TYPES = [
 const EMPTY_UPLOAD = { designation: '', type: 'static', file: null }
 
 export default function CreativeLibraryScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [assets, setAssets] = useState([])
   const [loading, setLoading] = useState(true)
   const [checkingId, setCheckingId] = useState(null)
@@ -50,7 +53,7 @@ export default function CreativeLibraryScreen() {
     setLoading(true)
     fetchAllPages((page) => adsengineApi.creatives.list({ page }).then(r => r.data), { concurrency: 3 })
       .then(rows => setAssets(Array.isArray(rows) ? rows : (rows?.results || [])))
-      .catch(() => setAssets([]))
+      .catch(() => { setAssets([]); setLoadErrors(markLoadError("les créations")) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -143,6 +146,7 @@ export default function CreativeLibraryScreen() {
         <h2>Bibliothèque créative</h2>
       </div>
 
+      <LoadErrorNotice errors={loadErrors} />
       {msg && <p data-testid="ae-creative-msg" style={{ color: '#475569' }}>{msg}</p>}
 
       {/* Upload d'un nouvel asset */}

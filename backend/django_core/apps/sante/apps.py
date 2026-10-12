@@ -25,7 +25,10 @@ class SanteConfig(AppConfig):
         'label': 'Santé',
         'icone': 'stethoscope',
         'depends': [],
-        'description': 'Agenda multi-praticiens, admission, nomenclature des actes, facturation patient/tiers payant pour cabinets et cliniques.',
+        'description': (
+            'Agenda multi-praticiens, admission, nomenclature des actes, facturation patient/tiers payant pour '
+            'cabinets et cliniques.'
+        ),
         'categorie': 'Services',
         'parked': True,
     }

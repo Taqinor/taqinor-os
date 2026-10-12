@@ -5,6 +5,8 @@ import fetchAllPages from '../../utils/fetchAllPages'
 import {
   normalizeBacklog, runwayTone, clampRatio, formatPercent, formatNumber,
 } from './adsengine'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ENG41 — Gestionnaire de backlog créatif (CreativeGenerationBatch par campagne).
@@ -35,6 +37,7 @@ import {
    ========================================================================== */
 
 export default function BacklogScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [campagnes, setCampagnes] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyLot, setBusyLot] = useState(null)
@@ -55,7 +58,7 @@ export default function BacklogScreen() {
     setLoading(true)
     adsengineApi.backlog.list()
       .then(r => setCampagnes(normalizeBacklog(r.data)))
-      .catch(() => setCampagnes([]))
+      .catch(() => { setCampagnes([]); setLoadErrors(markLoadError("le backlog")) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -74,7 +77,7 @@ export default function BacklogScreen() {
         setItemsTruncation(count != null && count > rows.length
           ? { shown: rows.length, total: count } : null)
       })
-      .catch(() => setItemsSansLot([]))
+      .catch(() => { setItemsSansLot([]); setLoadErrors(markLoadError("les éléments sans lot")) })
       .finally(() => setItemsSansLotLoading(false))
   }, [])
 
@@ -163,6 +166,7 @@ export default function BacklogScreen() {
         </h2>
       </div>
 
+      <LoadErrorNotice errors={loadErrors} />
       {msg && <p data-testid="ae-backlog-msg" style={{ color: '#475569' }}>{msg}</p>}
 
       {/* PACT111 — déclencheur du VRAI pipeline de génération ancrée aux faits

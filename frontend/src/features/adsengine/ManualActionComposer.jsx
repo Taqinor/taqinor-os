@@ -5,6 +5,8 @@ import fetchAllPages from '../../utils/fetchAllPages'
 import { erreurServeur } from './adsengine'
 // PUB4 — grille dayparting (ADSDEEP36) montée pour le kind set_schedule.
 import DaypartingGrid from './DaypartingGrid'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    PUB22 — Composeur d'action manuel GÉNÉRIQUE (piloté par manualActions.js).
@@ -23,6 +25,7 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(false)
+  const [loadErrors, setLoadErrors] = useState([])
 
   // PUB50 — gabarits de proposition réutilisables pour CE kind. Appliquer un
   // gabarit ne fait que PRÉ-REMPLIR le formulaire (jamais une proposition auto).
@@ -34,7 +37,7 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
   const loadTemplates = useCallback(() => {
     fetchAllPages((page) => adsengineApi.proposalTemplates.list({ kind: descriptor.kind, page }).then(r => r.data), { concurrency: 3 })
       .then(rows => setTemplates(Array.isArray(rows) ? rows : (rows?.results || [])))
-      .catch(() => setTemplates([]))
+      .catch(() => { setTemplates([]); setLoadErrors(markLoadError("les gabarits")) })
   }, [descriptor.kind])
 
   useEffect(() => { loadTemplates() }, [loadTemplates])
@@ -122,6 +125,7 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
   return (
     <form className="ae-maction-composer" data-testid="ae-maction-composer" onSubmit={submit}
       style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.85rem', margin: '0.6rem 0' }}>
+      <LoadErrorNotice errors={loadErrors} />
       <h4 style={{ margin: '0 0 0.5rem' }} data-testid="ae-maction-title">{descriptor.label}</h4>
 
       {/* PUB50 — barre de gabarits : appliquer (pré-remplir) / enregistrer. */}
