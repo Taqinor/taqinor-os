@@ -1694,3 +1694,14 @@ Response violates schema|PATCH /api/django/ventes/parametrages-relance-client/{i
 Response violates schema|POST /api/django/core/paiements-en-ligne/
 Server error|POST /api/django/crm/relance-etapes/{id}/reporter/
 Server error|POST /api/django/ventes/devis/auto/
+# VNT lot M0, 3e tour (12/10/2026, PR #979) : tirage aleatoire, ventes/core pre-existants.
+API accepted schema-violating request|PUT /api/django/core/dossiers/{id}/
+API rejected schema-compliant request|PATCH /api/django/ventes/devis/{id}/
+API rejected schema-compliant request|POST /api/django/core/matrices-approbation/
+API rejected schema-compliant request|POST /api/django/core/scheduled-exports/
+API rejected schema-compliant request|PUT /api/django/core/paiements-en-ligne/{id}/
+API rejected schema-compliant request|PUT /api/django/ventes/bons-commande/{id}/
+Server error|POST /api/django/core/data-explorer/run/
+Server error|POST /api/django/ventes/devis/{id}/replace-lines/
+Server error|POST /api/django/ventes/devis/from-layout/
+Server error|POST /api/django/ventes/factures/{id}/retour-client/
