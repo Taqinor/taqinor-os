@@ -133,8 +133,10 @@ PrefillSiteResponse = _ser('DevisPrefillSiteResponse', {
 # -------------------------------------------------------------- facture
 FactureAnnulerRequest = _ser('FactureAnnulerRequest', {
     'acompte': _ser('FactureAnnulerAcompte', {
-        'action': s.ChoiceField(choices=['transferer', 'rembourser'],
-                                required=False),
+        # VNT12 — ``garder_en_avance`` (contrat facture_annulation.json).
+        'action': s.ChoiceField(
+            choices=['transferer', 'rembourser', 'garder_en_avance'],
+            required=False),
         'facture_cible': s.IntegerField(required=False),
     }, required=False),
 })
@@ -727,6 +729,9 @@ FacturerVenteRequest = _ser('DevisFacturerVenteRequest', {
     'remplacer_brouillons': BooleenStrict(required=False),
     'utiliser_avances': BooleenStrict(required=False),
     'override_avertissement': BooleenStrict(required=False),
+    # XFAC28 — responsable/admin : passe outre le blocage crédit à
+    # l'émission (comme ``generer-facture``), journalisé.
+    'override_credit': BooleenStrict(required=False),
 })
 FacturerVenteMontants = _ser('DevisFacturerVenteMontants', {
     cle: s.CharField() for cle in (
@@ -816,6 +821,20 @@ class FactureEmise(FactureSerializer):
 class FactureCreeeDepuisBc(FactureSerializer):
     """Réponse de ``creer-facture`` : la facture + l'avertissement doux."""
     warnings = s.ListField(child=s.CharField(), required=False)
+
+
+class FactureAnnulee(FactureSerializer):
+    """Réponse de ``annuler`` (VNT4, ``facture_annulation.json``) : la
+    facture + l'avoir de contre-passation (``null`` pour un brouillon)."""
+    avoir = _ser('FactureAnnulationAvoir', {
+        'id': s.IntegerField(), 'reference': s.CharField(),
+        'montant': s.CharField()}, allow_null=True)
+
+
+#: VNT14 — DELETE d'une facture refusé (400) : pas un brouillon, ou
+#: ``code: reference_legale`` (numéro légal remis en brouillon).
+ErreurSuppressionFacture = _ser('FactureErreurSuppression', {
+    'detail': s.CharField(), 'code': s.CharField(required=False)})
 
 
 MarquerPayeeRequest = _ser('FactureMarquerPayeeRequest', {
