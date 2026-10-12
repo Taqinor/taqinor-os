@@ -1,0 +1,38 @@
+{
+  "sha": "9b6c4edcb75e44c74eb508184f5d82f13e2d8444",
+  "date": "2026-10-12",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR6"
+  ],
+  "couvre_avec_ecart": [
+    "AGNR6"
+  ],
+  "etapes": [
+    {
+      "id": "P5.1",
+      "taches": [
+        "AGNR6"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-12/AGNR-P5.1.txt",
+      "notes": [
+        "écart accepté (base FAIL) : 15 erreurs console « <svg> attribute height: Expected length, auto » sur la page publique résidentielle — courbes du site (apps/web/src/lib/proposalCurve.ts, proposalChart.ts, batterySim.ts : height=\"auto\" en dur), hors AGNR6 (backend seul) → ERR-WEB-SVG-HEIGHT-AUTO (docs/WEB_ERROR_PLAN.md)"
+      ]
+    }
+  ]
+}

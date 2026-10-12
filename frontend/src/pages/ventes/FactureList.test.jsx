@@ -45,6 +45,11 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
         data: new Blob(['<xml/>'], { type: 'application/xml' }),
       })),
       dgiConformiteFacture: vi.fn(() => Promise.resolve({ data: { conforme: true, problemes: [] } })),
+      // VNT46 — quittance d'UN paiement (GET paiements/<id>/recu-pdf/).
+      recuPdfPaiement: vi.fn(() => Promise.resolve({
+        data: new Blob(['%PDF'], { type: 'application/pdf' }),
+        headers: { 'content-disposition': 'inline; filename="Quittance_REC-1.pdf"' },
+      })),
       bulkFactures: vi.fn(() => Promise.resolve({
         data: { 1: { ok: true, detail: 'Émise.' } },
       })),
@@ -360,5 +365,60 @@ describe('FactureList — ARC49-FIX : la liste reste visible sur téléphone (< 
     // (@media max-width:768px, index.css : thead masqué + td::before =
     // attr(data-label)) — règles inopérantes tant qu'un ANCÊTRE est masqué.
     expect(conteneurTable.querySelector('table').className).toContain('data-table')
+  })
+})
+
+
+/* ============================================================================
+   VNT46 (D-VNT-1) — gestes de la facture dans la LISTE : Annuler / Supprimer
+   réservés au palier responsable/admin (PEUT_ANNULER côté serveur), Supprimer
+   seulement sur un BROUILLON-<id>, un Reçu PAR paiement encaissé.
+   ========================================================================== */
+describe('FactureList — VNT46 : annuler / supprimer / reçu par paiement', () => {
+  const brouillonProvisoire = {
+    ...baseFacture, id: 5, reference: 'BROUILLON-5', statut: 'brouillon', total_ttc: 14700, montant_du: 14700,
+  }
+  const brouillonLegal = { ...brouillonProvisoire, id: 6, reference: 'FAC-2026-10-0006' }
+
+  it('Commercial : ni Annuler ni Supprimer dans le menu', async () => {
+    const user = userEvent.setup()
+    renderList({ factures: [brouillonProvisoire, baseFacture], role: 'normal' })
+    for (const ref of ['BROUILLON-5', 'FAC-2026-07-0001']) {
+      const row = screen.getByText(ref).closest('tr')
+      await user.click(within(row).getByTitle("Plus d'actions"))
+      await screen.findByRole('menu')
+      expect(screen.queryByTestId('annuler-facture')).toBeNull()
+      expect(screen.queryByTestId('supprimer-brouillon')).toBeNull()
+      await user.keyboard('{Escape}')
+    }
+  })
+
+  it('responsable : Supprimer sur BROUILLON-<id>, pas sur un brouillon à numéro légal', async () => {
+    const user = userEvent.setup()
+    renderList({ factures: [brouillonProvisoire, brouillonLegal], role: 'responsable' })
+    let row = screen.getByText('BROUILLON-5').closest('tr')
+    await user.click(within(row).getByTitle("Plus d'actions"))
+    expect(await screen.findByTestId('supprimer-brouillon')).toBeInTheDocument()
+    expect(screen.getByTestId('annuler-facture')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    row = screen.getByText('FAC-2026-10-0006').closest('tr')
+    await user.click(within(row).getByTitle("Plus d'actions"))
+    await screen.findByTestId('annuler-facture')
+    expect(screen.queryByTestId('supprimer-brouillon')).toBeNull()
+  })
+
+  it('Reçu : un bouton par paiement encaissé, appelle GET paiements/<id>/recu-pdf/', async () => {
+    const user = userEvent.setup()
+    const payee = { ...baseFacture, id: 7, reference: 'FAC-2026-07-0007', montant_paye: 5000, montant_du: 0,
+      paiements: [
+        { id: 31, statut: 'encaisse', montant: '5000.00', date_paiement: '2026-07-10', numero_recu: 'REC-1' },
+        { id: 32, statut: 'rejete', montant: '900.00', date_paiement: '2026-07-11' },
+      ] }
+    renderList({ factures: [payee] })
+    const row = screen.getByText('FAC-2026-07-0007').closest('tr')
+    const boutons = within(row).getAllByTestId('recu-paiement')
+    expect(boutons).toHaveLength(1)
+    await user.click(boutons[0])
+    await waitFor(() => expect(ventesApi.recuPdfPaiement).toHaveBeenCalledWith(31))
   })
 })

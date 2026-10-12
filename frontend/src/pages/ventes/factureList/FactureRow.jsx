@@ -4,13 +4,20 @@
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Download, FileWarning, MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal, CreditCard, ShieldCheck, Zap, Eye } from 'lucide-react'
-import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, FormActions } from '../../../ui'
+import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent } from '../../../ui'
+import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import { formatMAD, toNumber, normalizePhoneE164 } from '../../../lib/format'
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK, factureTrack } from '../../../features/ventes/documentChain'
 import { useRotatingLabel } from '../../../hooks/useRotatingLabel'
 import { isOverdue, isPartiallyPaid } from './factureHelpers.js'
 import HistoriqueActivitesListe from '../HistoriqueActivitesListe'
+// VNT46 — dialogue d'annulation extrait ; ré-export nommé conservé (FactureList.jsx
+// et FactureRowAnnulation.afac.test.jsx l'importent d'ici).
+import { AnnulationFactureDialog } from './AnnulationFactureDialog'
+import { useActionsVente } from '../../../features/ventes/vente/useActionsVente'
+
+export { AnnulationFactureDialog }
 
 // VX132 — chargement long conscient (voir DevisList.jsx PDF_GENERATION_LABELS) :
 // libellés honnêtes côté client uniquement — le PDF facture reste le moteur
@@ -69,9 +76,13 @@ export default function FactureRow({ f, ctx }) {
     saveEcheance, setEcheanceEditId, startEditEcheance,
     dgiActif, isAdmin,
     actionId, pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy,
-    openEdit, doAction, emettreFacture, annulerFacture,
+    openEdit, doAction, emettreFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+  } = ctx
+  // Déstructuration en deux temps (ACAL345 : la liste miroir de rowCtx dans
+  // FactureList.jsx ne doit pas former un bloc littéral identique ≥ 6 lignes).
+  const {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
     // PACT121 - ouvre la demande de paiement carte (prestataire).
@@ -80,17 +91,27 @@ export default function FactureRow({ f, ctx }) {
     openPreview,
     // EZ13 - marquage sec, relegue au menu et explique.
     openMarquerPayee,
+  } = ctx
+  const {
     highlightFactureId,
     // WIR183 - les quatre actions de fiche, jusqu'ici sans point d'entree.
     canManage, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
   } = ctx
-  // AFAC13 - annulation avec directive d'argent (dialogue).
-  const { demanderAnnulation } = ctx
+  // VNT46 - gestes de la facture (annuler / supprimer / reçu) : état local de la
+  // ligne, erreur rendue SOUS la facture, aucun toast.
+  const actions = useActionsVente()
+  const [annulOuvert, setAnnulOuvert] = useState(false)
+  const [annulMsg, setAnnulMsg] = useState(null)
+  const [directiveRequise, setDirectiveRequise] = useState(false)
+  const [suppOuvert, setSuppOuvert] = useState(false)
   const overdue = isOverdue(f)
   const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
   const busy = actionId === f.id
+  const recusPaiements = Array.isArray(f.paiements)
+    ? f.paiements.filter((p) => p && p.statut === 'encaisse')
+    : []
   const isGenerating = pdfGenerating[f.id]
   const isDownloading = pdfDownloading[f.id]
   // VX132 — chargement long conscient : libellés honnêtes qui tournent
@@ -172,6 +193,10 @@ export default function FactureRow({ f, ctx }) {
             {histoOpenId === f.id ? "Masquer l'historique" : 'Historique'}
           </button>
         </div>
+        {actions.erreur && actions.erreur.factureId === f.id && actions.erreur.geste !== 'annuler' && (
+          <p role="alert" data-testid="facture-erreur"
+             className="mt-1 text-xs text-destructive">{actions.erreur.message}</p>
+        )}
       </td>
       {/* VX7 — calm color : nom client = donnée primaire (contraste plein +
           poids medium) ; date d'émission = métadonnée secondaire (mutée). */}
@@ -215,6 +240,21 @@ export default function FactureRow({ f, ctx }) {
         {(f.montant_paye != null || f.montant_du != null) && (
           <div className="mt-0.5 text-xs text-muted-foreground">
             Payé {formatMAD(f.montant_paye)} / Dû {formatMAD(f.montant_du)}
+          </div>
+        )}
+        {/* VNT46 — un reçu (quittance PDF) PAR paiement encaissé ; jamais pour un
+            paiement rejeté. Fichier Quittance_<numero_recu>.pdf, erreur sous la facture. */}
+        {recusPaiements.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1" data-testid="recus-facture">
+            {recusPaiements.map((p) => (
+              <Button key={p.id} size="sm" variant="outline"
+                      data-testid="recu-paiement" data-paiement-id={p.id}
+                      loading={actions.occupe === `recu:${p.id}`}
+                      aria-label={`Reçu du paiement du ${p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : ''} — ${formatMAD(p.montant)}`}
+                      onClick={() => actions.recu(f, p)}>
+                <FileText /> Reçu
+              </Button>
+            ))}
           </div>
         )}
         {/* VX250(a) — PendingStepsIndicator : lecture PURE de statuts déjà
@@ -453,12 +493,26 @@ export default function FactureRow({ f, ctx }) {
                     Retour client…
                   </DropdownMenuItem>
                 )}
-                {f.statut !== 'payee' && f.statut !== 'annulee' && (
+                {/* VNT46 — annulation en 1 clic (avoir automatique) : palier
+                    responsable/admin, comme le serveur (PEUT_ANNULER). */}
+                {canManage && f.statut !== 'annulee' && (
                   <DropdownMenuItem
-                    onClick={() => (demanderAnnulation
-                      ? demanderAnnulation(f)
-                      : doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`))}>
+                    data-testid="annuler-facture"
+                    onClick={() => {
+                      actions.effacerErreur(); setAnnulMsg(null)
+                      setDirectiveRequise(false); setAnnulOuvert(true)
+                    }}>
                     Annuler la facture
+                  </DropdownMenuItem>
+                )}
+                {/* VNT46 — seul un BROUILLON-<id> se supprime (un numéro légal
+                    s'annule : le serveur répond 400 reference_legale sinon). */}
+                {canManage && f.statut === 'brouillon'
+                  && String(f.reference || '').startsWith('BROUILLON-') && (
+                  <DropdownMenuItem
+                    data-testid="supprimer-brouillon"
+                    onClick={() => { actions.effacerErreur(); setSuppOuvert(true) }}>
+                    Supprimer le brouillon
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -490,72 +544,42 @@ export default function FactureRow({ f, ctx }) {
         </td>
       </tr>
     )}
+    {annulOuvert && (
+      <AnnulationFactureDialog
+        facture={f}
+        factures={ctx.factures ?? actions.facturesChargees()}
+        busy={actions.occupe === `annuler:${f.id}`}
+        erreur={annulMsg}
+        directiveRequise={directiveRequise}
+        onClose={() => setAnnulOuvert(false)}
+        onConfirm={async (directive) => {
+          setAnnulMsg(null)
+          const r = await actions.annuler(f, directive)
+          if (r.ok) { setAnnulOuvert(false); return }
+          setAnnulMsg(r.message)
+          if (r.code === 'directive_acompte_requise') setDirectiveRequise(true)
+        }} />
+    )}
+    {suppOuvert && (
+      <ResponsiveDialog
+        open
+        onOpenChange={(o) => { if (!o) setSuppOuvert(false) }}
+        title={`Supprimer le brouillon ${f.reference} ?`}
+        description="Ce brouillon n'a pas de numéro légal : il disparaît sans laisser de trou dans la numérotation."
+        footer={(
+          <>
+            <Button type="button" variant="ghost" onClick={() => setSuppOuvert(false)}>Retour</Button>
+            <Button type="button" variant="destructive"
+                    loading={actions.occupe === `supprimer:${f.id}`}
+                    data-testid="supprimer-brouillon-confirmer"
+                    onClick={async () => { await actions.supprimer(f); setSuppOuvert(false) }}>
+              Supprimer
+            </Button>
+          </>
+        )}>
+        <span className="sr-only">{f.reference}</span>
+      </ResponsiveDialog>
+    )}
     </Fragment>
-  )
-}
-
-// AFAC13 — une facture qui porte de l'argent ne s'annule jamais sans dire où il
-// va : l'écran impose le choix « transférer » (autre facture ouverte du même
-// client) ou « rembourser », et affiche le refus serveur SOUS le choix. Aucune
-// règle d'argent recalculée ici : le dialogue s'ouvre sur `montant_paye > 0`
-// servi par le serveur, qui reste seul juge (AFAC12).
-export function AnnulationFactureDialog({ facture, factures = [], busy = false, erreur = null, onConfirm, onClose }) {
-  const [action, setAction] = useState('transferer')
-  const [cible, setCible] = useState('')
-  if (!facture) return null
-  const cibles = factures.filter(x => x.id !== facture.id
-    && String(x.client) === String(facture.client)
-    && ['emise', 'en_retard'].includes(x.statut))
-  const manque = action === 'transferer' && !cible
-  const valider = () => onConfirm(action === 'transferer'
-    ? { action, facture_cible: Number(cible) }
-    : { action })
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Annuler la facture {facture.reference}</DialogTitle>
-          <DialogDescription>
-            Cette facture porte {formatMAD(toNumber(facture.montant_paye))} encaissés :
-            dites où va cet argent avant de l’annuler.
-          </DialogDescription>
-        </DialogHeader>
-        <fieldset className="space-y-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" name="annulation-acompte" value="transferer"
-                   checked={action === 'transferer'}
-                   onChange={() => setAction('transferer')} />
-            Transférer sur une autre facture
-          </label>
-          {action === 'transferer' && (
-            <select aria-label="Facture cible" value={cible}
-                    onChange={(e) => setCible(e.target.value)}
-                    className="w-full rounded-md border px-2 py-1 text-sm">
-              <option value="">Choisir une facture ouverte…</option>
-              {cibles.map(x => (
-                <option key={x.id} value={x.id}>{x.reference}</option>
-              ))}
-            </select>
-          )}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" name="annulation-acompte" value="rembourser"
-                   checked={action === 'rembourser'}
-                   onChange={() => setAction('rembourser')} />
-            Rembourser
-          </label>
-          {erreur && (
-            <p role="alert" data-testid="annulation-erreur"
-               className="text-sm text-destructive">{erreur}</p>
-          )}
-        </fieldset>
-        <FormActions sticky={false}>
-          <Button type="button" variant="ghost" onClick={onClose}>Retour</Button>
-          <Button type="button" variant="destructive" loading={busy}
-                  disabled={manque} onClick={valider}>
-            Annuler la facture
-          </Button>
-        </FormActions>
-      </DialogContent>
-    </Dialog>
   )
 }
