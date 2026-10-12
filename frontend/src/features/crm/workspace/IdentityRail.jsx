@@ -285,6 +285,12 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
     ? Number(conceptionKwcBrut) : null
   const showConception = Number.isFinite(conceptionKwc) && conceptionKwc > 0
   const conceptionImage = (conception?.image_url || '').trim()
+  // ACAL273 — « conçus » = kWc du calepinage OUVERT du lead (lead sans devis
+  // chiffré) ; « vendus » = kWc des lignes du devis (puissance_kwc_du_devis).
+  const conceptionCalepinage = (conception?.calepinage
+    && typeof conception.calepinage === 'object'
+    && conception.calepinage.id != null) ? conception.calepinage : null
+  const conceptionLibelle = conceptionCalepinage ? 'conçus' : 'vendus'
 
   // ── PUB53 — lien retour vers l'annonce Meta d'origine (pur frontend : le
   // serializer crm expose déjà `meta_ad_id` en '__all__', aucun sélecteur
@@ -645,7 +651,9 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         {showConception && (
           <Badge
             tone="success"
-            title="Puissance conçue sur le calepinage 3D de ce lead"
+            title={conceptionCalepinage
+              ? 'Puissance conçue sur le calepinage ouvert de ce lead'
+              : 'Puissance vendue : celle des lignes du devis'}
             data-testid="lw-chip-conception"
           >
             {conceptionImage && (
@@ -660,7 +668,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
                 }}
               />
             )}
-            🛰️ {formatNumber(conceptionKwc, { decimals: 2 })} kWc conçus
+            🛰️ {formatNumber(conceptionKwc, { decimals: 2 })} kWc {conceptionLibelle}
           </Badge>
         )}
         {/* PUB53 — traçabilité retour : ce lead vient d'une ad Meta →
@@ -774,7 +782,9 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               onSelect={ouvrirModuleCalepinage}
               title="Ouvrir ce lead dans le module Calepinage (le même calepinage à chaque fois)"
             >
-              Ouvrir dans le module Calepinage
+              {conceptionCalepinage
+                ? `Ouvrir le calepinage CAL-${conceptionCalepinage.id}${conceptionCalepinage.statut ? ` (${conceptionCalepinage.statut})` : ''}`
+                : 'Ouvrir dans le module Calepinage'}
             </DropdownMenuItem>
             {/* LANE Q-C (fondateur 25/08/2026) — le commercial choisit quelles
                 informations demander au lead (défaut = ce qui manque),

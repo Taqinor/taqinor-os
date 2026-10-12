@@ -97,10 +97,3 @@ class EngagementEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIn('score', resp.data)
         self.assertIn('label', resp.data)
-
-    def test_endpoint_bulk(self):
-        Client.objects.create(company=self.company, nom='C1')
-        Client.objects.create(company=self.company, nom='C2')
-        resp = self.api.get('/api/django/crm/clients/engagement-bulk/')
-        self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(len(resp.data), 2)

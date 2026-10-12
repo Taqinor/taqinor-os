@@ -16,6 +16,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from authentication.models import Company
+from testkit.time import frozen
 
 from .models import Lead
 
@@ -45,6 +46,12 @@ class WebhookQualificationTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='QK1 Co', slug='qk1-co')
         self.url = reverse('website-lead-webhook')
+        # Tenant explicite : sans réglage, le webhook retombe sur la 1re
+        # Company par pk — une Company résiduelle d'un autre module (shard,
+        # --keepdb) pourrait alors recevoir les leads de ces tests.
+        tenant = override_settings(WEBSITE_LEADS_COMPANY_ID=self.company.pk)
+        tenant.enable()
+        self.addCleanup(tenant.disable)
 
     def post(self, data):
         return self.client.post(
@@ -222,19 +229,30 @@ class WebhookQualificationTests(TestCase):
         manip qui l'a effacé côté client), ne doit JAMAIS écraser le contour
         déjà capté par du vide — même esprit que la garde GPS existante."""
         outline = [[33.589, -7.603], [33.590, -7.603], [33.590, -7.604]]
-        first = self.post(payload_site(
-            roofPoint={'lat': 33.589, 'lng': -7.603},
-            roofOutline=outline))
-        self.assertEqual(first.status_code, 201, first.content)
-        lead_id = first.json()['lead_id']
-        lead = Lead.objects.get(pk=lead_id)
-        self.assertEqual(len(lead.roof_outline), 3)
+        # Horloge GELÉE : la garde anti-rejeu du webhook est une FENÊTRE de
+        # 60 s (date_creation >= now - 60 s). Sur une CI chargée (shard,
+        # merge queue) le temps écoulé entre les deux POST — effets
+        # post-création, courtier Celery injoignable… — pouvait sortir de la
+        # fenêtre : le 2ᵉ POST créait alors un nouveau lead (201, « 1 doublon
+        # possible », AMRANI-2). Le test vérifie la discipline « jamais
+        # d'écrasement », pas la durée d'un POST. Téléphone ET e-mail
+        # explicites : le rapprochement ne dépend d'aucun état résiduel.
+        with frozen('2026-09-30 10:00:00'):
+            first = self.post(payload_site(
+                email='youssef.amrani@example.ma',
+                roofPoint={'lat': 33.589, 'lng': -7.603},
+                roofOutline=outline))
+            self.assertEqual(first.status_code, 201, first.content)
+            lead_id = first.json()['lead_id']
+            lead = Lead.objects.get(pk=lead_id)
+            self.assertEqual(len(lead.roof_outline), 3)
 
-        # Re-POST < 60 s (même téléphone) : SANS roofOutline cette fois.
-        retry = self.post(payload_site(
-            roofPoint={'lat': 33.589, 'lng': -7.603}))
+            # Re-POST < 60 s (même téléphone) : SANS roofOutline cette fois.
+            retry = self.post(payload_site(
+                email='youssef.amrani@example.ma',
+                roofPoint={'lat': 33.589, 'lng': -7.603}))
         self.assertEqual(retry.status_code, 200, retry.content)
-        self.assertEqual(Lead.objects.count(), 1)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
         lead.refresh_from_db()
         # Le contour déjà capté survit — jamais écrasé par un payload plus pauvre.
         self.assertEqual(len(lead.roof_outline), 3)

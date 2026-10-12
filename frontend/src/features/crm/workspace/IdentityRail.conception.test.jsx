@@ -36,11 +36,36 @@ const makeState = (over = {}) => initState({
 })
 
 describe('PV22 — chip conception 3D (IdentityRail)', () => {
+  it('ACAL273 — kWc VENDUS sans calepinage ouvert, CONÇUS avec', () => {
+    const { unmount } = render(
+      <IdentityRail
+        state={makeState({ conception: { kwc: 5.5, image_url: null, calepinage: null } })}
+        onAction={vi.fn()}
+        users={[]}
+      />,
+    )
+    expect(screen.getByTestId('lw-chip-conception')).toHaveTextContent('5,50 kWc vendus')
+    unmount()
+    render(
+      <IdentityRail
+        state={makeState({
+          conception: { kwc: 8.52, image_url: null, calepinage: { id: 12, statut: 'brouillon' } },
+        })}
+        onAction={vi.fn()}
+        users={[]}
+      />,
+    )
+    expect(screen.getByTestId('lw-chip-conception')).toHaveTextContent('8,52 kWc conçus')
+  })
+
   it('affiche les kWc conçus et la vignette du toit servis par la fiche', () => {
     render(
       <IdentityRail
         state={makeState({
-          conception: { kwc: 7.7, image_url: 'https://minio.test/toit-7.png' },
+          conception: {
+            kwc: 7.7, image_url: 'https://minio.test/toit-7.png',
+            calepinage: { id: 12, statut: 'brouillon' },
+          },
         })}
         onAction={vi.fn()}
         users={[]}
@@ -61,7 +86,7 @@ describe('PV22 — chip conception 3D (IdentityRail)', () => {
   it('sans image : le chip reste, la vignette disparaît', () => {
     render(
       <IdentityRail
-        state={makeState({ conception: { kwc: 12, image_url: '' } })}
+        state={makeState({ conception: { kwc: 12, image_url: '', calepinage: { id: 3, statut: 'valide' } } })}
         onAction={vi.fn()}
         users={[]}
       />,

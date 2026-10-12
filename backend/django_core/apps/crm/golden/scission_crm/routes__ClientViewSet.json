@@ -160,22 +160,6 @@
  },
  {
   "actions_map": {
-   "get": "engagement_bulk"
-  },
-  "motif": "^clients/engagement-bulk/$",
-  "nom": "client-engagement-bulk",
-  "vue": "ClientViewSet"
- },
- {
-  "actions_map": {
-   "get": "engagement_bulk"
-  },
-  "motif": "^clients/engagement-bulk\\.(?P<format>[a-z0-9]+)/?$",
-  "nom": "client-engagement-bulk",
-  "vue": "ClientViewSet"
- },
- {
-  "actions_map": {
    "post": "export_xlsx"
   },
   "motif": "^clients/export-xlsx/$",
