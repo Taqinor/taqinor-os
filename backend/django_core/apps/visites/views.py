@@ -510,7 +510,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # la journée de son équipe, il ne qualifie pas un client qu'il n'a pas vu.
     # Gelée par VT3 comme toute autre écriture.
 
-    @extend_schema(request=_schema_qualification(),
+    @extend_schema(request={'application/json': _schema_qualification()},
                    responses=_VISITE_CONTEXTE)
     @action(detail=True, methods=['post'], url_path='qualification')
     def qualification(self, request, pk=None):

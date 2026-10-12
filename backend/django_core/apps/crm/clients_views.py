@@ -41,6 +41,9 @@ from .serializers_clients import (
     RevueCompteSerializer, PlaybookSerializer, PlaybookEtapeSerializer,
     PlaybookTacheSerializer, LeadPlaybookProgressSerializer,
 )
+from apps.records.serializers import ChatterActivitySerializer
+from .fiche_bulk import coerce_id_list
+from .params_requete import CorpsTexteMixin, entier_param
 from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
 from . import activity
 from . import schema_docs as sd
@@ -273,7 +276,8 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         return Response(DealEnregistreSerializer(deal).data)
 
     @extend_schema(responses=DealEnregistreSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='a-payer')
+    @action(detail=False, methods=['get'], url_path='a-payer',
+            pagination_class=None)
     def a_payer(self, request):
         """NTCRM22 — liste des commissions À_PAYER, pour le comptable."""
         qs = self.get_queryset().filter(statut=DealEnregistre.Statut.A_PAYER)
@@ -292,9 +296,9 @@ class DefiViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
-    @extend_schema(responses=sd.OBJ)
+    @extend_schema(responses=sd.liste('CrmClassementDefi'))
     @action(detail=True, methods=['get'], url_path='classement',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def classement(self, request, pk=None):
         from .selectors import classement_defi
         defi = self.get_object()
@@ -420,7 +424,8 @@ _COOKIES_EQUIPE_MAX_AGE = 730 * 24 * 3600
 _MAX_NAVIGATEUR = 80
 
 
-class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
+class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
+                            mixins.CreateModelMixin,
                             mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """QJ-EQUIPE-2 — registre des appareils de l'équipe (exclusion permanente
     et rétroactive du traçage T-TRACE). Pas de retrieve/update : on liste, on
@@ -431,6 +436,7 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
     de gouvernance anti-fraude). EXCEPTION QJEQUIPE3 : ``ce-navigateur``, où
     l'utilisateur ne marque QUE son propre navigateur — voir son docstring."""
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    champs_texte = ('appareil_id', 'navigateur', 'libelle')  # ENF11
     # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
     # runtime passe TOUJOURS par get_queryset, qui rescope par société).
     queryset = AppareilEquipe.objects.all()
@@ -450,6 +456,8 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
+    @extend_schema(responses={200: AppareilEquipeSerializer,
+                              201: AppareilEquipeSerializer})
     def create(self, request, *args, **kwargs):
         """Idempotent-friendly : (re)marquer un appareil déjà enregistré met à
         jour son libellé au lieu de lever une erreur d'unicité — un commercial
@@ -723,6 +731,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """Exporte une sélection de clients en .xlsx (société courante)."""
         from .exports import export_clients_xlsx
         ids = request.data.get('ids') or []
+        try:
+            ids = coerce_id_list(ids)
+        except ValueError:
+            raise DRFValidationError({'ids': 'Identifiants entiers attendus.'})
         qs = self.get_queryset()
         if ids:
             qs = qs.filter(id__in=ids)
@@ -946,10 +958,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         alimente aussi la commande de notification `detecter_comptes_dormants`.
         """
         from .selectors import comptes_dormants
-        try:
-            seuil = int(request.query_params.get('seuil', 90))
-        except (TypeError, ValueError):
-            seuil = 90
+        seuil = entier_param(request, 'seuil', 90)
         company = request.user.company if request.user.company_id else None
         # ALEA27 — bornée par la portée du viewset (société + équipe).
         entries = comptes_dormants(
@@ -1078,7 +1087,8 @@ class LeadClientsActionsMixin:
                 if client else None),
         })
 
-    @extend_schema(responses=sd.OBJ)
+    @extend_schema(responses={200: {
+        'type': 'object', 'nullable': True, 'additionalProperties': {}}})
     @action(detail=True, methods=['get'], url_path='salle-vente-analytics',
             permission_classes=[IsAnyRole])
     def salle_vente_analytics_view(self, request, pk=None):
@@ -1088,12 +1098,17 @@ class LeadClientsActionsMixin:
         from .selectors import salle_vente_summary_for_lead
         lead = self.get_object()
         summary = salle_vente_summary_for_lead(request.user.company, lead.pk)
+        if summary is None:
+            # ENF11 — ``Response(None)`` rendait un corps VIDE sans
+            # Content-Type : le contrat dit « `null` si aucune salle ».
+            from django.http import HttpResponse
+            return HttpResponse('null', content_type='application/json')
         return Response(summary)
 
     # ── FG38 — Correspondance Lead↔Client (doublon retour client) ────────────
-    @extend_schema(responses=sd.OBJ)
+    @extend_schema(responses=sd.liste('CrmClientMatch'))
     @action(detail=True, methods=['get'], url_path='client-match',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def client_match(self, request, pk=None):
         """Cherche si le lead correspond à un Client existant de la société.
 
@@ -1283,7 +1298,7 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.param('metric'), sd.param('year', OpenApiTypes.INT), sd.param('period_type'), sd.param('owner', description='Identifiant ou « null ».')]))
+@extend_schema_view(list=extend_schema(parameters=[sd.param('metric'), sd.param('year', OpenApiTypes.INT), sd.param('period_type'), sd.P_OWNER_OU_NULL]))
 class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
@@ -1304,8 +1319,8 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
         metric = self.request.query_params.get('metric')
         if metric:
             qs = qs.filter(metric=metric)
-        year = self.request.query_params.get('year')
-        if year:
+        year = entier_param(self.request, 'year')
+        if year is not None:
             qs = qs.filter(period_year=year)
         period_type = self.request.query_params.get('period_type')
         if period_type:
@@ -1314,7 +1329,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
         if owner == 'null':
             qs = qs.filter(owner__isnull=True)
         elif owner:
-            qs = qs.filter(owner_id=owner)
+            qs = qs.filter(owner_id=entier_param(self.request, 'owner'))
         return qs
 
     def perform_create(self, serializer):
@@ -1364,7 +1379,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
         responses=ObjectifAttainmentSerializer(many=True),
     )
     @action(detail=False, methods=['get'], url_path='attainment',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def attainment_list(self, request):
         """Réalisé vs cible pour tous les objectifs du filtre courant."""
         from .selectors import compute_attainment
@@ -1537,24 +1552,25 @@ def forecast_rollup_view(request):
         return Response({'equipes': [], 'total_societe': {}})
     periode = None
     periode_param = request.query_params.get('periode')
-    if periode_param and '-' in periode_param:
-        year, month = periode_param.split('-', 1)
+    if periode_param:
+        # ENF11 — « AAAA-MM » : une période illisible est refusée (avant :
+        # ignorée, donc le roll-up du mois courant répondait 200).
         try:
+            year, month = periode_param.split('-', 1)
             periode = {
                 'period_type': 'month', 'period_year': int(year),
                 'period_month': int(month),
             }
+            if not (1 <= periode['period_month'] <= 12
+                    and 1 <= periode['period_year'] <= 9999):
+                raise ValueError
         except ValueError:
-            periode = None
+            raise DRFValidationError({'periode': 'Format AAAA-MM attendu.'})
     manager = None if getattr(user, 'is_admin_role', False) else user
     from .selectors import forecast_rollup
     data = forecast_rollup(user.company, periode=periode, manager=manager)
-    equipe_id = request.query_params.get('equipe')
-    if equipe_id:
-        try:
-            equipe_id = int(equipe_id)
-        except ValueError:
-            equipe_id = None
+    equipe_id = entier_param(request, 'equipe')
+    if equipe_id is not None:
         data = {
             **data,
             'equipes': [e for e in data['equipes'] if e['equipe_id'] == equipe_id],
@@ -1573,13 +1589,11 @@ def forecast_historique_view(request):
     user = request.user
     if not user.company_id:
         return Response({'series': []})
-    owner = request.query_params.get('owner')
-    try:
-        semaines = int(request.query_params.get('semaines') or 12)
-    except ValueError:
-        semaines = 12
+    owner = entier_param(request, 'owner')
+    semaines = entier_param(request, 'semaines', 12)
     qs = ForecastSnapshot.objects.filter(company=user.company)
-    qs = qs.filter(owner_id=owner) if owner else qs.filter(owner__isnull=True)
+    qs = (qs.filter(owner_id=owner) if owner is not None
+          else qs.filter(owner__isnull=True))
     qs = qs.order_by('-semaine_iso')[:max(1, semaines)]
     data = list(reversed(ForecastSnapshotSerializer(qs, many=True).data))
     return Response({'series': data})
@@ -1636,9 +1650,10 @@ class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedM
                     str(new_val) if new_val is not None else '',
                     user=self.request.user)
 
-    @action(detail=True, methods=['get'], url_path='historique')
+    @extend_schema(responses=ChatterActivitySerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='historique',
+            pagination_class=None)
     def historique(self, request, pk=None):
-        from apps.records.serializers import ChatterActivitySerializer
         from apps.records.services import chatter_qs
         plan = self.get_object()
         qs = chatter_qs(plan, company=request.user.company)

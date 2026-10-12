@@ -16,6 +16,7 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
+from .params_requete import booleen_param, liste_ids
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -36,10 +37,7 @@ from .fiche_bulk import BULK_ACTIONS  # SPL3 (main) : déplacé de services ; EN
 from .leads_attribution import default_responsable_for
 from . import schema_docs as sd
 from authentication.permissions import (
-    IsAnyRole,
-    IsResponsableOrAdmin,
-    IsAdminRole,
-    HasPermissionOrLegacy,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
 logger = logging.getLogger(__name__)
@@ -899,7 +897,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 activity.log_restore(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
-    @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.BooleanField(), devis_id=serializers.IntegerField(required=False), langue=serializers.CharField(required=False)), responses=inline_serializer('CrmResumeAssocie', {
+    @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.ChoiceField(choices=[True]), devis_id=serializers.IntegerField(required=False), langue=serializers.CharField(required=False)), responses=inline_serializer('CrmResumeAssocie', {
         'wa_url': serializers.CharField(),
         'phone': serializers.CharField(),
         'message': serializers.CharField(),
@@ -1021,6 +1019,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             'champs_mis_a_jour': champs,
         })
 
+    @extend_schema(responses={200: sd.corps('CrmLeadSupprime', corbeille_id=serializers.IntegerField(allow_null=True), id=serializers.IntegerField())})
     def destroy(self, request, *args, **kwargs):
         """Suppression RÉVERSIBLE (admin) — VX96 : soft-delete + undo 30 min.
 
@@ -1030,7 +1029,6 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         Toujours bloqué si des devis sont liés (on n'orpheline jamais de pièces
         financières). L'événement est journalisé (qui/quand) côté serveur ; la
         réponse porte l'``corbeille_id`` pour l'undo-toast du front."""
-        import logging
         from .leads_fusion import raison_refus_suppression
         lead = self.get_object()
         # ACAL177 — UNE garde (devis liés + calepinage ouvert), partagée avec
@@ -1058,7 +1056,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         )
 
     @extend_schema(responses=LeadActivitySerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='historique',
+    @action(detail=True, methods=['get'], url_path='historique', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def historique(self, request, pk=None):
         """Timeline chatter du lead (auto + notes), du plus récent au plus ancien.
@@ -1219,7 +1217,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         gps_hors_zone = False
         # ``proches: true`` = l'écran-carte (dialogue) ; le simple contrôle
         # de statut (débouncé à la frappe) reste PUR — aucun géocodage réseau.
-        if bool(request.data.get('proches')):
+        if booleen_param(request.data, 'proches'):
             try:
                 lat = float(request.data.get('gps_lat'))
                 lng = float(request.data.get('gps_lng'))
@@ -1386,7 +1384,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                         status=status.HTTP_201_CREATED)
 
     # FG30 — Interaction typée (appel/e-mail) dans le chatter ─────────────────
-    @extend_schema(request=sd.corps('CrmLogInteractionRequest', kind=serializers.ChoiceField(choices=[LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL, LeadActivity.Kind.WHATSAPP]), body=serializers.CharField(required=False, allow_blank=True), outcome=serializers.ChoiceField(choices=[k for k, _ in LeadActivity.OUTCOMES if k], required=False), rappel_le=serializers.CharField(required=False), rappel_heure=serializers.CharField(required=False)), responses={201: LeadActivitySerializer})
+    @extend_schema(request=sd.corps('CrmLogInteractionRequest', kind=serializers.ChoiceField(choices=[LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL, LeadActivity.Kind.WHATSAPP]), body=serializers.CharField(required=False, allow_blank=True), outcome=serializers.ChoiceField(choices=[k for k, _ in LeadActivity.OUTCOMES if k], required=False), rappel_le=serializers.CharField(required=False, allow_blank=True), rappel_heure=serializers.CharField(required=False, allow_blank=True)), responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='log-interaction',
             permission_classes=[IsResponsableOrAdmin])
     def log_interaction(self, request, pk=None):
@@ -2048,8 +2046,8 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         silencieusement ignorés — jamais d'erreur pour un id étranger."""
         from django.db import transaction
         page = request.data.get('page')
-        ids = request.data.get('ids') or []
-        if not page or not isinstance(ids, list):
+        ids = liste_ids(request.data, 'ids')
+        if not page or not isinstance(page, str):
             return Response(
                 {'detail': "Paramètres 'page' et 'ids' (liste) requis."},
                 status=status.HTTP_400_BAD_REQUEST)
