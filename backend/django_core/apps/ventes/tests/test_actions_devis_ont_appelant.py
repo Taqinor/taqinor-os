@@ -31,8 +31,9 @@ MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
 #: ``revoquer-lien-public``, ADOC131, et ``roof-image/fichier``, ACAL314) +
 #: ``economie`` (views/economie.py) + ``economie_pompage``
 #: (views/economie_pompage.py, AGR206) + ``economie_ci``
-#: (views/economie_ci.py, CIQ210).
-NB_ACTIONS = 59
+#: (views/economie_ci.py, CIQ210) + ``facturer`` (VNT31, api-only jusqu'à
+#: l'écran VNT45).
+NB_ACTIONS = 60
 
 
 def _vues_devis():
