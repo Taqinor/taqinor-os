@@ -38,6 +38,8 @@
   'prix_devis_ht': 'Prix du devis hors taxes',
   'prix_devis_tva': 'Prix du devis : TVA',
   'prix_devis_ttc': 'Prix du devis toutes taxes comprises',
+  'ttc': 'TTC', 'du_prix_convenu': 'du prix convenu',
+  'reste_de_la_vente': 'reste de la vente',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -310,6 +312,12 @@
       {% endif %}
     </tbody>
   </table>
+
+  {# VNT36 — la part de la vente CALCULÉE au rendu (``utils/pdf.part_vente_pdf``) :
+     jamais lue du libellé ni de ``Facture.pourcentage``. #}
+  {% if part_vente %}
+  <div class="part-vente" style="margin: -12px 0 20px; font-size: 11px; color: #374151;">{{ _L(part_vente.libelle) }} : {{ part_vente.ttc }} MAD {{ _L('ttc') }} ({% if part_vente.derniere %}{{ _L('reste_de_la_vente') }}{% else %}{{ part_vente.pourcentage }} % {{ _L('du_prix_convenu') }} {{ part_vente.prix_convenu }} MAD{% endif %})</div>
+  {% endif %}
 
   <!-- Note -->
   {% if facture.note %}

@@ -583,12 +583,54 @@ def objet_vente_pdf(facture):
     return objet_vente_du_devis(devis_de_la_vente(facture.devis))
 
 
+def _libelle_tranche_facture(facture, tete):
+    """Libellé de l'échéancier de la tranche de ``facture`` (sa clé), sinon
+    le type de facture — jamais lu du libellé de la facture."""
+    from apps.ventes.utils.echeancier import (
+        cles_tranches, tranches_normalisees)
+    tranches = tranches_normalisees(tete)
+    libelles = dict(zip(cles_tranches(tranches),
+                        (t['libelle'] for t in tranches)))
+    return (libelles.get(facture.cle_tranche)
+            or facture.get_type_facture_display())
+
+
+def part_vente_pdf(facture, tete, etat):
+    """VNT36 — la part de la vente portée par une facture de tranche,
+    CALCULÉE au rendu (jamais lue du libellé ni de ``Facture.pourcentage``) :
+    ``{libelle, ttc, pourcentage, prix_convenu, derniere}``. ``derniere`` =
+    cette facture ferme la vente (rien ne reste à facturer et c'est la plus
+    récente facture vivante) ⇒ « reste de la vente »."""
+    from decimal import ROUND_HALF_UP, Decimal
+    if not _est_tranche_de_vente(facture):
+        return None
+    cent = Decimal('0.01')
+    prix = Decimal(etat['prix_convenu_ttc'])
+    ttc = Decimal(str(facture.total_ttc or 0)).quantize(cent, ROUND_HALF_UP)
+    vivantes = [f['id'] for f in etat['factures']
+                if f['statut'] != 'annulee']
+    derniere = bool(Decimal(etat['reste_a_facturer_ttc']) <= 0 and vivantes
+                    and facture.pk == max(vivantes))
+    pct = ((ttc / prix * 100).quantize(cent, ROUND_HALF_UP)
+           if prix > 0 else Decimal('0.00'))
+    return {'libelle': _libelle_tranche_facture(facture, tete),
+            'ttc': f'{ttc:.2f}', 'pourcentage': f'{pct:.2f}',
+            'prix_convenu': etat['prix_convenu_ttc'], 'derniere': derniere}
+
+
 def contexte_vente_facture(facture, langue='fr'):
     """Les blocs de la vente du PDF facture (dict à fusionner dans le
-    contexte du gabarit) ; une facture sans devis n'en porte aucun."""
+    contexte du gabarit) ; une facture sans devis n'en porte aucun. L'état
+    de la vente est lu UNE fois (``vente_facturation.etat_vente`` sur la
+    version qui fait foi)."""
     if not facture.devis_id:
         return {}
-    return {'objet_vente': objet_vente_pdf(facture)}
+    from apps.ventes.domain.instantanes_facture import devis_de_la_vente
+    from apps.ventes.vente_facturation import etat_vente
+    tete = devis_de_la_vente(facture.devis)
+    etat = etat_vente(tete)
+    return {'objet_vente': objet_vente_pdf(facture),
+            'part_vente': part_vente_pdf(facture, tete, etat)}
 
 
 def _facture_render_data(facture) -> dict:

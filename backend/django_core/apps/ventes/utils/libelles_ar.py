@@ -80,6 +80,10 @@ LIBELLES = {
         'prix_devis_ht': 'Prix du devis hors taxes',
         'prix_devis_tva': 'Prix du devis : TVA',
         'prix_devis_ttc': 'Prix du devis toutes taxes comprises',
+        # VNT36 — part de la vente d'une facture de tranche.
+        'ttc': 'TTC',
+        'du_prix_convenu': 'du prix convenu',
+        'reste_de_la_vente': 'reste de la vente',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -131,6 +135,9 @@ LIBELLES = {
         'prix_devis_ht': 'ثمن العرض دون احتساب الضريبة',
         'prix_devis_tva': 'ثمن العرض: الضريبة على القيمة المضافة',
         'prix_devis_ttc': 'ثمن العرض شامل الضريبة',
+        'ttc': 'شامل الضريبة',
+        'du_prix_convenu': 'من الثمن المتفق عليه',
+        'reste_de_la_vente': 'باقي البيع',
     },
 }
 
@@ -154,6 +161,11 @@ TEXTES_AR = {
     'Avoir': 'إشعار دائن',
     'Abandon de créance': 'التخلي عن الدين',
     'Arrondi espèces': 'تقريب الأداء نقدا',
+    # VNT36/VNT41 — libellés d'échéancier et types de facture de tranche.
+    'Acompte': 'تسبيق',
+    'Livraison du matériel': 'تسليم المعدات',
+    'Solde': 'الرصيد',
+    'Intermédiaire': 'دفعة وسيطة',
     # APDF31 (D-APDF-3 a) — avoir, note de débit, reçu, relance.
     'AVOIR': 'إشعار دائن',
     'NOTE DE DÉBIT': 'إشعار مدين',
