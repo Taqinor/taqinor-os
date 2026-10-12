@@ -1,0 +1,38 @@
+{
+  "sha": "9b6c4edcb75e44c74eb508184f5d82f13e2d8444",
+  "date": "2026-10-12",
+  "groupe": "ADOC",
+  "verdict": "PASS",
+  "couvre": [
+    "ADOC183"
+  ],
+  "couvre_avec_ecart": [
+    "ADOC183"
+  ],
+  "etapes": [
+    {
+      "id": "P-portail",
+      "taches": [
+        "ADOC183"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ADOC/traces/2026-10-12/ADOC-P-portail.txt",
+      "notes": [
+        "écart accepté (base FAIL) : 403 GET /api/django/parametres/traductions/effective/ pour un compte portail (frontend/src/i18n/I18nProvider.jsx + ServerLocaleSync.jsx → overridesApi.js), hors ADOC183 → ERR-PORTAIL-TRADUCTIONS-403"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+Client de test « TEST AFAC48 SansDelai » (aucun délai). Facture neuve BROUILLON-287 émise ⇒ FAC-202610-0004, échéance 2026-11-10
+(émission + 30 j) à l'API et sur le PDF (« ÉCHÉANCE 10/11/2026 »). Facture historique FAC-202610-0005 : émise, puis date_emission
+posée à J-60 (13/08) et date_echeance vidée en shell (cas « facture non brouillon sans échéance » de la clause) ; check_overdue_factures
+⇒ statut en_retard, jours_retard 30 (émission + 30 j) ; GET /ventes/relances/ ⇒ FAC-202610-0005, 30 jours de retard, niveau
+« Relance ferme ». Observation hors périmètre : le PDF de cette facture historique imprime « ÉCHÉANCE N/A » (la tâche ne vise pas le PDF
+des factures historiques).

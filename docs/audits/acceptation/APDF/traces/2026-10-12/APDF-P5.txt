@@ -1,0 +1,8 @@
+Variante CGV industrielle de test (Paramètres › Modèles de documents : titre « CGV INDUSTRIEL SPECIFIQUES », puces avec {echeancier}/
+{retenue}). Devis industriel de test DEV-202610-0004 envoyé (share-link envoi=true). GET /api/django/ventes/proposal/<jeton>/ :
+conditions_titre « CGV INDUSTRIEL SPECIFIQUES », conditions = les 3 puces substituées, IDENTIQUES au caractère près aux puces
+extraites du PDF /proposal (« TESTAPDF19 echeancier Commande : 30 % ; Livraison du matériel : 40 % ; Mise en service : 20 % ;
+Réception définitive : 10 % », « TESTAPDF19 retenue », « TESTAPDF19 puce fixe »). Page publique réelle (site apps/web local, astro dev,
+PUBLIC_API_BASE=http://localhost) /proposition/<jeton>/ : le volet « Lire les conditions générales de vente » contient ces 3 puces.
+Le titre n'est pas affiché sur la page (hors périmètre de la tâche : « affichage du titre sur la page web »). Console : 0 erreur.
+Textes de document restaurés ensuite.
