@@ -63,13 +63,17 @@ from rest_framework import serializers as drf_serializers
 READ_ACTIONS = ['list', 'retrieve']
 
 _PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
+# ENF11 — bornes RÉELLES des paramètres entiers (voir query_params.py) : sans
+# `minimum`, le schéma autorisait 0/négatif que le serveur refuse en 400.
+_ENTIER_MIN_1 = {'type': 'integer', 'minimum': 1}
+_ANNEE = {'type': 'integer', 'minimum': 1900}
 _WINDOW = OpenApiParameter(
-    'window_days', OpenApiTypes.INT, required=False, default=365)
+    'window_days', _ENTIER_MIN_1, required=False, default=365)
 _SINCE = OpenApiParameter('since', OpenApiTypes.DATE, required=False)
 _UNTIL = OpenApiParameter('until', OpenApiTypes.DATE, required=False)
-_CLIENT_REQ = OpenApiParameter('client', OpenApiTypes.INT, required=True)
+_CLIENT_REQ = OpenApiParameter('client', _ENTIER_MIN_1, required=True)
 _FILTRE_INSTALLATION = [OpenApiParameter(
-    'installation', OpenApiTypes.INT, required=False)]
+    'installation', _ENTIER_MIN_1, required=False)]
 
 # ── CIQ645 — import CSV des relevés ─────────────────────────────────────────
 _COLONNES_RELEVES = {
@@ -267,7 +271,11 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         'key': serializers.CharField(),
         'label': serializers.CharField(),
     }, many=True))
-    @action(detail=False, methods=['get'], url_path='providers')
+    # ENF11 — liste PLATE (registre de fournisseurs), non paginée : sans
+    # `pagination_class=None` drf-spectacular publiait un schéma paginé
+    # ({count, results}) alors que la réponse est un tableau.
+    @action(detail=False, methods=['get'], url_path='providers',
+            pagination_class=None, filter_backends=[])
     def providers(self, request):
         """Liste des fournisseurs disponibles (registre swappable)."""
         return Response([
@@ -374,7 +382,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('months', OpenApiTypes.INT, required=False,
+            OpenApiParameter('months', _ENTIER_MIN_1, required=False,
                              default=12),
             OpenApiParameter('export', OpenApiTypes.STR, required=False),
         ],
@@ -638,7 +646,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'sent': sent})
 
     @extend_schema(
-        parameters=[OpenApiParameter('annee', OpenApiTypes.INT, required=False)],
+        parameters=[OpenApiParameter('annee', _ANNEE, required=False)],
         responses=_PDF)
     @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
             permission_classes=[IsResponsableOrAdmin])
@@ -823,7 +831,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     @extend_schema(
-        parameters=[OpenApiParameter('year', OpenApiTypes.INT, required=False)],
+        parameters=[OpenApiParameter('year', _ANNEE, required=False)],
         responses=_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_STATUS_REPONSE)
     @action(detail=True, methods=['get'], url_path='status',
             permission_classes=[IsAnyRole])
@@ -838,7 +846,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('years', OpenApiTypes.INT, required=False),
+            OpenApiParameter('years', _ENTIER_MIN_1, required=False),
             OpenApiParameter('drift_threshold_pct', OpenApiTypes.NUMBER,
                              required=False),
         ],
