@@ -12,6 +12,7 @@ import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
 import FacturerVenteDialog from '../../ventes/vente/FacturerVenteDialog'
+import PanneauVente from '../../ventes/vente/PanneauVente'
 import installationsApi from '../../../api/installationsApi'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -1007,6 +1008,8 @@ export default function DevisTab({
                     stages={DEVIS_MINI_TRACK}
                     current={devisTrackCurrent(d)}
                   />
+                  {/* VNT74 — panneau de vente (lecture de `d.vente`, GET détail). */}
+                  <PanneauVente devis={d} />
                   <div className="lw-context-devis-actions">
                     {porteFacturation(d) === 'libre' && (
                       <Button

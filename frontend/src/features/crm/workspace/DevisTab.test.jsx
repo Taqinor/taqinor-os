@@ -1254,3 +1254,67 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     expect(screen.queryByRole('button', { name: /Réviser/ })).toBeNull()
   })
 })
+
+/* VNT74 (Groupe VNT, M2) — panneau de vente EN LECTURE SEULE dans la carte
+   d'un devis accepté : tout est lu de `d.vente` (exemples COMMITTÉS de
+   `ventes/contract_samples/vente_etat.json`, jamais un mock inventé). */
+describe('VNT74 — panneau de vente (lecture seule)', () => {
+  const accepte = {
+    id: 502, reference: 'DEV-202610-0021', statut: 'accepte', total_ttc: '49000',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+  }
+  const avecVente = (variante, extra = {}) => ({
+    ...accepte, ...extra, vente: exempleContrat('ventes', 'vente_etat', variante).vente,
+  })
+
+  it('acompte en brouillon : prix convenu, pastille « Brouillon » distincte d\'« Émise », reste', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_acompte_brouillon')] }) })
+    const panneau = screen.getByTestId('panneau-vente-502')
+    expect(within(panneau).getByTestId('vente-bilan')).toHaveTextContent(/Prix convenu/)
+    expect(within(panneau).getByTestId('vente-bilan')).toHaveTextContent(/49\s?000/)
+    const ligne = within(panneau).getByTestId('vente-facture-117')
+    expect(ligne).toHaveTextContent('BROUILLON-117')
+    expect(within(ligne).getByText('Brouillon')).toBeInTheDocument()
+    expect(within(ligne).queryByText('Émise')).toBeNull()
+    expect(within(panneau).getByTestId('vente-bilan')).toHaveTextContent(/Reste à facturer/)
+  })
+
+  it('acompte payé : pastille « Payée », payé 15 000 et reste à payer 34 000', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_acompte_paye_solde_a_faire')] }) })
+    const bilan = screen.getByTestId('vente-bilan')
+    expect(bilan).toHaveTextContent(/Payé/)
+    expect(bilan).toHaveTextContent(/15\s?000/)
+    expect(bilan).toHaveTextContent(/34\s?000/)
+    expect(within(screen.getByTestId('vente-facture-118')).getByText('Payée')).toBeInTheDocument()
+  })
+
+  it('version remplacée : « Remplacé par … » et AUCUN bouton dans le panneau', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_version_remplacee', { id: 501, reference: 'DEV-202610-0020' })] }) })
+    const panneau = screen.getByTestId('panneau-vente-501')
+    expect(within(panneau).getByTestId('vente-remplacee-501')).toHaveTextContent('Remplacé par DEV-202610-0021')
+    expect(within(panneau).queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('sans `vente` (ancien serveur) : aucun panneau', () => {
+    renderTab({ state: leadState({ devis: [accepte] }) })
+    expect(screen.queryByTestId('panneau-vente-502')).toBeNull()
+  })
+
+  it('un PATCH / refresh dont la réponse n\'a pas `vente` garde l\'état du dernier GET détail', () => {
+    const premier = avecVente('exemple_acompte_brouillon')
+    const { rerender } = renderTab({ state: leadState({ devis: [premier] }) })
+    expect(screen.getByTestId('vente-facture-117')).toBeInTheDocument()
+    const sansVente = { ...premier }
+    delete sansVente.vente
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [sansVente] })} onAction={vi.fn()} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('panneau-vente-502')).toBeInTheDocument()
+    expect(screen.getByTestId('vente-facture-117')).toBeInTheDocument()
+  })
+})
