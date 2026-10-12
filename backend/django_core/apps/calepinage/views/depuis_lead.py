@@ -58,6 +58,15 @@ def _identifiant(brut):
         return None
 
 
+_REPONSE = inline_serializer('CalepinageDepuisLeadReponse', {
+    'calepinage': drf_serializers.IntegerField(),
+    'reference': drf_serializers.CharField(),
+    'nom': drf_serializers.CharField(),
+    'lead': drf_serializers.IntegerField(allow_null=True),
+    'cree': drf_serializers.BooleanField(),
+})
+
+
 def _reponse(calepinage, *, cree):
     from ..services.presentation import reference_calepinage as _reference
 
@@ -74,7 +83,10 @@ def _reponse(calepinage, *, cree):
     'CalepinageDepuisLeadRequete', {
         'lead': drf_serializers.IntegerField(),
         'titre': drf_serializers.CharField(required=False, allow_blank=True),
-    }))
+    }),
+    responses={
+        (200, 'application/json'): _REPONSE, (201, 'application/json'): _REPONSE,
+    })
 @action(detail=False, methods=['post'], url_path='depuis-lead',
         permission_classes=[PeutGererCalepinage])
 def depuis_lead(self, request):

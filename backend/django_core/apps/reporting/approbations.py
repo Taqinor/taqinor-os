@@ -447,14 +447,14 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
 
 class DeciderApprobationSerializer(drf_serializers.Serializer):
     source = drf_serializers.ChoiceField(choices=sorted(_SOURCE_LOADERS))
-    id = drf_serializers.IntegerField()
+    id = drf_serializers.IntegerField(min_value=1, max_value=2147483647)
     decision = champ_choix(['approuver', 'refuser'])
     motif = drf_serializers.CharField(required=False, allow_blank=True)
 
 
 class _ItemDecisionSerializer(drf_serializers.Serializer):
     source = drf_serializers.ChoiceField(choices=sorted(_SOURCE_LOADERS))
-    id = drf_serializers.IntegerField()
+    id = drf_serializers.IntegerField(min_value=1, max_value=2147483647)
 
 
 class DeciderEnMasseSerializer(drf_serializers.Serializer):
@@ -594,9 +594,14 @@ def decider_en_masse(request):
     if company is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
 
-    items = request.data.get('items') or []
-    decision = request.data.get('decision')
-    motif = (request.data.get('motif') or '').strip()
+    # ENF11 — corps validé contre le schéma publié (items non-objets, source
+    # ou décision hors énumération → 400, jamais 500 ni faux « 200 »).
+    entree = DeciderEnMasseSerializer(data=request.data)
+    if not entree.is_valid():
+        return Response(entree.errors, status=400)
+    items = [dict(it) for it in entree.validated_data['items']]
+    decision = entree.validated_data['decision']
+    motif = (entree.validated_data.get('motif') or '').strip()
 
     if decision == 'approuver':
         workflow_items = [it for it in items if it.get('source') == 'workflow']

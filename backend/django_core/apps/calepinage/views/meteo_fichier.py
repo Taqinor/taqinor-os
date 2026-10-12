@@ -221,7 +221,17 @@ def _retirer(calepinage, user):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@extend_schema(responses={201: _forme()})
+@extend_schema(methods=['GET'], responses={
+    200: inline_serializer('CalepinageMeteoFichierRetenu', {
+        'piece_jointe': serializers.IntegerField(),
+        'nom': serializers.CharField(allow_null=True),
+        'fournisseur': serializers.CharField(allow_null=True),
+        'sha256': serializers.CharField(allow_null=True),
+        'depose_le': serializers.CharField(allow_null=True),
+        'depose_par': serializers.CharField(allow_null=True),
+    }, allow_null=True)})
+@extend_schema(methods=['POST'], responses={201: _forme()})
+@extend_schema(methods=['DELETE'], responses={204: None})
 @action(detail=True, methods=['get', 'post', 'delete'],
         url_path='meteo-fichier',
         url_name='meteo-fichier',

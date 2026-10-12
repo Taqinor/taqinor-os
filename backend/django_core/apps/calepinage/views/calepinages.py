@@ -409,6 +409,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(self.get_serializer(calepinage).data,
                         status=status.HTTP_201_CREATED)
 
+    # ENF11 — PUT et DELETE répondent 405 PAR DESIGN (ACAL120) : ces méthodes ne
+    # sont pas des opérations de l'API, elles ne figurent donc pas au schéma
+    # (PATCH + `archiver/` sont les seuls gestes).
+    @extend_schema(exclude=True)
     def update(self, request, *args, **kwargs):
         """ACAL180 — un refus de rattachement répond 409 avec le corps du
         contrat (``calepinage_creation_conflit.json``), rien n'est écrit."""
@@ -425,6 +429,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         except RattachementRefuse as refus:
             return Response(refus.corps, status=refus.statut)
 
+    @extend_schema(exclude=True)
     def destroy(self, request, *args, **kwargs):
         """ACAL120 — un calepinage ne se SUPPRIME jamais : 405, rien n'est
         détruit (versions, variantes, photos intactes) ; archiver est

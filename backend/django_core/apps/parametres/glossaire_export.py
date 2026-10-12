@@ -156,6 +156,17 @@ ONGLETS = (
 )
 
 
+def _propre(valeur):
+    """ENF11 — retire les caractères de contrôle (hors tab/LF/CR) que
+    ``openpyxl`` refuse (``IllegalCharacterError`` => 500) : une saisie
+    d'utilisateur (libellé d'unité, mention légale) peut en contenir."""
+    from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+
+    if isinstance(valeur, str):
+        return ILLEGAL_CHARACTERS_RE.sub('', valeur)
+    return valeur
+
+
 def _ecrire_onglet(ws, titre, lignes, rouge, gras):
     ws.title = titre
     ws.append(list(GLOSSAIRE_HEADERS))
@@ -163,7 +174,7 @@ def _ecrire_onglet(ws, titre, lignes, rouge, gras):
         cellule.font = gras
     largeurs = [len(entete) for entete in GLOSSAIRE_HEADERS]
     for ligne in lignes:
-        cellules = [coerce_cell(neutralize_cell(v)) for v in ligne]
+        cellules = [coerce_cell(neutralize_cell(_propre(v))) for v in ligne]
         ws.append(cellules)
         for index, valeur in enumerate(cellules):
             if index < len(largeurs):

@@ -72,7 +72,7 @@ def comparer_projets(self, request):
         'ids', {'type': 'array', 'items': {'type': 'integer'}},
         required=False, explode=True,
         description='Calepinages à comparer (répétable).')],
-    responses={200: OpenApiTypes.BINARY})
+    responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'comparatif\.xlsx',
         url_name='comparatif-xlsx', permission_classes=[PeutVoirCalepinage])
 def comparatif_xlsx(self, request, pk=None):

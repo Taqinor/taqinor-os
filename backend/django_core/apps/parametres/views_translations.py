@@ -31,6 +31,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
 from .localisation import PeutGererLocalisation
+from .requetes_strictes import TraductionsBulkRequestSerializer, valider_corps
 from .models import SettingsAuditLog
 from .models_translations import TranslationOverride
 from .serializers_translations import (
@@ -44,13 +45,6 @@ _OVERRIDES = inline_serializer('TraductionsEffectives', {
     # {locale: {clé: valeur}}
     'overrides': serializers.DictField(
         child=serializers.DictField(child=serializers.CharField())),
-})
-_BULK_REQUEST = inline_serializer('TraductionsBulkRequest', {
-    'items': inline_serializer('TraductionsBulkLigne', {
-        'locale': serializers.ChoiceField(choices=sorted(VALID_LOCALES)),
-        'key': serializers.CharField(),
-        'value': serializers.CharField(required=False, allow_null=True),
-    }, many=True),
 })
 _XLSX = ('application/vnd.openxmlformats-officedocument.'
          'spreadsheetml.sheet')
@@ -123,7 +117,7 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
             'overrides': TranslationOverride.overrides_for_company(company),
         })
 
-    @extend_schema(request=_BULK_REQUEST, responses=_OVERRIDES)
+    @extend_schema(request=TraductionsBulkRequestSerializer, responses=_OVERRIDES)
     @action(detail=False, methods=['put'])
     def bulk(self, request):
         """Upsert/suppression en une fois de plusieurs surcharges.
@@ -137,11 +131,9 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Société requise.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 — corps validé contre le schéma publié (locale connue, types stricts).
+        valider_corps(TraductionsBulkRequestSerializer, request)
         items = request.data.get('items')
-        if not isinstance(items, list):
-            return Response(
-                {'detail': 'Champ « items » : liste attendue.'},
-                status=status.HTTP_400_BAD_REQUEST)
         for item in items:
             locale = (item or {}).get('locale')
             key = ((item or {}).get('key') or '').strip()

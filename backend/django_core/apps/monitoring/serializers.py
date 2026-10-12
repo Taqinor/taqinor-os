@@ -1,4 +1,5 @@
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from core.champs_stricts import ChampsStrictsMixin
@@ -134,6 +135,9 @@ class ProductionWarrantySerializer(serializers.ModelSerializer):
         return value
 
 
+# ENF11 — `list` renvoie UN objet (singleton société), pas un tableau : sans
+# `many=False` drf-spectacular l'enveloppait en tableau (réponse hors schéma).
+@extend_schema_serializer(many=False)
 class MonitoringSettingsSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     class Meta:
         model = MonitoringSettings

@@ -1,11 +1,12 @@
 from datetime import timedelta
 
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 from django.utils import timezone
 
 from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
+from core.champs_stricts import TypageStrictMixin
 
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
@@ -17,6 +18,7 @@ from .models import (
     EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
     WorksheetMaintenanceModele, TicketWorksheet, Probleme,
 )
+
 
 # Fenêtre « garantie expirant bientôt » (jours).
 EXPIRING_SOON_DAYS = 90
@@ -50,8 +52,8 @@ class EquipementSerializer(SameCompanyFKSerializerMixin,
     # FG90 — nombre de tickets correctifs sur les 12 derniers mois (citron).
     nb_tickets_12m = serializers.SerializerMethodField()
     # XSAV13 — garantie légale de conformité (loi 31-08), calculée.
-    date_fin_garantie_legale = serializers.DateField(read_only=True)
-    date_fin_garantie_effective = serializers.DateField(read_only=True)
+    date_fin_garantie_legale = serializers.DateField(read_only=True, allow_null=True)
+    date_fin_garantie_effective = serializers.DateField(read_only=True, allow_null=True)
     sous_garantie_legale_seule = serializers.BooleanField(read_only=True)
     # ZMFG2 — catégorie de parc (libellé lecture).
     categorie_nom = serializers.CharField(
@@ -359,12 +361,13 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
     nb_interventions = serializers.SerializerMethodField()
     # FG81 — SLA : drapeaux calculés en lecture.
     sla_breach = serializers.BooleanField(read_only=True)
-    sla_due_at = serializers.DateField(read_only=True)
-    date_premiere_reponse = serializers.DateTimeField(read_only=True)
+    sla_due_at = serializers.DateField(read_only=True, allow_null=True)
+    date_premiere_reponse = serializers.DateTimeField(
+        read_only=True, allow_null=True)
     # XSAV5 — échéance SLA EFFECTIVE (décalée du temps de pause), et pause.
     sla_due_at_effectif = serializers.SerializerMethodField()
     en_attente_client = serializers.BooleanField(read_only=True)
-    attente_depuis = serializers.DateField(read_only=True)
+    attente_depuis = serializers.DateField(read_only=True, allow_null=True)
     jours_pause = serializers.IntegerField(read_only=True)
     # XSAV11 — compteur de réouvertures (côté serveur uniquement).
     reopen_count = serializers.IntegerField(read_only=True)
@@ -571,6 +574,8 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
+# ENF11 — `list` renvoie l'objet unique (singleton société), pas un tableau.
+@extend_schema_serializer(many=False)
 class SavSlaSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = SavSlaSettings
@@ -704,21 +709,21 @@ class AlarmeOnduleurSerializer(SameCompanyFKSerializerMixin,
 
 # ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
 
-class CauseDefaillanceSerializer(serializers.ModelSerializer):
+class CauseDefaillanceSerializer(TypageStrictMixin, serializers.ModelSerializer):
     class Meta:
         model = CauseDefaillance
         fields = ['id', 'nom', 'ordre', 'archived']
         read_only_fields = ['id']
 
 
-class RemedeDefaillanceSerializer(serializers.ModelSerializer):
+class RemedeDefaillanceSerializer(TypageStrictMixin, serializers.ModelSerializer):
     class Meta:
         model = RemedeDefaillance
         fields = ['id', 'nom', 'ordre', 'archived']
         read_only_fields = ['id']
 
 
-class CategorieTicketSerializer(serializers.ModelSerializer):
+class CategorieTicketSerializer(TypageStrictMixin, serializers.ModelSerializer):
     class Meta:
         model = CategorieTicket
         fields = ['id', 'libelle', 'ordre', 'actif']
@@ -1010,3 +1015,15 @@ class ProblemeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le titre du problème est obligatoire.')
         return value
+
+
+class DowntimeEntreeSerializer(serializers.Serializer):
+    """ENF11 — corps de ``POST equipements/{id}/downtime/`` : validé AVANT
+    toute lecture (date ISO8601 mal formée ou id non entier => 400, jamais
+    500). Société et auteur restent posés côté serveur."""
+
+    debut = serializers.DateTimeField(required=False, allow_null=True)
+    ticket = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=2147483647)
+    motif = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)

@@ -135,11 +135,35 @@ def update_tariff_settings(request):
     return Response(TariffSettingsSerializer(updated).data)
 
 
+_BORNE_NOMBRE = 1e12
+
+
 def _num(data, key, default=0):
     try:
-        return float(data.get(key, default))
+        valeur = float(data.get(key, default))
     except (TypeError, ValueError):
         return default
+    # ENF11 — NaN / infini / démesure : repli sur le défaut (ils faisaient
+    # lever ``Decimal`` plus loin, soit un 500).
+    if not math.isfinite(valeur) or abs(valeur) > _BORNE_NOMBRE:
+        return default
+    return valeur
+
+
+def _optionnel(data, cle):
+    """Nombre OPTIONNEL du corps : ``None`` si absent ou vide ; non numérique,
+    non fini ou démesuré → 400 nommé (c'était un 500)."""
+    brut = data.get(cle)
+    if brut in (None, ''):
+        return None
+    try:
+        valeur = float(brut)
+    except (TypeError, ValueError):
+        valeur = None
+    if (valeur is None or not math.isfinite(valeur)
+            or abs(valeur) > _BORNE_NOMBRE):
+        raise serializers.ValidationError({cle: 'Nombre attendu.'})
+    return brut
 
 
 _ROI_REQUEST = inline_serializer('CalculRoiRequest', {
@@ -175,11 +199,16 @@ def compute_roi(request):
     Tous les montants sortent en chaînes (Decimal sérialisé)."""
     obj = _settings(request)
     data = request.data or {}
+    if not isinstance(data, dict):
+        raise serializers.ValidationError(
+            {'detail': 'Corps JSON objet attendu.'})
     classe = data.get('classe', 'residentiel')
+    if not isinstance(classe, str):
+        raise serializers.ValidationError({'classe': 'Texte attendu.'})
     conso = _num(data, 'conso_mensuelle_kwh', 0)
 
-    auto = data.get('autoconsommation_pct', None)
-    prod = data.get('productible_kwh_kwc', None)
+    auto = _optionnel(data, 'autoconsommation_pct')
+    prod = _optionnel(data, 'productible_kwh_kwc')
     result = tariff_service.compute_roi(
         obj,
         kwc=_num(data, 'kwc', 0),
