@@ -606,3 +606,94 @@ class FacturerVenteEncaissementVNT30(_BaseVente):
             devis, nature='acompte', montant_ttc='15000.00')
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
         self.assertEqual(paiements, [])
+
+
+class FacturerVenteEndpointVNT31(_BaseVente):
+    """VNT31 — ``GET/POST devis/<id>/facturer/`` conforme au contrat
+    ``devis_facturer.json`` ; ``emettre`` exige le code d'encaissement."""
+
+    CONTRAT_VENTE = (Path(__file__).resolve().parents[1] / 'contract_samples'
+                     / 'devis_facturer.json')
+
+    def _url(self, devis):
+        return f'/api/django/ventes/devis/{devis.id}/facturer/'
+
+    def _contrat(self):
+        return json.loads(self.CONTRAT_VENTE.read_text(encoding='utf-8'))
+
+    def _role(self, nom, permissions):
+        from apps.roles.models import Role
+        user = User.objects.create_user(
+            username=f'vnt31_{nom}_{_nxt()}', password='x',
+            role_legacy='normal', company=self.company,
+            role=Role.objects.create(company=self.company,
+                                     nom=f'{nom} VNT31 {_nxt()}',
+                                     permissions=list(permissions)))
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return user, api
+
+    def _poster_en_tant_que(self, user, api, devis, corps):
+        # Portée « équipe » d'un rôle Commercial : le devis est le sien.
+        Devis.objects.filter(pk=devis.pk).update(created_by=user)
+        return api.post(self._url(devis), corps, format='json')
+
+    def test_apercu_get_388(self):
+        devis = self._388('DEV-VNT31-GET')
+        resp = self.api.get(self._url(devis))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        apercu = self._contrat()['apercu_get']['reponse_200']
+        self.assertEqual(set(resp.data), set(apercu))
+        self.assertEqual(resp.data['acompte_propose'], '14700.00')
+        self.assertEqual(len(resp.data['plan']), 3)
+        self.assertEqual({t['statut'] for t in resp.data['plan']},
+                         {'a_faire'})
+        self.assertEqual(set(resp.data['plan'][0]), set(apercu['plan'][0]))
+        self.assertEqual(set(resp.data['vente']), set(apercu['vente']))
+        self.assertEqual(resp.data['vente']['prix_convenu_ttc'], '49000.00')
+        self.assertEqual(resp.data['prochaine']['cle'], 'acompte')
+
+    def test_post_acompte_15000_forme_du_contrat(self):
+        devis = self._388('DEV-VNT31-POST')
+        resp = self.api.post(self._url(devis), {
+            'nature': 'acompte', 'montant_ttc': '15000.00',
+            'cle_attendue': 'acompte'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        exemple = self._contrat()['exemple']
+        self.assertEqual(set(resp.data), set(exemple))
+        self.assertEqual(set(resp.data['facture']), set(exemple['facture']))
+        self.assertEqual(set(resp.data['vente']), set(exemple['vente']))
+        self.assertEqual(resp.data['facture']['total_ttc'], '15000.00')
+        self.assertEqual(resp.data['facture']['nature'], 'acompte')
+        self.assertEqual(resp.data['facture']['statut'], 'brouillon')
+        self.assertEqual(resp.data['vente']['brouillons_ttc'], '15000.00')
+
+    def test_refus_du_service_rendu_tel_quel(self):
+        devis = self._388('DEV-VNT31-409')
+        self._acompte_14700(devis)
+        resp = self.api.post(self._url(devis), {
+            'nature': 'solde', 'cle_attendue': 'solde'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['code'], 'cle_inattendue')
+        self.assertEqual(resp.data['cle_attendue'], 'materiel')
+
+    def test_emettre_exige_le_code_d_encaissement(self):
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+        devis = self._388('DEV-VNT31-PERM')
+        corps = {'nature': 'acompte', 'montant_ttc': '15000.00',
+                 'emettre': True}
+        resp = self._poster_en_tant_que(
+            *self._role('Technicien', TECHNICIEN_PERMISSIONS), devis, corps)
+        self.assertEqual(resp.status_code, 403, resp.data)
+        resp = self._poster_en_tant_que(
+            *self._role('Commercial sans encaisser', [
+                c for c in COMMERCIAL_PERMISSIONS if c != 'encaisser']),
+            devis, corps)
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+        resp = self._poster_en_tant_que(
+            *self._role('Commercial', COMMERCIAL_PERMISSIONS), devis, corps)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['facture']['statut'], 'emise')
