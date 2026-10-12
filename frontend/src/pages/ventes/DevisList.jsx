@@ -131,7 +131,7 @@ export default function DevisList() {
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
   const [convertingId, setConvertingId] = useState(null)
-  const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
+  const [panneauVenteOpenId, setPanneauVenteOpenId] = useState(null) // VNT79 — sous-ligne PanneauVente ouverte
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   // APX15(b) — mode d'affichage de la liste : tableau ou board par statut
   // DOCUMENT. Parité exacte avec la bascule Liste/Kanban des factures.
@@ -706,19 +706,6 @@ export default function DevisList() {
   }
 
   const [facturerTarget, setFacturerTarget] = useState(null)
-  const handleGenererFacture = async (d) => {
-    setFactureGenId(d.id)
-    try {
-      const res = await ventesApi.genererFacture(d.id)
-      const f = res.data
-      toast.success(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
-      dispatch(rafraichirDevis(d.id))
-    } catch (err) {
-      toast.error(frenchError(err, 'Génération de facture impossible.'))
-    } finally {
-      setFactureGenId(null)
-    }
-  }
 
   // Statut effectif : un devis dont la validité est dépassée s'affiche « Expiré »
   // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
@@ -794,10 +781,10 @@ export default function DevisList() {
     suiviOpenId, toggleSuiviPartage, lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId, etudeOpenId, setEtudeOpenId,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
-    deletingId, statutActionId, convertingId, chantierBusy, factureGenId, setFacturerTarget,
+    deletingId, statutActionId, convertingId, chantierBusy, panneauVenteOpenId, setPanneauVenteOpenId, setFacturerTarget,
     openEdit, openVarianteModal, openGammeModal, handleDelete,
     openAcceptModal, openRefusModal, handleConvertBC,
-    handleChantier, handleGenererFacture, handleRevoquerLienPublic,
+    handleChantier, handleRevoquerLienPublic,
   }
 
   // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas
