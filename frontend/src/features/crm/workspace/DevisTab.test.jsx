@@ -19,7 +19,7 @@ import DevisTab, {
    props contrôlées, comme le fera réellement ContextRail). */
 
 const {
-  genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement,
+  apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement,
   ouvrirPdfFacture, prixNegocie, annulerFacture, supprimerFacture, modifierMontantTranche, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
@@ -30,7 +30,6 @@ const {
     { id: 41, nom: 'Panneau Longi 610W', marque: 'Longi', prix_vente: 1400, prix_achat: 1000 },
   ]
   return {
-    genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
     // VNT75 — l'aperçu de FacturerVenteDialog, ouvert depuis le panneau de vente.
     apercuFacturerVente: vi.fn(),
     // VNT76 — gestes par facture du panneau (useActionsVente) ; jamais de toast.
@@ -77,7 +76,7 @@ const {
   }
 })
 vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, prixNegocie, annulerFacture, supprimerFacture, modifierMontantTranche, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+  default: { apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, prixNegocie, annulerFacture, supprimerFacture, modifierMontantTranche, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
 }))
 vi.mock('../../ventes/vente/facturePdf', () => ({ ouvrirPdfFacture }))
 vi.mock('../../../utils/pdfBlob', () => ({ openPdfBlob: vi.fn(), messageErreurBlob: vi.fn(() => Promise.resolve('')) }))
@@ -263,7 +262,6 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     expect(screen.queryByRole('button', { name: LEGACY })).toBeNull()
     await user.click(screen.getByRole('button', { name: /Facturer l'acompte/ }))
     await waitFor(() => expect(apercuFacturerVente).toHaveBeenCalledWith(502))
-    expect(genererFacture).not.toHaveBeenCalled()
     expect(onAction).not.toHaveBeenCalledWith('refresh')
   })
 

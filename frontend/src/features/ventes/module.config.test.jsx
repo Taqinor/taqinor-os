@@ -68,3 +68,17 @@ describe('ventes — module.config (ODY16 : cockpit + parité route↔nav)', () 
     }
   })
 })
+
+/* VNT94 — fonctions front mortes retirées : « Facturer la vente » (VNT45/VNT79)
+   est l'unique porte d'émission côté écran ; `generer-facture` et
+   `facturer-complet` restent des URLs serveur (enveloppes VNT65, tests
+   backend) mais `ventesApi` n'a plus aucune méthode pour les appeler. */
+describe('ventesApi — VNT94 : plus de porte front morte', () => {
+  it('ne porte ni genererFacture ni facturerComplet, garde « Facturer la vente »', async () => {
+    const { default: ventesApi } = await import('../../api/ventesApi')
+    expect(ventesApi.genererFacture).toBeUndefined()
+    expect(ventesApi.facturerComplet).toBeUndefined()
+    expect(typeof ventesApi.apercuFacturerVente).toBe('function')
+    expect(typeof ventesApi.facturerVente).toBe('function')
+  })
+})
