@@ -3,6 +3,8 @@ import { Table2, Send, Pencil, Trash2, Plus } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { diffFactEntries, erreurServeur } from './adsengine'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    PUB6/AGEN1 — Écran « Table des faits ».
@@ -27,6 +29,7 @@ const EMPTY_ENTRY = { cle: '', valeur: '', unite: '', source: '', verifie_le: ''
 // exporter que des composants (react-refresh/only-export-components).
 
 export default function FactTableScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [tables, setTables] = useState([])
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -44,10 +47,10 @@ export default function FactTableScreen() {
     Promise.all([
       fetchAllPages((page) => adsengineApi.factTables.list({ page }).then(r => r.data), { concurrency: 3 })
         .then(rows => Array.isArray(rows) ? rows : (rows?.results || []))
-        .catch(() => []),
+        .catch(() => { setLoadErrors(markLoadError("les tables de faits")); return [] }),
       fetchAllPages((page) => adsengineApi.factEntries.list({ page }).then(r => r.data), { concurrency: 3 })
         .then(rows => Array.isArray(rows) ? rows : (rows?.results || []))
-        .catch(() => []),
+        .catch(() => { setLoadErrors(markLoadError("les entrées de faits")); return [] }),
     ]).then(([tbls, ents]) => {
       // Le back trie déjà par version décroissante (Meta.ordering) ; on ne
       // fait que rendre — jamais de re-tri qui pourrait diverger de la
@@ -176,6 +179,7 @@ export default function FactTableScreen() {
       </div>
 
       {msg && <p data-testid="ae-facttable-msg" style={{ color: '#16a34a' }}>{msg}</p>}
+      <LoadErrorNotice errors={loadErrors} />
       {err && <p data-testid="ae-facttable-err" style={{ color: '#dc2626' }}>{err}</p>}
 
       {loading ? <p className="page-loading">Chargement…</p> : (

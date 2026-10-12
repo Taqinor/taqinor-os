@@ -5,6 +5,8 @@ import adsengineApi from './adsengineApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { normalizeWiringStatuses, formatMoney, erreurServeur } from './adsengine'
 import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizard'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    ENG22 — Écran « Connexion & garde-fous » du moteur publicitaire.
@@ -177,6 +179,7 @@ const avecDevise = (texte, devise) => texte.replaceAll('{devise}', devise)
 const EMPTY_POLICY = { id: null, forbidden_rules: [], allowed_rules: [] }
 
 export default function ConnectionScreen() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [status, setStatus] = useState(null) // statut de connexion (sans secret)
   const [health, setHealth] = useState([])
   const [creds, setCreds] = useState(EMPTY_CREDS)
@@ -210,10 +213,10 @@ export default function ConnectionScreen() {
     // Statut de connexion : jamais de secret relu — seulement l'état affichable.
     adsengineApi.connection.get()
       .then(r => setStatus(r.data || null))
-      .catch(() => setStatus(null))
+      .catch(() => { setStatus(null); setLoadErrors(markLoadError("le statut de connexion")) })
     adsengineApi.connection.health()
       .then(r => setHealth(normalizeWiringStatuses(r.data)))
-      .catch(() => setHealth([]))
+      .catch(() => { setHealth([]); setLoadErrors(markLoadError("l'état de santé")) })
     adsengineApi.guardrail.get()
       .then(r => { setGuard(r.data || {}); setGuardLoadError(false) })
       // AACQ71 — un échec de chargement est un ÉTAT (envoi bloqué), jamais
@@ -222,7 +225,7 @@ export default function ConnectionScreen() {
     // PUB129 — les portes d'autonomie EN DIRECT (état + remédiation serveur).
     adsengineApi.flightplan.autonomie()
       .then(r => setAutonomy(normalizeAutonomy(r.data)))
-      .catch(() => setAutonomy(EMPTY_AUTONOMY))
+      .catch(() => { setAutonomy(EMPTY_AUTONOMY); setLoadErrors(markLoadError("les portes d'autonomie")) })
   }, [])
 
   /* PUB129 — Cérémonie d'autonomie. Trois gestes, un seul chemin serveur :
@@ -282,7 +285,7 @@ export default function ConnectionScreen() {
           allowed_rules: Array.isArray(p.allowed_rules) ? p.allowed_rules : [],
         } : EMPTY_POLICY)
       })
-      .catch(() => setPolicy(EMPTY_POLICY))
+      .catch(() => { setPolicy(EMPTY_POLICY); setLoadErrors(markLoadError("la politique")) })
       .finally(() => setPolicyLoading(false))
   }, [])
 
@@ -427,6 +430,7 @@ export default function ConnectionScreen() {
         <h2>Connexion &amp; garde-fous</h2>
       </div>
 
+      <LoadErrorNotice errors={loadErrors} />
       {msg && <p data-testid="ae-conn-msg" style={{ color: '#16a34a', margin: '0 0 0.75rem' }}>{msg}</p>}
       {err && <p data-testid="ae-conn-err" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>{err}</p>}
 

@@ -43,3 +43,12 @@ describe('TodayNavIcon', () => {
     expect(screen.queryByTestId('ae-nav-today-badge')).toBeNull()
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('TodayNavIcon — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.today.mockRejectedValue(new Error('boom'))
+    render(<TodayNavIcon />)
+    expect(await screen.findByTestId('ae-nav-today-error')).toBeInTheDocument()
+  })
+})

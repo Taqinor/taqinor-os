@@ -14,7 +14,7 @@
 // Non exécuté localement : il tourne dans le job e2e de la CI (capture jointe).
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
-import { choisirMarche } from './helpers'
+import { choisirMarche, cliquerCreerDevis, retirerLignesPrixARenseigner } from './helpers'
 
 const API = '/api/django'
 const AUJOURDHUI = new Date().toISOString().slice(0, 10)
@@ -100,6 +100,8 @@ test('AGR222 — butane déclaré : carte, enregistrement, réouverture identiqu
   await expect(page.getByTestId('depense-actuelle')).not.toContainText('non calculé')
   await expect(page.getByTestId('retour-ans')).toContainText('Retour sans aide')
 
+  // CAD177 — AGNR31 : les lignes « prix à renseigner » bloquent la création.
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
   // Les saisies d'économie partent APRÈS la création, par la fusion
@@ -107,8 +109,7 @@ test('AGR222 — butane déclaré : carte, enregistrement, réouverture identiqu
   const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
     && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const cree = await (await creation).json()
+  const cree = await (await cliquerCreerDevis(page, creation)).json()
   await etudeEcrite
   const id = cree.id ?? cree.devis?.id
   expect(id, 'identifiant du devis créé').toBeTruthy()
@@ -159,6 +160,8 @@ test('AGR222 — ligne à 0 % sans base légale, et date de solde relue', async 
   await tva.fill('20')
   await expect(page.getByTestId('ligne-base-legale')).toHaveCount(0)
 
+  // CAD177 — AGNR31 : les lignes « prix à renseigner » bloquent la création.
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
   // CAD177 — la fusion `PATCH …/etude-params/` part APRÈS la création : naviguer
@@ -166,8 +169,7 @@ test('AGR222 — ligne à 0 % sans base légale, et date de solde relue', async 
   const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
     && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const cree = await (await creation).json()
+  const cree = await (await cliquerCreerDevis(page, creation)).json()
   await etudeEcrite
   const id = cree.id ?? cree.devis?.id
   ids.push(id)

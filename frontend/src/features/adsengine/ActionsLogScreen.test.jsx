@@ -223,3 +223,17 @@ describe('ActionsLogScreen (ENG28)', () => {
     })
   })
 })
+
+// ENF15 — un échec de chargement secondaire est VISIBLE (jamais une liste vide muette).
+describe('ActionsLogScreen — erreur de chargement visible (ENF15)', () => {
+  it('la comparaison qui échoue affiche « Impossible de charger »', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-daterange-preset-7j'))
+    await waitFor(() => expect(mocks.log).toHaveBeenCalledTimes(2))
+    mocks.log.mockReset()
+    mocks.log.mockRejectedValue(new Error('boom'))
+    fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

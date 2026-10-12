@@ -10,7 +10,10 @@
 // aucune clé v1 (taux_autoconso, payback, part_diurne_pct…) écrite.
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
-import { choisirMarche, declarerProfilCi, telephoneMobileUnique, uniq } from './helpers'
+import {
+  choisirMarche, declarerProfilCi, telephoneMobileUnique, uniq, cliquerCreerDevis,
+  retirerLignesPrixARenseigner,
+} from './helpers'
 
 const API = '/api/django'
 const KWH = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
@@ -66,6 +69,8 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
   await page.getByTestId('btn-auto-remplir').click()
   const apercu = await (await auto).json()
 
+  // CAD177 — AGNR31 : les lignes « prix à renseigner » bloquent la création.
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
   // Les entrées C&I v2 partent APRÈS la création, par la fusion
@@ -74,8 +79,7 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
   const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
     && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const cree = await (await creation).json()
+  const cree = await (await cliquerCreerDevis(page, creation)).json()
   await etudeEcrite
   const id = cree.id ?? cree.devis?.id
   expect(id, 'identifiant du devis créé').toBeTruthy()

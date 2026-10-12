@@ -26,7 +26,10 @@ class AiGovernanceConfig(AppConfig):
         'icone': 'cpu',
         'depends': [],
         'installable': True,
-        'description': 'Copilotes IA contextuels (brouillons, comptes rendus, descriptions) et surveillance des modèles — sans clé, tout dégrade proprement.',
+        'description': (
+            'Copilotes IA contextuels (brouillons, comptes rendus, descriptions) et surveillance des modèles — sans '
+            'clé, tout dégrade proprement.'
+        ),
         'categorie': 'Technique',
         'parked': True,
     }

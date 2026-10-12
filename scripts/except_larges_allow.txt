@@ -334,7 +334,6 @@ backend/django_core/apps/sav/views.py::EquipementViewSet.etiquettes
 backend/django_core/apps/sav/views.py::TicketViewSet.creer_devis
 backend/django_core/apps/sav/views.py::WarrantyClaimViewSet._resolve_fournisseur
 backend/django_core/apps/sav/views.py::_qr_data_uri
-backend/django_core/apps/semantic/selectors.py::_nb_lignes_agregees
 backend/django_core/apps/visites/selectors.py::_visite_devis
 backend/django_core/apps/visites/services.py::_notifier_commercial_visite
 backend/django_core/apps/visites/services.py::emettre_visite_planifiee

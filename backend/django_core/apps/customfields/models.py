@@ -50,8 +50,8 @@ class CustomFieldDef(models.Model):
         # evaluer_champ_rollup` / `core.pivot._aggregate`.
         ROLLUP = 'rollup', 'Agrégat (rollup)'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+    company = models.ForeignKey(  # on_delete: donnée propre à la société, supprimée avec elle
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='custom_fields')
     # XPLT16 — max_length généreux : un objet personnalisé pose ses
     # définitions sous ``custom:<code_objet>`` (préfixe + slug, > 20 chars).
@@ -143,8 +143,11 @@ class FieldRolePermission(TenantModel):
         EDITION = 'edition', 'Édition'
 
     field_def = models.ForeignKey(
+        # on_delete: une permission n'existe QUE pour son champ (composition,
+        # même patron que CustomRecord.objet) ; supprimer le champ supprime
+        # ses permissions
         CustomFieldDef,
-        on_delete=models.CASCADE,  # on_delete: une permission n'existe QUE pour son champ (composition, même patron que CustomRecord.objet) ; supprimer le champ supprime ses permissions
+        on_delete=models.CASCADE,
         related_name='role_permissions')
     role_tier = models.CharField(
         'Palier de rôle', max_length=40,
@@ -177,8 +180,8 @@ class CustomObjectDef(models.Model):
     ``CustomRecord.data`` (une ligne par enregistrement, comme ``custom_data``
     sur les modules natifs)."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+    company = models.ForeignKey(  # on_delete: donnée propre à la société, supprimée avec elle
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='custom_objects')
     code = models.SlugField(max_length=50)
     libelle = models.CharField(max_length=120)
@@ -220,11 +223,11 @@ class CustomRecord(models.Model):
     consommable via son ``content_type``/``object_id`` GenericForeignKey
     standard sans champ supplémentaire ici."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+    company = models.ForeignKey(  # on_delete: donnée propre à la société, supprimée avec elle
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='custom_records')
-    objet = models.ForeignKey(
-        CustomObjectDef, on_delete=models.CASCADE, related_name='records')  # on_delete: CustomRecord est le détail de CustomObjectDef — n'existe pas sans lui
+    objet = models.ForeignKey(  # on_delete: détail de CustomObjectDef, n'existe pas sans lui
+        CustomObjectDef, on_delete=models.CASCADE, related_name='records')
     data = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

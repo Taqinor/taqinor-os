@@ -6,6 +6,8 @@ import VeilleDecouverte from './VeilleDecouverte'
 import VeilleAnnonceurs from './VeilleAnnonceurs'
 import VeilleEtiquetage from './VeilleEtiquetage'
 import VeilleMesures from './VeilleMesures'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    PUB70 / PLAN_VEILLE — Écran « Veille concurrentielle ».
@@ -77,12 +79,13 @@ const ONGLETS = [
 export default function VeilleScreen() {
   const [onglet, setOnglet] = useState('decouverte')
   const [couverture, setCouverture] = useState(null)
+  const [couvertureError, setCouvertureError] = useState(false)
   const [decouverteId, setDecouverteId] = useState(null)
 
   useEffect(() => {
     adsengineApi.veille.couverture()
       .then(r => setCouverture(r.data))
-      .catch(() => setCouverture(null))
+      .catch(() => { setCouverture(null); setCouvertureError(true) })
   }, [])
 
   return (
@@ -91,6 +94,10 @@ export default function VeilleScreen() {
         <Binoculars size={20} aria-hidden="true" /> Veille concurrentielle
       </h1>
       <BandeauCouverture couverture={couverture} />
+      {couvertureError && (
+        <p data-testid="ae-veille-couverture-error" role="alert" style={{ color: '#dc2626' }}>
+          Impossible de charger la couverture de la veille.</p>
+      )}
       <ul className="nav nav-tabs mb-3" role="tablist">
         {ONGLETS.map(o => (
           <li className="nav-item" key={o.cle}>
@@ -126,14 +133,15 @@ function SaisieManuelle() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
+  const [loadErrors, setLoadErrors] = useState([])
 
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
       fetchAllPages((page) => adsengineApi.competitors.list({ page }).then(r => r.data), { concurrency: 3 })
         .then(rows => Array.isArray(rows) ? rows : (rows?.results || []))
-        .catch(() => []),
-      adsengineApi.competitors.veille().then(r => r.data).catch(() => null),
+        .catch(() => { setLoadErrors(markLoadError("les pages suivies")); return [] }),
+      adsengineApi.competitors.veille().then(r => r.data).catch(() => { setLoadErrors(markLoadError("la veille")); return null }),
     ]).then(([pgs, v]) => {
       setPages(pgs)
       setVeille(v)
@@ -175,6 +183,7 @@ function SaisieManuelle() {
 
   return (
     <div data-testid="ae-veille-manuel">
+      <LoadErrorNotice errors={loadErrors} />
       {veille?.finding && (
         <div className="alert alert-info" data-testid="ae-veille-finding">
           {veille.finding.reason_fr}

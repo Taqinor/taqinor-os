@@ -15,7 +15,7 @@
 //      FR puis en AR, jointe au rapport.
 // Aucun mock réseau. Base partagée, workers: 1 : nettoyage best-effort.
 import { test, expect } from '@playwright/test'
-import { choisirMarche, nombrePagesPdf } from './helpers'
+import { choisirMarche, nombrePagesPdf, cliquerCreerDevis, retirerLignesPrixARenseigner } from './helpers'
 
 const API = '/api/django'
 const devisIds = []
@@ -63,10 +63,11 @@ test('AGR318 — créer, rouvrir, ré-enregistrer : etude_params identique', asy
   await page.getByTestId('btn-auto-remplir').click()
   await expect(page.getByTestId('pompage-auto-rempli')).toBeVisible({ timeout: 30_000 })
 
+  // CAD177 — AGNR31 : les lignes « prix à renseigner » bloquent la création.
+  await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
-  const corps = await (await creation).json()
+  const corps = await (await cliquerCreerDevis(page, creation)).json()
   await expect(page.getByText('Devis enregistré')).toBeVisible({ timeout: 45_000 })
   devisId = corps.id ?? corps.devis?.id
   expect(devisId, 'identifiant du devis créé').toBeTruthy()

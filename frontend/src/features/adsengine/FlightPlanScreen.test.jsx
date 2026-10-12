@@ -376,3 +376,12 @@ describe('FlightPlanScreen (ENG40)', () => {
     })
   })
 })
+
+// ENF15 — un échec de chargement est VISIBLE (jamais une liste vide muette).
+describe('FlightPlanScreen — erreur de chargement visible (ENF15)', () => {
+  it('affiche « Impossible de charger » quand l’API échoue', async () => {
+    mocks.templates.mockRejectedValue(new Error('boom'))
+    renderScreen()
+    expect(await screen.findByTestId('ae-load-error')).toHaveTextContent('Impossible de charger')
+  })
+})

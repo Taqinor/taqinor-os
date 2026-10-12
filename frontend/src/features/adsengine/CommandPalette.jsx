@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { unwrapList } from '../../api/resource'
+import LoadErrorNotice from './LoadErrorNotice'
+import { markLoadError } from './loadErrors'
 
 /* ============================================================================
    PUB51 — Palette de commandes console (Ctrl-K).
@@ -48,6 +50,7 @@ let campaignsCache = null
 let adsCache = null
 
 export default function CommandPalette() {
+  const [loadErrors, setLoadErrors] = useState([])
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [campaigns, setCampaigns] = useState(campaignsCache || [])
@@ -61,13 +64,13 @@ export default function CommandPalette() {
       campaignsCache = []
       adsengineApi.campaigns.list()
         .then(r => { campaignsCache = unwrapList(r); setCampaigns(campaignsCache) })
-        .catch(() => { campaignsCache = []; setCampaigns([]) })
+        .catch(() => { campaignsCache = []; setCampaigns([]); setLoadErrors(markLoadError("les campagnes")) })
     }
     if (adsCache === null) {
       adsCache = []
       adsengineApi.metrics.adsCockpit()
         .then(r => { adsCache = unwrapList(r); setAds(adsCache) })
-        .catch(() => { adsCache = []; setAds([]) })
+        .catch(() => { adsCache = []; setAds([]); setLoadErrors(markLoadError("les annonces")) })
     }
   }, [])
 
@@ -157,6 +160,7 @@ export default function CommandPalette() {
             onKeyDown={onInputKeyDown}
             style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.95rem' }} />
         </div>
+        <LoadErrorNotice errors={loadErrors} />
         <div style={{ overflowY: 'auto' }}>
           {results.length === 0
             ? <p data-testid="ae-command-palette-empty" style={{ padding: '0.75rem', color: '#64748b' }}>

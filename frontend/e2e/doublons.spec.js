@@ -33,10 +33,14 @@ test('E11: doublons view renders and merging a cluster completes', async ({ page
   const cluster = panel.locator('.dbl-cluster', { hasText: name })
   await expect(cluster).toBeVisible({ timeout: 20_000 })
 
-  // ALEA22 — la confirmation de fusion n'est plus un `window.confirm` natif
-  // mais le confirm() maison (alertdialog Radix) : on clique son bouton.
+  // CAD177 — ALEA22 (2c2e4c08f) : la confirmation n'est plus le `window.confirm`
+  // natif mais la boîte maison `useConfirmDialog()` (DoublonsPanel.jsx) — un
+  // `page.on('dialog')` n'en voit rien et la fusion restait en attente. On
+  // confirme dans la boîte, par son bouton, comme l'utilisateur.
   await cluster.getByRole('button', { name: /Fusionner le groupe/ }).click()
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Fusionner', exact: true }).click()
+  const confirmation = page.getByRole('alertdialog', { name: 'Fusionner ces doublons ?' })
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole('button', { name: 'Fusionner', exact: true }).click()
   // A successful merge archives the absorbed leads, so the panel reloads and the
   // duplicate cluster disappears (the inline "Groupe fusionné" badge is only
   // shown transiently before that reload). A failed merge would keep it.
