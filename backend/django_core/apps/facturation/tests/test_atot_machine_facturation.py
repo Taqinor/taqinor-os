@@ -212,6 +212,20 @@ class MachineFacturation(RuleBasedStateMachine):
         if r.status_code == 201:
             self.partenaires.append(partenaire.pk)
 
+    @rule(rang=st.integers(min_value=0, max_value=5))
+    def emettre_brouillon(self, rang):
+        """VNT20 — émettre un brouillon (facture de BC, complément) : 200
+        s'il tient dans le prix convenu de la vente, sinon 400 (409 : sans
+        ligne) ; jamais 5xx — l'invariant relit la borne après."""
+        brouillons = [f for f in self._actives(self._devis())
+                      if f.statut == 'brouillon']
+        if not brouillons:
+            return
+        f = brouillons[rang % len(brouillons)]
+        r = self.api.post(f'{BASE}/factures/{f.id}/emettre/', {},
+                          format='json')
+        self._verifier_reponse(r, (200, 400, 409))
+
     # ── gestes qui rouvrent ou réduisent ──────────────────────────────────
     @rule(rang=st.integers(min_value=0, max_value=5))
     def annuler(self, rang):
@@ -271,7 +285,11 @@ class MachineFacturation(RuleBasedStateMachine):
 
     def _verifier_borne(self, devis):
         from apps.ventes.utils.options import option_totaux
-        actives = self._actives(devis)
+        # VNT20 — l'invariant porte sur les factures ÉMISES : un brouillon
+        # (facture de BC, complément de révision) ne facture rien tant
+        # qu'il n'est pas émis, et son émission est bornée au prix convenu.
+        actives = [f for f in self._actives(devis)
+                   if f.statut in ('emise', 'payee', 'en_retard')]
         net = ZERO
         for f in actives:
             part = self._part(f, devis)
