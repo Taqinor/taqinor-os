@@ -114,10 +114,10 @@ def _factures_et_parts(devis, *, inclure_annulees=False) -> list:
                   for d in chaine_vente(devis))
     # BC (``bon_commande__devis``) et CONSOLIDÉE (``FactureSource``, devis
     # NULL) : une seule requête, et seulement pour une vente acceptée sans
-    # facture directe vivante — le seul cas où elles peuvent exister (la
-    # facture de BC porte aussi ``devis``, AUD112).
-    vivantes = [f for f in directes if f.statut != STATUT_ANNULEE]
-    if accepte and not vivantes:
+    # facture directe ÉMISE — le seul cas où une consolidée émise peut
+    # exister (la facture de BC porte aussi ``devis``, AUD112 ; un brouillon
+    # ne ferme aucune porte, VNT20).
+    if accepte and not any(f.statut in STATUTS_EMIS for f in directes):
         autres = (Facture.objects.filter(company_id=company_id)
                   .filter(Q(bon_commande__devis_id__in=ids)
                           | Q(sources__devis_id__in=ids))
@@ -261,6 +261,11 @@ def plan_facturation(devis, option=None, lignes=None) -> dict:
             hors.append((f, ratio))
         else:
             couvrantes[libre].append((f, ratio))
+    # VNT20 — un BROUILLON hors échéancier (facture de BC, complète,
+    # complément de révision) est une alternative concurrente, pas une part
+    # du plan : il ne réduit aucune tranche ; seule son ÉMISSION est bornée
+    # au prix convenu (``motif_emission_hors_prix``).
+    hors = [(f, r) for f, r in hors if f.statut in STATUTS_EMIS]
 
     # Ce qui est réalisé (net des corrections) par tranche couverte et hors
     # échéancier (complète, BC, consolidée, clé disparue).
@@ -364,3 +369,74 @@ def plan_facturation(devis, option=None, lignes=None) -> dict:
         # etat_vente) ; jamais sérialisé tel quel.
         'factures_parts': parts,
     }
+
+
+# ── « Une vente ne se facture qu'une fois » — à l'ÉMISSION (VNT20) ──────────
+
+def factures_bloquantes(devis, porte) -> list:
+    """Les factures ÉMISES de la vente qui ferment ``porte`` (``tranche`` :
+    toute facture émise hors échéancier — complète, BC, consolidée ; autre
+    porte : toute facture émise). Un BROUILLON ne ferme aucune porte : deux
+    brouillons concurrents coexistent, le second ÉMIS est refusé
+    (:func:`motif_emission_hors_prix`)."""
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return []
+    ids = set(_ids_chaine(devis))
+    emises = [f for f, _r in _factures_et_parts(devis)
+              if f.statut in STATUTS_EMIS]
+    if porte == 'tranche':
+        return [f for f in emises if not _est_tranche(f, ids)]
+    return emises
+
+
+def _ventes_de_la_facture(facture):
+    """``[(devis, part)]`` que ``facture`` facture : son devis (ou celui de
+    son BC) pour la part entière, sinon les sources d'une CONSOLIDÉE au
+    prorata de leur sous-total HT."""
+    devis = facture.devis if facture.devis_id else None
+    if devis is None and facture.bon_commande_id:
+        devis = getattr(facture.bon_commande, 'devis', None)
+    if devis is not None:
+        return [(devis, Decimal('1'))]
+    if facture.pk is None:
+        return []
+    ht = _d(facture.total_ht)
+    return [(s.devis, (_d(s.sous_total_ht) / ht) if ht > 0 else ZERO)
+            for s in facture.sources.select_related('devis')]
+
+
+def motif_emission_hors_prix(facture):
+    """None si l'émission de ``facture`` tient dans le prix convenu de sa
+    (ses) vente(s) ; sinon le motif FR du refus (lecture pure — l'appelant,
+    ``emettre_facture``, lève ``EmissionRefusee``).
+
+    Refuse, pour une vente (devis ACCEPTÉ) : une facture d'une version
+    REMPLACÉE ou archivée (``is_active`` faux) ; Σ émis net de la vente (avoirs de correction
+    déduits, cette facture exclue) + la part de cette facture > prix
+    convenu (+ un centime d'arrondi par facture)."""
+    from apps.ventes.utils.options import option_totaux
+    for devis, ratio in _ventes_de_la_facture(facture):
+        # Seule une VENTE (devis accepté, même société) est bornée.
+        if (devis is None or devis.company_id != facture.company_id
+                or devis.statut != 'accepte'):
+            continue
+        if not devis.is_active:
+            tete = chaine_vente(devis)[-1]
+            if tete.pk != devis.pk:
+                return (f'Le devis {devis.reference} a été remplacé par '
+                        f'{tete.reference} : facturez la version en cours.')
+            return (f'Le devis {devis.reference} est archivé : il ne se '
+                    'facture plus.')
+        emises = [(f, r) for f, r in _factures_et_parts(devis)
+                  if f.statut in STATUTS_EMIS and f.pk != facture.pk]
+        deja = sum((_montants_nets(f, r)[0] for f, r in emises), ZERO)
+        part = _d(facture.total_ttc) * ratio
+        prix = _d(option_totaux(devis)['ttc'])
+        if deja + part > prix + CENT * (len(emises) + 1):
+            refs = ', '.join(f.reference for f, _r in emises) or '—'
+            return (f'Émission refusée : la vente {devis.reference} '
+                    f'({_q(prix)} MAD TTC) est déjà facturée à '
+                    f'{_q(deja)} MAD par {refs} ; cette facture '
+                    f'({_q(part)} MAD) la dépasserait. Annulez ce brouillon '
+                    'ou corrigez par un avoir.')
+    return None

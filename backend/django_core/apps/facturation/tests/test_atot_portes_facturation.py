@@ -115,10 +115,56 @@ class PortesFacturationTests(TestCase):
                 avant = self._refs(devis)
                 self.assertEqual(len(avant), 1)
                 r2 = self._porte(porte_b, devis)
+                if porte_a == 'bc':
+                    # VNT20 — la facture de BC naît BROUILLON : elle ne
+                    # ferme aucune porte (la seconde émet) ; c'est son
+                    # ÉMISSION qui est refusée, en nommant la facture émise.
+                    self.assertEqual(r2.status_code, 201, r2.data)
+                    r3 = self.api.post(
+                        f"/api/django/ventes/factures/{r1.data['id']}/"
+                        'emettre/', {}, format='json')
+                    self.assertEqual(r3.status_code, 400, r3.data)
+                    self.assertIn('avoir', str(r3.data))
+                    emises = [f for f in self._actives(devis)
+                              if f.statut != 'brouillon']
+                    self.assertEqual(len(emises), 1)
+                    self.assertIn(emises[0].reference, str(r3.data))
+                    continue
                 self.assertEqual(r2.status_code, 400, r2.data)
                 self.assertIn(avant[0], str(r2.data))
                 self.assertIn('avoir', str(r2.data))
                 self.assertEqual(self._refs(devis), avant)
+
+    def test_vnt20_brouillon_ne_ferme_aucune_porte(self):
+        """VNT20 — deux brouillons coexistent, le devis à brouillon seul
+        reste facturable (porte « libre ») ; émettre au-delà du prix convenu
+        est refusé ; une version remplacée ne s'émet plus."""
+        from apps.ventes.models import Devis, Facture
+        from apps.ventes.utils.echeancier import solde_devis
+        devis = self._devis()
+        bc = self._porte('bc', devis)
+        self.assertEqual(bc.status_code, 201, bc.data)
+        self.assertEqual(
+            solde_devis(Devis.objects.get(pk=devis.pk))['porte_facturation'],
+            'libre')
+        r = self._porte('tranche', devis)
+        self.assertEqual(r.status_code, 201, r.data)
+        acompte = Facture.objects.get(pk=r.data['id'])
+        self.assertEqual(acompte.montant_ttc, Decimal('45000.00'))
+        r = self.api.post(
+            f"/api/django/ventes/factures/{bc.data['id']}/emettre/", {},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn(acompte.reference, r.data['detail'])
+        self.assertEqual(Facture.objects.get(pk=bc.data['id']).statut,
+                         Facture.Statut.BROUILLON)
+        # Version remplacée (is_active faux) : plus aucune émission.
+        Devis.objects.filter(pk=devis.pk).update(is_active=False)
+        r = self._porte('tranche', Devis.objects.get(pk=devis.pk))
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(
+            Facture.objects.filter(devis=devis).exclude(
+                statut=Facture.Statut.BROUILLON).count(), 1)
 
     def test_complete_puis_tranche_refuse(self):
         devis = self._devis()

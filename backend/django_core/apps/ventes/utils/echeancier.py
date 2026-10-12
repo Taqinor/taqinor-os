@@ -1096,16 +1096,20 @@ def porte_facturation(devis, actives=None):
     Lit les factures PRÉCHARGÉES du devis (``factures_actives``, liste sans
     N+1) ; la consolidée (``devis=None``) n'est visible que par
     ``FactureSource`` : une seule requête, et seulement pour un devis accepté
-    sans facture directe (seul cas où elle change la réponse)."""
+    sans facture directe (seul cas où elle change la réponse).
+
+    VNT20 — la porte suit EXACTEMENT la garde ``exiger_devis_facturable`` :
+    elle se lit sur les factures ÉMISES de la vente (chaîne de versions,
+    quatre portes) ; un brouillon ne ferme aucune porte. ``actives`` est
+    gardé pour la signature (ignoré)."""
+    from apps.ventes.vente_facturation import factures_bloquantes
+    emises = factures_bloquantes(devis, 'complete')
+    if not emises:
+        return 'libre'
     from apps.ventes.selectors_facturation import est_facture_de_tranche
-    if actives is None:
-        actives = factures_actives(devis)
-    if any(not est_facture_de_tranche(f, devis) for f in actives):
+    from apps.ventes.vente_facturation import chaine_vente
+    ids = {d.pk for d in chaine_vente(devis)}
+    if any(f.devis_id not in ids or not est_facture_de_tranche(f)
+           for f in emises):
         return 'aucune'
-    if actives:
-        return 'tranche' if next_tranche(devis) is not None else 'aucune'
-    if devis.statut == devis.Statut.ACCEPTE:
-        from apps.ventes.selectors_facturation import factures_du_devis
-        if factures_du_devis(devis).exists():
-            return 'aucune'
-    return 'libre'
+    return 'tranche' if next_tranche(devis) is not None else 'aucune'

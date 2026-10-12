@@ -820,12 +820,12 @@ def exiger_devis_facturable(devis, porte):
         raise ValueError(f'Porte de facturation inconnue : {porte!r}.')
     if devis is None:
         return
-    actives = list(factures_du_devis(devis).order_by('id'))
-    if porte == 'tranche':
-        bloquantes = [f for f in actives
-                      if not est_facture_de_tranche(f, devis)]
-    else:
-        bloquantes = actives
+    # VNT20 — seules les factures ÉMISES de la VENTE (toute la chaîne de
+    # versions, les quatre portes) ferment une porte ; un brouillon ne
+    # bloque rien : « une vente ne se facture qu'une fois » est tenu à
+    # l'ÉMISSION (``emettre_facture`` → ``motif_emission_hors_prix``).
+    from .vente_facturation import factures_bloquantes
+    bloquantes = factures_bloquantes(devis, porte)
     if not bloquantes:
         return
     refs = ', '.join(f.reference for f in bloquantes)

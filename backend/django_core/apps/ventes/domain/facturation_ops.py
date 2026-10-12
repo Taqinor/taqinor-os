@@ -119,6 +119,9 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         raise EmissionRefusee(
             'La facture doit contenir au moins une ligne.')
     verifier_ice_client_entreprise(facture)
+    from apps.ventes.vente_facturation import motif_emission_hors_prix
+    if (motif := motif_emission_hors_prix(facture)):  # VNT20 : 1 vente, 1 fois
+        raise EmissionRefusee(motif)
 
     if verifier_credit and facture.client_id:
         from apps.ventes.domain.recouvrement import verifier_credit_hold
