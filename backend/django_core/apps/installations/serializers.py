@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .serializers_stage import ChampsStrictsMixin, valider_unicite_societe  # ENF11 : mixin de core.champs_stricts
+from .serializers_stage import ChampsStrictsMixin, TexteLie, valider_unicite_societe  # ENF11 : core.champs_stricts
 
 from .models import (
     Equipe,
@@ -2183,16 +2183,16 @@ class RegleReapproSerializer(SameCompanyFKSerializerMixin,
         return attrs
 
 
-class MaterielConsigneSerializer(SameCompanyFKSerializerMixin,
+class MaterielConsigneSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE
     SERVEUR ; le statut et la trace de retour avancent via l'action `retourner`.
-    `caution_totale` est derivee (INTERNE)."""
+    `caution_totale` est derivee (INTERNE). Champs stricts (api-fuzz r12 : un
+    `note` entier = 400) ; `fournisseur_nom` toujours servi, même sur un PATCH."""
     # ENF17 — FK cross-app inscriptibles bornées à la société (id
     # d'une autre société = id absent, 400).
     same_company_fields = ('fournisseur',)
-    fournisseur_nom = serializers.CharField(
-        source='fournisseur.nom', read_only=True, default=None)
+    fournisseur_nom = TexteLie(source='fournisseur.nom', read_only=True, default=None)
     type_materiel_display = serializers.CharField(
         source='get_type_materiel_display', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -2651,9 +2651,9 @@ class PreuveLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         ]
 
 
-class TransporteurSerializer(serializers.ModelSerializer):
+class TransporteurSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """FG331 - transporteur (interne/tiers) + tarif de base (INTERNE). La
-    societe et `created_by` sont poses COTE SERVEUR."""
+    societe et `created_by` sont poses COTE SERVEUR. Champs stricts (api-fuzz r12)."""
     type_transporteur_display = serializers.CharField(
         source='get_type_transporteur_display', read_only=True, default=None)
 

@@ -6,7 +6,7 @@ et `protege` sont posés/verrouillés côté serveur pour les étapes système.
 """
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import ChampsStrictsMixin, TexteLie  # noqa: F401 — ré-exporté vers serializers.py
 
 from .models import StageModele
 

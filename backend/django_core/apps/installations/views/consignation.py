@@ -13,6 +13,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import entier_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import MaterielConsigne
@@ -22,7 +23,12 @@ from . import _openapi as oa
 READ_ACTIONS = ['list', 'retrieve']
 
 
-@oa.listing(p0=oa.qi('fournisseur'), p1=oa.qs('statut'), p2=oa.qs('type_materiel'))
+# api-fuzz r12 — `fournisseur` lu en entier STRICT (``abc`` → 400 nommant le
+# paramètre, jamais 500 ; 0/négatif → 400) : le schéma annonce ``minimum: 1``.
+_ID_PARAM = {'type': 'integer', 'minimum': 1}
+
+
+@oa.listing(p0=oa.q('fournisseur', _ID_PARAM), p1=oa.qs('statut'), p2=oa.qs('type_materiel'))
 class MaterielConsigneViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG327 — matériel consigné. Lecture tout rôle, écriture responsable/admin.
     Filtrable par `statut`, `type_materiel`, `fournisseur`."""
@@ -44,7 +50,7 @@ class MaterielConsigneViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         type_materiel = params.get('type_materiel')
         if type_materiel:
             qs = qs.filter(type_materiel=type_materiel)
-        fournisseur = params.get('fournisseur')
+        fournisseur = entier_ou_400(params.get('fournisseur'), 'fournisseur', mini=1)
         if fournisseur:
             qs = qs.filter(fournisseur_id=fournisseur)
         return qs
