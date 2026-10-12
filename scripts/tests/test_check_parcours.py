@@ -208,6 +208,10 @@ class RejeuTests(unittest.TestCase):
         motif, verbe, _ = m.route_de("backend/django_core/apps/v/domain/ops.py::emettre_facture")
         self.assertEqual((motif, verbe), ("api/^factures/(?P<pk>[^/.]+)/emettre/$", "post"))
         self.assertIsNone(m.route_de("backend/django_core/apps/v/domain/ops.py::fonction_sans_appelant"))
+        # Vue fonction homonyme d'un AUTRE module (live : PA4.08 `commit` → /imports/commit/) : jamais retenue.
+        homonyme = mock.Mock(__name__="commit", __module__="apps.imports.views", __code__=compile("x", "f", "eval"))
+        m.routes = [("api/^imports/commit/$", mock.Mock(actions=None), mock.Mock(post=homonyme, __mro__=()))]
+        self.assertIsNone(m.route_de("backend/django_core/apps/ventes/paiement_import.py::commit"))
 
     def test_porte_alternative_jouee_en_variante_avant_son_ancre(self):
         m = object.__new__(rejouer_parcours._Moteur)

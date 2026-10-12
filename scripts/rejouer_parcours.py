@@ -2,7 +2,7 @@
 """AMET98 (C-AMET-025) — rejeu d'une table de parcours sur UN enregistrement de la pile LOCALE.
 
     python scripts/rejouer_parcours.py PA4 --enregistrement <id> [--modele ventes.Devis] [--donnees f.json]
-                                       [--couvre AMET98] [--timeout 2400]
+                                       [--couvre AMET98] [--timeout 3600]
 
 Chaque étape jouable de `apps/<pilote>/parcours/<PA>.json` est jouée par l'API réelle (`APIClient`,
 utilisateur de la société de l'enregistrement) dans UNE transaction annulée, via `scripts/sonde.py`
@@ -135,14 +135,15 @@ class _Moteur:
         """(motif, verbe, classe de vue) de la route qui joue `fichier::[Classe.]fonction`, ou None.
 
         `Classe.methode` : la vue dont le MRO porte la classe. Fonction nue : la vue qui porte une action de ce
-        nom, ou dont une action l'APPELLE (une fonction de domaine n'a pas de route à elle) — à égalité, la vue
-        dont le modèle a un objet courant, puis le plus de mots communs entre l'action et la fonction."""
+        nom (vue fonction : du MÊME module), ou dont une action l'APPELLE (une fonction de domaine n'a pas de route
+        à elle) — rang : objet courant du modèle de la vue, même nom, preuve du module déclaré (importé ou nommé
+        dans le code), mots communs entre l'action et la fonction, ordre des routes."""
         fichier, _, sym = str(ref or '').partition('::')
         if not fichier.endswith('.py') or not sym:
             return None
         classe, _, meth = sym.rpartition('.')
         meth = {'perform_create': 'create', 'perform_update': 'partial_update'}.get(meth, meth)
-        cands = []
+        mod, cands = fichier.replace('backend/django_core/', '')[:-3].replace('/', '.'), []
         for n, (motif, cb, cls) in enumerate(self.routes):
             if cls is None or (classe and classe not in {k.__name__ for k in cls.__mro__}):
                 continue
@@ -150,11 +151,14 @@ class _Moteur:
                 nomf = getattr(f, '__name__', '')
                 if classe and (getattr(cb, 'actions', None) or {}).get(verbe) == meth:
                     return motif, verbe, cls
-                if not classe and f is not None and (nomf == meth or self.appelle(f, meth)):
+                meme = nomf == meth and (getattr(cb, 'actions', None) or getattr(f, '__module__', '') == mod)
+                if not classe and f is not None and (meme or self.appelle(f, meth)):
                     Mv = self.modele_vue(cls)
-                    cands.append((Mv is not None and Mv._meta.label in getattr(self, 'objets', {}), nomf == meth,
+                    preuve = self.appelle(f, mod.rsplit('.', 1)[-1]) or getattr(
+                        getattr(f, '__globals__', {}).get(meth), '__module__', None) == mod
+                    cands.append((Mv is not None and Mv._meta.label in getattr(self, 'objets', {}), bool(meme), preuve,
                                   len(set(nomf.split('_')) & set(meth.split('_'))), -n, (motif, verbe, cls)))
-        return max(cands, key=lambda c: c[:4])[4] if cands else None
+        return max(cands, key=lambda c: c[:5])[5] if cands else None
 
     def route_modele(self, M, action):
         return next((mo for mo, cb, cls in self.routes if cls and self.modele_vue(cls) is M
@@ -502,7 +506,7 @@ def _enregistrer(groupes, joues, racine, nom, sha, commande) -> int:
 
 
 def rejouer(table, pa, enreg, *, executer=sonde.executer_docker, racine=ROOT, sha=None, date=None,
-            modele=None, donnees=None, conteneur=sonde.CONTENEUR, timeout=2400, dry_run=False, couvre=()) -> int:
+            modele=None, donnees=None, conteneur=sonde.CONTENEUR, timeout=3600, dry_run=False, couvre=()) -> int:
     jouables, manquantes = partager(table)
     for e in manquantes:
         print(f"{e['id']} : MANQUANTE — non jouée ({e.get('raison', '')})")
@@ -536,7 +540,7 @@ def main(argv=None) -> int:
     p.add_argument('--modele', help='app.Modele de cet enregistrement (défaut : vue de la 1re étape)')
     p.add_argument('--donnees', help='JSON des corps / pk / valeurs de checkpoint par étape')
     p.add_argument('--conteneur', default=sonde.CONTENEUR)
-    p.add_argument('--timeout', type=int, default=2400, help='secondes (Django démarre lentement sur Windows)')
+    p.add_argument('--timeout', type=int, default=3600, help='secondes (import des URL ≈ 25 min en conteneur Windows)')
     p.add_argument('--couvre', default='', help="ids ajoutés à chaque étape jouée (ex. AMET98 : l'outil lui-même)")
     p.add_argument('--dry-run', action='store_true', help='imprime le programme, sans docker')
     a = p.parse_args(argv)
