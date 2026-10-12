@@ -61,6 +61,21 @@ class TestDevisAcceptesSansChantier(IntegrityBase):
         result = controle_integrite(self.company)
         self.assertEqual(result['devis_acceptes_sans_chantier']['ids'], [])
 
+    def test_v1_revisee_dont_le_chantier_est_sur_la_v2_non_signalee(self):
+        """VNT85 : la vente en vigueur est lue par la chaîne de révision —
+        une V1 acceptée remplacée par la V2 acceptée (chantier sur la V2)
+        n'est pas un « accepté sans chantier »."""
+        v2 = Devis.objects.create(
+            company=self.company, reference='DEV-V2', client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE)
+        v1 = Devis.objects.create(
+            company=self.company, reference='DEV-V1', client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE, is_active=False, superseded_by=v2)
+        self._installation(devis=v2)
+        result = controle_integrite(self.company)
+        self.assertNotIn(v1.id, result['devis_acceptes_sans_chantier']['ids'])
+        self.assertEqual(result['devis_acceptes_sans_chantier']['ids'], [])
+
     def test_non_accepted_devis_ignored(self):
         Devis.objects.create(
             company=self.company, reference='DEV-3', client=self.client_obj,
