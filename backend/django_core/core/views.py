@@ -983,18 +983,17 @@ class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
 #: la rogner en silence (un utilisateur qui demande 50 000 lignes doit savoir
 #: qu'il n'en a reçu que 5 000).
 LIMITE_MAX_EXPLORATION = 5000
-_TEXTES = drf_serializers.ListField(child=ChaineStricte(), required=False)
-_OBJETS = drf_serializers.ListField(
-    child=drf_serializers.DictField(), required=False)
+# Une instance de champ PAR clé : partagée, DRF la lie au dernier nom
+# seulement (les autres clés disparaissent du serializer et du schéma).
+_TEXTES = ('select', 'group_by', 'order', 'order_by')
+_OBJETS = ('aggregates', 'formula_measures')
 _REQUETE_RUN = inline_serializer('DataExplorerRunRequete', {
     'dataset': ChaineStricte(),
-    'select': _TEXTES,
     'filters': drf_serializers.DictField(required=False),
-    'group_by': _TEXTES,
-    'aggregates': _OBJETS,
-    'formula_measures': _OBJETS,
-    'order': _TEXTES,
-    'order_by': _TEXTES,
+    **{cle: drf_serializers.ListField(child=ChaineStricte(), required=False)
+       for cle in _TEXTES},
+    **{cle: drf_serializers.ListField(
+        child=drf_serializers.DictField(), required=False) for cle in _OBJETS},
     'limit': EntierStrict(
         required=False, min_value=1, max_value=LIMITE_MAX_EXPLORATION),
 })

@@ -72,6 +72,8 @@ class RunEndpointTests(TestCase):
         })
         self.assertEqual(reponse.status_code, status.HTTP_200_OK)
         self.assertEqual(sum(r['n'] for r in reponse.data['rows']), 2)
+        # Le regroupement est bien LU (une ligne par valeur de is_active).
+        self.assertTrue(all('is_active' in r for r in reponse.data['rows']))
 
     def test_order_alias_de_order_by(self):
         reponse = self._post({'dataset': 'ntdata6_ds',
