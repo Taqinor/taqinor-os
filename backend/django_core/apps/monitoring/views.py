@@ -67,9 +67,12 @@ _WINDOW = OpenApiParameter(
     'window_days', OpenApiTypes.INT, required=False, default=365)
 _SINCE = OpenApiParameter('since', OpenApiTypes.DATE, required=False)
 _UNTIL = OpenApiParameter('until', OpenApiTypes.DATE, required=False)
-_CLIENT_REQ = OpenApiParameter('client', OpenApiTypes.INT, required=True)
+# ENF11 (api-fuzz) — ``query_params.identifiant`` refuse 0 et les négatifs :
+# le schéma le dit (``minimum: 1``) au lieu d'annoncer tout entier.
+_IDENTIFIANT = {'type': 'integer', 'minimum': 1}
+_CLIENT_REQ = OpenApiParameter('client', _IDENTIFIANT, required=True)
 _FILTRE_INSTALLATION = [OpenApiParameter(
-    'installation', OpenApiTypes.INT, required=False)]
+    'installation', _IDENTIFIANT, required=False)]
 
 # ── CIQ645 — import CSV des relevés ─────────────────────────────────────────
 _COLONNES_RELEVES = {
