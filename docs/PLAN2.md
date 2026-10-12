@@ -2325,6 +2325,7 @@ domaine tourne en parallèle, aucune migration dans leurs apps (celle d'EZ7 va d
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+- 2026-10-12 — Correctifs CI M1 tour 2 : corps non-objet validés (generer-facture, marquer-payee, retour-client → 400 validation_error), suppression d'une facture numérotée = 409 ConflitEtat (VNT14 amendée), promesse PACT159 refusée (MIROIR_JS) — commits 2e818e4a6…11f5a484e.
 - 2026-10-12 — VNT72 (apps/web) : bandeau « Avenant à <V1> — nouveau prix » / « Avenant signé ✓ » sur /proposition (lib/avenant.ts, BandeauAvenant.astro), clés `avenant` lues et justifiées (QJW20), vitest 98/98, tsc 0 (commit 14de70f4c) — copie WEB_PLAN cochée.
 - 2026-10-12 — VNT106 : renouveler un devis ACCEPTÉ → 409 deuxieme_affaire (fd62071fa) ; VNT103 : champs morts Devis.acompte_pct/acompte_montant retirés — migration ventes 0139 DESTRUCTIVE mais RÉVERSIBLE (migrate ventes 0138 les remet ; prod recomptée en lecture seule le 12/10 : 0 valeur non nulle) ; audits db-invariants/currency/money-fields régénérés (eed42f09c) ; VNT104 : `selectors.racine_groupe/groupe_proposition` remplacent 10 calculs manuels (3a1304cd3).
 - 2026-10-12 — VNT70 : Lead.devis[] du DÉTAIL sert `solde` + `vente` (devis acceptés, null sinon) via la façade `ventes.selectors.vente_et_solde_map` (un lot_de_vente par lead, requêtes constantes) ; contrat lead_devis_ligne.json servi ; tests versions +107 (commit fc2e5bf02).

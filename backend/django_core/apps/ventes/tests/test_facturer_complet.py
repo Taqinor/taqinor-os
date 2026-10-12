@@ -181,6 +181,17 @@ class TestFacturerComplet(TestCase):
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn(tranche.data['reference'], resp.data['detail'])
 
+    def test_generer_facture_corps_non_objet_400(self):
+        """api-fuzz (ENF11) : ``[null, null]`` posté à ``generer-facture``
+        levait une 500 (``list.get``) — le corps est validé par son
+        sérialiseur déclaré : 400 ``validation_error``, rien n'est créé."""
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/generer-facture/',
+            [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['error']['code'], 'validation_error')
+        self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
+
     def test_surpaiement_refuse_et_rien_n_est_cree(self):
         avant_factures = Facture.objects.count()
         resp = self._post([self._p('100000', 10), self._p('60000', 5)])
