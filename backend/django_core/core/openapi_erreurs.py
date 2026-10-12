@@ -171,6 +171,23 @@ def _format_racine_redondant(noeud):
         for b in noeud.get('anyOf') or ())
 
 
+#: ERR-ENF11-FUZZ-CORE — extension posée sur un ``OpenApiParameter`` de
+#: requête qui transporte un objet JSON SÉRIALISÉ (``?filtre={"periode":…}``) :
+#: sa valeur est le schéma de l'objet. Publié en ``type: string``, n'importe
+#: quelle chaîne était conforme puis refusée (« JSON invalide », 400) ; le
+#: crochet le republie en ``content: application/json`` (OpenAPI 3.0, §
+#: Parameter Object) — le contrat dit enfin « un objet JSON, encodé ».
+EXTENSION_CONTENU_JSON = 'x-contenu-json'
+
+
+def _parametre_contenu_json(noeud):
+    schema = noeud.pop(EXTENSION_CONTENU_JSON, None)
+    if schema is None or noeud.get('in') != 'query':
+        return
+    noeud.pop('schema', None)
+    noeud['content'] = {'application/json': {'schema': schema}}
+
+
 def _chaine_non_blanche(noeud):
     return (noeud.get('type') == 'string' and noeud.get('minLength', 0) >= 1
             and not any(cle in noeud for cle in ('pattern', 'format', 'enum')))
@@ -186,6 +203,7 @@ def aligner_motifs_sur_drf(result, generator=None, request=None,
     while pile:
         noeud = pile.pop()
         if isinstance(noeud, dict):
+            _parametre_contenu_json(noeud)
             if noeud.get('format') == 'decimal':
                 strict = motif_decimal_strict(noeud.get('pattern'))
                 if strict:

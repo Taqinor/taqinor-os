@@ -59,6 +59,7 @@ from . import trash as trash_infra
 from . import workflow_templates
 from .champs_stricts import ChaineStricte, EntierStrict
 from .mixins import TenantMixin
+from .openapi_erreurs import EXTENSION_CONTENU_JSON
 from .parametres_requete import choix_ou_400
 from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
@@ -738,7 +739,9 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[_q('filtre', OpenApiTypes.STR,
-                       'Filtres globaux (JSON) remplaçant ceux du layout.')],
+                       'Filtres globaux (JSON) remplaçant ceux du layout.',
+                       extensions={EXTENSION_CONTENU_JSON:
+                                   dashboard_data.SCHEMA_FILTRES_GLOBAUX})],
         responses={200: _OBJET})
     @action(detail=True, methods=['get'])
     def donnees(self, request, pk=None):
@@ -761,8 +764,10 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
             try:
                 globaux = json.loads(brut)
             except (TypeError, ValueError):
+                globaux = None
+            if not isinstance(globaux, dict):  # `null` ne vaut pas « aucun »
                 return Response(
-                    {'detail': "Paramètre « filtre » : JSON invalide."},
+                    {'detail': "Paramètre « filtre » : objet JSON attendu."},
                     status=status.HTTP_400_BAD_REQUEST)
         try:
             donnees = dashboard_data.executer_dashboard(
