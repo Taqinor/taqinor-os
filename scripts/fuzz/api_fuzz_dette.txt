@@ -1632,3 +1632,5 @@ Server error|POST /api/django/facturation/factures/{id}/lien-paiement/
 Server error|POST /api/django/records/comments/
 Server error|POST /api/django/ventes/factures/bulk/
 API accepted schema-violating request|PATCH /api/django/roles/{id}/
+API accepted schema-violating request|PATCH /api/django/crm/motifs-perte/{id}/
+API accepted schema-violating request|POST /api/django/crm/leads/placement-cadences/
