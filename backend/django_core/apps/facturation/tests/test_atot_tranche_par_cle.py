@@ -350,3 +350,45 @@ class TrancheParCleTests(TestCase):
                          ('materiel', Decimal('29400.00'),
                           Decimal('24932.00'), Decimal('4468.00')))
         self.assertFalse(nt['is_last'])
+
+    def test_vnt18_libelle_de_l_echeancier_et_part_reelle(self):
+        """VNT18 — acompte libre 15 000 / 60 % / reste ⇒ « Acompte »,
+        « Livraison du matériel 60 % », « Solde » (jamais « devis DEV-… ») ;
+        ``pourcentage`` = part réelle (solde 9,39)."""
+        from apps.ventes.models import Facture
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            ECHEANCIER_LIBRE, creer_devis_388)
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT18-{_nxt()}', ECHEANCIER_LIBRE)
+        factures = []
+        for _ in range(3):
+            r = self._generer(devis)
+            self.assertEqual(r.status_code, 201, r.data)
+            factures.append(Facture.objects.get(pk=r.data['id']))
+        self.assertEqual([f.libelle for f in factures],
+                         ['Acompte', 'Livraison du matériel 60 %', 'Solde'])
+        self.assertEqual([f.montant_ttc for f in factures],
+                         [Decimal('15000.00'), Decimal('29400.00'),
+                          Decimal('4600.00')])
+        self.assertEqual(factures[-1].pourcentage, Decimal('9.39'))
+        self.assertFalse(any(devis.reference in f.libelle for f in factures))
+
+    def test_vnt18_solde_1600_porte_sa_part_reelle_jamais_10(self):
+        """30/60/10 sur 49 000 ; acompte 14 700 et matériel 32 700 (base
+        54 500 de la V1) émis ⇒ solde 1 600, part 3,27 %, libellé « Solde »."""
+        from apps.ventes.models import Facture
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388, facture_tranche)
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT18B-{_nxt()}')
+        facture_tranche(devis, f'FAC-VNT18-{_nxt()}', 'acompte', '14700.00',
+                        '12466.00', '2234.00')
+        facture_tranche(devis, f'FAC-VNT18-{_nxt()}', 'materiel', '32700.00',
+                        '27731.00', '4969.00', type_facture='intermediaire')
+        r = self._generer(devis)
+        self.assertEqual(r.status_code, 201, r.data)
+        solde = Facture.objects.get(pk=r.data['id'])
+        self.assertEqual(solde.montant_ttc, Decimal('1600.00'))
+        self.assertEqual(solde.pourcentage, Decimal('3.27'))
+        self.assertEqual(solde.libelle, 'Solde')
+        self.assertTrue(solde.libelle.startswith('Solde'))

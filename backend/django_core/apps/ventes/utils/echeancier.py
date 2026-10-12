@@ -850,17 +850,15 @@ def next_tranche(devis, lignes=None, option=None):
     if not a_venir:
         return None
     tr = a_venir[0]
-    pourcentage = tr['pourcentage']
-    if tr['unite'] != UNITE_MONTANT:
-        # Une tranche en pourcentage publie son % déclaré (comportement
-        # d'hier ; VNT18 passe à la part réelle).
-        pourcentage = Decimal(str(tr['valeur']))
     sortie = {
         'key': tr['key'],
         'cle': tr['cle'],
         'label': tr['libelle'],
+        # VNT18 — libellé de facture (arbitrage 6) et PART RÉELLE (montant ÷
+        # prix convenu) : « Solde 10 % » pour 1 600 sur 49 000 était faux.
+        'libelle_facture': libelle_tranche(tr),
         'type': tr['type'],
-        'pourcentage': pourcentage,
+        'pourcentage': tr['pourcentage'],
         'ht': tr['ht'],
         'tva': tr['tva'],
         'ttc': tr['montant_ttc'],
@@ -873,6 +871,23 @@ def next_tranche(devis, lignes=None, option=None):
     if tr.get('payeur') == 'tiers':
         sortie['payeur'] = 'tiers'
     return sortie
+
+
+def libelle_tranche(tranche) -> str:
+    """VNT18 (arbitrage 6) — le libellé d'une facture de tranche : le
+    libellé de l'échéancier SEUL (« Acompte », « Solde »), suivi de « <pct> % »
+    UNIQUEMENT pour une tranche déclarée en pourcentage, NON dernière, qui
+    vaut exactement son pourcentage (« Livraison du matériel 60 % ») ; jamais
+    la référence du devis. ``tranche`` = une tranche du plan de facturation."""
+    libelle = tranche['libelle']
+    if tranche['unite'] == UNITE_MONTANT or tranche['is_last']:
+        return libelle
+    pct = Decimal(str(tranche['valeur']))
+    if _q(pct) != _q(tranche['pourcentage']):
+        return libelle
+    pct = (pct.quantize(Decimal('1')) if pct == pct.to_integral_value()
+           else pct.normalize())
+    return f'{libelle} {pct} %'
 
 
 def tranches_a_venir(devis, lignes=None, option=None) -> list:
@@ -938,9 +953,7 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
                 "Cette tranche est réglée par un organisme financeur : "
                 "renseignez le tiers payeur du devis avant de la facturer.")
 
-    pct_label = int(tr['pourcentage']) if tr['pourcentage'] == int(tr['pourcentage']) \
-        else tr['pourcentage']
-    libelle = f"{tr['label']} {pct_label} % — devis {devis.reference}"
+    libelle = tr['libelle_facture']
 
     # CIQ212 — un délai de règlement DÉCLARÉ sur le jalon fixe l'échéance
     # (émission + délai) AVANT l'émission, qui ne l'écrase pas ; sinon le
