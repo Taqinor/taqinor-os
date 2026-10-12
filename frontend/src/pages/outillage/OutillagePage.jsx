@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Pencil, Trash2, CalendarCheck, ScanLine } from 'lucide-react'
 import outillageApi from '../../api/outillageApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import stockApi from '../../api/stockApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
@@ -59,8 +60,8 @@ export default function OutillagePage() {
   // après stock NTMOB14 et SAV NTMOB15).
   const [scanOpen, setScanOpen] = useState(false)
 
-  const load = () => outillageApi.getOutils()
-    .then((r) => { setOutils(r.data.results ?? r.data); setError(null) })
+  const load = () => fetchAllPages((page) => outillageApi.getOutils({ page }).then((r) => r.data), { concurrency: 3 })
+    .then((rows) => { setOutils(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })
     .catch(() => setError("Impossible de charger l'outillage. Réessayez."))
     .finally(() => setLoading(false))
 

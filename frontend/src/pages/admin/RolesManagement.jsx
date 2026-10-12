@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ShieldPlus, ShieldCheck, Pencil, Trash2, Eye, ChevronDown, Lock } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { resilientMutation } from '../../lib/resilientMutation'
 import {
   Button, Spinner, Badge,
@@ -281,10 +282,10 @@ export default function RolesManagement() {
     setError(null)
     try {
       const [rolesRes, permsRes] = await Promise.all([
-        rolesApi.getRoles(),
+        fetchAllPages((page) => rolesApi.getRoles({ page }).then((r) => r.data), { concurrency: 3 }),
         rolesApi.getPermissionsDisponibles(),
       ])
-      setRoles(rolesRes.data.results ?? rolesRes.data)
+      setRoles(Array.isArray(rolesRes) ? rolesRes : (rolesRes?.results ?? []))
       setAvailableCodes(permsRes.data.permissions ?? [])
       // SOL12 — champ additif ; un backend plus ancien ne le sert pas, la
       // matrice reste alors complète (aucune régression).

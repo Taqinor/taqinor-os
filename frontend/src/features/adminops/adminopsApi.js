@@ -18,12 +18,12 @@ const adminopsApi = {
   diagnostic: () => api.get('/adminops/diagnostic/'),
 
   // Sandbox (NTADM12)
-  listSandbox: () => api.get('/adminops/sandbox/'),
+  listSandbox: (params) => api.get('/adminops/sandbox/', { params }),
   creerSandbox: () => api.post('/adminops/sandbox/creer/'),
   prolongerSandbox: (id) => api.post(`/adminops/sandbox/${id}/prolonger/`),
 
   // Packages de configuration (NTADM15/31)
-  listPackages: () => api.get('/adminops/config-packages/'),
+  listPackages: (params) => api.get('/adminops/config-packages/', { params }),
   exporterPackage: (nom) => api.post('/adminops/config-packages/exporter/', { nom }),
   previsualiserPackage: (contenu) =>
     api.post('/adminops/config-packages/previsualiser/', { contenu }),

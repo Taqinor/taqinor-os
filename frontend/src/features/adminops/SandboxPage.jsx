@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import adminopsApi from './adminopsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import { Button, Badge, Card, EmptyState, Spinner } from '../../ui'
 import { formatDate } from '../../lib/format'
@@ -24,9 +25,9 @@ export default function SandboxPage() {
 
   const load = () => {
     setLoading(true)
-    adminopsApi
-      .listSandbox()
-      .then((res) => setEnvs(res.data?.results ?? res.data ?? []))
+    // ENF15 — toutes les pages (fetchAllPages), jamais la seule page 1.
+    fetchAllPages((page) => adminopsApi.listSandbox({ page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setEnvs(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => toastError('Impossible de charger les sandbox.'))
       .finally(() => setLoading(false))
   }
