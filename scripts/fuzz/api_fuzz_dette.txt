@@ -1715,3 +1715,7 @@ API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{i
 Response violates schema|GET /api/django/calepinage/calepinages/{id}/meteo-fichier/
 Server error|POST /api/django/crm/leads/export-xlsx/
 Server error|POST /api/django/crm/leads/{id}/locataire/
+# PR #984, 2e tirage (12/10/2026) — 2 constats PRÉ-EXISTANTS supplémentaires (variance de couverture du job PR),
+# gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (leads/{id}/merge = vrai 500 crm à corriger à la cause).
+API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/schema-unifilaire/
+Server error|POST /api/django/crm/leads/{id}/merge/
