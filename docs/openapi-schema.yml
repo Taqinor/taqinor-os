@@ -7621,6 +7621,7 @@ query_params:
   get /api/django/adsengine/actions/: debut fin ordering page page_size search statut
   get /api/django/adsengine/ads/{ad_meta_id}/previews/: ad_format
   get /api/django/adsengine/alertes/: ordering page page_size search
+  get /api/django/adsengine/alertes/history/: page page_size
   get /api/django/adsengine/annotations/: ordering page page_size search
   get /api/django/adsengine/anomalies/: ordering page page_size search
   get /api/django/adsengine/backlog-creatif/: ordering page page_size search
@@ -8398,6 +8399,7 @@ query_params:
   get /api/v1/adsengine/actions/: debut fin ordering page page_size search statut
   get /api/v1/adsengine/ads/{ad_meta_id}/previews/: ad_format
   get /api/v1/adsengine/alertes/: ordering page page_size search
+  get /api/v1/adsengine/alertes/history/: page page_size
   get /api/v1/adsengine/annotations/: ordering page page_size search
   get /api/v1/adsengine/anomalies/: ordering page page_size search
   get /api/v1/adsengine/backlog-creatif/: ordering page page_size search

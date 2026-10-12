@@ -252,6 +252,7 @@ SURFACE_PUBLIQUE = (
     # QJR107 (30/08/2026) — ``profil_reel_existe`` RETIRÉE de la surface :
     # la fonction est supprimée (aucun appelant dans tout le dépôt), voir la
     # note de suppression en tête de ``domain/etudes.py``.
+    "public_url",
     "puissance_kwc_du_devis",
     "qr_svg_for_facture_pdf",
     "rafraichir_dimensionnement_devis",

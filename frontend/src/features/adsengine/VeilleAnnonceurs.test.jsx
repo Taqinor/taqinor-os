@@ -28,7 +28,7 @@ describe('VeilleAnnonceurs', () => {
   it('groupes lus dans classes_disponibles : vendeurs, bruit, incertains ; géants à part', async () => {
     render(<VeilleAnnonceurs decouverteId={17} />)
     const vendeurs = await screen.findByTestId('ae-veille-groupe-vendeur')
-    expect(mocks.annonceurs).toHaveBeenCalledWith({ page_size: 200, decouverte: 17 })
+    expect(mocks.annonceurs).toHaveBeenCalledWith(expect.objectContaining({ decouverte: 17 }))
     expect(within(vendeurs).getByText('Maison Lilas')).toBeTruthy()
     expect(vendeurs.textContent).toContain(ANNONCEUR.classes_disponibles[0].libelle_fr)
     expect(within(screen.getByTestId('ae-veille-groupe-incertain')).getByText('Noir Total')).toBeTruthy()

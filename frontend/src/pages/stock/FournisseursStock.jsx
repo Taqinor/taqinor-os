@@ -550,10 +550,10 @@ export default function FournisseursStock() {
   // endpoint. Dégrade proprement (catégories vides) plutôt que de planter
   // tout l'écran sur `undefined(...) is not a function`.
   const reloadCategories = () => {
-    stockApi.getCategoriesFournisseur
-      && fetchAllPages((page) => stockApi.getCategoriesFournisseur({ ordering: 'nom', page }).then((r) => r.data), { concurrency: 3 })
-        .then((rows) => setCategories(Array.isArray(rows) ? rows : (rows?.results ?? [])))
-        .catch(() => {})
+    if (typeof stockApi.getCategoriesFournisseur !== 'function') return
+    fetchAllPages((page) => stockApi.getCategoriesFournisseur({ ordering: 'nom', page }).then((r) => r.data), { concurrency: 3 })
+      .then((rows) => setCategories(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      .catch(() => {})
   }
   const reloadArchived = () => {
     // Fable review (fix WIR190) — react-hooks/set-state-in-effect : ce
