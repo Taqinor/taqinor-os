@@ -1489,3 +1489,52 @@ describe('VNT80 — 409 nommant la tête : erreur sous la carte + « Ouvrir <ré
     defiler.mockRestore()
   })
 })
+
+/* VNT81 — panneau de vente au téléphone (< 768 px) : cibles ≥ 44 px (min-h-11),
+   AU PLUS deux boutons visibles par facture (le geste principal + « Plus
+   d'actions »), Reçu et envois dans le menu ; le bureau garde tout visible. */
+describe('VNT81 — panneau de vente utilisable au téléphone', () => {
+  const accepte = {
+    id: 502, reference: 'DEV-202610-0021', statut: 'accepte', total_ttc: '49000',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+  }
+  const carte = (variante) => ({ ...accepte, vente: exempleContrat('ventes', 'vente_etat', variante).vente })
+  const stubMobile = (mobile) => vi.stubGlobal('matchMedia', (media) => ({
+    matches: mobile, media, onchange: null, dispatchEvent: () => false,
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+  }))
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('téléphone : ≤ 2 boutons par facture, cibles min-h-11, le reste dans « Plus d\'actions »', async () => {
+    stubMobile(true)
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('vente-facture-118')
+    const boutons = within(ligne).getAllByRole('button')
+    expect(boutons.length).toBeLessThanOrEqual(2)
+    for (const b of boutons) expect(b.className).toContain('min-h-11')
+    expect(within(ligne).queryByRole('button', { name: 'WhatsApp' })).toBeNull()
+    await user.click(within(ligne).getByRole('button', { name: /Plus d'actions/ }))
+    expect(await screen.findByRole('menuitem', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'E-mail' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Reçu/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: /Reçu/ }))
+    await waitFor(() => expect(recuPdfPaiement).toHaveBeenCalledWith(301))
+  })
+
+  it('téléphone : « Facturer le solde » a une cible de 44 px', () => {
+    stubMobile(true)
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    expect(screen.getByRole('button', { name: /Facturer le solde/ }).className).toContain('min-h-11')
+  })
+
+  it('bureau : tout reste visible (WhatsApp, E-mail, Reçu), pas de menu', () => {
+    stubMobile(false)
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('vente-facture-118')
+    expect(within(ligne).getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: 'E-mail' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: /Reçu/ })).toBeInTheDocument()
+    expect(within(ligne).queryByRole('button', { name: /Plus d'actions/ })).toBeNull()
+  })
+})

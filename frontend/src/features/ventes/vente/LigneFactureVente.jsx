@@ -7,7 +7,11 @@
 // aucun) ; un refus s'écrit en `role=alert` SOUS cette facture, avec sa
 // référence — jamais de toast (règle fondateur « erreurs → le champ fautif »).
 import { useState } from 'react'
-import { Button, StatusPill } from '../../../ui'
+import { MoreHorizontal } from 'lucide-react'
+import {
+  Button, StatusPill, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../../ui'
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { formatMAD, formatDate } from '../../../lib/format'
 import PaiementDialog from '../../../pages/ventes/PaiementDialog'
 import { useActionsVente } from './useActionsVente'
@@ -42,19 +46,41 @@ export default function LigneFactureVente({ facture, onChange }) {
   const peut = facture.peut ?? {}
   const occupe = actions.occupe !== null
   const erreur = actions.erreur?.factureId === facture.id ? actions.erreur : null
+  // VNT81 — au téléphone (< 768 px) : cibles ≥ 44 px et AU PLUS deux boutons
+  // visibles par facture (le geste principal + « Plus d'actions »), le reste —
+  // Reçu compris — passe dans le menu. Au bureau : tout reste visible.
+  const mobile = useIsMobile()
+  const cible = mobile ? 'min-h-11 min-w-11' : undefined
 
-  const bouton = (cle, libelle, onClick, variante = 'outline') => (
+  const gestes = []
+  if (peut.emettre === true) gestes.push({ id: 'emettre', libelle: 'Émettre', variante: 'default', agir: () => actions.emettre(facture) })
+  if (peut.encaisser === true) gestes.push({ id: 'encaisser', libelle: 'Encaisser', variante: 'default', agir: () => setEncaisser(facture) })
+  if (peut.pdf === true) gestes.push({ id: 'pdf', libelle: 'PDF', agir: () => actions.pdf(facture) })
+  if (peut.envoyer === true) {
+    gestes.push({ id: 'whatsapp', libelle: 'WhatsApp', agir: () => actions.whatsapp(facture) })
+    gestes.push({ id: 'email', libelle: 'E-mail', agir: () => actions.envoyerEmail(facture) })
+  }
+  const recus = (facture.paiements ?? []).filter((p) => p.peut?.recu === true)
+  const aReplier = mobile
+    ? [...gestes, ...recus.map((p) => ({
+      id: `recu-${p.id}`, libelle: `Reçu ${formatMAD(p.montant, { decimals: 0 })}`, agir: () => actions.recu(facture, p),
+    }))]
+    : []
+  const visibles = mobile ? aReplier.slice(0, aReplier.length > 2 ? 1 : aReplier.length) : gestes
+  const menu = mobile ? aReplier.slice(visibles.length) : []
+
+  const bouton = (g) => (
     <Button
-      type="button" size="sm" variant={variante} disabled={occupe}
-      data-testid={`vente-${cle}-${facture.id}`} onClick={onClick}
+      key={g.id} type="button" size="sm" variant={g.variante ?? 'outline'} disabled={occupe}
+      className={cible} data-testid={`vente-${g.id}-${facture.id}`} onClick={g.agir}
     >
-      {libelle}
+      {g.libelle}
     </Button>
   )
 
   return (
-    <li className="vente-facture" data-testid={`vente-facture-${facture.id}`}>
-      <div className="vente-facture-tete">
+    <li className="vente-facture grid gap-1 border-t py-2" data-testid={`vente-facture-${facture.id}`}>
+      <div className="vente-facture-tete flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="vente-facture-ref">{facture.reference}</span>
         <span className="gen-hint">{NATURES[facture.nature] ?? facture.nature}</span>
         <StatusPill status={statut} tone={TONS[statut]} label={STATUTS_FACTURE[statut] ?? statut} />
@@ -68,7 +94,7 @@ export default function LigneFactureVente({ facture, onChange }) {
           {facture.paiements.map((p) => (
             <li key={p.id} data-testid={`vente-paiement-${p.id}`} className="gen-hint">
               {formatMAD(p.montant, { decimals: 0 })} · {formatDate(p.date_paiement)} · {p.mode_paiement}
-              {p.peut?.recu === true && (
+              {!mobile && p.peut?.recu === true && (
                 <Button
                   type="button" size="sm" variant="ghost" disabled={occupe}
                   onClick={() => actions.recu(facture, p)}
@@ -80,12 +106,25 @@ export default function LigneFactureVente({ facture, onChange }) {
           ))}
         </ul>
       )}
-      <div className="vente-facture-gestes">
-        {peut.emettre === true && bouton('emettre', 'Émettre', () => actions.emettre(facture), 'default')}
-        {peut.encaisser === true && bouton('encaisser', 'Encaisser', () => setEncaisser(facture), 'default')}
-        {peut.pdf === true && bouton('pdf', 'PDF', () => actions.pdf(facture))}
-        {peut.envoyer === true && bouton('whatsapp', 'WhatsApp', () => actions.whatsapp(facture))}
-        {peut.envoyer === true && bouton('email', 'E-mail', () => actions.envoyerEmail(facture))}
+      <div className="vente-facture-gestes flex flex-wrap items-center gap-2">
+        {visibles.map(bouton)}
+        {menu.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button" size="sm" variant="outline" disabled={occupe} className={cible}
+                aria-label={`Plus d'actions — ${facture.reference}`}
+              >
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {menu.map((g) => (
+                <DropdownMenuItem key={g.id} className="min-h-11" onSelect={g.agir}>{g.libelle}</DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       {erreur && (
         <p role="alert" className="vente-facture-erreur" data-testid={`vente-erreur-${facture.id}`}>

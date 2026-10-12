@@ -11,6 +11,7 @@
 // (tête acceptée active) ; le succès rafraîchit la fiche, qui montre la V2.
 import { useState } from 'react'
 import { Button } from '../../../ui'
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import BilanVente from './BilanVente'
 import LigneFactureVente from './LigneFactureVente'
 import FacturerVenteDialog from './FacturerVenteDialog'
@@ -20,6 +21,7 @@ import { peutFacturerAcompte, peutFacturerSolde, peutVente } from './venteEtat'
 export default function PanneauVente({ devis, onAction, onOuvrirDevis }) {
   const [facturerCible, setFacturerCible] = useState(null)
   const [prixCible, setPrixCible] = useState(null)
+  const cible = useIsMobile() ? 'min-h-11' : undefined // VNT81 — cibles ≥ 44 px au téléphone
   // Dernier état servi par un GET détail (état dérivé pendant le rendu).
   const [dernier, setDernier] = useState(devis?.vente ?? null)
   if (devis?.vente && devis.vente !== dernier) setDernier(devis.vente)
@@ -37,7 +39,7 @@ export default function PanneauVente({ devis, onAction, onOuvrirDevis }) {
   const prixNegocie = !remplacee && peutVente(actif, 'prix_negocie')
 
   return (
-    <section className="vente-panneau" data-testid={`panneau-vente-${devis.id}`} aria-label="Vente">
+    <section className="vente-panneau grid grid-cols-1 gap-2 text-sm" data-testid={`panneau-vente-${devis.id}`} aria-label="Vente">
       {remplacee && (
         <p className="gen-hint" data-testid={`vente-remplacee-${devis.id}`}>
           {tete?.reference ? `Remplacé par ${tete.reference}` : 'Version remplacée'}
@@ -50,10 +52,10 @@ export default function PanneauVente({ devis, onAction, onOuvrirDevis }) {
         </ul>
       )}
       {(acompte || solde || prixNegocie) && (
-        <div className="vente-actions">
+        <div className="vente-actions flex flex-wrap gap-2">
           {acompte && (
             <Button
-              type="button" size="sm" data-testid={`vente-facturer-acompte-${devis.id}`}
+              type="button" size="sm" className={cible} data-testid={`vente-facturer-acompte-${devis.id}`}
               onClick={() => setFacturerCible(devis)}
             >
               🧾 Facturer l'acompte
@@ -61,7 +63,7 @@ export default function PanneauVente({ devis, onAction, onOuvrirDevis }) {
           )}
           {solde && (
             <Button
-              type="button" size="sm" data-testid={`vente-facturer-solde-${devis.id}`}
+              type="button" size="sm" className={cible} data-testid={`vente-facturer-solde-${devis.id}`}
               onClick={() => setFacturerCible(devis)}
             >
               🧾 Facturer le solde
@@ -69,7 +71,7 @@ export default function PanneauVente({ devis, onAction, onOuvrirDevis }) {
           )}
           {prixNegocie && (
             <Button
-              type="button" size="sm" variant="outline" data-testid={`vente-prix-negocie-${devis.id}`}
+              type="button" size="sm" variant="outline" className={cible} data-testid={`vente-prix-negocie-${devis.id}`}
               onClick={() => setPrixCible(actif)}
             >
               Prix négocié
