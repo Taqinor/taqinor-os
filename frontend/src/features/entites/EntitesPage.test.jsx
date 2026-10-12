@@ -24,10 +24,26 @@ vi.mock('../../lib/toast', () => ({
 
 import entitesApi from './entitesApi'
 import { downloadXlsx } from '../../api/importApi'
+import { toastError } from '../../lib/toast'
 import EntitesPage from './EntitesPage'
 
 describe('EntitesPage (WIR68)', () => {
   beforeEach(() => { vi.clearAllMocks() })
+
+  it('signale une erreur de chargement quand l API rejette', async () => {
+    entitesApi.tree.mockRejectedValueOnce(new Error('boom'))
+    render(<EntitesPage />)
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('Impossible de charger les entités.'))
+  })
+
+  it('lit toutes les pages de la liste des entités', async () => {
+    entitesApi.list
+      .mockResolvedValueOnce({ data: { count: 2, next: 'x', results: [{ id: 1, code: 'A', nom: 'A' }] } })
+      .mockResolvedValueOnce({ data: { count: 2, next: null, results: [{ id: 2, code: 'B', nom: 'B' }] } })
+    render(<EntitesPage />)
+    await waitFor(() => expect(entitesApi.list).toHaveBeenCalledTimes(2))
+  })
 
   it('exporte le référentiel en xlsx', async () => {
     render(<EntitesPage />)

@@ -6,6 +6,7 @@ import PageHeader from '../../components/layout/PageHeader'
 import { Button, Badge, Card, EmptyState, Spinner } from '../../ui'
 import { toastError, toastSuccess } from '../../lib/toast'
 import { downloadXlsx } from '../../api/importApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /* ============================================================================
    NTADM4 — Écran Paramètres → Entités : arbre hiérarchique indenté (liste,
@@ -130,19 +131,30 @@ export default function EntitesPage() {
   const [historyNode, setHistoryNode] = useState(null)
   const fileInputRef = useRef(null)
 
+  const [rechargement, setRechargement] = useState(0)
+
   const load = () => {
     setLoading(true)
-    Promise.all([entitesApi.tree(), entitesApi.list()])
-      .then(([treeRes, listRes]) => {
-        setTree(Array.isArray(treeRes.data) ? treeRes.data : [])
-        setFlat(listRes.data?.results ?? listRes.data ?? [])
-      })
-      .catch(() => toastError('Impossible de charger les entités.'))
-      .finally(() => setLoading(false))
+    setRechargement((n) => n + 1)
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
-  useEffect(load, [])
+  useEffect(() => {
+    let actif = true
+    // Liste COMPLÈTE (toutes les pages) : le sélecteur de parent ne doit pas
+    // s'arrêter à la première page du serveur.
+    const toutesLesEntites = fetchAllPages(
+      (page, { page_size } = {}) => entitesApi.list({ page, page_size }).then((res) => res.data),
+    ).then((r) => (Array.isArray(r) ? r : (r?.results ?? [])))
+    Promise.all([entitesApi.tree(), toutesLesEntites])
+      .then(([treeRes, liste]) => {
+        if (!actif) return
+        setTree(Array.isArray(treeRes.data) ? treeRes.data : [])
+        setFlat(liste)
+      })
+      .catch(() => { if (actif) toastError('Impossible de charger les entités.') })
+      .finally(() => { if (actif) setLoading(false) })
+    return () => { actif = false }
+  }, [rechargement])
 
   const handleRename = async (node) => {
     const nom = window.prompt('Nouveau nom :', node.nom)
