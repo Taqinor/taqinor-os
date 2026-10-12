@@ -3,14 +3,14 @@
 // (FactureList monte trop de dépendances pour un test comportemental léger).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+// VNT102 — FactureList.jsx est découpé (gestes / documents / lot / dialogues) : la garde lit
+// la concaténation de FactureList.jsx et de factureList/*.
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
-const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'FactureList.jsx'), 'utf8')
+const src = lireSourcesFactureList()
 
 test('création d\'avoir et échéance : frenchError, plus de detail ?? texte fixe', () => {
-  assert.match(src, /import \{ frenchError \} from '..\/..\/lib\/frenchError'/)
+  assert.match(src, /import \{ frenchError \} from '(?:\.\.\/)+lib\/frenchError'/)
   assert.match(src, /toast\.error\(frenchError\(err, "Création de l'avoir impossible\."\)\)/)
   assert.match(src, /toast\.error\(frenchError\(err, 'Mise à jour de l’échéance impossible\.'\)\)/)
   assert.doesNotMatch(src, /err\?\.response\?\.data\?\.detail \?\? "Création de l'avoir/)

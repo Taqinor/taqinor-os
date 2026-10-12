@@ -48,7 +48,7 @@ export default function PanneauVente({ devis, onAction, onOuvrirDevis }) {
       <BilanVente vente={vente} />
       {factures.length > 0 && (
         <ul className="vente-factures">
-          {factures.map((f) => <LigneFactureVente key={f.id} facture={f} onChange={rafraichir} />)}
+          {factures.map((f) => <LigneFactureVente key={f.id} facture={f} factures={factures} onChange={rafraichir} />)}
         </ul>
       )}
       {(acompte || solde || prixNegocie) && (

@@ -19,8 +19,8 @@ import DevisTab, {
    props contrôlées, comme le fera réellement ContextRail). */
 
 const {
-  genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement,
-  ouvrirPdfFacture, prixNegocie, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
+  apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement,
+  ouvrirPdfFacture, prixNegocie, annulerFacture, supprimerFacture, modifierMontantTranche, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
@@ -30,7 +30,6 @@ const {
     { id: 41, nom: 'Panneau Longi 610W', marque: 'Longi', prix_vente: 1400, prix_achat: 1000 },
   ]
   return {
-    genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
     // VNT75 — l'aperçu de FacturerVenteDialog, ouvert depuis le panneau de vente.
     apercuFacturerVente: vi.fn(),
     // VNT76 — gestes par facture du panneau (useActionsVente) ; jamais de toast.
@@ -41,6 +40,10 @@ const {
     ouvrirPdfFacture: vi.fn(() => Promise.resolve('ouvert')),
     // VNT78 — PrixNegocieDialog monté depuis le panneau.
     prixNegocie: vi.fn(),
+    // VNT77 — Annuler (avoir) / Supprimer (BROUILLON) / Modifier le montant d'un brouillon.
+    annulerFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    supprimerFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    modifierMontantTranche: vi.fn(() => Promise.resolve({ data: {} })),
     createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
     whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR538 — l'aperçu sans effet : réponse fournie par le test depuis
@@ -73,7 +76,7 @@ const {
   }
 })
 vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, prixNegocie, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+  default: { apercuFacturerVente, emettreFacture, whatsappFacture, envoyerEmailFacture, recuPdfPaiement, prixNegocie, annulerFacture, supprimerFacture, modifierMontantTranche, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
 }))
 vi.mock('../../ventes/vente/facturePdf', () => ({ ouvrirPdfFacture }))
 vi.mock('../../../utils/pdfBlob', () => ({ openPdfBlob: vi.fn(), messageErreurBlob: vi.fn(() => Promise.resolve('')) }))
@@ -259,7 +262,6 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     expect(screen.queryByRole('button', { name: LEGACY })).toBeNull()
     await user.click(screen.getByRole('button', { name: /Facturer l'acompte/ }))
     await waitFor(() => expect(apercuFacturerVente).toHaveBeenCalledWith(502))
-    expect(genererFacture).not.toHaveBeenCalled()
     expect(onAction).not.toHaveBeenCalledWith('refresh')
   })
 
@@ -1400,6 +1402,162 @@ describe('VNT76 — gestes par facture du panneau de vente', () => {
     c.vente.factures[0].paiements[0].peut = { recu: false }
     renderTab({ state: leadState({ devis: [c] }) })
     expect(within(screen.getByTestId('vente-paiement-301')).queryByRole('button', { name: /Reçu/ })).toBeNull()
+  })
+})
+
+/* VNT77 — Annuler (avoir automatique, directive pour l'argent) / Supprimer
+   (BROUILLON-<id>) / Modifier le montant d'un brouillon, PAR facture du panneau.
+   Chaque geste suit `facture.peut` (palier calculé serveur, VNT23) : le
+   Commercial n'en voit aucun. Corps de `montant-tranche` : {montant_ttc} (aucun
+   exemple contrat committé — forme lue de facture_cycle.py / VNT67). */
+describe('VNT77 — annuler / supprimer / modifier le montant, par facture', () => {
+  const accepte = {
+    id: 502, reference: 'DEV-202610-0021', statut: 'accepte', total_ttc: '49000',
+    date_creation: '2026-10-05', option_acceptee: 'A', chantier: null, is_active: true,
+  }
+  const carte = (variante, modifier = () => {}) => {
+    const c = { ...accepte, vente: exempleContrat('ventes', 'vente_etat', variante).vente }
+    modifier(c.vente.factures[0])
+    return c
+  }
+  const FERME = { annuler: false, supprimer: false, modifier_montant: false }
+  const brouillon14700 = (f) => { f.total_ttc = '14700.00' }
+  const emiseSansArgent = (f) => {
+    f.statut = 'emise'; f.reference = 'FAC-202610-0006'; f.montant_paye = '0.00'
+    f.peut = { ...f.peut, emettre: false, supprimer: false, modifier_montant: false, annuler: true }
+  }
+  const stubMobile = (mobile) => vi.stubGlobal('matchMedia', (media) => ({
+    matches: mobile, media, onchange: null, dispatchEvent: () => false,
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+  }))
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('Commercial : le serveur ferme les trois ⇒ aucun des trois boutons', () => {
+    renderTab({ state: leadState({ devis: [
+      carte('exemple_acompte_brouillon', (f) => { f.peut = { ...f.peut, ...FERME } }),
+    ] }) })
+    const ligne = screen.getByTestId('vente-facture-117')
+    expect(within(ligne).queryByRole('button', { name: /Annuler la facture|Supprimer|Modifier le montant/ })).toBeNull()
+    cleanup()
+    renderTab({ state: leadState({ devis: [
+      carte('exemple_acompte_paye_solde_a_faire', (f) => { f.peut = { ...f.peut, ...FERME } }),
+    ] }) })
+    expect(within(screen.getByTestId('vente-facture-118')).queryByRole('button', { name: /Annuler la facture/ })).toBeNull()
+  })
+
+  it('Responsable : brouillon ⇒ Modifier le montant + Supprimer, pas Annuler ; émise ⇒ Annuler seul', () => {
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('vente-facture-117')
+    expect(within(ligne).getByRole('button', { name: 'Modifier le montant' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: 'Supprimer' })).toBeInTheDocument()
+    expect(within(ligne).queryByRole('button', { name: 'Annuler la facture' })).toBeNull()
+    cleanup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const payee = screen.getByTestId('vente-facture-118')
+    expect(within(payee).getByRole('button', { name: 'Annuler la facture' })).toBeInTheDocument()
+    expect(within(payee).queryByRole('button', { name: /Supprimer|Modifier le montant/ })).toBeNull()
+  })
+
+  it('Modifier le montant : brouillon 14 700 → 15 000 ⇒ appel montant-tranche puis rafraîchissement', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon', brouillon14700)] }) })
+    const ligne = screen.getByTestId('vente-facture-117')
+    await user.click(within(ligne).getByRole('button', { name: 'Modifier le montant' }))
+    const champ = within(ligne).getByLabelText('Montant TTC')
+    expect(champ).toHaveValue(14700)
+    expect(champ).toHaveAttribute('step', 'any')
+    await user.clear(champ)
+    await user.type(champ, '15000')
+    await user.click(within(ligne).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(modifierMontantTranche).toHaveBeenCalledWith(117, '15000'))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    await waitFor(() => expect(within(ligne).queryByLabelText('Montant TTC')).toBeNull())
+  })
+
+  it('Modifier le montant : refus serveur nommé SOUS le champ, aucun toast, champ conservé', async () => {
+    const user = userEvent.setup()
+    const err = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    modifierMontantTranche.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: 'Le montant dépasse le reste à facturer.', code: 'montant_depasse_reste' } },
+    })
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon', brouillon14700)] }) })
+    const ligne = screen.getByTestId('vente-facture-117')
+    await user.click(within(ligne).getByRole('button', { name: 'Modifier le montant' }))
+    const champ = within(ligne).getByLabelText('Montant TTC')
+    await user.clear(champ)
+    await user.type(champ, '99999')
+    await user.click(within(ligne).getByRole('button', { name: 'Enregistrer' }))
+    const alerte = await within(ligne).findByRole('alert')
+    expect(alerte).toHaveTextContent('Le montant dépasse le reste à facturer.')
+    expect(within(ligne).getByLabelText('Montant TTC')).toHaveValue(99999)
+    expect(onAction).not.toHaveBeenCalled()
+    expect(err).not.toHaveBeenCalled()
+  })
+
+  it('Supprimer : confirmation nommant la référence, puis DELETE de CE brouillon', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    await user.click(within(screen.getByTestId('vente-facture-117')).getByRole('button', { name: 'Supprimer' }))
+    const dialogue = await screen.findByRole('alertdialog')
+    expect(dialogue).toHaveTextContent('BROUILLON-117')
+    expect(supprimerFacture).not.toHaveBeenCalled()
+    await user.click(within(dialogue).getByRole('button', { name: 'Supprimer le brouillon' }))
+    await waitFor(() => expect(supprimerFacture).toHaveBeenCalledWith(117))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('Annuler une émise SANS argent : confirmation (avoir, facture tracée) puis annulation sans directive', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon', emiseSansArgent)] }) })
+    await user.click(within(screen.getByTestId('vente-facture-117')).getByRole('button', { name: 'Annuler la facture' }))
+    const dialogue = await screen.findByRole('alertdialog')
+    expect(dialogue).toHaveTextContent(/avoir/i)
+    expect(dialogue).toHaveTextContent(/reste tracée/i)
+    expect(annulerFacture).not.toHaveBeenCalled()
+    await user.click(within(dialogue).getByRole('button', { name: "Confirmer l'annulation" }))
+    await waitFor(() => expect(annulerFacture).toHaveBeenCalledWith(117, undefined))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('Annuler une émise AVEC argent : dialogue de directive, choix obligatoire non pré-coché', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    await user.click(within(screen.getByTestId('vente-facture-118')).getByRole('button', { name: 'Annuler la facture' }))
+    const dialogue = await screen.findByRole('dialog')
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(within(dialogue).getByRole('radio', { name: 'Rembourser' })).not.toBeChecked()
+    const confirmer = within(dialogue).getByRole('button', { name: 'Annuler la facture' })
+    expect(confirmer).toBeDisabled()
+    await user.click(within(dialogue).getByRole('radio', { name: 'Rembourser' }))
+    await user.click(confirmer)
+    await waitFor(() => expect(annulerFacture).toHaveBeenCalledWith(118, { acompte: { action: 'rembourser' } }))
+  })
+
+  it('refus 409 directive_acompte_requise sur la confirmation simple ⇒ bascule sur le dialogue de directive', async () => {
+    const user = userEvent.setup()
+    annulerFacture.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: "Cette facture porte un acompte : dites où va l'argent.", code: 'directive_acompte_requise' } },
+    })
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon', emiseSansArgent)] }) })
+    await user.click(within(screen.getByTestId('vente-facture-117')).getByRole('button', { name: 'Annuler la facture' }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: "Confirmer l'annulation" }))
+    const dialogue = await screen.findByRole('dialog')
+    expect(within(dialogue).getByRole('radio', { name: 'Rembourser' })).toBeInTheDocument()
+    expect(within(dialogue).getByRole('alert')).toHaveTextContent("dites où va l'argent")
+  })
+
+  it('téléphone : les nouveaux gestes passent dans « Plus d\'actions » (≤ 2 boutons visibles)', async () => {
+    stubMobile(true)
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('vente-facture-117')
+    expect(within(ligne).getAllByRole('button').length).toBeLessThanOrEqual(2)
+    expect(within(ligne).queryByRole('button', { name: 'Supprimer' })).toBeNull()
+    await user.click(within(ligne).getByRole('button', { name: /Plus d'actions/ }))
+    expect(await screen.findByRole('menuitem', { name: 'Supprimer' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Modifier le montant' })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Supprimer' }))
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('BROUILLON-117')
   })
 })
 

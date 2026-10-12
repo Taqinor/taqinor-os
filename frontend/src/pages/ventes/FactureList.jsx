@@ -1,32 +1,29 @@
-import { Fragment, useCallback, useEffect, useState, useMemo } from 'react'
+import { Fragment, useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
-  MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
+  Code2, Check, FileText, ReceiptText, MoreHorizontal,
   CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap, Receipt, Eye,
 } from 'lucide-react'
 import {
   fetchFactures,
   fetchFacturesKpis,
   emettreFacture,
-  marquerPayeeFacture,
-  annulerFacture,
-  genererPdfFacture,
 } from '../../features/ventes/store/ventesSlice'
-import ventesApi from '../../api/ventesApi'
-import { frenchError } from '../../lib/frenchError'
-import fetchAllPages from '../../utils/fetchAllPages'
-import parametresApi from '../../api/parametresApi'
-import api from '../../api/axios'
 import importApi from '../../api/importApi'
 import FactureForm from './FactureForm'
 import ListeTableSkeleton from './ListeTableSkeleton'
 import FactureKanbanBoard from './FactureKanbanBoard'
-import FactureRow, { AnnulationFactureDialog } from './factureList/FactureRow'
+import FactureRow from './factureList/FactureRow'
 // SPL212 — exports comptables (état, gestes, dialogues) extraits en factureList/.
 import useFactureCompta from './factureList/useFactureCompta.js'
 import ComptaDialogs from './factureList/ComptaDialogs.jsx'
+// VNT102 — gestes, documents, lot et dialogues extraits en factureList/ (move only).
+import useFactureGestes from './factureList/useFactureGestes.js'
+import useFactureDocuments from './factureList/useFactureDocuments.js'
+import useFactureLot from './factureList/useFactureLot.js'
+import DialoguesFacture from './factureList/DialoguesFacture.jsx'
 import { isPartiallyPaid, isOverdue, today, STATUTS_HORS_ENCAISSEMENT } from './factureList/factureHelpers.js'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
@@ -35,14 +32,11 @@ import {
   Skeleton,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-  FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   Popover, PopoverTrigger, PopoverContent,
   toast,
 } from '../../ui'
-import { preparerApercuWhatsApp } from './whatsappFacture'
 import { LangueWhatsApp, BasculeAffichage, OngletCompteur, PageListeChargement } from './ElementsListeVentes'
 import { formatMAD, toNumber } from '../../lib/format'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
@@ -51,20 +45,8 @@ import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 // APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
-// APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
-import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
 import { useConfirmDialog } from '../../ui/confirm'
-// EZ13 — confirmation À SÉVÉRITÉ (VX244) pour le marquage sec « payée ».
-import { ConfirmDialog } from '../../ui/ConfirmDialog'
-import PaiementDialog from './PaiementDialog'
-// WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
-import NoteDebitDialog from './NoteDebitDialog'
-// PACT121 — modale « Payer en ligne » (core.PaymentTransaction, CMI/Payzone).
-// À DISTINGUER de « Encaisser » (règlement déjà reçu) ET du lien FG53
-// ci-dessus : ici on demande un paiement carte à un prestataire.
-import PaiementEnLigneDialog from '../../features/ventes/PaiementEnLigneDialog'
-import { errorMessageFrom } from '../../lib/toast'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -73,7 +55,6 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 // ouverte — seule vue « fiche » qui existe pour une facture, cf. VX220).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { DataTable } from '../../ui/datatable'
-import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 
 // VX21 — squelette de la liste (parité DevisList/DevisTableSkeleton) : reprend
@@ -146,238 +127,20 @@ export default function FactureList() {
   // discret puis squelette, en-tête de page toujours visible.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
-  // ── WIR103/ZFAC4 — Note de débit (pendant de l'avoir) : modale de
-  // création + téléchargement PDF. Le backend était complet et testé mais
-  // n'avait aucun écran ; c'est ici qu'il en gagne un.
-  const [noteDebitTarget, setNoteDebitTarget] = useState(null)
-  const openNoteDebit = (f) => setNoteDebitTarget(f)
 
-  // ── PACT121 — Demande de paiement carte au client (core.PaymentTransaction).
-  // Sans compte marchand configuré, la création reste propre et sans effet :
-  // la modale affiche « prestataire non configuré », jamais une erreur brute.
-  const [paiementEnLigneTarget, setPaiementEnLigneTarget] = useState(null)
-  const openPaiementEnLigne = (f) => setPaiementEnLigneTarget(f)
-
-  /* ══ WIR183 — Six actions Facture COMPLÈTES côté serveur, sans aucune UI ══
-     ZFAC1 (remettre-brouillon), XFAC13 (abandonner-solde), XPOS7
-     (retour-client), XFAC6 (facturer-pénalités), XFAC11 (consolider) et ZFAC6
-     (encaissement-groupe) vivaient toutes dans `apps/ventes/views/facture.py`
-     sans qu'aucun écran ne puisse les déclencher.
-
-     Toutes sont gardées `IsResponsableOrAdmin` côté serveur : les points
-     d'entrée ne s'affichent donc qu'au palier responsable/admin, et TOUT
-     message d'erreur serveur est affiché TEL QUEL (le serveur explique
-     précisément pourquoi il refuse : paiement existant, période verrouillée,
-     quantité retournée trop grande, aucun niveau de relance atteint… — un
-     texte maison masquerait la cause). */
-  const canManage = ['admin', 'responsable'].includes(
-    useSelector(s => s.auth.role))
-  const [wir183Busy, setWir183Busy] = useState(false)
-  const erreurServeur = (err, repli) =>
-    toast.error(err?.response?.data?.detail ?? repli)
-
-  // ZFAC1 — retour au brouillon (référence CONSERVÉE).
-  const handleRemettreBrouillon = async (f) => {
-    const ok = await confirm({
-      title: `Remettre la facture ${f.reference} en brouillon ?`,
-      description: 'La référence est conservée. Le serveur refuse si un '
-        + 'paiement ou un avoir existe, ou si la période comptable est '
-        + 'verrouillée.',
-    })
-    if (!ok) return
-    setWir183Busy(true)
-    try {
-      await ventesApi.remettreBrouillonFacture(f.id)
-      toast.success(`Facture ${f.reference} remise en brouillon.`)
-      dispatch(fetchFactures())
-    } catch (err) {
-      erreurServeur(err, 'Remise en brouillon impossible.')
-    } finally { setWir183Busy(false) }
-  }
-
-  // XFAC6 — la pénalité de retard devient une facture de frais SÉPARÉE.
-  const handleFacturerPenalites = async (f) => {
-    const ok = await confirm({
-      title: `Facturer les pénalités de retard de ${f.reference} ?`,
-      description: 'Une facture de frais SÉPARÉE est créée au niveau de '
-        + "relance courant. La facture d'origine n'est pas modifiée.",
-    })
-    if (!ok) return
-    setWir183Busy(true)
-    try {
-      const { data } = await ventesApi.facturerPenalitesFacture(f.id)
-      toast.success(`Facture de pénalités ${data?.reference ?? ''} créée.`)
-      dispatch(fetchFactures())
-    } catch (err) {
-      erreurServeur(err, 'Facturation des pénalités impossible.')
-    } finally { setWir183Busy(false) }
-  }
-
-  // XFAC13 — abandon du résiduel : le motif est OBLIGATOIRE côté serveur.
-  const MOTIFS_ABANDON = [
-    ['irrecouvrable', 'Irrécouvrable'],
-    ['geste_commercial', 'Geste commercial'],
-    ['ecart_reglement', 'Écart de règlement'],
-    ['liquidation', 'Liquidation'],
-  ]
-  const [abandonTarget, setAbandonTarget] = useState(null)
-  const [abandonMotif, setAbandonMotif] = useState('irrecouvrable')
-  const openAbandonSolde = (f) => { setAbandonMotif('irrecouvrable'); setAbandonTarget(f) }
-  const handleAbandonnerSolde = async () => {
-    if (!abandonTarget) return
-    setWir183Busy(true)
-    try {
-      await ventesApi.abandonnerSoldeFacture(abandonTarget.id, abandonMotif)
-      toast.success(`Solde de ${abandonTarget.reference} abandonné.`)
-      setAbandonTarget(null)
-      dispatch(fetchFactures())
-    } catch (err) {
-      erreurServeur(err, 'Abandon du solde impossible.')
-    } finally { setWir183Busy(false) }
-  }
-
-  // XPOS7 — retour client : l'avoir est créé contre la facture d'origine, avec
-  // option de re-stockage. Le serveur n'accepte QUE des lignes portant un
-  // produit (le re-stockage s'appuie dessus) : les lignes libres sont donc
-  // exclues du tableau, jamais envoyées pour être refusées.
-  const [retourTarget, setRetourTarget] = useState(null)
-  const [retourMotif, setRetourMotif] = useState('')
-  const [retourRestocker, setRetourRestocker] = useState(false)
-  const [retourQtes, setRetourQtes] = useState({})
-  const openRetourClient = async (f) => {
-    setRetourMotif('')
-    setRetourRestocker(false)
-    setRetourQtes({})
-    try {
-      const res = await ventesApi.getFacture(f.id)
-      setRetourTarget(res.data)
-    } catch {
-      setRetourTarget(f)
-    }
-  }
-  const lignesRetournables = (retourTarget?.lignes ?? []).filter(l => l.produit)
-  const handleRetourClient = async () => {
-    if (!retourTarget) return
-    const lignes = lignesRetournables
-      .map(l => ({ produit: l.produit, quantite: retourQtes[l.id] }))
-      .filter(l => toNumber(l.quantite) > 0)
-    if (lignes.length === 0) {
-      toast.error('Indiquez au moins une quantité retournée.')
-      return
-    }
-    setWir183Busy(true)
-    try {
-      await ventesApi.retourClientFacture(retourTarget.id, {
-        motif: retourMotif, restocker: retourRestocker, lignes,
-      })
-      toast.success(`Retour enregistré pour ${retourTarget.reference}.`)
-      setRetourTarget(null)
-      dispatch(fetchFactures())
-    } catch (err) {
-      erreurServeur(err, 'Retour client impossible.')
-    } finally { setWir183Busy(false) }
-  }
-
-  // XFAC11 — consolidation : elle consomme des ids de DEVIS acceptés, PAS la
-  // sélection de factures. La monter sur la barre de masse produirait un 400
-  // garanti — elle vit donc dans les actions de l'écran, avec son propre
-  // sélecteur de devis.
-  const [consoliderOpen, setConsoliderOpen] = useState(false)
-  const [consoliderDevis, setConsoliderDevis] = useState([])
-  const [consoliderSel, setConsoliderSel] = useState([])
-  const openConsolider = async () => {
-    setConsoliderSel([])
-    setConsoliderOpen(true)
-    try {
-      // ADEV70 — TOUTES les pages (jamais les 50 premiers devis acceptés).
-      const res = await fetchAllPages((page) => ventesApi.getDevis({ statut: 'accepte', page, page_size: 200 }).then((r) => r.data))
-      setConsoliderDevis(Array.isArray(res) ? res : (res?.results ?? []))
-    } catch {
-      setConsoliderDevis([])
-    }
-  }
-  const handleConsolider = async () => {
-    if (consoliderSel.length < 2) {
-      toast.error('Sélectionnez au moins deux devis du même client.')
-      return
-    }
-    setWir183Busy(true)
-    try {
-      const { data } = await ventesApi.consoliderFactures(consoliderSel)
-      toast.success(`Facture consolidée ${data?.reference ?? ''} créée.`)
-      setConsoliderOpen(false)
-      dispatch(fetchFactures())
-    } catch (err) {
-      erreurServeur(err, 'Consolidation impossible.')
-    } finally { setWir183Busy(false) }
-  }
-
-  // ZFAC6 — un règlement client réparti sur PLUSIEURS factures. Répartition
-  // FIFO par échéance par défaut ; `repartition` (montant par facture) la
-  // force quand l'utilisateur la renseigne.
-  const [encaissementOpen, setEncaissementOpen] = useState(false)
-  const [encaissementForm, setEncaissementForm] = useState({
-    montant: '', mode: 'virement', date: today, reference: '',
-  })
-  const [encaissementRepartition, setEncaissementRepartition] = useState({})
-
-  // ── Avoir (note de crédit) : modale total OU partiel ──
-  const [avoirTarget, setAvoirTarget] = useState(null) // facture ciblée
-  const [avoirMotif, setAvoirMotif]   = useState('')
-  const [avoirSaving, setAvoirSaving] = useState(false)
-  // Quantités à créditer par ligne (clé = id de ligne) ; vide = avoir total.
-  const [avoirQtes, setAvoirQtes]     = useState({})
-  // ATOT36 (décision fondateur 10/10) — une CORRECTION est remise au solde de
-  // l'échéancier ; un geste commercial réduit le dû de cette facture.
-  const [avoirType, setAvoirType]     = useState('geste_commercial')
-
-  const openAvoirModal = async (f) => {
-    setAvoirMotif('')
-    setAvoirQtes({})
-    setAvoirType('geste_commercial')
-    // Charge le détail des lignes pour permettre un avoir partiel.
-    try {
-      const res = await ventesApi.getFacture(f.id)
-      setAvoirTarget(res.data)
-    } catch {
-      setAvoirTarget(f)
-    }
-  }
-
-  const handleCreerAvoir = async (mode) => {
-    if (!avoirTarget) return
-    setAvoirSaving(true)
-    try {
-      const payload = { motif: avoirMotif, type: avoirType }
-      if (mode === 'partiel') {
-        const lignes = (avoirTarget.lignes || [])
-          .map(l => ({ ...l, _qte: parseFloat(avoirQtes[l.id] ?? 0) }))
-          .filter(l => l._qte > 0)
-          .map(l => ({
-            produit: l.produit ?? null,
-            designation: l.designation,
-            quantite: l._qte,
-            prix_unitaire: l.prix_unitaire,
-            remise: l.remise ?? 0,
-            taux_tva: l.taux_tva,
-          }))
-        if (lignes.length === 0) {
-          toast.error('Saisissez au moins une quantité à créditer.')
-          setAvoirSaving(false)
-          return
-        }
-        payload.lignes = lignes
-      }
-      await ventesApi.creerAvoir(avoirTarget.id, payload)
-      setAvoirTarget(null)
-      dispatch(fetchFactures())
-      toast.success('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
-    } catch (err) {
-      toast.error(frenchError(err, "Création de l'avoir impossible."))
-    } finally {
-      setAvoirSaving(false)
-    }
-  }
+  // VNT102 — gestes sur une facture (note de débit, avoir, WIR183, échéance inline…) :
+  // état + handlers dans factureList/useFactureGestes.js (move only).
+  const g = useFactureGestes({ dispatch, confirm })
+  const {
+    canManage, wir183Busy, setWir183Busy, erreurServeur,
+    openNoteDebit, openPaiementEnLigne, openConsolider,
+    handleRemettreBrouillon, handleFacturerPenalites, openAbandonSolde, openRetourClient,
+  } = g
+  const {
+    echeanceEditId, echeanceValue, setEcheanceValue, echeanceSaving, saveEcheance,
+    setEcheanceEditId, startEditEcheance, actionId, doAction,
+    openPayModal, openAvoirModal, openMarquerPayee,
+  } = g
 
   const [showForm, setShowForm]       = useState(false)
   const [editFacture, setEditFacture] = useState(null)
@@ -412,85 +175,30 @@ export default function FactureList() {
     if (configuration?.activeTab !== undefined) setActiveTab(configuration.activeTab)
     if (configuration?.typeFilter !== undefined) setTypeFilter(configuration.typeFilter)
   }
-  const [actionId, setActionId]       = useState(null)
-  const [pdfGenerating, setPdfGenerating] = useState({})
-  const [pdfDownloading, setPdfDownloading] = useState({})
+
   const compta = useFactureCompta()
   const {
     auditBusy, xlsxBusy, setXlsxBusy,
     setJournalOpen, setExportComptableOpen, handleAuditNumerotation,
   } = compta
-  // ── Envoi WhatsApp : busy par facture (L857), langue (L851), aperçu (L852) ──
-  const [waBusy, setWaBusy] = useState({})
-  const [waLangue, setWaLangue] = useState('fr')
-  const [waPreview, setWaPreview] = useState(null) // { reference, message, url, wa_url }
+  // VNT102 — documents (PDF, aperçu, WhatsApp, UBL, lien de paiement, DGI, historique) :
+  // factureList/useFactureDocuments.js (move only).
+  const d = useFactureDocuments({ dispatch })
+  const {
+    pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy, dgiActif, waLangue, setWaLangue,
+    handleLienPaiement, handleTelechargerPdf, handleGenererPdf, handleWhatsApp,
+  } = d
+  const {
+    handleUbl, handleDgiExport, handleDgiConformite, openPreview,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+  } = d
 
-  // WR2b — interrupteur société « export DGI » (lu une fois au montage) :
-  // n'affiche le bouton/badge DGI que quand la société l'a activé (défaut OFF,
-  // capacité invisible sinon — même garde que côté serveur).
-  const [dgiActif, setDgiActif] = useState(false)
-  useEffect(() => {
-    parametresApi.getProfile()
-      .then(res => setDgiActif(!!res.data?.dgi_export_actif))
-      .catch(() => setDgiActif(false))
-  }, [])
-  const [dgiBusy, setDgiBusy] = useState({})
-  const [payLinkBusy, setPayLinkBusy] = useState({})
-
-  // WR2b — sélection multiple pour la barre d'actions en masse (FG43).
-  const [selectedIds, setSelectedIds] = useState([])
-  const toggleSelect = (id) => setSelectedIds(prev =>
-    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  const clearSelection = () => setSelectedIds([])
-  const [bulkBusy, setBulkBusy] = useState(false)
-
-  // ── Enregistrement de paiement (VX230 — modale extraite en PaiementDialog) ──
-  // FactureList ne garde que la facture CIBLÉE ; tout l'état de saisie, l'arrondi
-  // ZFAC11 et le chatter vivent désormais dans PaiementDialog (partagé avec
-  // RelancesPage). `onSaved` rafraîchit la liste après chaque encaissement.
-  const [payTarget, setPayTarget] = useState(null) // facture ciblée
-  const openPayModal = (f) => setPayTarget(f)
-
-  // VX97 — Panneau « Historique » repliable dans le détail facture : journal des
-  // changements (FactureActivity) — qui/quand/ancien→nouveau — sur le document
-  // au plus gros blast-radius financier. Feed existant monté ; migrera vers
-  // ChatterTimeline (VX23). `prix_achat` jamais rendu (le journal ne le porte pas).
-  const [histoOpenId, setHistoOpenId] = useState(null)
-  const [histoCache, setHistoCache] = useState({})   // id → entrées
-  const [histoLoadingId, setHistoLoadingId] = useState(null)
-  const toggleHistorique = (id) => {
-    if (histoOpenId === id) { setHistoOpenId(null); return }
-    setHistoOpenId(id)
-    if (histoCache[id] === undefined) {
-      setHistoLoadingId(id)
-      api.get(`/ventes/factures/${id}/historique/`)
-        .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
-        .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
-        .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
-    }
-  }
-
-  // ── Édition inline de la date d'échéance (facture émise) ──
-  const [echeanceEditId, setEcheanceEditId] = useState(null)
-  const [echeanceValue, setEcheanceValue]   = useState('')
-  const [echeanceSaving, setEcheanceSaving] = useState(false)
-
-  const startEditEcheance = (f) => {
-    setEcheanceEditId(f.id)
-    setEcheanceValue(f.date_echeance ?? '')
-  }
-  const saveEcheance = async (f) => {
-    setEcheanceSaving(true)
-    try {
-      await ventesApi.patchFacture(f.id, { date_echeance: echeanceValue || null })
-      setEcheanceEditId(null)
-      dispatch(fetchFactures())
-    } catch (err) {
-      toast.error(frenchError(err, 'Mise à jour de l’échéance impossible.'))
-    } finally {
-      setEcheanceSaving(false)
-    }
-  }
+  // VNT102 — sélection, actions en masse, encaissement groupé : factureList/useFactureLot.js.
+  const l = useFactureLot({ factures, dispatch, setWir183Busy, erreurServeur })
+  const {
+    selectedIds, setSelectedIds, toggleSelect, clearSelection, bulkBusy, BULK_LABELS,
+    handleBulkAction, clientSelectionUnique, facturesEncaissables, openEncaissementGroupe,
+  } = l
 
   useEffect(() => { dispatch(fetchFactures()) }, [dispatch])
   // AUD157 (FAC-13) — LES KPI D'ARGENT VIENNENT DU SERVEUR, en UN appel.
@@ -600,91 +308,6 @@ export default function FactureList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, loading, factures])
 
-  // APX17 — confirmation maison (AlertDialog Radix), jamais la popup du
-  // système.
-  const doAction = async (thunk, id, confirmMsg) => {
-    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return
-    setActionId(id)
-    try {
-      await dispatch(thunk(id)).unwrap()
-    } catch (err) {
-      // VX63 — plus de JSON brut à l'écran : message FR lisible extrait du
-      // payload d'erreur (le sweep alert→toast reste la propriété de VX19).
-      toast.error(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
-    } finally {
-      setActionId(null)
-    }
-  }
-
-  // AFAC13 — annulation : confirmation simple sans argent rattaché, dialogue
-  // « transférer / rembourser » sinon (ou si le serveur exige la directive).
-  const [annulTarget, setAnnulTarget] = useState(null)
-  const [annulErreur, setAnnulErreur] = useState(null)
-  const [annulBusy, setAnnulBusy] = useState(false)
-  const demanderAnnulation = async (f) => {
-    if (toNumber(f.montant_paye) > 0) {
-      setAnnulErreur(null); setAnnulTarget(f); return
-    }
-    if (!(await confirm({ title: `Annuler la facture ${f.reference} ?` }))) return
-    setActionId(f.id)
-    try {
-      await dispatch(annulerFacture(f.id)).unwrap()
-    } catch (err) {
-      if (err?.code === 'directive_acompte_requise') {
-        setAnnulErreur(err.detail || null); setAnnulTarget(f)
-      } else {
-        toast.error(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
-      }
-    } finally { setActionId(null) }
-  }
-  const confirmerAnnulation = async (directive) => {
-    setAnnulBusy(true); setAnnulErreur(null)
-    try {
-      await dispatch(annulerFacture({ id: annulTarget.id, directive })).unwrap()
-      toast.success(`Facture ${annulTarget.reference} annulée.`)
-      setAnnulTarget(null)
-      dispatch(fetchFactures())
-    } catch (err) {
-      setAnnulErreur(err?.detail
-        || errorMessageFrom({ response: { data: err } }, 'Annulation impossible.'))
-    } finally { setAnnulBusy(false) }
-  }
-
-  const handleGenererPdf = async (f) => {
-    setPdfGenerating(prev => ({ ...prev, [f.id]: true }))
-    try {
-      await dispatch(genererPdfFacture(f.id)).unwrap()
-      let attempts = 0
-      let erreurSignalee = false
-      const poll = async () => {
-        if (attempts++ > 15) {
-          toast.error('La génération PDF prend plus de temps que prévu. Réessayez dans quelques instants.')
-          return
-        }
-        try {
-          const res = await ventesApi.getFacture(f.id)
-          if (res.data.fichier_pdf) {
-            dispatch(fetchFactures())
-          } else {
-            setTimeout(poll, 2000)
-          }
-        } catch (err) {
-          // Une erreur de sondage transitoire n'arrête pas la boucle, mais la
-          // raison du serveur est affichée (une seule fois, pas à chaque tick).
-          if (!erreurSignalee) {
-            erreurSignalee = true
-            toast.error(frenchError(err, 'Suivi de la génération du PDF impossible, nouvelle tentative en cours.'))
-          }
-          setTimeout(poll, 2000)
-        }
-      }
-      setTimeout(poll, 2000)
-    } catch (err) {
-      toast.error(err?.detail ?? 'Erreur lors de la génération PDF.')
-    } finally {
-      setPdfGenerating(prev => ({ ...prev, [f.id]: false }))
-    }
-  }
 
   // VX248 — « a » génère le PDF de la facture FOCALISÉE (la modale d'édition
   // ouverte via `?id=` (VX220) ou un clic « Modifier » — `editFacture` est la
@@ -696,23 +319,6 @@ export default function FactureList() {
     !!editFacture,
   )
 
-  const handleTelechargerPdf = async (f) => {
-    setPdfDownloading(prev => ({ ...prev, [f.id]: true }))
-    try {
-      const res = await ventesApi.telechargerPdfFacture(f.id)
-      openPdfBlob(res.data, `${f.reference}.pdf`)
-    } catch {
-      toast.error('Fichier introuvable. Régénérez le PDF.')
-    } finally {
-      setPdfDownloading(prev => ({ ...prev, [f.id]: false }))
-    }
-  }
-
-  // APX14 — aperçu INLINE de la facture : le PDF s'ouvre dans un panneau, plus
-  // dans un onglet qu'il faut quitter. La source reste le PDF LEGACY propre
-  // aux factures (règle #4 — seul le PDF de DEVIS passe par `/proposal` ;
-  // aucun chemin nouveau n'est créé ici).
-  const [previewFacture, setPreviewFacture] = useState(null)
   // EZ12 — L'ENCAISSEMENT OFFRE SA SUITE. Le parcours d'encaissement est le
   // meilleur de l'app (3 clics) mais il s'arrêtait sec : rien n'était offert
   // après. La suite HONNÊTE est la page des Encaissements filtrée sur le
@@ -720,204 +326,6 @@ export default function FactureList() {
   // de l'import de paiements clients » (compta/models.py) : un paiement
   // fraîchement encaissé n'y apparaît PAS tant que le relevé n'est pas importé.
   const [dernierEncaissement, setDernierEncaissement] = useState(null)
-  const openPreview = (f) => setPreviewFacture(f)
-
-  // EZ13 — marquage sec « payée » : facture ciblée par la confirmation qui
-  // EXPLIQUE la perte (mode, date et référence du règlement ne seront pas
-  // enregistrés). Jamais une popup « êtes-vous sûr ? ».
-  const [payeeSecheTarget, setPayeeSecheTarget] = useState(null)
-  // AUD124 — le marquage sec exige un MOTIF (le serveur refuse sans) : il est
-  // tracé dans le chatter de la facture avec son auteur.
-  const [payeeSecheMotif, setPayeeSecheMotif] = useState('')
-  const openMarquerPayee = (f) => setPayeeSecheTarget(f)
-  const fetchFacturePreviewBlob = useCallback(async () => {
-    const f = previewFacture
-    if (!f) return null
-    try {
-      const res = await ventesApi.telechargerPdfFacture(f.id)
-      return res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'application/pdf' })
-    } catch {
-      throw new Error('Fichier introuvable. Régénérez le PDF.')
-    }
-  }, [previewFacture])
-
-  // Envoyer par WhatsApp : construit le message côté serveur (FR/Darija) puis
-  // montre un aperçu (message + lien public) avant d'ouvrir wa.me ; le
-  // commercial appuie lui-même sur Envoyer. Le POST consigne aussi l'action au
-  // chatter de la facture (côté serveur, L856).
-  const handleWhatsApp = (f, modele = 'facture') => preparerApercuWhatsApp({
-    facture: f, params: { modele, langue: waLangue },
-    setWaBusy, setWaPreview, notifier: toast,
-  })
-
-  // Ouvre wa.me après confirmation de l'aperçu.
-  // VX48 — exclu volontairement : ce window.open() n'est précédé d'AUCUN await
-  // (il tourne synchrone dans le clic du bouton « Envoyer » de la modale), donc
-  // hors du bug Safari iOS (qui ne bloque qu'un window.open post-await). Ce
-  // n'est de toute façon pas un PDF (lien wa.me).
-  const ouvrirWhatsApp = () => {
-    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
-    setWaPreview(null)
-  }
-
-  // N38 — télécharge l'aperçu BROUILLON UBL 2.1 (XML) de la facture.
-  const handleUbl = async (f) => {
-    try {
-      const res = await ventesApi.telechargerUbl(f.id)
-      openPdfBlob(res.data, `${f.reference}-ubl.xml`)
-    } catch {
-      toast.error("Génération de l'aperçu UBL impossible.")
-    }
-  }
-
-  // copie au presse-papier (aucun envoi automatique au client).
-  // VX48 — le repli window.open (quand le presse-papier est indisponible) suit
-  // un await : onglet pré-ouvert SYNCHRONE (pas un PDF, donc `.win.location`
-  // direct plutôt que `openPdfInGesture().deliver()` qui attend un Blob).
-  const handleLienPaiement = async (f) => {
-    setPayLinkBusy(prev => ({ ...prev, [f.id]: true }))
-    const pending = openPdfInGesture()
-    try {
-      const { data } = await ventesApi.lienPaiementFacture(f.id)
-      const url = data?.pay_url ?? ''
-      if (url && navigator.clipboard?.writeText) {
-        pending.win?.close?.()
-        await navigator.clipboard.writeText(url)
-        // AFAC26 — le montant annoncé est CE QUE LE CLIENT PAIERA (reste exigible), jamais le `montant` figé.
-        toast.success(`Lien de paiement copié — ${formatMAD(data.montant_a_payer ?? data.montant)}.`)
-      } else if (url) {
-        if (pending.win && !pending.win.closed) {
-          pending.win.location = url
-        } else {
-          toast.error('Ouverture bloquée par le navigateur.', {
-            action: { label: 'Ouvrir', onClick: () => window.open(url, '_blank', 'noopener') },
-          })
-        }
-      } else {
-        pending.win?.close?.()
-        toast.error('Lien de paiement indisponible.')
-      }
-    } catch (err) {
-      pending.win?.close?.()
-      toast.error(err?.response?.data?.detail ?? 'Création du lien de paiement impossible.')
-    } finally {
-      setPayLinkBusy(prev => ({ ...prev, [f.id]: false }))
-    }
-  }
-
-  // N105/WR2b — export DGI (UBL local) : téléchargement direct, aucune transmission.
-  const handleDgiExport = async (f) => {
-    setDgiBusy(prev => ({ ...prev, [f.id]: true }))
-    try {
-      const res = await ventesApi.dgiExportFacture(f.id)
-      openPdfBlob(res.data, `${f.reference}-dgi.xml`)
-    } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Export DGI impossible.')
-    } finally {
-      setDgiBusy(prev => ({ ...prev, [f.id]: false }))
-    }
-  }
-
-  // N105/WR2b — contrôle de conformité DGI à la demande (aucun statut modifié).
-  const handleDgiConformite = async (f) => {
-    setDgiBusy(prev => ({ ...prev, [f.id]: true }))
-    try {
-      const { data } = await ventesApi.dgiConformiteFacture(f.id)
-      if (data.conforme) {
-        toast.success('Conforme DGI : aucun problème détecté.')
-      } else {
-        toast.error(`Non conforme DGI :\n\n- ${(data.problemes || []).join('\n- ')}`)
-      }
-    } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Contrôle de conformité DGI impossible.')
-    } finally {
-      setDgiBusy(prev => ({ ...prev, [f.id]: false }))
-    }
-  }
-
-  // FG43/WR2b — actions en masse sur la sélection courante.
-  const BULK_LABELS = {
-    emettre: 'Émettre', relancer: 'Relancer',
-    'envoyer-email': 'Envoyer par email', 'generer-pdf': 'Générer le PDF',
-  }
-  const handleBulkAction = async (action) => {
-    if (!selectedIds.length) return
-    setBulkBusy(true)
-    try {
-      const { data } = await ventesApi.bulkFactures(action, selectedIds)
-      const entries = Object.values(data || {})
-      const ok = entries.filter(r => r.ok).length
-      const ko = entries.length - ok
-      if (ko === 0) {
-        toast.success(`${BULK_LABELS[action] ?? action} : ${ok} facture(s) traitée(s).`)
-      } else {
-        toast.error(`${BULK_LABELS[action] ?? action} : ${ok} réussie(s), ${ko} échec(s).`)
-      }
-      dispatch(fetchFactures())
-      clearSelection()
-    } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Action en masse impossible.')
-    } finally {
-      setBulkBusy(false)
-    }
-  }
-
-  // ── WIR183/ZFAC6 — encaissement groupé sur la SÉLECTION courante ───────────
-  // Le serveur exige un client UNIQUE : la barre de masse ne propose donc
-  // l'action que si toutes les factures sélectionnées appartiennent au même
-  // client (sinon le bouton explique pourquoi il est désactivé, plutôt que de
-  // laisser partir une requête vouée au 400).
-  const facturesSelectionnees = useMemo(
-    () => factures.filter(f => selectedIds.includes(f.id)),
-    [factures, selectedIds])
-  // AFAC10 — seules les factures que le SERVEUR déclare encaissables partent
-  // à l'encaissement groupé ; les autres sont écartées ET nommées.
-  const facturesEncaissables = useMemo(
-    () => facturesSelectionnees.filter(f => f.encaissable !== false),
-    [facturesSelectionnees])
-  const facturesEcartees = useMemo(
-    () => facturesSelectionnees.filter(f => f.encaissable === false),
-    [facturesSelectionnees])
-  const clientSelectionUnique = useMemo(() => {
-    const ids = [...new Set(facturesEncaissables.map(f => f.client))]
-    return ids.length === 1 ? ids[0] : null
-  }, [facturesEncaissables])
-  const openEncaissementGroupe = () => {
-    setEncaissementRepartition({})
-    setEncaissementForm({
-      montant: String(facturesEncaissables.reduce(
-        (s, f) => s + toNumber(f.montant_du ?? 0), 0)),
-      mode: 'virement', date: today, reference: '',
-    })
-    setEncaissementOpen(true)
-  }
-  const handleEncaissementGroupe = async () => {
-    const repartition = Object.fromEntries(
-      Object.entries(encaissementRepartition)
-        .filter(([, v]) => toNumber(v) > 0))
-    setWir183Busy(true)
-    try {
-      const { data } = await ventesApi.encaissementGroupeFactures({
-        client: clientSelectionUnique,
-        montant: encaissementForm.montant,
-        mode: encaissementForm.mode,
-        date: encaissementForm.date,
-        reference: encaissementForm.reference,
-        factures: facturesEncaissables.map(f => f.id),
-        ...(Object.keys(repartition).length ? { repartition } : {}),
-      })
-      const n = Array.isArray(data) ? data.length : 0
-      toast.success(`Encaissement réparti sur ${n} facture(s).`
-        + (facturesEcartees.length
-          ? ` Écartée(s) car non encaissable(s) : ${facturesEcartees.map(f => f.reference).join(', ')}.`
-          : ''))
-      setEncaissementOpen(false)
-      clearSelection()
-      dispatch(fetchFactures())
-    } catch (err) {
-      erreurServeur(err, 'Encaissement groupé impossible.')
-    } finally { setWir183Busy(false) }
-  }
 
   // ── ARC53 — Sac de contexte passé à chaque <FactureRow> (« lignes divisées »).
   // Regroupe l'état + les handlers que la ligne utilisait déjà depuis la clôture ;
@@ -928,7 +336,7 @@ export default function FactureList() {
     saveEcheance, setEcheanceEditId, startEditEcheance,
     dgiActif, isAdmin,
     actionId, pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy,
-    openEdit, doAction, emettreFacture, annulerFacture,
+    openEdit, emettreFacture, doAction,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
@@ -944,7 +352,6 @@ export default function FactureList() {
     canManage, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
-    demanderAnnulation,
   }
 
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
@@ -1088,39 +495,6 @@ export default function FactureList() {
     <div className="page">
       {pageHeader}
 
-      {/* EZ13 — le marquage sec explique CE QU'ON PERD, et offre le chemin
-          riche en échappatoire (« Encaisser » capture mode/date/référence). */}
-      <ConfirmDialog
-        open={!!payeeSecheTarget}
-        onOpenChange={(o) => { if (!o) { setPayeeSecheTarget(null); setPayeeSecheMotif('') } }}
-        severity="medium"
-        title={`Marquer ${payeeSecheTarget?.reference ?? ''} payée sans détail ?`}
-        description="Le MODE de règlement, la DATE et la RÉFÉRENCE ne seront pas enregistrés : la facture passera à « payée » sans trace d'encaissement. Préférez « Encaisser » si vous avez ces informations."
-        confirmLabel="Marquer payée quand même"
-        onConfirm={() => {
-          const f = payeeSecheTarget
-          const motif = payeeSecheMotif.trim()
-          setPayeeSecheTarget(null)
-          setPayeeSecheMotif('')
-          if (!motif) {
-            toast.error('Motif obligatoire : dites pourquoi cette facture est soldée sans encaissement.')
-            return
-          }
-          if (f) doAction(marquerPayeeFacture, { id: f.id, motif })
-        }}
-      >
-        {/* AUD124 — sans motif, ce geste faisait disparaître une créance de
-            la balance âgée sans que rien ne dise qui, quand ni pourquoi. */}
-        <FormField label="Motif (obligatoire)" htmlFor="motif-payee-seche">
-          <Input
-            id="motif-payee-seche"
-            value={payeeSecheMotif}
-            onChange={(e) => setPayeeSecheMotif(e.target.value)}
-            placeholder="Ex. : virement encaissé hors ERP, constaté au relevé"
-          />
-        </FormField>
-      </ConfirmDialog>
-
       {/* EZ12 — après l'encaissement, l'action SUIVANTE est offerte : voir
           l'encaissement dans les Encaissements, filtré sur ce client
           (`PaiementsPage` lit déjà `?client=`). Un clic, aucune recherche. */}
@@ -1154,393 +528,8 @@ export default function FactureList() {
         <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
       )}
 
-      {/* ── Modale d'enregistrement de paiement (VX230 — composant partagé) ── */}
-      <PaiementDialog
-        facture={payTarget}
-        onOpenChange={(o) => { if (!o) setPayTarget(null) }}
-        onSaved={() => { dispatch(fetchFactures()); setDernierEncaissement(payTarget) }}
-      />
-
-      {/* APX14 — aperçu du PDF de la facture, INLINE. Source = le PDF LEGACY
-          propre aux factures ; le moteur `/proposal` reste réservé au PDF de
-          DEVIS (règle #4), et aucun chemin nouveau n'est créé. */}
-      <PdfPreviewSheet
-        open={!!previewFacture}
-        onOpenChange={(o) => { if (!o) setPreviewFacture(null) }}
-        title={`Aperçu — ${previewFacture?.reference ?? ''}`}
-        description="Facture. Téléchargeable ou ouvrable dans un onglet."
-        filename={previewFacture ? `${previewFacture.reference}.pdf` : undefined}
-        fetchBlob={fetchFacturePreviewBlob}
-      />
-
-      {/* ── WIR103/ZFAC4 — Modale « Note de débit » (création + PDF) ── */}
-      <NoteDebitDialog
-        facture={noteDebitTarget
-          ? (factures.find(x => x.id === noteDebitTarget.id) ?? noteDebitTarget)
-          : null}
-        onChanged={() => dispatch(fetchFactures())}
-        open={!!noteDebitTarget}
-        onOpenChange={(o) => { if (!o) setNoteDebitTarget(null) }}
-      />
-
-      {/* ── PACT121 — Modale « Payer en ligne » (core.PaymentTransaction) ── */}
-      <PaiementEnLigneDialog
-        facture={paiementEnLigneTarget}
-        open={!!paiementEnLigneTarget}
-        onOpenChange={(o) => { if (!o) setPaiementEnLigneTarget(null) }}
-      />
-
-      {/* ── Modale d'avoir (total ou partiel par ligne) ── */}
-      <Dialog open={!!avoirTarget} onOpenChange={(o) => { if (!o) setAvoirTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Créer un avoir — {avoirTarget?.reference}</DialogTitle>
-            <DialogDescription>
-              Avoir total (toute la facture) ou partiel (quantités à créditer par ligne).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <FormField label="Motif (optionnel)" htmlFor="avoir-motif" fullWidth>
-              <Input id="avoir-motif" type="text" value={avoirMotif}
-                     onChange={e => setAvoirMotif(e.target.value)} />
-            </FormField>
-            <fieldset className="grid gap-1" data-testid="avoir-type">
-              <legend className="text-sm font-medium">Type d’avoir</legend>
-              {TYPES_AVOIR.map(([value, label]) => (
-                <label key={value} className="flex items-center gap-2 text-sm">
-                  <input type="radio" name="avoir-type" value={value}
-                         checked={avoirType === value}
-                         onChange={() => setAvoirType(value)} />
-                  {label}
-                </label>
-              ))}
-            </fieldset>
-            {(avoirTarget?.lignes?.length ?? 0) > 0 && (
-              <div className="overflow-x-auto">
-                <table className="data-table text-sm">
-                  <thead>
-                    <tr>
-                      <th>Désignation</th>
-                      <th className="ta-right">Qté facturée</th>
-                      <th className="ta-right">Qté à créditer</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {avoirTarget.lignes.map(l => (
-                      <tr key={l.id}>
-                        <td data-label="Désignation">{l.designation}</td>
-                        <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
-                        <td className="ta-right" data-label="Qté à créditer">
-                          <Input
-                            type="number" min="0" step="any"
-                            className="w-24"
-                            value={avoirQtes[l.id] ?? ''}
-                            max={l.quantite}
-                            onChange={e => setAvoirQtes(q => ({ ...q, [l.id]: e.target.value }))}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setAvoirTarget(null)}>Annuler</Button>
-            {(avoirTarget?.lignes?.length ?? 0) > 0 && (
-              <Button type="button" variant="outline" loading={avoirSaving}
-                      onClick={() => handleCreerAvoir('partiel')}>
-                Avoir partiel
-              </Button>
-            )}
-            <Button type="button" loading={avoirSaving}
-                    onClick={() => handleCreerAvoir('total')}>
-              Avoir total
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
-
-      <AnnulationFactureDialog facture={annulTarget} factures={factures}
-        busy={annulBusy} erreur={annulErreur}
-        onConfirm={confirmerAnnulation} onClose={() => setAnnulTarget(null)} />
-
-      {/* ══ WIR183/XFAC13 — Abandon du solde (motif OBLIGATOIRE serveur) ══ */}
-      <Dialog open={!!abandonTarget} onOpenChange={(o) => { if (!o) setAbandonTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Abandonner le solde — {abandonTarget?.reference}</DialogTitle>
-            <DialogDescription>
-              Le résiduel est soldé (écriture d’abandon) et la facture sort des
-              impayés et de la balance âgée. Le motif est obligatoire.
-            </DialogDescription>
-          </DialogHeader>
-          <FormField label="Motif d’abandon" htmlFor="abandon-motif" fullWidth>
-            <Select value={abandonMotif} onValueChange={setAbandonMotif}>
-              <SelectTrigger id="abandon-motif" aria-label="Motif d’abandon">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MOTIFS_ABANDON.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setAbandonTarget(null)}>
-              Annuler
-            </Button>
-            <Button type="button" variant="destructive" loading={wir183Busy}
-                    onClick={handleAbandonnerSolde}>
-              Abandonner le solde
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
-
-      {/* ══ WIR183/XPOS7 — Retour client (avoir + re-stockage optionnel) ══ */}
-      <Dialog open={!!retourTarget} onOpenChange={(o) => { if (!o) setRetourTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Retour client — {retourTarget?.reference}</DialogTitle>
-            <DialogDescription>
-              Un avoir est créé contre cette facture pour les quantités
-              retournées. Seules les lignes portant un produit sont
-              retournables (le re-stockage s’appuie dessus).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <FormField label="Motif du retour (obligatoire)" htmlFor="retour-motif" fullWidth>
-              <Input id="retour-motif" type="text" value={retourMotif}
-                     onChange={e => setRetourMotif(e.target.value)} />
-            </FormField>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={retourRestocker}
-                        onCheckedChange={(v) => setRetourRestocker(!!v)}
-                        aria-label="Remettre en stock" />
-              Remettre les articles retournés en stock
-            </label>
-            {lignesRetournables.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aucune ligne de cette facture ne porte de produit : aucun retour
-                n’est possible ici (utilisez un avoir).
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="data-table text-sm">
-                  <thead>
-                    <tr>
-                      <th>Désignation</th>
-                      <th className="ta-right">Qté facturée</th>
-                      <th className="ta-right">Qté retournée</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lignesRetournables.map(l => (
-                      <tr key={l.id}>
-                        <td data-label="Désignation">{l.designation}</td>
-                        <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
-                        <td className="ta-right" data-label="Qté retournée">
-                          <Input
-                            type="number" min="0" step="any" className="w-24"
-                            max={l.quantite}
-                            value={retourQtes[l.id] ?? ''}
-                            onChange={e => setRetourQtes(q => ({ ...q, [l.id]: e.target.value }))}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setRetourTarget(null)}>
-              Annuler
-            </Button>
-            <Button type="button" loading={wir183Busy}
-                    disabled={!retourMotif.trim() || lignesRetournables.length === 0}
-                    onClick={handleRetourClient}>
-              Enregistrer le retour
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
-
-      {/* ══ WIR183/XFAC11 — Consolider plusieurs devis acceptés en UNE facture ══ */}
-      <Dialog open={consoliderOpen} onOpenChange={setConsoliderOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Consolider des devis</DialogTitle>
-            <DialogDescription>
-              Une seule facture est créée à partir de plusieurs devis ACCEPTÉS
-              du MÊME client. Le serveur refuse un mélange de clients.
-            </DialogDescription>
-          </DialogHeader>
-          {consoliderDevis.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucun devis accepté disponible.</p>
-          ) : (
-            <div className="max-h-72 overflow-y-auto">
-              <table className="data-table text-sm">
-                <thead>
-                  <tr>
-                    <th aria-label="Sélection" />
-                    <th>Référence</th>
-                    <th>Client</th>
-                    <th className="ta-right">Total TTC</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {consoliderDevis.map(d => (
-                    <tr key={d.id}>
-                      <td>
-                        <Checkbox
-                          checked={consoliderSel.includes(d.id)}
-                          aria-label={`Sélectionner le devis ${d.reference}`}
-                          onCheckedChange={(v) => setConsoliderSel(sel => (
-                            v ? [...sel, d.id] : sel.filter(x => x !== d.id)))}
-                        />
-                      </td>
-                      <td data-label="Référence">{d.reference}</td>
-                      <td data-label="Client">{d.client_nom ?? d.client}</td>
-                      <td className="ta-right tabular-nums" data-label="Total TTC">
-                        {formatMAD(toNumber(d.total_ttc ?? 0))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setConsoliderOpen(false)}>
-              Annuler
-            </Button>
-            <Button type="button" loading={wir183Busy}
-                    disabled={consoliderSel.length < 2}
-                    onClick={handleConsolider}>
-              Consolider ({consoliderSel.length})
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
-
-      {/* ══ WIR183/ZFAC6 — Encaissement groupé (FIFO, ou répartition forcée) ══ */}
-      <Dialog open={encaissementOpen} onOpenChange={setEncaissementOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Encaissement groupé</DialogTitle>
-            <DialogDescription>
-              Un seul règlement réparti sur les {facturesEncaissables.length} facture(s)
-              encaissables, de la plus ancienne échéance à la plus récente.
-              {facturesEcartees.length > 0 && (
-                <> Écartée(s) car non encaissable(s) : {facturesEcartees.map(f => f.reference).join(', ')}.</>
-              )}
-              Renseignez la répartition ci-dessous pour la forcer.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Montant reçu (MAD)" htmlFor="eg-montant" fullWidth>
-                <Input id="eg-montant" type="number" step="any"
-                       value={encaissementForm.montant}
-                       onChange={e => setEncaissementForm(f => ({ ...f, montant: e.target.value }))} />
-              </FormField>
-              <FormField label="Date" htmlFor="eg-date" fullWidth>
-                <Input id="eg-date" type="date" value={encaissementForm.date}
-                       onChange={e => setEncaissementForm(f => ({ ...f, date: e.target.value }))} />
-              </FormField>
-              <FormField label="Mode" htmlFor="eg-mode" fullWidth>
-                <Select value={encaissementForm.mode}
-                        onValueChange={v => setEncaissementForm(f => ({ ...f, mode: v }))}>
-                  <SelectTrigger id="eg-mode" aria-label="Mode"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="virement">Virement</SelectItem>
-                    <SelectItem value="cheque">Chèque</SelectItem>
-                    <SelectItem value="especes">Espèces</SelectItem>
-                    <SelectItem value="carte">Carte</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Référence" htmlFor="eg-reference" fullWidth>
-                <Input id="eg-reference" type="text" value={encaissementForm.reference}
-                       onChange={e => setEncaissementForm(f => ({ ...f, reference: e.target.value }))} />
-              </FormField>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="data-table text-sm">
-                <thead>
-                  <tr>
-                    <th>Facture</th>
-                    <th className="ta-right">Reste dû</th>
-                    <th className="ta-right">Montant affecté</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {facturesEncaissables.map(f => (
-                    <tr key={f.id}>
-                      <td data-label="Facture">{f.reference}</td>
-                      <td className="ta-right tabular-nums" data-label="Reste dû">
-                        {formatMAD(toNumber(f.montant_du ?? 0))}
-                      </td>
-                      <td className="ta-right" data-label="Montant affecté">
-                        <Input
-                          type="number" min="0" step="any" className="w-28"
-                          aria-label={`Montant affecté à ${f.reference}`}
-                          value={encaissementRepartition[f.id] ?? ''}
-                          onChange={e => setEncaissementRepartition(r => ({ ...r, [f.id]: e.target.value }))}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setEncaissementOpen(false)}>
-              Annuler
-            </Button>
-            <Button type="button" loading={wir183Busy}
-                    disabled={toNumber(encaissementForm.montant) <= 0}
-                    onClick={handleEncaissementGroupe}>
-              Encaisser
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── L852 — Aperçu du message WhatsApp avant ouverture de wa.me ── */}
-      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Aperçu du message WhatsApp — {waPreview?.reference}</DialogTitle>
-            <DialogDescription>
-              {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
-              {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
-            </DialogDescription>
-          </DialogHeader>
-          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
-               style={{ fontFamily: 'inherit' }}>
-            {waPreview?.message}
-          </pre>
-          {waPreview?.url && (
-            <p className="mt-2 break-words text-xs text-muted-foreground">
-              Lien public : {waPreview.url}
-            </p>
-          )}
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
-            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
-                    onClick={ouvrirWhatsApp}>
-              <MessageCircle /> Ouvrir WhatsApp
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
+      <DialoguesFacture g={g} d={d} l={l} factures={factures} dispatch={dispatch}
+        setDernierEncaissement={setDernierEncaissement} />
 
       {/* VX21 — cockpit trésorerie : 4 cartes KPI max, détail sous le pli
           (Stripe) — un directeur voit la santé de trésorerie d'un coup d'œil.
@@ -1742,3 +731,4 @@ export default function FactureList() {
     </div>
   )
 }
+
