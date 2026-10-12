@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 29cd341e23bc5f5d57b8413c3dc9398f416596278698309b525623cd3a3f4925
-Plan fingerprint: 9ce594caeb849d5cede2bdcaa44e6c0245b639c6dd36bff8d38f4a0299b2176e
+Plan fingerprint: 55c3d37c86c54dd96dea38237362537d15c8f77b07869125ed5de291bae576b7
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1222)**
+**Done (1223)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1798,9 +1798,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT42` — Faire entrer instantanés `objet_vente`/`garanties`, `situation_vente`…
 - `VNT43` — Nommer le fichier du reçu `Quittance_<numero_recu>.pdf` et ne plus recopier l'exception…
 - `VNT44` — Poser les helpers purs `venteEtat.js` et `erreursVente.js` (clés serveur → erreurs…
+- `VNT47` — Commande `reparer_vente_active` (dry-run par défaut dans un `atomic()` annulé…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (190)**
+**Open — to build (189)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1928,7 +1929,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
 - `VNT45` — Remplacer `FacturerDevisDialog` par `FacturerVenteDialog` (acompte MAD ou %, totalité…
 - `VNT46` — Liste des factures : Annuler = confirmation « un avoir sera créé, la facture reste…
-- `VNT47` — Commande `reparer_vente_active` (dry-run par défaut dans un `atomic()` annulé…
 - `VNT48` — Acceptation en direct M1 (orchestrateur) : réplique du lead 1594 en démo locale →…
 - `VNT49` — Solveur pur `remise_pour_ttc` dans `noyau_totaux.py` : parmi les remises à 2 décimales…
 - `VNT50` — Extraire `_fire_capi_signed_quote` (`cycle_vie.py:1224-1410`, 187 l.) vers…
