@@ -2,6 +2,7 @@
 avatars/logos (authentication/avatars.py, parametres). Aucune dépendance
 nouvelle. On accepte PDF + images courantes ; pas de traitement d'image (donc
 pas besoin d'un nouveau package) — on stocke le fichier tel quel."""
+import logging
 import io
 import os
 import typing
@@ -10,6 +11,8 @@ import uuid
 from django.conf import settings
 
 from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_client
+
+logger = logging.getLogger(__name__)
 
 _MAX_BYTES = 10 * 1024 * 1024  # 10 Mo par fichier
 
@@ -115,6 +118,7 @@ def fetch_attachment(key):
         obj = client.get_object(Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key)
         return obj['Body'].read(), None
     except Exception:
+        logger.warning("storage.fetch_attachment : erreur ignorée (mode dégradé)", exc_info=True)
         return None, 'Fichier introuvable.'
 
 
@@ -133,6 +137,7 @@ def presign_attachment(key):
             Params={'Bucket': settings.MINIO_BUCKET_UPLOADS, 'Key': key},
             ExpiresIn=3600)
     except Exception:
+        logger.warning("storage.presign_attachment : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -287,7 +292,7 @@ def delete_attachment(key):
         client = get_minio_client()
         client.delete_object(Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key)
     except Exception:
-        pass
+        logger.warning("storage.delete_attachment : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 # --- NTPLT30 — Exports lourds asynchrones (brique de stockage) --------------
@@ -379,4 +384,5 @@ def presign_export_result(key, *, expires=900):
             Params={'Bucket': settings.MINIO_BUCKET_UPLOADS, 'Key': key},
             ExpiresIn=int(expires))
     except Exception:
+        logger.warning("storage.presign_export_result : erreur ignorée (mode dégradé)", exc_info=True)
         return None

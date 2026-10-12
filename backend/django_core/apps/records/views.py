@@ -4,6 +4,7 @@ Tout est scopé société côté serveur. Lecture : tout rôle. Écriture d'acti
 et ajout de pièces jointes : Responsable (Commerciale) ou Admin. Suppression de
 pièce jointe et gestion des types d'activité : Admin.
 """
+import logging
 from datetime import timedelta
 
 from django.db import models
@@ -38,6 +39,8 @@ from .serializers import (
     TaggedItemSerializer, TagSerializer, CibleIntrouvable, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
+
+logger = logging.getLogger(__name__)
 
 
 # ── ENF7 — schéma OpenAPI exact (briques partagées) ─────────────────────────
@@ -460,6 +463,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                     snoozed = notif_selectors.approbations_snoozees_actives(
                         request.user, company)
                 except Exception:  # pragma: no cover - défensif
+                    logger.warning("views.ActivityViewSet.ma_file : erreur ignorée (mode dégradé)", exc_info=True)
                     snoozed = set()
                 for it in appro_items:
                     key = (it.get('source'), str(it.get('id')))
@@ -476,7 +480,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                         'source_id': it.get('id'),
                     })
             except Exception:  # pragma: no cover - défensif, jamais de 500
-                pass
+                logger.warning("views.ActivityViewSet.ma_file : erreur ignorée (mode dégradé)", exc_info=True)
 
         # ── 3) Mentions non lues (notifications chat_mention) ──────────────
         for it in _ma_file_mentions(request.user, company):
@@ -488,7 +492,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 from apps.crm.selectors import ma_file_commercial_items
                 items.extend(ma_file_commercial_items(company, request.user))
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning("views.ActivityViewSet.ma_file : erreur ignorée (mode dégradé)", exc_info=True)
 
         # ── 5) VX214 — kinds d'EXÉCUTION (jamais une 2ᵉ boîte) ──────────────
         # Un chantier assigné, une intervention du jour, une DA approuvée à
@@ -504,14 +508,14 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 )
                 items.extend(installations_affectations_pour(request.user))
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning("views.ActivityViewSet.ma_file : erreur ignorée (mode dégradé)", exc_info=True)
             try:
                 from apps.sav.selectors import (
                     affectations_pour as sav_affectations_pour,
                 )
                 items.extend(sav_affectations_pour(request.user))
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning("views.ActivityViewSet.ma_file : erreur ignorée (mode dégradé)", exc_info=True)
 
         # VX211 — [BACKEND léger] `effort_estime` DÉTERMINISTE par `kind`
         # (table statique, jamais du ML) : alimente un tri secondaire
@@ -586,6 +590,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                     assigned_to=act.assigned_to or request.user,
                     created_by=request.user)
             except Exception:
+                logger.warning("views.ActivityViewSet.marquer_fait : erreur ignorée (mode dégradé)", exc_info=True)
                 created = None
         return Response({
             'activity': ActivitySerializer(act).data,
@@ -709,7 +714,7 @@ def _notify_reassignment(act, actor):
             f'{actor_label} vous a assigné une activité',
             body=act.summary or '', link=link, company=act.company)
     except Exception:  # pragma: no cover - défensif, jamais de 500
-        pass
+        logger.warning("views._notify_reassignment : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _deep_link(content_type, object_id):
@@ -762,6 +767,7 @@ def _ma_file_mentions(user, company):
         from apps.notifications import selectors as notif_selectors
         rows = notif_selectors.mentions_non_lues(user, company)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("views._ma_file_mentions : erreur ignorée (mode dégradé)", exc_info=True)
         return []
     out = []
     for n in rows:
@@ -801,7 +807,7 @@ def _log_done_to_chatter(activity, user):
             if hasattr(sav_activity, 'log_note'):
                 sav_activity.log_note(target, user, body)
     except Exception:
-        pass
+        logger.warning("views._log_done_to_chatter : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _refus_types_hors_societe(act, nxt, first_close):
@@ -918,7 +924,7 @@ def _notify_mentions(body, author, company, content_type=None, object_id=None):
             except User.DoesNotExist:
                 pass
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("views._notify_mentions : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 @extend_schema_view(
@@ -1351,7 +1357,7 @@ def attachments_all(request):
             if dt:
                 qs = qs.filter(created_at__gte=dt)
         except Exception:
-            pass
+            logger.warning("views.attachments_all : erreur ignorée (mode dégradé)", exc_info=True)
 
     paginator = PageNumberPagination()
     paginator.page_size = 50
