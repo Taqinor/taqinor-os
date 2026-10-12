@@ -98,6 +98,13 @@ class ExportsDusTests(TestCase):
         params.update(kw)
         return ScheduledExport.objects.create(**params)
 
+    def test_executer_manuel_dataset_inconnu_409(self):
+        # ERR-ENF11-FUZZ-CORE — dataset absent du registre : 409, jamais 500.
+        export = self._export(dataset='inexistant_ntdata26')
+        with self.assertRaises(scheduled_export.ExtraitInexecutable) as ctx:
+            scheduled_export.executer_manuel(export)
+        self.assertEqual(ctx.exception.status_code, 409)
+
     def test_destination_non_configuree_reste_un_no_op_horodate(self):
         """Critère d'acceptation NTDATA26."""
         export = self._export()

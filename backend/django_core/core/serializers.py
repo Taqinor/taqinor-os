@@ -302,6 +302,16 @@ class WorkflowStepDefinitionSerializer(CompanyScopedRelationsMixin, serializers.
         return attrs
 
 
+# ERR-ENF11-FUZZ-CORE — création AUTONOME d'une étape (viewset des étapes) :
+# ``definition`` y est obligatoire (``validate`` le refusait déjà) ; le schéma
+# la publie désormais requise sous un composant distinct (l'étape imbriquée
+# garde ``definition`` facultative, imposée par le parent).
+@extend_schema_serializer(component_name='WorkflowEtapeAutonome')
+class WorkflowStepDefinitionAutonomeSerializer(WorkflowStepDefinitionSerializer):
+    class Meta(WorkflowStepDefinitionSerializer.Meta):
+        extra_kwargs = {'definition': {'required': True}}
+
+
 class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
     ses étapes imbriquées.

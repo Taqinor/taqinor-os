@@ -95,6 +95,18 @@ class SavedQueryViewSetTests(TestCase):
         self.assertEqual(sq.company, self.company)
         self.assertEqual(sq.owner, self.user)
 
+    def test_run_adhoc_corps_hors_schema_400(self):
+        # ERR-ENF11-FUZZ-CORE — `dataset` liste (500 avant), `spec` non objet.
+        view = SavedQueryViewSet.as_view({'post': 'run_adhoc'})
+        for corps in ({'dataset': [None, None], 'spec': None},
+                      {'dataset': 'nope', 'spec': [1]}):
+            with self.subTest(corps=corps):
+                req = self.factory.post(
+                    '/saved-queries/run/', corps, format='json')
+                force_authenticate(req, user=self.user)
+                self.assertEqual(view(req).status_code,
+                                 status.HTTP_400_BAD_REQUEST)
+
     def test_run_adhoc_unknown_dataset_is_404(self):
         req = self.factory.post(
             '/saved-queries/run/', {'dataset': 'nope'}, format='json')

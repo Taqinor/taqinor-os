@@ -196,6 +196,13 @@ def verifier_parametres_requete(view, request) -> None:
     faux, sur ``OPTIONS`` et sans query string."""
     if not strict_actif() or request.method.upper() == 'OPTIONS':
         return
+    # ERR-ENF11-FUZZ-CORE — méthode non servie par la vue : le 405 de DRF
+    # (levé APRÈS ``initial``, dans ``dispatch``) prime ; un 400 « paramètre
+    # non déclaré » masquait « méthode non supportée » (POST module-toggles).
+    methode = request.method.lower()
+    if (methode not in getattr(view, 'http_method_names', ())
+            or not hasattr(view, methode)):
+        return
     cles = set(request.query_params.keys())
     if not cles:
         return

@@ -57,7 +57,7 @@ from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
 from .parametres_requete import choix_ou_400
-from .parseurs import ChoixDocumente, corps_valide
+from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
 from .permissions import PeutExecuterEditionMasse, declared_action_permissions
 from .models import (
@@ -105,6 +105,7 @@ from .serializers import (
     TenantThemeSerializer,
     TenantUsageSnapshotSerializer,
     WorkflowDefinitionSerializer,
+    WorkflowStepDefinitionAutonomeSerializer,
     WorkflowStepDefinitionSerializer,
     WorkflowTemplateSerializer,
 )
@@ -374,6 +375,12 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkflowStepDefinitionSerializer
     pagination_class = None
+
+    def get_serializer_class(self):
+        # ERR-ENF11-FUZZ-CORE — création AUTONOME : ``definition`` publiée
+        # requise (elle était facultative au schéma puis refusée).
+        return (WorkflowStepDefinitionAutonomeSerializer
+                if self.action == 'create' else self.serializer_class)
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
@@ -836,6 +843,14 @@ _ROWS = inline_serializer('SavedQueryRows', {
 })
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré : un
+# ``dataset`` non texte levait une erreur de hachage (500).
+_REQUETE_ADHOC = inline_serializer('SavedQueryAdhocRequest', {
+    'dataset': drf_serializers.CharField(),
+    'spec': ObjetJSON(required=False, allow_null=True),
+})
+
+
 class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
 
@@ -900,19 +915,11 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
         obj = self.get_object()
         return self._execute(obj.dataset, obj.spec)
 
-    @extend_schema(
-        request=inline_serializer('SavedQueryAdhocRequest', {
-            'dataset': drf_serializers.CharField(),
-            'spec': drf_serializers.JSONField(required=False),
-        }),
-        responses=_ROWS)
+    @extend_schema(request=_REQUETE_ADHOC, responses=_ROWS)
     @action(detail=False, methods=['post'], url_path='run')
     def run_adhoc(self, request):
-        dataset = (request.data or {}).get('dataset')
-        if not dataset:
-            return Response({'detail': "Champ « dataset » requis."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        return self._execute(dataset, (request.data or {}).get('spec') or {})
+        corps = corps_valide(request, _REQUETE_ADHOC)
+        return self._execute(corps['dataset'], corps.get('spec') or {})
 
 
 class DataExplorerDatasetsView(APIView):
@@ -1097,7 +1104,8 @@ class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def executer(self, request, pk=None):
         export = self.get_object()
-        scheduled_export_infra.executer(export)
+        # ERR-ENF11-FUZZ-CORE — dataset devenu inconnu = 409 (500 avant).
+        scheduled_export_infra.executer_manuel(export)
         return Response(self.get_serializer(export).data)
 
 
@@ -1163,6 +1171,16 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         })
 
 
+# ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré (500 avant sur
+# ``target`` non texte).
+_REQUETE_BULK = inline_serializer('BulkEditAppliquerRequest', {
+    'target': drf_serializers.CharField(),
+    'ids': drf_serializers.ListField(
+        child=drf_serializers.IntegerField(), required=False),
+    'changes': drf_serializers.DictField(required=False),
+})
+
+
 class BulkEditViewSet(viewsets.ViewSet):
     """FG389 — édition de champ en masse, généralisée (sans modèle propre).
 
@@ -1202,7 +1220,9 @@ class BulkEditViewSet(viewsets.ViewSet):
             target = (self.request.data or {}).get('target')
         except Exception:  # noqa: BLE001 — corps illisible → palier par défaut
             target = None
-        if target:
+        # ERR-ENF11-FUZZ-CORE — une cible non texte (liste…) levait TypeError
+        # ici (500) : seule une chaîne est cherchée dans le registre.
+        if isinstance(target, str) and target:
             declarees = bulk_edit_infra.target_permissions(target)
             if declarees:
                 return declarees
@@ -1218,22 +1238,14 @@ class BulkEditViewSet(viewsets.ViewSet):
         return Response(bulk_edit_infra.list_bulk_targets())
 
     @extend_schema(
-        request=inline_serializer('BulkEditAppliquerRequest', {
-            'target': drf_serializers.CharField(),
-            'ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField(), required=False),
-            'changes': drf_serializers.DictField(required=False),
-        }),
+        request=_REQUETE_BULK,
         responses=inline_serializer('BulkEditAppliquerReponse', {
             'modifies': drf_serializers.IntegerField(),
         }))
     @action(detail=False, methods=['post'])
     def appliquer(self, request):
-        body = request.data or {}
-        target = body.get('target')
-        if not target:
-            return Response({'detail': "Champ « target » requis."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        body = corps_valide(request, _REQUETE_BULK)
+        target = body['target']
         try:
             count = bulk_edit_infra.apply_bulk_edit(
                 target, request.user.company, request.user,
@@ -1406,6 +1418,12 @@ class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
         return Response(serializer.data)
 
 
+# ERR-ENF11-FUZZ-CORE — ``context`` non objet levait TypeError (500).
+_REQUETE_APERCU = inline_serializer('BrandedPreviewRequest', {
+    'context': drf_serializers.DictField(required=False),
+})
+
+
 class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG393 — éditeur de modèles imprimables/brandés (PDF/email/WhatsApp).
 
@@ -1428,9 +1446,7 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsAdminOrResponsableTier()]
 
     @extend_schema(
-        request=inline_serializer('BrandedPreviewRequest', {
-            'context': drf_serializers.DictField(required=False),
-        }),
+        request=_REQUETE_APERCU,
         responses=inline_serializer('BrandedPreviewReponse', {
             'sujet': drf_serializers.CharField(),
             'corps': drf_serializers.CharField(),
@@ -1439,7 +1455,7 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     def preview(self, request, pk=None):
         from . import templating
         template = self.get_object()
-        context = (request.data or {}).get('context') or {}
+        context = corps_valide(request, _REQUETE_APERCU).get('context') or {}
         sujet, corps = templating.rendre_modele(template, context)
         return Response({'sujet': sujet, 'corps': corps})
 
@@ -1674,11 +1690,9 @@ class SystemStatusViewSet(viewsets.ViewSet):
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=inline_serializer('EtatSysteme', {
-        'global': drf_serializers.CharField(),
-        'services': drf_serializers.JSONField(),
-        'incidents': drf_serializers.JSONField(),
-    }))
+    # ERR-ENF11-FUZZ-CORE — UN objet (global/services/incidents) : un
+    # serializer sur l'action ``list`` était publié en TABLEAU de cet objet.
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def list(self, request):
         from . import health
         services = health.check_services()
@@ -2004,7 +2018,10 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
     @extend_schema(
         parameters=[
             _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
-            _q('format', OpenApiTypes.STR, 'xlsx : export tableur.',
+            # ERR-ENF11-FUZZ-CORE — ``export`` et non ``format`` : DRF réserve
+            # ``?format=`` à la négociation (``format=xlsx`` = 404, toute
+            # méthode confondue).
+            _q('export', OpenApiTypes.STR, 'xlsx : export tableur.',
                enum=['xlsx'])],
         responses={
             (200, 'application/json'): inline_serializer('UsageCouts', {
@@ -2018,13 +2035,13 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
         """NTPLT45 — rapport de coût par tenant (SUPERUSER only).
 
         ``GET usage/couts/?periode=AAAA-MM`` → JSON par société (requêtes,
-        db_time, stockage, jobs). ``?format=xlsx`` → export tableur. Base
+        db_time, stockage, jobs). ``?export=xlsx`` → export tableur. Base
         factuelle de la discussion prix/plan (N100).
         """
         from . import usage
         periode = request.query_params.get('periode')
         rows = usage.cout_par_tenant(periode=periode)
-        if request.query_params.get('format') == 'xlsx':
+        if choix_ou_400(request, 'export', ('xlsx',)) == 'xlsx':
             return _couts_xlsx_response(rows, periode)
         return Response({'periode': periode, 'tenants': rows})
 

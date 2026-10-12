@@ -128,6 +128,9 @@ class DossierSerializer(SameCompanyFKSerializerMixin,
                             'liens', 'checklist', 'workflow_instance',
                             'etape_courante', 'created_at', 'updated_at']
 
+    def get_proprietaire_username(self, obj) -> str:
+        return getattr(obj.proprietaire, 'username', '') or ''
+
     @extend_schema_field(inline_serializer('DossierEtapeCourante', {
         'id': serializers.IntegerField(),
         'ordre': serializers.IntegerField(),
@@ -136,9 +139,6 @@ class DossierSerializer(SameCompanyFKSerializerMixin,
         'statut_label': serializers.CharField(),
         'sla_echeance': serializers.DateTimeField(allow_null=True),
     }, required=False, allow_null=True))
-    def get_proprietaire_username(self, obj) -> str:
-        return getattr(obj.proprietaire, 'username', '') or ''
-
     def get_etape_courante(self, obj):
         etape = dossiers_service.etape_courante_du_dossier(obj)
         if etape is None:
