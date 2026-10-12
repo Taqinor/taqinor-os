@@ -114,8 +114,15 @@ class ContratProposalAcceptTests(SimpleTestCase):
                                  {'a_signer', 'remplace', 'signe_le'})
                 self.assertIs(avenant['a_signer'], a_signer)
                 self.assertIn('reference', avenant['remplace'])
-        # Additive : jamais `avenant` dans les exemples existants.
-        self.assertNotIn('avenant', self.data['exemple'])
+        # VNT61 — la vue SERT `avenant` (``payload['avenant']``, absente hors
+        # avenant) : `exemple` (forme_serveur: complete) la porte, valeur du
+        # fragment « à signer » ; les autres exemples ne la portent pas.
+        self.assertEqual(self.data['exemple']['avenant'],
+                         self.data['exemple_avenant_a_signer']['avenant'])
+        self.assertNotIn('avenant', self.data['exemple_standard'])
+        vue = (ECHANTILLONS.parent / 'public_views.py').read_text(
+            encoding='utf-8')
+        self.assertIn("payload['avenant']", vue)
 
     def test_copies_web_json_egales(self):
         if not WEB.is_dir():  # pragma: no cover — image backend sans apps/web

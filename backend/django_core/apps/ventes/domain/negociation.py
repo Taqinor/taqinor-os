@@ -16,6 +16,10 @@ VNT59 — ``appliquer_prix_negocie`` : V2 créée ET acceptée en un geste (cana
 ``effets_apres_acceptation``), brouillons de la vente retirés (annulés, jamais
 supprimés), rattachement STRICT (tout ou rien).
 
+VNT61 — ``etat_avenant`` / ``signer_avenant`` : un avenant accepté en interne se
+signe par le lien client — une ``DevisSignature`` (empreinte + PDF signé), sans
+changer le statut ni émettre le moindre événement (règle #4).
+
 Ordre de chargement : ce module importe ``cycle_vie`` (``AcceptError``) ;
 ``cycle_vie`` ne l'importe qu'à l'APPEL (import fonction-local), jamais au
 chargement — aucun cycle.
@@ -369,3 +373,56 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
                 remise_pct=_txt(remise),
                 factures_annulees=[{'reference': f.reference}
                                    for f in annulees])
+
+
+# ── VNT61 — l'avenant se signe au lien client, sans statut ni événement ──────
+
+def etat_avenant(devis):
+    """``{a_signer, remplace: {reference}, signe_le}`` quand ``devis`` est un
+    AVENANT (accepté, prédécesseur de révision accepté — ``predecesseur_
+    accepte``), ``None`` sinon (fragments ``exemple_avenant_*`` du contrat
+    ``proposal_data.json``)."""
+    if getattr(devis, 'pk', None) is None or \
+            devis.statut != devis.Statut.ACCEPTE:
+        return None
+    from apps.ventes.models import DevisSignature
+    from apps.ventes.selectors import predecesseur_accepte
+    remplace = predecesseur_accepte(devis)
+    if remplace is None:
+        return None
+    signature = DevisSignature.objects.filter(devis=devis).first()
+    return {'a_signer': signature is None,
+            'remplace': {'reference': remplace.reference},
+            'signe_le': (signature.signed_at.isoformat()
+                         if signature is not None and signature.signed_at
+                         else None)}
+
+
+def signer_avenant(devis, *, nom, ip=None, user_agent='', consentement=True,
+                   signature_image='', signed_at_client=None, on_behalf_of='',
+                   entreprise=None):
+    """VNT61 — la signature CLIENT d'un avenant déjà accepté en interne :
+    ``DevisSignature`` (empreinte du contenu) puis exemplaire PDF signé. AUCUN
+    statut écrit, AUCUN ``devis_accepted`` / CAPI / webhook / e-mail.
+    Idempotent : une 2e soumission n'écrit rien (la première fait foi). Rend
+    la réponse ``avenant_signe.reponse_200`` du contrat ``proposal_accept``."""
+    from django.db import transaction
+    from apps.ventes import activity
+    etat = etat_avenant(devis)
+    if etat is not None and etat['a_signer']:
+        with transaction.atomic():
+            type(devis).objects.select_for_update().filter(pk=devis.pk).first()
+            _cycle_vie._create_esign_record(
+                devis=devis, nom=nom, ip=ip, user_agent=user_agent,
+                consentement=consentement, signature_image=signature_image,
+                signed_at_client=signed_at_client, on_behalf_of=on_behalf_of,
+                entreprise=entreprise)
+            activity.log_devis_note(
+                devis, None, f'Avenant signé en ligne par {nom}'
+                + (f' — IP {ip}' if ip else '') + '.')
+        _cycle_vie._store_signed_pdf(devis=devis)
+        etat = etat_avenant(devis)
+    return {'detail': 'Avenant accepté. Merci !',
+            'reference': devis.reference, 'statut': devis.statut,
+            'accepte_par_nom': devis.accepte_par_nom,
+            'avenant_signe': {'signe_le': (etat or {}).get('signe_le')}}

@@ -708,3 +708,13 @@ def _tracer_engagement_public(link, request, section, seconds):
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
         pass
+
+
+def avenant_public(devis):
+    """VNT61 — la valeur de la clé ADDITIVE ``avenant`` de la proposition
+    publique (``{a_signer, remplace: {reference}, signe_le}``), ``None`` quand
+    le devis n'est pas un avenant : la vue n'ajoute alors AUCUNE clé (absente,
+    jamais ``null`` — contrat ``proposal_data.json``, fragments
+    ``exemple_avenant_*``)."""
+    from ..domain.negociation import etat_avenant
+    return etat_avenant(devis)
