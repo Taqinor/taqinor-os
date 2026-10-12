@@ -19,7 +19,7 @@ chargement du module — aucune arête d'import statique cross-app depuis
 Export `?export=xlsx` (tableau récapitulatif par technicien).
 """
 from apps.crm.exports import build_xlsx_response
-from .query_params import date_param
+from .query_params import DATE_OU_VIDE, IDENTIFIANT, date_param, id_param
 from authentication.permissions import IsResponsableOrAdmin
 from core.dates import maintenant_local
 from rest_framework.decorators import api_view, permission_classes
@@ -67,10 +67,10 @@ _REPORTS_FIELD_FIELD_SERVICE_REPORT_REPONSE = inline_serializer('ReportsFieldFie
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('from', OpenApiTypes.DATE, required=False),
-        OpenApiParameter('to', OpenApiTypes.DATE, required=False),
-        OpenApiParameter('technicien', OpenApiTypes.INT, required=False),
-        OpenApiParameter('equipe', OpenApiTypes.INT, required=False),
+        OpenApiParameter('from', DATE_OU_VIDE, required=False),
+        OpenApiParameter('to', DATE_OU_VIDE, required=False),
+        OpenApiParameter('technicien', IDENTIFIANT, required=False),
+        OpenApiParameter('equipe', IDENTIFIANT, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): _REPORTS_FIELD_FIELD_SERVICE_REPORT_REPONSE,
@@ -95,8 +95,8 @@ def field_service_report(request):
 
     start = date_param(request, 'from')
     end = date_param(request, 'to')
-    technicien_id = request.query_params.get('technicien')
-    equipe_id = request.query_params.get('equipe')
+    technicien_id = id_param(request, 'technicien')
+    equipe_id = id_param(request, 'equipe')
 
     # ── Interventions (KPIs terrain : ponctualité amont, trajet/site, types/statuts) ──
     interv_qs = Intervention.objects.filter(**co, annulee=False)

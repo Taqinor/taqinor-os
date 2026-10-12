@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
-from .query_params import date_param
+from .query_params import DATE_OU_VIDE, date_param
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
@@ -150,8 +150,8 @@ _SAV_PIVOT_SAV_TAUX_ATTACHE_REPONSE = inline_serializer('SavPivotSavTauxAttacheR
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
-        OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('date_debut', DATE_OU_VIDE, required=False),
+        OpenApiParameter('date_fin', DATE_OU_VIDE, required=False),
     ],
     responses={200: _SAV_PIVOT_SAV_TAUX_ATTACHE_REPONSE})
 @api_view(['GET'])

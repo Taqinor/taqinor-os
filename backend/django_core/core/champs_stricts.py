@@ -9,6 +9,7 @@ chaîne ; le comportement d'une requête valide est inchangé.
 from django.db import models
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
+from rest_framework.fields import SkipField, empty
 
 
 class ChaineStricte(serializers.CharField):
@@ -75,6 +76,20 @@ class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
             motif = schema.pop('pattern')
             schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
         return schema
+
+
+class TexteLie(serializers.CharField):
+    """Texte d'un objet lié TOUJOURS servi (api-fuzz « Response violates
+    schema »). DRF SAUTE un champ lu via ``source='lien.attr'`` dont le lien est
+    vide dès que le sérialiseur est ``partial`` (PATCH) : la clé disparaissait
+    de la réponse alors que le schéma la déclare obligatoire. Ici la clé est
+    rendue avec son ``default`` (``None``/``''``) comme sur un GET."""
+
+    def get_attribute(self, instance):
+        try:
+            return super().get_attribute(instance)
+        except SkipField:
+            return None if self.default is empty else self.default
 
 
 class BooleenStrict(serializers.BooleanField):
