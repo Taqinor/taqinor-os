@@ -182,3 +182,77 @@ class TestMontantPayeFiltreLesAffectationsRejetees(_BaseSolde):
             statut=Paiement.Statut.REJETE)
         facture.refresh_from_db()
         self.assertEqual(facture.montant_paye, Decimal('0.00'))
+
+
+class TestSoldeProjeteDuPlanVNT19(_BaseSolde):
+    """VNT19 — ``solde_devis`` projeté depuis ``plan_facturation`` : la
+    chaîne 367 → 387 → 388 (Kharbachi) est UNE vente ; ``facture`` = émis
+    net, ``restant`` = prix − payé (la prod rendait 1 650)."""
+
+    def _chaine_kharbachi(self):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388, facture_tranche)
+        v1, v2, v3 = (creer_devis_388(self.company, self.user,
+                                      self.client_obj, f'DEV-VNT19-{_nxt()}')
+                      for _ in range(3))
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        Devis.objects.filter(pk=v2.pk).update(
+            is_active=False, superseded_by=v3, version=2, version_parent=v1)
+        Devis.objects.filter(pk=v3.pk).update(version=3, version_parent=v1)
+        facture_tranche(v1, f'FAC-VNT19-{_nxt()}', 'acompte', '16350.00',
+                        '13865.00', '2485.00', statut='annulee')
+        facture_tranche(v1, f'FAC-VNT19-{_nxt()}', 'materiel', '32700.00',
+                        '27731.00', '4969.00', type_facture='intermediaire')
+        payee = facture_tranche(v2, f'FAC-VNT19-{_nxt()}', 'acompte',
+                                '14700.00', '12466.00', '2234.00',
+                                statut='payee')
+        Paiement.objects.create(
+            company=self.company, facture=payee, montant=Decimal('14700'),
+            date_paiement=date(2026, 10, 12), mode='virement')
+        facture_tranche(v3, f'FAC-VNT19-{_nxt()}', 'solde', '1600.00',
+                        '1356.85', '243.15', type_facture='solde')
+        return Devis.objects.get(pk=v3.pk)
+
+    def test_chaine_kharbachi_restant_34300(self):
+        solde = solde_devis(self._chaine_kharbachi())
+        self.assertEqual(solde['total_ttc'], Decimal('49000.00'))
+        self.assertEqual(solde['facture'], Decimal('49000.00'))
+        self.assertEqual(solde['emis'], Decimal('49000.00'))
+        self.assertEqual(solde['paye'], Decimal('14700.00'))
+        self.assertEqual(solde['restant'], Decimal('34300.00'))
+        self.assertEqual(solde['tranches_facturees'], 3)
+        self.assertEqual(solde['reste_a_facturer'], Decimal('0.00'))
+        self.assertIs(solde['facturation_terminee'], True)
+
+    def test_un_brouillon_ne_change_ni_facture_ni_restant(self):
+        devis = self._chaine_kharbachi()
+        Facture.objects.create(
+            company=self.company, reference=f'BROUILLON-VNT19-{_nxt()}',
+            devis=devis, client=self.client_obj,
+            statut=Facture.Statut.BROUILLON, type_facture='complete',
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'))
+        solde = solde_devis(Devis.objects.get(pk=devis.pk))
+        self.assertEqual(solde['facture'], Decimal('49000.00'))
+        self.assertEqual(solde['restant'], Decimal('34300.00'))
+        self.assertEqual(solde['brouillons'], Decimal('1200.00'))
+        self.assertEqual(solde['tranches_facturees'], 3)
+
+    def test_exemple_vide_cles_du_contrat(self):
+        import json
+        from pathlib import Path
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        contrat = json.loads(
+            (Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'devis_solde.json').read_text(encoding='utf-8'))
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT19-{_nxt()}')
+        solde = {k: str(v) for k, v in solde_devis(devis).items()}
+        self.assertEqual(set(solde), set(contrat['exemple_vide']['solde']))
+        self.assertEqual(solde['facturation_terminee'], 'False')
+        self.assertEqual(solde['tranches_facturees'], '0')
+        self.assertEqual(solde['porte_facturation'], 'libre')
+        self.assertEqual(solde['reste_a_facturer'], '49000.00')
+        self.assertEqual(solde['restant'], '49000.00')

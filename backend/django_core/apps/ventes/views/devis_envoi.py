@@ -58,10 +58,16 @@ class _RemiseEnvoiRefusee(APIException):
 
 
 class _VersionRemplaceeConflit(APIException):
-    """ADEV7 — 409 ``{detail, code: "version_remplacee"}`` : geste d'envoi sur
+    """ADEV7 / VNT24 — 409 ``{detail, code, successeur}`` : geste d'envoi sur
     une version remplacée par une révision (ou archivée)."""
     status_code = status.HTTP_409_CONFLICT
     default_code = 'version_remplacee'
+
+    def __init__(self, corps):
+        super().__init__(corps)
+        # VNT24 — corps rendu TEL QUEL : sans cela DRF convertit chaque
+        # valeur en chaîne (``successeur.id`` sortirait « 414 »).
+        self.detail = corps
 
 
 def _exiger_version_en_jeu(devis, geste):

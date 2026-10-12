@@ -313,3 +313,22 @@ class FG50AcompteAnnulation(TestCase):
         source = self._facture(statut=Facture.Statut.ANNULEE)
         r = self._annuler(source, {'acompte': {'action': 'rembourser'}})
         self.assertEqual(r.status_code, 400, r.data)
+
+    # ── VNT10 — le corps vit dans le service du domaine (sans HTTP) ──
+    def test_vnt10_service_annuler_facture_sans_http(self):
+        from apps.ventes.domain.annulation_facture import (
+            AnnulationRefusee, annuler_facture,
+        )
+        source = self._facture()
+        self._pay(source, '2000')
+        with self.assertRaises(AnnulationRefusee) as ctx:
+            annuler_facture(source, user=self.admin)
+        self.assertEqual(
+            ctx.exception.corps['code'], 'directive_acompte_requise')
+        self.assertEqual(
+            ctx.exception.corps['argent_rattache']['paiements'], '2000.00')
+        libre = self._facture()
+        rendu = annuler_facture(libre, user=self.admin)
+        self.assertEqual(rendu.statut, Facture.Statut.ANNULEE)
+        libre.refresh_from_db()
+        self.assertEqual(libre.statut, Facture.Statut.ANNULEE)

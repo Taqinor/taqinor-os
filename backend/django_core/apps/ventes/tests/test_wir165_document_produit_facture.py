@@ -197,3 +197,42 @@ class DocumentProduitFactureTests(TestCase):
             f'factures/{facture.company_id}/{facture.reference}.pdf')
         facture.refresh_from_db()
         self.assertEqual(facture.fichier_pdf, key)
+
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    @patch('apps.ventes.utils.pdf._download', return_value=None)
+    def test_brouillon_jamais_archive_emise_une_fois(self, mock_dl, mock_upload):
+        """VNT34 — le rendu PDF d'un BROUILLON (référence provisoire
+        « BROUILLON-<id> », sans valeur comptable) n'émet jamais
+        ``document_produit`` : rendu deux fois => 0 signal, 0 document GED.
+        La même facture émise (numéro légal) => exactement 1 signal."""
+        from core.events import document_produit
+
+        from apps.ventes.utils.pdf import generate_facture_pdf
+
+        cabinet = Cabinet.objects.create(company=self.company, nom='Ventes')
+        RoutageDocumentaire.objects.update_or_create(
+            company=self.company, source='ventes_facture',
+            defaults={'cabinet_cible': cabinet, 'dossier_cible': 'Factures'})
+        recus = []
+
+        def _recepteur(sender, **kwargs):
+            recus.append(kwargs.get('reference'))
+
+        document_produit.connect(_recepteur, weak=False)
+        self.addCleanup(document_produit.disconnect, _recepteur)
+
+        facture = make_facture(self.user, self.client_obj, self.produit)
+        Facture.objects.filter(pk=facture.pk).update(
+            statut='brouillon', reference=f'BROUILLON-{facture.pk}')
+        generate_facture_pdf(facture.id)
+        generate_facture_pdf(facture.id)
+        self.assertEqual(recus, [])
+        self.assertEqual(
+            Document.objects.filter(company=self.company).count(), 0)
+
+        Facture.objects.filter(pk=facture.pk).update(
+            statut='emise', reference='FAC-WIR165-0034')
+        generate_facture_pdf(facture.id)
+        self.assertEqual(recus, ['FAC-WIR165-0034'])
+        self.assertEqual(
+            Document.objects.filter(company=self.company).count(), 1)

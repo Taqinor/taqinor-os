@@ -61,9 +61,16 @@ class ContratRefuserTests(SimpleTestCase):
             {'motif': ['Choisissez un motif de refus de la liste.']})
         self.assertEqual(set(rep['409']), {'statut', 'version_remplacee'})
         for code, corps in rep['409'].items():
-            self.assertEqual(set(corps), {'detail', 'code'})
+            # VNT24 — ``version_remplacee`` porte EN PLUS ``successeur``
+            # ``{id, reference}`` (tête de chaîne), la forme unique des gestes.
+            attendu = ({'detail', 'code', 'successeur'}
+                       if code == 'version_remplacee' else {'detail', 'code'})
+            self.assertEqual(set(corps), attendu)
             self.assertEqual(corps['code'], code)
             self.assertTrue(corps['detail'])
+        succ = rep['409']['version_remplacee']['successeur']
+        self.assertEqual(set(succ), {'id', 'reference'})
+        self.assertIsInstance(succ['id'], int)
 
     def test_aucune_donnee_interne(self):
         brut = CONTRAT.read_text(encoding='utf-8')

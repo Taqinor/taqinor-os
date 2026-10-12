@@ -65,6 +65,9 @@ LIBELLES = {
         'date_livraison': 'Date de livraison / prestation',
         # APDF28 — numérotation des pages.
         'page': 'Page',
+        # VNT33 — filigrane d'une facture brouillon.
+        'filigrane_brouillon': 'BROUILLON',
+        'filigrane_sans_valeur': 'Sans valeur comptable',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -103,6 +106,8 @@ LIBELLES = {
         'voir_ventilation': 'انظر التفصيل',
         'date_livraison': 'تاريخ التسليم / الخدمة',
         'page': 'صفحة',
+        'filigrane_brouillon': 'مسودة',
+        'filigrane_sans_valeur': 'بدون قيمة محاسبية',
     },
 }
 
