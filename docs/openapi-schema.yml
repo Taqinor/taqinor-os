@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4826, operations: 7586, components: 3383}
+counts: {paths: 4826, operations: 7584, components: 3393}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2406,7 +2406,6 @@ operations:
 - get /api/django/parametres/gabarits-document/{code}/apercu/ -> django_parametres_gabarits_document_apercu_retrieve
 - get /api/django/parametres/gabarits-document/{code}/rendre/ -> django_parametres_gabarits_document_rendre_retrieve
 - get /api/django/parametres/messages/ -> django_parametres_messages_list
-- patch /api/django/parametres/messages/ -> django_parametres_messages_partial_update
 - put /api/django/parametres/messages/ -> django_parametres_messages_update
 - post /api/django/parametres/onboarding-localisation/ -> django_parametres_onboarding_localisation_create
 - get /api/django/parametres/realisations/ -> django_parametres_realisations_list
@@ -6238,7 +6237,6 @@ operations:
 - get /api/v1/parametres/gabarits-document/{code}/apercu/ -> v1_parametres_gabarits_document_apercu_retrieve
 - get /api/v1/parametres/gabarits-document/{code}/rendre/ -> v1_parametres_gabarits_document_rendre_retrieve
 - get /api/v1/parametres/messages/ -> v1_parametres_messages_list
-- patch /api/v1/parametres/messages/ -> v1_parametres_messages_partial_update
 - put /api/v1/parametres/messages/ -> v1_parametres_messages_update
 - post /api/v1/parametres/onboarding-localisation/ -> v1_parametres_onboarding_localisation_create
 - get /api/v1/parametres/realisations/ -> v1_parametres_realisations_list
@@ -9536,6 +9534,9 @@ components:
 - CableAmeEnum
 - CadenceRelanceEtape
 - CadenceRelanceEtapeCadenceEnum
+- CadenceRelanceEtapeCreation
+- CadenceRelanceEtapeCreationCadenceEnum
+- CadenceRelanceEtapeCreationRequest
 - CadenceRelanceEtapeRequest
 - CalculRoiRequestRequest
 - CalendarCalendarEventsReponse
@@ -9744,6 +9745,7 @@ components:
 - ConditionnementProduitRequest
 - ConfigExport
 - ConfigImportCompte
+- ConfigImportRequestRequest
 - ConfigImportResultat
 - ConfigPackage
 - ConfirmationActionRequest
@@ -10161,7 +10163,7 @@ components:
 - EtudeHorairePreviewResponse
 - EtudeHoraireProfil
 - EtudePompagePreviewResponse
-- EventTypeEnum
+- EventType701Enum
 - ExecutionRegleDossier
 - ExigenceDossier
 - ExigenceDossierRequest
@@ -10239,6 +10241,7 @@ components:
 - FactureResoudreExceptionCorpsRequest
 - FactureRetourClientRequestRequest
 - FactureRevoquerLienPaiementResponse
+- FactureWhatsappRequestModeleEnum
 - FactureWhatsappRequestRequest
 - FactureWhatsappResponse
 - FactureWrite
@@ -10248,6 +10251,7 @@ components:
 - FavoriImportRequeteRequest
 - FavoriReordonnerRequeteRequest
 - FavoriUtilisateur
+- FavoriUtilisateurModeleEnum
 - FavoriUtilisateurRequest
 - FeedbackEnum
 - FetesMobilesEnregistrerDatesRequest
@@ -10311,6 +10315,7 @@ components:
 - FraisImportRequest
 - FreinPrincipalEnum
 - FtEnum
+- FuseauHoraireEnum
 - GabaritDocumentCustom
 - GabaritDocumentCustomCibleEnum
 - GedAnalytiqueGed
@@ -10631,6 +10636,7 @@ components:
 - MessageTemplateLigne
 - MessageTemplateRequest
 - MessagesAccueilALire
+- MesuresCategorieEnum
 - MetaConnection
 - MetaConnectionRequest
 - MeteoTerrainReponse
@@ -10664,7 +10670,6 @@ components:
 - ModeleCatalogue
 - ModeleDocument
 - ModeleDocumentRequest
-- ModeleEnum
 - ModelesCatalogueReponse
 - ModifierLigneConsommationRequeteRequest
 - ModifierMemoRequeteRequest
@@ -10722,7 +10727,7 @@ components:
 - Notification
 - NotificationPreference
 - NotificationRoutingRule
-- NotificationRoutingRuleRequest
+- NotificationRoutingRuleTargetRoleEnum
 - NotificationsDetail
 - NotificationsNonLues
 - NotificationsToutLu
@@ -11369,7 +11374,6 @@ components:
 - PatchedMarqueRequest
 - PatchedMaterielConsigneRequest
 - PatchedMatriceApprobationRequest
-- PatchedMessageTemplateEcritRequestRequest
 - PatchedMessageTemplateRequest
 - PatchedMesuresRequest
 - PatchedMetaConnectionRequest
@@ -11380,7 +11384,6 @@ components:
 - PatchedMotifPerteRequest
 - PatchedNetworkPolicyRequest
 - PatchedNomenclatureCodeBarresRequest
-- PatchedNotificationRoutingRuleRequest
 - PatchedObjectifCommercialRequest
 - PatchedOrdreAssemblageLigneRequest
 - PatchedOrdreAssemblageRequest
@@ -11441,6 +11444,7 @@ components:
 - PatchedRegleDossierRequest
 - PatchedRegleRangementRequest
 - PatchedRegleReapproRequest
+- PatchedRegleRoutageEcritureRequest
 - PatchedRegularisation8221Request
 - PatchedRegulatoryDossierRequest
 - PatchedRemedeDefaillanceRequest
@@ -11858,6 +11862,9 @@ components:
 - RegleRangementRequest
 - RegleReappro
 - RegleReapproRequest
+- RegleRoutageEcritureEventTypeEnum
+- RegleRoutageEcritureRequest
+- RegleRoutageEcritureTargetRoleEnum
 - RegleValiderReponse
 - RegleValiderRequeteRequest
 - Regularisation8221
@@ -12136,6 +12143,7 @@ components:
 - SlaDisponibilite
 - SlaDisponibiliteRequest
 - SlaSnapshot
+- SlotCodeEnum
 - SodRule
 - SodRuleRequest
 - SodSeedResultat
@@ -12277,7 +12285,6 @@ components:
 - TamponSocieteRequest
 - TargetEnum
 - TargetKindEnum
-- TargetRoleEnum
 - TariffSettings
 - TariffSettingsRequest
 - TauxTVA
@@ -12532,6 +12539,7 @@ components:
 - WorkingHoursConfigRequest
 - WorksheetMaintenanceModele
 - WorksheetMaintenanceModeleRequest
+- _CoinsCalageRequest
 - _CompanyProfileSchema
 - _DecisionGabaritRequest
 - _DecisionGabaritStatutApprobationEnum

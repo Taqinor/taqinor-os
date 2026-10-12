@@ -82,7 +82,7 @@ _(none yet)_
 
 ---
 
-- [ ] ERR-WEB-SVG-HEIGHT-AUTO — [apps/web/proposition] **La page publique d'un devis résidentiel avec étude horaire journalise 15 erreurs console « Error: <svg> attribute height: Expected length, "auto" »** : relevé à l'acceptation en direct d'AGNR6 (site local, astro dev branché sur l'ERP local, 12/10/2026, devis DEV-202610-0036) : les SVG des courbes sont émis avec `height="auto"`, valeur invalide pour l'attribut SVG `height`. Sources : `apps/web/src/lib/proposalCurve.ts:849` (`daily-curve`), `apps/web/src/lib/proposalChart.ts:328`, `apps/web/src/lib/batterySim.ts:666`. Attendu : ne plus poser `height="auto"` (laisser `viewBox` + `width="100%"` et dimensionner par CSS `height:auto`), aucun `console.error` à l'affichage de la page. Test rouge d'abord : test du gabarit SVG — aucune sortie ne contient `height="auto"`. Preuve en direct : ouvrir /proposition/<jeton> d'un devis résidentiel à étude horaire ⇒ 0 erreur console. Files: `apps/web/src/lib/proposalCurve.ts`, `apps/web/src/lib/proposalChart.ts`, `apps/web/src/lib/batterySim.ts`.
+- [x] ERR-WEB-SVG-HEIGHT-AUTO — [apps/web/proposition] **La page publique d'un devis résidentiel avec étude horaire journalise 15 erreurs console « Error: <svg> attribute height: Expected length, "auto" »** : relevé à l'acceptation en direct d'AGNR6 (site local, astro dev branché sur l'ERP local, 12/10/2026, devis DEV-202610-0036) : les SVG des courbes sont émis avec `height="auto"`, valeur invalide pour l'attribut SVG `height`. Sources : `apps/web/src/lib/proposalCurve.ts:849` (`daily-curve`), `apps/web/src/lib/proposalChart.ts:328`, `apps/web/src/lib/batterySim.ts:666`. Attendu : ne plus poser `height="auto"` (laisser `viewBox` + `width="100%"` et dimensionner par CSS `height:auto`), aucun `console.error` à l'affichage de la page. Test rouge d'abord : test du gabarit SVG — aucune sortie ne contient `height="auto"`. Preuve en direct : ouvrir /proposition/<jeton> d'un devis résidentiel à étude horaire ⇒ 0 erreur console. Files: `apps/web/src/lib/proposalCurve.ts`, `apps/web/src/lib/proposalChart.ts`, `apps/web/src/lib/batterySim.ts`.
 
 ## GATED — needs founder decision before fixing (agent does NOT auto-build)
 
@@ -103,6 +103,7 @@ with a non-negotiable rule. (none yet)
 ---
 
 ## DONE LOG (one plain-language line per fixed task)
+- 2026-10-12 — ERR-WEB-SVG-HEIGHT-AUTO — adeb42fbd → 33b864f76 : plus de height="auto" sur les <svg> des courbes (proposalCurve, proposalChart, batterySim ; viewBox + width 100 % + preserveAspectRatio inchangés), test de non-régression dans apps/web/tests/proposalChart.test.ts ; build Astro OK.
 - 2026-10-05 — WEBERR2 : maplibre-gl 5.24 → 6.12 (import * as, plus de default export) — avis critique corrigé.
 - 2026-10-05 — WEBERR1 : astro 6.4.6 → 7.3.5, @astrojs/cloudflare 14.3.3, wrangler 4.147, sharp 0.35.5 ; override vite ^7 retiré (astro 7 exige vite 8), commentaires HTML après « ( » déplacés (Layout, proposition, suivi).
 
