@@ -332,3 +332,121 @@ class FG50AcompteAnnulation(TestCase):
         self.assertEqual(rendu.statut, Facture.Statut.ANNULEE)
         libre.refresh_from_db()
         self.assertEqual(libre.statut, Facture.Statut.ANNULEE)
+
+
+class VNT11AnnulationAvecAvoir(TestCase):
+    """VNT11 (D-VNT-1) — annuler une facture à référence LÉGALE émet son
+    avoir de contre-passation CORRECTION (le devis est libéré, jamais de trou
+    de numérotation) ; un ``BROUILLON-<id>`` s'annule sans avoir ;
+    ``retirer_brouillons_de_la_vente`` annule (jamais ne supprime)."""
+
+    def setUp(self):
+        self.company = make_company(slug='vnt11-co', nom='VNT11 Co')
+        self.client_obj = make_client(self.company, email='vnt11@example.com')
+        self.admin = User.objects.create_user(
+            username='vnt11_admin', password='x', role_legacy='admin',
+            company=self.company,
+        )
+        self.api = auth(self.admin)
+        self.devis = make_accepted_devis(
+            self.company, self.client_obj, ref='DEV-VNT11-0001')
+
+    def _facture(self, reference, statut=Facture.Statut.EMISE,
+                 ttc='1600.00', ht='1333.33', tva='266.67', type_f='solde'):
+        return Facture.objects.create(
+            company=self.company, reference=reference, devis=self.devis,
+            client=self.client_obj, statut=statut, type_facture=type_f,
+            montant_ht=Decimal(ht), montant_tva=Decimal(tva),
+            montant_ttc=Decimal(ttc), created_by=self.admin,
+        )
+
+    def _avoirs(self, facture):
+        from apps.ventes.models import Avoir
+        return list(Avoir.objects.filter(facture=facture))
+
+    def _annuler(self, facture, body=None):
+        return self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/annuler/',
+            body or {}, format='json')
+
+    def test_emise_sans_argent_avoir_correction_et_devis_libere(self):
+        from apps.ventes.models import Avoir
+        from apps.ventes.selectors_facturation import (
+            DevisDejaFacture, exiger_devis_facturable)
+        f = self._facture(f'FAC-{MONTH}-0008')
+        with self.assertRaises(DevisDejaFacture):
+            exiger_devis_facturable(self.devis, 'complete')
+        r = self._annuler(f)
+        self.assertEqual(r.status_code, 200, r.data)
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.ANNULEE)
+        # Jamais de trou : le numéro légal reste porté par la facture annulée.
+        self.assertEqual(f.reference, f'FAC-{MONTH}-0008')
+        avoirs = self._avoirs(f)
+        self.assertEqual(len(avoirs), 1)
+        self.assertEqual(avoirs[0].type, Avoir.Type.CORRECTION)
+        self.assertEqual(avoirs[0].statut, Avoir.Statut.EMISE)
+        self.assertEqual(avoirs[0].total_ttc, Decimal('1600.00'))
+        # Le devis est libéré : plus aucune facture active ne le ferme.
+        exiger_devis_facturable(self.devis, 'complete')
+
+    def test_brouillon_a_reference_legale_recoit_aussi_un_avoir(self):
+        f = self._facture(f'FAC-{MONTH}-0042', statut=Facture.Statut.BROUILLON)
+        r = self._annuler(f)
+        self.assertEqual(r.status_code, 200, r.data)
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(len(self._avoirs(f)), 1)
+
+    def test_brouillon_provisoire_annule_sans_avoir(self):
+        f = self._facture('', statut=Facture.Statut.BROUILLON)
+        self.assertTrue(f.reference.startswith('BROUILLON-'))
+        r = self._annuler(f)
+        self.assertEqual(r.status_code, 200, r.data)
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(self._avoirs(f), [])
+
+    def test_rembourser_une_facture_legale_emet_aussi_l_avoir(self):
+        f = self._facture(f'FAC-{MONTH}-0045')
+        Paiement.objects.create(
+            company=self.company, facture=f, montant=Decimal('1600'),
+            date_paiement=timezone.now().date(), mode='virement',
+            created_by=self.admin)
+        r = self._annuler(f, {'acompte': {'action': 'rembourser'}})
+        self.assertEqual(r.status_code, 200, r.data)
+        f.refresh_from_db()
+        self.assertEqual(f.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(f.montant_paye, Decimal('0'))
+        self.assertEqual(len(self._avoirs(f)), 1)
+
+    def test_service_rend_l_avoir_de_l_annulation(self):
+        from apps.ventes.domain.annulation_facture import annuler_facture
+        legale = self._facture(f'FAC-{MONTH}-0009')
+        rendu = annuler_facture(legale, user=self.admin, motif='Doublon')
+        self.assertIsNotNone(rendu.avoir_annulation)
+        self.assertEqual(rendu.avoir_annulation.motif, 'Doublon')
+        brouillon = self._facture('', statut=Facture.Statut.BROUILLON)
+        self.assertIsNone(
+            annuler_facture(brouillon, user=self.admin).avoir_annulation)
+
+    def test_retirer_brouillons_de_la_vente_annule_sans_supprimer(self):
+        from apps.ventes.domain.annulation_facture import (
+            retirer_brouillons_de_la_vente)
+        provisoire = self._facture('', statut=Facture.Statut.BROUILLON)
+        legale = self._facture(
+            f'FAC-{MONTH}-0043', statut=Facture.Statut.BROUILLON)
+        emise = self._facture(f'FAC-{MONTH}-0044')
+        retires = retirer_brouillons_de_la_vente(
+            self.devis, user=self.admin, motif='Prix négocié')
+        self.assertEqual(sorted(f.pk for f in retires),
+                         sorted([provisoire.pk, legale.pk]))
+        for f in (provisoire, legale, emise):
+            self.assertTrue(Facture.objects.filter(pk=f.pk).exists())
+            f.refresh_from_db()
+        self.assertEqual(provisoire.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(legale.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(emise.statut, Facture.Statut.EMISE)
+        self.assertEqual(self._avoirs(provisoire), [])
+        self.assertEqual(len(self._avoirs(legale)), 1)
+        self.assertEqual(self._avoirs(emise), [])

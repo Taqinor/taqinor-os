@@ -325,13 +325,17 @@
     {
      "type": "fige",
      "detail": "contre-passation : la facture d'origine passe « annulée »"
+    },
+    {
+     "type": "fige",
+     "detail": "VNT11 (D-VNT-1) : annuler une facture à référence LÉGALE (annulation_facture.annuler_facture → _contre_passer) émet automatiquement par ce constructeur son avoir CORRECTION de contre-passation ; un BROUILLON-<id> s'annule sans avoir ; aucune nouvelle porte Facture/Paiement.objects.create"
     }
    ],
    "suite": "PA4.10",
    "negatifs": [
     "contre-passation d'une facture payée"
    ],
-   "taches": [],
+   "taches": ["VNT11"],
    "constats": []
   },
   {
