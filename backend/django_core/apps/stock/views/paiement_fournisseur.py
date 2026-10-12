@@ -109,6 +109,10 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         # obligatoire manquant/expiré. No-op (comportement historique) quand
         # le paramètre est OFF (défaut).
         facture_id = request.data.get('facture')
+        try:
+            facture_id = int(facture_id) if facture_id else None
+        except (TypeError, ValueError):
+            facture_id = None  # illisible : le sérialiseur répond 400
         if facture_id:
             try:
                 from ..services import (
