@@ -1,10 +1,10 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .serializers_stage import valider_unicite_societe
+# ENF11 — ChampsStrictsMixin (core.champs_stricts) via le module voisin : mur.
+from .serializers_stage import ChampsStrictsMixin, valider_unicite_societe
 
 from .models import (
     Equipe,
