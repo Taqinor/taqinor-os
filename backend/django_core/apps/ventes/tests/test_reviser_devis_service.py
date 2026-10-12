@@ -193,3 +193,53 @@ class ReviserDevisService(TestCase):
         r = self._post(self._devis(Devis.Statut.BROUILLON))
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(r.data['code'], 'brouillon')
+
+    # ── VNT55 (D-ADEV-1, ADEV16) — abandonner la révision d'une vente ──────
+    def _v1_acceptee_et_v2(self):
+        v1 = self._devis(Devis.Statut.ACCEPTE)
+        r = self._post(v1)
+        self.assertEqual(r.status_code, 201, r.content)
+        return v1, Devis.objects.get(pk=r.data['id'])
+
+    def _assert_v1_reactivee(self, v1):
+        v1.refresh_from_db()
+        self.assertTrue(v1.is_active)
+        self.assertIsNone(v1.superseded_by_id)
+        self.assertEqual(v1.statut, Devis.Statut.ACCEPTE)  # règle #4
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=v1, body__icontains='révision abandonnée').exists())
+        # Révisable à nouveau.
+        self.assertEqual(self._post(v1).status_code, 201)
+
+    def test_vnt55_supprimer_le_brouillon_v2_reactive_la_v1(self):
+        from apps.ventes.models import BonCommande
+        admin = User.objects.create_user(
+            username='vnt55_admin', password='x', role_legacy='admin',
+            company=self.company)
+        v1, v2 = self._v1_acceptee_et_v2()
+        bc = BonCommande.objects.create(
+            company=self.company, reference='BC-VNT55-1', devis=v1,
+            client=self.client_obj, statut=BonCommande.Statut.EN_ATTENTE)
+        r = _api(admin).delete(f'/api/django/ventes/devis/{v2.id}/')
+        self.assertEqual(r.status_code, 204, r.content)
+        self.assertFalse(Devis.objects.filter(pk=v2.pk).exists())
+        bc.refresh_from_db()
+        self.assertEqual(bc.devis_id, v1.pk)
+        self._assert_v1_reactivee(v1)
+
+    def test_vnt55_archiver_la_v2_reactive_la_v1(self):
+        v1, v2 = self._v1_acceptee_et_v2()
+        r = self.api.patch(f'/api/django/ventes/devis/{v2.id}/',
+                           {'is_active': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        v2.refresh_from_db()
+        self.assertFalse(v2.is_active)
+        self._assert_v1_reactivee(v1)
+
+    def test_vnt55_v1_non_acceptee_reste_archivee(self):
+        v1 = self._devis(Devis.Statut.ENVOYE)
+        v2 = Devis.objects.get(pk=self._post(v1).data['id'])
+        self.api.patch(f'/api/django/ventes/devis/{v2.id}/',
+                       {'is_active': False}, format='json')
+        v1.refresh_from_db()
+        self.assertFalse(v1.is_active)

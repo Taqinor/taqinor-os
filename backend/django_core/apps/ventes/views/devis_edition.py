@@ -543,7 +543,12 @@ class DevisEditionActionsMixin:
         envoye = serializer.instance.statut == Devis.Statut.ENVOYE
         etude_avant = (_etude_en_base(serializer.instance)
                        if entrees_etude and envoye else None)
+        archive = (serializer.instance.is_active is True
+                   and serializer.validated_data.get('is_active') is False)
         super().perform_update(serializer)
+        if archive:  # VNT55 (D-ADEV-1) — V2 archivée ⇒ V1 acceptée réactivée.
+            from ..domain.revision import abandonner_revision
+            abandonner_revision(serializer.instance, self.request.user)
         # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
         # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
         from ..domain.historique_config import instantane_de_geste

@@ -220,6 +220,39 @@ def reviser_devis(devis, *, user=None):
     return nd
 
 
+def abandonner_revision(v2, user=None):
+    """VNT55 / VNT56 (D-ADEV-1, ADEV16) — la révision ``v2`` d'une vente
+    signée est ABANDONNÉE (brouillon supprimé ou archivé, V2 envoyée refusée
+    ou expirée) : la version ACCEPTÉE qu'elle remplaçait redevient la vente
+    active (``is_active`` vrai, ``superseded_by`` vidé) — sinon la vente sort
+    des KPI et ``facturer_vente`` la refuse. Chantier, BC et factures ne
+    bougent pas ; une note « révision abandonnée » est posée sur la V1.
+
+    Seuls ``is_active`` / ``superseded_by`` sont écrits, jamais un statut
+    (règle #4). Une ``v2`` ACCEPTÉE n'est pas un abandon (rien n'est fait).
+    À appeler AVANT la suppression de ``v2``. Rend la liste des versions
+    réactivées."""
+    from django.db import transaction
+    from apps.ventes import activity
+    from apps.ventes.models import Devis
+
+    if getattr(v2, 'pk', None) is None or v2.statut == Devis.Statut.ACCEPTE:
+        return []
+    reactivees = []
+    with transaction.atomic():
+        for v1 in (Devis.objects.select_for_update(of=('self',))
+                   .filter(company_id=v2.company_id, superseded_by_id=v2.pk,
+                           statut=Devis.Statut.ACCEPTE)):
+            v1.is_active = True
+            v1.superseded_by = None
+            v1.save(update_fields=['is_active', 'superseded_by'])
+            activity.log_devis_note(
+                v1, user, f'Révision {v2.reference} abandonnée : '
+                f'{v1.reference} redevient la vente active.')
+            reactivees.append(v1)
+    return reactivees
+
+
 def _paniers_ecart_par_taux(precedent, devis, reste):
     """ATOT22 — l'écart des bases (et de la TVA) PAR TAUX entre la version
     facturée ``precedent`` et la V2 ``devis`` (option effective, chaîne
