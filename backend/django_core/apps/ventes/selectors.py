@@ -1747,6 +1747,21 @@ from .vente_facturation import (  # noqa: E402,F401 — ré-export (VNT23)
 )
 
 
+# VNT70 — la fiche lead lit ``vente`` ET ``solde`` d'un lot de devis par la
+# façade (jamais ``utils.echeancier`` / ``vente_facturation`` côté crm).
+def vente_et_solde_map(rows, user=None) -> dict:
+    """``{devis.pk: {'vente': etat_vente, 'solde': solde_devis (chaînes)}}``
+    lus sous UN lot de page (``lot_de_vente``) : requêtes constantes."""
+    from .utils.echeancier import solde_devis
+    from .vente_facturation import lot_de_vente
+    rows = list(rows)
+    with lot_de_vente(rows):
+        return {d.pk: {'vente': etat_vente(d, user),
+                       'solde': {k: str(v)
+                                 for k, v in solde_devis(d).items()}}
+                for d in rows}
+
+
 def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
                           exclure_id=None):
     """Décision fondateur (08/10/2026) — les devis ACCEPTÉS et actifs d'un
