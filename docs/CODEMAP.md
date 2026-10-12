@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 526f1cabfa9ed9eb9706eaa86d62c842730c21150352c974a2e74bed9c596723
+Structure fingerprint: d8bd8797f053ad711babb62a5aab20ed2d469934815c963161edc14f78117e30
 Plan fingerprint: 6c47b4fc826dbc8d9fb08b19ed69135d989df14dab7320f1f6884823da591687
 
 
@@ -450,7 +450,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 - **ged** — document management console (module.config-registered).
 - **reporting** — dashboards/insights; `reportingSlice.js`.
 - **parametres** — settings/templates; `parametresSlice.js` + module.config tabs.
-- **adsengine** — the « Publicité » console (module.config-registered, no slice: `hooks.js`/`adsengineApi.js`), 25 screens under `/publicite`, `TenantBrand.jsx` (white-label clean), DOM hooks `ae-*`.
+- **adsengine** — the « Publicité » console (module.config-registered, no slice: `hooks.js`/`adsengineApi.js`), 25 screens under `/publicite`, `TenantBrand.jsx` (white-label clean), DOM hooks `ae-*`; list-load failures shown by `LoadErrorNotice.jsx`/`loadErrors.js` (`ae-load-error`, ENF15), `fatigueTone.js` shared by cockpit + ad detail.
 - **portail** — client-portal administration + the client-facing portal screens.
 - **admin / adminops / entites / audit / uxviews / tiers / notifications / onboarding / core** — administration, audit log, saved views, party directory, notification prefs, « Premiers pas », the « Données » explorer.
 - **ia** — AI assistant chat (registry-driven actions with propose->confirm + result cards, voice input, hands-free mode) + OCR; `iaSlice.js`, `voice/`.

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import time
 
 import httpx
@@ -30,7 +31,6 @@ from . import api_version as _api_version
 
 GRAPH_BASE_URL = _api_version.GRAPH_BASE_URL
 GRAPH_VERSION = _api_version.GRAPH_VERSION  # ré-export (tests adseng2)
-import logging
 
 logger = logging.getLogger(__name__)
 
