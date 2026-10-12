@@ -181,7 +181,8 @@ class OfflineSyncBatchTests(TestCase):
             {'op_type': 'crm.lead.noter', 'payload': {'lead': self.lead.id,
                                                       'body': 'x'}}]},
             format='json')
-        self.assertEqual(resp.data['errors'], 1)
+        # ENF11 : client_op_id est requis par le schéma publié -> 400.
+        self.assertEqual(resp.status_code, 400)
         self.assertEqual(self.notes().count(), 0)
 
     def test_ops_absent_ou_invalide_repond_400(self):
