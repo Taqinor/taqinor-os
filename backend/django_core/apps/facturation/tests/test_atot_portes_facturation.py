@@ -125,6 +125,14 @@ class PortesFacturationTests(TestCase):
                 avant = self._refs(devis)
                 self.assertEqual(len(avant), 1)
                 r2 = self._porte(porte_b, devis)
+                if porte_a == 'bc' and porte_b == 'complete':
+                    # VNT65 — facturer-complet = facturer_vente(complete) :
+                    # le brouillon de BC est NOMMÉ, à remplacer (409 → 400).
+                    self.assertEqual(r2.status_code, 400, r2.data)
+                    self.assertEqual(r2.data['code'], 'brouillons_a_remplacer')
+                    self.assertIn(avant[0], str(r2.data))
+                    self.assertEqual(self._refs(devis), avant)
+                    continue
                 if porte_a == 'bc':
                     # VNT20 — la facture de BC naît BROUILLON : elle ne
                     # ferme aucune porte (la seconde émet) ; c'est son

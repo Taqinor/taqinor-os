@@ -220,6 +220,33 @@ class U9StockReservationTests(TestCase):
         self.panneau.refresh_from_db()
         self.assertEqual(self.panneau.quantite_stock, 90)
 
+    # ── VNT65 — les portes d'hier enveloppent facturer_vente(emettre=True) ──
+    def test_vnt65_generer_facture_reprend_le_brouillon_d_acompte(self):
+        from apps.ventes.domain.facturation_vente import facturer_vente
+        from apps.ventes.models import Facture
+        devis = self._devis(f'DEV-{MONTH}-9165')
+        brouillon, _ = facturer_vente(devis, nature='acompte', user=self.user)
+        self.assertEqual(self._sorties(self.panneau).count(), 0)
+        r = self._gen(devis)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['id'], brouillon.id)
+        self.assertEqual(Facture.objects.filter(devis=devis).count(), 1)
+        self.assertEqual(Facture.objects.get(pk=brouillon.id).statut,
+                         Facture.Statut.EMISE)
+        self.assertEqual(self._sorties(self.panneau).count(), 1)
+        self.assertEqual(self._sorties(self.onduleur).count(), 1)
+
+    def test_vnt65_facturer_complet_une_sortie_a_l_emission(self):
+        devis = self._devis(f'DEV-{MONTH}-9166')
+        r = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/facturer-complet/',
+            {'paiements': []}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(self._sorties(self.panneau).count(), 1)
+        self.assertEqual(self._sorties(self.onduleur).count(), 1)
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 90)
+
     def test_vnt21_emission_par_la_vue_une_sortie(self):
         devis = self._devis(f'DEV-{MONTH}-9123')
         brouillon = self._brouillon(devis, 'acompte', ligne=True)

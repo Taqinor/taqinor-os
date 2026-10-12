@@ -329,15 +329,18 @@ def _placer_acompte(entrees, plan, montant, cle_attendue):
 
 
 def ecrire_echeancier_depuis_acompte(devis, montant, *, user=None,
-                                     plan=None, cle_attendue=None):
+                                     plan=None, cle_attendue=None,
+                                     tranche=None):
     """L'ÉCRIVAIN UNIQUE de l'échéancier par l'acompte libre (D-VNT-3,
     arbitrage 9 ; VNT67 le réutilise) : [acompte A en MAD, intermédiaires
     en % inchangées, dernière = reste en MAD] (Σ = TTC), même sur un devis
     ACCEPTÉ, contrôlé par ``controler_echeancier_vente`` (VNT25 : tranches
     émises intouchées) et tracé « Corrigé après acceptation ». Rend la clé
-    de la tranche d'acompte."""
+    de la tranche d'acompte. VNT67 — ``tranche`` (clé d'une tranche NON
+    acompte, en brouillon) : c'est elle qui passe en MAD à ``montant``."""
     from apps.ventes.models import Devis
-    from apps.ventes.utils.echeancier import cles_tranches, valider_echeancier
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, cles_tranches, valider_echeancier)
     from apps.ventes.vente_facturation import plan_facturation
     from .modifiabilite import (
         EcheancierRefuse, consigner_correction_apres_envoi,
@@ -345,7 +348,12 @@ def ecrire_echeancier_depuis_acompte(devis, montant, *, user=None,
     plan = plan or plan_facturation(devis)
     avant = devis.echeancier
     entrees = _entrees_echeancier(devis)
-    rang = _placer_acompte(entrees, plan, montant, cle_attendue)
+    if tranche is None:
+        rang = _placer_acompte(entrees, plan, montant, cle_attendue)
+    else:
+        rang = [t['cle'] for t in plan['tranches']].index(tranche)
+        entrees[rang] = dict(entrees[rang], unite=UNITE_MONTANT,
+                             pct_or_montant=float(montant))
     try:
         entrees = controler_echeancier_vente(devis, entrees,
                                              figer_brouillons=False)
@@ -359,7 +367,7 @@ def ecrire_echeancier_depuis_acompte(devis, montant, *, user=None,
         devis.echeancier = entrees
         consigner_correction_apres_envoi(
             devis, user=user, objet='echeancier',
-            resume=f'échéancier — acompte {_q(montant)} MAD',
+            resume=f"échéancier — {tranche or 'acompte'} {_q(montant)} MAD",
             apres_acceptation=True)
     return cles_tranches(valider_echeancier(
         entrees, controler_somme=False))[rang]
@@ -627,3 +635,140 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
                                utiliser_avances=bool(utiliser_avances))
             facture.refresh_from_db()
     return facture, crees
+
+
+# ── VNT66 — l'échéancier d'une vente (contrat ``devis_echeancier.json``) ────
+
+def echeancier_du_contrat(devis):
+    """``[{cle, libelle, unite, valeur}]`` (valeur en texte décimal) : les
+    tranches de ``devis`` à la forme du contrat ``devis_echeancier.json``."""
+    from apps.ventes.utils.echeancier import (
+        cles_tranches, tranches_normalisees)
+    tranches = tranches_normalisees(devis)
+    return [{'cle': cle, 'libelle': t['libelle'], 'unite': t['unite'],
+             'valeur': f"{_q(t['valeur']):.2f}"}
+            for cle, t in zip(cles_tranches(tranches), tranches)]
+
+
+def modifier_echeancier_vente(devis, tranches, *, user):
+    """VNT66 — ``PUT devis/<id>/echeancier/`` : REMPLACE l'échéancier par
+    ``tranches`` (forme du contrat) sous le geste ÉCHÉANCIER de VNT25
+    (``controler_echeancier_vente`` : brouillon / envoyé / ACCEPTÉ, tranches
+    couvertes inchangées, Σ des non dernières ≤ prix convenu, dernière =
+    reste) ; trace « corrigé après envoi / acceptation ». Rend le devis
+    relu ; lève :class:`FacturationVenteRefusee` (400 ``echeancier_invalide``
+    / ``somme_invalide`` ; 409 ``tranche_facturee``, ``version_remplacee``,
+    ``devis_non_modifiable``). Aucun statut écrit (règle #4)."""
+    from apps.ventes.models import Devis
+    from .modifiabilite import (
+        DevisNonModifiable, EcheancierRefuse, consigner_correction_apres_envoi,
+        controler_echeancier_vente, corps_version_remplacee)
+    if not isinstance(tranches, list) or not tranches:
+        raise FacturationVenteRefusee(
+            '« tranches » : une liste non vide de tranches est attendue.',
+            code='echeancier_invalide')
+    with transaction.atomic():
+        devis = next(d for d in verrouiller_vente(devis) if d.pk == devis.pk)
+        if not devis.is_active:
+            corps = corps_version_remplacee(devis)
+            raise _conflit(corps['code'], corps['detail'],
+                           successeur=corps['successeur'])
+        try:
+            entrees = controler_echeancier_vente(devis, tranches)
+        except EcheancierRefuse as exc:
+            corps = exc.corps()
+            raise FacturationVenteRefusee(corps.pop('detail'),
+                                          status=exc.status, **corps)
+        except DevisNonModifiable as exc:
+            raise _conflit('devis_non_modifiable', exc.detail,
+                           statut=exc.statut)
+        if entrees != devis.echeancier:
+            Devis.objects.filter(pk=devis.pk, company_id=devis.company_id
+                                 ).update(echeancier=entrees)
+            devis.echeancier = entrees
+            consigner_correction_apres_envoi(
+                devis, user=user, objet='echeancier',
+                resume='échéancier modifié',
+                apres_acceptation=devis.statut == 'accepte')
+    return devis
+
+
+# ── VNT67 — le TTC d'un brouillon de tranche (D-VNT-1 « modifient librement »)
+
+def modifier_montant_tranche(facture, montant_ttc, *, user):
+    """VNT67 — ``POST factures/<id>/montant-tranche/`` ``{montant_ttc}`` :
+    un BROUILLON de tranche (rattaché à une vente, sans lignes) prend un
+    nouveau TTC ; HT / TVA / ventilation au prorata du plan
+    (:func:`montants_au_prorata`) et échéancier réécrit par l'écrivain de
+    VNT28 (Σ = TTC). Acompte : le geste « Facturer l'acompte » lui-même.
+    Refus : 409 ``facture_emise`` (une émise se corrige par avoir),
+    ``version_remplacee`` ; 400 ``pas_une_tranche``, ``montant_invalide``,
+    ``montant_depasse_reste``. Rend la facture."""
+    from apps.ventes.vente_facturation import STATUT_BROUILLON, plan_facturation
+    if facture.statut != STATUT_BROUILLON:
+        raise _conflit('facture_emise',
+                       'Seul un brouillon change de montant : une facture '
+                       'émise se corrige par un avoir.')
+    if not facture.devis_id or facture.type_facture == 'complete' \
+            or facture.lignes.exists():
+        raise FacturationVenteRefusee(
+            'Seul un brouillon de tranche (sans lignes) change de montant '
+            'ici.', code='pas_une_tranche')
+    with transaction.atomic():
+        devis = next(d for d in verrouiller_vente(facture.devis)
+                     if d.pk == facture.devis_id)
+        _exiger_vente_en_jeu(devis)
+        plan = plan_facturation(devis)
+        tranche = next((t for t in plan['tranches']
+                        if t['facture_id'] == facture.pk), None)
+        montant = _montant_demande(plan['prix_convenu_ttc'], montant_ttc,
+                                   None)
+        if tranche is None or montant is None:
+            raise FacturationVenteRefusee(
+                'Montant invalide.' if tranche else
+                "Ce brouillon n'est pas une tranche de la vente.",
+                code='montant_invalide' if tranche else 'pas_une_tranche')
+        if str(tranche['type']) == 'acompte':
+            return _facturer_acompte(devis, plan, user=user, montant=montant,
+                                     cle_attendue=tranche['cle'],
+                                     libelle=None)
+        if tranche['is_last']:
+            raise FacturationVenteRefusee(
+                f"La dernière tranche vaut le reste : {tranche['montant_ttc']}"
+                ' MAD.', code='montant_invalide')
+        if montant > plan['reste_a_facturer'] + tranche['montant_ttc']:
+            raise FacturationVenteRefusee(
+                'Le montant dépasse le reste à facturer.',
+                code='montant_depasse_reste')
+        ecrire_echeancier_depuis_acompte(devis, montant, user=user,
+                                         plan=plan, tranche=tranche['cle'])
+        plan = plan_facturation(devis)
+        ht, tva, vent = montants_au_prorata(devis, plan, montant)
+        prix = plan['prix_convenu_ttc']
+        neuve = dict(next(t for t in plan['tranches']
+                          if t['cle'] == tranche['cle']),
+                     montant_ttc=montant, ht=ht, tva=tva,
+                     ventilation_tva=vent,
+                     pourcentage=_q(montant / prix * 100))
+        return _editer_brouillon(facture, neuve, user, None)
+
+
+# ── VNT89 — la porte MANUELLE (``FactureViewSet``) est fermée aux devis ─────
+
+#: Corps du refus 400 ``facture_de_devis`` (création / modification).
+FACTURE_DE_DEVIS_REFUSE = {
+    'devis': ("Une facture de devis se crée par « Facturer la vente » "
+              '(fiche du devis), jamais à la main.'),
+    'code': 'facture_de_devis'}
+
+
+def devis_impose_au_corps(donnees, facture=None) -> bool:
+    """VNT89 — le corps d'une facture MANUELLE désigne-t-il un devis
+    (création) ou change-t-il celui de ``facture`` (modification) ? Un corps
+    qui renvoie le devis actuel tel quel n'ouvre aucune porte."""
+    if 'devis' not in donnees:
+        return False
+    devis = donnees['devis']
+    if facture is None:
+        return devis is not None
+    return getattr(devis, 'pk', devis) != facture.devis_id

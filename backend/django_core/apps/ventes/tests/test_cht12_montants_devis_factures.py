@@ -134,3 +134,62 @@ class TestMontantsFacturesParDevis(TestCase):
             autre, autre_client, autre_devis, montant_ht=100, montant_ttc=120)
         out = montants_factures_par_devis([autre_devis.id], self.company)
         self.assertEqual(out, {})
+
+
+class TestVnt87LecteursVente(TestCase):
+    """VNT87 — un BROUILLON est PRÉVU, jamais FACTURÉ ; la tranche et
+    l'acompte se lisent sur la CHAÎNE de versions (``superseded_by``)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+        self.v1 = make_devis(self.company, self.client_obj, montant_ht=1000,
+                             statut=Devis.Statut.ACCEPTE)
+        self.v2 = make_devis(self.company, self.client_obj, montant_ht=1000,
+                             statut=Devis.Statut.ACCEPTE)
+        Devis.objects.filter(pk=self.v2.pk).update(version_parent=self.v1)
+        Devis.objects.filter(pk=self.v1.pk).update(
+            superseded_by=self.v2, is_active=False)
+        self.v1 = Devis.objects.get(pk=self.v1.pk)
+        self.v2 = Devis.objects.get(pk=self.v2.pk)
+
+    def _facture(self, devis, type_facture, statut):
+        f = make_facture(self.company, self.client_obj, devis,
+                         montant_ht=300, montant_ttc=360, statut=statut)
+        Facture.objects.filter(pk=f.pk).update(type_facture=type_facture)
+        return f
+
+    def test_montants_par_devis_brouillon_exclu(self):
+        make_facture(self.company, self.client_obj, self.v2,
+                     montant_ht=300, montant_ttc=360)
+        make_facture(self.company, self.client_obj, self.v2,
+                     montant_ht=700, montant_ttc=840,
+                     statut=Facture.Statut.BROUILLON)
+        out = montants_factures_par_devis([self.v2.id], self.company)
+        self.assertEqual(out[self.v2.id]['ht'], Decimal('300'))
+
+    def test_tranche_facturee_lit_la_chaine(self):
+        from apps.ventes.selectors import tranche_facturee
+        self.assertFalse(tranche_facturee(self.v1, 'acompte'))
+        self._facture(self.v2, Facture.TypeFacture.ACOMPTE,
+                      Facture.Statut.EMISE)
+        # Le chantier pointe souvent la V1 : la tranche émise sur la V2 compte.
+        self.assertTrue(tranche_facturee(self.v1, 'acompte'))
+        self.assertFalse(tranche_facturee(self.v1, 'solde'))
+
+    def test_tranche_brouillon_reste_a_facturer(self):
+        from apps.ventes.selectors import tranche_facturee
+        self._facture(self.v2, Facture.TypeFacture.ACOMPTE,
+                      Facture.Statut.BROUILLON)
+        self.assertFalse(tranche_facturee(self.v2, 'acompte'))
+        self.assertFalse(tranche_facturee(self.v1, 'acompte'))
+
+    def test_acompte_paye_lu_sur_la_chaine(self):
+        from apps.ventes.selectors import acompte_paye_pour_devis
+        self.assertFalse(acompte_paye_pour_devis(self.v2.id, self.company))
+        self._facture(self.v1, Facture.TypeFacture.ACOMPTE,
+                      Facture.Statut.PAYEE)
+        self.assertTrue(acompte_paye_pour_devis(self.v2.id, self.company))
+        self.assertTrue(acompte_paye_pour_devis(self.v1.id, self.company))
+        autre = make_company()
+        self.assertFalse(acompte_paye_pour_devis(self.v2.id, autre))

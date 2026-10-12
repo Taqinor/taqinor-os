@@ -123,3 +123,31 @@ class EntetePortesTests(TestCase):
         facture = self._relire(r.data['id'])
         self.assertEqual(Decimal(str(facture.total_ttc)), Decimal('45000.00'))
         self._assert_entete(facture, '2250.00', '42750.00')
+
+    def test_vnt89_porte_manuelle_fermee_aux_devis(self):
+        """VNT89 — ``POST/PATCH factures/`` refusent un ``devis`` dans le
+        corps (400 ``facture_de_devis``, « passez par Facturer la vente ») ;
+        renvoyer le devis actuel tel quel n'ouvre aucune porte."""
+        from apps.ventes.models import Facture
+        devis = self._devis()
+        avant = Facture.objects.count()
+        r = self.api.post('/api/django/ventes/factures/', {
+            'client': self.client_obj.pk, 'devis': devis.pk,
+            'taux_tva': '20.00'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['code'], 'facture_de_devis')
+        self.assertIn('Facturer la vente', str(r.data['devis']))
+        self.assertEqual(Facture.objects.count(), avant)
+        r = self.api.post('/api/django/ventes/factures/', {
+            'client': self.client_obj.pk, 'taux_tva': '20.00'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        manuelle = r.data['id']
+        url = f'/api/django/ventes/factures/{manuelle}/'
+        r = self.api.patch(url, {'devis': devis.pk}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['code'], 'facture_de_devis')
+        self.assertIsNone(self._relire(manuelle).devis_id)
+        r = self.api.patch(url, {'devis': None, 'note': 'VNT89'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)

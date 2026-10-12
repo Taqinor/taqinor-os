@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from apps.ventes.models import Avoir, Facture
+from apps.ventes.models import Facture
 import logging
 
 logger = logging.getLogger(__name__)
@@ -710,28 +710,6 @@ def schedule_for_devis(devis):
     return [(t['key'], t['valeur']) for t in tranches_normalisees(devis)]
 
 
-def factures_actives(devis):
-    """Factures de tranche non annulées du devis, dans l'ordre de création.
-
-    YOPSB13 — filtre en Python la relation ``factures`` PRÉCHARGÉE (prefetch de
-    DevisViewSet) au lieu de ``.exclude().order_by()`` : ce dernier clone le
-    manager, IGNORE le cache prefetch et ré-exécute une requête par appel (N+1
-    en liste), en perdant au passage les prefetch imbriqués paiements/avoirs.
-    Renvoie une liste — les 3 appelants la consomment déjà en liste/itération.
-    Hors liste (cache absent) : un seul SELECT, comportement inchangé."""
-    factures = sorted(devis.factures.all(), key=lambda f: f.id)
-    return [f for f in factures if f.statut != Facture.Statut.ANNULEE]
-
-
-def avoirs_correction(factures):
-    """ATOT36 — avoirs ÉMIS de type CORRECTION des ``factures`` : les seuls
-    remis au solde de l'échéancier (``next_tranche``, ``solde_devis``).
-    Lit le prefetch ``avoirs`` (aucune requête de plus en liste)."""
-    return [a for f in factures for a in f.avoirs.all()
-            if a.statut == Avoir.Statut.EMISE
-            and a.type == Avoir.Type.CORRECTION]
-
-
 def blended_tva_pct(devis) -> Decimal:
     """Taux de TVA mélangé du devis (TVA/HT×100), pour l'étiquette du PDF.
 
@@ -743,63 +721,6 @@ def blended_tva_pct(devis) -> Decimal:
     if ht <= 0:
         return Decimal(str(devis.taux_tva))
     return _q(Decimal(str(opt['tva'])) / ht * 100)
-
-
-def _repartir_au_centime(total, poids):
-    """CIQ215 — répartit ``total`` (MAD) entre les clés de ``poids`` au
-    prorata, méthode du plus fort reste au centime : la somme des parts vaut
-    EXACTEMENT ``total``. Poids nuls ⇒ tout sur la dernière clé.
-
-    ATOT6 — le corps vit dans ``apps.facturation.totaux`` (module SANS
-    modèle, LE service de ventilation des documents figés) : ce nom reste
-    la porte historique de ses appelants."""
-    from apps.facturation.totaux import repartir_au_centime
-    return repartir_au_centime(total, poids)
-
-
-def ventilation_tva_tranche(devis, tranche, existantes=None):
-    """CIQ215 — ventilation ``[{taux, base_ht, montant}]`` (chaînes) d'une
-    tranche, ou None quand l'option retenue n'a qu'un taux (facture d'hier,
-    octet-identique).
-
-    Bases et TVA de la tranche réparties au prorata des bases (resp. des TVA)
-    par taux de l'option retenue (``option_totaux``), au centime par le plus
-    fort reste. La DERNIÈRE tranche prend le reste de CHAQUE taux, pour que
-    la somme des factures égale la ventilation du devis au centime. Aucun
-    taux ne change (convention 12)."""
-    from apps.ventes.utils.options import option_totaux
-    paniers = option_totaux(devis).get('tva_par_taux') or []
-    if len(paniers) < 2:
-        return None
-    taux = [Decimal(str(b['taux'])) for b in paniers]
-    bases_devis = {t: Decimal(str(b['base_ht'])) for t, b in zip(taux, paniers)}
-    tva_devis = {t: Decimal(str(b['montant'])) for t, b in zip(taux, paniers)}
-    ht, tva = Decimal(str(tranche['ht'])), Decimal(str(tranche['tva']))
-    bases = tvas = None
-    if tranche.get('is_last'):
-        precedentes = list(existantes if existantes is not None
-                           else factures_actives(devis))
-        if all(f.ventilation_tva for f in precedentes):
-            deja_b = {t: Decimal('0') for t in taux}
-            deja_t = {t: Decimal('0') for t in taux}
-            for f in precedentes:
-                for b in f.ventilation_tva:
-                    t = Decimal(str(b['taux']))
-                    if t in deja_b:
-                        deja_b[t] += Decimal(str(b['base_ht']))
-                        deja_t[t] += Decimal(str(b['montant']))
-            bases = {t: _q(bases_devis[t] - deja_b[t]) for t in taux}
-            tvas = {t: _q(tva_devis[t] - deja_t[t]) for t in taux}
-            if sum(bases.values()) != ht or sum(tvas.values()) != tva:
-                bases = tvas = None
-    if bases is None:
-        # ATOT6 — LE service unique de ventilation d'un document figé.
-        from apps.facturation.totaux import ventilation_document_fige
-        return ventilation_document_fige(
-            [{'taux': t, 'base_ht': bases_devis[t], 'montant': tva_devis[t]}
-             for t in taux], ttc=ht + tva, ht=ht, tva=tva)
-    return [{'taux': str(t), 'base_ht': str(_q(bases[t])),
-             'montant': str(_q(tvas[t]))} for t in taux]
 
 
 def _tranche_type(key, is_last=False):
@@ -902,119 +823,49 @@ def tranches_a_venir(devis, lignes=None, option=None) -> list:
             if t['statut'] == 'a_faire' and t['montant_ttc'] > 0]
 
 
-def creer_facture_tranche(devis, user, company, create_with_reference):
-    """Crée et retourne la prochaine facture de tranche (postée/Émise).
+#: VNT65 — refus « plus rien à facturer » de la porte tranche (texte d'hier).
+ECHEANCIER_SOLDE = (
+    "Échéancier soldé : toutes les tranches de l'échéancier sont déjà "
+    "facturées (avoirs compris).")
 
-    Lève ValueError si le devis n'est pas accepté ou si l'échéancier est complet.
-    ``create_with_reference`` reste dans la signature (appelants inchangés)
-    mais n'est plus appelé : ATOT27 (D-ATOT-5) — la tranche naît sous la
-    référence provisoire « BROUILLON-<id> » et ``emettre_facture`` lui
-    attribue le numéro légal de la série configurée, dans la même
-    transaction (même geste que les autres portes).
 
-    AUD101 — la tranche naît BROUILLON puis passe par LE service d'émission
-    (``domain.facturation_ops.emettre_facture``). C'était le plus grave des
-    cinq chemins muets : la chaîne acompte → matériel → solde du parcours
-    solaire posait ``EMISE`` sans émettre ``facture_emise``, donc sans jamais
-    atteindre le grand livre, alors que ``core/events.py`` affirmait le
-    contraire. Elle hérite désormais du verrou de période, du blocage crédit
-    XFAC28 et de l'événement, exactement comme l'émission depuis l'écran.
-    """
-    if devis.statut != devis.Statut.ACCEPTE:
-        raise ValueError("Le devis doit être au statut « Accepté ».")
-
-    # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. `factures_actives` compte les
-    # tranches via `devis.factures`, qui ne voit AUCUNE facture de la chaîne
-    # BON DE COMMANDE : un devis converti en BC puis facturé pouvait être
-    # facturé une SECONDE fois ici, et le client recevait deux fois la même
-    # vente. Le prédicat est partagé avec l'autre porte (`selectors`), donc il
-    # n'existe qu'UNE définition de « déjà facturé ».
-    # ATOT2 — LES QUATRE PORTES : la garde unique refuse aussi une tranche
-    # après la facture COMPLÈTE ou une CONSOLIDÉE (qui n'étaient vues par
-    # personne : complète puis tranche = 240 000 facturés pour 150 000).
-    # ``DevisDejaFacture`` est une ValueError → 400 chez l'appelant.
+def facturer_tranche_suivante(devis, user):
+    """VNT65 — LA porte « tranche » d'hier (``generer-facture``) devenue une
+    ENVELOPPE de ``facturer_vente(emettre=True)`` : la prochaine tranche du
+    plan (un brouillon de tranche en attente d'abord — l'acompte automatique
+    est repris, jamais doublé ; une tranche ultérieure attend son émission),
+    émise par LE service (numéro légal, sortie de stock U9 à l'émission —
+    VNT21). La garde des quatre portes (ATOT2) parle d'abord, en nommant la
+    facture qui ferme la vente. Lève ``DevisDejaFacture`` (ValueError) ou
+    ``FacturationVenteRefusee`` (version remplacée ⇒ 409
+    ``version_remplacee`` ; rien à facturer ⇒ ``rien_a_facturer``)."""
+    from apps.ventes.domain.facturation_vente import (
+        FacturationVenteRefusee, facturer_vente)
     from apps.ventes.selectors_facturation import exiger_devis_facturable
-    exiger_devis_facturable(devis, 'tranche')
+    from apps.ventes.vente_facturation import plan_facturation
+    frais = type(devis).objects.get(pk=devis.pk, company_id=devis.company_id)
+    exiger_devis_facturable(frais, 'tranche')
+    plan = plan_facturation(frais)
+    tranche = next((t for t in plan['tranches'] if t['statut'] == 'brouillon'),
+                   None) or plan['prochaine']
+    if tranche is None:
+        raise FacturationVenteRefusee(ECHEANCIER_SOLDE,
+                                      code='rien_a_facturer')
+    return facturer_vente(devis, nature=str(tranche['type']), user=user,
+                          emettre=True)[0]
 
-    tr = next_tranche(devis)
-    if tr is None:
-        raise ValueError(
-            "Échéancier soldé : toutes les tranches de l'échéancier sont déjà "
-            "facturées (avoirs compris).")
 
-    # CIQ213 — une tranche ``payeur: tiers`` est facturée à l'organisme
-    # financeur du devis (``Facture.client`` = financeur) ; ``Facture.devis``
-    # garde le lien au client final. Sans tiers posé : refus en français.
-    destinataire = devis.client
-    if tr.get('payeur') == 'tiers':
-        destinataire = getattr(devis, 'tiers_payeur', None)
-        if destinataire is None:
-            raise ValueError(
-                "Cette tranche est réglée par un organisme financeur : "
-                "renseignez le tiers payeur du devis avant de la facturer.")
-
-    libelle = tr['libelle_facture']
-
-    # CIQ212 — un délai de règlement DÉCLARÉ sur le jalon fixe l'échéance
-    # (émission + délai) AVANT l'émission, qui ne l'écrase pas ; sinon le
-    # repli XFAC23 d'hier (délai du client). Aucun délai légal codé.
-    echeance = None
-    if tr.get('delai_reglement_jours') is not None:
-        from datetime import timedelta
-        from django.utils import timezone
-        echeance = timezone.localdate() + timedelta(
-            days=int(tr['delai_reglement_jours']))
-
-    # CIQ214 — retenue de garantie DEMANDÉE par le client (D-CIQ-14) : taux ×
-    # TTC de la tranche, au centime, retenue sur le RÈGLEMENT — ni le HT ni
-    # la TVA ne baissent (phrase AUD180). Sans retenue : facture d'hier.
-    # ATOT4 — retenue et réf. client par LE geste partagé des quatre portes
-    # (`entete_facture_depuis_devis`, sur le TTC de la tranche) ; le taux de
-    # tête d'une tranche reste le taux mélangé de l'option (ci-dessous).
-    from apps.ventes.domain.facturation_ops import entete_facture_depuis_devis
-    entete = entete_facture_depuis_devis(devis, ttc=tr['ttc'])
-    entete.pop('taux_tva', None)
-    # CIQ215 — TVA ventilée par taux (devis à taux mixtes) ; None sinon.
-    ventilation = ventilation_tva_tranche(devis, tr)
-
-    def _create(ref):
-        extra = {} if echeance is None else {'date_echeance': echeance}
-        extra.update(entete)
-        return Facture.objects.create(
-            **extra,
-            reference=ref,
-            devis=devis,
-            client=destinataire,
-            statut=Facture.Statut.BROUILLON,
-            type_facture=tr['type'],
-            pourcentage=tr['pourcentage'],
-            libelle=libelle,
-            montant_ht=tr['ht'],
-            montant_tva=tr['tva'],
-            montant_ttc=tr['ttc'],
-            taux_tva=blended_tva_pct(devis),
-            ventilation_tva=ventilation,
-            # ATOT5 — la tranche est identifiée par sa CLÉ.
-            cle_tranche=tr['cle'],
-            created_by=user,
-            company=company,
-        )
-
-    from django.db import transaction
-    from apps.ventes.domain.facturation_ops import (
-        EmissionRefusee, emettre_facture,
-    )
-    from apps.ventes.utils.company_settings import create_provisoire
+def creer_facture_tranche(devis, user, company, create_with_reference):
+    """Crée, ÉMET et retourne la prochaine facture de tranche — VNT65 :
+    :func:`facturer_tranche_suivante` (``facturer_vente``) ; ``company`` et
+    ``create_with_reference`` restent dans la signature (appelants
+    inchangés). Tout refus est une ``ValueError`` (400 chez l'appelant) ;
+    rien n'est écrit."""
+    from apps.ventes.domain.facturation_vente import FacturationVenteRefusee
     try:
-        with transaction.atomic():
-            facture = create_provisoire(_create)
-            emettre_facture(facture, user=user, source='echeancier_tranche')
-    except EmissionRefusee as exc:
-        # CIQ217 — un refus d'émission (p. ex. client entreprise sans ICE)
-        # annule la tranche entière : rien n'est écrit, et l'appelant le
-        # rend en 400 français comme ses autres refus (ValueError).
-        raise ValueError(exc.motif) from exc
-    return facture
+        return facturer_tranche_suivante(devis, user)
+    except FacturationVenteRefusee as exc:
+        raise ValueError(exc.corps['detail']) from exc
 
 
 def solde_devis(devis):

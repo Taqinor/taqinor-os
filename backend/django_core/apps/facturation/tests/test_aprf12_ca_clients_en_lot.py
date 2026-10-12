@@ -102,3 +102,28 @@ class CaClientsEnLotTests(TestCase):
                 pk__in=self.devis_ids, factures__isnull=True)),
             Decimal('0'))
         self.assertEqual(carnet.get('2026-09', Decimal('0')), non_factures)
+
+    def test_vnt87_brouillon_hors_facture_et_version_remplacee_hors_ca(self):
+        """VNT87 — un brouillon n'est pas du CA facturé ; une version
+        remplacée (``superseded_by``) ne compte pas une 2e fois au CA devis."""
+        from apps.ventes.models import Devis, Facture
+        from apps.ventes.selectors_facturation import (
+            ca_devis_factures_par_clients)
+        self._ajouter(2)  # un devis facturé (émise), un sans facture
+        v1, v2 = Devis.objects.filter(pk__in=self.devis_ids).order_by('pk')
+        avant = ca_devis_factures_par_clients(
+            self.company, [self.client_obj.id])[self.client_obj.id]
+        Facture.objects.create(
+            company=self.company, reference=f'FAC-APRF12-B{_nxt()}',
+            client=self.client_obj, devis=v2,
+            statut=Facture.Statut.BROUILLON, taux_tva=Decimal('20'),
+            montant_ht=Decimal('500'), montant_ttc=Decimal('600'))
+        Devis.objects.filter(pk=v1.pk).update(superseded_by=v2,
+                                              is_active=False)
+        apres = ca_devis_factures_par_clients(
+            self.company, [self.client_obj.id])[self.client_obj.id]
+        self.assertEqual(apres['ca_factures'], avant['ca_factures'])
+        self.assertEqual(apres['nb_factures'], avant['nb_factures'])
+        self.assertEqual(apres['nb_devis'], avant['nb_devis'] - 1)
+        self.assertEqual(apres['ca_devis'],
+                         avant['ca_devis'] - Decimal(str(v1.total_ttc)))

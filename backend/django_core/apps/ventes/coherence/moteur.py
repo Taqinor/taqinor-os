@@ -90,12 +90,16 @@ def _factures_qs(company):
 
 
 def _factures_actives_par_devis(company):
-    """{devis_id: [factures non annulées]} — les DEUX voies (échéancier
+    """{devis_id: [factures ÉMISES]} — les DEUX voies (échéancier
     ``Facture.devis`` et chaîne ``BonCommande → Facture``), même périmètre
-    que ``selectors.factures_du_devis`` mais en une requête par société."""
+    que ``selectors.factures_du_devis`` mais en une requête par société.
+
+    VNT87 — un BROUILLON est PRÉVU, jamais FACTURÉ : deux brouillons qui
+    coexistent (acompte automatique + complète) ne sont pas une facturation
+    au-delà du devis ; seules les émises / payées / en retard comptent."""
     from apps.ventes.models import Facture
-    qs = (Facture.objects.filter(company=company)
-          .exclude(statut=Facture.Statut.ANNULEE)
+    from apps.ventes.vente_facturation import STATUTS_EMIS
+    qs = (Facture.objects.filter(company=company, statut__in=STATUTS_EMIS)
           .filter(Q(devis__isnull=False)
                   | Q(bon_commande__devis__isnull=False))
           .select_related('bon_commande')

@@ -92,6 +92,9 @@ EXEMPTEES = {
     # REMPLACÉE est refusée par le service (``_exiger_vente_en_jeu`` :
     # 409 ``corps_version_remplacee``), jamais par _refus_modifiabilite.
     'facturer': 'aval d’un accepté (facture de la vente, VNT31).',
+    'prix_negocie': 'crée et accepte l’avenant V2 (D-VNT-2, VNT60).',
+    'avenant_demander_signature': 'lien de signature de l’avenant (VNT60).',
+    'echeancier_vente': 'geste ÉCHÉANCIER, sa propre garde (VNT25/VNT66).',
     # detail=False — ne visent aucun devis existant.
     'atomic': 'création d’un NOUVEAU devis (detail=False).',
     'auto': 'création d’un NOUVEAU devis (detail=False).',

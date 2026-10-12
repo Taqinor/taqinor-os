@@ -28,6 +28,8 @@ RESP = 'IsResponsableOrAdmin'
 ADMIN = 'IsAdminRole'
 VALIDER = 'HasPermissionOrLegacy_ventes_valider'
 PORTAIL = 'IsInternalWriterOrPortalClientOwner'
+#: Arbitrage 5 du Groupe VNT : palier responsable/admin ET code d'écriture.
+PALIER_VENTE = 'IsAdminOrResponsableTier+IsResponsableOrAdmin'
 
 #: La garde effective de CHAQUE action, capturée sur le code d'avant QJR649.
 FIGEE = {
@@ -80,6 +82,10 @@ FIGEE = {
     # VNT31 : « Facturer la vente » — créer un brouillon = écriture ventes ;
     # émettre / encaisser exigent en plus ``encaisser`` (garde dans la vue).
     'facturer': RESP,
+    # VNT60 / VNT66 — gestes d'argent d'une vente acceptée (arbitrage 5).
+    'prix_negocie': PALIER_VENTE,
+    'avenant_demander_signature': PALIER_VENTE,
+    'echeancier_vente': PALIER_VENTE,
 
     # ADOC131 (D-ADOC-4) : « Révoquer le lien client » (écriture).
     'revoquer_lien_public': RESP,
@@ -145,7 +151,8 @@ class MatricePermissionsDevis(TestCase):
         for action, attendu in FIGEE.items():
             with self.subTest(action=action):
                 self.assertEqual(
-                    [type(p).__name__ for p in _gardes(action)], [attendu])
+                    '+'.join(type(p).__name__ for p in _gardes(action)),
+                    attendu)
 
     def test_matrice_action_role(self):
         fabrique = APIRequestFactory()

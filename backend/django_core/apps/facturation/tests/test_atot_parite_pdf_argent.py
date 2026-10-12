@@ -522,6 +522,104 @@ class ProchainesEcheancesPdfTests(TestCase):
                       texte_solde)
 
 
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class DetailFactureVenteVNT91Tests(TestCase):
+    """VNT91 — le DÉTAIL d'une facture (``retrieve``) sert ``objet_vente``,
+    ``garanties``, ``situation_vente`` et ``prochaines_echeances`` égaux au
+    centime au contexte du PDF (``contexte_vente_facture``), aux clés du
+    contrat ``facture_situation_vente.json`` ; la LISTE ne lit jamais la vente
+    (requêtes constantes en N, situation nulle)."""
+
+    CONTRAT = (Path(__file__).resolve().parents[1] / 'contract_samples'
+               / 'facture_situation_vente.json')
+    ECHEANCIER = ProchainesEcheancesPdfTests.ECHEANCIER
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        SituationVentePdfTests.setUp(self)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.n = 0
+
+    def _acompte_paye(self):
+        from datetime import date
+
+        from apps.ventes.domain.encaissements import (
+            recalculer_statut_paiement)
+        from apps.ventes.models import Paiement
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        self.n += 1
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT91-{self.n:04d}', self.ECHEANCIER)
+        acompte = creer_facture_tranche(devis, self.user, self.company, None)
+        Paiement.objects.create(
+            company=self.company, facture=acompte, montant=Decimal('15000'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        recalculer_statut_paiement(acompte)
+        return acompte
+
+    def test_detail_egale_le_contexte_pdf(self, _dl):
+        import json
+
+        from apps.ventes.models import Facture
+        from apps.ventes.utils.pdf import contexte_vente_facture
+        acompte = self._acompte_paye()
+        r = self.api.get(f'/api/django/ventes/factures/{acompte.pk}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        corps = json.loads(r.content)
+        contexte = contexte_vente_facture(Facture.objects.get(pk=acompte.pk))
+        attendu = json.loads(json.dumps({
+            'objet_vente': contexte['objet_vente'],
+            'garanties': contexte['garanties_vente'],
+            'situation_vente': contexte['situation_vente'],
+            'prochaines_echeances': contexte['prochaines_echeances'],
+        }, default=str))
+        for cle, valeur in attendu.items():
+            self.assertEqual(corps[cle], valeur, cle)
+        self.assertEqual(
+            [Decimal(e['montant_ttc']) for e in corps['prochaines_echeances']],
+            [Decimal('29400.00'), Decimal('4600.00')])
+        self.assertEqual(corps['situation_vente']['paye_ttc'], '15000.00')
+        exemple = json.loads(self.CONTRAT.read_text(
+            encoding='utf-8'))['exemple']
+        self.assertLessEqual(set(exemple['situation_vente']),
+                             set(corps['situation_vente']))
+        self.assertLessEqual(set(exemple['situation_vente']['factures'][0]),
+                             set(corps['situation_vente']['factures'][0]))
+        self.assertEqual(set(corps['prochaines_echeances'][0]),
+                         set(exemple['prochaines_echeances'][0]))
+        self.assertLessEqual(set(exemple['objet_vente']),
+                             set(corps['objet_vente']))
+        for garantie in corps['garanties']:
+            self.assertEqual(set(garantie), set(exemple['garanties'][0]))
+
+    def test_liste_ne_lit_jamais_la_vente(self, _dl):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def _cout(n):
+            for _ in range(n):
+                self._acompte_paye()
+            self.api.get('/api/django/ventes/factures/')  # amorçage
+            with CaptureQueriesContext(connection) as ctx:
+                r = self.api.get('/api/django/ventes/factures/')
+                self.assertEqual(r.status_code, 200, r.content)
+            return len(ctx.captured_queries), r.json()
+
+        cout_1, _corps = _cout(1)
+        cout_3, corps = _cout(2)
+        self.assertEqual(cout_1, cout_3, 'N+1 : la liste lit la vente')
+        lignes = corps['results'] if isinstance(corps, dict) else corps
+        self.assertEqual(len(lignes), 3)
+        for ligne in lignes:
+            self.assertIsNone(ligne['situation_vente'])
+            self.assertIsNone(ligne['prochaines_echeances'])
+
+
 class FiguresLuesTests(SimpleTestCase):
     """Test-du-test du lecteur : une chaîne sans « Total HT » alors qu'une
     remise est imprimée est vue comme Total HT = Sous-total, et l'oracle

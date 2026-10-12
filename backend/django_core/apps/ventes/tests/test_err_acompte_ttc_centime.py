@@ -6,7 +6,7 @@ d'un centime à HT + TVA : ``next_tranche`` arrondissait séparément les trois
 montants. La TVA est désormais le complément (TTC − HT) ; le TTC annoncé
 (acompte des conditions publiques / e-mails) ne bouge pas.
 
-Aucune base : ``option_totaux``/``factures_actives``/``tranches_normalisees``
+Aucune base : ``option_totaux``/``tranches_normalisees``
 sont remplacés par des doubles.
 
 Run : ``python manage.py test apps.ventes.tests.test_err_acompte_ttc_centime``
@@ -29,8 +29,6 @@ TOTAUX = {'ht': Decimal('10000.05'), 'tva': Decimal('1715.05'),
 def _tranche(devis, tranches):
     with mock.patch.object(echeancier, 'tranches_normalisees',
                            return_value=tranches), \
-            mock.patch.object(echeancier, 'factures_actives',
-                              return_value=[]), \
             mock.patch('apps.ventes.utils.options.option_totaux',
                        return_value=TOTAUX):
         return next_tranche(devis)

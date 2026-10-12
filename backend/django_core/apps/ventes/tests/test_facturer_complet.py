@@ -222,6 +222,29 @@ class TestFacturerComplet(TestCase):
                 self.assertEqual(resp.status_code, 400, resp.data)
         self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
 
+    # ── VNT65 — les portes d'hier enveloppent facturer_vente ─────────────
+
+    def test_vnt65_version_remplacee_400_nommee_aux_deux_portes(self):
+        Devis.objects.filter(pk=self.devis.pk).update(is_active=False)
+        tranche = f'/api/django/ventes/devis/{self.devis.id}/generer-facture/'
+        for url, corps in ((self._url(), {'paiements': []}), (tranche, {})):
+            with self.subTest(url=url):
+                resp = self.api.post(url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data['code'], 'version_remplacee')
+                self.assertIn('successeur', resp.data)
+        self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
+
+    def test_vnt65_brouillons_a_remplacer_rendu_en_400(self):
+        from apps.ventes.domain.facturation_vente import facturer_vente
+        brouillon, _ = facturer_vente(self.devis, nature='acompte',
+                                      user=self.user)
+        resp = self._post([])
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['code'], 'brouillons_a_remplacer')
+        self.assertIn(brouillon.reference, str(resp.data))
+        self.assertEqual(Facture.objects.filter(devis=self.devis).count(), 1)
+
     def test_isolation_societe(self):
         autre = Company.objects.create(nom='Autre', slug=f'fcp-autre-{_nxt()}')
         autre_user = User.objects.create_user(
@@ -709,6 +732,33 @@ class FacturerVenteEndpointVNT31(_BaseVente):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['facture']['statut'], 'emise')
 
+    def test_override_credit_passe_le_blocage_credit(self):
+        """Comme ``generer-facture`` : blocage crédit XFAC28 → 403
+        ``credit_hold`` ; ``override_credit`` (responsable/admin) émet."""
+        from apps.parametres.models import CompanyProfile
+        devis = self._388('DEV-VNT31-HOLD')
+        profile = CompanyProfile.get(company=self.company)
+        profile.credit_hold_actif = True
+        profile.save(update_fields=['credit_hold_actif'])
+        self.client_obj.plafond_credit = Decimal('1')
+        self.client_obj.save(update_fields=['plafond_credit'])
+        Facture.objects.create(
+            company=self.company, reference=f'FAC-HOLD-{_nxt()}',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20'), montant_ht=Decimal('50000'),
+            montant_tva=Decimal('10000'), montant_ttc=Decimal('60000'))
+        corps = {'nature': 'acompte', 'montant_ttc': '15000.00',
+                 'emettre': True}
+        resp = self.api.post(self._url(devis), corps, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(resp.data['code'], 'credit_hold')
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+        resp = self.api.post(self._url(devis),
+                             {**corps, 'override_credit': True},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['facture']['statut'], 'emise')
+
 
 class AcompteAutomatiqueVNT62(_BaseVente):
     """VNT62 (AMET4 / D-SIGN-AUTO = a, D-ECH-FIGE) — à l'acceptation : échéancier
@@ -776,30 +826,3 @@ class AcompteAutomatiqueVNT62(_BaseVente):
         from apps.ventes.domain.negociation import preparer_acompte_automatique
         self.assertIsNone(preparer_acompte_automatique(devis, self.user))
         self.assertEqual(self._acomptes(devis).count(), 1)
-
-    def test_override_credit_passe_le_blocage_credit(self):
-        """Comme ``generer-facture`` : blocage crédit XFAC28 → 403
-        ``credit_hold`` ; ``override_credit`` (responsable/admin) émet."""
-        from apps.parametres.models import CompanyProfile
-        devis = self._388('DEV-VNT31-HOLD')
-        profile = CompanyProfile.get(company=self.company)
-        profile.credit_hold_actif = True
-        profile.save(update_fields=['credit_hold_actif'])
-        self.client_obj.plafond_credit = Decimal('1')
-        self.client_obj.save(update_fields=['plafond_credit'])
-        Facture.objects.create(
-            company=self.company, reference=f'FAC-HOLD-{_nxt()}',
-            client=self.client_obj, statut=Facture.Statut.EMISE,
-            taux_tva=Decimal('20'), montant_ht=Decimal('50000'),
-            montant_tva=Decimal('10000'), montant_ttc=Decimal('60000'))
-        corps = {'nature': 'acompte', 'montant_ttc': '15000.00',
-                 'emettre': True}
-        resp = self.api.post(self._url(devis), corps, format='json')
-        self.assertEqual(resp.status_code, 403, resp.data)
-        self.assertEqual(resp.data['code'], 'credit_hold')
-        self.assertFalse(Facture.objects.filter(devis=devis).exists())
-        resp = self.api.post(self._url(devis),
-                             {**corps, 'override_credit': True},
-                             format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertEqual(resp.data['facture']['statut'], 'emise')

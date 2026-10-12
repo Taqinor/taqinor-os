@@ -1,0 +1,564 @@
+{
+  "_": "VNT96 — golden des vues facture capturé sur le code FINAL des lots M1-M3 (12/10/2026), AVANT la découpe VNT97-VNT100. Ne jamais régénérer pour faire passer un déplacement. VNT101 : section corps (éphémère, Python 3.11) retirée en fin de piste.",
+  "routes": [
+    {
+      "nom": "abandonner_solde",
+      "url_path": "abandonner-solde",
+      "url_name": "abandonner-solde",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "annuler",
+      "url_path": "annuler",
+      "url_name": "annuler",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "arrondi_caisse",
+      "url_path": "arrondi-caisse",
+      "url_name": "arrondi-caisse",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "bulk",
+      "url_path": "bulk",
+      "url_name": "bulk",
+      "detail": false,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "consolider",
+      "url_path": "consolider",
+      "url_name": "consolider",
+      "detail": false,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "creer_avoir",
+      "url_path": "creer-avoir",
+      "url_name": "creer-avoir",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "creer_note_debit",
+      "url_path": "creer-note-debit",
+      "url_name": "creer-note-debit",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "dgi_conformite",
+      "url_path": "dgi-conformite",
+      "url_name": "dgi-conformite",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "dgi_export",
+      "url_path": "dgi-export",
+      "url_name": "dgi-export",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "dgi_transmettre",
+      "url_path": "dgi-transmettre",
+      "url_name": "dgi-transmettre",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "emails",
+      "url_path": "emails",
+      "url_name": "emails",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "emettre",
+      "url_path": "emettre",
+      "url_name": "emettre",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "encaissement_groupe",
+      "url_path": "encaissement-groupe",
+      "url_name": "encaissement-groupe",
+      "detail": false,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "enregistrer_paiement",
+      "url_path": "enregistrer-paiement",
+      "url_name": "enregistrer-paiement",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "envoyer_email",
+      "url_path": "envoyer-email",
+      "url_name": "envoyer-email",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "exclure_relance",
+      "url_path": "exclure-relance",
+      "url_name": "exclure-relance",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "facturer_penalites",
+      "url_path": "facturer-penalites",
+      "url_name": "facturer-penalites",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "generer_pdf",
+      "url_path": "generer-pdf",
+      "url_name": "generer-pdf",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "historique",
+      "url_path": "historique",
+      "url_name": "historique",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "kpis",
+      "url_path": "kpis",
+      "url_name": "kpis",
+      "detail": false,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "liberer_retenue",
+      "url_path": "liberer-retenue",
+      "url_name": "liberer-retenue",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "lien_paiement",
+      "url_path": "lien-paiement",
+      "url_name": "lien-paiement",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "marquer_payee",
+      "url_path": "marquer-payee",
+      "url_name": "marquer-payee",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "montant_tranche",
+      "url_path": "montant-tranche",
+      "url_name": "montant-tranche",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "paiements",
+      "url_path": "paiements",
+      "url_name": "paiements",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "relance_apercu",
+      "url_path": "relance-apercu",
+      "url_name": "relance-apercu",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "relancer",
+      "url_path": "relancer",
+      "url_name": "relancer",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "relances",
+      "url_path": "relances",
+      "url_name": "relances",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "remettre_brouillon",
+      "url_path": "remettre-brouillon",
+      "url_name": "remettre-brouillon",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "reprendre_abandon",
+      "url_path": "reprendre-abandon",
+      "url_name": "reprendre-abandon",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "retour_client",
+      "url_path": "retour-client",
+      "url_name": "retour-client",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "revoquer_lien_paiement",
+      "url_path": "revoquer-lien-paiement",
+      "url_name": "revoquer-lien-paiement",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "telecharger_pdf",
+      "url_path": "telecharger-pdf",
+      "url_name": "telecharger-pdf",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "ubl",
+      "url_path": "ubl",
+      "url_name": "ubl",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
+      "nom": "whatsapp",
+      "url_path": "whatsapp",
+      "url_name": "whatsapp",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    }
+  ],
+  "noms_publics": [
+    "_allowed_methods",
+    "abandonner_solde",
+    "allowed_methods",
+    "annuler",
+    "arrondi_caisse",
+    "as_view",
+    "authentication_classes",
+    "bulk",
+    "check_object_permissions",
+    "check_permissions",
+    "check_throttles",
+    "consolider",
+    "content_negotiation_class",
+    "create",
+    "creer_avoir",
+    "creer_note_debit",
+    "default_response_headers",
+    "destroy",
+    "determine_version",
+    "dgi_conformite",
+    "dgi_export",
+    "dgi_transmettre",
+    "dispatch",
+    "emails",
+    "emettre",
+    "encaissement_groupe",
+    "enregistrer_paiement",
+    "entite_field",
+    "envoyer_email",
+    "exclure_relance",
+    "facturer_penalites",
+    "filter_backends",
+    "filter_queryset",
+    "finalize_response",
+    "generer_pdf",
+    "get_authenticate_header",
+    "get_authenticators",
+    "get_content_negotiator",
+    "get_exception_handler",
+    "get_exception_handler_context",
+    "get_extra_action_url_map",
+    "get_extra_actions",
+    "get_format_suffix",
+    "get_object",
+    "get_paginated_response",
+    "get_parser_context",
+    "get_parsers",
+    "get_permissions",
+    "get_queryset",
+    "get_renderer_context",
+    "get_renderers",
+    "get_serializer",
+    "get_serializer_class",
+    "get_serializer_context",
+    "get_success_headers",
+    "get_throttles",
+    "get_view_description",
+    "get_view_name",
+    "handle_exception",
+    "historique",
+    "http_method_names",
+    "http_method_not_allowed",
+    "initial",
+    "initialize_request",
+    "kpis",
+    "liberer_retenue",
+    "lien_paiement",
+    "list",
+    "lookup_field",
+    "lookup_url_kwarg",
+    "marquer_payee",
+    "metadata_class",
+    "montant_tranche",
+    "options",
+    "ordering",
+    "ordering_fields",
+    "paginate_queryset",
+    "pagination_class",
+    "paginator",
+    "paiements",
+    "parser_classes",
+    "partial_update",
+    "perform_authentication",
+    "perform_content_negotiation",
+    "perform_create",
+    "perform_destroy",
+    "perform_update",
+    "permission_classes",
+    "permission_denied",
+    "queryset",
+    "raise_uncaught_exception",
+    "relance_apercu",
+    "relancer",
+    "relances",
+    "remettre_brouillon",
+    "renderer_classes",
+    "reprendre_abandon",
+    "retour_client",
+    "retrieve",
+    "reverse_action",
+    "revoquer_lien_paiement",
+    "schema",
+    "search_fields",
+    "serializer_class",
+    "settings",
+    "setup",
+    "telecharger_pdf",
+    "throttle_classes",
+    "throttled",
+    "ubl",
+    "update",
+    "versioning_class",
+    "view_is_async",
+    "whatsapp"
+  ],
+  "permissions": {
+    "abandonner_solde": [
+      "HasPermissionOrLegacy_encaisser"
+    ],
+    "annuler": [
+      "IsAdminOrResponsableTier",
+      "IsResponsableOrAdmin"
+    ],
+    "arrondi_caisse": [
+      "IsAnyRole"
+    ],
+    "bulk": [
+      "IsResponsableOrAdmin"
+    ],
+    "consolider": [
+      "IsResponsableOrAdmin"
+    ],
+    "create": [
+      "IsResponsableOrAdmin"
+    ],
+    "creer_avoir": [
+      "HasPermissionOrLegacy_encaisser"
+    ],
+    "creer_note_debit": [
+      "IsAdminRole"
+    ],
+    "destroy": [
+      "IsAdminOrResponsableTier",
+      "IsResponsableOrAdmin"
+    ],
+    "dgi_conformite": [
+      "IsResponsableOrAdmin"
+    ],
+    "dgi_export": [
+      "IsResponsableOrAdmin"
+    ],
+    "dgi_transmettre": [
+      "IsResponsableOrAdmin"
+    ],
+    "emails": [
+      "IsAnyRole"
+    ],
+    "emettre": [
+      "IsResponsableOrAdmin"
+    ],
+    "encaissement_groupe": [
+      "HasPermissionOrLegacy_encaisser"
+    ],
+    "enregistrer_paiement": [
+      "HasPermissionOrLegacy_encaisser"
+    ],
+    "envoyer_email": [
+      "IsResponsableOrAdmin"
+    ],
+    "exclure_relance": [
+      "IsResponsableOrAdmin"
+    ],
+    "facturer_penalites": [
+      "IsResponsableOrAdmin"
+    ],
+    "generer_pdf": [
+      "IsResponsableOrAdmin"
+    ],
+    "historique": [
+      "IsAnyRole"
+    ],
+    "kpis": [
+      "IsAnyRole"
+    ],
+    "liberer_retenue": [
+      "IsResponsableOrAdmin"
+    ],
+    "lien_paiement": [
+      "IsResponsableOrAdmin"
+    ],
+    "list": [
+      "IsAnyRole"
+    ],
+    "marquer_payee": [
+      "IsAdminRole"
+    ],
+    "montant_tranche": [
+      "IsAdminOrResponsableTier",
+      "IsResponsableOrAdmin"
+    ],
+    "paiements": [
+      "IsAnyRole"
+    ],
+    "partial_update": [
+      "IsResponsableOrAdmin"
+    ],
+    "relance_apercu": [
+      "IsResponsableOrAdmin"
+    ],
+    "relancer": [
+      "IsResponsableOrAdmin"
+    ],
+    "relances": [
+      "IsAnyRole"
+    ],
+    "remettre_brouillon": [
+      "IsResponsableOrAdmin"
+    ],
+    "reprendre_abandon": [
+      "HasPermissionOrLegacy_encaisser"
+    ],
+    "retour_client": [
+      "IsResponsableOrAdmin"
+    ],
+    "retrieve": [
+      "IsAnyRole"
+    ],
+    "revoquer_lien_paiement": [
+      "IsResponsableOrAdmin"
+    ],
+    "telecharger_pdf": [
+      "IsResponsableOrAdmin"
+    ],
+    "ubl": [
+      "IsResponsableOrAdmin"
+    ],
+    "update": [
+      "IsResponsableOrAdmin"
+    ],
+    "whatsapp": [
+      "IsResponsableOrAdmin"
+    ]
+  }
+}

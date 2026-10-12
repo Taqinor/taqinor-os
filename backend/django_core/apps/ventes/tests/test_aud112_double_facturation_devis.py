@@ -134,24 +134,22 @@ class TestDoubleFacturationDevis(TestCase):
     # ── Le prédicat partagé lui-même ──────────────────────────────────────
 
     def test_predicat_partage(self):
-        from apps.ventes.selectors import (
-            devis_deja_facture, factures_du_devis, factures_via_bon_commande,
-        )
+        # VNT105 — devis_deja_facture / factures_via_bon_commande retirés
+        # (sans appelant) : factures_du_devis (quatre portes) reste LA lecture.
+        from apps.ventes.selectors import factures_du_devis
 
-        self.assertFalse(devis_deja_facture(self.devis))
+        self.assertFalse(factures_du_devis(self.devis).exists())
         self._facturer_bc()
-        self.assertTrue(devis_deja_facture(self.devis))
         self.assertEqual(factures_du_devis(self.devis).count(), 1)
-        self.assertEqual(factures_via_bon_commande(self.devis).count(), 1)
 
     def test_une_facture_annulee_ne_bloque_plus_rien(self):
-        from apps.ventes.selectors import devis_deja_facture
+        from apps.ventes.selectors import factures_du_devis
 
         resp = self._facturer_bc()
         facture = Facture.objects.get(pk=resp.data['id'])
         facture.statut = Facture.Statut.ANNULEE
         facture.save(update_fields=['statut'])
-        self.assertFalse(devis_deja_facture(self.devis))
+        self.assertFalse(factures_du_devis(self.devis).exists())
 
     # ── Le cas normal reste ouvert ────────────────────────────────────────
 

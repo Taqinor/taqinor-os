@@ -433,10 +433,12 @@ def ca_devis_factures_par_clients(company, client_ids):
     # requête.
     from apps.facturation.selectors import factures_avec_montant_du
     from .selectors import devis_avec_totaux
+    # VNT87 — une vente révisée compte UNE fois : la version remplacée
+    # (``superseded_by``) sort du CA devis ; seule la tête de chaîne reste.
     devis_qs = devis_avec_totaux(
         Devis.objects
         .filter(company=company, client_id__in=client_ids,
-                client__company=company)
+                client__company=company, superseded_by__isnull=True)
         .exclude(statut=Devis.Statut.REFUSE))
     for devis in devis_qs:
         entry = out.setdefault(devis.client_id, {
@@ -450,11 +452,12 @@ def ca_devis_factures_par_clients(company, client_ids):
                 "selectors_facturation.ca_devis_factures_par_clients : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_devis'] += 1
 
+    # VNT87 — un BROUILLON est PRÉVU, jamais FACTURÉ : émises seules.
+    from .vente_facturation import STATUTS_EMIS
     facture_qs = factures_avec_montant_du(
         Facture.objects
         .filter(company=company, client_id__in=client_ids,
-                client__company=company)
-        .exclude(statut=Facture.Statut.ANNULEE))
+                client__company=company, statut__in=STATUTS_EMIS))
     for facture in facture_qs:
         entry = out.setdefault(facture.client_id, {
             'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
@@ -475,12 +478,20 @@ def acompte_paye_pour_devis(devis_id, company):
     ``type_facture='acompte'`` au statut ``payee`` — point d'entrée cross-app
     sanctionné pour ``apps.installations`` (jamais un import direct de
     ``apps.ventes.models``). Lecture seule ; ``devis_id`` sans facture
-    d'acompte payée (ou inconnu/autre société) renvoie ``False``."""
-    from .models import Facture
+    d'acompte payée (ou inconnu/autre société) renvoie ``False``.
+
+    VNT87 — l'acompte se lit sur la CHAÎNE de versions (``chaine_vente`` :
+    ``superseded_by``) : un acompte payé sur la V1 reste payé quand le
+    chantier pointe la V2 (et inversement)."""
+    from .models import Devis, Facture
+    from .vente_facturation import chaine_vente
     if not devis_id:
         return False
+    devis = Devis.objects.filter(pk=devis_id, company=company).first()
+    if devis is None:
+        return False
     return Facture.objects.filter(
-        devis_id=devis_id, company=company,
+        devis_id__in=[d.pk for d in chaine_vente(devis)], company=company,
         type_facture=Facture.TypeFacture.ACOMPTE,
         statut=Facture.Statut.PAYEE,
     ).exists()
@@ -589,25 +600,37 @@ def devis_a_facturer(company, *, jours=7, today=None):
     """ZFAC12 — ``Devis`` ``accepte`` d'une société, sans ``Facture`` liée
     depuis PLUS de ``jours`` jours (revenu bloqué en amont, backlog à
     facturer). Un devis déjà facturé (au moins une ``Facture`` via
-    ``devis.factures``) est ignoré. Lecture seule."""
+    ``devis.factures``) est ignoré. Lecture seule.
+
+    VNT88 — les candidats sont LES ventes signées en vigueur
+    (``devis_signes_en_vigueur`` : une version remplacée n'est jamais
+    rappelée) ; « facturé » = une facture ÉMISE : un devis dont la seule
+    facture est ANNULÉE (ou un brouillon, prévu) est rappelé."""
     from datetime import timedelta
 
     from django.utils import timezone
-
-    from .models import Devis
 
     today = today or timezone.now().date()
     seuil = today - timedelta(days=jours)
 
     candidats = (
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                date_acceptation__isnull=False,
+        _ventes_signees_non_facturees(company)
+        .filter(date_acceptation__isnull=False,
                 date_acceptation__lte=seuil)
-        .exclude(factures__isnull=False)
-        .distinct()
     )
     return list(candidats)
+
+
+def _ventes_signees_non_facturees(company):
+    """VNT88 — ventes signées en vigueur sans facture ÉMISE (QuerySet)."""
+    from django.db.models import Exists, OuterRef
+
+    from .models import Facture
+    from .selectors import devis_signes_en_vigueur
+    from .vente_facturation import STATUTS_EMIS
+    emises = Facture.objects.filter(company=company, devis_id=OuterRef('pk'),
+                                    statut__in=STATUTS_EMIS)
+    return devis_signes_en_vigueur(company).exclude(Exists(emises))
 
 
 def tranche_facturee(devis, type_facture):
@@ -615,16 +638,16 @@ def tranche_facturee(devis, type_facture):
     intermediaire/solde) existe-t-elle déjà pour ce devis ? Lecture seule,
     point d'entrée cross-app sanctionné pour ``apps.installations`` (jamais un
     import direct de ``apps.ventes.models``). Une facture ANNULÉE ne compte
-    pas comme émise (la tranche reste due). Renvoie un booléen."""
+    pas comme émise (la tranche reste due). Renvoie un booléen.
+
+    VNT87 — lue par ``factures_de_la_vente`` : toute la CHAÎNE de versions
+    (``installation.devis`` est souvent la V1 après révision) ; un BROUILLON
+    est PRÉVU, jamais FACTURÉ (la tranche reste à facturer)."""
     if devis is None or not type_facture:
         return False
-    from .models import Facture
-    return (
-        Facture.objects
-        .filter(devis=devis, type_facture=type_facture)
-        .exclude(statut=Facture.Statut.ANNULEE)
-        .exists()
-    )
+    from .vente_facturation import STATUTS_EMIS, factures_de_la_vente
+    return any(f.type_facture == type_facture and f.statut in STATUTS_EMIS
+               for f in factures_de_la_vente(devis))
 
 
 def jours_impaye_facture(facture_id, company):
@@ -656,7 +679,8 @@ def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
     ``ventes.models``. Renvoie ``{devis_id: {'ht': Decimal, 'ttc': Decimal}}``;
     un devis sans facture rattachée n'apparaît PAS dans le résultat.
     ``exclure_annulee`` (défaut ``True``) exclut les factures ``ANNULEE`` de
-    l'agrégat."""
+    l'agrégat. VNT87 — un BROUILLON n'est jamais facturé : exclu toujours
+    (seul appelant : ``backend/parked/gestion_projet``, d'où son maintien)."""
     from decimal import Decimal
 
     from .models import Facture
@@ -664,7 +688,8 @@ def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
     devis_ids = list(devis_ids or [])
     if not devis_ids:
         return {}
-    qs = Facture.objects.filter(company=company, devis_id__in=devis_ids)
+    qs = (Facture.objects.filter(company=company, devis_id__in=devis_ids)
+          .exclude(statut=Facture.Statut.BROUILLON))
     if exclure_annulee:
         qs = qs.exclude(statut=Facture.Statut.ANNULEE)
     # APRF12 — totaux de N factures en un nombre constant de requêtes.
@@ -693,19 +718,17 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
     pipeline probabiliste NTFPA11 — un devis accepté sort automatiquement du
     pipeline (son lead passe SIGNED), donc pas de double-compte. Lecture seule ;
     renvoie ``{'YYYY-MM': Decimal}``.
+
+    VNT88 — même périmètre que ``devis_a_facturer`` : ventes signées en
+    vigueur, sans facture ÉMISE (une annulée ou un brouillon n'y suffit pas).
     """
     from decimal import Decimal
 
-    from .models import Devis
-
     candidats = (
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                date_acceptation__isnull=False,
+        _ventes_signees_non_facturees(company)
+        .filter(date_acceptation__isnull=False,
                 date_acceptation__gte=mois_debut,
                 date_acceptation__lte=mois_fin)
-        .exclude(factures__isnull=False)
-        .distinct()
     )
     # APRF12 — `devis_avec_totaux` (APRF7) : `lignes__produit`, ce que lit
     # `Devis.total_ttc` (avec `lignes` seul : +1/+2 requêtes par devis).
@@ -732,20 +755,8 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
 # tranches via ``devis.factures``, qui ne voit AUCUNE facture de la chaîne BC.
 # Un devis converti en BC puis facturé pouvait donc être facturé une SECONDE
 # fois par l'échéancier — le client recevait deux fois la même facture, jusqu'à
-# 200 %. Ces trois selectors sont la source unique consultée par les deux
-# portes.
-
-def factures_via_bon_commande(devis, *, inclure_annulees=False):
-    """Factures de la chaîne BON DE COMMANDE de ce devis (queryset).
-
-    C'est le trou : que ``Facture.devis`` soit réservé à l'échéancier est
-    assumé — ce qui ne l'était pas, c'est que RIEN ne regardait
-    ``bon_commande__devis``."""
-    from .models import Facture
-    qs = Facture.objects.filter(bon_commande__devis=devis)
-    if not inclure_annulees:
-        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
-    return qs
+# 200 %. VNT105 — ``factures_du_devis`` (quatre portes) est la source unique
+# de la garde ATOT2 ; la vente se lit par ``vente_facturation``.
 
 
 def factures_du_devis(devis, *, inclure_annulees=False):
@@ -765,19 +776,6 @@ def factures_du_devis(devis, *, inclure_annulees=False):
     if not inclure_annulees:
         qs = qs.exclude(statut=Facture.Statut.ANNULEE)
     return qs.distinct()
-
-
-def devis_deja_facture(devis):
-    """LE prédicat partagé : ce devis est-il déjà (partiellement) facturé ?
-
-    Appelé depuis LES DEUX portes — ``bon_commande.creer_facture`` (qui refuse
-    en 400 si des tranches d'échéancier existent) et
-    ``utils.echeancier.creer_facture_tranche`` (qui refuse si la chaîne BC a
-    déjà facturé). Un devis sans facture active renvoie ``False`` : les deux
-    portes restent grandes ouvertes dans le cas normal."""
-    if devis is None:
-        return False
-    return factures_du_devis(devis).exists()
 
 
 class DevisDejaFacture(ValueError):

@@ -177,11 +177,14 @@ class FactureFkEtChampsServeurTests(TestCase):
         self.assertEqual(solde_devis(devis_b), avant)
 
     def test_ids_societe_ok(self):
-        corps = {champ: self.ma[champ].pk for champ in self.FK_FACTURE}
+        # VNT89 — ``devis`` n'est plus posé à la main (porte fermée, 400
+        # facture_de_devis) : toutes les autres FK de la société passent.
+        fk = [champ for champ in self.FK_FACTURE if champ != 'devis']
+        corps = {champ: self.ma[champ].pk for champ in fk}
         r = self.api.patch(self._url(), corps, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.facture.refresh_from_db()
-        for champ in self.FK_FACTURE:
+        for champ in fk:
             self.assertEqual(getattr(self.facture, f'{champ}_id'),
                              self.ma[champ].pk, champ)
         r = self.api.post('/api/django/ventes/factures-lignes/', {

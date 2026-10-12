@@ -29,8 +29,10 @@ ECHEANCIER = [
 
 class RepartitionAuCentimeTest(SimpleTestCase):
     def test_plus_fort_reste_somme_exacte(self):
-        from apps.ventes.utils.echeancier import _repartir_au_centime
-        parts = _repartir_au_centime(
+        # VNT105 — le délégué echeancier._repartir_au_centime est retiré :
+        # LE service vit dans facturation.totaux (ATOT6).
+        from apps.facturation.totaux import repartir_au_centime
+        parts = repartir_au_centime(
             Decimal('100.00'), {'a': Decimal('1'), 'b': Decimal('1'),
                                 'c': Decimal('1')})
         self.assertEqual(sum(parts.values()), Decimal('100.00'))
