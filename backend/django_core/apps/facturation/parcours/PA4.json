@@ -153,14 +153,14 @@
    "proprietaire": "facturation",
    "declencheur": {
     "type": "clic",
-    "source": "frontend/src/pages/ventes/DevisList.jsx::genererFacture"
+    "source": "frontend/src/features/ventes/vente/FacturerVenteDialog.jsx::soumettre"
    },
    "ecran": {
     "route": "/ventes/devis",
-    "composant": "DevisList.jsx",
+    "composant": "FacturerVenteDialog.jsx",
     "action": "Facturer"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/utils/echeancier.py::creer_facture_tranche",
+   "fonction_entree": "backend/django_core/apps/ventes/domain/facturation_vente.py::facturer_vente",
    "checkpoint": {
     "modifiable": false,
     "champs": [],
@@ -169,7 +169,7 @@
    "regle_aval": [
     {
      "type": "fige",
-     "detail": "échéancier fixé par PAYMENT_TERMS_BY_MODE, facture créée « émise »"
+     "detail": "tranche tirée de plan_facturation, facture née BROUILLON (D-VNT-1) ; émise par « Émettre tout de suite » ou PA4.06 (generer-facture : enveloppe emettre=True, VNT65)"
     },
     {
      "type": "refus_409",
@@ -616,10 +616,6 @@
    {
     "source": "backend/django_core/apps/ventes/domain/revision.py::rattacher_aval_financier_revision._facture",
     "etape": "PA4.16"
-   },
-   {
-    "source": "backend/django_core/apps/ventes/utils/echeancier.py::creer_facture_tranche._create",
-    "etape": "PA4.05"
    },
    {
     "source": "backend/django_core/apps/ventes/domain/facturation_vente.py::_inserer_facture",
