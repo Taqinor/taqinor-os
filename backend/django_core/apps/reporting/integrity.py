@@ -13,13 +13,15 @@ de mutation, jamais d'exception qui casserait les autres familles."""
 
 
 def devis_acceptes_sans_chantier(company):
-    """Devis `accepte` sans aucune `Installation` liée (receiver M6
-    `devis_accepted` -> `crm`/`installations` raté). Renvoie une liste
-    d'ids de devis."""
-    from apps.ventes.models import Devis
+    """Vente SIGNÉE EN VIGUEUR sans aucune `Installation` liée (receiver M6
+    `devis_accepted` -> `crm`/`installations` raté). VNT85 : la vente se lit
+    par `devis_signes_en_vigueur` (dernier accepté de la chaîne de révision,
+    `is_active` respecté) — une V1 remplacée dont le chantier est sur la V2
+    n'est pas signalée. Renvoie une liste d'ids de devis."""
+    from apps.ventes.selectors import devis_signes_en_vigueur
 
     return list(
-        Devis.objects.filter(company=company, statut=Devis.Statut.ACCEPTE)
+        devis_signes_en_vigueur(company)
         .filter(installations__isnull=True)
         .values_list('id', flat=True)
     )
