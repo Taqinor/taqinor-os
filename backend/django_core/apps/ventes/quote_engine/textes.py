@@ -17,3 +17,15 @@ def tronquer_au_mot(texte, longueur):
         return texte
     coupe = brut[:longueur].rsplit(" ", 1)[0] or brut[:longueur]
     return _html.escape(coupe.rstrip(" ,;:"), quote=False) + "&#8230;"
+
+
+def bas_avec_bloc_fin(bas_totaux, bas_fin, source, formes):
+    """AMOT20 + CAD177 — bas mesuré du une-page : celui des totaux prolongé
+    jusqu'au DERNIER bloc (ligne de conditions). ``None`` (→ mesure sur page
+    haute) quand ce bloc est dans le HTML ``source`` mais absent de la page
+    composée : WeasyPrint l'a jeté sous le bord A4 et le « Total TTC » seul
+    dirait à tort « tout tient » (constaté en arabe, interligne plus haut)."""
+    if bas_fin is None:
+        texte = _html.unescape(source or "").replace(" ", " ")
+        return None if any(f in texte for f in formes) else bas_totaux
+    return None if bas_totaux is None else max(bas_totaux, bas_fin)
