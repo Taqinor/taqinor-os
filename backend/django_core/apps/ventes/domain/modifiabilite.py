@@ -170,9 +170,28 @@ GESTES_CYCLE = frozenset({ACCEPTER, REFUSER, ENVOYER, RELANCER})
 CODE_VERSION_REMPLACEE = 'version_remplacee'
 
 
-def message_version_remplacee(devis):
-    """Le message unique d'une version hors jeu (repris de QJR520)."""
-    ref = _reference_successeur(devis)
+def successeur_actif(devis):
+    """VNT24 — ``{id, reference}`` de la TÊTE de chaîne : le devis au bout de
+    ``superseded_by`` (jamais ``version_parent``, partagé avec variantes et
+    gammes) ; ``None`` sans successeur. V1 → V2 → V3 : V1 et V2 désignent V3."""
+    from apps.ventes.models import Devis
+    pk, tete, vus = getattr(devis, 'superseded_by_id', None), None, set()
+    while pk and pk not in vus:
+        vus.add(pk)
+        ligne = (Devis.objects.filter(pk=pk, company_id=devis.company_id)
+                 .values('id', 'reference', 'superseded_by_id').first())
+        if ligne is None:
+            break
+        tete = {'id': ligne['id'], 'reference': ligne['reference']}
+        pk = ligne['superseded_by_id']
+    return tete
+
+
+def message_version_remplacee(devis, successeur=None):
+    """Le message unique d'une version hors jeu (repris de QJR520) ; il
+    nomme la TÊTE de chaîne (VNT24)."""
+    successeur = successeur or successeur_actif(devis)
+    ref = successeur['reference'] if successeur else None
     if ref:
         return f'Cette proposition a été remplacée par {ref}.'
     return "Cette proposition n'est plus active."
@@ -189,10 +208,14 @@ def geste_cycle_permis(devis, geste):
     return True, ''
 
 
-def corps_version_remplacee(devis):
-    """Le corps 409 ``{detail, code}`` (contrat ``devis_refuser.json``)."""
-    return {'detail': message_version_remplacee(devis),
-            'code': CODE_VERSION_REMPLACEE}
+def corps_version_remplacee(devis, detail=None):
+    """LE corps 409 ``{detail, code, successeur}`` (contrats
+    ``devis_refuser.json`` / ``devis_prix_negocie.json``) — repris tel quel
+    par accepter, réviser, refuser et envoyer (VNT24). ``successeur`` =
+    ``{id, reference}`` de la tête de chaîne, ``None`` pour un archivé."""
+    successeur = successeur_actif(devis)
+    return {'detail': detail or message_version_remplacee(devis, successeur),
+            'code': CODE_VERSION_REMPLACEE, 'successeur': successeur}
 
 
 # ── QJR518 — UNE CORRECTION APRÈS ENVOI EST TRACÉE À UN SEUL POINT ─────────

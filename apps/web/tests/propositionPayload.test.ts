@@ -645,6 +645,13 @@ const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
   // les lira et range alors chaque clé dans CLES_LUES / NON_LU.
   'exemple_adev2.': 'Fragment d’exemple ADEV2 : les cinq clés additives (cumul 25 ans par option, empreinte du contenu signable, offre expirée, date d’expiration, PDF disponible) posées seules sur main avant que le serveur les serve et que la page cesse de les recalculer.',
   'notes_adev2.': 'Notes de contrat ADEV2 : pourquoi le fragment `exemple_adev2` est posé avant ses deux moitiés et ce que veut dire chacune des cinq clés additives — documentation, jamais une valeur lue par la page.',
+  // VNT2 (contrat d'abord PACT10, 12/10/2026, Groupe VNT de PLAN2) — même patron
+  // que ADEV2 : la moitié serveur (VNT25, avenant négocié) servira `avenant`, la
+  // page /proposition (VNT72, WEB_PLAN) le lira et rangera chaque clé dans
+  // CLES_LUES / NON_LU.
+  'exemple_avenant_a_signer.': 'Fragment d’exemple VNT2 : la charge utile publique d’un avenant négocié encore À SIGNER (bloc `avenant` : a_signer, remplace.reference, signe_le null) posée seule sur main avant que le serveur la serve (VNT25) et que la page la lise (VNT72).',
+  'exemple_avenant_signe.': 'Fragment d’exemple VNT2 : la même charge utile une fois l’avenant SIGNÉ par le client (signe_le daté, a_signer false), posée avant ses deux moitiés (VNT25 serveur, VNT72 page).',
+  'notes_vnt2.': 'Notes de contrat VNT2 : pourquoi `avenant` est absent des exemples existants (clé posée seulement sur un avenant), le sens de chaque clé et la forme unique du 409 vente_active_existante — documentation, jamais une valeur lue par la page.',
   'exemple_roof_layout_riche.': 'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
 };
 const decideeParFragment = (c: string): boolean =>

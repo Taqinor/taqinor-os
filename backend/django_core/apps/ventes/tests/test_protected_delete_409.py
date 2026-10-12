@@ -97,10 +97,10 @@ class ProtectedFactureDeleteTests(TestCase):
     avec un avoir émis crashait en 500 avant le correctif du handler.
 
     AUD103 (2026-09) a depuis donné à ``FactureViewSet`` un ``perform_destroy``
-    qui INTERCEPTE ce cas AVANT le handler central : la suppression n'est
-    ouverte qu'au SUPERUTILISATEUR (``IsSuperuserOnly``, parce que supprimer
-    une facture est le seul geste qui emportait les encaissements en cascade),
-    seul un BROUILLON sans paiement est supprimable, et le ``ProtectedError``
+    qui INTERCEPTE ce cas AVANT le handler central : la suppression est
+    ouverte au palier responsable/admin porteur d'un code ventes_* (VNT13,
+    ``PEUT_ANNULER`` ; superutilisateur seul avant), seul un BROUILLON sans
+    paiement est supprimable, et le ``ProtectedError``
     est traduit sur place en 400 français. Le contrat de ce module reste donc
     vrai — refus PROPRE, jamais une 500, les DEUX lignes survivent, protection
     SCOPÉE — mais avec le code que la vue pose elle-même (400) au lieu du 409
@@ -146,7 +146,7 @@ class ProtectedFactureDeleteTests(TestCase):
         return facture
 
     def test_delete_facture_with_avoir_is_refused_cleanly_not_500(self):
-        facture = self._make_facture()
+        facture = self._make_facture(reference='')  # VNT14 : provisoire
         avoir = Avoir.objects.create(
             company=self.company, reference='AV-PROT-0001', facture=facture,
             client=self.client_obj, taux_tva=Decimal('20.00'),
@@ -165,20 +165,21 @@ class ProtectedFactureDeleteTests(TestCase):
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
         self.assertTrue(Avoir.objects.filter(pk=avoir.pk).exists())
 
-    def test_delete_facture_refused_for_admin_who_is_not_superuser(self):
-        """AUD103 — le palier « admin » élargi ne supprime plus une facture."""
-        facture = self._make_facture(reference='FAC-PROT-0003')
+    def test_delete_brouillon_par_admin_non_superuser_vnt13(self):
+        """VNT13 (D-VNT-1) — responsables/directeurs suppriment librement un
+        brouillon « BROUILLON-<id> » ; la garde destructive est
+        ``perform_destroy`` (brouillon sans paiement), plus le superuser."""
+        facture = self._make_facture(reference='', avec_ligne=False)
         api = auth(self.admin)
         resp = api.delete(f'/api/django/ventes/factures/{facture.id}/')
 
-        self.assertEqual(resp.status_code, 403, getattr(resp, 'data', resp))
-        self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
+        self.assertFalse(Facture.objects.filter(pk=facture.pk).exists())
 
     def test_delete_unreferenced_facture_still_succeeds(self):
         """La protection reste SCOPÉE : un brouillon nu, sans avoir ni
         paiement, se supprime toujours (pas un blocage général)."""
-        facture = self._make_facture(
-            reference='FAC-PROT-0002', avec_ligne=False)
+        facture = self._make_facture(reference='', avec_ligne=False)
         api = auth(self.superuser)
         resp = api.delete(f'/api/django/ventes/factures/{facture.id}/')
 

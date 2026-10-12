@@ -456,12 +456,17 @@ def generate_facture_pdf(facture_id):
     # WIR165 — premier émetteur RÉEL de core.events.document_produit (ZGED6).
     # ADOC74 — l'émission est factorisée dans ``_emettre_document_produit``
     # (helper unique des quatre générateurs facture/avoir/note de débit/
-    # bordereau de remise).
-    _emettre_document_produit(
-        'ventes_facture', facture.company, pdf_bytes, facture.reference,
-        date=facture.date_emission,
-        client_nom=getattr(facture.client, 'nom', '') or '',
-        uploaded_by=facture.created_by)
+    # bordereau de remise). VNT34 — réservé aux factures à référence
+    # LÉGALE : un brouillon (« BROUILLON-<id> », sans valeur comptable)
+    # n'est jamais archivé en GED.
+    from core.numbering import est_reference_provisoire
+    if (facture.statut != Facture.Statut.BROUILLON
+            and not est_reference_provisoire(facture.reference)):
+        _emettre_document_produit(
+            'ventes_facture', facture.company, pdf_bytes, facture.reference,
+            date=facture.date_emission,
+            client_nom=getattr(facture.client, 'nom', '') or '',
+            uploaded_by=facture.created_by)
 
     return key
 

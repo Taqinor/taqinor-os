@@ -16,9 +16,22 @@
       "valide_par": "apps.crm.services.motif_refus_valide(company, nom)",
       "valeur": "NOM d'un MotifPerte actif (archived=False) de la société"
     },
-    "note": {"type": "texte", "obligatoire": false, "max_longueur": 255},
-    "date": {"type": "date", "obligatoire": false, "format": "AAAA-MM-JJ", "defaut": "aujourd'hui"},
-    "marquer_lead_perdu": {"type": "booleen", "obligatoire": false, "defaut": false}
+    "note": {
+      "type": "texte",
+      "obligatoire": false,
+      "max_longueur": 255
+    },
+    "date": {
+      "type": "date",
+      "obligatoire": false,
+      "format": "AAAA-MM-JJ",
+      "defaut": "aujourd'hui"
+    },
+    "marquer_lead_perdu": {
+      "type": "booleen",
+      "obligatoire": false,
+      "defaut": false
+    }
   },
   "exemple": {
     "id": 413,
@@ -29,7 +42,11 @@
   },
   "reponses": {
     "200": "DevisSerializer du devis refusé (extrait dans `exemple`)",
-    "400": {"motif": ["Choisissez un motif de refus de la liste."]},
+    "400": {
+      "motif": [
+        "Choisissez un motif de refus de la liste."
+      ]
+    },
     "409": {
       "statut": {
         "detail": "Seul un devis en cours (brouillon ou envoyé) peut être refusé ; statut actuel : « Accepté ».",
@@ -37,7 +54,11 @@
       },
       "version_remplacee": {
         "detail": "Cette version du devis a été remplacée par une révision : refusez la version en cours.",
-        "code": "version_remplacee"
+        "code": "version_remplacee",
+        "successeur": {
+          "id": 414,
+          "reference": "DEV-202610-0013"
+        }
       }
     }
   }

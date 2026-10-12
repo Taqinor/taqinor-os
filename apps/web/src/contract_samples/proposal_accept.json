@@ -38,7 +38,8 @@
     "brouillon",
     "empreinte_perimee",
     "validation_requise",
-    "statut"
+    "statut",
+    "vente_active_existante"
   ],
   "reponses_409": {
     "forme": "Toute réponse 409 de l'acceptation porte EXACTEMENT `{detail, code}` : `detail` = phrase française affichée telle quelle par la page, `code` ∈ `codes_409` (liste FERMÉE — un code hors liste est un bug du serveur). La page ne traite JAMAIS un 409 comme un succès.",
@@ -69,6 +70,20 @@
     "statut": {
       "detail": "Cette proposition ne peut plus être signée dans son état actuel.",
       "code": "statut"
+    },
+    "vente_active_existante": {
+      "detail": "Cette proposition ne peut pas être signée en l'état : contactez votre conseiller.",
+      "code": "vente_active_existante"
+    }
+  },
+  "avenant_signe": {
+    "pourquoi": "VNT2 — réponse 200 quand la proposition signée est un avenant (V2 d'un prix négocié) : même forme que `reponse_200` plus `avenant_signe` {signe_le}.",
+    "reponse_200": {
+      "detail": "Avenant accepté. Merci !",
+      "reference": "DEV-202610-0021",
+      "statut": "accepte",
+      "accepte_par_nom": "Karim Exemple",
+      "avenant_signe": {"signe_le": "2026-10-12T09:30:00+00:00"}
     }
   },
   "otp": {

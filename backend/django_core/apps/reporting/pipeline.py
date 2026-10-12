@@ -212,10 +212,14 @@ def _devis_signes(co):
     ``_lead_has_devis_actif`` ci-dessus. Tous les sites du reporting passent
     par ici (commissions, classement, vélocité, analytics, tableau de bord) —
     ne jamais réécrire ce filtre en local.
+
+    VNT22 — délègue à ``ventes.selectors.devis_signes_en_vigueur`` (dernier
+    accepté de chaque chaîne de RÉVISION : la V1 reste comptée tant que sa
+    révision n'est pas acceptée, ADEV46) ; ``co = {}`` (superutilisateur
+    sans société) = toutes sociétés, comme hier.
     """
-    from apps.ventes.models import Devis
-    return Devis.objects.filter(
-        **co, statut=Devis.Statut.ACCEPTE, is_active=True)
+    from apps.ventes.selectors import devis_signes_en_vigueur
+    return devis_signes_en_vigueur((co or {}).get('company'))
 
 
 def _lead_forecast_value(lead):
