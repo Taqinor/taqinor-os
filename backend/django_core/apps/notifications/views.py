@@ -49,7 +49,8 @@ from .serializers import (
 )
 from .services import (
     acknowledge_annonce, annonce_compliance_report, merged_preferences,
-    publish_annonce, resolve_vapid_keys, EVENEMENTS_ROUTABLES, set_template_approval_status,
+    publish_annonce, resolve_vapid_keys, EVENEMENTS_ROUTABLES, EVENEMENTS_ROUTABLES_CHOIX,
+    set_template_approval_status,
     submit_template_for_approval,
 )
 
@@ -97,7 +98,7 @@ _BOOL_01 = ['0', '1', 'true', 'false']
 # (d'anciennes règles peuvent viser un événement devenu non routable).
 _REGLE_ROUTAGE_ECRITURE = inline_serializer('RegleRoutageEcriture', {
     'event_type': serializers.ChoiceField(
-        choices=sorted(str(e.value) for e in EVENEMENTS_ROUTABLES)),
+        choices=EVENEMENTS_ROUTABLES_CHOIX),
     'target_role': serializers.ChoiceField(
         choices=[r for r, _ in NotificationRoutingRule.ROLE_CHOICES],
         required=False, allow_null=True,
