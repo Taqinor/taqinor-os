@@ -831,7 +831,7 @@ class FactureAnnulee(FactureSerializer):
         'montant': s.CharField()}, allow_null=True)
 
 
-#: VNT14 — DELETE d'une facture refusé (400) : pas un brouillon, ou
+#: VNT14 — DELETE d'une facture refusé (409, ENF11 ConflitEtat) : pas un brouillon, ou
 #: ``code: reference_legale`` (numéro légal remis en brouillon).
 ErreurSuppressionFacture = _ser('FactureErreurSuppression', {
     'detail': s.CharField(), 'code': s.CharField(required=False)})

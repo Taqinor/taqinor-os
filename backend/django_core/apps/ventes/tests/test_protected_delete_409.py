@@ -156,8 +156,9 @@ class ProtectedFactureDeleteTests(TestCase):
         api = auth(self.superuser)
         resp = api.delete(f'/api/django/ventes/factures/{facture.id}/')
 
-        # Refus PROPRE et français, jamais la 500 « l'appli a planté ».
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # Refus PROPRE et français, jamais la 500 « l'appli a planté » —
+        # 409 : l'ÉTAT de la facture s'oppose (ENF11, ConflitEtat).
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('detail', resp.data)
         self.assertIn('avoir', str(resp.data['detail']).lower())
 
