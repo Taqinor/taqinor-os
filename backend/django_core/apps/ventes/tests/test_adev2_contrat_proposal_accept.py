@@ -21,6 +21,7 @@ WEB = DEPOT / 'apps' / 'web' / 'src' / 'contract_samples'
 CODES_409 = [
     'version_remplacee', 'inactive', 'expiree', 'brouillon',
     'empreinte_perimee', 'validation_requise', 'statut',
+    'vente_active_existante',
 ]
 CLES_ADDITIVES = {
     'economies_cumul_25_ans', 'empreinte_contenu', 'offre_expiree',
@@ -99,6 +100,22 @@ class ContratProposalAcceptTests(SimpleTestCase):
                 with self.subTest(cle=cle):
                     self.assertIn(f"payload['{cle}']", vue)
                     self.assertEqual(self.data['exemple'][cle], fragment[cle])
+
+    def test_avenant_vnt2(self):
+        """VNT2 : réponse `avenant_signe` et clé `avenant` (fragments)."""
+        rep = self.accept['avenant_signe']['reponse_200']
+        self.assertIn('signe_le', rep['avenant_signe'])
+        self.assertEqual(rep['statut'], 'accepte')
+        for nom, a_signer in (('exemple_avenant_a_signer', True),
+                              ('exemple_avenant_signe', False)):
+            with self.subTest(nom=nom):
+                avenant = self.data[nom]['avenant']
+                self.assertEqual(set(avenant),
+                                 {'a_signer', 'remplace', 'signe_le'})
+                self.assertIs(avenant['a_signer'], a_signer)
+                self.assertIn('reference', avenant['remplace'])
+        # Additive : jamais `avenant` dans les exemples existants.
+        self.assertNotIn('avenant', self.data['exemple'])
 
     def test_copies_web_json_egales(self):
         if not WEB.is_dir():  # pragma: no cover — image backend sans apps/web

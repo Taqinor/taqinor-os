@@ -83,6 +83,10 @@ def _hors_api(chemin: str) -> bool:
         or nom.startswith("tests_")
         or nom == "tests.py"
         or nom.endswith(".md")
+        # Échantillons de contrat (PACT10) : des JSON lus par les tests et les
+        # gardes, jamais par une vue — un contrat posé AVANT sa vue ne change
+        # aucun comportement HTTP.
+        or "/contract_samples/" in chemin
     )
 
 
@@ -92,6 +96,12 @@ def proprietaires_modifies(fichiers) -> list[str]:
     for brut in fichiers:
         chemin = brut.strip().replace("\\", "/")
         if not chemin:
+            continue
+        # La dette gelée (scripts/fuzz/api_fuzz_dette.txt) n'est pas du harnais :
+        # la geler ne doit JAMAIS élargir le périmètre à la plateforme (VNT M0,
+        # 12/10/2026 : chaque gel relançait core + authentication → nouveaux
+        # constats à chaque tour, treadmill).
+        if chemin.endswith("api_fuzz_dette.txt"):
             continue
         if any(chemin.startswith(p) for p in _PLATEFORME):
             trouves.update(PROPRIETAIRES_PLATEFORME)

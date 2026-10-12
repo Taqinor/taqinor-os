@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4826, operations: 7586, components: 3382}
+counts: {paths: 4818, operations: 7570, components: 3365}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -530,8 +530,10 @@ operations:
 - post /api/django/calepinage/calepinages/depuis-modele/ -> django_calepinage_calepinages_depuis_modele_create
 - post /api/django/calepinage/calepinages/import-projet/ -> django_calepinage_calepinages_import_projet_create
 - get /api/django/calepinage/calepinages/modeles/ -> django_calepinage_calepinages_modeles_list
+- delete /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_destroy
 - get /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_retrieve
 - patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
+- put /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_update
 - get /api/django/calepinage/calepinages/{id}/apercu-document/ -> django_calepinage_calepinages_apercu_document_retrieve
 - get /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_retrieve
 - post /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_create
@@ -914,6 +916,7 @@ operations:
 - post /api/django/crm/clients/export-xlsx/ -> django_crm_clients_export_xlsx_create
 - get /api/django/crm/clients/mon-portefeuille/ -> django_crm_clients_mon_portefeuille_retrieve
 - get /api/django/crm/clients/search/ -> django_crm_clients_search_retrieve
+- get /api/django/crm/clients/segments/ -> django_crm_clients_segments_retrieve
 - delete /api/django/crm/clients/{id}/ -> django_crm_clients_destroy
 - get /api/django/crm/clients/{id}/ -> django_crm_clients_retrieve
 - patch /api/django/crm/clients/{id}/ -> django_crm_clients_partial_update
@@ -946,7 +949,8 @@ operations:
 - get /api/django/crm/defis/{id}/ -> django_crm_defis_retrieve
 - patch /api/django/crm/defis/{id}/ -> django_crm_defis_partial_update
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
-- get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_list
+- get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_retrieve
+- get /api/django/crm/defis/{id}/export-xlsx/ -> django_crm_defis_export_xlsx_retrieve
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
 - post /api/django/crm/equipes/ -> django_crm_equipes_create
 - get /api/django/crm/equipes/statistiques/ -> django_crm_equipes_statistiques_retrieve
@@ -986,7 +990,7 @@ operations:
 - post /api/django/crm/leads/{id}/activites/{activite_id}/epingler/ -> django_crm_leads_activites_epingler_create
 - post /api/django/crm/leads/{id}/appliquer-plan/ -> django_crm_leads_appliquer_plan_create
 - post /api/django/crm/leads/{id}/archiver/ -> django_crm_leads_archiver_create
-- get /api/django/crm/leads/{id}/client-match/ -> django_crm_leads_client_match_list
+- get /api/django/crm/leads/{id}/client-match/ -> django_crm_leads_client_match_retrieve
 - post /api/django/crm/leads/{id}/convertir-client/ -> django_crm_leads_convertir_client_create
 - post /api/django/crm/leads/{id}/devis-auto/ -> django_crm_leads_devis_auto_create
 - get /api/django/crm/leads/{id}/duplicates/ -> django_crm_leads_duplicates_list
@@ -1066,7 +1070,7 @@ operations:
 - put /api/django/crm/plans-compte/{id}/ -> django_crm_plans_compte_update
 - get /api/django/crm/plans-compte/{id}/chatter/historique/ -> django_crm_plans_compte_chatter_historique_list
 - post /api/django/crm/plans-compte/{id}/chatter/noter/ -> django_crm_plans_compte_chatter_noter_create
-- get /api/django/crm/plans-compte/{id}/historique/ -> django_crm_plans_compte_historique_list
+- get /api/django/crm/plans-compte/{id}/historique/ -> django_crm_plans_compte_historique_retrieve
 - get /api/django/crm/playbook-etapes/ -> django_crm_playbook_etapes_list
 - post /api/django/crm/playbook-etapes/ -> django_crm_playbook_etapes_create
 - delete /api/django/crm/playbook-etapes/{id}/ -> django_crm_playbook_etapes_destroy
@@ -1087,6 +1091,7 @@ operations:
 - put /api/django/crm/playbooks/{id}/ -> django_crm_playbooks_update
 - get /api/django/crm/points-contact/ -> django_crm_points_contact_list
 - post /api/django/crm/points-contact/ -> django_crm_points_contact_create
+- get /api/django/crm/points-contact/attribution/ -> django_crm_points_contact_attribution_retrieve
 - delete /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_destroy
 - get /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_retrieve
 - patch /api/django/crm/points-contact/{id}/ -> django_crm_points_contact_partial_update
@@ -1107,6 +1112,8 @@ operations:
 - get /api/django/crm/relance-etapes/chaine-commerciale/ -> django_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/django/crm/relance-etapes/controle/ -> django_crm_relance_etapes_controle_retrieve
 - get /api/django/crm/relance-etapes/journal/ -> django_crm_relance_etapes_journal_retrieve
+- get /api/django/crm/relance-etapes/kpi-adherence/ -> django_crm_relance_etapes_kpi_adherence_retrieve
+- get /api/django/crm/relance-etapes/mes-stats/ -> django_crm_relance_etapes_mes_stats_retrieve
 - get /api/django/crm/relance-etapes/suivi/ -> django_crm_relance_etapes_suivi_retrieve
 - post /api/django/crm/relance-etapes/{id}/annuler/ -> django_crm_relance_etapes_annuler_create
 - post /api/django/crm/relance-etapes/{id}/appel-compose/ -> django_crm_relance_etapes_appel_compose_create
@@ -2214,13 +2221,6 @@ operations:
 - get /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_retrieve
 - patch /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_partial_update
 - put /api/django/installations/types-intervention/{id}/ -> django_installations_types_intervention_update
-- get /api/django/monitoring/abonnements/ -> django_monitoring_abonnements_list
-- post /api/django/monitoring/abonnements/ -> django_monitoring_abonnements_create
-- get /api/django/monitoring/abonnements/{id}/ -> django_monitoring_abonnements_retrieve
-- post /api/django/monitoring/abonnements/{id}/resilier/ -> django_monitoring_abonnements_resilier_create
-- get /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_list
-- post /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_create
-- get /api/django/monitoring/certificats-carbone/{id}/ -> django_monitoring_certificats_carbone_retrieve
 - get /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_list
 - post /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_create
 - delete /api/django/monitoring/cleanings/{id}/ -> django_monitoring_cleanings_destroy
@@ -2246,7 +2246,6 @@ operations:
 - post /api/django/monitoring/configs/{id}/import-releves/ -> django_monitoring_configs_import_releves_create
 - get /api/django/monitoring/configs/{id}/om-metrics/ -> django_monitoring_configs_om_metrics_retrieve
 - get /api/django/monitoring/configs/{id}/om-report/ -> django_monitoring_configs_om_report_retrieve
-- get /api/django/monitoring/configs/{id}/pertes/ -> django_monitoring_configs_pertes_retrieve
 - get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/ -> django_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/django/monitoring/configs/{id}/soiling/ -> django_monitoring_configs_soiling_retrieve
 - post /api/django/monitoring/configs/{id}/sync-now/ -> django_monitoring_configs_sync_now_create
@@ -2262,13 +2261,6 @@ operations:
 - get /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_retrieve
 - patch /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_partial_update
 - put /api/django/monitoring/settings/{id}/ -> django_monitoring_settings_update
-- get /api/django/monitoring/sla-disponibilite/ -> django_monitoring_sla_disponibilite_list
-- post /api/django/monitoring/sla-disponibilite/ -> django_monitoring_sla_disponibilite_create
-- delete /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_destroy
-- get /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_retrieve
-- patch /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_partial_update
-- put /api/django/monitoring/sla-disponibilite/{id}/ -> django_monitoring_sla_disponibilite_update
-- get /api/django/monitoring/sla-disponibilite/{id}/ecart/ -> django_monitoring_sla_disponibilite_ecart_retrieve
 - get /api/django/monitoring/warranties/ -> django_monitoring_warranties_list
 - post /api/django/monitoring/warranties/ -> django_monitoring_warranties_create
 - delete /api/django/monitoring/warranties/{id}/ -> django_monitoring_warranties_destroy
@@ -4362,8 +4354,10 @@ operations:
 - post /api/v1/calepinage/calepinages/depuis-modele/ -> v1_calepinage_calepinages_depuis_modele_create
 - post /api/v1/calepinage/calepinages/import-projet/ -> v1_calepinage_calepinages_import_projet_create
 - get /api/v1/calepinage/calepinages/modeles/ -> v1_calepinage_calepinages_modeles_list
+- delete /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_destroy
 - get /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_retrieve
 - patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
+- put /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_update
 - get /api/v1/calepinage/calepinages/{id}/apercu-document/ -> v1_calepinage_calepinages_apercu_document_retrieve
 - get /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_retrieve
 - post /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_create
@@ -4746,6 +4740,7 @@ operations:
 - post /api/v1/crm/clients/export-xlsx/ -> v1_crm_clients_export_xlsx_create
 - get /api/v1/crm/clients/mon-portefeuille/ -> v1_crm_clients_mon_portefeuille_retrieve
 - get /api/v1/crm/clients/search/ -> v1_crm_clients_search_retrieve
+- get /api/v1/crm/clients/segments/ -> v1_crm_clients_segments_retrieve
 - delete /api/v1/crm/clients/{id}/ -> v1_crm_clients_destroy
 - get /api/v1/crm/clients/{id}/ -> v1_crm_clients_retrieve
 - patch /api/v1/crm/clients/{id}/ -> v1_crm_clients_partial_update
@@ -4778,7 +4773,8 @@ operations:
 - get /api/v1/crm/defis/{id}/ -> v1_crm_defis_retrieve
 - patch /api/v1/crm/defis/{id}/ -> v1_crm_defis_partial_update
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
-- get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_list
+- get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_retrieve
+- get /api/v1/crm/defis/{id}/export-xlsx/ -> v1_crm_defis_export_xlsx_retrieve
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
 - post /api/v1/crm/equipes/ -> v1_crm_equipes_create
 - get /api/v1/crm/equipes/statistiques/ -> v1_crm_equipes_statistiques_retrieve
@@ -4818,7 +4814,7 @@ operations:
 - post /api/v1/crm/leads/{id}/activites/{activite_id}/epingler/ -> v1_crm_leads_activites_epingler_create
 - post /api/v1/crm/leads/{id}/appliquer-plan/ -> v1_crm_leads_appliquer_plan_create
 - post /api/v1/crm/leads/{id}/archiver/ -> v1_crm_leads_archiver_create
-- get /api/v1/crm/leads/{id}/client-match/ -> v1_crm_leads_client_match_list
+- get /api/v1/crm/leads/{id}/client-match/ -> v1_crm_leads_client_match_retrieve
 - post /api/v1/crm/leads/{id}/convertir-client/ -> v1_crm_leads_convertir_client_create
 - post /api/v1/crm/leads/{id}/devis-auto/ -> v1_crm_leads_devis_auto_create
 - get /api/v1/crm/leads/{id}/duplicates/ -> v1_crm_leads_duplicates_list
@@ -4898,7 +4894,7 @@ operations:
 - put /api/v1/crm/plans-compte/{id}/ -> v1_crm_plans_compte_update
 - get /api/v1/crm/plans-compte/{id}/chatter/historique/ -> v1_crm_plans_compte_chatter_historique_list
 - post /api/v1/crm/plans-compte/{id}/chatter/noter/ -> v1_crm_plans_compte_chatter_noter_create
-- get /api/v1/crm/plans-compte/{id}/historique/ -> v1_crm_plans_compte_historique_list
+- get /api/v1/crm/plans-compte/{id}/historique/ -> v1_crm_plans_compte_historique_retrieve
 - get /api/v1/crm/playbook-etapes/ -> v1_crm_playbook_etapes_list
 - post /api/v1/crm/playbook-etapes/ -> v1_crm_playbook_etapes_create
 - delete /api/v1/crm/playbook-etapes/{id}/ -> v1_crm_playbook_etapes_destroy
@@ -4919,6 +4915,7 @@ operations:
 - put /api/v1/crm/playbooks/{id}/ -> v1_crm_playbooks_update
 - get /api/v1/crm/points-contact/ -> v1_crm_points_contact_list
 - post /api/v1/crm/points-contact/ -> v1_crm_points_contact_create
+- get /api/v1/crm/points-contact/attribution/ -> v1_crm_points_contact_attribution_retrieve
 - delete /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_destroy
 - get /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_retrieve
 - patch /api/v1/crm/points-contact/{id}/ -> v1_crm_points_contact_partial_update
@@ -4939,6 +4936,8 @@ operations:
 - get /api/v1/crm/relance-etapes/chaine-commerciale/ -> v1_crm_relance_etapes_chaine_commerciale_retrieve
 - get /api/v1/crm/relance-etapes/controle/ -> v1_crm_relance_etapes_controle_retrieve
 - get /api/v1/crm/relance-etapes/journal/ -> v1_crm_relance_etapes_journal_retrieve
+- get /api/v1/crm/relance-etapes/kpi-adherence/ -> v1_crm_relance_etapes_kpi_adherence_retrieve
+- get /api/v1/crm/relance-etapes/mes-stats/ -> v1_crm_relance_etapes_mes_stats_retrieve
 - get /api/v1/crm/relance-etapes/suivi/ -> v1_crm_relance_etapes_suivi_retrieve
 - post /api/v1/crm/relance-etapes/{id}/annuler/ -> v1_crm_relance_etapes_annuler_create
 - post /api/v1/crm/relance-etapes/{id}/appel-compose/ -> v1_crm_relance_etapes_appel_compose_create
@@ -6046,13 +6045,6 @@ operations:
 - get /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_retrieve
 - patch /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_partial_update
 - put /api/v1/installations/types-intervention/{id}/ -> v1_installations_types_intervention_update
-- get /api/v1/monitoring/abonnements/ -> v1_monitoring_abonnements_list
-- post /api/v1/monitoring/abonnements/ -> v1_monitoring_abonnements_create
-- get /api/v1/monitoring/abonnements/{id}/ -> v1_monitoring_abonnements_retrieve
-- post /api/v1/monitoring/abonnements/{id}/resilier/ -> v1_monitoring_abonnements_resilier_create
-- get /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_list
-- post /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_create
-- get /api/v1/monitoring/certificats-carbone/{id}/ -> v1_monitoring_certificats_carbone_retrieve
 - get /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_list
 - post /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_create
 - delete /api/v1/monitoring/cleanings/{id}/ -> v1_monitoring_cleanings_destroy
@@ -6078,7 +6070,6 @@ operations:
 - post /api/v1/monitoring/configs/{id}/import-releves/ -> v1_monitoring_configs_import_releves_create
 - get /api/v1/monitoring/configs/{id}/om-metrics/ -> v1_monitoring_configs_om_metrics_retrieve
 - get /api/v1/monitoring/configs/{id}/om-report/ -> v1_monitoring_configs_om_report_retrieve
-- get /api/v1/monitoring/configs/{id}/pertes/ -> v1_monitoring_configs_pertes_retrieve
 - get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/ -> v1_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/v1/monitoring/configs/{id}/soiling/ -> v1_monitoring_configs_soiling_retrieve
 - post /api/v1/monitoring/configs/{id}/sync-now/ -> v1_monitoring_configs_sync_now_create
@@ -6094,13 +6085,6 @@ operations:
 - get /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_retrieve
 - patch /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_partial_update
 - put /api/v1/monitoring/settings/{id}/ -> v1_monitoring_settings_update
-- get /api/v1/monitoring/sla-disponibilite/ -> v1_monitoring_sla_disponibilite_list
-- post /api/v1/monitoring/sla-disponibilite/ -> v1_monitoring_sla_disponibilite_create
-- delete /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_destroy
-- get /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_retrieve
-- patch /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_partial_update
-- put /api/v1/monitoring/sla-disponibilite/{id}/ -> v1_monitoring_sla_disponibilite_update
-- get /api/v1/monitoring/sla-disponibilite/{id}/ecart/ -> v1_monitoring_sla_disponibilite_ecart_retrieve
 - get /api/v1/monitoring/warranties/ -> v1_monitoring_warranties_list
 - post /api/v1/monitoring/warranties/ -> v1_monitoring_warranties_create
 - delete /api/v1/monitoring/warranties/{id}/ -> v1_monitoring_warranties_destroy
@@ -7736,8 +7720,8 @@ query_params:
   get /api/django/core/dashboards/: ordering search
   get /api/django/core/dashboards/{id}/donnees/: filtre
   get /api/django/core/dossiers/: ordering page page_size search statut type_dossier
-  get /api/django/core/dossiers/{id}/checklist/: ordering search
-  get /api/django/core/dossiers/{id}/historique/: ordering search
+  get /api/django/core/dossiers/{id}/checklist/: ordering page page_size search
+  get /api/django/core/dossiers/{id}/historique/: ordering page page_size search
   get /api/django/core/dsr-requests/: ordering page page_size search
   get /api/django/core/export-reversibilite/historique/: ordering search
   get /api/django/core/formulaire-champs/: ordering search
@@ -7754,12 +7738,13 @@ query_params:
   get /api/django/core/sauvegardes/: ordering page page_size search
   get /api/django/core/saved-queries/: ordering search
   get /api/django/core/scheduled-exports/: ordering search
+  get /api/django/core/sla/: ordering search
   get /api/django/core/sla/credits/: ordering search
   get /api/django/core/sla/export-csv/: export
   get /api/django/core/ui-boutons/: cible ordering page page_size search
   get /api/django/core/ui-onglets/: cible ordering search target_id
   get /api/django/core/usage/: company jour ordering page page_size search
-  get /api/django/core/usage/couts/: export periode
+  get /api/django/core/usage/couts/: format periode
   get /api/django/core/vues/: cible defaut ordering page page_size search
   get /api/django/core/workflow-definitions/: ordering search
   get /api/django/core/workflow-step-definitions/: ordering search
@@ -7774,11 +7759,11 @@ query_params:
   get /api/django/crm/clients/dormants/: seuil
   get /api/django/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/django/crm/clients/search/: q
+  get /api/django/crm/clients/segments/: segment
   get /api/django/crm/concurrents-perte/: lead ordering page page_size search
   get /api/django/crm/deals-enregistres/: ordering page page_size search
-  get /api/django/crm/deals-enregistres/a-payer/: ordering search
+  get /api/django/crm/deals-enregistres/a-payer/: ordering page page_size search
   get /api/django/crm/defis/: actif ordering page page_size search
-  get /api/django/crm/defis/{id}/classement/: ordering search
   get /api/django/crm/equipes/: ordering page page_size search
   get /api/django/crm/forecast-entries/: categorie ordering owner page page_size periode search
   get /api/django/crm/forecast/historique/: owner semaines
@@ -7792,30 +7777,30 @@ query_params:
   get /api/django/crm/leads/relances/: scope
   get /api/django/crm/leads/roi-sources/: canal from ordering page page_size search to
   post /api/django/crm/leads/{id}/appliquer-plan/: ordering page page_size search
-  get /api/django/crm/leads/{id}/client-match/: ordering search
   get /api/django/crm/leads/{id}/duplicates/: ordering page page_size search
-  get /api/django/crm/leads/{id}/historique/: ordering search
+  get /api/django/crm/leads/{id}/historique/: ordering page page_size search
   get /api/django/crm/leads/{id}/message-visite/: cle
-  post /api/django/crm/leads/{id}/relance/initialiser/: ordering search
+  post /api/django/crm/leads/{id}/relance/initialiser/: ordering page page_size search
   get /api/django/crm/message-templates/: archived ordering page page_size search
   get /api/django/crm/motifs-perte/: ordering page page_size search
   get /api/django/crm/objectifs/: metric ordering owner page page_size period_type search year
-  get /api/django/crm/objectifs/attainment/: metric ordering owner period_type search year
+  get /api/django/crm/objectifs/attainment/: metric ordering owner page page_size period_type search year
   get /api/django/crm/parrainages/: ordering page page_size search
   get /api/django/crm/partenaires/: ordering page page_size
   get /api/django/crm/plans-activite/: ordering page page_size search
   get /api/django/crm/plans-compte/: client ordering page page_size search
   get /api/django/crm/plans-compte/{id}/chatter/historique/: ordering search
-  get /api/django/crm/plans-compte/{id}/historique/: ordering search
   get /api/django/crm/playbook-etapes/: ordering page page_size search
   get /api/django/crm/playbook-taches/: ordering page page_size search
   get /api/django/crm/playbooks/: ordering page page_size search
   get /api/django/crm/points-contact/: lead ordering page page_size search
+  get /api/django/crm/points-contact/attribution/: lead
   get /api/django/crm/rapports/attribution/: debut fin
   get /api/django/crm/relance-etapes/: lead owner scope
   get /api/django/crm/relance-etapes/cadences-echues/: jours
   get /api/django/crm/relance-etapes/controle/: jours owner segment
   get /api/django/crm/relance-etapes/journal/: lead
+  get /api/django/crm/relance-etapes/kpi-adherence/: jours
   get /api/django/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/django/crm/relance-etapes/{id}/message/: cle langue
   get /api/django/crm/revues-compte/: ordering page page_size search
@@ -8019,7 +8004,7 @@ query_params:
   get /api/django/installations/regles-approbation-achat/: ordering page page_size search
   get /api/django/installations/regles-rangement/: actif ordering page page_size produit search
   get /api/django/installations/regles-reappro/: active emplacement_cible ordering page page_size produit search
-  get /api/django/installations/regles-reappro/propositions/: ordering search
+  get /api/django/installations/regles-reappro/propositions/: ordering page page_size search
   get /api/django/installations/retour-livraison-lignes/: ordering page page_size retour search
   get /api/django/installations/retour-materiel-lignes/: ordering page page_size retour search
   get /api/django/installations/retours-livraison/: livraison ordering page page_size search statut
@@ -8032,8 +8017,6 @@ query_params:
   get /api/django/installations/tournee-livraison/: depart_lat depart_lng jour
   get /api/django/installations/transporteurs/: active ordering page page_size search type_transporteur
   get /api/django/installations/types-intervention/: ordering page page_size search
-  get /api/django/monitoring/abonnements/: ordering page page_size search
-  get /api/django/monitoring/certificats-carbone/: ordering page page_size search
   get /api/django/monitoring/cleanings/: installation ordering page page_size search
   get /api/django/monitoring/configs/: installation ordering page page_size search
   get /api/django/monitoring/configs/attestation-carbone-client-pdf/: client since until
@@ -8041,18 +8024,16 @@ query_params:
   get /api/django/monitoring/configs/client-portal/: client
   get /api/django/monitoring/configs/co2-fleet/: since until
   get /api/django/monitoring/configs/fleet/: window_days
+  get /api/django/monitoring/configs/providers/: ordering page page_size search
   get /api/django/monitoring/configs/{id}/attestation-carbone-pdf/: since until
   get /api/django/monitoring/configs/{id}/co2/: since until
   get /api/django/monitoring/configs/{id}/history/: export months
   get /api/django/monitoring/configs/{id}/om-metrics/: window_days
   get /api/django/monitoring/configs/{id}/om-report/: format period
-  get /api/django/monitoring/configs/{id}/pertes/: window_days
   get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/django/monitoring/configs/{id}/soiling/: window_days
   get /api/django/monitoring/readings/: installation ordering page page_size search
   get /api/django/monitoring/settings/: ordering search
-  get /api/django/monitoring/sla-disponibilite/: installation ordering page page_size search
-  get /api/django/monitoring/sla-disponibilite/{id}/ecart/: window_days
   get /api/django/monitoring/warranties/: installation ordering page page_size search
   get /api/django/monitoring/warranties/{id}/curve/: drift_threshold_pct years
   get /api/django/monitoring/warranties/{id}/status/: year
@@ -8159,8 +8140,8 @@ query_params:
   get /api/django/sav/equipements/etiquettes/: ids public symbology
   get /api/django/sav/equipements/registre-garanties/: jours
   get /api/django/sav/equipements/{id}/disponibilite/: debut fin
-  get /api/django/sav/equipements/{id}/downtime/: ordering search
-  get /api/django/sav/equipements/{id}/releves-compteur/: ordering search
+  get /api/django/sav/equipements/{id}/downtime/: ordering page page_size search
+  get /api/django/sav/equipements/{id}/releves-compteur/: ordering page page_size search
   get /api/django/sav/equipes-maintenance/: actif ordering page page_size search
   get /api/django/sav/insights/sav-fcr/: date_debut date_fin export
   get /api/django/sav/insights/sav-fiabilite/: limit
@@ -8172,16 +8153,16 @@ query_params:
   get /api/django/sav/problemes/regroupements-suggeres/: fenetre_jours seuil
   get /api/django/sav/remedes-defaillance/: archived ordering page page_size search
   get /api/django/sav/reponses-type/: archived canal ordering page page_size search ticket
-  get /api/django/sav/sla-settings/: ordering search
+  get /api/django/sav/sla-settings/: ordering page page_size search
   get /api/django/sav/tickets/: annule categorie client equipe equipement installation ordering ouvert page page_size priorite search statut technicien type
-  get /api/django/sav/tickets/{id}/activites/: ordering search
-  get /api/django/sav/tickets/{id}/checklist/: ordering search
-  post /api/django/sav/tickets/{id}/checklist/: ordering search
-  get /api/django/sav/tickets/{id}/emails/: ordering search
-  get /api/django/sav/tickets/{id}/historique/: ordering search
-  get /api/django/sav/tickets/{id}/pieces-retirees/: ordering search
-  get /api/django/sav/tickets/{id}/pieces/: ordering search
-  get /api/django/sav/tickets/{id}/prets-equipement/: ordering search
+  get /api/django/sav/tickets/{id}/activites/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/checklist/: ordering page page_size search
+  post /api/django/sav/tickets/{id}/checklist/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/emails/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/historique/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/pieces-retirees/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/pieces/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/prets-equipement/: ordering page page_size search
   get /api/django/sav/tickets/{id}/similaires/: limit
   get /api/django/sav/warranty-claims/: equipement ordering page page_size search statut ticket
   get /api/django/sav/worksheet-modeles/: ordering page page_size search
@@ -8313,7 +8294,7 @@ query_params:
   get /api/django/uxviews/favoris/: ordering page page_size search
   post /api/django/uxviews/favoris/{id}/reordonner/: ordering page page_size search
   get /api/django/uxviews/saved-views/: ecran ordering page page_size search
-  get /api/django/uxviews/saved-views/toutes-company/: ordering search
+  get /api/django/uxviews/saved-views/toutes-company/: ordering page page_size search
   get /api/django/ventes/attestations-conformite/: chantier ordering page page_size search statut
   get /api/django/ventes/attestations-re/: chantier ordering page page_size search statut
   get /api/django/ventes/avoirs/: facture ordering page page_size search
@@ -8372,7 +8353,7 @@ query_params:
   get /api/django/ventes/tests-pr-reception/: chantier ordering page page_size search verdict
   get /api/django/visites/leads-recherche/: limit q
   get /api/django/visites/ma-journee/: tous
-  get /api/django/visites/visites/: lead mine ordering search
+  get /api/django/visites/visites/: lead mine ordering page page_size search
   get /api/public/v1/achats/demandes-achat/: ordering page page_size
   get /api/public/v1/achats/rfq/: ordering page page_size
   get /api/public/v1/calepinages/: ordering page page_size
@@ -8517,8 +8498,8 @@ query_params:
   get /api/v1/core/dashboards/: ordering search
   get /api/v1/core/dashboards/{id}/donnees/: filtre
   get /api/v1/core/dossiers/: ordering page page_size search statut type_dossier
-  get /api/v1/core/dossiers/{id}/checklist/: ordering search
-  get /api/v1/core/dossiers/{id}/historique/: ordering search
+  get /api/v1/core/dossiers/{id}/checklist/: ordering page page_size search
+  get /api/v1/core/dossiers/{id}/historique/: ordering page page_size search
   get /api/v1/core/dsr-requests/: ordering page page_size search
   get /api/v1/core/export-reversibilite/historique/: ordering search
   get /api/v1/core/formulaire-champs/: ordering search
@@ -8535,12 +8516,13 @@ query_params:
   get /api/v1/core/sauvegardes/: ordering page page_size search
   get /api/v1/core/saved-queries/: ordering search
   get /api/v1/core/scheduled-exports/: ordering search
+  get /api/v1/core/sla/: ordering search
   get /api/v1/core/sla/credits/: ordering search
   get /api/v1/core/sla/export-csv/: export
   get /api/v1/core/ui-boutons/: cible ordering page page_size search
   get /api/v1/core/ui-onglets/: cible ordering search target_id
   get /api/v1/core/usage/: company jour ordering page page_size search
-  get /api/v1/core/usage/couts/: export periode
+  get /api/v1/core/usage/couts/: format periode
   get /api/v1/core/vues/: cible defaut ordering page page_size search
   get /api/v1/core/workflow-definitions/: ordering search
   get /api/v1/core/workflow-step-definitions/: ordering search
@@ -8555,11 +8537,11 @@ query_params:
   get /api/v1/crm/clients/dormants/: seuil
   get /api/v1/crm/clients/engagement-bulk/: ordering page page_size search
   get /api/v1/crm/clients/search/: q
+  get /api/v1/crm/clients/segments/: segment
   get /api/v1/crm/concurrents-perte/: lead ordering page page_size search
   get /api/v1/crm/deals-enregistres/: ordering page page_size search
-  get /api/v1/crm/deals-enregistres/a-payer/: ordering search
+  get /api/v1/crm/deals-enregistres/a-payer/: ordering page page_size search
   get /api/v1/crm/defis/: actif ordering page page_size search
-  get /api/v1/crm/defis/{id}/classement/: ordering search
   get /api/v1/crm/equipes/: ordering page page_size search
   get /api/v1/crm/forecast-entries/: categorie ordering owner page page_size periode search
   get /api/v1/crm/forecast/historique/: owner semaines
@@ -8573,30 +8555,30 @@ query_params:
   get /api/v1/crm/leads/relances/: scope
   get /api/v1/crm/leads/roi-sources/: canal from ordering page page_size search to
   post /api/v1/crm/leads/{id}/appliquer-plan/: ordering page page_size search
-  get /api/v1/crm/leads/{id}/client-match/: ordering search
   get /api/v1/crm/leads/{id}/duplicates/: ordering page page_size search
-  get /api/v1/crm/leads/{id}/historique/: ordering search
+  get /api/v1/crm/leads/{id}/historique/: ordering page page_size search
   get /api/v1/crm/leads/{id}/message-visite/: cle
-  post /api/v1/crm/leads/{id}/relance/initialiser/: ordering search
+  post /api/v1/crm/leads/{id}/relance/initialiser/: ordering page page_size search
   get /api/v1/crm/message-templates/: archived ordering page page_size search
   get /api/v1/crm/motifs-perte/: ordering page page_size search
   get /api/v1/crm/objectifs/: metric ordering owner page page_size period_type search year
-  get /api/v1/crm/objectifs/attainment/: metric ordering owner period_type search year
+  get /api/v1/crm/objectifs/attainment/: metric ordering owner page page_size period_type search year
   get /api/v1/crm/parrainages/: ordering page page_size search
   get /api/v1/crm/partenaires/: ordering page page_size
   get /api/v1/crm/plans-activite/: ordering page page_size search
   get /api/v1/crm/plans-compte/: client ordering page page_size search
   get /api/v1/crm/plans-compte/{id}/chatter/historique/: ordering search
-  get /api/v1/crm/plans-compte/{id}/historique/: ordering search
   get /api/v1/crm/playbook-etapes/: ordering page page_size search
   get /api/v1/crm/playbook-taches/: ordering page page_size search
   get /api/v1/crm/playbooks/: ordering page page_size search
   get /api/v1/crm/points-contact/: lead ordering page page_size search
+  get /api/v1/crm/points-contact/attribution/: lead
   get /api/v1/crm/rapports/attribution/: debut fin
   get /api/v1/crm/relance-etapes/: lead owner scope
   get /api/v1/crm/relance-etapes/cadences-echues/: jours
   get /api/v1/crm/relance-etapes/controle/: jours owner segment
   get /api/v1/crm/relance-etapes/journal/: lead
+  get /api/v1/crm/relance-etapes/kpi-adherence/: jours
   get /api/v1/crm/relance-etapes/suivi/: date_debut date_fin owner statut
   get /api/v1/crm/relance-etapes/{id}/message/: cle langue
   get /api/v1/crm/revues-compte/: ordering page page_size search
@@ -8800,7 +8782,7 @@ query_params:
   get /api/v1/installations/regles-approbation-achat/: ordering page page_size search
   get /api/v1/installations/regles-rangement/: actif ordering page page_size produit search
   get /api/v1/installations/regles-reappro/: active emplacement_cible ordering page page_size produit search
-  get /api/v1/installations/regles-reappro/propositions/: ordering search
+  get /api/v1/installations/regles-reappro/propositions/: ordering page page_size search
   get /api/v1/installations/retour-livraison-lignes/: ordering page page_size retour search
   get /api/v1/installations/retour-materiel-lignes/: ordering page page_size retour search
   get /api/v1/installations/retours-livraison/: livraison ordering page page_size search statut
@@ -8813,8 +8795,6 @@ query_params:
   get /api/v1/installations/tournee-livraison/: depart_lat depart_lng jour
   get /api/v1/installations/transporteurs/: active ordering page page_size search type_transporteur
   get /api/v1/installations/types-intervention/: ordering page page_size search
-  get /api/v1/monitoring/abonnements/: ordering page page_size search
-  get /api/v1/monitoring/certificats-carbone/: ordering page page_size search
   get /api/v1/monitoring/cleanings/: installation ordering page page_size search
   get /api/v1/monitoring/configs/: installation ordering page page_size search
   get /api/v1/monitoring/configs/attestation-carbone-client-pdf/: client since until
@@ -8822,18 +8802,16 @@ query_params:
   get /api/v1/monitoring/configs/client-portal/: client
   get /api/v1/monitoring/configs/co2-fleet/: since until
   get /api/v1/monitoring/configs/fleet/: window_days
+  get /api/v1/monitoring/configs/providers/: ordering page page_size search
   get /api/v1/monitoring/configs/{id}/attestation-carbone-pdf/: since until
   get /api/v1/monitoring/configs/{id}/co2/: since until
   get /api/v1/monitoring/configs/{id}/history/: export months
   get /api/v1/monitoring/configs/{id}/om-metrics/: window_days
   get /api/v1/monitoring/configs/{id}/om-report/: format period
-  get /api/v1/monitoring/configs/{id}/pertes/: window_days
   get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/v1/monitoring/configs/{id}/soiling/: window_days
   get /api/v1/monitoring/readings/: installation ordering page page_size search
   get /api/v1/monitoring/settings/: ordering search
-  get /api/v1/monitoring/sla-disponibilite/: installation ordering page page_size search
-  get /api/v1/monitoring/sla-disponibilite/{id}/ecart/: window_days
   get /api/v1/monitoring/warranties/: installation ordering page page_size search
   get /api/v1/monitoring/warranties/{id}/curve/: drift_threshold_pct years
   get /api/v1/monitoring/warranties/{id}/status/: year
@@ -8938,8 +8916,8 @@ query_params:
   get /api/v1/sav/equipements/etiquettes/: ids public symbology
   get /api/v1/sav/equipements/registre-garanties/: jours
   get /api/v1/sav/equipements/{id}/disponibilite/: debut fin
-  get /api/v1/sav/equipements/{id}/downtime/: ordering search
-  get /api/v1/sav/equipements/{id}/releves-compteur/: ordering search
+  get /api/v1/sav/equipements/{id}/downtime/: ordering page page_size search
+  get /api/v1/sav/equipements/{id}/releves-compteur/: ordering page page_size search
   get /api/v1/sav/equipes-maintenance/: actif ordering page page_size search
   get /api/v1/sav/insights/sav-fcr/: date_debut date_fin export
   get /api/v1/sav/insights/sav-fiabilite/: limit
@@ -8951,16 +8929,16 @@ query_params:
   get /api/v1/sav/problemes/regroupements-suggeres/: fenetre_jours seuil
   get /api/v1/sav/remedes-defaillance/: archived ordering page page_size search
   get /api/v1/sav/reponses-type/: archived canal ordering page page_size search ticket
-  get /api/v1/sav/sla-settings/: ordering search
+  get /api/v1/sav/sla-settings/: ordering page page_size search
   get /api/v1/sav/tickets/: annule categorie client equipe equipement installation ordering ouvert page page_size priorite search statut technicien type
-  get /api/v1/sav/tickets/{id}/activites/: ordering search
-  get /api/v1/sav/tickets/{id}/checklist/: ordering search
-  post /api/v1/sav/tickets/{id}/checklist/: ordering search
-  get /api/v1/sav/tickets/{id}/emails/: ordering search
-  get /api/v1/sav/tickets/{id}/historique/: ordering search
-  get /api/v1/sav/tickets/{id}/pieces-retirees/: ordering search
-  get /api/v1/sav/tickets/{id}/pieces/: ordering search
-  get /api/v1/sav/tickets/{id}/prets-equipement/: ordering search
+  get /api/v1/sav/tickets/{id}/activites/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/checklist/: ordering page page_size search
+  post /api/v1/sav/tickets/{id}/checklist/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/emails/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/historique/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/pieces-retirees/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/pieces/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/prets-equipement/: ordering page page_size search
   get /api/v1/sav/tickets/{id}/similaires/: limit
   get /api/v1/sav/warranty-claims/: equipement ordering page page_size search statut ticket
   get /api/v1/sav/worksheet-modeles/: ordering page page_size search
@@ -9092,7 +9070,7 @@ query_params:
   get /api/v1/uxviews/favoris/: ordering page page_size search
   post /api/v1/uxviews/favoris/{id}/reordonner/: ordering page page_size search
   get /api/v1/uxviews/saved-views/: ecran ordering page page_size search
-  get /api/v1/uxviews/saved-views/toutes-company/: ordering search
+  get /api/v1/uxviews/saved-views/toutes-company/: ordering page page_size search
   get /api/v1/ventes/attestations-conformite/: chantier ordering page page_size search statut
   get /api/v1/ventes/attestations-re/: chantier ordering page page_size search statut
   get /api/v1/ventes/avoirs/: facture ordering page page_size search
@@ -9151,13 +9129,9 @@ query_params:
   get /api/v1/ventes/tests-pr-reception/: chantier ordering page page_size search verdict
   get /api/v1/visites/leads-recherche/: limit q
   get /api/v1/visites/ma-journee/: tous
-  get /api/v1/visites/visites/: lead mine ordering search
+  get /api/v1/visites/visites/: lead mine ordering page page_size search
 components:
 - AbandonMotifEnum
-- AbonnementMonitoring
-- AbonnementMonitoringPeriodiciteEnum
-- AbonnementMonitoringRequest
-- AbonnementMonitoringStatutEnum
 - AcceptationDevisPortail
 - AccepterInvitationPortailRequestRequest
 - AccepterInvitationPortailResponse
@@ -9167,7 +9141,6 @@ components:
 - AccessReviewCampaignStatutEnum
 - AccessReviewItem
 - AccessReviewItemRequest
-- AccordClientEnum
 - AccordRFAFournisseur
 - AccordRFAFournisseurRequest
 - AchatsParametres
@@ -9534,8 +9507,8 @@ components:
 - Cabinet
 - CabinetRequest
 - CableAmeEnum
+- CadenceEnum
 - CadenceRelanceEtape
-- CadenceRelanceEtapeCadenceEnum
 - CadenceRelanceEtapeRequest
 - CalculRoiRequestRequest
 - CalendarCalendarEventsReponse
@@ -9553,7 +9526,6 @@ components:
 - CalepinageComparerProjetsRequeteRequest
 - CalepinageConsommationProposee
 - CalepinageCreationConflit
-- CalepinageDepuisLeadReponse
 - CalepinageDepuisLeadRequeteRequest
 - CalepinageDocumentAuteur
 - CalepinageDocumentEntree
@@ -9564,7 +9536,6 @@ components:
 - CalepinageDossierFinChantier
 - CalepinageDossierFinChantierPiece
 - CalepinageDossiersReglementaires
-- CalepinageDupliquerReponse
 - CalepinageDupliquerRequeteRequest
 - CalepinageEvaluerElectriqueRequeteRequest
 - CalepinageExportProjet
@@ -9580,7 +9551,6 @@ components:
 - CalepinageImportProjet
 - CalepinageJoindrePiece
 - CalepinageMeteoFichier
-- CalepinageMeteoFichierRetenu
 - CalepinageMoteurAccuseTravailLong
 - CalepinageMoteurCalculerReponse
 - CalepinageMoteurCalculerRequeteRequest
@@ -9638,8 +9608,6 @@ components:
 - CategorieTicketRequest
 - CauseDefaillance
 - CauseDefaillanceRequest
-- CertificatCarbone
-- CertificatCarboneRequest
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -9751,8 +9719,6 @@ components:
 - ConsentRecord
 - ConsentRecordCanalEnum
 - ConsentRecordRequest
-- ConsentementTraitement
-- ConsentementTraitementRequest
 - ConsommationLigne
 - ContactFournisseur
 - ContactFournisseurRequest
@@ -9814,17 +9780,14 @@ components:
 - CrmControleSuivi
 - CrmConvertirClientRequestModeEnum
 - CrmConvertirClientRequestRequest
-- CrmEquipeStatistiques
-- CrmEquipesStatistiques
-- CrmInitialiserRelanceRequestCadenceEnum
 - CrmInitialiserRelanceRequestRequest
 - CrmJournalRelance
+- CrmKpiAdherence
 - CrmKpiCadences
 - CrmKpiPremierContact
 - CrmLeadLocataire
 - CrmLeadMergeRequestRequest
 - CrmLeadMessageVisite
-- CrmLeadSupprime
 - CrmLeadVisitePlanifiee
 - CrmLeadVisites
 - CrmLeadsExportRequestRequest
@@ -9832,13 +9795,13 @@ components:
 - CrmLogInteractionRequestKindEnum
 - CrmLogInteractionRequestOutcomeEnum
 - CrmLogInteractionRequestRequest
+- CrmMesStatsRelance
 - CrmMessageRenderRequestRequest
 - CrmMessageVisiteOuvert
 - CrmMessageVisiteOuvertRequestRequest
 - CrmMesureCadence
 - CrmNoterMultipartRequestRequest
 - CrmNoterRequestRequest
-- CrmParrainageStats
 - CrmPieceRecueMultipartRequestRequest
 - CrmPieceRecueRequestRequest
 - CrmPlacementCadencesRequestRequest
@@ -10060,12 +10023,10 @@ components:
 - Dossier
 - DossierActivity
 - DossierActivityKindEnum
-- DossierChecklistAjoutRequest
-- DossierChecklistCocheRequest
 - DossierChecklistItem
 - DossierChecklistItemRequest
 - DossierChecklistItemStatutEnum
-- DossierChecklistRequeteRequest
+- DossierChecklistRequestRequest
 - DossierCibleLienRequest
 - DossierDelierReponse
 - DossierEtapeCourante
@@ -10678,7 +10639,6 @@ components:
 - MonEquipePortailInviterRoleEnum
 - MonEquipePortailLigne
 - MonEquipePortailLigneRequest
-- MonitoringAbonnementResilierRequest
 - MonitoringConfig
 - MonitoringConfigRequest
 - MonitoringEmailOmReportReponse
@@ -10687,11 +10647,9 @@ components:
 - MonitoringImportReleves
 - MonitoringImportRelevesCsvRequest
 - MonitoringImportRelevesFichierRequest
-- MonitoringPertesCategorisees
 - MonitoringProvider
 - MonitoringSettings
 - MonitoringSettingsRequest
-- MonitoringSlaDisponibiliteEcart
 - MonitoringSyncNow
 - MotifPerte
 - MotifPerteRequest
@@ -10757,6 +10715,7 @@ components:
 - OrdreAssemblage
 - OrdreAssemblageActivity
 - OrdreAssemblageLigne
+- OrdreAssemblageLigneOrigineEnum
 - OrdreAssemblageLigneRequest
 - OrdreAssemblageRequest
 - OrdreDemontage
@@ -10764,7 +10723,6 @@ components:
 - OrdreDemontageLigneRequest
 - OrdreDemontageRequest
 - OrdreDemontageStatutEnum
-- OrdreLigneOrigineEnum
 - OrdresDepuisDevisRequeteRequest
 - OrientationEnum
 - OuiNonEnum
@@ -10776,7 +10734,6 @@ components:
 - OutillageStatutEnum
 - OutillageSuppressionRefusee
 - OwnershipEnum
-- PaginatedAbonnementMonitoringList
 - PaginatedAcceptationDevisPortailList
 - PaginatedAccessReviewCampaignList
 - PaginatedAccordRFAFournisseurList
@@ -10839,7 +10796,6 @@ components:
 - PaginatedCategorieStockageList
 - PaginatedCategorieTicketList
 - PaginatedCauseDefaillanceList
-- PaginatedCertificatCarboneList
 - PaginatedChampSignatureList
 - PaginatedChecklistEtapeModeleList
 - PaginatedChecklistTemplateList
@@ -10868,7 +10824,6 @@ components:
 - PaginatedConditionnementProduitList
 - PaginatedConfigPackageList
 - PaginatedConsentRecordList
-- PaginatedConsentementTraitementList
 - PaginatedContactFournisseurList
 - PaginatedContratMaintenanceList
 - PaginatedContratPrixFournisseurList
@@ -10907,11 +10862,13 @@ components:
 - PaginatedDocumentTagAssignmentList
 - PaginatedDocumentTagList
 - PaginatedDocumentVersionList
+- PaginatedDossierActivityList
 - PaginatedDossierChecklistItemList
 - PaginatedDossierExchangeList
 - PaginatedDossierImportList
 - PaginatedDossierList
 - PaginatedDossierOnboardingFournisseurList
+- PaginatedDossierWorkflowChecklistItemList
 - PaginatedEcheanceFactureFournisseurList
 - PaginatedElementSupprimeList
 - PaginatedEmailTemplateList
@@ -10924,6 +10881,7 @@ components:
 - PaginatedEquipeCommercialeList
 - PaginatedEquipeList
 - PaginatedEquipeMaintenanceList
+- PaginatedEquipementDowntimeList
 - PaginatedEquipementList
 - PaginatedEtapeApprobationAchatList
 - PaginatedEtapeAssemblageList
@@ -10976,6 +10934,7 @@ components:
 - PaginatedKitProduitList
 - PaginatedKpiAlerteList
 - PaginatedLandedCostLigneList
+- PaginatedLeadActivityList
 - PaginatedLeadList
 - PaginatedLeadTagList
 - PaginatedLegalHoldList
@@ -10996,6 +10955,7 @@ components:
 - PaginatedModeleBonCommandeFournisseurList
 - PaginatedModeleDocumentList
 - PaginatedMonitoringConfigList
+- PaginatedMonitoringProviderList
 - PaginatedMotifPerteList
 - PaginatedMouvementRebutList
 - PaginatedMouvementStockList
@@ -11004,6 +10964,7 @@ components:
 - PaginatedNoteDebitList
 - PaginatedNotificationList
 - PaginatedNotificationRoutingRuleList
+- PaginatedObjectifAttainmentList
 - PaginatedObjectifCommercialList
 - PaginatedOfflineOperationList
 - PaginatedOrdreAssemblageActivityList
@@ -11024,6 +10985,8 @@ components:
 - PaginatedPaymentTransactionList
 - PaginatedPickListLigneList
 - PaginatedPickListList
+- PaginatedPieceConsommeeList
+- PaginatedPieceRetireeList
 - PaginatedPlanActiviteList
 - PaginatedPlanChargementList
 - PaginatedPlanCommissionList
@@ -11038,6 +11001,7 @@ components:
 - PaginatedPolitiqueRetentionList
 - PaginatedPortailTiersTokenList
 - PaginatedPositionTechnicienList
+- PaginatedPretEquipementList
 - PaginatedPreuveLivraisonList
 - PaginatedPrixFournisseurList
 - PaginatedProblemeList
@@ -11080,6 +11044,8 @@ components:
 - PaginatedRegleReapproList
 - PaginatedRegularisation8221List
 - PaginatedRegulatoryDossierList
+- PaginatedRelanceEtapeList
+- PaginatedReleveCompteurEquipementList
 - PaginatedRemedeDefaillanceList
 - PaginatedRemiseEncaissementList
 - PaginatedRendezVousTransporteurList
@@ -11102,7 +11068,10 @@ components:
 - PaginatedSafetyChecklistSlotList
 - PaginatedSalleVenteList
 - PaginatedSandboxEnvironmentList
+- PaginatedSavEmailLigneList
+- PaginatedSavSlaSettingsList
 - PaginatedSavedReportList
+- PaginatedSavedViewList
 - PaginatedSerieAssemblageList
 - PaginatedSerieEntrepotList
 - PaginatedServiceAccountList
@@ -11112,7 +11081,6 @@ components:
 - PaginatedShotListSlotList
 - PaginatedSignataireDemandeList
 - PaginatedSiteProfileList
-- PaginatedSlaDisponibiliteList
 - PaginatedSodRuleList
 - PaginatedStageModeleList
 - PaginatedStatutConfigList
@@ -11124,6 +11092,9 @@ components:
 - PaginatedTauxTVAList
 - PaginatedTenantUsageSnapshotList
 - PaginatedTestPerformanceReceptionList
+- PaginatedTicketActiviteAFaireList
+- PaginatedTicketActivityList
+- PaginatedTicketChecklistItemList
 - PaginatedTicketList
 - PaginatedTiersList
 - PaginatedToleranceRapprochementCategorieList
@@ -11137,7 +11108,6 @@ components:
 - PaginatedUniteLogistiqueList
 - PaginatedUniteMesureList
 - PaginatedUserList
-- PaginatedUxSavedViewList
 - PaginatedVaguePickingList
 - PaginatedValidationOcrDocumentList
 - PaginatedVeilleAnnonceurList
@@ -11474,7 +11444,6 @@ components:
 - PatchedSeuilReapproCasierRequest
 - PatchedShotListSlotRequest
 - PatchedSiteProfileRequest
-- PatchedSlaDisponibiliteRequest
 - PatchedSodRuleRequest
 - PatchedSousTraitantRequest
 - PatchedStageModeleRequest
@@ -11501,7 +11470,6 @@ components:
 - PatchedUniteMesureRequest
 - PatchedUserRequest
 - PatchedUxParametresRequest
-- PatchedUxSavedViewRequest
 - PatchedVaguePickingRequest
 - PatchedVisiteTerrainRequest
 - PatchedVueGedEnregistreeRequest
@@ -11589,9 +11557,7 @@ components:
 - PortailClientProchainJalon
 - PortailClientTableauDeBord
 - PortailCreerTicketReponse
-- PortailFournisseurTableauDeBord
 - PortailFournisseurToken
-- PortailPartenaireTableauDeBord
 - PortailRapprocherRequestRequest
 - PortailTicketIdOptionnelRequestRequest
 - PortailTicketIdRequestRequest
@@ -12000,7 +11966,8 @@ components:
 - SavEscaladerRequeteRequest
 - SavFacturerReponseA
 - SavFacturerReponseB
-- SavFacturerRequeteRequest
+- SavFacturerRequeteARequest
+- SavFacturerRequeteBRequest
 - SavFcrExclusions
 - SavFcrInsight
 - SavFcrTicket
@@ -12012,7 +11979,6 @@ components:
 - SavLogAppelReponse
 - SavLogAppelRequeteRequest
 - SavMettreAuRebutRequeteRequest
-- SavNePlusSuivreReponse
 - SavNoterRequeteRequest
 - SavParetoPannes
 - SavPartageQrReponse
@@ -12132,8 +12098,6 @@ components:
 - SlaCreditDu
 - SlaCreditStatutRequeteRequest
 - SlaCreditStatutRequeteStatutEnum
-- SlaDisponibilite
-- SlaDisponibiliteRequest
 - SlaSnapshot
 - SodRule
 - SodRuleRequest
@@ -12330,6 +12294,7 @@ components:
 - TourneeVisiteDue
 - TrackerUsageOk
 - TrackerUsageRequest
+- TraductionsBulkLigneLocaleEnum
 - TraductionsBulkLigneRequest
 - TraductionsBulkRequestRequest
 - TraductionsEffectives
@@ -12422,8 +12387,6 @@ components:
 - UserRequest
 - UserSession
 - UxParametres
-- UxSavedView
-- UxSavedViewRequest
 - VagueConfigurerLiberationCorpsRequest
 - VaguePicking
 - VaguePickingRequest
@@ -12513,14 +12476,14 @@ components:
 - WebsiteLeadPayloadSourceEnum
 - WhatsAppTemplate
 - WhatsAppTemplateCategorieEnum
+- WhatsAppTemplateDecisionRequest
+- WhatsAppTemplateDecisionStatutApprobationEnum
 - WhatsAppTemplateRequest
 - WhatsAppTemplateStatutApprobationEnum
 - WhatsappInboundReponse
 - WhatsappInboundRequeteRequest
 - WorkflowDefinition
 - WorkflowDefinitionRequest
-- WorkflowEtapeAutonome
-- WorkflowEtapeAutonomeRequest
 - WorkflowInstalle
 - WorkflowInstallerRequestRequest
 - WorkflowStepDefinition
@@ -12532,6 +12495,4 @@ components:
 - WorksheetMaintenanceModele
 - WorksheetMaintenanceModeleRequest
 - _CompanyProfileSchema
-- _DecisionGabaritRequest
-- _DecisionGabaritStatutApprobationEnum
 - _ItemDecisionRequest

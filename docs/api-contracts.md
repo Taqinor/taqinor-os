@@ -57,7 +57,7 @@
 - frontend/src/api/coreApi.js :: appliquer -> /api/django/core/bulk-edit/appliquer
     detail:texte, modifies:inconnu
 - frontend/src/api/coreApi.js :: delier -> /api/django/core/dossiers/<>/delier
-    detache:booleen, detail:inconnu
+    detache:booleen, detail:texte
 - frontend/src/api/coreApi.js :: desactiver -> /api/django/core/modules/<>/desactiver
     dependants:inconnu, desactives:inconnu, detail:texte
 - frontend/src/api/coreApi.js :: getPublic -> /api/django/core/dashboards-partages/public/<>
@@ -249,7 +249,7 @@
 - frontend/src/api/installationsApi.js :: getTourneeLivraison -> /api/django/installations/tournee-livraison
     depart:texte, jour:texte, sans_gps:inconnu, total:inconnu, tournee:inconnu
 - frontend/src/api/installationsApi.js :: leverReserveChantier -> /api/django/installations/chantiers/<>/reserves/<>/lever
-    bloquante:inconnu, date_echeance:inconnu, description:texte, detail:texte, id:inconnu, levee_le:inconnu, origine:inconnu, resolution:texte, responsable:texte, statut:inconnu
+    bloquante:inconnu, date_echeance:inconnu, description:texte, id:inconnu, levee_le:inconnu, origine:inconnu, responsable:texte, statut:inconnu
 - frontend/src/api/installationsApi.js :: ouvrirRecettePompage -> /api/django/installations/chantiers/<>/recette-pompage
     detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
@@ -268,10 +268,6 @@
     fleet_pr_pct:inconnu, open_alerts:inconnu, systems:inconnu, systems_active:inconnu, total_kwc:inconnu, total_production_kwh:inconnu, window_days:inconnu
 - frontend/src/api/monitoringApi.js :: getOmMetrics -> /api/django/monitoring/configs/<>/om-metrics
     availability_pct:inconnu, degradation_pct_per_year:inconnu, expected_kwh:inconnu, installation:inconnu, monthly_pr:inconnu, pr_pct:inconnu, production_kwh:inconnu, soiling_suspected:inconnu, window_days:inconnu
-- frontend/src/api/monitoringApi.js :: getPertesCategorisees -> /api/django/monitoring/configs/<>/pertes
-    curtailment_pct:inconnu, installation:inconnu, ombrage_pct:inconnu, panne_pct:inconnu, soiling_pct:inconnu, window_days:inconnu
-- frontend/src/api/monitoringApi.js :: getSlaEcart -> /api/django/monitoring/sla-disponibilite/<>/ecart
-    disponibilite_garantie_pct:inconnu, disponibilite_mesuree_pct:inconnu, ecart_pct:inconnu, has_sla:booleen, installation:inconnu, jours_indisponibilite_excedentaire:inconnu, libelle_indicateur:inconnu, penalite_mad:inconnu, sous_garantie:inconnu, window_days:inconnu
 - frontend/src/api/monitoringApi.js :: getSoiling -> /api/django/monitoring/configs/<>/soiling
     baseline_pr_pct:inconnu, current_pr_pct:inconnu, days_since_cleaning:inconnu, estimated_soiling_loss_pct:inconnu, installation:inconnu, last_cleaning_date:inconnu, reasons:inconnu, recommend_cleaning:inconnu
 - frontend/src/api/monitoringApi.js :: getWarrantyCurve -> /api/django/monitoring/warranties/<>/curve
@@ -298,6 +294,8 @@
     deleted:inconnu, detail:texte
 - frontend/src/api/notificationsApi.js :: unreadCount -> /api/django/notifications/notifications/unread-count
     actions:inconnu, infos:nombre, unread:inconnu
+- frontend/src/api/offlinesyncApi.js :: envoyerLot -> /api/django/offlinesync/operations/batch
+    applied:inconnu, conflicts:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
 - frontend/src/api/offlinesyncApi.js :: resoudreConflit -> /api/django/offlinesync/operations/<>/resoudre
     detail:texte, operation:inconnu, resultat:inconnu
 - frontend/src/api/parametresApi.js :: getEmailTemplates -> /api/django/parametres/email-templates/effective
@@ -364,6 +362,8 @@
     action_mix:inconnu, daily_counts:inconnu, detail:texte, failed_logins:inconnu, from:texte, object_churn:inconnu, to:texte, top_users:inconnu, total_entries:inconnu, window_days:inconnu
 - frontend/src/api/reportingApi.js :: commercialDashboard -> /api/django/reporting/commercial/dashboard
     detail:texte, funnel:inconnu, leaderboard:inconnu, sales_velocity:inconnu, time_in_stage:inconnu, time_to_first_touch:inconnu, total_leads:nombre, total_signes:inconnu, win_rate_pct:inconnu
+- frontend/src/api/reportingApi.js :: deciderApprobationsEnMasse -> /api/django/reporting/approbations-en-attente/decider-en-masse
+    detail:texte, resultats:inconnu
 - frontend/src/api/reportingApi.js :: effectiveDashboardConfig -> /api/django/reporting/dashboard-config/effective
     cards:inconnu, config_id:inconnu, menu_tier:inconnu, source:texte
 - frontend/src/api/reportingApi.js :: executerRapportDefinition -> /api/django/reporting/rapport-definitions/<>/executer
@@ -384,6 +384,8 @@
     badges:inconnu, count:nombre, tuiles:inconnu
 - frontend/src/api/reportingApi.js :: rafraichirClasseur -> /api/django/reporting/classeurs/<>/rafraichir
     cellules:inconnu
+- frontend/src/api/reportingApi.js :: rescheduleCalendar -> /api/django/reporting/calendar/reschedule
+    date:texte, detail:texte, ok:booleen
 - frontend/src/api/reportingApi.js :: savTauxAttache -> /api/django/reporting/insights/sav-taux-attache
     avec_contrat:inconnu, detail:texte, taux_pct:inconnu, total:inconnu
 - frontend/src/api/reportingApi.js :: savTicketsCoutMoyen -> /api/django/reporting/insights/sav-tickets-cout-moyen
@@ -726,6 +728,7 @@
     champs: actif, company, date_creation, id, membres, nb_membres, nom, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: deleteMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
+    langue ∈ {darija, fr}
 - frontend/src/api/crmApi.js :: deleteParrainage -> /api/django/crm/parrainages/<>  [ParrainageSerializer]
     champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
     statut ∈ {converti, en_attente, recompense_versee}
@@ -743,8 +746,10 @@
     champs: actif, company, date_creation, id, membres, nb_membres, nom, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
+    langue ∈ {darija, fr}
 - frontend/src/api/crmApi.js :: getMessageTemplates -> /api/django/crm/message-templates  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
+    langue ∈ {darija, fr}
 - frontend/src/api/crmApi.js :: getParrainages -> /api/django/crm/parrainages  [ParrainageSerializer]
     champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
     statut ∈ {converti, en_attente, recompense_versee}
@@ -949,7 +954,7 @@
 - frontend/src/api/installationsApi.js :: createControleQualiteModele -> /api/django/installations/controle-qualite-modeles  [ControleQualiteModeleSerializer]
     champs: active, date_creation, date_modification, id, items, kit
 - frontend/src/api/installationsApi.js :: createDemandeAchat -> /api/django/installations/demandes-achat  [DemandeAchatSerializer]
-    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: createDemandeAchatLigne -> /api/django/installations/demandes-achat-lignes  [DemandeAchatLigneSerializer]
     champs: demande, designation, id, prix_estime, produit, produit_nom, quantite, total_estime
@@ -1010,7 +1015,7 @@
 - frontend/src/api/installationsApi.js :: deleteColisLigne -> /api/django/installations/colis-lignes/<>  [ColisLigneSerializer]
     champs: colis, controle_ok, designation, id, produit, produit_nom, quantite
 - frontend/src/api/installationsApi.js :: deleteDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
-    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: deleteDemandeAchatLigne -> /api/django/installations/demandes-achat-lignes/<>  [DemandeAchatLigneSerializer]
     champs: demande, designation, id, prix_estime, produit, produit_nom, quantite, total_estime
@@ -1082,13 +1087,13 @@
 - frontend/src/api/installationsApi.js :: getControleQualiteModeles -> /api/django/installations/controle-qualite-modeles  [ControleQualiteModeleSerializer]
     champs: active, date_creation, date_modification, id, items, kit
 - frontend/src/api/installationsApi.js :: getDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
-    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: getDemandeTransfert -> /api/django/installations/demandes-transfert/<>  [DemandeTransfertSerializer]
     champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
     statut ∈ {approuve, demande, execute, refuse}
 - frontend/src/api/installationsApi.js :: getDemandesAchat -> /api/django/installations/demandes-achat  [DemandeAchatSerializer]
-    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: getDemandesTransfert -> /api/django/installations/demandes-transfert  [DemandeTransfertSerializer]
     champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
@@ -1206,7 +1211,7 @@
 - frontend/src/api/installationsApi.js :: updateControleQualiteModele -> /api/django/installations/controle-qualite-modeles/<>  [ControleQualiteModeleSerializer]
     champs: active, date_creation, date_modification, id, items, kit
 - frontend/src/api/installationsApi.js :: updateDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
-    champs: a_revoir_v2, approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, diff_v2, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    champs: approuvee_par, archivee, bon_commande, chantier, created_by, date_archivage, date_besoin, date_creation, date_decision, date_modification, epinglee, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
     priorite ∈ {basse, haute, normale, urgente}
 - frontend/src/api/installationsApi.js :: updateDemandeTransfert -> /api/django/installations/demandes-transfert/<>  [DemandeTransfertSerializer]
     champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
@@ -1225,8 +1230,7 @@
     champs: designation, id, ordre, origine, produit, produit_nom, quantite
     origine ∈ {ajout, kit}
 - frontend/src/api/installationsApi.js :: updateLigneDemontage -> /api/django/installations/ordre-demontage-lignes/<>  [OrdreDemontageLigneSerializer]
-    champs: designation, id, ordre, origine, produit, produit_nom, quantite_attendue, quantite_recuperee
-    origine ∈ {ajout, kit}
+    champs: designation, id, ordre, produit, produit_nom, quantite_attendue, quantite_recuperee
 - frontend/src/api/installationsApi.js :: updateLivraison -> /api/django/installations/livraisons/<>  [LivraisonSerializer]
     champs: adresse_site, cout_transport, created_by, date_creation, date_modification, date_prevue, depot, depot_nom, id, installation, installation_reference, lignes, mode_acheminement, mode_acheminement_display, note, numero_suivi, reference, statut, statut_display, stock_mouvemente, transporteur, transporteur_nom, transporteur_obj_nom
     mode_acheminement ∈ {depot, direct_site}
@@ -1261,10 +1265,6 @@
 - frontend/src/api/monitoringApi.js :: addReading -> /api/django/monitoring/readings  [ProductionReadingSerializer]
     champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
     source ∈ {auto, import, manual}
-- frontend/src/api/monitoringApi.js :: creerAbonnement -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
-    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
-    periodicite ∈ {annuel, mensuel}
-    statut ∈ {actif, resilie, suspendu}
 - frontend/src/api/monitoringApi.js :: deleteCleaning -> /api/django/monitoring/cleanings/<>  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: deleteReading -> /api/django/monitoring/readings/<>  [ProductionReadingSerializer]
@@ -1272,14 +1272,6 @@
     source ∈ {auto, import, manual}
 - frontend/src/api/monitoringApi.js :: deleteWarranty -> /api/django/monitoring/warranties/<>  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
-- frontend/src/api/monitoringApi.js :: emettreCertificatCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
-    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
-- frontend/src/api/monitoringApi.js :: getAbonnements -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
-    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
-    periodicite ∈ {annuel, mensuel}
-    statut ∈ {actif, resilie, suspendu}
-- frontend/src/api/monitoringApi.js :: getCertificatsCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
-    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
 - frontend/src/api/monitoringApi.js :: getCleanings -> /api/django/monitoring/cleanings  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: getConfigForInstallation -> /api/django/monitoring/configs  [MonitoringConfigSerializer]
@@ -1289,8 +1281,6 @@
 - frontend/src/api/monitoringApi.js :: getReadings -> /api/django/monitoring/readings  [ProductionReadingSerializer]
     champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
     source ∈ {auto, import, manual}
-- frontend/src/api/monitoringApi.js :: getSlasDisponibilite -> /api/django/monitoring/sla-disponibilite  [SlaDisponibiliteSerializer]
-    champs: compensation_mad_par_jour_indispo, created_at, disponibilite_garantie_pct, id, installation, note, updated_at
 - frontend/src/api/monitoringApi.js :: getWarranties -> /api/django/monitoring/warranties  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
 - frontend/src/api/notificationsApi.js :: createAnnonce -> /api/django/notifications/annonces  [AnnonceSerializer]
