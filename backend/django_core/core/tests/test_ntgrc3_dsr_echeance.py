@@ -139,7 +139,8 @@ class EndpointTransitionTests(TestCase):
         r2 = self._post(demande, 'prendre-en-charge')
         # ERR-ENF11-FUZZ-CORE — conflit d'état : 409, plus 400.
         self.assertEqual(r2.status_code, 409, r2.data)
-        self.assertIn('statut', r2.data)
+        # Corps documenté `{detail}` (lu par l'écran Confidentialité).
+        self.assertIn('Transition impossible', r2.data['detail'])
 
     def test_lechance_est_exposee_en_lecture_seule(self):
         demande = DataSubjectRequest.objects.create(

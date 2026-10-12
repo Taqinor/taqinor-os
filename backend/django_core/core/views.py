@@ -58,6 +58,7 @@ from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
 from .champs_stricts import ChaineStricte, EntierStrict
+from .conflit_etat import ConflitEtat
 from .mixins import TenantMixin
 from .openapi_erreurs import EXTENSION_CONTENU_JSON, EXTENSION_CORPS_RESSERRE
 from .parametres_requete import choix_ou_400
@@ -1513,15 +1514,16 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         except dsr.TransitionInterdite as exc:
             # NTGRC3 — transition illégale ⇒ réponse explicite (jamais 500),
             # le message nomme les statuts. ERR-ENF11-FUZZ-CORE : 409 (conflit
-            # d'ÉTAT, la requête elle-même est conforme), plus 400.
-            return Response({'statut': str(exc)}, status=409)
+            # d'ÉTAT) au corps documenté `{detail}` (il portait `{statut}`).
+            raise ConflitEtat(str(exc))
         except dsr.EffacementBloque as exc:
             # NTGRC8 — une garde (mise sous séquestre) refuse l'effacement :
             # 409 (conflit d'état) avec le motif, jamais un échec silencieux.
             return Response({'detail': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
 
-    @extend_schema(request=None, responses=DataSubjectRequestSerializer)
+    @extend_schema(request=None, responses={
+        200: DataSubjectRequestSerializer, 409: _DETAIL})
     @action(detail=True, methods=['post'], url_path='prendre-en-charge')
     def prendre_en_charge(self, request, pk=None):
         """NTGRC3 — passe la demande en VÉRIFICATION D'IDENTITÉ.
@@ -1535,7 +1537,7 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             dsr.prendre_en_charge(dsr_request)
         except dsr.TransitionInterdite as exc:
-            return Response({'statut': str(exc)}, status=409)
+            raise ConflitEtat(str(exc))
         return Response(self.get_serializer(dsr_request).data)
 
     @extend_schema(responses=inline_serializer('DsrEnRetard', {
