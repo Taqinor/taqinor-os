@@ -25,7 +25,10 @@ class EsgConfig(AppConfig):
         'label': 'ESG / RSE',
         'icone': 'leaf',
         'depends': ['qhse'],
-        'description': "Reporting ESG/durabilité consolidé (périodes figées, agrégation cross-app, catalogue GRI-lite, rapports PDF/xlsx, trajectoires d'objectifs).",
+        'description': (
+            "Reporting ESG/durabilité consolidé (périodes figées, agrégation cross-app, catalogue GRI-lite, rapports "
+            "PDF/xlsx, trajectoires d'objectifs)."
+        ),
         'categorie': 'Services',
         'parked': True,
     }

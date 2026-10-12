@@ -25,7 +25,9 @@ class HospitalityConfig(AppConfig):
         'label': 'Hôtellerie',
         'icone': 'bed',
         'depends': [],
-        'description': 'Plan des chambres, réservations, check-in/check-out, folio client unifié et housekeeping pour hôtel/riad.',
+        'description': (
+            'Plan des chambres, réservations, check-in/check-out, folio client unifié et housekeeping pour hôtel/riad.'
+        ),
         'categorie': 'Verticaux',
         'parked': True,
     }

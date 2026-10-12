@@ -26,7 +26,11 @@ class ScmConfig(AppConfig):
         'icone': 'trending-up',
         'depends': ['stock'],
         'installable': True,
-        'description': "Prévision de demande saisonnière, événements d'impact, classification ABC, politiques de stock (ROP/stock de sécurité au niveau de service), tableau de bord de réappro consolidé et cycle S&OP mensuel (demande/offre/finance).",
+        'description': (
+            "Prévision de demande saisonnière, événements d'impact, classification ABC, politiques de stock (ROP/stock "
+            "de sécurité au niveau de service), tableau de bord de réappro consolidé et cycle S&OP mensuel "
+            "(demande/offre/finance)."
+        ),
         'categorie': 'Stock',
         'parked': True,
     }

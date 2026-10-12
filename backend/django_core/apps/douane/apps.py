@@ -26,7 +26,10 @@ class DouaneConfig(AppConfig):
         'icone': 'ship',
         'depends': [],
         'installable': True,
-        'description': "Dossiers d'export (incoterm, ports, pièces, statut douanier) — le volet import attend une réconciliation avec installations.DossierImport (FG315, NTLOG10 BLOCKED).",
+        'description': (
+            "Dossiers d'export (incoterm, ports, pièces, statut douanier) — le volet import attend une réconciliation "
+            "avec installations.DossierImport (FG315, NTLOG10 BLOCKED)."
+        ),
         'categorie': 'Stock',
         'parked': True,
     }
