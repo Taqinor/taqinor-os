@@ -1718,12 +1718,14 @@ def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
     pour ``apps.crm`` (dés-acceptation à la sortie de « Signé », retour de la
     commission / du parrainage) sans importer ``apps.ventes.models``.
     ``exclure_id`` écarte un devis (celui qu'on vient de dés-accepter).
-    Sans ``lead_id`` ni ``client_id`` : liste vide (jamais toute la société)."""
-    from .models import Devis
+    Sans ``lead_id`` ni ``client_id`` : liste vide (jamais toute la société).
+
+    VNT22 — re-basé sur :func:`devis_signes_en_vigueur` (le jumeau ne filtre
+    plus ``is_active`` seul : une V1 acceptée dont la révision n'est pas
+    acceptée reste la vente en vigueur, ADEV46)."""
     if company is None or (lead_id is None and client_id is None):
         return []
-    qs = Devis.objects.filter(
-        company=company, statut=Devis.Statut.ACCEPTE, is_active=True)
+    qs = devis_signes_en_vigueur(company)
     if lead_id is not None:
         qs = qs.filter(lead_id=lead_id)
     if client_id is not None:
@@ -1731,3 +1733,57 @@ def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
     if exclure_id is not None:
         qs = qs.exclude(pk=exclure_id)
     return list(qs.order_by('pk'))
+
+
+def devis_signes_en_vigueur(company=None, *, lead_ids=None):
+    """VNT22 (couvre ADEV46, D-ADEV-1) — LES ventes signées en vigueur :
+    QuerySet des devis ACCEPTÉS qui sont le dernier accepté de leur chaîne de
+    RÉVISION (``superseded_by`` — jamais ``version_parent``, partagé avec les
+    variantes et les gammes).
+
+    Une V1 acceptée reste la vente tant que sa révision n'est pas acceptée
+    (V2 brouillon, envoyée, refusée, expirée) ; elle sort dès qu'une version
+    suivante est acceptée — ou l'A ÉTÉ (preuve ``DevisSignature`` gardée par
+    la dés-acceptation : V2 dés-acceptée ⇒ aucune version de la chaîne en
+    vigueur). Un devis archivé hors révision (``is_active`` faux, aucun
+    remplaçant) n'est pas une vente en vigueur.
+
+    ``company=None`` = toutes sociétés (superutilisateur, ``co={}``) ; les
+    chaînes ne traversent jamais une société (FK de révision intra-société).
+    ``lead_ids`` restreint aux leads donnés."""
+    from django.db.models import Q
+
+    from .models import Devis, DevisSignature
+    base = Devis.objects.filter(statut=Devis.Statut.ACCEPTE)
+    if company is not None:
+        base = base.filter(company=company)
+    if lead_ids is not None:
+        base = base.filter(lead_id__in=list(lead_ids))
+    base = base.filter(Q(is_active=True) | Q(superseded_by__isnull=False))
+    revises = dict(base.filter(superseded_by__isnull=False)
+                   .values_list('pk', 'superseded_by_id'))
+    if not revises:
+        return base
+    suivant, statut = {}, {}
+    frontiere = set(revises.values())
+    while frontiere:
+        lus = Devis.objects.filter(pk__in=frontiere).values_list(
+            'pk', 'superseded_by_id', 'statut')
+        frontiere = set()
+        for pk, remplacant, st in lus:
+            suivant[pk], statut[pk] = remplacant, st
+            if remplacant and remplacant not in statut:
+                frontiere.add(remplacant)
+    signes = set(DevisSignature.objects.filter(
+        devis_id__in=list(statut)).values_list('devis_id', flat=True))
+    exclus = []
+    for pk, remplacant in revises.items():
+        vus = {pk}
+        while remplacant and remplacant not in vus:
+            if (statut.get(remplacant) == Devis.Statut.ACCEPTE
+                    or remplacant in signes):
+                exclus.append(pk)
+                break
+            vus.add(remplacant)
+            remplacant = suivant.get(remplacant)
+    return base.exclude(pk__in=exclus)
