@@ -258,6 +258,16 @@ def _exiger_objet(request):
     return request.data
 
 
+def _corps_valide(schema, data):
+    """Valide ``data`` contre un corps de schéma inline (400 sinon).
+
+    ``inline_serializer`` renvoie une INSTANCE (pas une classe) : l'appeler
+    levait ``TypeError`` (500) — on ré-instancie sa classe avec ``data``."""
+    corps = type(schema)(data=data)
+    corps.is_valid(raise_exception=True)
+    return corps.validated_data
+
+
 def _texte_ou_400(valeur, nom):
     """Valeur optionnelle qui doit être une vraie chaîne (400 nommant le
     champ sinon) — ``.strip()`` sur un nombre/une liste levait un 500."""
@@ -580,9 +590,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
         _exiger_objet(request)
         # Corps typé selon le schéma (``next`` objet ou nul, dates valides) :
         # avant, une suite illisible était avalée et la clôture répondait 200.
-        corps = _ACTIVITE_FAITE_CORPS(data=request.data)
-        corps.is_valid(raise_exception=True)
-        suite = corps.validated_data.get('next')
+        suite = _corps_valide(
+            _ACTIVITE_FAITE_CORPS, request.data).get('next')
         chained = None
         suggestion = None
         first_close = not act.done
@@ -655,9 +664,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         # ``snoozed_until`` : date ISO ou ``null`` — ``""``, ``0`` ou ``false``
         # annulaient le report en silence alors que le schéma les refuse.
-        corps = _SNOOZE_CORPS(data=request.data)
-        corps.is_valid(raise_exception=True)
-        d = corps.validated_data.get('snoozed_until')
+        d = _corps_valide(_SNOOZE_CORPS, request.data).get('snoozed_until')
         snooze_activity(act, d, trigger)
         return Response(ActivitySerializer(act).data)
 
@@ -685,9 +692,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
         if not isinstance(source, str) or source not in appro._SOURCE_LOADERS:
             return Response({'detail': 'Source ou id invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        corps = _SNOOZE_APPRO_CORPS(data=request.data)
-        corps.is_valid(raise_exception=True)
-        obj_id = corps.validated_data['id']
+        corps = _corps_valide(_SNOOZE_APPRO_CORPS, request.data)
+        obj_id = corps['id']
         matches = [
             it for it in appro._SOURCE_LOADERS[source](company)
             if str(it.get('id')) == str(obj_id)]
@@ -701,7 +707,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
         from apps.notifications.services import (
             snooze_approbation_item, unsnooze_approbation_item,
         )
-        d = corps.validated_data.get('snoozed_until')
+        d = corps.get('snoozed_until')
         if d:
             snooze_approbation_item(company, request.user, source, obj_id, d)
         else:
