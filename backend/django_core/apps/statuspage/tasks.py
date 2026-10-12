@@ -8,12 +8,15 @@ jamais de statut/texte narratif généré automatiquement (seul l'enum
 opérationnel/dégradé/panne est dérivé ; le récit d'un incident reste toujours
 rédigé par un humain, cf. ``models.IncidentPublic``).
 """
+import logging
 from celery import shared_task
 from django.utils import timezone
 
 from core.health import STATUS_DEGRADED, STATUS_DOWN, STATUS_OK, check_services
 
 from .models import ComponentStatus, ComponentStatusLog, UptimeDayBucket
+
+logger = logging.getLogger(__name__)
 
 # Composants PUBLICS vendus au client (jamais les noms de sonde internes bruts
 # tels que « database »/« broker », qui exposeraient l'architecture). Chaque
@@ -58,7 +61,7 @@ def _logger_changement_statut(nom, region, ancien, nouveau):
             company=None, composant=nom, region=region,
             ancien_statut=ancien or '', nouveau_statut=nouveau)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("tasks._logger_changement_statut : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _accumuler_uptime_jour(nom, region, statut, now):
@@ -86,7 +89,7 @@ def _accumuler_uptime_jour(nom, region, statut, now):
             'echantillons_operationnels', 'pct_disponible_jour', 'updated_at',
         ])
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("tasks._accumuler_uptime_jour : erreur ignorée (mode dégradé)", exc_info=True)
 
 
 def _statut_ia_public():
@@ -97,11 +100,13 @@ def _statut_ia_public():
     try:
         from core.ai.registry import is_capability_configured
     except Exception:  # noqa: BLE001 — module IA absent/KO, jamais bloquant
+        logger.warning("tasks._statut_ia_public : erreur ignorée (mode dégradé)", exc_info=True)
         return ComponentStatus.Statut.OPERATIONAL
     for capability in ('llm', 'ocr', 'stt'):
         try:
             is_capability_configured(capability)
         except Exception:  # noqa: BLE001 — best-effort
+            logger.warning("tasks._statut_ia_public : erreur ignorée (mode dégradé)", exc_info=True)
             return ComponentStatus.Statut.DEGRADED
     return ComponentStatus.Statut.OPERATIONAL
 
@@ -116,6 +121,7 @@ def rafraichir_composants():
     try:
         services = check_services()
     except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning("tasks.rafraichir_composants : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
 
     par_nom = {s['name']: s['status'] for s in services}
@@ -143,6 +149,7 @@ def rafraichir_composants():
                 _logger_changement_statut(
                     nom, PUBLIC_REGION_DEFAUT, ancien, statut)
         except Exception:  # noqa: BLE001 — un composant en échec n'affecte pas les autres
+            logger.warning("tasks.rafraichir_composants : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         _accumuler_uptime_jour(nom, PUBLIC_REGION_DEFAUT, statut, now)
 
@@ -161,7 +168,7 @@ def rafraichir_composants():
             _logger_changement_statut(
                 'IA', PUBLIC_REGION_DEFAUT, ancien_ia, statut_ia)
     except Exception:  # noqa: BLE001
-        pass
+        logger.warning("tasks.rafraichir_composants : erreur ignorée (mode dégradé)", exc_info=True)
     _accumuler_uptime_jour('IA', PUBLIC_REGION_DEFAUT, statut_ia, now)
 
     return maj

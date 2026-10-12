@@ -641,6 +641,9 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                     cible = manager.filter(
                         company=request.user.company, **{champ: valeur}).first()
                 except Exception:  # noqa: BLE001 — champ inconnu sur ce modèle
+                    logger.warning(
+                        "views.FavoriUtilisateurViewSet.importer : erreur ignorée (mode dégradé)",
+                        exc_info=True)
                     cible = None
             if cible is None:
                 non_resolues += 1

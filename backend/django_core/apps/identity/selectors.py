@@ -7,6 +7,10 @@ moindre incertitude renvoie « ne pas bloquer », pour ne jamais casser un login
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def is_break_glass_active(user) -> bool:
     """Vrai si ``user`` bénéficie d'un accès break-glass en cours (NTSEC22).
@@ -24,6 +28,7 @@ def is_break_glass_active(user) -> bool:
 
         from .models import BreakGlassGrant
     except Exception:
+        logger.warning("selectors.is_break_glass_active : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     try:
         now = timezone.now()
@@ -34,6 +39,7 @@ def is_break_glass_active(user) -> bool:
             active_jusqu_a__gt=now,
         ).exists()
     except Exception:
+        logger.warning("selectors.is_break_glass_active : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
 
@@ -64,4 +70,5 @@ def local_password_login_blocked(user) -> bool:
             company_id=company_id, actif=True, enforce_sso=True,
         ).exists()
     except Exception:
+        logger.warning("selectors.local_password_login_blocked : erreur ignorée (mode dégradé)", exc_info=True)
         return False

@@ -110,6 +110,7 @@ def record(action, *, instance=None, content_type=None, object_id=None,
                 try:
                     object_repr = str(instance)
                 except Exception:
+                    logger.warning("recorder.record : erreur ignorée (mode dégradé)", exc_info=True)
                     object_repr = ''
             if company is None:
                 company = _company_of(instance)

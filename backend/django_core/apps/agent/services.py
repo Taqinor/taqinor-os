@@ -20,6 +20,7 @@ alimenté par les apps qui en ont besoin, jamais l'inverse).
 """
 from __future__ import annotations
 
+import logging
 import hashlib
 import hmac
 import json
@@ -30,6 +31,8 @@ from django.conf import settings
 from django.utils import timezone
 
 from .models import AgentActionLog
+
+logger = logging.getLogger(__name__)
 
 # Registre des handlers de rollback, indexé par action_key. Chaque handler est
 # une fonction ``(log: AgentActionLog) -> str`` qui inverse l'effet de
@@ -133,6 +136,7 @@ def log_confirmed_action(
         try:
             object_repr = str(resulted_object)[:255]
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning("services.log_confirmed_action : erreur ignorée (mode dégradé)", exc_info=True)
             object_repr = ''
 
     return AgentActionLog.objects.create(

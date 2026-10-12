@@ -7,6 +7,7 @@ donc rien ne ralentit ni n'interfère avec ces contextes. Best-effort : aucune
 exception ne remonte. Les changements de statut sont détectés via un cache posé
 en ``pre_save`` (ancienne valeur) puis comparé en ``post_save``.
 """
+import logging
 from django.contrib.auth.signals import user_login_failed
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
@@ -14,6 +15,8 @@ from django.dispatch import receiver
 from . import recorder
 from .models import AuditLog
 from .modeles_suivis import MODELES_SANS_UPDATE_GENERIQUE, TRACKED_MODELS
+
+logger = logging.getLogger(__name__)
 
 # ADOC129 — jalon portail : sa correction (libellé/date/atteint) est tracée
 # ancien→nouveau ; c'est la timeline lue par le client (D-ADOC-3).
@@ -48,7 +51,7 @@ def _status_display(instance, field):
         try:
             return getter()
         except Exception:
-            pass
+            logger.warning("signals._status_display : erreur ignorée (mode dégradé)", exc_info=True)
     return getattr(instance, field, '')
 
 
@@ -98,6 +101,7 @@ def _on_pre_save(sender, instance, **kwargs):
                 field, flat=True).first()
             instance._audit_old_status = old
         except Exception:
+            logger.warning("signals._on_pre_save : erreur ignorée (mode dégradé)", exc_info=True)
             instance._audit_old_status = None
     # Snapshot complet du ROW (toutes les colonnes concrètes) — UNE requête
     # par sauvegarde, réutilisée en post_save pour le diff automatique.
@@ -105,6 +109,7 @@ def _on_pre_save(sender, instance, **kwargs):
         instance._audit_old_values = sender.objects.filter(
             pk=instance.pk).values().first()
     except Exception:
+        logger.warning("signals._on_pre_save : erreur ignorée (mode dégradé)", exc_info=True)
         instance._audit_old_values = None
 
 
@@ -174,7 +179,7 @@ def connect():
     for app_label, model_name in TRACKED_MODELS:
         try:
             model = django_apps.get_model(app_label, model_name)
-        except Exception:
+        except LookupError:  # modèle suivi absent de l'installation
             continue
         post_save.connect(_on_post_save, sender=model,
                           dispatch_uid=f'audit_save_{app_label}_{model_name}')

@@ -223,7 +223,7 @@ def activate_optional_line(*, devis, ligne_id, user=None):
             f'Option activée par le client : « {ligne.designation} » '
             '— désormais incluse dans le total.')
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("cycle_vie.activate_optional_line : erreur ignorée (mode dégradé)", exc_info=True)
     return ligne
 
 

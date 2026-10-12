@@ -6,11 +6,14 @@ supprime les lignes d'audit plus anciennes que la rétention EFFECTIVE
 suppression, on tente un archivage write-once best-effort (réutilise le service
 ``ged`` si disponible). Idempotent : ``--dry-run`` ne supprime rien.
 """
+import logging
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
 
 from apps.audit.selectors import effective_retention_days
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -25,6 +28,7 @@ class Command(BaseCommand):
         try:
             from apps.parametres.models import CompanyProfile
         except Exception:
+            logger.warning("purge_audit_log.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
             self.stdout.write('CompanyProfile indisponible.')
             return
 
@@ -68,4 +72,7 @@ class Command(BaseCommand):
             # (garanti en amont) — ce hook reste volontairement best-effort.
             return
         except Exception:
+            logger.warning(
+                "purge_audit_log.Command._archive_best_effort : erreur ignorée (mode dégradé)",
+                exc_info=True)
             return

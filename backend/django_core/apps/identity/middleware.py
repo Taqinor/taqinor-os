@@ -103,6 +103,7 @@ class NetworkPolicyMiddleware:
             from authentication.cookie_auth import CookieJWTAuthentication
             result = CookieJWTAuthentication().authenticate(request)
         except Exception:  # noqa: BLE001 - jeton invalide ⇒ pas de blocage
+            logger.debug("middleware.NetworkPolicyMiddleware._resolve : jeton refusé", exc_info=True)
             return None, None
         if result is None:
             return None, None
