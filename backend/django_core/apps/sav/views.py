@@ -1341,6 +1341,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # ENF11 : `motif` est déclaré chaîne — un objet/nombre n'est plus avalé.
         if not isinstance(request.data.get('motif', ''), str):
             return Response({'motif': 'Une chaîne est attendue.'}, status=400)
+        # ENF11 : `statut`/`priorite` sont publiés énumérés — une valeur fournie
+        # hors énumération est refusée, même quand l'opération ne la lit pas.
+        for cle in ('statut', 'priorite'):
+            valeur = request.data.get(cle)
+            if valeur not in (None, '') and (
+                    not isinstance(valeur, str)
+                    or valeur not in self._ACTIONS_GROUPEES_VALEURS[cle]):
+                return Response({cle: 'Valeur inconnue.'}, status=400)
 
         # ASAV25 — seuls les tickets VISIBLES (portée de l'utilisateur) sont
         # traités ; les autres ids sortent en échec « introuvable », sans

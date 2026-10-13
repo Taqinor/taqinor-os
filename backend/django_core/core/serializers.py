@@ -431,7 +431,7 @@ def _champ_formulaire_valide(champ):
     if not isinstance(champ, dict):
         return False
     nom, ref = champ.get('nom'), champ.get('ref')
-    return ((isinstance(nom, str) and nom != '')
+    return ((isinstance(nom, str) and nom.strip() != '')
             or (isinstance(ref, int) and not isinstance(ref, bool)
                 and ref >= 1))
 

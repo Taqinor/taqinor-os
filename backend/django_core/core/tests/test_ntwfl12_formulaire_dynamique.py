@@ -48,7 +48,9 @@ class FormulaireSchemaPublieTests(TestCase):
     def test_hors_schema_refuse(self):
         for donnees in ({'schema': None}, {'champs_conditionnels': None},
                         {'schema': [{'nom': 5}]}, {'schema': [{'ref': True}]},
-                        {'schema': [{'ref': 0}]}, {'schema': ['A']}):
+                        {'schema': [{'ref': 0}]}, {'schema': ['A']},
+                        # CI #985 (api-fuzz) : un nom fait d'espaces (\f) était avalé.
+                        {'schema': [{'nom': '\f'}]}, {'schema': [{'nom': '  '}]}):
             self.assertFalse(self._valide(**donnees), donnees)
 
     def test_types_stricts_refuses(self):
