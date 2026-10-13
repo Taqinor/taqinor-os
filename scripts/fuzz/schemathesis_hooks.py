@@ -91,12 +91,12 @@ FK_IDS = {
     for nom, ids in (_ETAT.get('fk_ids') or {}).items() if ids
 }
 _FK_IDS_SET = {nom: set(ids) for nom, ids in FK_IDS.items()}
-# ENF11 (stock/achats) — règles PAR CHEMIN (prepare_fuzz_env.REGLES_PAR_CHEMIN) :
-# sous /stock/ et /achats/, ``lot`` = stock.LotEntrepot (pas ventes.LotDevis)
-# et ``retour`` = achats.RetourFournisseur. Champs de PREMIER niveau du corps
-# seulement, appliquées APRÈS la table par nom (elles la corrigent).
+# ENF11 — règles par chemin (prepare_fuzz_env.REGLES_PAR_CHEMIN) : pour un
+# gabarit qui correspond, le champ prend les ids du BON modèle (``lot`` de
+# stock = LotEntrepot, pas ventes.LotDevis). Plus tardive = prioritaire.
 FK_REGLES = [
-    (re.compile(r['motif']), tuple(r['champs']), list(r['ids']))
+    (re.compile(r['motif']), tuple(r['champs']), list(r['ids']),
+     set(r['ids']), r.get('max'))
     for r in (_ETAT.get('fk_ids_chemin') or []) if r.get('ids')
 ]
 
@@ -212,55 +212,101 @@ def _neutraliser_politique_reseau(case):
         corps['mode'] = _MODE_SUR
 
 
-def _id_connu(nom, valeur):
+# ENF11 (records) — {« app.modele »: ids} : la cible ``{model, id}`` d'une
+# activité / pièce jointe / étiquette / abonné désigne une ligne RÉELLE.
+CIBLES = {m: list(ids) for m, ids in (_ETAT.get('cibles') or {}).items()
+          if ids}
+
+
+def _cible_reelle(objet):
+    """``{model, id}`` → un modèle cible qui a des lignes et l'un de ses ids
+    (le modèle tiré reste dans l'énumération du schéma)."""
+    modele = objet.get('model')
+    if not CIBLES or not isinstance(modele, str) or 'id' not in objet:
+        return
+    if modele not in CIBLES:
+        modele = sorted(CIBLES)[zlib.crc32(modele.encode()) % len(CIBLES)]
+        objet['model'] = modele
+    ids = CIBLES[modele]
+    objet['id'] = _id_connu(objet['id'], ids, set(ids), texte=True)
+
+
+def _table_fk(chemin):
+    """{champ: (ids, ensemble, longueur max)} des règles de ``chemin``."""
+    table = {}
+    for motif, champs, ids, ensemble, maxi in FK_REGLES:
+        if motif.search(chemin or ''):
+            for champ in champs:
+                table[champ] = (ids, ensemble, maxi)
+    return table
+
+
+def _entree(nom, table):
+    if nom in table:
+        return table[nom]
+    if nom in FK_IDS:
+        return FK_IDS[nom], _FK_IDS_SET[nom], None
+    return None
+
+
+def _id_connu(valeur, ids, connus, texte=False):
+    if texte and isinstance(valeur, str) and valeur.isdigit():
+        choisi = _id_connu(int(valeur), ids, connus)
+        return str(choisi)
     if isinstance(valeur, bool) or not isinstance(valeur, int):
         return valeur
-    if valeur in _FK_IDS_SET[nom]:
+    if valeur in connus:
         return valeur
-    ids = FK_IDS[nom]
     return ids[valeur % len(ids)]
 
 
-def _remplacer_ids_fk(objet):
+def _remplacer_valeur(valeur, entree, texte=False):
+    ids, connus, maxi = entree
+    if isinstance(valeur, list):
+        nouvelle = [_id_connu(v, ids, connus, texte) for v in valeur]
+        return nouvelle[:maxi] if maxi else nouvelle
+    return _id_connu(valeur, ids, connus, texte)
+
+
+def _remplacer_ids_fk(objet, table=None):
     """Remplace, dans ``objet`` (dict), les FK inconnues par des ids réels.
 
     ENF11 (achats) — récursif dans les listes d'objets : ``lignes[].produit``
     d'un BCF, ``lignes[].ligne_commande`` d'une réception… sont des FK comme
     les champs de premier niveau, et sans cela chaque création à lignes
-    imbriquées partait avec « Clé primaire 0 non valide »."""
+    imbriquées partait avec « Clé primaire 0 non valide ». ENF11 (records) —
+    récursif aussi dans les objets (``next.activity_type`` de ``done``)."""
+    table = table or {}
     for nom, valeur in list(objet.items()):
-        if nom in FK_IDS and not isinstance(valeur, dict):
-            if isinstance(valeur, list):
-                objet[nom] = [_id_connu(nom, v) for v in valeur]
-            else:
-                objet[nom] = _id_connu(nom, valeur)
+        entree = _entree(nom, table)
+        if entree is not None and not isinstance(valeur, dict):
+            objet[nom] = _remplacer_valeur(valeur, entree)
+        elif isinstance(valeur, dict):
+            _remplacer_ids_fk(valeur, table)
         elif isinstance(valeur, list):
             for element in valeur:
                 if isinstance(element, dict):
-                    _remplacer_ids_fk(element)
+                    _remplacer_ids_fk(element, table)
 
 
 def _ids_fk_connus(case):
     meta = case.meta
     if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
         return
+    table = _table_fk(case.operation.path)
     corps = case.body
-    if not isinstance(corps, dict):
-        return
-    _remplacer_ids_fk(corps)
-    _ids_par_chemin(case.operation.path, corps)
-
-
-def _ids_par_chemin(chemin, corps):
-    for motif, champs, ids in FK_REGLES:
-        if not motif.search(chemin or ''):
-            continue
-        for nom in champs:
-            valeur = corps.get(nom)
-            if isinstance(valeur, bool) or not isinstance(valeur, int):
-                continue
-            if valeur not in ids:
-                corps[nom] = ids[valeur % len(ids)]
+    if isinstance(corps, dict):
+        _cible_reelle(corps)
+        _remplacer_ids_fk(corps, table)
+    # ENF11 — les FK de la QUERY (``?installation=``, ``?client=``, ``?lot=``)
+    # aussi : un GET filtré sur un id inexistant répondait 400.
+    query = getattr(case, 'query', None)
+    if isinstance(query, dict):
+        _cible_reelle(query)
+        for nom, valeur in list(query.items()):
+            entree = _entree(nom, table)
+            if entree is not None:
+                query[nom] = _remplacer_valeur(valeur, entree, texte=True)
 
 
 # ── 4. Ids RÉELS pour les paramètres de chemin (ENF11) ─────────────────
