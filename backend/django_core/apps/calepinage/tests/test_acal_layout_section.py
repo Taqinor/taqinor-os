@@ -185,6 +185,15 @@ class LayoutSectionApiTest(BaseApiCalepinage):
         self.assertEqual(apres['roof_layout'], D0)
         self.assertEqual(self.calepinage.versions.count(), versions)
 
+    def test_post_layout_archive_sans_if_match_409_avant_le_428(self):
+        # L'ÉTAT (archivé) est refusé avant la précondition : l'en-tête
+        # If-Match est donc déclaré non requis dans le schéma (api-fuzz).
+        from django.utils import timezone
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            archive_le=timezone.now())
+        reponse = self._poster_layout(copy.deepcopy(D1))
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+
     def test_post_layout_etag_vide_est_le_jeton_d_un_document_vide(self):
         # Un document encore vide n'a pas d'empreinte : ``If-Match: ""``.
         neuf = Calepinage.objects.create(

@@ -178,3 +178,33 @@ class ActionApiTests(AssemblageBase):
         self.assertEqual(resp.data['photo_toit']['texture_calage'],
                          {'coins': coins})
         self.assertEqual(self.visite().texture_calage, {'coins': coins})
+
+    def test_calage_sans_cle_refuse_au_lieu_d_effacer(self):
+        # ERR-ENF11-FUZZ-VISITES : l'absence de la clé effaçait le calage.
+        url = f'/api/django/visites/visites/{self.visite_id}/calage/'
+        coins = [[33.5731, -7.5898], [33.5732, -7.5898],
+                 [33.5732, -7.5897], [33.5731, -7.5897]]
+        self.api.patch(url, {'texture_calage': {'coins': coins}}, format='json')
+        for corps in ({}, {'autre': 1}):
+            resp = self.api.patch(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, resp.data)
+            self.assertIn('texture_calage', resp.data['erreurs'])
+        self.assertEqual(self.visite().texture_calage, {'coins': coins})
+        resp = self.api.patch(url, {'texture_calage': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(self.visite().texture_calage)
+
+    def test_schema_des_corps_de_visite_est_exact(self):
+        # Vocabulaire fermé publié (catégories, slots) et calage à 4 coins.
+        from apps.visites import visite_checklist as checklist
+        from apps.visites.views import (
+            CalageSerializer, MesuresSerializer, PhotoVisiteSerializer,
+        )
+        categories = MesuresSerializer().fields['categorie'].choices
+        self.assertIn('toiture', categories)
+        slots = PhotoVisiteSerializer().fields['slot_code'].choices
+        self.assertTrue(checklist.codes_slots(checklist.GABARIT_TOITURE)
+                        <= set(slots))
+        calage = CalageSerializer().fields['texture_calage']
+        self.assertTrue(calage.allow_null)
+        self.assertEqual(calage.fields['coins'].min_length, 4)

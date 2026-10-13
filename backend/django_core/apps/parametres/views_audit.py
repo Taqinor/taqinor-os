@@ -17,6 +17,11 @@ from .models import SettingsAuditLog
 from .serializers import SettingsAuditLogSerializer
 
 
+#: ENF11 — borne haute d'un entier SQL (``offset``/``user``) : au-delà, la
+#: requête levait une erreur de base (500) ; la borne est publiée au schéma.
+ENTIER_MAX = 2147483647
+
+
 def _entier(request, cle, defaut, mini=0):
     """APAR32 — paramètre entier ≥ ``mini`` ; illisible ⇒ ValueError (400)."""
     brut = request.GET.get(cle)
@@ -26,7 +31,7 @@ def _entier(request, cle, defaut, mini=0):
         valeur = int(brut)
     except (TypeError, ValueError):
         raise ValueError(cle)
-    if valeur < mini:
+    if valeur < mini or valeur > ENTIER_MAX:
         raise ValueError(cle)
     return valeur
 
@@ -50,15 +55,23 @@ def _q(nom, type_, description, **kw):
         description=description, **kw)
 
 
+def _entier_borne(nom, description, mini):
+    """Paramètre entier dont les bornes (``mini`` … ``ENTIER_MAX``) sont celles
+    que la vue applique : un ``limit=0`` ou un ``offset=-1`` « conforme » au
+    schéma sans bornes était refusé (400)."""
+    return _q(nom, {'type': 'integer', 'minimum': mini,
+                    'maximum': ENTIER_MAX}, description)
+
+
 @extend_schema(
     parameters=[
         _q('section', OpenApiTypes.STR, 'Section du journal.'),
         _q('field', OpenApiTypes.STR, 'Champ modifié.'),
-        _q('user', OpenApiTypes.INT, "Identifiant de l'auteur."),
+        _entier_borne('user', "Identifiant de l'auteur.", 0),
         _q('date_debut', OpenApiTypes.DATE, 'Date de début (incluse).'),
         _q('date_fin', OpenApiTypes.DATE, 'Date de fin (incluse).'),
-        _q('limit', OpenApiTypes.INT, 'Taille de page (1 à 500, défaut 100).'),
-        _q('offset', OpenApiTypes.INT, 'Décalage (défaut 0).'),
+        _entier_borne('limit', 'Taille de page (1 à 500, défaut 100).', 1),
+        _entier_borne('offset', 'Décalage (défaut 0).', 0),
     ],
     responses=inline_serializer('JournalAuditPage', {
         'count': serializers.IntegerField(),

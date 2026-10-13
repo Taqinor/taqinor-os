@@ -50,6 +50,13 @@ class PlaceholdersMessagesTests(TestCase):
                 self.assertEqual(obj.corps_fr, corps_fr)
                 self.assertEqual(obj.corps_darija, corps_darija)
 
+    def test_patch_non_servi(self):
+        # ENF11 — l'écriture identifie la ligne par ``cle`` : PUT seul (le
+        # schéma annonçait un PATCH sans ``cle`` que le serveur refusait).
+        r = self.api.patch(URL, {'cle': 'facture', 'corps_fr': 'x'},
+                           format='json')
+        self.assertEqual(r.status_code, 405)
+
     def test_lien_rdv_accepte_devis(self):
         for cle in ('devis_unique', 'devis_multi_entete', 'devis_multi_ligne'):
             with self.subTest(cle=cle):

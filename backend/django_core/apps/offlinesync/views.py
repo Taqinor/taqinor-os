@@ -17,8 +17,10 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.records.champs_stricts import ChaineBornee
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.mixins import TenantMixin
+from core.parametres_requete import choix_ou_400
 
 from . import services
 from rest_framework.generics import GenericAPIView
@@ -32,19 +34,15 @@ from rest_framework import serializers
 from rest_framework.parsers import JSONParser
 
 
-class _ChaineStricte(serializers.CharField):
-    """Chaîne JSON uniquement : DRF coerce sinon 12 -> « 12 » et accepte une
-    requête que le schéma OpenAPI (string) déclare invalide (ENF11)."""
-
-    def to_internal_value(self, data):
-        if not isinstance(data, str):
-            self.fail('invalid')
-        return super().to_internal_value(data)
+# Chaîne JSON uniquement (DRF coerce sinon 12 -> « 12 »), longueur BRUTE bornée
+# (ENF11 : le schéma OpenAPI déclare string + maxLength).
+_ChaineStricte = ChaineBornee
 
 
 class OperationHorsLigneSerializer(serializers.Serializer):
-    client_op_id = _ChaineStricte()
-    op_type = _ChaineStricte()
+    # Bornes = colonnes du journal (64 / 60) : plus long -> DataError à l'écriture.
+    client_op_id = _ChaineStricte(max_length=64)
+    op_type = _ChaineStricte(max_length=60)
     payload = serializers.DictField(required=False, allow_null=True)
     queued_at = _ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
@@ -103,8 +101,10 @@ class OfflineSyncBatchView(GenericAPIView):
 
 
 @extend_schema_view(list=extend_schema(parameters=[
-    OpenApiParameter('statut', OpenApiTypes.STR, required=False),
-    OpenApiParameter('module', OpenApiTypes.STR, required=False)]))
+    OpenApiParameter('statut', OpenApiTypes.STR, required=False,
+                     enum=list(OfflineOperation.Statut.values)),
+    OpenApiParameter('module', OpenApiTypes.STR, required=False,
+                     enum=list(OfflineOperation.Module.values))]))
 class OfflineOperationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Journal des opérations hors-ligne de la société (lecture seule)."""
 
@@ -115,10 +115,13 @@ class OfflineOperationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        statut = self.request.query_params.get('statut')
+        # Énumérations publiées : une autre valeur -> 400 (liste vide avant).
+        statut = choix_ou_400(
+            self.request, 'statut', list(OfflineOperation.Statut.values))
         if statut:
             qs = qs.filter(statut=statut)
-        module = self.request.query_params.get('module')
+        module = choix_ou_400(
+            self.request, 'module', list(OfflineOperation.Module.values))
         if module:
             qs = qs.filter(module=module)
         return qs

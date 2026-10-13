@@ -46,8 +46,9 @@ from django.db import models
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from .champs_stricts import BooleenStrict, ChaineStricte
-from .parseurs import ObjetJSON
+from .champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsMixin
+from .conflit_etat import ConflitEtat
+from .parseurs import ListeJSON, ObjetJSON
 
 from .models import (
     ApiUsagePlan,
@@ -313,6 +314,18 @@ class WorkflowStepDefinitionAutonomeSerializer(WorkflowStepDefinitionSerializer)
         extra_kwargs = {'definition': {'required': True}}
 
 
+#: ERR-ENF11-FUZZ-CORE — règles NTWFL9 publiées sur le corps des écritures
+#: de ``workflow-definitions`` (``core.openapi_erreurs.EXTENSION_CORPS_RESSERRE``) :
+#: ``steps`` fourni = au moins une étape, et une étape déclarée MANUELLE
+#: désigne un rôle requis non blanc ; à la CRÉATION ``steps`` est requis.
+ETAPES_PUBLIEES = {'properties': {'steps': {'minItems': 1, 'items': {'anyOf': [
+    {'properties': {'type_approbation': {'enum': ['auto', 'role']}}},
+    {'required': ['role_requis'],
+     'properties': {'role_requis': {'type': 'string', 'pattern': r'\S'}}},
+]}}}}
+CREATION_PUBLIEE = {**ETAPES_PUBLIEES, 'required': ['steps']}
+
+
 class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
     ses étapes imbriquées.
@@ -400,6 +413,29 @@ class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mode
         return code
 
 
+#: ERR-ENF11-FUZZ-CORE — un champ de formulaire porte un « nom » non vide OU
+#: une « ref » (id de champ réutilisable >= 1) : schéma publié de l'élément.
+_ITEM_FORMULAIRE = {
+    'type': 'object', 'additionalProperties': True,
+    'anyOf': [
+        {'required': ['nom'],
+         'properties': {'nom': {'type': 'string', 'minLength': 1}}},
+        {'required': ['ref'],
+         'properties': {'ref': {'type': 'integer', 'minimum': 1}}},
+    ],
+}
+
+
+def _champ_formulaire_valide(champ):
+    """La règle de ``_ITEM_FORMULAIRE``, côté serveur."""
+    if not isinstance(champ, dict):
+        return False
+    nom, ref = champ.get('nom'), champ.get('ref')
+    return ((isinstance(nom, str) and nom.strip() != '')
+            or (isinstance(ref, int) and not isinstance(ref, bool)
+                and ref >= 1))
+
+
 class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL1 — matrice d'approbation d'entreprise unifiée.
 
@@ -415,6 +451,9 @@ class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.Mode
     volontairement non paginée car petite."""
 
     avertissements = serializers.SerializerMethodField()
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    chaine_paliers = ListeJSON(element=dict, required=False)
 
     class Meta:
         model = MatriceApprobation
@@ -466,7 +505,8 @@ class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.Mode
         return attrs
 
 
-class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class FormulaireDefinitionSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                     serializers.ModelSerializer):
     """NTWFL12 — formulaire dynamique rattachable à une étape de workflow.
 
     ``company`` imposée côté serveur (``TenantMixin``). ``schema``/
@@ -474,6 +514,10 @@ class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mo
     frontend — ``FormBuilder.jsx``/``DynamicForm.jsx`` — porte la
     validation de FORME détaillée ; ici, une vérification minimale de
     structure suffit à éviter un schéma manifestement cassé)."""
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    schema = ListeJSON(element=dict, items=_ITEM_FORMULAIRE, required=False)
+    champs_conditionnels = ObjetJSON(required=False)
 
     class Meta:
         model = FormulaireDefinition
@@ -494,7 +538,7 @@ class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mo
             # partagée) n'a pas son propre « nom » : il est résolu EN DIRECT
             # depuis FormulaireChampReutilisable (voir
             # core.selectors.resoudre_champs_formulaire), jamais dupliqué ici.
-            if not isinstance(champ, dict) or not (champ.get('nom') or champ.get('ref')):
+            if not _champ_formulaire_valide(champ):
                 raise serializers.ValidationError(
                     f"Champ {i} : doit être un objet avec au moins « nom » "
                     "ou « ref ».")
@@ -514,6 +558,9 @@ class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.Mo
 
 class FormulaireChampReutilisableSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL13 — champ de bibliothèque réutilisable entre formulaires."""
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    options = ListeJSON(required=False)
 
     class Meta:
         model = FormulaireChampReutilisable
@@ -521,7 +568,8 @@ class FormulaireChampReutilisableSerializer(CompanyScopedRelationsMixin, seriali
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class DashboardSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                          serializers.ModelSerializer):
     """FG381 — dashboard sans-code sauvegardé.
 
     ``company`` et ``owner`` ne sont JAMAIS lus du corps : ``company`` est
@@ -543,7 +591,8 @@ class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializ
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 
-class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class PaymentTransactionSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
     """FG370 — transaction de paiement carte en ligne (CMI / Payzone).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le statut, la
@@ -562,6 +611,9 @@ class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.Mode
     """
     #: AUD806 — champs figés après l'initiation auprès du PSP.
     _CHAMPS_FIGES_APRES_INITIATION = ('montant', 'content_type', 'object_id')
+    # ERR-ENF11-FUZZ-CORE — vide tant que le PSP n'a pas répondu : le schéma
+    # ``format: uri`` d'un URLField était violé par ``""`` (réponse hors schéma).
+    redirect_url = serializers.CharField(read_only=True)
 
     class Meta:
         model = PaymentTransaction
@@ -576,10 +628,12 @@ class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.Mode
         ]
 
     def validate(self, attrs):
-        """AUD806 — refus EXPLICITE (400), jamais un champ silencieusement
+        """AUD806 — refus EXPLICITE, jamais un champ silencieusement
         ignoré : un opérateur qui croit avoir repointé la transaction doit le
         savoir. Les champs restent donc écrivables au SCHÉMA (création) et
-        c'est l'ÉTAT de l'instance qui décide."""
+        c'est l'ÉTAT de l'instance qui décide — d'où un 409 ``ConflitEtat``
+        (ERR-ENF11-FUZZ-CORE : le corps est conforme, un 400 le disait
+        invalide)."""
         attrs = super().validate(attrs)
         instance = self.instance
         if instance is not None and instance.statut != (
@@ -587,19 +641,23 @@ class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.Mode
             interdits = [nom for nom in self._CHAMPS_FIGES_APRES_INITIATION
                          if nom in attrs]
             if interdits:
-                raise serializers.ValidationError({
-                    nom: ("Transaction déjà envoyée au fournisseur de "
-                          "paiement : ce champ ne peut plus être modifié. "
-                          "Créez une nouvelle transaction.")
-                    for nom in interdits})
+                raise ConflitEtat(
+                    "Transaction déjà envoyée au fournisseur de paiement, "
+                    f"champ(s) figé(s) : {', '.join(interdits)}. "
+                    "Créez une nouvelle transaction.")
         return attrs
 
 
-class SavedQuerySerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class SavedQuerySerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                           serializers.ModelSerializer):
     """FG382 — requête d'analyse ad-hoc sauvegardée.
 
     ``company`` et ``owner`` ne sont JAMAIS lus du corps (imposés côté serveur).
     """
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    spec = ObjetJSON(required=False)
+
     class Meta:
         model = SavedQuery
         fields = [
@@ -609,7 +667,8 @@ class SavedQuerySerializer(CompanyScopedRelationsMixin, serializers.ModelSeriali
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 
-class ScheduledExportSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class ScheduledExportSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                serializers.ModelSerializer):
     """FG383 — extrait planifié vers SFTP/S3.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le résultat de
@@ -619,6 +678,10 @@ class ScheduledExportSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
     ``dernier_curseur`` est posé par le RUNNER et reste en lecture seule (une
     borne saisie à la main ferait sauter des lignes).
     """
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    spec = ObjetJSON(required=False)
+
     class Meta:
         model = ScheduledExport
         fields = [
@@ -673,7 +736,8 @@ class ModuleToggleSerializer(CompanyScopedRelationsMixin, serializers.ModelSeria
                             'created_at', 'updated_at']
 
 
-class TenantThemeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class TenantThemeSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                            serializers.ModelSerializer):
     """FG392 — thème white-label par société.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
@@ -683,6 +747,9 @@ class TenantThemeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerial
     id = serializers.IntegerField(read_only=True, allow_null=True)
     created_at = serializers.DateTimeField(read_only=True, allow_null=True)
     updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    extra = ObjetJSON(required=False)
 
     class Meta:
         model = TenantTheme
@@ -764,6 +831,10 @@ class DataSubjectRequestSerializer(CompanyScopedRelationsMixin, serializers.Mode
     ``company`` n'est JAMAIS lu du corps. Le statut et le résultat sont en
     lecture seule : ils ne bougent que via le traitement (``core.dsr``).
     """
+    # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
+    # schéma ``{}`` puis refusé par le champ de modèle).
+    pieces = ListeJSON(required=False)
+
     class Meta:
         model = DataSubjectRequest
         fields = [
@@ -797,13 +868,18 @@ class RegistreTraitementSerializer(CompanyScopedRelationsMixin, serializers.Mode
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class BackupRunSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class BackupRunSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                          serializers.ModelSerializer):
     """FG395 — opération de sauvegarde/restauration (libre-service).
 
     ``company`` et ``declenche_par`` ne sont JAMAIS lus du corps (imposés côté
     serveur). Le statut, le manifeste, l'horodatage de fin et le détail sont en
     lecture seule : ils ne bougent que via le runner (``core.backup``).
     """
+    # ERR-ENF11-FUZZ-CORE — liste de NOMS de datasets, non nulle : un élément
+    # non textuel (``[{}]``) levait TypeError (500) dans ``core.backup``.
+    datasets = ListeJSON(element=str, required=False)
+
     class Meta:
         model = BackupRun
         fields = [

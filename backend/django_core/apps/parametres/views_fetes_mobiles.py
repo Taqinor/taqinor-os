@@ -11,7 +11,10 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
@@ -69,10 +72,13 @@ FETES_MOBILES_ENREGISTRER_REQUEST = inline_serializer(
     'FetesMobilesEnregistrerRequest', {
         'annee': serializers.IntegerField(min_value=1900, max_value=2200),
         'dates': inline_serializer('FetesMobilesEnregistrerDates', {
-            'aid_el_fitr': serializers.DateField(required=False),
-            'aid_el_adha': serializers.DateField(required=False),
-            '1er_moharram': serializers.DateField(required=False),
-            'aid_el_mawlid': serializers.DateField(required=False),
+            # ENF11 — les QUATRE dates sont exigées (« La date de … est
+            # manquante », 400) : le schéma le dit, un corps sans elles n'est
+            # plus « conforme ».
+            'aid_el_fitr': serializers.DateField(),
+            'aid_el_adha': serializers.DateField(),
+            '1er_moharram': serializers.DateField(),
+            'aid_el_mawlid': serializers.DateField(),
         }),
     })
 
@@ -80,6 +86,7 @@ FETES_MOBILES_ENREGISTRER_REQUEST = inline_serializer(
 @extend_schema(request=FETES_MOBILES_ENREGISTRER_REQUEST,
                responses=FETES_MOBILES_ETAT_RESPONSE)
 @api_view(['POST'])
+@parser_classes([JSONParser])  # ENF11 — ``dates`` est un objet imbriqué : JSON seul
 @permission_classes([IsAdminOrResponsableTier, PeutGererLocalisation])
 def fetes_mobiles_enregistrer(request):
     """POST /parametres/fetes-mobiles/ — ``{"annee": 2027, "dates":

@@ -317,7 +317,7 @@ class EndpointExportProjetEnBaseTest(BaseApiCalepinage):
         servi = resultat()
         servi['pose']['prix_achat_total'] = 1
         reponse = self._get(self.calepinage, servi=servi)
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertTrue(any('prix_achat' in cle for cle in reponse.data))
 
     def test_une_autre_societe_est_introuvable(self):

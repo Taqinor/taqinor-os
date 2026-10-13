@@ -143,3 +143,13 @@ class XSAV15FiabiliteTest(TestCase):
         self.assertEqual(len(results), 2)
         # Trié par coût cumulé décroissant -> équipement 2 (900) en premier.
         self.assertEqual(results[0]['equipement_id'], equip2.id)
+
+    def test_limit_invalide_refuse_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : `limit` est un entier 1..1000.
+        api = auth(self.admin)
+        url = '/api/django/sav/insights/sav-fiabilite/'
+        for brut in ('abc', '0', '-3', '1001'):
+            resp = api.get(url, {'limit': brut})
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+            self.assertIn('limit', resp.data)
+        self.assertEqual(api.get(url, {'limit': '5'}).status_code, 200)

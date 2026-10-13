@@ -1738,3 +1738,26 @@ Server error|POST /api/django/crm/leads/{id}/whatsapp-devis-apercu/
 Server error|POST /api/django/facturation/factures/{id}/retour-client/
 Server error|POST /api/django/ventes/devis/{id}/generer-facture/
 Server error|POST /api/django/ventes/factures/{id}/creer-avoir/
+# PR #985, 1er tirage (12/10/2026) — 1 constat PRÉ-EXISTANT (ventes non touchée par la PR ; périmètre élargi par un test ventes),
+# gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
+API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/ajouter-boq-electrique/
+# PR #985, 3e tirage (13/10/2026) — 8 constats PRÉ-EXISTANTS sur des routes NON modifiées par la PR (coercition DRF int→str, famille ERR-ENF11-FUZZ-CORE / -SAV encore ouvertes),
+# gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
+API accepted schema-violating request|PATCH /api/django/core/formulaire-champs/{id}/
+API accepted schema-violating request|PATCH /api/django/sav/categories-equipement/{id}/
+API accepted schema-violating request|PATCH /api/django/sav/equipes-maintenance/{id}/
+API accepted schema-violating request|POST /api/django/core/dsr-requests/
+API accepted schema-violating request|POST /api/django/core/formulaire-champs/
+API accepted schema-violating request|POST /api/django/sav/categories-equipement/
+API accepted schema-violating request|POST /api/django/sav/equipes-maintenance/
+API accepted schema-violating request|PUT /api/django/core/formulaire-champs/{id}/
+# Groupe de merge #985 (13/10/2026) — 2 constats PRÉ-EXISTANTS sur des routes NON modifiées (règles métier tarification ; corps formulaire etude-horaire/preview, app ventes),
+# gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
+API rejected schema-compliant request|POST /api/django/ventes/etude-horaire/preview/
+API rejected schema-compliant request|PUT /api/django/parametres/tarification/update/
+# Groupe de merge #985, 2e tour (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH tarification/update, règles métier, jumeau du PUT déjà gelé, route non modifiée).
+API rejected schema-compliant request|PATCH /api/django/parametres/tarification/update/
+# PR #985, 5e tirage (13/10/2026) — 3 constats PRÉ-EXISTANTS sav (coercition DRF sur PUT categories-equipement / equipes-maintenance, variante actions-groupees) — ERR-ENF11-FUZZ-SAV reste ouverte.
+API accepted schema-violating request|POST /api/django/sav/tickets/actions-groupees/
+API accepted schema-violating request|PUT /api/django/sav/categories-equipement/{id}/
+API accepted schema-violating request|PUT /api/django/sav/equipes-maintenance/{id}/

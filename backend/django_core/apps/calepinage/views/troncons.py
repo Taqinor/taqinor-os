@@ -35,16 +35,20 @@ exécute ce module vit en FIN de ``views/rattachements.py``, donc AVANT
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import forme_du_contrat
 from .calepinages import CalepinageViewSet
 
 __all__ = ['troncons']
 
 
+@extend_schema(responses=forme_du_contrat(
+    'CalepinageTroncons', 'calepinage_troncons.json'))
 @action(detail=True, methods=['get'], url_path='troncons',
         permission_classes=[PeutVoirCalepinage])
 def troncons(self, request, pk=None):

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
@@ -154,12 +154,12 @@ export function BoutonCalculer({
   // ACAL167 — « Enregistrer et relancer » : le parent incrémente `declenchement`,
   // le bouton lance alors LA MÊME relance forcée (une seule logique de suivi).
   const dernierDeclenchement = useRef(declenchement)
+  const relancerForce = useEffectEvent(() => lancer(true))
   useEffect(() => {
     if (declenchement !== dernierDeclenchement.current) {
       dernierDeclenchement.current = declenchement
-      lancer(true)
+      relancerForce()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `lancer` est recréée à chaque rendu ; seul le compteur déclenche
   }, [declenchement])
 
   if (!peutGerer) return null

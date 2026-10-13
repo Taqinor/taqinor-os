@@ -34,6 +34,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from . import dossiers as dossiers_service
+from .champs_stricts import BooleenStrict, ChaineStricte
 from .mixins import SameCompanyFKSerializerMixin
 from .parseurs import corps_valide
 from .models import (
@@ -176,19 +177,20 @@ _CIBLE_LIEN = inline_serializer('DossierCibleLien', {
         r'^[A-Za-z_]\w*\.[A-Za-z_]\w*$',
         help_text='« app_label.model », ex. crm.lead.'),
     'object_id': serializers.IntegerField(min_value=1),
-    'libelle': serializers.CharField(required=False, allow_blank=True),
+    'libelle': ChaineStricte(required=False, allow_blank=True),
 })
 _TYPE_INCONNU = ("Type d'objet introuvable — attendu « app_label.model » "
                  "(ex. « crm.lead »).")
 # ERR-ENF11-FUZZ-CORE — POST checklist : DEUX formes exclusives (ajout d'une
 # étape OU coche d'une étape) ; ``{}`` était conforme puis refusé.
 _CHECKLIST_AJOUT = inline_serializer('DossierChecklistAjout', {
-    'libelle': serializers.CharField(max_length=200),
+    'libelle': ChaineStricte(max_length=200),
     'ordre': serializers.IntegerField(required=False, min_value=0),
 })
+_NOTE = inline_serializer('DossierNoterRequest', {'body': ChaineStricte()})
 _CHECKLIST_COCHE = inline_serializer('DossierChecklistCoche', {
     'item_id': serializers.IntegerField(),
-    'fait': serializers.BooleanField(required=False, default=True),
+    'fait': BooleenStrict(required=False, default=True),
 })
 
 
@@ -250,16 +252,17 @@ class DossierViewSet(CompanyScopedModelViewSet):
             dossiers_service.historique(dossier), many=True).data)
 
     @extend_schema(
-        request=inline_serializer('DossierNoterRequest', {
-            'body': serializers.CharField(),
-        }),
+        request=_NOTE,
         responses={201: DossierActivitySerializer})
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
         """Ajoute une note MANUELLE au chatter (``{body}``)."""
         dossier = self.get_object()
+        # ERR-ENF11-FUZZ-CORE — `{"body": [null, null]}` ou un corps tableau
+        # levaient AttributeError (500) : corps validé par le serializer publié.
+        corps = corps_valide(request, _NOTE)
         activite = dossiers_service.noter(
-            dossier, request.data.get('body'), user=request.user)
+            dossier, corps['body'], user=request.user)
         if activite is None:
             return Response(
                 {'body': 'Une note ne peut pas être vide.'},

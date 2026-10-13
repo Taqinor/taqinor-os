@@ -120,7 +120,8 @@ class ExpirationUneRegleTests(TestCase):
         api.force_authenticate(user=self.portail_user)
         resp = api.post(
             f'/api/django/portail/mes-devis/{devis.id}/accepter/',
-            {'nom': 'Client', 'consent_esign': True}, format='json')
+            {'nom': 'Client', 'consent_esign': True,
+             'accepte_conditions': True}, format='json')
         self.assertEqual(resp.status_code, 409, resp.data)
         self._assert_rien_ecrit(devis)
 

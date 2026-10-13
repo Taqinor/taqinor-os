@@ -94,7 +94,8 @@ class DevisDeuxOptionsPortailTests(TestCase):
     def _accepter(self, **extra):
         return self.api.post(
             f'{LISTE}{self.deux.id}/accepter/',
-            {'nom': 'Karim Alaoui', 'consent_esign': True, **extra},
+            {'nom': 'Karim Alaoui', 'consent_esign': True,
+             'accepte_conditions': True, **extra},
             format='json')
 
     def test_liste_conforme_au_contrat_deux_options(self):

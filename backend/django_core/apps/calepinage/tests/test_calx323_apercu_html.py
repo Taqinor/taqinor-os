@@ -67,7 +67,7 @@ class RefusAvantResolutionTest(unittest.TestCase):
         reponse = apercu_document(
             FauxSelf(FauxCalepinage()),
             FauxRequest({'code': 'document_inexistant'}), pk=1)
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         message = reponse.data['code']
         self.assertIn('document_inexistant', message)
         # KeyError.__str__() ré-encapsule entre guillemets Python (repr) —
@@ -128,12 +128,12 @@ class ApercuDocumentEnBaseTest(BaseApiCalepinage):
 
     def test_code_inconnu_400_le_nommant(self):
         reponse = self._apercu(self.calepinage, code='document_inexistant')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         self.assertIn('document_inexistant', reponse.data['code'])
 
     def test_document_indisponible_400_avec_le_motif_reel(self):
         reponse = self._apercu(self.sans_resultat)
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('resultat', reponse.data)
 
     def test_aucun_acces_reseau_dans_le_html_servi(self):

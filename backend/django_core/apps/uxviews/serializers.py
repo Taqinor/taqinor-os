@@ -105,8 +105,12 @@ class FavoriUtilisateurSerializer(serializers.ModelSerializer):
     # Écriture seule : la valeur de LECTURE est réinjectée par
     # `to_representation` depuis `cle_modele` (le modèle ne porte pas d'attribut
     # `modele`, c'est `content_type` qui est écrit en base).
-    modele = serializers.CharField(
-        write_only=True, help_text="Modèle cible, ex. « crm.lead ».")
+    # ERR-ENF11-FUZZ-UXVIEWS — vocabulaire FERMÉ publié au schéma (liste blanche
+    # AANA15) : un texte libre annonçait valide tout « app.modele » que
+    # ``validate_modele`` refuse ensuite.
+    modele = serializers.ChoiceField(
+        choices=sorted(TYPES_FAVORISABLES), write_only=True,
+        help_text="Modèle cible, ex. « crm.lead ».")
     # Libellé résolu à la lecture depuis la cible (jamais stocké) ; `None` si la
     # cible a été supprimée entre-temps — l'écran affiche alors un favori mort
     # plutôt que de mentir (le nettoyage est NTUX30).

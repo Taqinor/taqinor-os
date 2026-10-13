@@ -1,11 +1,13 @@
 """FG25 — sérialiseur des politiques d'approbation (ApprovalPolicy)."""
 from rest_framework import serializers
-from core.champs_stricts import TypageStrictMixin
+
+from core.unicite import ConflitUnicite
+from .requetes_strictes import TypageStrictParametres
 
 from .models_approvals import ApprovalPolicy
 
 
-class ApprovalPolicySerializer(TypageStrictMixin, serializers.ModelSerializer):
+class ApprovalPolicySerializer(TypageStrictParametres, serializers.ModelSerializer):
     action_type_label = serializers.CharField(
         source='get_action_type_display', read_only=True)
     approver_tier_label = serializers.CharField(
@@ -40,7 +42,9 @@ class ApprovalPolicySerializer(TypageStrictMixin, serializers.ModelSerializer):
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                raise serializers.ValidationError(
-                    {'action_type':
-                        'Une politique existe déjà pour cette action.'})
+                # ENF11 — doublon par société = conflit d'ÉTAT (409), comme
+                # partout ailleurs (``core.unicite``).
+                raise ConflitUnicite(
+                    'Une politique existe déjà pour cette action.',
+                    champs=['action_type'])
         return attrs

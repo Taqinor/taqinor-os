@@ -70,6 +70,8 @@ class AcceptationEntreprisePortail(TestCase):
 
     def _post(self, devis, corps, user=None):
         self.api.force_authenticate(user=user or self.user_a)
+        # APDF35 — la case « conditions générales » est cochée (exigée).
+        corps = {'accepte_conditions': True, **corps}
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
             return self.api.post(
                 f'/api/django/portail/mes-devis/{devis.id}/accepter/',

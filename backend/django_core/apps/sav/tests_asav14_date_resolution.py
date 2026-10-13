@@ -68,6 +68,40 @@ class DateResolutionTests(TestCase):
             self.assertEqual(t.statut, Ticket.Statut.RESOLU)
             self.assertEqual(t.date_resolution, timezone.localdate())
 
+    def test_lot_motif_non_chaine_refuse_400(self):
+        # CI #985 (api-fuzz) : `motif` déclaré chaîne ; {} était avalé (200).
+        t = self._ticket(Ticket.Statut.EN_COURS)
+        r = self.api.post(f'{BASE}/actions-groupees/', {
+            'ids': [t.pk], 'operation': 'priorite', 'priorite': 'basse',
+            'motif': {}}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('motif', r.json())
+
+    def test_lot_priorite_hors_enumeration_refuse_400(self):
+        # CI #985 (api-fuzz) : `priorite: "0"` fournie avec l'opération « technicien »
+        # était ignorée (200) alors que le schéma la publie énumérée.
+        t = self._ticket(Ticket.Statut.EN_COURS)
+        r = self.api.post(f'{BASE}/actions-groupees/', {
+            'ids': [t.pk], 'operation': 'technicien', 'technicien': None,
+            'priorite': '0', 'motif': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('priorite', r.json())
+        r = self.api.post(f'{BASE}/actions-groupees/', {
+            'ids': [t.pk], 'operation': 'annuler', 'statut': 'inconnu'},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('statut', r.json())
+
+    def test_lot_priorite_ou_statut_vide_refuse_400(self):
+        # CI #985 (api-fuzz) : `priorite: ""` (minLength 1 au schéma) était ignoré.
+        t = self._ticket(Ticket.Statut.EN_COURS)
+        for cle in ('priorite', 'statut'):
+            r = self.api.post(f'{BASE}/actions-groupees/', {
+                'ids': [t.pk], 'operation': 'technicien', 'technicien': None,
+                cle: ''}, format='json')
+            self.assertEqual(r.status_code, 400, r.content)
+            self.assertIn(cle, r.json())
+
     def test_patch_ignore(self):
         t = self._ticket(Ticket.Statut.NOUVEAU)
         r = self.api.patch(f'{BASE}/{t.pk}/', {

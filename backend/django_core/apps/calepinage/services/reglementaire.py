@@ -607,9 +607,12 @@ PIECES_PRODUITES = (
 class DossierRefuse(ValueError):
     """Le dossier refuse de sortir, en NOMMANT ce qui manque."""
 
-    def __init__(self, message, *, piece=''):
+    def __init__(self, message, *, piece='', entree=False):
         super().__init__(message)
         self.piece = piece
+        # ``entree`` : le fichier déposé est lui-même invalide (non PDF) —
+        # un refus d'ENTRÉE (400), pas d'ÉTAT (409).
+        self.entree = entree
 
 
 def _rendus_du_module(calepinage, company):
@@ -765,7 +768,7 @@ def _pieces_du_dossier(dossier, *, company, infos=None):
         raise DossierRefuse(
             "Le gabarit « %s » n'est pas un PDF : seul un PDF se fusionne "
             "dans le dossier. Redéposez-le en PDF." % gabarit.intitule,
-            piece='gabarit')
+            piece='gabarit', entree=True)
     if infos is None:
         infos = _infos_du_calepinage(dossier.calepinage)
     pieces = [('gabarit', 'Gabarit — %s' % gabarit.intitule, octets_gabarit)]
@@ -1116,7 +1119,8 @@ def _valider(gabarit):
     if doublon:
         raise GabaritRefuse({'code': (
             f"Un gabarit « {gabarit.code} » existe déjà pour ce pays dans la "
-            "société : modifiez-le plutôt que d'en déposer un second.")})
+            "société : modifiez-le plutôt que d'en déposer un second.")},
+            statut=HTTPStatus.CONFLICT)
 
 
 def _appliquer(gabarit, donnees):

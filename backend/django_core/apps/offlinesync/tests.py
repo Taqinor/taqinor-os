@@ -240,6 +240,20 @@ class OfflineOperationJournalTests(TestCase):
         plein = self.rows(self.api.get(JOURNAL, {'statut': 'appliquee'}))
         self.assertEqual(len(plein), 1)
 
+    def test_journal_filtres_hors_enumeration_400(self):
+        for parametre in ('statut', 'module'):
+            resp = self.api.get(JOURNAL, {parametre: 'zzz'})
+            self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(
+            self.api.get(JOURNAL, {'module': 'crm'}).status_code, 200)
+
+    def test_lot_cles_plus_longues_que_les_colonnes_400(self):
+        for corps in (op('c' * 65, 'crm.lead.noter', {}),
+                      op('ok', 'o' * 61, {}),
+                      op(' ' + 'c' * 64, 'crm.lead.noter', {})):
+            resp = self.api.post(BATCH, {'ops': [corps]}, format='json')
+            self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_journal_en_lecture_seule(self):
         resp = self.api.post(JOURNAL, {'module': 'crm', 'op_type': 'x',
                                        'client_op_id': 'z'}, format='json')

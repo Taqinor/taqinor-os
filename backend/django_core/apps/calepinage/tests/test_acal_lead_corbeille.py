@@ -38,7 +38,7 @@ class LeadCorbeilleTest(BaseApiCalepinage):
     def test_generer_devis_nomme_le_lead_a_la_corbeille(self):
         self._corbeille()
         reponse = self.api.post(url_generer(self.c.pk), {}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         texte = str(reponse.data)
         self.assertIn('corbeille', texte)
         self.assertIn(f'#{self.lead.pk}', texte)

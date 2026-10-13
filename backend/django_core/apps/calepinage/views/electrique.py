@@ -32,6 +32,7 @@ from rest_framework.response import Response
 from ..permissions import (
     PeutApprouverCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
 )
+from ..serializers import forme_du_contrat, forme_reponse
 from ..services.electrique import (
     CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
     entree_electrique_servie, entree_stockee, evaluation_electrique,
@@ -48,12 +49,18 @@ __all__ = ['ElectriqueActionsMixin']
 _REFUS_DE_LECTURE = (TemperaturesInvalides, DecisionInvalide, TerreInvalide)
 
 
+_FORME_RESULTAT = forme_du_contrat(
+    'CalepinageResultatServi', 'calepinage_resultat.json')
+
+
 class ElectriqueActionsMixin:
     """Les ``@action`` électriques du viewset pivot."""
 
-    @extend_schema(parameters=[OpenApiParameter(
-        'variante', OpenApiTypes.INT, required=False,
-        description='Variante du même calepinage à évaluer.')])
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'variante', OpenApiTypes.INT, required=False,
+            description='Variante du même calepinage à évaluer.')],
+        responses=_FORME_RESULTAT)
     @action(detail=True, methods=['get'], url_path='resultat',
             permission_classes=[PeutVoirCalepinage])
     def resultat(self, request, pk=None):
@@ -107,6 +114,13 @@ class ElectriqueActionsMixin:
             return Response({refus.champ or 'temperatures': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(methods=['GET'], responses=forme_du_contrat(
+        'CalepinageEntreeElectrique', 'calepinage_entree_electrique.json'))
+    @extend_schema(
+        methods=['POST'],
+        request=inline_serializer('CalepinageEntreeElectriqueCorps', {
+            'derogations': drf_serializers.JSONField(required=False)}),
+        responses=_FORME_RESULTAT)
     @action(detail=True, methods=['get', 'post'], url_path='entree-electrique',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def entree_electrique(self, request, pk=None):
@@ -155,7 +169,11 @@ class ElectriqueActionsMixin:
         'CalepinageEvaluerElectriqueRequete', {
             'layout': drf_serializers.DictField(required=False),
             'entree_electrique': drf_serializers.DictField(required=False),
-        }))
+        }),
+        responses=forme_reponse(
+            'CalepinageEvaluationElectrique', 'verdict', 'publiable',
+            'bloquants', 'alertes', 'manquantes', 'regle_mppt',
+            'regle_chaine', 'temperatures', 'publication'))
     @action(detail=True, methods=['post'], url_path='evaluer-electrique',
             permission_classes=[PeutVoirCalepinage])
     def evaluer_electrique(self, request, pk=None):

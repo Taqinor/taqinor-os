@@ -284,8 +284,9 @@ class ApiTests(TestCase):
         resp = self.api.patch(f'{CADENCE_URL}{debrief.pk}/',
                               {'cadence': 'contact'}, format='json')
 
-        self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertIn('cadence', resp.data)
+        # ENF11 — refus d'ÉTAT (le barreau porte une clé moteur) : 409.
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('Cadence', str(resp.data))
         debrief.refresh_from_db()
         self.assertEqual(debrief.cadence, Cadence.VISITE)
 
@@ -328,9 +329,9 @@ class AjoutRefuseSurCadenceMoteurTests(TestCase):
 
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('cadence', resp.data)
-        self.assertEqual(str(resp.data['cadence']), (
+        self.assertIn(
             'Les barreaux de cette cadence sont fixés par leur clé ; '
-            'modifiez-les, ne les ajoutez pas.'))
+            'modifiez-les, ne les ajoutez pas.', str(resp.data['cadence']))
         self.assertFalse(CadenceRelanceEtape.objects.filter(
             company=self.company, cadence=Cadence.APRES_CONTACT).exists())
 

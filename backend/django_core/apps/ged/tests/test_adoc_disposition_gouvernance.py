@@ -80,11 +80,11 @@ class DispositionGouvernanceTests(TestCase):
         self.assertEqual(demande.statut, 'approuvee')
         self.assertTrue(Document.objects.filter(pk=self.vieux.pk).exists())
 
-    def test_non_echu_400(self):
+    def test_non_echu_409(self):
         resp = auth(self.g1).post(BASE, {
             'libelle': 'x', 'action': 'detruire',
             'documents': [self.vieux.pk, self.neuf.pk]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('non échu : neuf.pdf', resp.data['detail'])
         self.assertFalse(DemandeDisposition.objects.exists())
         self.assertTrue(Document.objects.filter(pk=self.neuf.pk).exists())

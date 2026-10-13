@@ -35,12 +35,15 @@ publié pour une pompe sans courbe.
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from core.pompage.selection import selection_pompe, selection_variateur, tension_produit
 from core.pompage.volumes import couverture_besoin_eau
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import forme_du_contrat
 from ..services import pompage as dim
 from .calepinages import CalepinageViewSet, contexte_conception
 from ..services.valeurs import nombre as _nombre
@@ -137,6 +140,27 @@ def _rendement_mppt(company, variateur_id):
     return None
 
 
+_CHAMPS_POMPAGE = {nom: serializers.FloatField(required=False, allow_null=True)
+                   for nom in (
+    'hmt_saisie', 'debit_souhaite_m3h', 'heures_pompage',
+    'volume_reservoir_m3', 'besoin_m3_jour', 'niveau_statique_m',
+    'niveau_dynamique_m', 'coefficient_rabattement_m_par_m3h',
+    'longueur_tuyauterie_m', 'coefficient_frottement',
+    'hauteur_refoulement_m', 'denivele_m', 'diametre_interieur_mm',
+    'c_hazen_williams', 'pertes_singulieres_m', 'pression_service_bar',
+    'kwc')}
+
+
+@extend_schema(
+    request=inline_serializer('CalepinagePompageCorps', {
+        **_CHAMPS_POMPAGE,
+        'type_pompe': serializers.CharField(required=False),
+        'alim': serializers.CharField(required=False),
+        'materiau_conduite': serializers.CharField(required=False),
+        'besoin_m3_mois': serializers.ListField(
+            child=serializers.FloatField(allow_null=True), required=False)}),
+    responses=forme_du_contrat('CalepinagePompageReponse',
+                               'calepinage_pompage.json'))
 @action(detail=True, methods=['post'], url_path='pompage',
         permission_classes=[PeutVoirCalepinage])
 def pompage(self, request, pk=None):

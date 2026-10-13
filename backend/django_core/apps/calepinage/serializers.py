@@ -29,7 +29,9 @@ Les lectures cross-app passent par les ``selectors.py`` des apps cibles
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import (
+    OpenApiResponse, extend_schema_field, inline_serializer,
+)
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -48,6 +50,67 @@ def _lead_apercu(lead):
     ville = (getattr(lead, 'ville', '') or '').strip() or None
     return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville,
             'supprime': bool(getattr(lead, 'is_deleted', False))}
+
+
+#: ERR-ENF11-FUZZ-CALEPINAGE — le 409 d'ÉTAT d'une lecture (pas de conception,
+#: approbation exigée, aucun résultat…) : le crochet ``ErreurApi`` ne déclare
+#: le 409 que sur les écritures, une lecture qui le sert doit le dire.
+REPONSE_REFUS_ETAT = OpenApiResponse(
+    description="Conflit d'état : la conception n'est pas dans l'état "
+                "requis (corps ``{champ: message}`` nommant le champ).")
+
+
+def forme_reponse(nom, *cles, **typees):
+    """ERR-ENF11-FUZZ-CALEPINAGE — le schéma d'une réponse AGRÉGÉE.
+
+    ``cles`` : les clés de PREMIER niveau du contrat (``contract_samples/``),
+    chacune un ``JSONField`` optionnel (les sous-documents restent libres) ;
+    ``typees`` : les clés dont la nature est connue (champ DRF déjà construit).
+    Sans cette déclaration drf-spectacular publie le ``Calepinage`` du
+    viewset pour TOUTE ``@action`` — un schéma qui ment.
+    """
+    champs = {cle: serializers.JSONField(required=False) for cle in cles}
+    champs.update(typees)
+    return inline_serializer(nom, champs)
+
+
+#: ``{composant: (fichier, cle)}`` de chaque forme tirée d'un échantillon : la
+#: garde de dérive (``tests/test_structure_urls.py``) relit les échantillons.
+FORMES_DU_CONTRAT = {}
+
+
+def forme_du_contrat(nom, fichier, cle='exemple', **typees):
+    """``forme_reponse`` dont les clés sont celles de l'échantillon committé
+    ``contract_samples/<fichier>`` (clé ``cle``) : une seule source du contrat."""
+    import json
+    from pathlib import Path
+
+    FORMES_DU_CONTRAT[nom] = (fichier, cle)
+    dossier = Path(__file__).resolve().parent / 'contract_samples'
+    try:
+        exemple = json.loads(
+            (dossier / fichier).read_text(encoding='utf-8'))[cle]
+        cles = tuple(exemple) if isinstance(exemple, dict) else ()
+    except (OSError, ValueError, KeyError):
+        # Un échantillon illisible n'empêche JAMAIS le serveur de démarrer :
+        # le schéma s'affaiblit, la garde de dérive (tests) le dit.
+        cles = ()
+    return forme_reponse(nom, *cles, **typees)
+
+
+#: Le DÉTAIL agrégé (CAL17) : servi par ``retrieve`` et par ``depuis-modele``.
+FORME_DETAIL_CALEPINAGE = forme_du_contrat(
+    'CalepinageDetail', 'calepinage_detail.json')
+
+
+class LeadApercuSerializer(serializers.Serializer):
+    """``{id, nom, ville, supprime}`` : ce que ``to_representation`` publie
+    à la place de l'identifiant ``lead`` (lecture seule)."""
+
+    id = serializers.IntegerField()
+    nom = serializers.CharField()
+    ville = serializers.CharField(allow_null=True)
+    supprime = serializers.BooleanField()
 
 
 def peremption_du_calepinage(devis, calepinage):
@@ -523,6 +586,22 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                 'lead': f"Lead introuvable (#{lead_id}).",
             })
         return lead
+
+
+class CalepinageLectureSerializer(CalepinageSerializer):
+    """ERR-ENF11-FUZZ-CALEPINAGE — la FORME LUE d'un calepinage (réponse
+    seule, jamais utilisée pour écrire).
+
+    ``CalepinageSerializer.to_representation`` remplace l'identifiant ``lead``
+    (entier, à l'écriture) par ``{id, nom, ville, supprime}`` et ajoute
+    ``nom`` : le schéma de RÉPONSE le dit, au lieu de promettre un entier.
+    """
+
+    lead = LeadApercuSerializer(read_only=True, allow_null=True)
+    nom = serializers.CharField(read_only=True)
+
+    class Meta(CalepinageSerializer.Meta):
+        fields = [*CalepinageSerializer.Meta.fields, 'nom']
 
 
 class CalepinageVarianteSerializer(serializers.ModelSerializer):

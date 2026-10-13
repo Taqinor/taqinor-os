@@ -166,7 +166,7 @@ class EmailTemplateApiTest(TestCase):
         obj_id = r.data['id']
         r2 = self.api.patch(f'{BASE}{obj_id}/', {
             'cle': 'facture'}, format='json')
-        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(r2.status_code, 409)  # ENF11 — refus d'état
 
 
 class EmailTemplateHelperTest(TestCase):
@@ -223,3 +223,23 @@ class EmailTemplateHelperTest(TestCase):
         tpl = EmailTemplate.get_template(None, 'relance')
         self.assertEqual(tpl['sujet'],
                          EMAIL_TEMPLATE_DEFAULTS['relance']['sujet'])
+
+
+class EmailTemplateTypageStrictEnf11Test(TestCase):
+    """ENF11 (api-fuzz) — ``corps`` est un texte : un nombre JSON → 400."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='E11', slug='email-enf11')
+        admin = User.objects.create_user(
+            username='email_enf11', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+
+    def test_corps_nombre_refuse(self):
+        r = self.api.post('/api/django/parametres/email-templates/',
+                          {'cle': 'devis', 'sujet': '', 'corps': 0},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('corps', r.data)

@@ -2,7 +2,9 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
+from apps.records.champs_stricts import (
+    ChampsStrictsBornesMixin, ChampsStrictsLitterauxMixin,
+)
 
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
@@ -12,7 +14,8 @@ from .models import (
 from .providers import available_providers
 
 
-class MonitoringConfigSerializer(serializers.ModelSerializer):
+class MonitoringConfigSerializer(ChampsStrictsBornesMixin,
+                                 serializers.ModelSerializer):
     provider_label = serializers.SerializerMethodField()
     is_auto = serializers.BooleanField(read_only=True)
     # has_credentials expose seulement la PRÉSENCE d'identifiants (jamais leur
@@ -45,7 +48,8 @@ class MonitoringConfigSerializer(serializers.ModelSerializer):
         return value
 
 
-class ProductionReadingSerializer(serializers.ModelSerializer):
+class ProductionReadingSerializer(ChampsStrictsBornesMixin,
+                                  serializers.ModelSerializer):
     source_display = serializers.CharField(
         source='get_source_display', read_only=True)
 
@@ -102,7 +106,8 @@ class ProductionReadingSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class CleaningEventSerializer(serializers.ModelSerializer):
+class CleaningEventSerializer(ChampsStrictsBornesMixin,
+                              serializers.ModelSerializer):
     class Meta:
         model = CleaningEvent
         fields = [
@@ -117,7 +122,8 @@ class CleaningEventSerializer(serializers.ModelSerializer):
         return value
 
 
-class ProductionWarrantySerializer(serializers.ModelSerializer):
+class ProductionWarrantySerializer(ChampsStrictsBornesMixin,
+                                   serializers.ModelSerializer):
     class Meta:
         model = ProductionWarranty
         fields = [
@@ -138,7 +144,8 @@ class ProductionWarrantySerializer(serializers.ModelSerializer):
 # ENF11 — `list` renvoie UN objet (singleton société), pas un tableau : sans
 # `many=False` drf-spectacular l'enveloppait en tableau (réponse hors schéma).
 @extend_schema_serializer(many=False)
-class MonitoringSettingsSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+class MonitoringSettingsSerializer(ChampsStrictsLitterauxMixin,
+                                   serializers.ModelSerializer):
     class Meta:
         model = MonitoringSettings
         fields = [

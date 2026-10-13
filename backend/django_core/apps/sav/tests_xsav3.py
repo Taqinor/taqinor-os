@@ -114,7 +114,8 @@ class XSAV3CreerDevisTest(TestCase):
         resp = self.api.post(
             f'/api/django/sav/tickets/{self.ticket.pk}/creer-devis/',
             {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # ENF11 : refus d'état (ticket couvert) = 409, pas 400.
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.ticket.refresh_from_db()
         self.assertIsNone(self.ticket.devis_id_ext)
 

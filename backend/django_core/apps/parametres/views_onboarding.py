@@ -9,31 +9,50 @@ les étapes « Pays »/« Pack pays » persistées).
 même patron de permission que le reste de l'app (``views_profile``,
 ``views_config``), ET porteur de ``localisation_gerer`` (NTI18N40) — c'est un
 réglage de LOCALISATION, pas un réglage de société quelconque."""
+import zoneinfo
+
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier
+from core.champs_stricts import ChaineStricte
 
 from .localisation import PeutGererLocalisation
+from .models_company import CompanyProfile
+from .requetes_strictes import valider_corps
 from .onboarding_pays import SEEDERS_FERIES_PAR_PAYS, provisionner_localisation
 from .serializers_company import CompanyProfileSerializer
 from .views_common import _audit_company
 
+
 # NTI18N31 — forme réelle du corps (tout optionnel, ``pays`` défaut ``'MA'``
 # côté vue) et de la réponse (miroir exact du dict renvoyé par
 # ``provisionner_localisation`` : profile/pays/feries_seedes/seeder_utilise).
-ONBOARDING_LOCALISATION_REQUEST = inline_serializer(
-    'OnboardingLocalisationRequest', {
-        'pays': serializers.ChoiceField(
-            choices=sorted(SEEDERS_FERIES_PAR_PAYS), required=False),
-        'devise': serializers.CharField(required=False, allow_null=True),
-        'fuseau_horaire': serializers.CharField(
-            required=False, allow_null=True),
-        'langue_repli': serializers.CharField(
-            required=False, allow_null=True),
-    })
+class OnboardingLocalisationRequestSerializer(serializers.Serializer):
+    """ENF11 — le corps est VALIDÉ par ce sérialiseur (source du schéma ET du
+    serveur) : un texte hors énumération ou un type faux répond 400 ; avant,
+    ``pays`` non texte levait (500) et le schéma annonçait des textes libres
+    que le profil refusait ensuite. Les valeurs restent re-validées par
+    ``CompanyProfileSerializer`` (mêmes règles que ``PATCH /parametres/update/``)."""
+
+    pays = serializers.ChoiceField(
+        choices=sorted(SEEDERS_FERIES_PAR_PAYS), required=False)
+    devise = ChaineStricte(
+        max_length=10, required=False, allow_null=True, allow_blank=True)
+    fuseau_horaire = serializers.ChoiceField(
+        choices=sorted(zoneinfo.available_timezones()),
+        required=False, allow_null=True)
+    langue_repli = serializers.ChoiceField(
+        choices=list(CompanyProfile._meta.get_field('langue_repli').choices),
+        required=False, allow_null=True)
+
+
+ONBOARDING_LOCALISATION_REQUEST = OnboardingLocalisationRequestSerializer
 
 
 class _CompanyProfileSchema(CompanyProfileSerializer):
@@ -69,6 +88,7 @@ ONBOARDING_LOCALISATION_RESPONSE = inline_serializer(
 @extend_schema(request=ONBOARDING_LOCALISATION_REQUEST,
                responses=ONBOARDING_LOCALISATION_RESPONSE)
 @api_view(['POST'])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload ; ENF11 : corps JSON
 @permission_classes([IsAdminOrResponsableTier, PeutGererLocalisation])
 def onboarding_localisation(request):
     """POST /parametres/onboarding-localisation/.
@@ -83,18 +103,15 @@ def onboarding_localisation(request):
             {'detail': 'Aucune société associée à ce compte.'},
             status=status.HTTP_400_BAD_REQUEST)
 
-    pays = (request.data.get('pays') or 'MA').upper()
-    if pays not in SEEDERS_FERIES_PAR_PAYS:
-        return Response(
-            {'detail': f"Pays inconnu : « {pays} »."},
-            status=status.HTTP_400_BAD_REQUEST)
+    corps = valider_corps(OnboardingLocalisationRequestSerializer, request)
+    pays = corps.get('pays') or 'MA'
 
     resultat = provisionner_localisation(
         company,
         pays=pays,
-        devise=request.data.get('devise'),
-        fuseau_horaire=request.data.get('fuseau_horaire'),
-        langue_repli=request.data.get('langue_repli'),
+        devise=corps.get('devise'),
+        fuseau_horaire=corps.get('fuseau_horaire'),
+        langue_repli=corps.get('langue_repli'),
         user=request.user,  # APAR29 — acteur du journal
     )
     return Response({

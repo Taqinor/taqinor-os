@@ -91,3 +91,78 @@ describe('PortailClientDevis — ADOC114 choix de l’option', () => {
     expect(screen.getByRole('button', { name: /Confirmer l’acceptation/ }).disabled).toBe(false)
   })
 })
+
+/* APDF36 (C-APDF-005) — le dialogue affiche `conditions_titre` et les puces
+   `conditions` de la liste (contrat mes_devis_liste.json, `exemple`), et la
+   case « J’accepte ce devis et les conditions générales » part en
+   `accepte_conditions`. Le faux serveur applique la règle d'APDF35 : sans
+   `accepte_conditions`, 400 `400_conditions` du contrat, rien d'accepté. */
+function serveurConditions({ refuse = false } = {}) {
+  const etat = { accepte: false }
+  portailApi.devis.liste.mockImplementation(() => {
+    const r = reponseContrat('portail', 'mes_devis_liste')
+    const mono = r.data.results[1]
+    r.data.results = [{
+      ...r.data.results[0], deux_options: mono.deux_options, options: mono.options,
+      exige_identite_entreprise: false,
+      ...(etat.accepte ? { accepte: true, statut: 'accepte', statut_display: 'Accepté' } : {}),
+    }]
+    return Promise.resolve(r)
+  })
+  portailApi.devis.accepter.mockImplementation((id, corps) => {
+    if (refuse || corps.accepte_conditions !== true) {
+      return Promise.reject({
+        response: { status: 400, data: contrat.acceptation.reponses['400_conditions'] },
+      })
+    }
+    etat.accepte = true
+    return Promise.resolve({ data: contrat.acceptation.reponses['200'] })
+  })
+  return etat
+}
+
+describe('PortailClientDevis — APDF36 conditions générales', () => {
+  const ligne = contrat.exemple.results[0]
+
+  it('affiche titre et puces, exige la case, envoie accepte_conditions et relit « Accepté »', async () => {
+    const etat = serveurConditions()
+    renderPage()
+    await screen.findByText(ligne.reference)
+    fireEvent.click(screen.getByRole('button', { name: 'Accepter' }))
+    const bloc = await screen.findByTestId('portail-devis-conditions')
+    expect(bloc.textContent).toContain(ligne.conditions_titre)
+    const puces = Array.from(bloc.querySelectorAll('li')).map((li) => li.textContent)
+    expect(puces).toEqual(ligne.conditions)
+
+    fireEvent.change(screen.getByLabelText('Votre nom'), { target: { value: 'Karim Alaoui' } })
+    const valider = screen.getByRole('button', { name: /Confirmer l’acceptation/ })
+    expect(valider.disabled).toBe(true) // case non cochée
+    const caseConditions = screen.getByRole('checkbox', { name: /J’accepte ce devis et les conditions générales/ })
+    fireEvent.click(caseConditions)
+    await waitFor(() => expect(valider.disabled).toBe(false))
+    fireEvent.click(valider)
+    await waitFor(() => expect(portailApi.devis.accepter).toHaveBeenCalledTimes(1))
+    const [id, corps] = portailApi.devis.accepter.mock.calls[0]
+    expect(id).toBe(ligne.id)
+    expect(corps.accepte_conditions).toBe(true)
+    expect(etat.accepte).toBe(true)
+    await waitFor(() => expect(toastSpy.success).toHaveBeenCalledWith('Devis accepté. Merci !'))
+    // Persistance : la liste relue porte le statut « Accepté ».
+    expect(await screen.findByText('Accepté')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Accepter' })).toBeNull()
+  })
+
+  it('le 400 du serveur s’affiche (aucun catch muet), rien d’accepté', async () => {
+    const etat = serveurConditions({ refuse: true })
+    renderPage()
+    await screen.findByText(ligne.reference)
+    fireEvent.click(screen.getByRole('button', { name: 'Accepter' }))
+    fireEvent.change(screen.getByLabelText('Votre nom'), { target: { value: 'Karim Alaoui' } })
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: /Confirmer l’acceptation/ }))
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith(
+      contrat.acceptation.reponses['400_conditions'].detail,
+    ))
+    expect(etat.accepte).toBe(false)
+  })
+})

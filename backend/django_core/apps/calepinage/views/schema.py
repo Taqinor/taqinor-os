@@ -53,11 +53,15 @@ et des quantités ; ``Produit.prix_achat`` n'entre ici par aucun chemin.
 """
 from __future__ import annotations
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage, PeutVoirCalepinage
+from ..serializers import REPONSE_REFUS_ETAT, forme_du_contrat
 
 __all__ = ['SchemaUnifilaireMixin']
 
@@ -70,9 +74,20 @@ CLES_SCHEMA = ('calepinage', 'svg', 'blocs', 'edition', 'bloquants',
                'manquantes')
 
 
+_FORME_SLD = forme_du_contrat('CalepinageSchemaUnifilaire',
+                              'calepinage_sld.json')
+
+
 class SchemaUnifilaireMixin:
     """L'``@action`` « schéma unifilaire » du viewset pivot."""
 
+    @extend_schema(methods=['GET'], responses=_FORME_SLD)
+    @extend_schema(
+        methods=['POST'], responses=_FORME_SLD,
+        request=inline_serializer('CalepinageSchemaEditionCorps', {
+            'libelles': drf_serializers.JSONField(required=False),
+            'reperes': drf_serializers.JSONField(required=False),
+            'positions': drf_serializers.JSONField(required=False)}))
     @action(detail=True, methods=['get', 'post'],
             url_path='schema-unifilaire',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -106,6 +121,8 @@ class SchemaUnifilaireMixin:
                             status=status.HTTP_400_BAD_REQUEST)
 
     # ── CALX235 — le MÊME schéma, repris par un bureau d'études ───────────
+    @extend_schema(responses={(200, 'image/vnd.dxf'): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'],
             url_path=r'schema-unifilaire\.dxf',
             url_name='schema-unifilaire-dxf',
@@ -130,7 +147,7 @@ class SchemaUnifilaireMixin:
         except (SldRefuse, TemperaturesInvalides) as refus:
             return Response(
                 {getattr(refus, 'champ', '') or 'schema': str(refus)},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return reponse_de_fichier(
             octets, mime=MIME_DXF,
             nom_fichier=nom_de_fichier(calepinage, 'schema.dxf'))

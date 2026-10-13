@@ -85,7 +85,7 @@ class SimulateurForceMotriceTest(TestCase):
     def test_simulateur_lit_la_grille_officielle(self):
         kwh = _kwh_a_la_main('2000.00')
         resp = self.api.post('/api/django/parametres/tarification/roi/', {
-            'kwc': 0, 'conso_mensuelle_kwh': str(kwh), 'cout_total_ttc': 0,
+            'kwc': 0, 'conso_mensuelle_kwh': float(kwh), 'cout_total_ttc': 0,
             'classe': 'force_motrice'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertAlmostEqual(

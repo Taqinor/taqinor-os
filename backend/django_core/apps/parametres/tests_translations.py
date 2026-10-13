@@ -189,3 +189,30 @@ class TranslationOverrideTest(TestCase):
         # Mais la lecture (effective) reste permise.
         r2 = api.get(BASE + 'effective/')
         self.assertEqual(r2.status_code, 200)
+
+
+class TranslationOverrideEnf11Test(TestCase):
+    """ENF11 (api-fuzz) — ``value`` texte strict, ``?locale=`` tenu, clé ≤ 120."""
+
+    def setUp(self):
+        self.company = _company('trad-enf11', 'Trad ENF11')
+        admin = User.objects.create_user(
+            username='trad_enf11', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = _auth(admin)
+
+    def test_value_nombre_refusee(self):
+        r = self.api.post(BASE, {'locale': 'fr', 'key': 'k', 'value': 0},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(TranslationOverride.objects.filter(
+            company=self.company).exists())
+
+    def test_locale_hors_enumeration_refusee(self):
+        self.assertEqual(self.api.get(BASE, {'locale': 'de'}).status_code, 400)
+        self.assertEqual(self.api.get(BASE, {'locale': 'fr'}).status_code, 200)
+
+    def test_bulk_cle_trop_longue_refusee(self):
+        r = self.api.put(BASE + 'bulk/', {'items': [
+            {'locale': 'fr', 'key': 'k' * 121, 'value': 'x'}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)

@@ -197,3 +197,23 @@ class EndpointTests(TestCase):
         resp = _auth(user).get(EXPORT)
         self.assertEqual(resp.status_code, 403, resp.content)
         self.assertIn('localisation_gerer', ALL_PERMISSIONS)
+
+
+class GlossaireCaracteresDeControleTests(TestCase):
+    """ENF11 (api-fuzz, 500) — un libellé saisi avec un caractère de contrôle
+    ne fait plus lever ``openpyxl`` (``IllegalCharacterError``)."""
+
+    def test_export_avec_caractere_de_controle_reste_200(self):
+        company = Company.objects.create(
+            nom='NTI18N46 Ctrl', slug='nti18n46-ctrl')
+        UniteMesure.objects.create(
+            company=company, code='m', libelle='M\x01\x07ètre', actif=True)
+        admin = User.objects.create_user(
+            username='nti18n46-ctrl', password='x', role_legacy='admin',
+            company=company)
+        resp = _auth(admin).get(EXPORT)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        wb = load_workbook(io.BytesIO(resp.content))
+        valeurs = [c.value for ws in wb.worksheets for ligne in ws.iter_rows()
+                   for c in ligne]
+        self.assertIn('Mètre', valeurs)

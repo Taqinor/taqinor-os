@@ -283,7 +283,7 @@ class EndpointManuelEnBaseTest(BaseApiCalepinage):
 
     def test_sans_gabarit_400_en_nommant_gabarit(self):
         reponse = self.api.get(self._url(self.calepinage))
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('gabarit', reponse.data)
         self.assertIn('manuel', reponse.data['gabarit'])
 

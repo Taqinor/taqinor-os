@@ -65,6 +65,51 @@ class ValiderDefinitionStepsPureTests(TenantAPITestCase):
         self.assertEqual(erreurs, [])
 
 
+class ReglesPublieesTests(TenantAPITestCase):
+    """ERR-ENF11-FUZZ-CORE — le corps PUBLIÉ des écritures porte les règles
+    NTWFL9 (une création sans étape était « conforme » puis refusée)."""
+
+    def test_regle_publiee_concorde_avec_la_validation_serveur(self):
+        import jsonschema
+
+        from core.serializers import CREATION_PUBLIEE
+        cas = [
+            ({'nom': 'x'}, False),
+            ({'nom': 'x', 'steps': []}, False),
+            ({'nom': 'x', 'steps': [{'nom': 'A'}]}, True),
+            ({'nom': 'x', 'steps': [{'nom': 'A',
+                                     'type_approbation': 'manuelle'}]}, False),
+            ({'nom': 'x', 'steps': [{'nom': 'A', 'role_requis': ' ',
+                                     'type_approbation': 'manuelle'}]}, False),
+            ({'nom': 'x', 'steps': [{'nom': 'A', 'type_approbation': 'auto'}]},
+             True),
+            ({'nom': 'x', 'steps': [{'nom': 'A', 'role_requis': 'Resp'}]},
+             True),
+        ]
+        for corps, attendu in cas:
+            conforme = jsonschema.Draft4Validator(CREATION_PUBLIEE).is_valid(
+                corps)
+            self.assertEqual(conforme, attendu, corps)
+            serveur = not workflow.valider_definition_steps(
+                [dict(s, role_requis=(s.get('role_requis') or '').strip())
+                 for s in corps.get('steps', [])])
+            self.assertEqual(serveur and 'steps' in corps, attendu, corps)
+
+    def test_crochet_resserre_le_corps_de_l_operation_seule(self):
+        from core.openapi_erreurs import (
+            EXTENSION_CORPS_RESSERRE, aligner_motifs_sur_drf)
+        ref = {'$ref': '#/components/schemas/WorkflowDefinitionRequest'}
+        operation = {
+            EXTENSION_CORPS_RESSERRE: {'required': ['steps']},
+            'requestBody': {'content': {'application/json': {
+                'schema': dict(ref)}}}}
+        aligner_motifs_sur_drf({'paths': {'/x/': {'post': operation}}})
+        self.assertNotIn(EXTENSION_CORPS_RESSERRE, operation)
+        self.assertEqual(
+            operation['requestBody']['content']['application/json']['schema'],
+            {'allOf': [ref, {'required': ['steps']}]})
+
+
 class WorkflowDefinitionApiValidationTests(TenantAPITestCase):
     """Intégration API — le rejet est bien renvoyé en 400 par le CRUD."""
 

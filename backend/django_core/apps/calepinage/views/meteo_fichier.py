@@ -242,7 +242,12 @@ def _retirer(calepinage, user):
         'depose_le': serializers.CharField(allow_null=True),
         'depose_par': serializers.CharField(allow_null=True),
     }, allow_null=True)})
-@extend_schema(methods=['POST'], responses={201: _forme()})
+@extend_schema(
+    methods=['POST'],
+    request=inline_serializer('CalepinageMeteoFichierCorps', {
+        CHAMP_FICHIER: serializers.FileField(),
+        CHAMP_FOURNISSEUR: serializers.CharField()}),
+    responses={201: _forme()})
 @extend_schema(methods=['DELETE'], responses={204: None})
 @action(detail=True, methods=['get', 'post', 'delete'],
         url_path='meteo-fichier',

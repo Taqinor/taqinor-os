@@ -663,7 +663,7 @@ export function renderBatterySplitSvg(
   };
 
   return (
-    `<svg viewBox="0 0 ${box.width} ${box.height}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" role="img" xmlns="http://www.w3.org/2000/svg">` +
+    `<svg viewBox="0 0 ${box.width} ${box.height}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" xmlns="http://www.w3.org/2000/svg">` +
     `<title>${esc(titleByLang[lang])}</title><desc>${esc(descByLang[lang])}</desc>` +
     baseline +
     directBand +

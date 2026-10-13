@@ -63,6 +63,26 @@ class TenantThemeViewSetTests(TestCase):
         theme.refresh_from_db()
         self.assertEqual(theme.couleur_primaire, '#222222')
 
+    def test_texte_chaine_stricte_put_patch(self):
+        # CI #985 (api-fuzz) — ``"nom_affichage": 0`` était converti en "0"
+        # (200) alors que le schéma déclare une chaîne : 400 nommant le champ.
+        corps = {'logo_url': '', 'couleur_primaire': '',
+                 'couleur_secondaire': '', 'domaine': '', 'nom_affichage': 0,
+                 'extra': {}}
+        for methode in ('put', 'patch'):
+            with self.subTest(methode=methode):
+                req = getattr(self.factory, methode)(
+                    '/theme/courant/', corps, format='json')
+                force_authenticate(req, user=self.admin)
+                resp = TenantThemeViewSet.as_view({methode: 'courant'})(req)
+                self.assertEqual(resp.status_code,
+                                 status.HTTP_400_BAD_REQUEST)
+                self.assertIn('nom_affichage', resp.data)
+        resp = self._put(self.admin, {'couleur_primaire': True})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('couleur_primaire', resp.data)
+        self.assertFalse(TenantTheme.objects.filter(company=self.company).exists())
+
     def test_company_isolation(self):
         TenantTheme.objects.create(company=self.other, couleur_primaire='#999')
         resp = self._get(self.user)

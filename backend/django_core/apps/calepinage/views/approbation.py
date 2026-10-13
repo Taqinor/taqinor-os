@@ -29,6 +29,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuApprouverCalepinage
+from ..serializers import forme_du_contrat
 from ..services.approbation import (
     ApprobationRefusee, decider, etat_approbation,
 )
@@ -37,10 +38,16 @@ from .calepinages import CalepinageViewSet
 __all__ = ['approbation']
 
 
+_FORME_APPROBATION = forme_du_contrat(
+    'CalepinageApprobation', 'calepinage_approbation.json')
+
+
+@extend_schema(methods=['GET'], responses=_FORME_APPROBATION)
 @extend_schema(
-    methods=['POST'],
+    methods=['POST'], responses=_FORME_APPROBATION,
     request=inline_serializer('CalepinageApprobationRequete', {
-        'decision': drf_serializers.CharField(),
+        'decision': drf_serializers.ChoiceField(
+            choices=['approuve', 'refuse']),
         'motif': drf_serializers.CharField(required=False, allow_blank=True),
     }))
 @action(detail=True, methods=['get', 'post'], url_path='approbation',

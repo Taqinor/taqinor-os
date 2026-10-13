@@ -10,10 +10,23 @@ from .models import CompanyProfile, SettingsAuditLog
 
 #: ENF8 — paramètre de requête ``?actif=`` lu par les référentiels
 #: (``true``/``1`` ne garde que les lignes actives ; toute autre valeur = tout).
+ACTIF_VALEURS = ('true', '1')
 ACTIF_PARAM = OpenApiParameter(
     'actif', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
-    enum=['true', '1'],
+    enum=list(ACTIF_VALEURS),
     description='« true » ou « 1 » : ne garder que les lignes actives.')
+
+
+def filtrer_actif(request, qs):
+    """ENF11 — filtre ``?actif=`` d'un référentiel : ``true``/``1`` ne garde que
+    les lignes actives ; toute AUTRE valeur est refusée (400 nommant le
+    paramètre) — le schéma publie l'énumération, le serveur la tient (elle
+    renvoyait toute la liste en 200 pour ``?actif=AAA``)."""
+    from core.parametres_requete import choix_ou_400
+
+    if choix_ou_400(request, 'actif', ACTIF_VALEURS) is not None:
+        return qs.filter(actif=True)
+    return qs
 
 
 def _audit_company(request):

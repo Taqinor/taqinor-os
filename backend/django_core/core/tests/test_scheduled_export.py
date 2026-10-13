@@ -90,6 +90,34 @@ class ScheduledExportViewSetTests(TestCase):
         exp = ScheduledExport.objects.get(pk=resp.data['id'])
         self.assertEqual(exp.company, self.company)
 
+    def test_types_stricts_post_put_patch(self):
+        # CI #985 (api-fuzz) — ``"champ_curseur": 0`` (chaîne) et
+        # ``"actif": 0`` (booléen) étaient convertis en silence : 400.
+        exp = ScheduledExport.objects.create(
+            company=self.company, titre='Fuzz', dataset='societes',
+            destination='minio')
+        base = {'titre': '0', 'dataset': '0', 'spec': {}, 'format': 'csv',
+                'destination': 'minio', 'cron': '', 'actif': False,
+                'mode': 'complet'}
+        for corps, champ in (({**base, 'champ_curseur': 0}, 'champ_curseur'),
+                             ({**base, 'actif': 0}, 'actif'),
+                             ({**base, 'cron': 5}, 'cron')):
+            for methode, action, kwargs in (
+                    ('post', 'create', {}),
+                    ('put', 'update', {'pk': exp.pk}),
+                    ('patch', 'partial_update', {'pk': exp.pk})):
+                with self.subTest(methode=methode, champ=champ):
+                    req = getattr(self.factory, methode)(
+                        '/scheduled-exports/', corps, format='json')
+                    force_authenticate(req, user=self.admin)
+                    resp = ScheduledExportViewSet.as_view(
+                        {methode: action})(req, **kwargs)
+                    self.assertEqual(resp.status_code,
+                                     status.HTTP_400_BAD_REQUEST)
+                    self.assertIn(champ, resp.data)
+        exp.refresh_from_db()
+        self.assertEqual(exp.champ_curseur, '')
+
     def test_company_isolation_on_list(self):
         ScheduledExport.objects.create(
             company=self.other, titre='Autre', dataset='x', destination='s3')
