@@ -712,14 +712,14 @@ class RegisterView(generics.CreateAPIView):
         from apps.roles.models import Role
         ctx = super().get_serializer_context()
         ctx['company'] = self.request.user.company
-        role_id = self.request.data.get('role')
+        role_id = getattr(self.request.data, 'get', lambda k: None)('role')
         if role_id and self.request.user.company:
             try:
                 ctx['role'] = Role.objects.get(
                     pk=role_id,
                     company=self.request.user.company,
                 )
-            except Role.DoesNotExist:
+            except (Role.DoesNotExist, ValueError, TypeError):  # 400 via sérialiseur
                 ctx['role'] = None
         return ctx
 

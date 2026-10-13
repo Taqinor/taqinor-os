@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
 
 from .models import Role
 from .permissions_registre import (
@@ -12,7 +12,7 @@ from .permissions_registre import (
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 
 
-class RoleSerializer(serializers.ModelSerializer):
+class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     # ENF11 — liste de codes TEXTE déclarée au schéma : `null`, un objet ou un
     # code non texte répondent 400 (le JSONField du modèle acceptait tout).
     permissions = serializers.ListField(child=ChaineStricte(), required=False)
