@@ -301,6 +301,25 @@ class IdsFkParCheminTests(unittest.TestCase):
         self.assertEqual((cas.body['lot'], cas.query['lot']), (0, 7))
 
 
+class CiblesRecordsTests(unittest.TestCase):
+    """ENF11 (records) — ``{model, id}`` désigne une ligne réelle."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hooks = _charger_hooks({
+            'user_id': 4, 'company_id': 2, 'role_id': 7, 'fk_ids': {},
+            'cibles': {'crm.lead': [21, 22]}})
+
+    def test_corps_et_query(self):
+        cas = _cas(self.hooks, 'POST', '/api/django/records/tagged-items/',
+                   {'model': 'crm.lead', 'id': 0, 'tag': 1})
+        cas.query = {'model': 'sav.ticket', 'id': '5'}
+        self.hooks.before_call(None, cas, {})
+        self.assertIn(cas.body['id'], (21, 22))
+        self.assertEqual(cas.query['model'], 'crm.lead')
+        self.assertIn(cas.query['id'], ('21', '22'))
+
+
 def _charger_inventaire():
     sys.path.insert(0, str(ROOT / 'scripts' / 'fuzz'))
     try:

@@ -157,8 +157,62 @@ def _semer_lot(company, user):
         created_by=user)
 
 
+def _semer_tag(company, user):
+    tag, _ = _modele('records.Tag').objects.get_or_create(
+        company=company, nom='fuzz-etiquette')
+    return tag
+
+
+def _semer_tagged_item(company, user):
+    from django.contrib.contenttypes.models import ContentType
+
+    lead = _premier('crm.Lead', company)
+    if lead is None:
+        raise ValueError('aucun lead dans la société de fuzz')
+    item, _ = _modele('records.TaggedItem').objects.get_or_create(
+        tag=_semer_tag(company, user),
+        content_type=ContentType.objects.get_for_model(lead),
+        object_id=lead.pk)
+    return item
+
+
+def _semer_type_activite(company, user):
+    existant = _premier('records.ActivityType', company)
+    if existant is not None:
+        return existant
+    return _modele('records.ActivityType').objects.create(
+        company=company, nom='Fuzz')
+
+
+def inventorier_cibles(company):
+    """ENF11 (records) — {« app.modele »: ids} des cibles ``{model, id}``
+    (activités, pièces jointes, étiquettes, abonnés, liens GED)."""
+    from django.apps import apps
+
+    try:
+        from apps.records.models import ALLOWED_TARGETS
+        couples = sorted(ALLOWED_TARGETS)
+    except Exception as exc:  # registre indisponible : pas de cibles
+        print(f'  (cibles ignorées) {exc}', file=sys.stderr)
+        return {}
+    cibles = {}
+    cache = {}
+    for app_label, nom in couples:
+        try:
+            modele = apps.get_model(app_label, nom)
+        except LookupError:
+            continue
+        ids = _ids_existants(modele, company, cache)
+        if ids:
+            cibles[f'{app_label}.{nom}'] = sorted(ids)[:MAX_IDS_PAR_CHAMP]
+    return cibles
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
+    ('records.ActivityType', _semer_type_activite),
+    ('records.Tag', _semer_tag),
+    ('records.TaggedItem', _semer_tagged_item),
 )
 
 
@@ -176,6 +230,9 @@ def semer_objets_references(company, user):
 REGLES_PAR_CHEMIN = (
     (r'^/api/django/stock/', ('lot', 'lot_id'), 'stock.LotEntrepot',
      None, None),
+    (r'^/api/django/records/', ('activity_type', 'type_suivant'),
+     'records.ActivityType', None, None),
+    (r'^/api/django/records/', ('tag', 'tag_id'), 'records.Tag', None, None),
 )
 
 
@@ -238,6 +295,7 @@ def main():
     semer_objets_references(company, user)
     table = inventorier_ids_fk(company)
     regles = inventorier_ids_par_chemin(company)
+    cibles = inventorier_cibles(company)
     etat = {
         'username': USERNAME,
         'user_id': user.pk,
@@ -247,6 +305,8 @@ def main():
         'fk_ids': table,
         # ENF11 — ids par chemin (prioritaires sur ``fk_ids``).
         'fk_ids_chemin': regles,
+        # ENF11 (records) — ids réels des cibles ``{model, id}``.
+        'cibles': cibles,
     }
     with open(sys.argv[1], 'w', encoding='utf-8') as fh:
         json.dump(etat, fh, ensure_ascii=False, indent=1, sort_keys=True)

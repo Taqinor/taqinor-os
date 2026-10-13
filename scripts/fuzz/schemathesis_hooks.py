@@ -212,6 +212,25 @@ def _neutraliser_politique_reseau(case):
         corps['mode'] = _MODE_SUR
 
 
+# ENF11 (records) — {« app.modele »: ids} : la cible ``{model, id}`` d'une
+# activité / pièce jointe / étiquette / abonné désigne une ligne RÉELLE.
+CIBLES = {m: list(ids) for m, ids in (_ETAT.get('cibles') or {}).items()
+          if ids}
+
+
+def _cible_reelle(objet):
+    """``{model, id}`` → un modèle cible qui a des lignes et l'un de ses ids
+    (le modèle tiré reste dans l'énumération du schéma)."""
+    modele = objet.get('model')
+    if not CIBLES or not isinstance(modele, str) or 'id' not in objet:
+        return
+    if modele not in CIBLES:
+        modele = sorted(CIBLES)[zlib.crc32(modele.encode()) % len(CIBLES)]
+        objet['model'] = modele
+    ids = CIBLES[modele]
+    objet['id'] = _id_connu(objet['id'], ids, set(ids), texte=True)
+
+
 def _table_fk(chemin):
     """{champ: (ids, ensemble, longueur max)} des règles de ``chemin``."""
     table = {}
@@ -277,11 +296,13 @@ def _ids_fk_connus(case):
     table = _table_fk(case.operation.path)
     corps = case.body
     if isinstance(corps, dict):
+        _cible_reelle(corps)
         _remplacer_ids_fk(corps, table)
     # ENF11 — les FK de la QUERY (``?installation=``, ``?client=``, ``?lot=``)
     # aussi : un GET filtré sur un id inexistant répondait 400.
     query = getattr(case, 'query', None)
     if isinstance(query, dict):
+        _cible_reelle(query)
         for nom, valeur in list(query.items()):
             entree = _entree(nom, table)
             if entree is not None:
