@@ -316,6 +316,105 @@ def _utilisateurs_internes(qs, company):
     return qs.exclude(portee=portail) if portail else qs
 
 
+def _semer_calepinage(company, user):
+    """Un calepinage ordinaire, sur le DERNIER lead (les autres restent
+    libres pour ``POST calepinages/`` — un seul ouvert par lead)."""
+    existant = _premier('calepinage.Calepinage', company)
+    if existant is not None:
+        return existant
+    from apps.calepinage.services.creation import creer_pour_lead
+
+    lead = (_modele('crm.Lead').objects.filter(company=company)
+            .order_by('-pk').first())
+    if lead is None:
+        raise ValueError('aucun lead dans la société de fuzz')
+    return creer_pour_lead(lead.pk, company, user=user,
+                           titre='Calepinage fuzz')
+
+
+def _ids_calepinages_modeles(company):
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.calepinage.services.modeles import NOM_TAG_MODELE
+
+    return (_modele('records.TaggedItem').objects
+            .filter(tag__company=company, tag__nom=NOM_TAG_MODELE,
+                    content_type=ContentType.objects.get_for_model(
+                        _modele('calepinage.Calepinage')))
+            .values('object_id'))
+
+
+def _semer_calepinage_modele(company, user):
+    """Un calepinage MARQUÉ modèle (``depuis-modele``), sur un client."""
+    modeles = _modele('calepinage.Calepinage').objects.filter(
+        company=company, pk__in=_ids_calepinages_modeles(company))
+    if modeles.exists():
+        return modeles.first()
+    from apps.calepinage.services.creation import creer_pour_client
+    from apps.calepinage.services.modeles import marquer_modele
+
+    client = _premier('crm.Client', company)
+    if client is None:
+        raise ValueError('aucun client dans la société de fuzz')
+    calepinage = creer_pour_client(client.pk, company, user=user,
+                                   titre='Modèle fuzz')
+    marquer_modele(calepinage, user=user)
+    return calepinage
+
+
+def _semer_systeme_fixation(company, user):
+    existant = _premier('calepinage.SystemeFixation', company)
+    if existant is not None:
+        return existant
+    return _modele('calepinage.SystemeFixation').objects.create(
+        company=company, code='fuzz-systeme', libelle='Système fuzz',
+        provenance='Seed du harnais de fuzz (ENF11), jamais une donnée réelle.')
+
+
+def _semer_gabarit_dossier(company, user):
+    existant = _premier('calepinage.GabaritDossierReglementaire', company)
+    if existant is not None:
+        return existant
+    return _modele('calepinage.GabaritDossierReglementaire').objects.create(
+        company=company, pays='ma', code='fuzz-gabarit',
+        intitule='Gabarit fuzz')
+
+
+def _semer_ged(company, user):
+    """Coffre, armoire + dossier, étiquette GED."""
+    coffre = _premier('ged.Coffre', company) or _modele(
+        'ged.Coffre').objects.create(company=company, nom='Coffre fuzz')
+    cabinet, _ = _modele('ged.Cabinet').objects.get_or_create(
+        company=company, nom='Armoire fuzz')
+    if _premier('ged.Folder', company) is None:
+        _modele('ged.Folder').objects.create(
+            company=company, cabinet=cabinet, nom='Dossier fuzz')
+    _modele('ged.DocumentTag').objects.get_or_create(
+        company=company, slug='fuzz-etiquette',
+        defaults={'nom': 'Étiquette fuzz'})
+    return coffre
+
+
+def _calepinages_modeles(qs, company):
+    return qs.filter(pk__in=_ids_calepinages_modeles(company))
+
+
+def _calepinages_ordinaires(qs, company):
+    return qs.exclude(pk__in=_ids_calepinages_modeles(company))
+
+
+def _leads_sans_calepinage(qs, company):
+    return qs.exclude(pk__in=_modele('calepinage.Calepinage').objects
+                      .filter(company=company, lead_id__isnull=False)
+                      .values('lead_id'))
+
+
+def _tags_hors_modele(qs, company):
+    from apps.calepinage.services.modeles import NOM_TAG_MODELE
+
+    return qs.exclude(nom=NOM_TAG_MODELE)
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
     ('records.ActivityType', _semer_type_activite),
@@ -329,6 +428,11 @@ SEMEURS = (
     ('sav.Equipement', _semer_equipement),
     ('sav.EquipeMaintenance', _semer_equipe_maintenance),
     ('sav.ContratMaintenance', _semer_contrat_maintenance),
+    ('calepinage.Calepinage', _semer_calepinage),
+    ('calepinage.Calepinage (modèle)', _semer_calepinage_modele),
+    ('calepinage.SystemeFixation', _semer_systeme_fixation),
+    ('calepinage.GabaritDossierReglementaire', _semer_gabarit_dossier),
+    ('ged (coffre, dossier, étiquette)', _semer_ged),
 )
 
 
@@ -362,6 +466,29 @@ REGLES_PAR_CHEMIN = (
      'authentication.CustomUser', _utilisateurs_internes, None),
     (r'^/api/django/sav/tickets/actions-groupees/', ('ids',), 'sav.Ticket',
      None, None),
+    (r'^/api/django/calepinage/calepinages/$', ('lead', 'lead_id'),
+     'crm.Lead', _leads_sans_calepinage, None),
+    (r'^/api/django/calepinage/', ('modele', 'modele_id'),
+     'calepinage.Calepinage', _calepinages_modeles, None),
+    (r'^/api/django/calepinage/calepinages/comparer-projets/', ('ids',),
+     'calepinage.Calepinage', _calepinages_ordinaires, 5),
+    (r'^/api/django/calepinage/calepinages/\{[^}]+\}/comparatif', ('ids',),
+     'calepinage.Calepinage', _calepinages_ordinaires, 4),
+    (r'^/api/django/calepinage/', ('tag_id',), 'records.Tag',
+     _tags_hors_modele, None),
+    (r'^/api/django/calepinage/', ('systeme_id', 'systeme'),
+     'calepinage.SystemeFixation', None, None),
+    (r'^/api/django/calepinage/', ('gabarit', 'gabarit_id'),
+     'calepinage.GabaritDossierReglementaire', None, None),
+    (r'^/api/django/ged/', ('tag', 'tags', 'tag_id'), 'ged.DocumentTag',
+     None, None),
+    (r'^/api/django/ged/', ('folder', 'folder_id'), 'ged.Folder', None, None),
+    (r'^/api/django/ged/dossiers/', ('parent',), 'ged.Folder', None, None),
+    (r'^/api/django/ged/tags/', ('parent',), 'ged.DocumentTag', None, None),
+    (r'^/api/django/ged/', ('coffre', 'coffre_id'), 'ged.Coffre', None, None),
+    (r'^/api/django/ged/', ('proprietaire',), 'authentication.CustomUser',
+     _utilisateurs_internes, None),
+    (r'^/api/django/ged/', ('contact', 'contact_id'), 'crm.Client', None, None),
 )
 
 
