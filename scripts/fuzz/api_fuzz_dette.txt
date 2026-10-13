@@ -1765,3 +1765,11 @@ API accepted schema-violating request|PUT /api/django/sav/equipes-maintenance/{i
 API accepted schema-violating request|POST /api/django/core/dossiers/{id}/checklist/
 API rejected schema-compliant request|PATCH /api/django/core/formulaires/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/workflow-step-definitions/{id}/
+# PR #987, 2e tirage (13/10/2026) : constats PRÉ-EXISTANTS sur des routes non modifiées par la PR (core : ERR-ENF11-FUZZ-CORE ; stock blocages-qualite ; achats depuis-ocr, motif `fields` non publié au schéma multipart) — à corriger à la cause
+API accepted schema-violating request|PATCH /api/django/core/matrices-approbation/{id}/
+API accepted schema-violating request|POST /api/django/core/matrices-approbation/
+API accepted schema-violating request|PUT /api/django/core/matrices-approbation/{id}/
+API rejected schema-compliant request|PATCH /api/django/core/workflow-definitions/{id}/
+API rejected schema-compliant request|PATCH /api/django/stock/blocages-qualite/{id}/
+API rejected schema-compliant request|PUT /api/django/stock/blocages-qualite/{id}/
+API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/depuis-ocr/
