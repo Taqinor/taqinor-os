@@ -1757,3 +1757,7 @@ API rejected schema-compliant request|POST /api/django/ventes/etude-horaire/prev
 API rejected schema-compliant request|PUT /api/django/parametres/tarification/update/
 # Groupe de merge #985, 2e tour (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH tarification/update, règles métier, jumeau du PUT déjà gelé, route non modifiée).
 API rejected schema-compliant request|PATCH /api/django/parametres/tarification/update/
+# PR #985, 5e tirage (13/10/2026) — 3 constats PRÉ-EXISTANTS sav (coercition DRF sur PUT categories-equipement / equipes-maintenance, variante actions-groupees) — ERR-ENF11-FUZZ-SAV reste ouverte.
+API accepted schema-violating request|POST /api/django/sav/tickets/actions-groupees/
+API accepted schema-violating request|PUT /api/django/sav/categories-equipement/{id}/
+API accepted schema-violating request|PUT /api/django/sav/equipes-maintenance/{id}/
