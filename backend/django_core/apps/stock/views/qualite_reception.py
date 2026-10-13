@@ -37,6 +37,10 @@ class PlanEchantillonnageSerializer(ChampsTexteBooleenStricts, CompanyScopedRela
         ]
         # `company` n'est JAMAIS acceptée du corps : le viewset la force.
         read_only_fields = ['created_at', 'updated_at']
+        # ERR fuzz : borne PUBLIÉE au schéma (``maximum: 100``) — un taux > 100
+        # passait pour conforme puis était refusé (« rejected schema-compliant »).
+        extra_kwargs = {'taux_echantillon_pct': {'max_value': 100, 'error_messages': {
+            'max_value': "Le taux d'échantillonnage ne peut pas dépasser 100 %."}}}
 
     def validate_taux_echantillon_pct(self, value):
         if value is None:

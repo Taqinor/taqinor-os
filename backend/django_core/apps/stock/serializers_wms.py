@@ -270,6 +270,10 @@ class PlanComptageTournantSerializer(CompanyScopedRelationsMixin,
             'date_dernier_comptage',
         ]
         read_only_fields = ['date_dernier_comptage']
+        # ERR fuzz : borne PUBLIÉE au schéma (``minimum: 1``) — 0 passait pour
+        # conforme puis était refusé (« rejected schema-compliant request »).
+        extra_kwargs = {'frequence_jours': {'min_value': 1, 'error_messages': {
+            'min_value': 'La fréquence doit être un nombre de jours positif.'}}}
 
     def validate_frequence_jours(self, value):
         if value is None or int(value) <= 0:
