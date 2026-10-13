@@ -6,6 +6,7 @@ chaque ``@extend_schema`` reste sur une ligne lisible.
 """
 from typing import Any, Dict, List
 
+from drf_spectacular.extensions import OpenApiSerializerExtension
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
@@ -64,3 +65,40 @@ class SchemaObjetUnique(AutoSchema):
 
     def _is_list_view(self, serializer=None):
         return False
+
+
+class EntierBornePublie(serializers.IntegerField):
+    """Entier dont la borne (``min_value``/``max_value``) est PUBLIÉE au schéma
+    (api-fuzz « rejected schema-compliant ») mais CONTRÔLÉE par le
+    ``validate_<champ>`` du sérialiseur : le contrat d'erreur (message
+    français, code ``invalid``) reste celui que les contrats WMS épinglent."""
+
+    def __init__(self, borne_validee, **kwargs):
+        """``borne_validee`` : ``'min'`` ou ``'max'`` — la seule borne dont le
+        validateur DRF est retiré (l'autre reste contrôlée par DRF)."""
+        from django.core.validators import MaxValueValidator, MinValueValidator
+        super().__init__(**kwargs)
+        classe = MinValueValidator if borne_validee == 'min' else MaxValueValidator
+        self.validators = [v for v in self.validators if not isinstance(v, classe)]
+
+
+class _EmplacementTiersNomme(OpenApiSerializerExtension):
+    """ERR fuzz (PUT/POST emplacements) — règle croisée PUBLIÉE au schéma de
+    requête : un emplacement non interne nomme son tiers (``tiers_nom`` non
+    blanc), sinon 400 « Nommez le tiers… » sur un corps jugé conforme. Le
+    PATCH (partiel, type relu sur l'instance) garde le schéma brut."""
+    target_class = 'apps.stock.serializers.EmplacementStockSerializer'
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(self.target, direction, bypass_extensions=True)
+        if direction != 'request' or auto_schema.method == 'PATCH':
+            return schema
+        from .models import EmplacementStock
+        interne = EmplacementStock.TypeProprietaire.INTERNE
+        tiers = [v for v in EmplacementStock.TypeProprietaire.values if v != interne]
+        return {**schema, 'anyOf': [
+            {'properties': {'type_proprietaire': {'enum': [interne]}}},
+            {'properties': {'type_proprietaire': {'enum': tiers},
+                            'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
+             'required': ['type_proprietaire', 'tiers_nom']},
+        ]}
