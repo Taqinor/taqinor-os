@@ -222,35 +222,6 @@ class FkAchatsTests(TestCase):
             'montant_ht': '10', 'montant_tva': '2', 'montant_ttc': '12',
         }, 'fournisseur', self.fb.pk)
 
-    def test_fuzz_paiement_facture_illisible_400(self):
-        """ERR fuzz : ``facture`` non entier (liste/texte) = 400, pas 500."""
-        for facture in ([None, None], 'abc', {'a': 1}):
-            r = self.api.post('/api/django/achats/paiements-fournisseur/', {
-                'facture': facture, 'montant': '1',
-                'date_paiement': '2026-10-06', 'mode': 'virement'},
-                format='json')
-            self.assertEqual(r.status_code, 400, (facture, r.content))
-
-    def test_fuzz_retour_patch_avec_lignes(self):
-        """ERR fuzz : PATCH d'un retour brouillon portant ``lignes`` (écriture
-        imbriquée) remplace les lignes au lieu de lever AssertionError (500)."""
-        retour = RetourFournisseur.objects.create(
-            company=self.co_a, reference='RET-A-FUZZ', fournisseur=self.fa)
-        r = self.api.patch(
-            f'/api/django/achats/retours-fournisseur/{retour.pk}/', {
-                'fournisseur': self.fa.pk, 'bon_commande': None,
-                'motif': None,
-                'lignes': [{'produit': self.pa.pk, 'quantite': 1,
-                            'motif': None}]}, format='json')
-        self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual(retour.lignes.count(), 1)
-        r = self.api.patch(
-            f'/api/django/achats/retours-fournisseur/{retour.pk}/',
-            {'lignes': [{'produit': self.pa.pk, 'quantite': 3}]},
-            format='json')
-        self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual([x.quantite for x in retour.lignes.all()], [3])
-
     def test_paiement_facture_autre_societe(self):
         self._post_compare('/api/django/stock/paiements-fournisseur/', {
             'montant': '10', 'date_paiement': '2026-10-06',

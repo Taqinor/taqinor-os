@@ -910,6 +910,11 @@ class ApprovalRequestTests(TestCase):
         champs = ApprovalRequestTypeSerializer().fields
         self.assertFalse(champs['champs_requis'].allow_null)
         self.assertFalse(champs['champs_config'].allow_null)
+        # Booléen strict (ChampsStrictsMixin) : `0` n'est pas un booléen JSON.
+        resp = api.post('/api/django/automation/approval-request-types/',
+                        {'nom': 'Strict', 'piece_jointe_obligatoire': 0},
+                        format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
 
     def test_employee_submits_request_seen_by_approver(self):
         req_type = self._type()
