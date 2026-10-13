@@ -18,6 +18,7 @@ comptage (`inventaire-sessions/`).
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from ..openapi_helpers import INT, P, STR, corps
+from ..utils.params import corps_objet
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import api_view, parser_classes, permission_classes
@@ -96,16 +97,17 @@ def scanner_mouvement_view(request):
     inconnu."""
     from ..services import enregistrer_mouvement_scanne
 
+    donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
     try:
         mouvement = enregistrer_mouvement_scanne(
             company=request.user.company, user=request.user,
-            produit_id=request.data.get('produit'),
-            type_mouvement=request.data.get('type_mouvement'),
-            quantite=request.data.get('quantite'),
-            bin_source_id=request.data.get('bin_source'),
-            bin_destination_id=request.data.get('bin_destination'),
-            reference=request.data.get('reference') or 'SCAN',
-            note=request.data.get('note') or '')
+            produit_id=donnees.get('produit'),
+            type_mouvement=donnees.get('type_mouvement'),
+            quantite=donnees.get('quantite'),
+            bin_source_id=donnees.get('bin_source'),
+            bin_destination_id=donnees.get('bin_destination'),
+            reference=donnees.get('reference') or 'SCAN',
+            note=donnees.get('note') or '')
     except ValueError as exc:
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)
