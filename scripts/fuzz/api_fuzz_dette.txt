@@ -1420,8 +1420,6 @@ Server error|GET /api/django/stock/produits/expirant-bientot/
 Server error|GET /api/django/stock/produits/previsions-reappro/
 Server error|GET /api/django/ventes/clients/{client_id}/credit-warning/
 Server error|GET /api/django/ventes/devis/{id}/proposal/
-Server error|POST /api/django/adminops/config-packages/appliquer/
-Server error|POST /api/django/adminops/config-packages/previsualiser/
 Server error|POST /api/django/core/branded-templates/{id}/preview/
 Server error|POST /api/django/core/bulk-edit/appliquer/
 Server error|POST /api/django/core/data-explorer/drill/

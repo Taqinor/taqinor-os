@@ -7,7 +7,7 @@ création, par les vues dédiées.
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 from core.models import ApiUsagePlan
 
@@ -63,7 +63,7 @@ class ApiKeyCreateSerializer(serializers.Serializer):
         return value
 
 
-class WebhookSerializer(serializers.ModelSerializer):
+class WebhookSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """Représentation en lecture d'un webhook (jamais le secret en clair)."""
     # ENF11 — la règle « https uniquement » est exprimée dans le schéma
     # (``pattern``) ; l'hôte public/résolvable reste contrôlé par
@@ -71,6 +71,9 @@ class WebhookSerializer(serializers.ModelSerializer):
     target_url = serializers.RegexField(
         r'^https://\S+$', max_length=500,
         error_messages={'invalid': "L'URL du webhook doit utiliser https."})
+    # ENF11 — liste de textes : un non-tableau ou un code non texte levait
+    # TypeError dans ``validate_events`` (500) ; désormais 400.
+    events = serializers.ListField(child=ChaineStricte(), required=False)
 
     class Meta:
         model = Webhook
@@ -102,7 +105,11 @@ class WebhookSerializer(serializers.ModelSerializer):
         intégration muette."""
         from .webhook_filters import erreurs_de_filtres
 
-        erreurs = erreurs_de_filtres(value)
+        try:
+            erreurs = erreurs_de_filtres(value)
+        except (TypeError, ValueError, KeyError, AttributeError):
+            # ENF11 — condition de forme inattendue : 400, jamais 500.
+            erreurs = ['« filtres » : condition mal formée.']
         if erreurs:
             raise serializers.ValidationError(erreurs)
         return value or {}
@@ -160,7 +167,7 @@ class ApiUsagePlanSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class ServiceAccountSerializer(serializers.ModelSerializer):
+class ServiceAccountSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """NTSEC24 — compte de service (jeton renvoyé UNE fois à la création)."""
     # ENF11 — liste de textes (le JSONField générique laissait passer ``null``
     # et des entiers : schéma « any », refus 400 inattendu sur ``scopes: null``).

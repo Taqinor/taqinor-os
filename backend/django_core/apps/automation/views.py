@@ -444,6 +444,10 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
                    responses={201: ApprovalRequestSerializer})
     def create(self, request, *args, **kwargs):
         company = request.user.company
+        if not hasattr(request.data, 'get'):  # corps JSON non objet (liste…)
+            return Response(
+                {'detail': 'Le corps doit être un objet.'},
+                status=status.HTTP_400_BAD_REQUEST)
         # ENF11 — id illisible : 400 ; id bien formé mais inconnu : 404.
         try:
             type_id = int(request.data.get('request_type'))
@@ -465,6 +469,10 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         payload = request.data.get('payload') or {}
         if hasattr(payload, 'dict'):  # QueryDict (multipart) -> dict
             payload = payload.dict()
+        if not isinstance(payload, dict):
+            return Response(
+                {'payload': ['Objet attendu.']},
+                status=status.HTTP_400_BAD_REQUEST)
         file = request.FILES.get('file')
         try:
             req = services.submit_request(

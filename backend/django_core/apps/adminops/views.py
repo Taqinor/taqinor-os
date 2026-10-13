@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.champs_stricts import ChaineStricte
 from . import config_package_service, sandbox_service, selectors
 from .health_score import calculer_health_score
 from .models import AdminOpsSettings, ConfigPackage, SandboxEnvironment
@@ -72,8 +73,8 @@ def adoption_view(request):
 
 
 class TrackerUsageSerializer(drf_serializers.Serializer):
-    module = drf_serializers.CharField(max_length=60)
-    ecran = drf_serializers.CharField(
+    module = ChaineStricte(max_length=60)
+    ecran = ChaineStricte(
         max_length=120, required=False, allow_blank=True)
 
 
