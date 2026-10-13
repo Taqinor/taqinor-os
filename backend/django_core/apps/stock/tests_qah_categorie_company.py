@@ -91,5 +91,8 @@ class TestCategorieCreationSansCompanyDansLeCorps(TestCase):
         r = self.client.post('/api/django/stock/categories/', {
             'nom': 'Panneaux',
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
-        self.assertIn('nom', r.data)
+        # ERR fuzz (api-fuzz « rejected schema-compliant ») : un doublon est
+        # un conflit d'état (409 unique_conflict, ENF2), pas une saisie invalide.
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.data['error']['code'], 'unique_conflict')
+        self.assertIn('nom', r.data['error']['fields'])

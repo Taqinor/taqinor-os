@@ -18,6 +18,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.mixins import TenantMixin
+from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..openapi_helpers import BOOL, INT, NUM, OBJET, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
@@ -27,7 +28,7 @@ from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..models import BudgetDepartement, EngagementBudget
 
 
-class BudgetDepartementSerializer(MasqueMontantsAchatMixin,
+class BudgetDepartementSerializer(ChampsStrictsMixin, MasqueMontantsAchatMixin,
                                   serializers.ModelSerializer):
     champs_montants_achat = ('montant_alloue',)  # ERR-STK-PRIX-ACHAT-SUITE
     periodicite_display = serializers.CharField(
@@ -50,6 +51,10 @@ class BudgetDepartementSerializer(MasqueMontantsAchatMixin,
 
         periodicite = valeur('periodicite', BudgetDepartement.Periodicite.ANNUELLE)
         mois = valeur('mois', 0) or 0
+        # ERR fuzz : passer en ANNUEL sans envoyer ``mois`` remet le mois à 0
+        # (un budget annuel n'en porte pas) au lieu de buter sur l'ancien mois.
+        if periodicite == BudgetDepartement.Periodicite.ANNUELLE and 'periodicite' in attrs and 'mois' not in attrs:
+            attrs['mois'] = mois = 0
         if periodicite == BudgetDepartement.Periodicite.MENSUELLE:
             if not 1 <= mois <= 12:
                 raise serializers.ValidationError(

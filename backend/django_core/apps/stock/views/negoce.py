@@ -22,6 +22,7 @@ from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..openapi_helpers import INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
+from ..utils.params import corps_objet
 
 from ..models import (
     AccordRFAFournisseur, DeclarationConsommation, DepotConsignation,
@@ -179,16 +180,17 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..services_consignation import creer_depot_consignation
 
+        donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
         try:
             depot = creer_depot_consignation(
                 company=request.user.company, user=request.user,
-                client_id=request.data.get('client'),
-                produit_id=request.data.get('produit'),
-                quantite=request.data.get('quantite_deposee'),
-                date_depot=request.data.get('date_depot'),
-                adresse_site=request.data.get('adresse_site') or '',
-                emplacement_id=request.data.get('emplacement_source'),
-                note=request.data.get('note') or '')
+                client_id=donnees.get('client'),
+                produit_id=donnees.get('produit'),
+                quantite=donnees.get('quantite_deposee'),
+                date_depot=donnees.get('date_depot'),
+                adresse_site=donnees.get('adresse_site') or '',
+                emplacement_id=donnees.get('emplacement_source'),
+                note=donnees.get('note') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
