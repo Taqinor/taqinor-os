@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
+from core.champs_stricts import DecimalStricte
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
@@ -105,8 +106,8 @@ class CategorieSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                raise serializers.ValidationError(
-                    {'nom': 'Une catégorie de ce nom existe déjà.'})
+                raise ConflitUnicite(  # ERR fuzz : doublon = 409 (ENF2), pas 400
+                    'Une catégorie de ce nom existe déjà.', champs=['nom'])
         return attrs
 
 
@@ -147,7 +148,7 @@ class PortailFournisseurTokenSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class FournisseurSerializer(CompanyScopedRelationsMixin,
+class FournisseurSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                             serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -169,6 +170,11 @@ class FournisseurSerializer(CompanyScopedRelationsMixin,
     # `source='categorie.nom'` pouvait être omis de la réponse PATCH, et le
     # contrat fournisseur_conformite.json l'annonce.
     categorie_nom = serializers.SerializerMethodField()
+    # ERR fuzz : "" (= non renseigné) était accepté alors que le schéma l'excluait,
+    # et un nombre JSON passait pour la chaîne décimale ; DecimalStricte publie "".
+    frais_livraison_estimes = DecimalStricte(
+        max_digits=10, decimal_places=2, required=False, allow_null=True,
+        help_text=Fournisseur._meta.get_field('frais_livraison_estimes').help_text)
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_categorie_nom(self, obj):
@@ -187,16 +193,12 @@ class FournisseurSerializer(CompanyScopedRelationsMixin,
     @extend_schema_field(serializers.IntegerField())
     def get_nb_produits(self, obj):
         annotated = getattr(obj, 'nb_produits_annot', None)
-        if annotated is not None:
-            return annotated
-        return obj.produits.count()
+        return annotated if annotated is not None else obj.produits.count()
 
     @extend_schema_field(serializers.IntegerField())
     def get_nb_bons_commande(self, obj):
         annotated = getattr(obj, 'nb_bons_commande_annot', None)
-        if annotated is not None:
-            return annotated
-        return obj.bons_commande.count()
+        return annotated if annotated is not None else obj.bons_commande.count()
 
     def validate_ice(self, value):
         from .services import validate_ice_format
@@ -2268,7 +2270,7 @@ def _poser_lignes_inventaire(session, lignes_data, anciennes=None):
             quantite_theorique=theorique, quantite_comptee=comptee)
 
 
-class InventaireSessionSerializer(serializers.ModelSerializer):
+class InventaireSessionSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer):
     lignes = LigneInventaireSerializer(many=True, required=False)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -2371,7 +2373,7 @@ class KitComposantSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
-class KitProduitSerializer(CompanyScopedRelationsMixin,
+class KitProduitSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2800,7 +2802,7 @@ class ModeleBonCommandeFournisseurLigneSerializer(
 
 
 class ModeleBonCommandeFournisseurSerializer(
-        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+        ChampsTexteBooleenStricts, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZPUR3 — modèle de BCF réutilisable (purchase template)."""
     # ASTK2 — fournisseur d'une autre société = id absent (400).
     same_company_fields = ('fournisseur',)
@@ -2815,13 +2817,17 @@ class ModeleBonCommandeFournisseurSerializer(
             'date_creation', 'date_mise_a_jour',
         ]
 
+    def validate_lignes(self, value):
+        # ERR fuzz (modeles-bcf) : une ligne sans produit (PATCH partiel) ou un
+        # produit en double violait NOT NULL / unique_together -> 500 ; 400.
+        produits = [ligne.get('produit') for ligne in value]
+        if None in produits or len(set(produits)) != len(produits):
+            raise serializers.ValidationError('Chaque ligne exige un produit, sans doublon.')
+        return value
+
     def create(self, validated_data):
-        lignes_data = validated_data.pop('lignes', [])
-        modele = ModeleBonCommandeFournisseur.objects.create(**validated_data)
-        for ligne in lignes_data:
-            ModeleBonCommandeFournisseurLigne.objects.create(
-                modele=modele, **ligne)
-        return modele
+        # Création = mise à jour d'un modèle neuf (lignes vides par défaut).
+        return self.update(ModeleBonCommandeFournisseur(), {'lignes': [], **validated_data})
 
     def update(self, instance, validated_data):
         lignes_data = validated_data.pop('lignes', None)
@@ -2830,9 +2836,8 @@ class ModeleBonCommandeFournisseurSerializer(
         instance.save()
         if lignes_data is not None:
             instance.lignes.all().delete()
-            for ligne in lignes_data:
-                ModeleBonCommandeFournisseurLigne.objects.create(
-                    modele=instance, **ligne)
+            ModeleBonCommandeFournisseurLigne.objects.bulk_create(
+                [ModeleBonCommandeFournisseurLigne(modele=instance, **ligne) for ligne in lignes_data])
         return instance
 
 

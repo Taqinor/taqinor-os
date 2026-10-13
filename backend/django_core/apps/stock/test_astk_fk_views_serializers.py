@@ -246,3 +246,99 @@ class FkViewsSerializersTests(TestCase):
                 self.assertTrue(ser.is_valid(), ser.errors)
                 for champ in corps:
                     self.assertNotIn(champ, ser.validated_data)
+
+
+class CorpsFuzzTests(TestCase):
+    """ERR fuzz (api-fuzz-pr #986, stock) — corps non objet, ids non entiers et
+    champs plus lâches que leur schéma : 400 (ou 409 pour un doublon), jamais
+    500 ni acceptation silencieuse."""
+
+    def setUp(self):
+        from apps.stock.models import KitProduit, ModeleBonCommandeFournisseur
+        self.a = make_company('fuzz-stock-a', 'Fuzz stock A')
+        self.admin = User.objects.create_user(
+            username='fuzz_stock_admin', password='x', role_legacy='admin',
+            company=self.a)
+        self.api = auth_client(self.admin)
+        self.fa = Fournisseur.objects.create(company=self.a, nom='Fourn. F')
+        self.pa = Produit.objects.create(
+            company=self.a, nom='ProdF', sku='FUZZ-PA', fournisseur=self.fa,
+            prix_achat=Decimal('10'), prix_vente=Decimal('20'))
+        self.emp = EmplacementStock.objects.create(
+            company=self.a, nom='Dépôt F', is_principal=True)
+        self.kit = KitProduit.objects.create(company=self.a, nom='Kit F')
+        self.modele = ModeleBonCommandeFournisseur.objects.create(
+            company=self.a, nom='Modèle F')
+
+    def test_fuzz_corps_non_objet_400(self):
+        cas = [('post', '/api/django/achats/paiements-fournisseur/')] + [
+            ('post', f'{BASE}/{fin}') for fin in (
+                'paiements-fournisseur/', 'consignations/', 'mouvements-rebut/',
+                'retours-client/', 'scanner/mouvement/', 'transferts/',
+                'transferts/demander/', f'kits/{self.kit.id}/dupliquer/',
+                'kits/remplacer-composant/')] + [
+            (m, f'{BASE}/emplacements/{self.emp.id}/') for m in ('put', 'patch')]
+        for methode, url in cas:
+            with self.subTest(url=url, methode=methode):
+                r = getattr(self.api, methode)(url, [None, None], format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+
+    def test_fuzz_ids_non_entiers_400(self):
+        cas = (
+            ('produits/generer-bcf-reappro/', {'fournisseur_id': [None, None]}),
+            ('expeditions/', {'unite_logistique': {}, 'destination': ''}),
+            ('produits/bulk/', {'action': 'set_price', 'ids': [{}], 'mode': '0',
+                                'valeur': '0'}),
+            ('produits/decoupes/', {'produit_source': self.pa.id, 'produit_cible': {},
+                                    'quantite_consommee': 1, 'quantite_produite': 1}),
+        )
+        for fin, corps in cas:
+            with self.subTest(url=fin):
+                r = self.api.post(f'{BASE}/{fin}', corps, format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+
+    def test_fuzz_modele_bcf_lignes_et_note(self):
+        url = f'{BASE}/modeles-bcf/{self.modele.id}/'
+        for lignes in ([{'quantite': 0}], [{'produit': self.pa.id}, {'produit': self.pa.id}]):
+            with self.subTest(lignes=lignes):
+                r = self.api.patch(url, {'lignes': lignes}, format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.put(url, {'nom': 'M', 'note': 0, 'lignes': []}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(f'{BASE}/modeles-bcf/', {
+            'nom': 'Neuf', 'note': 'ok', 'lignes': [{'produit': self.pa.id, 'quantite': 3}]},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['lignes'][0]['quantite'], 3)
+
+    def test_fuzz_kits_booleens_stricts(self):
+        url = f'{BASE}/kits/{self.kit.id}/'
+        r = self.api.patch(url, {'is_archived': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.get(f'{url}?avec_disponibilite=null&avec_disponibilite=null')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(self.api.get(f'{url}?avec_disponibilite=true').status_code, 200)
+
+    def test_fuzz_fournisseur_et_inventaire_stricts(self):
+        url = f'{BASE}/fournisseurs/'
+        r = self.api.post(url, {'nom': 'F vide', 'frais_livraison_estimes': ''}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertIsNone(r.data['frais_livraison_estimes'])
+        r = self.api.post(url, {'nom': 'F nombre', 'frais_livraison_estimes': 12.5}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'nom': 7}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(f'{BASE}/inventaire-sessions/', {'motif': 0, 'lignes': []}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_fuzz_bornes_publiees_et_doublon_409(self):
+        from apps.stock.serializers_wms import PlanComptageTournantSerializer
+        from apps.stock.views.qualite_reception import PlanEchantillonnageSerializer
+        self.assertEqual(
+            PlanEchantillonnageSerializer().fields['taux_echantillon_pct'].max_value, 100)
+        self.assertEqual(
+            PlanComptageTournantSerializer().fields['frequence_jours'].min_value, 1)
+        Categorie.objects.create(company=self.a, nom='Prise')
+        autre = Categorie.objects.create(company=self.a, nom='Libre')
+        r = self.api.patch(f'{BASE}/categories/{autre.id}/', {'nom': 'Prise'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
