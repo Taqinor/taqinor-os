@@ -96,9 +96,12 @@ class _EmplacementTiersNomme(OpenApiSerializerExtension):
         from .models import EmplacementStock
         interne = EmplacementStock.TypeProprietaire.INTERNE
         tiers = [v for v in EmplacementStock.TypeProprietaire.values if v != interne]
+        # Enums ENVELOPPÉS (``anyOf`` de propriété) : le post-traitement des
+        # enums de drf-spectacular ne les voit pas — sinon il renomme le
+        # composant ``TypeProprietaireEnum`` (collision de jeux de valeurs).
         return {**schema, 'anyOf': [
-            {'properties': {'type_proprietaire': {'enum': [interne]}}},
-            {'properties': {'type_proprietaire': {'enum': tiers},
+            {'properties': {'type_proprietaire': {'anyOf': [{'enum': [interne]}]}}},
+            {'properties': {'type_proprietaire': {'anyOf': [{'enum': tiers}]},
                             'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
              'required': ['type_proprietaire', 'tiers_nom']},
         ]}
