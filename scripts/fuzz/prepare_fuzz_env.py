@@ -208,11 +208,68 @@ def inventorier_cibles(company):
     return cibles
 
 
+def _semer_installation(company, user):
+    """Une installation AVEC client (portail client, attestation carbone)."""
+    existante = _premier('installations.Installation', company,
+                         client__isnull=False)
+    if existante is not None:
+        return existante
+    client = _premier('crm.Client', company)
+    if client is None:
+        raise ValueError('aucun client dans la société de fuzz')
+    return _modele('installations.Installation').objects.create(
+        company=company, reference='FUZZ-INST-0001', client=client)
+
+
+def _semer_supervision(company, user):
+    """Un système supervisé (MonitoringConfig) + un relevé daté d'HIER."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    installation = _semer_installation(company, user)
+    config, _ = _modele('monitoring.MonitoringConfig').objects.get_or_create(
+        installation=installation,
+        defaults={'company': company,
+                  'expected_annual_kwh': Decimal('5000')})
+    hier = timezone.localdate() - timedelta(days=1)
+    _modele('monitoring.ProductionReading').objects.get_or_create(
+        company=company, installation=installation, date=hier,
+        defaults={'energy_kwh': Decimal('12.50'), 'created_by': user})
+    return config
+
+
+def _semer_visite(company, user):
+    existante = _premier('visites.VisiteTerrain', company)
+    if existante is not None:
+        return existante
+    lead = _premier('crm.Lead', company)
+    if lead is None:
+        raise ValueError('aucun lead dans la société de fuzz')
+    return _modele('visites.VisiteTerrain').objects.create(
+        company=company, lead=lead)
+
+
+def _installations_supervisees(qs, company):
+    return qs.filter(pk__in=_modele('monitoring.MonitoringConfig').objects
+                     .filter(company=company).values('installation'))
+
+
+def _clients_avec_installation(qs, company):
+    return qs.filter(pk__in=_modele('installations.Installation').objects
+                     .filter(company=company, client__isnull=False)
+                     .values('client'))
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
     ('records.ActivityType', _semer_type_activite),
     ('records.Tag', _semer_tag),
     ('records.TaggedItem', _semer_tagged_item),
+    ('installations.Installation', _semer_installation),
+    ('monitoring.MonitoringConfig', _semer_supervision),
+    ('visites.VisiteTerrain', _semer_visite),
 )
 
 
@@ -233,6 +290,10 @@ REGLES_PAR_CHEMIN = (
     (r'^/api/django/records/', ('activity_type', 'type_suivant'),
      'records.ActivityType', None, None),
     (r'^/api/django/records/', ('tag', 'tag_id'), 'records.Tag', None, None),
+    (r'^/api/django/monitoring/', ('installation', 'installation_id'),
+     'installations.Installation', _installations_supervisees, None),
+    (r'^/api/django/monitoring/', ('client', 'client_id'), 'crm.Client',
+     _clients_avec_installation, None),
 )
 
 
