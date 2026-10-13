@@ -1751,3 +1751,7 @@ API accepted schema-violating request|POST /api/django/core/formulaire-champs/
 API accepted schema-violating request|POST /api/django/sav/categories-equipement/
 API accepted schema-violating request|POST /api/django/sav/equipes-maintenance/
 API accepted schema-violating request|PUT /api/django/core/formulaire-champs/{id}/
+# Groupe de merge #985 (13/10/2026) — 2 constats PRÉ-EXISTANTS sur des routes NON modifiées (règles métier tarification ; corps formulaire etude-horaire/preview, app ventes),
+# gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
+API rejected schema-compliant request|POST /api/django/ventes/etude-horaire/preview/
+API rejected schema-compliant request|PUT /api/django/parametres/tarification/update/
