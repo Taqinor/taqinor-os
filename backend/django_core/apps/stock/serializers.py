@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
-from core.champs_stricts import DecimalStricte
+from core.champs_stricts import ChampsStrictsMixin, DecimalStricte
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
@@ -148,7 +148,7 @@ class PortailFournisseurTokenSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class FournisseurSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class FournisseurSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
                             serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

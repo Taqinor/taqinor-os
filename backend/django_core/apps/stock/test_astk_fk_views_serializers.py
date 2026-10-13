@@ -289,6 +289,7 @@ class CorpsFuzzTests(TestCase):
             ('expeditions/', {'unite_logistique': {}, 'destination': ''}),
             ('produits/bulk/', {'action': 'set_price', 'ids': [{}], 'mode': '0',
                                 'valeur': '0'}),
+            ('produits/bulk/', {'action': {}, 'ids': [0]}),
             ('produits/decoupes/', {'produit_source': self.pa.id, 'produit_cible': {},
                                     'quantite_consommee': 1, 'quantite_produite': 1}),
         )
@@ -328,6 +329,8 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(url, {'nom': 7}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'nom': 'F escompte', 'escompte_pct': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(f'{BASE}/inventaire-sessions/', {'motif': 0, 'lignes': []}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
@@ -338,6 +341,18 @@ class CorpsFuzzTests(TestCase):
             PlanEchantillonnageSerializer().fields['taux_echantillon_pct'].max_value, 100)
         self.assertEqual(
             PlanComptageTournantSerializer().fields['frequence_jours'].min_value, 1)
+        r = self.api.post(f'{BASE}/plans-comptage-tournant/', {
+            'classe_abc': 'A', 'frequence_jours': 1, 'actif': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(f'{BASE}/plans-echantillonnage/', {
+            'categorie': None, 'taux_echantillon_pct': 101, 'actif': False, 'note': ''},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        # Rien à réapprovisionner = refus d'état (409), le corps était conforme.
+        Produit.objects.filter(pk=self.pa.pk).update(quantite_stock=10000)
+        r = self.api.post(f'{BASE}/produits/generer-bcf-reappro/', {'fournisseur_id': None},
+                          format='json')
+        self.assertEqual(r.status_code, 409, r.content)
         Categorie.objects.create(company=self.a, nom='Prise')
         autre = Categorie.objects.create(company=self.a, nom='Libre')
         r = self.api.patch(f'{BASE}/categories/{autre.id}/', {'nom': 'Prise'}, format='json')
