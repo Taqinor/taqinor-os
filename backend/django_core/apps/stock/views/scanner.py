@@ -18,7 +18,6 @@ comptage (`inventaire-sessions/`).
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from ..openapi_helpers import INT, P, STR, corps
-from ..utils.params import corps_objet
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import api_view, parser_classes, permission_classes
@@ -97,7 +96,11 @@ def scanner_mouvement_view(request):
     inconnu."""
     from ..services import enregistrer_mouvement_scanne
 
-    donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
+    # ERR fuzz : corps non objet -> 400 au format DÉCLARÉ ({detail}), pas 500.
+    if not hasattr(request.data, 'get'):
+        return Response({'detail': 'Le corps doit être un objet JSON.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    donnees = request.data
     try:
         mouvement = enregistrer_mouvement_scanne(
             company=request.user.company, user=request.user,
