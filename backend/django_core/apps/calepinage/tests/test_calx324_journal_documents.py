@@ -209,5 +209,5 @@ class JournalEnBaseTest(BaseApiCalepinage):
         reponse = self.api.post(
             f'{url_detail(self.sans_resultat.pk)}remettre-document/',
             {'code': 'rapport_etude'}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(self._lignes_document(self.sans_resultat).count(), 0)

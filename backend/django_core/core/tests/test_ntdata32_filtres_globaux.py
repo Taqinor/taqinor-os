@@ -135,8 +135,31 @@ class FiltresGlobauxTests(TestCase):
 
     def test_filtre_non_objet_renvoie_400(self):
         dash = self._dashboard(self._layout())
-        resp = self._get_donnees(dash, '[1,2]')
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        # ERR-ENF11-FUZZ-CORE — `null` (hors du schéma publié « objet ») ne
+        # vaut pas « aucun filtre », et une borne de période non textuelle
+        # est refusée avant d'atteindre l'ORM.
+        for filtre in ('[1,2]', 'null', '{"periode": {"debut": 5}}'):
+            resp = self._get_donnees(dash, filtre)
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST,
+                             filtre)
+
+    def test_filtre_publie_en_objet_json(self):
+        # ERR-ENF11-FUZZ-CORE — le crochet republie `?filtre=` en
+        # `content: application/json` (il était `type: string`, toute chaîne
+        # « conforme » puis refusée en 400).
+        from core.openapi_erreurs import (
+            EXTENSION_CONTENU_JSON, aligner_motifs_sur_drf)
+        parametre = {'in': 'query', 'name': 'filtre',
+                     'schema': {'type': 'string'},
+                     EXTENSION_CONTENU_JSON:
+                         dashboard_data.SCHEMA_FILTRES_GLOBAUX}
+        aligner_motifs_sur_drf({'paths': {'/x/': {'get': {
+            'parameters': [parametre]}}}})
+        self.assertNotIn('schema', parametre)
+        self.assertNotIn(EXTENSION_CONTENU_JSON, parametre)
+        self.assertEqual(
+            parametre['content']['application/json']['schema']['type'],
+            'object')
 
     def test_isolation_societe(self):
         dash = self._dashboard(self._layout(), company=self.autre)

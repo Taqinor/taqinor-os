@@ -85,7 +85,7 @@ class ReferentielsTest(TestCase):
         row = TauxTVA.objects.create(company=self.company, code='a',
                                      libelle='A', taux=Decimal('20'))
         r = self.api.patch(f'{TVA}{row.id}/', {'code': 'b'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 — refus d'état
 
     def test_scoping_hides_other_company(self):
         other = _company(slug='ref-other', nom='Other')
@@ -116,3 +116,38 @@ class ReferentielsTest(TestCase):
         codes = {row['code'] for row in rows}
         self.assertIn('m', codes)
         self.assertNotIn('old', codes)
+
+
+class ReferentielsFuzzEnf11Test(TestCase):
+    """ENF11 (api-fuzz) — décimaux en chaîne, ``?actif=`` tenu, refus d'état 409."""
+
+    def setUp(self):
+        self.company = _company('ref-enf11', 'Ref ENF11')
+        self.admin = User.objects.create_user(
+            username='ref_enf11_admin', password='pw', role_legacy='admin',
+            company=self.company)
+        self.api = _auth(self.admin)
+
+    def test_decimal_en_nombre_json_refuse(self):
+        r = self.api.post(TVA, {'code': 'n20', 'libelle': 'N', 'taux': 20},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(COND, {'libelle': 'c', 'delai_jours': 0,
+                                 'escompte_pct': 2}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(TauxTVA.objects.filter(code='n20').exists())
+
+    def test_actif_hors_enumeration_refuse(self):
+        for url in (TVA, COND, UNITE):
+            with self.subTest(url=url):
+                self.assertEqual(self.api.get(url, {'actif': 'AAA'})
+                                 .status_code, 400)
+                self.assertEqual(self.api.get(url, {'actif': 'true'})
+                                 .status_code, 200)
+
+    def test_condition_doublon_par_defauts_409(self):
+        ConditionPaiement.objects.get_or_create(
+            company=self.company, delai_jours=0, fin_de_mois=False,
+            escompte_pct=Decimal('0'), defaults={'libelle': 'Comptant'})
+        r = self.api.post(COND, {'libelle': 'Comptant bis'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)

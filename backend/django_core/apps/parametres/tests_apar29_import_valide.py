@@ -103,7 +103,9 @@ class ImportValideTests(TestCase):
         for corps, champ in (
                 ({'fuseau_horaire': 'Mars/Olympus'}, 'fuseau_horaire'),
                 ({'langue_repli': 'zz'}, 'langue_repli'),
-                ({'devise': 'X' * 12}, 'devise_defaut')):
+                # ENF11 — la longueur max (10) est publiée au schéma du corps :
+                # le refus porte le nom du champ DU CORPS (``devise``).
+                ({'devise': 'X' * 12}, 'devise')):
             with self.subTest(champ=champ):
                 r = self.api.post(ONBOARDING, dict(corps, pays='MA'),
                                   format='json')
@@ -113,6 +115,28 @@ class ImportValideTests(TestCase):
         self.assertEqual(relu.fuseau_horaire, 'Africa/Casablanca')
         self.assertEqual(relu.langue_repli, 'fr')
         self.assertEqual(relu.devise_defaut, 'MAD')
+
+    def test_import_mode_et_forme_hors_schema_400(self):
+        # ENF11 (api-fuzz) — ``?mode=`` hors énumération et bundle de forme
+        # fausse : 400, rien n'est importé.
+        self.assertEqual(
+            self.api.post(f'{IMPORT}?mode=AAA', {}, format='json').status_code,
+            400)
+        for corps in ([1, 2], {'roles': 'x'}, {'statuts': [None]}):
+            with self.subTest(corps=corps):
+                self.assertEqual(
+                    self.api.post(IMPORT, corps, format='json').status_code,
+                    400)
+        self.assertEqual(
+            self.api.post(IMPORT, {}, format='json').status_code, 200)
+
+    def test_onboarding_corps_hors_schema_400(self):
+        for corps in ({'pays': 'ma'}, {'pays': 5}, {'devise': 5},
+                      {'fuseau_horaire': '0'}, [1]):
+            with self.subTest(corps=corps):
+                self.assertEqual(
+                    self.api.post(ONBOARDING, corps, format='json')
+                    .status_code, 400)
 
     def test_onboarding_valide_journalise(self):
         r = self.api.post(ONBOARDING, {'pays': 'MA', 'langue_repli': 'ar'},

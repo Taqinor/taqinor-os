@@ -30,10 +30,14 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 
+from core.champs_stricts import EntierStrict
+from core.parametres_requete import choix_ou_400
+
 from .models import CompanyProfile, MessageTemplate, SettingsAuditLog
 from .models_documents import DEVIS_TEXT_KEYS, DocumentTemplates
 from .models_email import EmailTemplate
 from .models_statuses import StatutConfig
+from .requetes_strictes import valider_corps
 
 # Champs de profil EXPORTABLES — réglages métier reproductibles uniquement.
 # Volontairement SANS : identité légale (ice/rc/cnss…), coordonnées, secrets
@@ -522,6 +526,28 @@ def _import_statuts(company, rows, overwrite, user=None):
     return created, updated
 
 
+class ConfigImportRequestSerializer(serializers.Serializer):
+    """ENF11 — forme du bundle d'import (celle de l'export). Clés toutes
+    optionnelles (un bundle v1 en porte moins) ; une clé de FORME fausse (liste
+    de lignes qui n'en est pas une, ligne non objet) répond 400 au lieu de
+    lever en cours d'import (500) ou d'être ignorée en 200."""
+
+    version = EntierStrict(required=False, allow_null=True)
+    profile = serializers.DictField(required=False, allow_null=True)
+    document_templates = serializers.DictField(
+        required=False, allow_null=True)
+    roles = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_null=True)
+    message_templates = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_null=True)
+    email_templates = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_null=True)
+    automation_rules = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_null=True)
+    statuts = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_null=True)
+
+
 _CREE_MAJ = inline_serializer('ConfigImportCompte', {
     'created': serializers.IntegerField(),
     'updated': serializers.IntegerField(),
@@ -533,7 +559,7 @@ _CREE_MAJ = inline_serializer('ConfigImportCompte', {
         'mode', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
         enum=['merge', 'overwrite'],
         description='merge (défaut, additif) ou overwrite.')],
-    request=OpenApiTypes.OBJECT,
+    request=ConfigImportRequestSerializer,
     responses=inline_serializer('ConfigImportResultat', {
         'mode': serializers.CharField(),
         'roles': _CREE_MAJ,
@@ -555,8 +581,10 @@ def config_import(request):
     company = request.user.company if request.user.company_id else None
     if company is None:
         return Response({'detail': 'Aucune société.'}, status=400)
-    data = request.data if isinstance(request.data, dict) else {}
-    overwrite = request.query_params.get('mode') == 'overwrite'
+    # ENF11 — mode hors énumération publiée et bundle de forme fausse : 400.
+    mode = choix_ou_400(request, 'mode', ('merge', 'overwrite'))
+    overwrite = mode == 'overwrite'
+    data = valider_corps(ConfigImportRequestSerializer, request)
 
     user = request.user
     # APAR29 — TOUT-OU-RIEN : une valeur refusée annule l'import entier

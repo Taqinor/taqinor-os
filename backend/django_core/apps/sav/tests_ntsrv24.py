@@ -184,3 +184,13 @@ class NTSRV24FcrTest(TestCase):
             company=self.company)
         resp = auth(normal).get('/api/django/sav/insights/sav-fcr/')
         self.assertEqual(resp.status_code, 403)
+
+    def test_export_inconnu_refuse_400_et_vide_ignore(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : `export` ne vaut que « xlsx » (vide =
+        # JSON) — toute autre valeur répond 400 en nommant le paramètre.
+        resp = self.api.get('/api/django/sav/insights/sav-fcr/?export=AAA')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('export', resp.json())
+        resp = self.api.get(
+            '/api/django/sav/insights/sav-fcr/?export=&date_debut=')
+        self.assertEqual(resp.status_code, 200, resp.content)

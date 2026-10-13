@@ -160,6 +160,10 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             f'/api/django/core/maintenance-windows/{fenetre_autre.pk}/'
             'annuler/')
         self.assertEqual(resp.status_code, 404)
+        # ERR-ENF11-FUZZ-CORE — le 404 porte l'enveloppe JSON (corps vide
+        # sans Content-Type avant : « JSON deserialization error »).
+        self.assertTrue(resp['Content-Type'].startswith('application/json'))
+        self.assertEqual(resp.json()['error']['code'], 'not_found')
         fenetre_autre.refresh_from_db()
         self.assertNotEqual(
             fenetre_autre.statut, MaintenanceWindow.Statut.ANNULE)

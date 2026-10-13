@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 import api from '../../../api/axios'
 import ventesApi from '../../../api/ventesApi'
 import crmApi from '../../../api/crmApi'
@@ -49,7 +49,9 @@ export function useAtelierBoot(ctx) {
   const { setSceneHydratee } = ctx
   // ACAL192 — refus serveur du recentrage automatique (calepinage verrouillé…), en français.
   const { setRepereErreur } = ctx
-  useEffect(() => {
+  // ENF22 — le corps du boot lit `ctx` (setters/refs du parent) a l'instant de
+  // l'effet : un evenement d'effet, relance seulement par la liste ci-dessous.
+  const demarrerBoot = useEffectEvent(() => {
     let cancelled = false
     // Sans identifiant, l'état initial affiche déjà l'erreur — rien à booter.
     if (!cibleId) return undefined
@@ -453,11 +455,7 @@ export function useAtelierBoot(ctx) {
     if (estCalepinage) bootCalepinage()
     else boot()
     return () => { cancelled = true }
-    // CALX68 — `utilisateurCourantId` est un `useMemo([])` (CAL103) :
-    // référentiellement stable pour toute la vie du composant, mais listé ici
-    // pour que `react-hooks/exhaustive-deps` reste silencieux (`bootCalepinage`
-    // le lit désormais pour la clé du brouillon).
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs de `ctx` : stables (useState/useRef du parent), liste d'origine inchangée
-  }, [cibleId, devisId, leadId, calepinageId,
+  })
+  useEffect(() => demarrerBoot(), [cibleId, devisId, leadId, calepinageId,
     estCalepinage, reducedMotion, utilisateurCourantId])
 }

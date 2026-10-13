@@ -311,7 +311,7 @@ class RapportOmbrageApiTest(BaseApiCalepinage):
 
     def test_matrice_absente_400_nomme_shading12x24(self):
         reponse = self.api.get(self._url(self.sans_matrice))
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('shading12x24', reponse.data)
 
     def test_hors_societe_404(self):

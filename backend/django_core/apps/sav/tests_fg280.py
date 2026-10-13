@@ -177,6 +177,20 @@ class TestEscalader(TestCase):
         # Gravité critique → priorité urgente.
         self.assertEqual(ticket.priorite, Ticket.Priorite.URGENTE)
 
+    def test_escalader_sans_client_rattache_est_un_conflit_409(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : le corps `{}` est conforme au schéma ;
+        # c'est l'ÉTAT de l'alarme (équipement sans client) qui s'oppose → 409.
+        eq = Equipement.objects.create(
+            company=self.company, produit=self.eq.produit,
+            numero_serie='SN-FG280-ORPHELIN')
+        alarme = make_alarme(self.company, eq)
+        resp = self.api.post(f'{BASE}{alarme.id}/escalader/', {},
+                             format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('ticket', resp.data)
+        alarme.refresh_from_db()
+        self.assertEqual(alarme.statut, AlarmeOnduleur.Statut.ACTIVE)
+
     def test_escalader_links_existing_ticket(self):
         alarme = make_alarme(self.company, self.eq)
         ticket = Ticket.objects.create(
@@ -254,6 +268,21 @@ class TestFiltersAndScoping(TestCase):
         rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
         codes = [a['code'] for a in rows]
         self.assertEqual(codes, ['C1'])
+
+    def test_patch_vide_rend_equipement_produit_a_null(self):
+        # Alarme sans équipement : la clé `equipement_produit` reste servie
+        # (null) sur un PATCH, comme sur un GET (api-fuzz ERR-ENF11-FUZZ-SAV).
+        alarme = make_alarme(self.company, None, code='SANS-EQ')
+        resp = self.api.patch(f'{BASE}{alarme.id}/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('equipement_produit', resp.data)
+        self.assertIsNone(resp.data['equipement_produit'])
+
+    def test_filtre_equipement_illisible_repond_400(self):
+        for brut in ('abc', '0', 'null'):
+            resp = self.api.get(f'{BASE}?equipement={brut}')
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+            self.assertIn('equipement', resp.data)
 
     def test_scoping_isolates_companies(self):
         other = make_company('fg280-flt-other', 'Filters Other')

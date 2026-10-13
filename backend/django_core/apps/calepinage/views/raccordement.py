@@ -45,11 +45,13 @@ queryset du viewset, donc un calepinage d'une autre société est INTROUVABLE
 """
 from __future__ import annotations
 
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
+from ..serializers import forme_du_contrat
 from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
     CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
     proposition_du_lead, saisie_du_calepinage,
@@ -114,6 +116,25 @@ def _bloc_du_calepinage(calepinage, saisie):
                              proposition_lead=proposition_du_lead(calepinage))
 
 
+_FORME_RACCORDEMENT = forme_du_contrat(
+    'CalepinageRaccordement', 'calepinage_raccordement.json')
+
+
+@extend_schema(methods=['GET'], responses=_FORME_RACCORDEMENT)
+@extend_schema(
+    methods=['POST'],
+    request=inline_serializer('CalepinageRaccordementCorps', {
+        'puissance_souscrite_kva': serializers.FloatField(required=False),
+        'phases': serializers.IntegerField(required=False),
+        'tension_nominale_v': serializers.FloatField(required=False),
+        'limite_elevation_pct': serializers.FloatField(required=False),
+        'source_limite': serializers.CharField(required=False),
+        'cos_phi_impose': serializers.FloatField(required=False),
+        'source_cos_phi': serializers.CharField(required=False),
+        'plafond_injection_kw': serializers.FloatField(required=False),
+        'plafond_injection_justification': serializers.CharField(
+            required=False)}),
+    responses=_FORME_RACCORDEMENT)
 @action(detail=True, methods=['get', 'post'], url_path='raccordement',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def raccordement(self, request, pk=None):

@@ -154,3 +154,30 @@ class FetesMobilesEndpointTests(TestCase):
             {'annee': annee, 'dates': dates}, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('Aïd al-Adha', resp.data['detail'])
+
+
+class FetesMobilesEntreesHorsSchemaTests(TestCase):
+    """ENF11 (api-fuzz, 500) — année démesurée et corps mal formé : 400."""
+
+    def setUp(self):
+        self.company = _company('nti18n33-enf11', 'NTI18N33 ENF11')
+        admin = User.objects.create_user(
+            username='nti18n33_enf11', password='x',
+            role_legacy='admin', company=self.company)
+        self.api = _auth(admin)
+
+    def test_get_annee_hors_plage_400_jamais_500(self):
+        for annee in (0, 1899, 2201, 10 ** 30):
+            with self.subTest(annee=annee):
+                self.assertEqual(
+                    self.api.get(BASE, {'annee': annee}).status_code, 400)
+
+    def test_post_corps_mal_forme_400_jamais_500(self):
+        for corps in ({'annee': 10 ** 30, 'dates': {}},
+                      {'annee': 2030, 'dates': 'texte'},
+                      {'annee': 2030, 'dates': {'aid_el_fitr': 5}},
+                      {'annee': True, 'dates': {}}):
+            with self.subTest(corps=corps):
+                self.assertEqual(
+                    self.api.post(BASE + 'enregistrer/', corps,
+                                  format='json').status_code, 400)

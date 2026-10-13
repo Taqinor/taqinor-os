@@ -189,3 +189,13 @@ class XSAV14TaxonomieTest(TestCase):
         libelles = [r['libelle'] for r in resp.data['results']]
         self.assertNotIn('Onduleur Étranger', libelles)
         self.assertEqual(len(resp.data['results']), 1)
+
+    def test_group_by_et_dates_invalides_refuses_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : plus de repli silencieux sur la valeur
+        # par défaut — le paramètre fautif est nommé.
+        url = '/api/django/sav/insights/sav-pannes/'
+        for requete in ('?group_by=AAA', '?date_debut=hier', '?date_fin=31-12'):
+            resp = self.api.get(url + requete)
+            self.assertEqual(resp.status_code, 400, (requete, resp.content))
+        resp = self.api.get(url + '?group_by=fournisseur&date_debut=')
+        self.assertEqual(resp.status_code, 200, resp.content)

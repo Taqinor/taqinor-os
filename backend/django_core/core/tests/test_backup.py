@@ -51,6 +51,40 @@ class BackupTests(TestCase):
         self.assertEqual(run.declenche_par, self.admin)
         self.assertEqual(run.manifest['total_lignes'], 1)
 
+    def test_datasets_non_liste_de_noms_refuses_400(self):
+        # ERR-ENF11-FUZZ-CORE — `null` (conforme au schéma `{}` puis refusé
+        # par le champ de modèle) est désormais hors schéma ; un élément non
+        # textuel levait TypeError dans core.backup (500).
+        for datasets in (None, [{}], [[]], 'companies_probe'):
+            resp = self._create(self.admin, {'kind': 'export',
+                                             'datasets': datasets})
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST,
+                             datasets)
+        self.assertFalse(BackupRun.objects.exists())
+
+    def test_texte_chaine_stricte_post_put_patch(self):
+        # CI #985 (api-fuzz) — ``"artifact_ref": 0`` / ``"cron": 0`` étaient
+        # convertis en "0" (201/200) alors que le schéma déclare une chaîne.
+        run = BackupRun.objects.create(company=self.company, kind='export')
+        for corps, champ in (
+                ({'kind': 'export', 'mode': 'manuel', 'datasets': [],
+                  'cron': '', 'artifact_ref': 0}, 'artifact_ref'),
+                ({'kind': 'export', 'datasets': [], 'cron': 0}, 'cron')):
+            for methode, action, kwargs in (
+                    ('post', 'create', {}),
+                    ('put', 'update', {'pk': run.pk}),
+                    ('patch', 'partial_update', {'pk': run.pk})):
+                with self.subTest(methode=methode, champ=champ):
+                    req = getattr(self.factory, methode)(
+                        '/sauvegardes/', corps, format='json')
+                    force_authenticate(req, user=self.admin)
+                    resp = BackupRunViewSet.as_view({methode: action})(
+                        req, **kwargs)
+                    self.assertEqual(resp.status_code,
+                                     status.HTTP_400_BAD_REQUEST)
+                    self.assertIn(champ, resp.data)
+        self.assertEqual(BackupRun.objects.count(), 1)
+
     def test_create_requires_admin_tier(self):
         resp = self._create(self.user, {'kind': 'export'})
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)

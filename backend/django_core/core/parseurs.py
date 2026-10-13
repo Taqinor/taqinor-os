@@ -110,3 +110,45 @@ class ObjetJSON(serializers.JSONField):
         if not isinstance(data, dict):
             raise serializers.ValidationError('Un objet JSON est attendu.')
         return super().to_internal_value(data)
+
+
+#: Schéma publié d'un élément selon le type Python exigé (``ListeJSON``).
+_SCHEMA_ELEMENT = {
+    dict: {'type': 'object', 'additionalProperties': True},
+    str: {'type': 'string'},
+}
+
+
+class ListeJSON(serializers.JSONField):
+    """ERR-ENF11-FUZZ-CORE — jumeau d'``ObjetJSON`` pour une LISTE JSON.
+
+    Même constat (``null`` conforme au schéma ``{}`` puis refusé par le champ
+    de modèle non nul) : publie ``type: array`` (``nullable`` seulement si
+    ``allow_null``) et refuse en 400 tout ce qui n'est pas une liste.
+    ``element`` (``dict`` ou ``str``) exige ce type pour CHAQUE élément et le
+    publie (un élément d'un autre type levait plus loin un 400 « conforme
+    refusé », ou un 500 sur un nom de dataset non hachable) ; ``items``
+    remplace le schéma publié de l'élément quand la règle est plus fine.
+    """
+
+    def __init__(self, element=None, items=None, **kwargs):
+        from drf_spectacular.drainage import set_override
+
+        super().__init__(**kwargs)
+        self.element = element
+        schema = {'type': 'array',
+                  'items': items or _SCHEMA_ELEMENT.get(element, {})}
+        if self.allow_null:
+            schema['nullable'] = True
+        set_override(self, 'field', schema)
+
+    def to_internal_value(self, data):
+        if not isinstance(data, list):
+            raise serializers.ValidationError('Une liste JSON est attendue.')
+        if self.element is not None and not all(
+                isinstance(v, self.element) for v in data):
+            raise serializers.ValidationError(
+                'Chaque élément de la liste doit être '
+                + ('un objet JSON.' if self.element is dict
+                   else 'une chaîne.'))
+        return super().to_internal_value(data)

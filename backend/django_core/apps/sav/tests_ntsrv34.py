@@ -60,6 +60,14 @@ class NTSRV34ReponseTypeCanauxTest(TestCase):
         return {ligne['titre'] for ligne in lignes}
 
     # ── Non-régression : sans paramètre, la liste ne change pas ──────────
+    def test_ticket_illisible_repond_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : `?ticket=` est un identifiant (1..max),
+        # plus ignoré en silence quand il est illisible.
+        for brut in ('abc', '0', 'null'):
+            resp = self.api.get(f'{LISTE}?ticket={brut}')
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+        self.assertEqual(self.api.get(f'{LISTE}?ticket=').status_code, 200)
+
     def test_liste_sans_canal_inchangee(self):
         self.assertEqual(self._titres(LISTE),
                          {'Ton formel', 'Accusé de réception'})

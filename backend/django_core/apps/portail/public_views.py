@@ -19,6 +19,7 @@ l'en-tête `Host` autant qu'il voulait, et (b) charger la base gratuitement. Le
 quota est par IP, donc indépendant du `Host` — faire varier le domaine ne
 réarme pas le compteur, ce qui est précisément l'abus visé.
 """
+from django.core.validators import RegexValidator
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -27,14 +28,22 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from core.champs_stricts import ChaineStricte
+
 from .branding import MARQUE_VIDE, company_pour_hote, marque_portail
 
 # ── NTPRT6 — forme déclarée de l'acceptation d'invitation ───────────────────
-ACCEPTER_INVITATION_PORTAIL_REQUEST = inline_serializer(
-    'AccepterInvitationPortailRequest', {
-        'token': serializers.CharField(),
-        'mot_de_passe': serializers.CharField(),
-    })
+#: ERR-ENF11-FUZZ-PORTAIL — le schéma dit la vérité : deux CHAÎNES JSON
+#: (``ChaineStricte`` : un nombre est refusé, plus converti) portant au moins
+#: un caractère non blanc (motif ``\S`` publié) ; tout autre corps → 400.
+_NON_BLANC = RegexValidator(r'\S', message='Ce champ ne peut pas être vide.')
+
+
+class AccepterInvitationPortailRequest(serializers.Serializer):
+    token = ChaineStricte(validators=[_NON_BLANC])
+    mot_de_passe = ChaineStricte(trim_whitespace=False,
+                                 validators=[_NON_BLANC])
+
 
 ACCEPTER_INVITATION_PORTAIL_RESPONSE = inline_serializer(
     'AccepterInvitationPortailResponse', {
@@ -95,7 +104,7 @@ class AccepterInvitationPortailThrottle(SimpleRateThrottle):
         }
 
 
-@extend_schema(request=ACCEPTER_INVITATION_PORTAIL_REQUEST,
+@extend_schema(request=AccepterInvitationPortailRequest,
                responses=ACCEPTER_INVITATION_PORTAIL_RESPONSE)
 @api_view(['POST'])
 @authentication_classes([])
@@ -113,12 +122,12 @@ def accepter_invitation_portail_public(request):
     """
     from . import services
 
-    token = (request.data.get('token') or '').strip()
-    mot_de_passe = request.data.get('mot_de_passe') or ''
-    if not token or not mot_de_passe:
-        return Response(
-            {'detail': 'Le token et le mot de passe sont requis.'},
-            status=status.HTTP_400_BAD_REQUEST)
+    # ERR-ENF11-FUZZ-PORTAIL — corps validé par le sérialiseur déclaré (corps
+    # non objet, champ absent, non-chaîne ou blanc → 400 nommant le champ).
+    corps = AccepterInvitationPortailRequest(data=request.data)
+    corps.is_valid(raise_exception=True)
+    token = corps.validated_data['token']
+    mot_de_passe = corps.validated_data['mot_de_passe']
 
     from authentication.password_policy import validate_new_password
 
@@ -131,10 +140,14 @@ def accepter_invitation_portail_public(request):
         return Response({'mot_de_passe': exc.messages},
                         status=status.HTTP_400_BAD_REQUEST)
     if user is None:
+        # ERR-ENF11-FUZZ-PORTAIL — un jeton conforme au schéma mais sans
+        # invitation ouverte est une ressource INTROUVABLE : 404 (plus 400,
+        # qui disait « requête mal formée »). Réponse UNIQUE pour inconnu,
+        # déjà utilisé, révoqué ou expiré — rien ne les distingue.
         return Response(
             {'detail': 'Invitation introuvable, déjà utilisée, révoquée '
                        'ou expirée.'},
-            status=status.HTTP_400_BAD_REQUEST)
+            status=status.HTTP_404_NOT_FOUND)
     return Response(
         {'detail': 'Compte créé — vous pouvez maintenant vous connecter.'})
 

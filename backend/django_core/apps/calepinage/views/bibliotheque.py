@@ -27,13 +27,17 @@ ailleurs (marquer/démarquer, action de ``services.modeles``).
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
-from ..serializers import CalepinageSerializer
+from ..serializers import (
+    FORME_DETAIL_CALEPINAGE, CalepinageLectureSerializer, CalepinageSerializer,
+    forme_reponse,
+)
 from ..services.modeles import ModeleInvalide, calepinages_modeles
 from ..services.modeles import demarquer_modele as service_demarquer
 from ..services.modeles import marquer_modele as service_marquer
@@ -43,9 +47,9 @@ from .calepinages import CalepinageViewSet
 __all__ = ['modeles', 'marquer_modele', 'demarquer_modele', 'depuis_modele']
 
 
-@extend_schema(responses=CalepinageSerializer(many=True))
+@extend_schema(responses=CalepinageLectureSerializer(many=True))
 @action(detail=False, methods=['get'], url_path='modeles',
-        permission_classes=[PeutVoirCalepinage])
+        permission_classes=[PeutVoirCalepinage], pagination_class=None)
 def modeles(self, request):
     """CAL199/CAL246 — les calepinages marqués « modèle » de la société.
 
@@ -67,6 +71,11 @@ def modeles(self, request):
 # appelle ``services.variantes.dupliquer`` (CAL14), comme sa docstring le dit.
 
 
+_FORME_BASCULE = forme_reponse(
+    'CalepinageModeleBascule', calepinage=drf_serializers.IntegerField(),
+    modele=drf_serializers.BooleanField())
+
+
 def _corps(request):
     return request.data if isinstance(request.data, dict) else {}
 
@@ -81,6 +90,7 @@ def _identifiant(brut):
         return None
 
 
+@extend_schema(request=None, responses=_FORME_BASCULE)
 @action(detail=True, methods=['post'], url_path='marquer-modele',
         permission_classes=[PeutGererCalepinage])
 def marquer_modele(self, request, pk=None):
@@ -94,6 +104,7 @@ def marquer_modele(self, request, pk=None):
     return Response({'calepinage': calepinage.pk, 'modele': True})
 
 
+@extend_schema(request=None, responses=_FORME_BASCULE)
 @action(detail=True, methods=['post'], url_path='demarquer-modele',
         permission_classes=[PeutGererCalepinage])
 def demarquer_modele(self, request, pk=None):
@@ -134,6 +145,15 @@ def _refus_nomme(refus):
     return Response({champ: str(refus)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    request=inline_serializer('CalepinageDepuisModeleCorps', {
+        'modele_id': drf_serializers.IntegerField(required=False),
+        'lead_id': drf_serializers.IntegerField(required=False),
+        'client_id': drf_serializers.IntegerField(required=False),
+        'devis_id': drf_serializers.IntegerField(required=False),
+        'titre': drf_serializers.CharField(required=False, allow_blank=True),
+        'preset_id': drf_serializers.JSONField(required=False)}),
+    responses={200: FORME_DETAIL_CALEPINAGE, 201: FORME_DETAIL_CALEPINAGE})
 @action(detail=False, methods=['post'], url_path='depuis-modele',
         permission_classes=[PeutGererCalepinage])
 def depuis_modele(self, request):

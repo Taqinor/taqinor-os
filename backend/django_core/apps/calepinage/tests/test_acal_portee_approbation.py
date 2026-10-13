@@ -108,7 +108,7 @@ class PorteeApprobationTest(BaseApiCalepinage):
                 reponse = (appel(f'{self.base}{chemin}', {}, format='json')
                            if methode == 'post'
                            else appel(f'{self.base}{chemin}'))
-                self.assertEqual(reponse.status_code, 400,
+                self.assertEqual(reponse.status_code, 409,
                                  (piece, reponse.status_code))
                 self.assertIn('approbation', str(reponse.data))
 

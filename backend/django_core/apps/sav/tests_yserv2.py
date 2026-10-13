@@ -68,7 +68,7 @@ class YSERV2HandoffTest(TestCase):
         ticket = self._ticket(installation=None)
         api = auth(self.admin)
         resp = api.post(f'/api/django/sav/tickets/{ticket.pk}/planifier-intervention/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_terminer_intervention_avance_ticket_resolu(self):
         ticket = self._ticket(installation=self.inst, statut=Ticket.Statut.EN_COURS)
@@ -117,7 +117,7 @@ class YSERV2HandoffTest(TestCase):
         api = auth(self.admin)
         resp = api.post(
             f'/api/django/sav/tickets/{ticket.pk}/cloturer/', {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('interventions_ouvertes', resp.data)
 
     def test_cloture_autorisee_intervention_terminee(self):

@@ -100,7 +100,7 @@ class GenererDevisTest(BaseApiCalepinage):
         nu = Calepinage.objects.create(
             company=self.company, lead_id=self.lead_lie.pk, titre='Nu')
         reponse = self.api.post(url_generer(nu.pk), {}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('roof_layout', reponse.data)
 
     def test_autre_societe_introuvable(self):

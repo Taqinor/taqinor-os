@@ -1,12 +1,14 @@
 """N58 — sérialiseur de la configuration des statuts métier (StatutConfig)."""
 from rest_framework import serializers
-from core.champs_stricts import TypageStrictMixin
+
+from core.conflit_etat import ConflitEtat
+from .requetes_strictes import TypageStrictParametres
 
 from .models_statuses import StatutConfig
 from .statuses_defaults import VALID_DOMAINES, default_keys
 
 
-class StatutConfigSerializer(TypageStrictMixin, serializers.ModelSerializer):
+class StatutConfigSerializer(TypageStrictParametres, serializers.ModelSerializer):
     class Meta:
         model = StatutConfig
         fields = [
@@ -39,7 +41,8 @@ class StatutConfigSerializer(TypageStrictMixin, serializers.ModelSerializer):
             new_dom = attrs.get('domaine')
             if (new_cle and new_cle != self.instance.cle) or (
                     new_dom and new_dom != self.instance.domaine):
-                raise serializers.ValidationError(
+                # ENF11 — refus d'ÉTAT (clé déjà posée) : 409, pas 400.
+                raise ConflitEtat(
                     "Le domaine et la clé d'une surcharge ne peuvent pas "
                     "changer — créez-en une autre.")
         return attrs

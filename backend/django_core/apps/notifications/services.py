@@ -391,6 +391,9 @@ EVENEMENTS_ROUTABLES = frozenset({
     EventType.TRANCHE_A_FACTURER, EventType.API_WEBHOOK_DESACTIVE,
     EventType.MONITORING_RAPPORT,
 })
+#: Choix (valeur, valeur) du sous-ensemble routable — nommé « EvenementRoutableEnum »
+#: dans ENUM_NAME_OVERRIDES (collision de schéma avec l'enum complet `event_type`).
+EVENEMENTS_ROUTABLES_CHOIX = [(v, v) for v in sorted(str(e.value) for e in EVENEMENTS_ROUTABLES)]
 
 
 def palier_utilisateur(user):

@@ -33,6 +33,7 @@ from rest_framework.decorators import (
     action,
 )
 from rest_framework.parsers import JSONParser
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import (
     SAFE_METHODS, AllowAny, BasePermission, IsAuthenticated,
 )
@@ -56,7 +57,10 @@ from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
+from .champs_stricts import ChaineStricte, EntierStrict
+from .conflit_etat import ConflitEtat
 from .mixins import TenantMixin
+from .openapi_erreurs import EXTENSION_CONTENU_JSON, EXTENSION_CORPS_RESSERRE
 from .parametres_requete import choix_ou_400
 from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
@@ -105,7 +109,7 @@ from .serializers import (
     ScheduledJobSerializer,
     TenantThemeSerializer,
     TenantUsageSnapshotSerializer,
-    WorkflowDefinitionSerializer,
+    CREATION_PUBLIEE, ETAPES_PUBLIEES, WorkflowDefinitionSerializer,
     WorkflowStepDefinitionAutonomeSerializer,
     WorkflowStepDefinitionSerializer,
     WorkflowTemplateSerializer,
@@ -136,7 +140,7 @@ _PERIODE_TYPE = {
 # (``corps_valide`` : ``task`` non texte = 400, 500 avant) ; une tâche hors
 # planification est une ressource introuvable : 404 documenté.
 _RUN_JOB = inline_serializer('ScheduledJobRunRequest', {
-    'task': drf_serializers.CharField(),
+    'task': ChaineStricte(),
 })
 
 
@@ -281,6 +285,12 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
         )
 
 
+@extend_schema_view(
+    create=extend_schema(extensions={
+        EXTENSION_CORPS_RESSERRE: CREATION_PUBLIEE}),
+    **{action: extend_schema(extensions={
+        EXTENSION_CORPS_RESSERRE: ETAPES_PUBLIEES})
+       for action in ('update', 'partial_update')})
 class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
     """WIR51 — CRUD serveur des définitions de workflow (FG366).
 
@@ -416,7 +426,7 @@ _APPROBATION_GROUPEE = inline_serializer(
     fields={
         'step_ids': drf_serializers.ListField(
             child=drf_serializers.IntegerField(), min_length=1),
-        'commentaire': drf_serializers.CharField(
+        'commentaire': ChaineStricte(
             required=False, allow_blank=True),
     },
 )
@@ -736,7 +746,9 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[_q('filtre', OpenApiTypes.STR,
-                       'Filtres globaux (JSON) remplaçant ceux du layout.')],
+                       'Filtres globaux (JSON) remplaçant ceux du layout.',
+                       extensions={EXTENSION_CONTENU_JSON:
+                                   dashboard_data.SCHEMA_FILTRES_GLOBAUX})],
         responses={200: _OBJET})
     @action(detail=True, methods=['get'])
     def donnees(self, request, pk=None):
@@ -759,8 +771,10 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
             try:
                 globaux = json.loads(brut)
             except (TypeError, ValueError):
+                globaux = None
+            if not isinstance(globaux, dict):  # `null` ne vaut pas « aucun »
                 return Response(
-                    {'detail': "Paramètre « filtre » : JSON invalide."},
+                    {'detail': "Paramètre « filtre » : objet JSON attendu."},
                     status=status.HTTP_400_BAD_REQUEST)
         try:
             donnees = dashboard_data.executer_dashboard(
@@ -849,7 +863,7 @@ _ROWS = inline_serializer('SavedQueryRows', {
 # ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré : un
 # ``dataset`` non texte levait une erreur de hachage (500).
 _REQUETE_ADHOC = inline_serializer('SavedQueryAdhocRequest', {
-    'dataset': drf_serializers.CharField(),
+    'dataset': ChaineStricte(),
     'spec': ObjetJSON(required=False, allow_null=True),
 })
 
@@ -982,6 +996,20 @@ class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
 #: la rogner en silence (un utilisateur qui demande 50 000 lignes doit savoir
 #: qu'il n'en a reçu que 5 000).
 LIMITE_MAX_EXPLORATION = 5000
+# Une instance de champ PAR clé : partagée, DRF la lie au dernier nom
+# seulement (les autres clés disparaissent du serializer et du schéma).
+_TEXTES = ('select', 'group_by', 'order', 'order_by')
+_OBJETS = ('aggregates', 'formula_measures')
+_REQUETE_RUN = inline_serializer('DataExplorerRunRequete', {
+    'dataset': ChaineStricte(),
+    'filters': drf_serializers.DictField(required=False),
+    **{cle: drf_serializers.ListField(child=ChaineStricte(), required=False)
+       for cle in _TEXTES},
+    **{cle: drf_serializers.ListField(
+        child=drf_serializers.DictField(), required=False) for cle in _OBJETS},
+    'limit': EntierStrict(
+        required=False, min_value=1, max_value=LIMITE_MAX_EXPLORATION),
+})
 
 
 class DataExplorerRunView(APIView):
@@ -1010,20 +1038,7 @@ class DataExplorerRunView(APIView):
     permission_classes = [IsResponsableOrAdmin]
 
     @extend_schema(
-        request=inline_serializer('DataExplorerRunRequete', {
-            'dataset': drf_serializers.CharField(),
-            'select': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-            'filters': drf_serializers.DictField(required=False),
-            'group_by': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-            'aggregates': drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False),
-            'order': drf_serializers.ListField(
-                child=drf_serializers.CharField(), required=False),
-            'limit': drf_serializers.IntegerField(
-                required=False, min_value=1, max_value=5000),
-        }),
+        request=_REQUETE_RUN,
         responses=inline_serializer('DataExplorerRunReponse', {
             'dataset': drf_serializers.CharField(),
             'nb': drf_serializers.IntegerField(),
@@ -1032,43 +1047,18 @@ class DataExplorerRunView(APIView):
     def post(self, request):
         from .formula import FormulaError
 
-        corps = request.data or {}
-        dataset = corps.get('dataset')
-        if not dataset:
-            return Response({'detail': "Champ « dataset » requis."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        limite = corps.get('limit')
-        if limite not in (None, ''):
-            try:
-                limite = int(limite)
-            except (TypeError, ValueError):
-                return Response(
-                    {'detail': "Champ « limit » : un entier est attendu."},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if limite < 1:
-                return Response(
-                    {'detail': "Champ « limit » : doit valoir au moins 1."},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if limite > LIMITE_MAX_EXPLORATION:
-                return Response(
-                    {'detail': "Champ « limit » : %d lignes au maximum."
-                               % LIMITE_MAX_EXPLORATION},
-                    status=status.HTTP_400_BAD_REQUEST)
-        else:
-            limite = None
-
-        spec = {
-            'select': corps.get('select') or [],
-            'filters': corps.get('filters') or {},
-            'group_by': corps.get('group_by') or [],
-            'aggregates': corps.get('aggregates') or [],
-            'formula_measures': corps.get('formula_measures') or [],
-            # « order » est le mot de la spec NTDATA6 ; « order_by » celui du
-            # moteur — les deux sont acceptés, jamais un troisième.
-            'order_by': corps.get('order') or corps.get('order_by') or [],
-            'limit': limite,
-        }
+        # ERR-ENF11-FUZZ-CORE — corps validé par le serializer publié : un
+        # corps tableau levait AttributeError (500) ; « limit » non entier ou
+        # hors bornes = 400 par champ.
+        corps = corps_valide(request, _REQUETE_RUN)
+        dataset = corps['dataset']
+        spec = {cle: corps.get(cle) or [] for cle in (
+            'select', 'group_by', 'aggregates', 'formula_measures')}
+        spec['filters'] = corps.get('filters') or {}
+        # « order » est le mot de la spec NTDATA6 ; « order_by » celui du
+        # moteur — les deux sont acceptés, jamais un troisième.
+        spec['order_by'] = corps.get('order') or corps.get('order_by') or []
+        spec['limit'] = corps.get('limit')
         try:
             rows = data_explorer.run_query(
                 dataset, request.user.company, request.user, spec)
@@ -1177,7 +1167,7 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 # ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré (500 avant sur
 # ``target`` non texte).
 _REQUETE_BULK = inline_serializer('BulkEditAppliquerRequest', {
-    'target': drf_serializers.CharField(),
+    'target': ChaineStricte(),
     'ids': drf_serializers.ListField(
         child=drf_serializers.IntegerField(), required=False),
     'changes': drf_serializers.DictField(required=False),
@@ -1524,15 +1514,16 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         except dsr.TransitionInterdite as exc:
             # NTGRC3 — transition illégale ⇒ réponse explicite (jamais 500),
             # le message nomme les statuts. ERR-ENF11-FUZZ-CORE : 409 (conflit
-            # d'ÉTAT, la requête elle-même est conforme), plus 400.
-            return Response({'statut': str(exc)}, status=409)
+            # d'ÉTAT) au corps documenté `{detail}` (il portait `{statut}`).
+            raise ConflitEtat(str(exc))
         except dsr.EffacementBloque as exc:
             # NTGRC8 — une garde (mise sous séquestre) refuse l'effacement :
             # 409 (conflit d'état) avec le motif, jamais un échec silencieux.
             return Response({'detail': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
 
-    @extend_schema(request=None, responses=DataSubjectRequestSerializer)
+    @extend_schema(request=None, responses={
+        200: DataSubjectRequestSerializer, 409: _DETAIL})
     @action(detail=True, methods=['post'], url_path='prendre-en-charge')
     def prendre_en_charge(self, request, pk=None):
         """NTGRC3 — passe la demande en VÉRIFICATION D'IDENTITÉ.
@@ -1546,7 +1537,7 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             dsr.prendre_en_charge(dsr_request)
         except dsr.TransitionInterdite as exc:
-            return Response({'statut': str(exc)}, status=409)
+            raise ConflitEtat(str(exc))
         return Response(self.get_serializer(dsr_request).data)
 
     @extend_schema(responses=inline_serializer('DsrEnRetard', {
@@ -2253,7 +2244,7 @@ def registre_fiabilite_export_pdf(request):
     from .pdf_registre_fiabilite import generer_pdf_registre_fiabilite
 
     if not _est_directeur_ou_admin(request.user):
-        return Response(status=status.HTTP_403_FORBIDDEN)
+        raise PermissionDenied()  # corps JSON (ERR-ENF11-FUZZ-CORE)
 
     debut_str = request.query_params.get('periode_debut')
     fin_str = request.query_params.get('periode_fin')

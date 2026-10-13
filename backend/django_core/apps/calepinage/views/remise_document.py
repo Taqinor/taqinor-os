@@ -30,7 +30,6 @@ Rattachée au ``CalepinageViewSet`` par AFFECTATION D'ATTRIBUT (patron
 from __future__ import annotations
 
 from django.http import QueryDict
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
@@ -60,6 +59,9 @@ REGISTRE_REMISE = {
     'plan_masse_pdf': ('plan_masse_pdf', 'pdf', MIME_PDF),
     'note_calcul_pdf': ('note_calcul_pdf', 'pdf', MIME_PDF),
 }
+#: Codes de pièce remettables — nommés « CodeRemiseDocumentEnum » dans ENUM_NAME_OVERRIDES
+#: (collision de schéma avec le « code » des paliers API).
+CODES_REMISE = list(REGISTRE_REMISE)
 
 
 class _RequeteDeRendu:
@@ -109,8 +111,11 @@ REMISE_SCHEMA = inline_serializer('CalepinageRemiseDocument', {
 })
 
 
-@extend_schema(request=OpenApiTypes.OBJECT,
-               responses={201: REMISE_SCHEMA, 200: REMISE_SCHEMA})
+@extend_schema(
+    request=inline_serializer('CalepinageRemettreDocumentCorps', {
+        'code': drf_serializers.ChoiceField(choices=CODES_REMISE),
+        'langue': drf_serializers.CharField(required=False)}),
+    responses={201: REMISE_SCHEMA, 200: REMISE_SCHEMA})
 @action(detail=True, methods=['post'], url_path='remettre-document',
         url_name='remettre-document', permission_classes=[PeutGererCalepinage])
 def remettre_document(self, request, pk=None):

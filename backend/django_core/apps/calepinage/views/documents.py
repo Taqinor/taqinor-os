@@ -31,6 +31,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
+from ..serializers import REPONSE_REFUS_ETAT
 from .calepinages import CalepinageViewSet
 from .sorties import porte_execution  # ACAL116
 from drf_spectacular.utils import inline_serializer
@@ -40,7 +41,8 @@ from rest_framework.renderers import JSONRenderer
 
 # ── CALX297 — le rapport d'étude (PDF) ──────────────────────────────────────
 @extend_schema(
-    responses={(200, 'application/pdf'): OpenApiTypes.BINARY},
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+               409: REPONSE_REFUS_ETAT},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
@@ -74,7 +76,7 @@ def rapport_etude_pdf(self, request, pk=None):
                 parametres_de_societe(calepinage.company)))
     except RapportRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     # ACAL222 — une LECTURE n'écrit plus de version : la remise est un geste
     # explicite (``POST remettre-document``, ``views/remise_document.py``).
     return reponse_de_fichier(
@@ -87,7 +89,8 @@ CalepinageViewSet.rapport_etude_pdf = rapport_etude_pdf
 
 # ── CALX308 — le diagramme de pertes (SVG dessiné par le serveur) ──────────
 @extend_schema(
-    responses={(200, 'image/svg+xml'): OpenApiTypes.BINARY},
+    responses={(200, 'image/svg+xml'): OpenApiTypes.BINARY,
+               409: REPONSE_REFUS_ETAT},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description='Langue des libellés (fr, en ; ar retombe sur fr).')],
@@ -113,7 +116,7 @@ def diagramme_pertes_svg(self, request, pk=None):
                                 langue=request.query_params.get('langue'))
     except (DiagrammeRefuse, RapportRefuse) as refus:
         return Response({refus.champ or 'cascade': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     return reponse_de_fichier(
         svg.encode('utf-8'), mime=MIME_SVG,
         nom_fichier=nom_de_fichier(calepinage, 'diagramme-pertes.svg'))
@@ -195,7 +198,8 @@ CalepinageViewSet.documents = documents
 
 # ── CALX323 — l'aperçu HTML d'un document, AVANT le PDF ─────────────────────
 @extend_schema(
-    responses={(200, 'text/html'): OpenApiTypes.STR},
+    responses={(200, 'text/html'): OpenApiTypes.STR,
+               409: REPONSE_REFUS_ETAT},
     parameters=[
         OpenApiParameter(
             name='code', type=OpenApiTypes.STR, required=True,
@@ -242,14 +246,14 @@ def apercu_document(self, request, pk=None):
         # ``KeyError.__str__`` ré-encapsule son message entre guillemets —
         # ``args[0]`` reste le texte FRANÇAIS propre, tel qu'écrit.
         message = refus.args[0] if refus.args else str(refus)
-        return Response({'code': message}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'code': message}, status=status.HTTP_404_NOT_FOUND)
 
     langue = request.query_params.get('langue')
     try:
         html = fonction(calepinage, langue=langue)
     except REFUS_CONNUS as refus:
         return Response({refus.champ or 'resultat': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     return HttpResponse(html, content_type='text/html; charset=utf-8')
 
 
@@ -260,10 +264,11 @@ CalepinageViewSet.apercu_document = apercu_document
 def _refus_plan_cablage(refus):
     """400 + la donnée NOMMÉE (géométrie, chaînage, pare-feu de montants)."""
     return Response({getattr(refus, 'champ', '') or 'electrique.chainage':
-                     str(refus)}, status=status.HTTP_400_BAD_REQUEST)
+                     str(refus)}, status=status.HTTP_409_CONFLICT)
 
 
-@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['get'], url_path=r'plan-cablage\.pdf',
         url_name='plan-cablage-pdf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_pdf(self, request, pk=None):
@@ -293,7 +298,8 @@ def plan_cablage_pdf(self, request, pk=None):
 CalepinageViewSet.plan_cablage_pdf = plan_cablage_pdf
 
 
-@extend_schema(responses={(200, 'image/vnd.dxf'): OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'image/vnd.dxf'): OpenApiTypes.BINARY,
+                          409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['get'], url_path=r'plan-cablage\.dxf',
         url_name='plan-cablage-dxf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_dxf(self, request, pk=None):
@@ -352,7 +358,8 @@ EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
 })
 
 
-@extend_schema(responses={200: EXPORT_PROJET_SCHEMA})
+@extend_schema(responses={200: EXPORT_PROJET_SCHEMA,
+                          409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['get'], url_path=r'export-projet\.json',
         url_name='export-projet-json', permission_classes=[PeutVoirCalepinage],
         renderer_classes=[JSONRenderer])
@@ -376,7 +383,7 @@ def export_projet_json(self, request, pk=None):
         document = document_de_projet(calepinage)
     except ExportProjetRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     from .sorties import en_tete_de_telechargement
 
     reponse = Response(document)
@@ -401,8 +408,11 @@ IMAGE_DOCUMENT_SCHEMA = inline_serializer('CalepinageImageDocumentDepot', {
 })
 
 
-@extend_schema(request=OpenApiTypes.OBJECT,
-               responses={201: IMAGE_DOCUMENT_SCHEMA})
+@extend_schema(
+    request=inline_serializer('CalepinageImageDocumentCorps', {
+        'genre': drf_serializers.ChoiceField(choices=['ombrage']),
+        'fichier': drf_serializers.FileField()}),
+    responses={201: IMAGE_DOCUMENT_SCHEMA})
 @action(detail=True, methods=['post'], url_path='image-document',
         url_name='image-document', permission_classes=[PeutGererCalepinage])
 def image_document(self, request, pk=None):
@@ -451,7 +461,8 @@ CalepinageViewSet.image_document = image_document
 
 # ── CALX317 — le rapport d'ombrage AUTONOME (matrice, horizon, carte) ──────
 @extend_schema(
-    responses={(200, 'application/pdf'): OpenApiTypes.BINARY},
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+               409: REPONSE_REFUS_ETAT},
     parameters=[OpenApiParameter(
         name='langue', type=OpenApiTypes.STR, required=False,
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
@@ -485,7 +496,7 @@ def rapport_ombrage_pdf(self, request, pk=None):
                                         langue=langue)
     except RapportOmbrageRefuse as refus:
         return Response({refus.champ or 'roof_layout': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     return reponse_de_fichier(
         octets, mime=MIME_PDF,
         nom_fichier=nom_de_fichier(calepinage, 'rapport-ombrage.pdf'))
@@ -495,7 +506,8 @@ CalepinageViewSet.rapport_ombrage_pdf = rapport_ombrage_pdf
 # ── CALX316 — le manuel du propriétaire, depuis le gabarit société ─────────
 
 
-@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['get'], url_path=r'manuel-proprietaire\.pdf',
         url_name='manuel-proprietaire-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -518,7 +530,7 @@ def manuel_proprietaire_pdf(self, request, pk=None):
         octets = rendre_manuel(calepinage, company=calepinage.company)
     except RapportRefuse as refus:  # ManuelRefuse en est une sous-classe
         return Response({refus.champ or 'gabarit': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     return reponse_de_fichier(
         octets, mime=MIME_PDF,
         nom_fichier=nom_de_fichier(calepinage, 'manuel-proprietaire.pdf'))
@@ -528,7 +540,8 @@ CalepinageViewSet.manuel_proprietaire_pdf = manuel_proprietaire_pdf
 
 
 # ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
-@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['get'], url_path=r'document-asbuilt\.pdf',
         url_name='document-asbuilt-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -557,7 +570,8 @@ CalepinageViewSet.document_asbuilt_pdf = document_asbuilt_pdf
 
 
 # ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
-@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['get'], url_path=r'presentation-compacte\.pdf',
         url_name='presentation-compacte-pdf',
         permission_classes=[PeutVoirCalepinage])
@@ -584,7 +598,7 @@ def presentation_compacte_pdf(self, request, pk=None):
                                               company=calepinage.company)
     except RapportRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     return reponse_de_fichier(
         octets, mime=MIME_PDF,
         nom_fichier=nom_de_fichier(calepinage, 'presentation-compacte.pdf'))
@@ -613,7 +627,8 @@ DOSSIER_FIN_CHANTIER_SCHEMA = inline_serializer(
     })
 
 
-@extend_schema(responses={201: DOSSIER_FIN_CHANTIER_SCHEMA})
+@extend_schema(request=None,
+               responses={201: DOSSIER_FIN_CHANTIER_SCHEMA})
 @action(detail=True, methods=['post'], url_path='dossier-fin-chantier',
         url_name='dossier-fin-chantier',
         permission_classes=[PeutGererCalepinage])

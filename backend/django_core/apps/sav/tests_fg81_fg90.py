@@ -371,6 +371,21 @@ class TestWarrantyClaim(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['count'], 1)
 
+    def test_filtres_identifiants_illisibles_repondent_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : `?equipement=abc` levait une
+        # ValueError de l'ORM (500) ; le filtre est borné comme son schéma.
+        for requete in ('equipement=abc', 'ticket=0', 'ticket=null'):
+            r = self.api.get(f'/api/django/sav/warranty-claims/?{requete}')
+            self.assertEqual(r.status_code, 400, (requete, r.content))
+        r = self.api.get('/api/django/sav/warranty-claims/?equipement=&ticket=')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_formulaire_refuse_415_json_seul(self):
+        # Aucun upload sur ce viewset : le schéma ne publie que le JSON.
+        r = self.api.post('/api/django/sav/warranty-claims/',
+                          {'equipement': self.equip.pk}, format='multipart')
+        self.assertEqual(r.status_code, 415, r.content)
+
     def test_cross_company_equipement_rejected(self):
         """FG83 — Équipement d'une autre société est rejeté."""
         other = make_company(slug='rma-cross', nom='RMA Cross')
@@ -417,6 +432,13 @@ class TestEquipementQR(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn('text/html', r['Content-Type'])
         self.assertIn(f'EQUIP:{equip_id}', r.content.decode())
+
+    def test_etiquettes_symbologie_inconnue_repond_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : `symbology` ne vaut que qr|code128
+        # (vide = défaut) — plus de repli silencieux sur une valeur inconnue.
+        r = self.api.get('/api/django/sav/equipements/etiquettes/?symbology=AAA')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('symbology', r.data)
 
     def test_resolve_equip_token(self):
         """FG85 — /stock/produits/resolve/?code=EQUIP:<id> résout l'équipement."""
@@ -487,6 +509,24 @@ class TestKbArticle(TestCase):
         r = other_api.get('/api/django/sav/kb-articles/')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['count'], 0)
+
+    def test_patch_vide_rend_les_libelles_lies_a_null(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : sur un PATCH (sérialiseur partiel) DRF
+        # SAUTAIT un champ `source='produit.nom'` dont le lien est vide dès qu'il
+        # portait un `default` — la clé manquait alors que le schéma l'exige.
+        art = KbArticle.objects.create(
+            company=self.co, titre='Sans produit', corps='Texte', actif=True)
+        r = self.api.patch(
+            f'/api/django/sav/kb-articles/{art.pk}/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('produit_nom', r.data)
+        self.assertIsNone(r.data['produit_nom'])
+
+    def test_filtre_produit_illisible_repond_400(self):
+        for brut in ('abc', '0', 'null'):
+            r = self.api.get(f'/api/django/sav/kb-articles/?produit={brut}')
+            self.assertEqual(r.status_code, 400, (brut, r.content))
+            self.assertIn('produit', r.data)
 
     def test_filter_by_produit(self):
         """FG87 — Filtrage d'articles par produit (lien depuis ticket)."""

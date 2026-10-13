@@ -24,14 +24,16 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
+from core.unicite import ConflitUnicite
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models_payment_terms import ConditionPaiement
 from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
 from .models_taxes import TauxTVA
-from .views_common import ACTIF_PARAM, SettingsAuditedMixin
+from .views_common import ACTIF_PARAM, SettingsAuditedMixin, filtrer_actif
 from .models_units import UniteMesure
 from .serializers_referentiels import (
+    CadenceRelanceEtapeCreationSerializer,
     CadenceRelanceEtapeSerializer,
     ConditionPaiementSerializer,
     TauxTVASerializer,
@@ -69,11 +71,7 @@ class TauxTVAViewSet(_ReferentielViewSet):
     audit_libelle = 'Taux de TVA'
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        actif = self.request.query_params.get('actif')
-        if actif in ('true', '1'):
-            qs = qs.filter(actif=True)
-        return qs
+        return filtrer_actif(self.request, super().get_queryset())
 
     @extend_schema(request=None, responses=TauxTVASerializer)
     @action(detail=True, methods=['post'])
@@ -109,11 +107,7 @@ class ConditionPaiementViewSet(_ReferentielViewSet):
     audit_libelle = 'Condition de paiement'
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        actif = self.request.query_params.get('actif')
-        if actif in ('true', '1'):
-            qs = qs.filter(actif=True)
-        return qs
+        return filtrer_actif(self.request, super().get_queryset())
 
 
 @extend_schema_view(list=extend_schema(parameters=[ACTIF_PARAM]))
@@ -125,11 +119,7 @@ class UniteMesureViewSet(_ReferentielViewSet):
     audit_libelle = 'Unité de mesure'
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        actif = self.request.query_params.get('actif')
-        if actif in ('true', '1'):
-            qs = qs.filter(actif=True)
-        return qs
+        return filtrer_actif(self.request, super().get_queryset())
 
 
 @extend_schema_view(list=extend_schema(parameters=[
@@ -162,11 +152,16 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
     serializer_class = CadenceRelanceEtapeSerializer
     audit_libelle = 'Étape de cadence de relance'
 
+    def get_serializer_class(self):
+        # ENF11 — la CRÉATION publie (et tient) les seules cadences où l'on
+        # peut ajouter un barreau : les cadences moteur étaient annoncées au
+        # schéma puis refusées (400) — requête « conforme » rejetée.
+        if self.action == 'create':
+            return CadenceRelanceEtapeCreationSerializer
+        return super().get_serializer_class()
+
     def get_queryset(self):
-        qs = super().get_queryset()
-        actif = self.request.query_params.get('actif')
-        if actif in ('true', '1'):
-            qs = qs.filter(actif=True)
+        qs = filtrer_actif(self.request, super().get_queryset())
         cadence = (self.request.query_params.get('cadence') or '').strip()
         if cadence:
             if cadence not in Cadence.values:
@@ -221,10 +216,11 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
         if not ordre:
             ordre = (deja.aggregate(m=Max('ordre'))['m'] or 0) + 1
         elif deja.filter(ordre=ordre).exists():
-            raise ValidationError(
-                {'ordre': f'Le rang {ordre} est déjà pris dans cette '
-                          'cadence. Laissez le champ vide pour prendre le '
-                          'rang suivant.'})
+            # ENF11 — rang déjà occupé = conflit d'ÉTAT (409), champ nommé.
+            raise ConflitUnicite(
+                f'Le rang {ordre} est déjà pris dans cette cadence. '
+                'Laissez le champ vide pour prendre le rang suivant.',
+                champs=['ordre'])
         # La société reste POSÉE côté serveur, comme dans TenantMixin : elle
         # n'est jamais lue du corps de la requête.
         serializer.save(company=company, ordre=ordre)

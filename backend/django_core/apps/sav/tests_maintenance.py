@@ -49,6 +49,23 @@ class TestMaintenance(TestCase):
         r2 = self.api.post('/api/django/sav/contrats-maintenance/generer-dus/')
         self.assertEqual(r2.data['tickets_generes'], 0)
 
+    def test_filtre_client_illisible_repond_400(self):
+        for brut in ('abc', '0', 'null'):
+            resp = self.api.get(
+                f'/api/django/sav/contrats-maintenance/?client={brut}')
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+            self.assertIn('client', resp.data)
+
+    def test_rapport_pdf_date_illisible_repond_400(self):
+        contrat = ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj, periodicite='annuel',
+            date_debut=date.today())
+        resp = self.api.get(
+            f'/api/django/sav/contrats-maintenance/{contrat.pk}/rapport-pdf/'
+            '?date=hier')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('date', resp.data)
+
     def test_due_filter(self):
         ContratMaintenance.objects.create(
             company=self.company, client=self.client_obj, periodicite='annuel',

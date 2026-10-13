@@ -2,9 +2,11 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import DecimalStricte
 from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import ChampsStrictsSansDecimalMixin, EntierStrict
+from apps.records.champs_stricts import (
+    ChampsStrictsBornesMixin, DecimalLitteral, RegexStricte,
+)
 
 from .models import (
     Annonce,
@@ -82,7 +84,7 @@ class NotificationPreferenceSerializer(ChampsStrictsSansDecimalMixin, serializer
         return value
 
 
-class NotificationRoutingRuleSerializer(ChampsStrictsSansDecimalMixin,
+class NotificationRoutingRuleSerializer(ChampsStrictsBornesMixin,
                                         SameCompanyFKSerializerMixin,
                                         serializers.ModelSerializer):
     """FG4 — Serializer des règles de routage (admin seulement)."""
@@ -129,7 +131,7 @@ class WorkingHoursConfigSerializer(ChampsStrictsSansDecimalMixin, serializers.Mo
     id = serializers.IntegerField(read_only=True, allow_null=True)
     updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
     working_days = EntierStrict(min_value=0, max_value=32767, required=False)
-    hours_per_day = DecimalStricte(
+    hours_per_day = DecimalLitteral(
         max_digits=4, decimal_places=2, required=False)
 
     class Meta:
@@ -139,7 +141,7 @@ class WorkingHoursConfigSerializer(ChampsStrictsSansDecimalMixin, serializers.Mo
         read_only_fields = ['id', 'updated_at']
 
 
-class HolidaySerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
+class HolidaySerializer(ChampsStrictsBornesMixin, serializers.ModelSerializer):
     """FG5 — Sérializer des jours fériés."""
 
     class Meta:
@@ -149,7 +151,7 @@ class HolidaySerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializ
         read_only_fields = ['id', 'created_at']
 
 
-class WhatsAppTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
+class WhatsAppTemplateSerializer(ChampsStrictsBornesMixin, serializers.ModelSerializer):
     """XMKT25 — Registre des gabarits BSP + cycle d'approbation Meta."""
     statut_approbation_label = serializers.CharField(
         source='get_statut_approbation_display', read_only=True)
@@ -171,7 +173,7 @@ class WhatsAppTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.Mode
         ]
 
 
-class AnnonceSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
+class AnnonceSerializer(ChampsStrictsBornesMixin, serializers.ModelSerializer):
     """XKB5 — Annonces internes ciblées et programmées."""
     cible_type_label = serializers.CharField(
         source='get_cible_type_display', read_only=True)
@@ -206,12 +208,15 @@ class AnnonceSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializ
         return obj.lectures.count()
 
 
-class MessageAccueilSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
+class MessageAccueilSerializer(ChampsStrictsBornesMixin, serializers.ModelSerializer):
     """MSGACC1 — message d'accueil (PAS une notification, cf. models.py).
 
     ``company``/``auteur`` posés côté serveur (perform_create) — jamais
     acceptés du corps. ``destinataire`` validé par champ : actif ET de la
     MÊME société que l'auteur (règle fondateur multi-tenant)."""
+    # Motif publié au schéma : un corps fait de blancs est refusé (400) — le
+    # schéma l'annonçait valide (``minLength: 1``).
+    corps = RegexStricte(r'\S')
     auteur_nom = serializers.CharField(
         source='auteur.username', read_only=True, default='')
     destinataire_nom = serializers.CharField(
