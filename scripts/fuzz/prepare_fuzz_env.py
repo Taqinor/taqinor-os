@@ -415,6 +415,30 @@ def _tags_hors_modele(qs, company):
     return qs.exclude(nom=NOM_TAG_MODELE)
 
 
+def _semer_retour_fournisseur(company, user):
+    """Un retour fournisseur (brouillon) + UNE ligne, numéroté par le MÊME
+    chemin que la vue (``create_with_reference`` « RF », jamais count()+1)."""
+    existant = _premier('achats.RetourFournisseur', company)
+    if existant is not None:
+        return existant
+    from apps.ventes.utils.references import create_with_reference
+
+    fournisseur = _premier('stock.Fournisseur', company)
+    produit = _premier('stock.Produit', company)
+    if fournisseur is None or produit is None:
+        raise ValueError('aucun fournisseur ou produit dans la société de fuzz')
+    modele = _modele('achats.RetourFournisseur')
+
+    def _save(ref):
+        retour = modele.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            motif='Retour fuzz (ENF11)', created_by=user)
+        _modele('achats.LigneRetourFournisseur').objects.create(
+            retour=retour, produit=produit, quantite=1)
+        return retour
+    return create_with_reference(modele, 'RF', company, _save)
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
     ('records.ActivityType', _semer_type_activite),
@@ -433,6 +457,7 @@ SEMEURS = (
     ('calepinage.SystemeFixation', _semer_systeme_fixation),
     ('calepinage.GabaritDossierReglementaire', _semer_gabarit_dossier),
     ('ged (coffre, dossier, étiquette)', _semer_ged),
+    ('achats.RetourFournisseur', _semer_retour_fournisseur),
 )
 
 
@@ -489,6 +514,8 @@ REGLES_PAR_CHEMIN = (
     (r'^/api/django/ged/', ('proprietaire',), 'authentication.CustomUser',
      _utilisateurs_internes, None),
     (r'^/api/django/ged/', ('contact', 'contact_id'), 'crm.Client', None, None),
+    (r'^/api/django/(stock|achats)/', ('retour', 'retour_id'),
+     'achats.RetourFournisseur', None, None),
 )
 
 
