@@ -111,6 +111,98 @@ def _cibles_par_nom():
     return cibles
 
 
+# ── ENF11 (stock/achats) — objets de départ + ids par chemin ──────────────
+# POST stock/alertes-rappel/ (``lot: 0``) et stock/avoirs-fournisseur/
+# (``retour: 0``) étaient refusés à raison : la société de fuzz n'avait AUCUN
+# LotEntrepot ni RetourFournisseur. Chaque semeur crée UNE ligne si la société
+# n'en a aucune (idempotent), dans un point de sauvegarde (échec journalisé).
+
+def _modele(label):
+    from django.apps import apps
+
+    return apps.get_model(label)
+
+
+def _premier(label, company):
+    return (_modele(label).objects.filter(company=company)
+            .order_by('pk').first())
+
+
+def _semer_lot(company, user):
+    existant = _premier('stock.LotEntrepot', company)
+    if existant is not None:
+        return existant
+    produit = _premier('stock.Produit', company)
+    if produit is None:
+        raise ValueError('aucun produit dans la société de fuzz')
+    return _modele('stock.LotEntrepot').objects.create(
+        company=company, produit=produit, numero_lot='FUZZ-LOT-0001',
+        created_by=user)
+
+
+def _semer_retour_fournisseur(company, user):
+    """Un retour fournisseur (brouillon) + UNE ligne, numéroté par le MÊME
+    chemin que la vue (``create_with_reference`` « RF », jamais count()+1)."""
+    existant = _premier('achats.RetourFournisseur', company)
+    if existant is not None:
+        return existant
+    from apps.ventes.utils.references import create_with_reference
+
+    fournisseur = _premier('stock.Fournisseur', company)
+    produit = _premier('stock.Produit', company)
+    if fournisseur is None or produit is None:
+        raise ValueError('aucun fournisseur ou produit dans la société de fuzz')
+    modele = _modele('achats.RetourFournisseur')
+
+    def _save(ref):
+        retour = modele.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            motif='Retour fuzz (ENF11)', created_by=user)
+        _modele('achats.LigneRetourFournisseur').objects.create(
+            retour=retour, produit=produit, quantite=1)
+        return retour
+    return create_with_reference(modele, 'RF', company, _save)
+
+
+SEMEURS = (
+    ('stock.LotEntrepot', _semer_lot),
+    ('achats.RetourFournisseur', _semer_retour_fournisseur),
+)
+
+
+def semer_objets_references(company, user):
+    from django.db import transaction
+
+    for nom, fabrique in SEMEURS:
+        try:
+            with transaction.atomic():
+                objet = fabrique(company, user)
+            print(f'  seed {nom} : id {objet.pk}')
+        except Exception as exc:  # donnée de seed impossible : on continue
+            print(f'  (seed ignoré) {nom} : {exc}', file=sys.stderr)
+
+
+# (motif du gabarit de chemin, champs de premier niveau du corps, modèle)
+REGLES_PAR_CHEMIN = (
+    (r'^/api/django/(stock|achats)/', ('lot', 'lot_id'), 'stock.LotEntrepot'),
+    (r'^/api/django/(stock|achats)/', ('retour', 'retour_id'),
+     'achats.RetourFournisseur'),
+)
+
+
+def inventorier_ids_par_chemin(company):
+    regles = []
+    for motif, champs, label in REGLES_PAR_CHEMIN:
+        ids = sorted(_ids_existants(_modele(label), company, {}))
+        if ids:
+            regles.append({'motif': motif, 'champs': list(champs),
+                           'ids': ids})
+        else:
+            print(f'  (règle sans id) {motif} {champs} -> {label}',
+                  file=sys.stderr)
+    return regles
+
+
 def inventorier_ids_fk(company):
     cache = {}
     table = {}
@@ -142,6 +234,7 @@ def main():
     company = apps.get_model('authentication', 'Company').objects.get(
         slug=SLUG_DEMO)
     user = preparer_compte(company, password)
+    semer_objets_references(company, user)
     table = inventorier_ids_fk(company)
     etat = {
         'username': USERNAME,
@@ -150,6 +243,8 @@ def main():
         # ENF1b — rôle du compte, protégé par le crochet ``before_call``.
         'role_id': user.role_id,
         'fk_ids': table,
+        # ENF11 (stock/achats) — ids par chemin, prioritaires sur ``fk_ids``.
+        'fk_ids_chemin': inventorier_ids_par_chemin(company),
     }
     with open(sys.argv[1], 'w', encoding='utf-8') as fh:
         json.dump(etat, fh, ensure_ascii=False, indent=1, sort_keys=True)
