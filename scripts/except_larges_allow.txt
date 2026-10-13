@@ -285,7 +285,6 @@ backend/django_core/apps/portail/services.py::_envoyer_identifiants_portail
 backend/django_core/apps/portail/services.py::_envoyer_invitation_portail
 backend/django_core/apps/portail/views_client.py::_noter_connexion
 backend/django_core/apps/portail/views_client.py::contenu_diffusable
-backend/django_core/apps/portail/views_externes.py::RessourcesPartenairePortailViewSet.telecharger
 backend/django_core/apps/reporting/approbations.py::_decider_approbation_core
 backend/django_core/apps/reporting/calepinage_kpis.py::_compteurs_par_statut
 backend/django_core/apps/reporting/classeur.py::ClasseurViewSet.evaluer

@@ -15,8 +15,9 @@ risquer de collision ailleurs.
 
 SOLMVP16 — ``satisfaction`` (NTPRT35) a été retiré : marketing est un module
 sorti du produit et cette surface n'avait pas d'équivalent sans lui.
-``mes-documents`` (NTPRT13) et ``ressources`` (NTPRT31) RESTENT : la GED est
+``mes-documents`` (NTPRT13) RESTE : la GED est
 dans le MVP solaire (décision fondateur du 21/09/2026, SOLMVP16b).
+ADOC149 (D-ADOC149 a) : `ressources`, `mes-factures-fournisseur` et `ma-performance` retirés (sans écran).
 """
 
 from django.urls import include, path
@@ -47,11 +48,8 @@ from .views_client import (
 from .views_externes import (
     MesBcfPortailFournisseurViewSet,
     MesCommissionsPortailPartenaireViewSet,
-    MesFacturesPortailFournisseurViewSet,
     MesSoumissionsPortailPartenaireViewSet,
-    RessourcesPartenairePortailViewSet,
     candidature_fournisseur,
-    ma_performance_fournisseur,
     preference_portail,
     tableau_de_bord_fournisseur,
     tableau_de_bord_partenaire,
@@ -113,15 +111,6 @@ router.register(r'mes-soumissions', MesSoumissionsPortailPartenaireViewSet,
 # NTPRT30 — « Mes commissions » : relevé (écran) + export PDF, lecture seule.
 router.register(r'mes-commissions', MesCommissionsPortailPartenaireViewSet,
                 basename='portail-mes-commissions')
-# NTPRT31 — « Ressources » : documents GED partagés GLOBALEMENT avec TOUS les
-# partenaires (ACL par rôle système « Portail partenaire »), lecture seule.
-router.register(r'ressources', RessourcesPartenairePortailViewSet,
-                basename='portail-ressources')
-# NTPRT23 — « Mes factures & statut de paiement » du portail FOURNISSEUR
-# connecté, lecture seule.
-router.register(r'mes-factures-fournisseur',
-                MesFacturesPortailFournisseurViewSet,
-                basename='portail-mes-factures-fournisseur')
 # NTPRT16 — « Mes contrats » (maintenance) : liste + demande de
 # renouvellement/résiliation, portail CLIENT.
 router.register(r'mes-contrats-maintenance',
@@ -155,10 +144,6 @@ urlpatterns = [
     # quelconque » plutôt qu'une portée exacte.
     path('ma-preference/', preference_portail,
          name='portail-ma-preference'),
-    # NTPRT26 — carte « Ma performance » du portail FOURNISSEUR connecté,
-    # lecture seule.
-    path('ma-performance/', ma_performance_fournisseur,
-         name='portail-ma-performance'),
     # NTPRT25 — auto-inscription fournisseur : PUBLIC (AllowAny) et
     # rate-limité. Volontairement déclaré AVANT le routeur pour qu'aucun
     # ViewSet ne puisse l'ombrer.
