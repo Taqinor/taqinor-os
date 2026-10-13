@@ -3,7 +3,7 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { useConfirmDialog } from '../../ui/confirm'
 
 /* État commun des sections Paramètres « liste éditable par un admin »
-   (Politiques d'approbation, Modèles brandés) : droit d'écrire, lignes lues sur
+   (Modèles brandés) : droit d'écrire, lignes lues sur
    `url` (paginées ou non), chargement/erreur de chargement, opération en cours,
    et la confirmation de suppression MAISON (APAR41 — jamais window.confirm).
    Un seul endroit au lieu d'une copie par section (check_duplicats_litteraux).

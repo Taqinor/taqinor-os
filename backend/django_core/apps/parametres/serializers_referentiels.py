@@ -89,7 +89,7 @@ class TauxTVASerializer(TypageStrictParametres, UniciteSocieteMixin, serializers
 
     class Meta:
         model = TauxTVA
-        fields = ['id', 'code', 'libelle', 'taux', 'defaut', 'actif']
+        fields = ['id', 'code', 'libelle', 'taux', 'actif']
 
     def validate_code(self, value):
         value = (value or '').strip()

@@ -211,3 +211,29 @@ class TableauDeBordPartenaireTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data['partenaire_nom'], '')
         self.assertEqual(Decimal(res.data['commissions_dues']), Decimal('0'))
+
+
+class SurfacesExternesRetireesTests(TestCase):
+    """ADOC149 (D-ADOC149 a) — surfaces sans écran retirées : 404."""
+
+    def test_routes_retirees_repondent_404(self):
+        company = make_company('adoc149-co', 'ADOC149 Société')
+        f = make_fournisseur(company)
+        p = make_partenaire(company)
+        api = APIClient()
+        cas = (
+            (CustomUser.PORTEE_PORTAIL_FOURNISSEUR, f.id, (
+                '/api/django/portail/mes-factures-fournisseur/',
+                '/api/django/portail/mes-factures-fournisseur/1/',
+                '/api/django/portail/ma-performance/')),
+            (CustomUser.PORTEE_PORTAIL_PARTENAIRE, p.id, (
+                '/api/django/portail/ressources/',
+                '/api/django/portail/ressources/1/',
+                '/api/django/portail/ressources/1/telecharger/')),
+        )
+        for portee, scope_id, urls in cas:
+            api.force_authenticate(user=make_portal_user(
+                company, f'adoc149-{portee}', portee, scope_id))
+            for url in urls:
+                with self.subTest(url=url):
+                    self.assertEqual(api.get(url).status_code, 404)

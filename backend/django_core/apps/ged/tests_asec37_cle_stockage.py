@@ -5,7 +5,7 @@ Constat C-ASEC-008 volet GED : ``POST /ged/versions/`` acceptait une
 clé — y compris le fichier d'une autre société. Attendu : seule une version
 TÉLÉVERSÉE dans la requête est acceptée (clé produite par le serveur sous le
 préfixe de la société) ; aucune lecture ne sert une clé portant l'id d'une
-autre société ; ``classer-apres-vente`` refuse une clé étrangère ; les clés
+autre société ; les clés
 plates déjà enregistrées chez A restent lisibles.
 
 MinIO de la pile de test réel ; aucun mock interne.
@@ -86,21 +86,6 @@ class CleStockageGedTests(TestCase):
         r = self.api.get(f'{BASE}versions/{version.pk}/apercu/')
         self.assertEqual(r.status_code, 404, r.content)
         self.assertNotIn(b'%PDF', r.content)
-
-    def test_classer_apres_vente_cle_etrangere_refuse(self):
-        avant = Document.objects.count()
-        for cle in (self.cle_b, 'attachments/jamais-vue-chez-a.pdf'):
-            with self.subTest(cle=cle):
-                r = self.api.post(f'{BASE}documents/classer-apres-vente/', {
-                    'nom': 'Rapport', 'source_type': 'sav.ticket',
-                    'source_id': 9, 'file_key': cle}, format='json')
-                self.assertEqual(r.status_code, 400, r.content)
-        self.assertEqual(Document.objects.count(), avant)
-        r_ok = self.api.post(f'{BASE}documents/classer-apres-vente/', {
-            'nom': 'Rapport', 'source_type': 'sav.ticket', 'source_id': 9,
-            'file_key': f'attachments/{self.a.pk}/rapport.pdf'},
-            format='json')
-        self.assertEqual(r_ok.status_code, 201, r_ok.content)
 
     def test_depot_lot_cle_etrangere_refuse(self):
         r = self.api.post(f'{BASE}documents/scan-lot/', {

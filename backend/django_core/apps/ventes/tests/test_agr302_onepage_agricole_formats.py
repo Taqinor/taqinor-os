@@ -127,3 +127,65 @@ class Agr302RenvoiTroncatureTests(SimpleTestCase):
     def test_residentiel_tronque_garde_son_renvoi(self):
         html = self._table_tronquee('residentiel')
         self.assertIn('le devis multi-pages', html)
+
+
+# ── AMOT56 (C-AMOT-061, D-AMOT-7 = a) — m³/jour d'une pompe SANS courbe ────
+# dont le débit est DÉCLARÉ (pompe existante, AGR114) : la carte reste et le
+# dit « débit déclaré par vous » (une-page ET document agricole 3 pages, LA
+# fonction ``synthese.debit_declare_sans_courbe``) ; une pompe à courbe ou un
+# m³/jour hérité sans production n'en porte pas (goldens inchangés).
+# Test-du-test : rendre ``debit_declare_sans_courbe`` toujours faux ⇒
+# ``test_onepage_debit_declare_etiquete`` échoue.
+
+ETUDE_DECLAREE = {
+    'mode_pompe': 'existante', 'pompe_cv': '5.5', 'pompe_kw': 5.5,
+    'hmt_m': '40', 'heures_pompage': 7, 'm3_jour': 75, 'champ_kwc': 5.68,
+    'production': {'mode': 'debit_declare', 'source_irradiation': 'pvgis',
+                   'm3_jour_mois': [75] * 12},
+}
+
+
+class Amot56DebitDeclareTests(SimpleTestCase):
+
+    def test_onepage_debit_declare_etiquete(self):
+        html = _html(etude=ETUDE_DECLAREE)
+        self.assertIn('estimation &#183; débit déclaré par vous, sur 7 h',
+                      html)
+        self.assertIn('Eau / jour', html)
+
+    def test_onepage_sans_production_declaree_inchange(self):
+        html = _html()
+        self.assertNotIn('débit déclaré par vous', html)
+        self.assertIn('Eau / jour &#8212; estimation, sur 7 h', html)
+
+    def test_onepage_debit_declare_en_anglais(self):
+        html = _html(langue='en', etude=ETUDE_DECLAREE)
+        self.assertIn('flow rate declared by you', html)
+        self.assertNotIn('débit déclaré par vous', html)
+
+    def test_predicat_courbe_ou_declare(self):
+        from apps.ventes.quote_engine.agricole.synthese import (
+            debit_declare_sans_courbe)
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete)
+        d = data_complete()
+        self.assertFalse(debit_declare_sans_courbe(d))  # pompe à courbe
+        for it in d['all_items']:
+            it['courbe_pompe'] = None
+        self.assertFalse(debit_declare_sans_courbe(d))  # mode « courbe »
+        d['etude']['production']['mode'] = 'debit_declare'
+        self.assertTrue(debit_declare_sans_courbe(d))
+        d['etude']['production']['mode'] = 'repli_plat'
+        self.assertTrue(debit_declare_sans_courbe(d))
+        self.assertFalse(debit_declare_sans_courbe({}))
+
+    def test_document_agricole_trois_pages_etiquete(self):
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete, html_de)
+        self.assertNotIn('débit déclaré par vous', html_de(data_complete()))
+        d = data_complete()
+        for it in d['all_items']:
+            it['courbe_pompe'] = None
+        d['etude']['production']['mode'] = 'debit_declare'
+        d['etude']['mode_pompe'] = 'existante'
+        self.assertIn('débit déclaré par vous', html_de(d))

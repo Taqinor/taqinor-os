@@ -8,12 +8,11 @@ import { render, screen, act, cleanup, waitFor, fireEvent, within } from '@testi
 vi.mock('../../api/parametresApi', () => ({
   default: {
     getTauxTva: vi.fn(async () => ({
-      data: [{ id: 1, code: 'tva20', libelle: 'Normal', taux: '20', defaut: true, actif: true }],
+      data: [{ id: 1, code: 'tva20', libelle: 'Normal', taux: '20', actif: true }],
     })),
     createTauxTva: vi.fn(async () => ({ data: {} })),
     updateTauxTva: vi.fn(async () => ({ data: {} })),
     deleteTauxTva: vi.fn(async () => ({ data: {} })),
-    setDefautTauxTva: vi.fn(async () => ({ data: {} })),
     getConditionsPaiement: vi.fn(async () => ({
       data: [{ id: 2, libelle: 'Comptant', delai_jours: 0, fin_de_mois: false, escompte_pct: '0', actif: true }],
     })),
@@ -62,7 +61,9 @@ describe('WIR66 ReferentielsSection', () => {
     expect(await screen.findByText('Normal')).toBeInTheDocument()
     expect(screen.getByText('Comptant')).toBeInTheDocument()
     expect(screen.getByText('Mètre')).toBeInTheDocument()
-    expect(screen.getByText('Par défaut')).toBeInTheDocument()
+    // D-APAR-1 : plus de drapeau ni de bouton « Par défaut » sur le référentiel.
+    expect(screen.queryByText('Par défaut')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Définir par défaut')).not.toBeInTheDocument()
   })
 
   it('crée une nouvelle unité de mesure', async () => {
@@ -91,7 +92,7 @@ describe('WIR66 ReferentielsSection', () => {
       } }
     }
     parametresApi.getTauxTva.mockImplementation(pagine((n) => ({
-      id: n, code: `t${n}`, libelle: `Taux ${n}`, taux: '1', defaut: false, actif: true })))
+      id: n, code: `t${n}`, libelle: `Taux ${n}`, taux: '1', actif: true })))
     parametresApi.getConditionsPaiement.mockImplementation(pagine((n) => ({
       id: n, libelle: `Cond ${n}`, delai_jours: 0, fin_de_mois: false, escompte_pct: '0', actif: true })))
     parametresApi.getUnitesMesure.mockImplementation(pagine((n) => ({

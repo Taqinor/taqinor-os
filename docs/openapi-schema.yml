@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4826, operations: 7586, components: 3492}
+counts: {paths: 4804, operations: 7556, components: 3480}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1366,7 +1366,6 @@ operations:
 - get /api/django/ged/documents/ -> django_ged_documents_list
 - post /api/django/ged/documents/ -> django_ged_documents_create
 - post /api/django/ged/documents/assembler-photos/ -> django_ged_documents_assembler_photos_create
-- post /api/django/ged/documents/classer-apres-vente/ -> django_ged_documents_classer_apres_vente_create
 - get /api/django/ged/documents/corbeille/ -> django_ged_documents_corbeille_list
 - post /api/django/ged/documents/deposer-lot-scans-separe/ -> django_ged_documents_deposer_lot_scans_separe_create
 - get /api/django/ged/documents/docqa/ -> django_ged_documents_docqa_retrieve
@@ -1402,7 +1401,6 @@ operations:
 - post /api/django/ged/documents/{id}/nouvelle-version/ -> django_ged_documents_nouvelle_version_create
 - post /api/django/ged/documents/{id}/ocr-piece/ -> django_ged_documents_ocr_piece_create
 - post /api/django/ged/documents/{id}/office-ouvrir/ -> django_ged_documents_office_ouvrir_create
-- post /api/django/ged/documents/{id}/office-sauvegarder/ -> django_ged_documents_office_sauvegarder_create
 - get /api/django/ged/documents/{id}/permissions-effectives/ -> django_ged_documents_permissions_effectives_retrieve
 - post /api/django/ged/documents/{id}/placer-legal-hold/ -> django_ged_documents_placer_legal_hold_create
 - post /api/django/ged/documents/{id}/planifier/ -> django_ged_documents_planifier_create
@@ -2362,12 +2360,6 @@ operations:
 - put /api/django/outillage/outils/{id}/ -> django_outillage_outils_update
 - post /api/django/outillage/outils/{id}/calibrer/ -> django_outillage_outils_calibrer_create
 - get /api/django/parametres/ -> django_parametres_retrieve
-- get /api/django/parametres/approbations/ -> django_parametres_approbations_list
-- post /api/django/parametres/approbations/ -> django_parametres_approbations_create
-- delete /api/django/parametres/approbations/{id}/ -> django_parametres_approbations_destroy
-- get /api/django/parametres/approbations/{id}/ -> django_parametres_approbations_retrieve
-- patch /api/django/parametres/approbations/{id}/ -> django_parametres_approbations_partial_update
-- put /api/django/parametres/approbations/{id}/ -> django_parametres_approbations_update
 - get /api/django/parametres/audit/ -> django_parametres_audit_retrieve
 - post /api/django/parametres/audit/purge/ -> django_parametres_audit_purge_create
 - get /api/django/parametres/audit/sections/ -> django_parametres_audit_sections_retrieve
@@ -2432,7 +2424,6 @@ operations:
 - get /api/django/parametres/taux-tva/{id}/ -> django_parametres_taux_tva_retrieve
 - patch /api/django/parametres/taux-tva/{id}/ -> django_parametres_taux_tva_partial_update
 - put /api/django/parametres/taux-tva/{id}/ -> django_parametres_taux_tva_update
-- post /api/django/parametres/taux-tva/{id}/set_defaut/ -> django_parametres_taux_tva_set_defaut_create
 - get /api/django/parametres/traductions/ -> django_parametres_traductions_list
 - post /api/django/parametres/traductions/ -> django_parametres_traductions_create
 - put /api/django/parametres/traductions/bulk/ -> django_parametres_traductions_bulk_update
@@ -2489,7 +2480,6 @@ operations:
 - patch /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_partial_update
 - post /api/django/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> django_portail_jalons_chantier_portail_marquer_atteint_create
 - post /api/django/portail/jalons-chantier-portail/{id}/marquer_non_atteint/ -> django_portail_jalons_chantier_portail_marquer_non_atteint_create
-- get /api/django/portail/ma-performance/ -> django_portail_ma_performance_retrieve
 - get /api/django/portail/ma-preference/ -> django_portail_ma_preference_retrieve
 - put /api/django/portail/ma-preference/ -> django_portail_ma_preference_update
 - get /api/django/portail/mes-bons-commande/ -> django_portail_mes_bons_commande_list
@@ -2517,8 +2507,6 @@ operations:
 - post /api/django/portail/mes-documents/ -> django_portail_mes_documents_create
 - get /api/django/portail/mes-documents/{id}/ -> django_portail_mes_documents_retrieve
 - get /api/django/portail/mes-documents/{id}/telecharger/ -> django_portail_mes_documents_telecharger_retrieve
-- get /api/django/portail/mes-factures-fournisseur/ -> django_portail_mes_factures_fournisseur_list
-- get /api/django/portail/mes-factures-fournisseur/{id}/ -> django_portail_mes_factures_fournisseur_retrieve
 - get /api/django/portail/mes-factures/ -> django_portail_mes_factures_retrieve
 - get /api/django/portail/mes-factures/{id}/ -> django_portail_mes_factures_retrieve_2
 - post /api/django/portail/mes-factures/{id}/payer/ -> django_portail_mes_factures_payer_create
@@ -2535,9 +2523,6 @@ operations:
 - get /api/django/portail/paiements-facture-portail/{id}/ -> django_portail_paiements_facture_portail_retrieve
 - post /api/django/portail/paiements-facture-portail/{id}/rapprocher/ -> django_portail_paiements_facture_portail_rapprocher_create
 - get /api/django/portail/partenaire/tableau-de-bord/ -> django_portail_partenaire_tableau_de_bord_retrieve
-- get /api/django/portail/ressources/ -> django_portail_ressources_list
-- get /api/django/portail/ressources/{id}/ -> django_portail_ressources_retrieve
-- get /api/django/portail/ressources/{id}/telecharger/ -> django_portail_ressources_telecharger_retrieve
 - get /api/django/public/bcf/{token}/ -> django_public_bcf_retrieve
 - get /api/django/public/document/{token}/ -> django_public_document_retrieve
 - get /api/django/public/installations/intervention-rapport/{token}/ -> django_public_installations_intervention_rapport_retrieve
@@ -5198,7 +5183,6 @@ operations:
 - get /api/v1/ged/documents/ -> v1_ged_documents_list
 - post /api/v1/ged/documents/ -> v1_ged_documents_create
 - post /api/v1/ged/documents/assembler-photos/ -> v1_ged_documents_assembler_photos_create
-- post /api/v1/ged/documents/classer-apres-vente/ -> v1_ged_documents_classer_apres_vente_create
 - get /api/v1/ged/documents/corbeille/ -> v1_ged_documents_corbeille_list
 - post /api/v1/ged/documents/deposer-lot-scans-separe/ -> v1_ged_documents_deposer_lot_scans_separe_create
 - get /api/v1/ged/documents/docqa/ -> v1_ged_documents_docqa_retrieve
@@ -5234,7 +5218,6 @@ operations:
 - post /api/v1/ged/documents/{id}/nouvelle-version/ -> v1_ged_documents_nouvelle_version_create
 - post /api/v1/ged/documents/{id}/ocr-piece/ -> v1_ged_documents_ocr_piece_create
 - post /api/v1/ged/documents/{id}/office-ouvrir/ -> v1_ged_documents_office_ouvrir_create
-- post /api/v1/ged/documents/{id}/office-sauvegarder/ -> v1_ged_documents_office_sauvegarder_create
 - get /api/v1/ged/documents/{id}/permissions-effectives/ -> v1_ged_documents_permissions_effectives_retrieve
 - post /api/v1/ged/documents/{id}/placer-legal-hold/ -> v1_ged_documents_placer_legal_hold_create
 - post /api/v1/ged/documents/{id}/planifier/ -> v1_ged_documents_planifier_create
@@ -6194,12 +6177,6 @@ operations:
 - put /api/v1/outillage/outils/{id}/ -> v1_outillage_outils_update
 - post /api/v1/outillage/outils/{id}/calibrer/ -> v1_outillage_outils_calibrer_create
 - get /api/v1/parametres/ -> v1_parametres_retrieve
-- get /api/v1/parametres/approbations/ -> v1_parametres_approbations_list
-- post /api/v1/parametres/approbations/ -> v1_parametres_approbations_create
-- delete /api/v1/parametres/approbations/{id}/ -> v1_parametres_approbations_destroy
-- get /api/v1/parametres/approbations/{id}/ -> v1_parametres_approbations_retrieve
-- patch /api/v1/parametres/approbations/{id}/ -> v1_parametres_approbations_partial_update
-- put /api/v1/parametres/approbations/{id}/ -> v1_parametres_approbations_update
 - get /api/v1/parametres/audit/ -> v1_parametres_audit_retrieve
 - post /api/v1/parametres/audit/purge/ -> v1_parametres_audit_purge_create
 - get /api/v1/parametres/audit/sections/ -> v1_parametres_audit_sections_retrieve
@@ -6264,7 +6241,6 @@ operations:
 - get /api/v1/parametres/taux-tva/{id}/ -> v1_parametres_taux_tva_retrieve
 - patch /api/v1/parametres/taux-tva/{id}/ -> v1_parametres_taux_tva_partial_update
 - put /api/v1/parametres/taux-tva/{id}/ -> v1_parametres_taux_tva_update
-- post /api/v1/parametres/taux-tva/{id}/set_defaut/ -> v1_parametres_taux_tva_set_defaut_create
 - get /api/v1/parametres/traductions/ -> v1_parametres_traductions_list
 - post /api/v1/parametres/traductions/ -> v1_parametres_traductions_create
 - put /api/v1/parametres/traductions/bulk/ -> v1_parametres_traductions_bulk_update
@@ -6321,7 +6297,6 @@ operations:
 - patch /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_partial_update
 - post /api/v1/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> v1_portail_jalons_chantier_portail_marquer_atteint_create
 - post /api/v1/portail/jalons-chantier-portail/{id}/marquer_non_atteint/ -> v1_portail_jalons_chantier_portail_marquer_non_atteint_create
-- get /api/v1/portail/ma-performance/ -> v1_portail_ma_performance_retrieve
 - get /api/v1/portail/ma-preference/ -> v1_portail_ma_preference_retrieve
 - put /api/v1/portail/ma-preference/ -> v1_portail_ma_preference_update
 - get /api/v1/portail/mes-bons-commande/ -> v1_portail_mes_bons_commande_list
@@ -6349,8 +6324,6 @@ operations:
 - post /api/v1/portail/mes-documents/ -> v1_portail_mes_documents_create
 - get /api/v1/portail/mes-documents/{id}/ -> v1_portail_mes_documents_retrieve
 - get /api/v1/portail/mes-documents/{id}/telecharger/ -> v1_portail_mes_documents_telecharger_retrieve
-- get /api/v1/portail/mes-factures-fournisseur/ -> v1_portail_mes_factures_fournisseur_list
-- get /api/v1/portail/mes-factures-fournisseur/{id}/ -> v1_portail_mes_factures_fournisseur_retrieve
 - get /api/v1/portail/mes-factures/ -> v1_portail_mes_factures_retrieve
 - get /api/v1/portail/mes-factures/{id}/ -> v1_portail_mes_factures_retrieve_2
 - post /api/v1/portail/mes-factures/{id}/payer/ -> v1_portail_mes_factures_payer_create
@@ -6367,9 +6340,6 @@ operations:
 - get /api/v1/portail/paiements-facture-portail/{id}/ -> v1_portail_paiements_facture_portail_retrieve
 - post /api/v1/portail/paiements-facture-portail/{id}/rapprocher/ -> v1_portail_paiements_facture_portail_rapprocher_create
 - get /api/v1/portail/partenaire/tableau-de-bord/ -> v1_portail_partenaire_tableau_de_bord_retrieve
-- get /api/v1/portail/ressources/ -> v1_portail_ressources_list
-- get /api/v1/portail/ressources/{id}/ -> v1_portail_ressources_retrieve
-- get /api/v1/portail/ressources/{id}/telecharger/ -> v1_portail_ressources_telecharger_retrieve
 - get /api/v1/publicapi/catalogue/ -> v1_publicapi_catalogue_retrieve
 - get /api/v1/publicapi/docs/ -> v1_publicapi_docs_retrieve
 - get /api/v1/publicapi/keys/ -> v1_publicapi_keys_list
@@ -8068,7 +8038,6 @@ query_params:
   get /api/django/outillage/kit-items/: kit ordering page page_size search
   get /api/django/outillage/kits/: ordering page page_size search
   get /api/django/outillage/outils/: a_calibrer emplacement ordering page page_size search statut
-  get /api/django/parametres/approbations/: action_type ordering page page_size search
   get /api/django/parametres/audit/: date_debut date_fin field limit offset section user
   get /api/django/parametres/cadence-relance/: actif cadence ordering page page_size search
   get /api/django/parametres/conditions-paiement/: actif ordering page page_size search
@@ -8850,7 +8819,6 @@ query_params:
   get /api/v1/outillage/kit-items/: kit ordering page page_size search
   get /api/v1/outillage/kits/: ordering page page_size search
   get /api/v1/outillage/outils/: a_calibrer emplacement ordering page page_size search statut
-  get /api/v1/parametres/approbations/: action_type ordering page page_size search
   get /api/v1/parametres/audit/: date_debut date_fin field limit offset section user
   get /api/v1/parametres/cadence-relance/: actif cadence ordering page page_size search
   get /api/v1/parametres/conditions-paiement/: actif ordering page page_size search
@@ -9179,6 +9147,7 @@ components:
 - AcompteFournisseur
 - AcompteFournisseurRequest
 - ActionEcheanceEnum
+- ActionTypeEnum
 - Activity
 - ActivityRequest
 - ActivityType
@@ -9406,15 +9375,11 @@ components:
 - ApprobationsDeciderEnMasseReponse
 - ApprovalDelegation
 - ApprovalDelegationRequest
-- ApprovalPolicy
-- ApprovalPolicyActionTypeEnum
-- ApprovalPolicyRequest
 - ApprovalRequest
 - ApprovalRequestRequest
 - ApprovalRequestType
 - ApprovalRequestTypeRequest
 - ApprovalStatusEnum
-- ApproverTierEnum
 - ArchivageLegal
 - ArchiveArchiveChantierReponse
 - ArchiveArchiveClientReponse
@@ -9452,7 +9417,6 @@ components:
 - AutomationApprovalStatusEnum
 - AutomationBrouillonCree
 - AutomationRule
-- AutomationRuleActionTypeEnum
 - AutomationRuleRequest
 - AutomationRuleVersion
 - AutomationRun
@@ -10424,7 +10388,6 @@ components:
 - GedAssignerCorpsRequest
 - GedCaviarderCorpsRequest
 - GedChecklistLigne
-- GedClasserApresVenteCorpsRequest
 - GedClasserReponse
 - GedCommentaireCorpsRequest
 - GedComparerVersionsReponse
@@ -10668,7 +10631,6 @@ components:
 - LotPrelevement
 - LotPrelevementRequest
 - LotSortirCorpsRequest
-- MaPerformanceFournisseur
 - MaintenanceBasculeRequestRequest
 - MaintenanceChecklistItem
 - MaintenanceChecklistItemRequest
@@ -10714,8 +10676,6 @@ components:
 - MesDocumentsPortail
 - MesDocumentsPortailLigne
 - MesDocumentsPortailLigneRequest
-- MesFacturesPortailFournisseur
-- MesFacturesPortailFournisseurLigne
 - MesLivraisonsPortail
 - MesLivraisonsPortailArticle
 - MesLivraisonsPortailLigne
@@ -10906,7 +10866,6 @@ components:
 - PaginatedApporteurList
 - PaginatedApprobationBCFList
 - PaginatedApprovalDelegationList
-- PaginatedApprovalPolicyList
 - PaginatedApprovalRequestList
 - PaginatedApprovalRequestTypeList
 - PaginatedArchivageLegalList
@@ -11315,7 +11274,6 @@ components:
 - PatchedAppointmentRequest
 - PatchedApporteurRequest
 - PatchedApprovalDelegationRequest
-- PatchedApprovalPolicyRequest
 - PatchedApprovalRequestRequest
 - PatchedApprovalRequestTypeRequest
 - PatchedArmDailyStatRequest
@@ -12031,8 +11989,6 @@ components:
 - ResoudreReserveRequeteRequest
 - ResoumettreRequest
 - ResourceEnum
-- RessourcesPartenairePortail
-- RessourcesPartenairePortailLigne
 - ResultatCommissioningEnum
 - RetenueSubie
 - RetourClient

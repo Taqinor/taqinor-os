@@ -8,7 +8,6 @@ Couvre :
   * check-out par un tiers -> 409 à la sauvegarde.
 """
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -64,22 +63,6 @@ class ServiceTests(XGed30Base):
             with self.assertRaises(ValueError):
                 services.ouvrir_dans_editeur_office(self.doc, user=self.admin_a)
 
-    def test_cycle_ouvrir_puis_sauvegarder_cree_version(self):
-        with override_settings(GED_OFFICE_URL='https://office.example.com'):
-            data = services.ouvrir_dans_editeur_office(
-                self.doc, user=self.admin_a)
-            self.assertEqual(data['editor_url'], 'https://office.example.com')
-            self.doc.refresh_from_db()
-            self.assertEqual(self.doc.locked_by_id, self.admin_a.pk)
-
-            version = services.sauvegarder_depuis_editeur_office(
-                self.doc, contenu_bytes=b'contenu docx edite',
-                user=self.admin_a, filename='contrat.docx',
-                mime='application/vnd.openxmlformats-officedocument'
-                     '.wordprocessingml.document')
-            self.assertEqual(version.document_id, self.doc.pk)
-            self.assertEqual(self.doc.versions.count(), 1)
-
     def test_hold_actif_refuse_ouverture(self):
         LegalHold.objects.create(
             company=self.co_a, document=self.doc, place_par=self.admin_a,
@@ -88,14 +71,6 @@ class ServiceTests(XGed30Base):
             with self.assertRaises(Exception):
                 services.ouvrir_dans_editeur_office(
                     self.doc, user=self.admin_a)
-
-    def test_sauvegarde_par_tiers_verrouille_leve_permission_error(self):
-        with override_settings(GED_OFFICE_URL='https://office.example.com'):
-            services.ouvrir_dans_editeur_office(self.doc, user=self.admin_a)
-            with self.assertRaises(PermissionError):
-                services.sauvegarder_depuis_editeur_office(
-                    self.doc, contenu_bytes=b'x', user=self.autre_a,
-                    filename='contrat.docx')
 
 
 class ViewTests(XGed30Base):
@@ -115,12 +90,18 @@ class ViewTests(XGed30Base):
             self.assertEqual(
                 resp.data['editor_url'], 'https://office.example.com')
 
-            mime = (
-                'application/vnd.openxmlformats-officedocument'
-                '.wordprocessingml.document')
-            upload = SimpleUploadedFile(
-                'contrat.docx', b'contenu edite', content_type=mime)
-            resp2 = api.post(
-                f'/api/django/ged/documents/{self.doc.pk}/office-sauvegarder/',
-                {'file': upload}, format='multipart')
-            self.assertEqual(resp2.status_code, 201, resp2.data)
+
+class RoutesRetireesTests(XGed30Base):
+    """ADOC39 (D-ADOC39 a) — deux routes GED sans appelant retirées : 404."""
+
+    def test_routes_retirees_repondent_404(self):
+        api = auth(self.admin_a)
+        for url in (
+                '/api/django/ged/documents/classer-apres-vente/',
+                f'/api/django/ged/documents/{self.doc.pk}/office-sauvegarder/'):
+            with self.subTest(url=url):
+                resp = api.post(url, {}, format='json')
+                # 404 (chemin inconnu) ou 405 : « classer-apres-vente » tombe
+                # désormais sur la route détail `documents/<pk>/` qui n'accepte
+                # pas POST — dans les deux cas l'action n'existe plus.
+                self.assertIn(resp.status_code, (404, 405), resp.content)

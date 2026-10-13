@@ -134,7 +134,13 @@ try {
         @('--parallel', "$Parallel", '-v1')) -join ' '
     $testArgs = @(
         'compose', '-p', $ComposeProject, 'run', '--rm', '--no-deps',
-        '-e', 'DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev',
+        '-e', 'DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev'
+    )
+    # Recapture des goldens (`UPDATE_GOLDEN=1 powershell -File scripts/test-backend.ps1 ...`,
+    # recette des docstrings test_moteur_golden_*) : la variable doit traverser jusqu'au
+    # conteneur, `docker compose run` ne la transmet pas d'elle-meme.
+    if ($env:UPDATE_GOLDEN) { $testArgs += @('-e', "UPDATE_GOLDEN=$($env:UPDATE_GOLDEN)") }
+    $testArgs += @(
         'django_core', 'sh', '-c', "pip install -q -r requirements-dev.txt && $DjangoCmd"
     )
     Write-Host ""

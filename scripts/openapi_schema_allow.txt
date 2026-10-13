@@ -20,7 +20,6 @@ Error|post_chat_message|unable to guess serializer. This is graceful fallback ha
 Error|public_booking_status|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|theme_portail_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Warning|<global>|encountered multiple names for the same choice set (MetricEnum). This may be unwanted even though the generated schema i
-Warning|<global>|encountered multiple names for the same choice set (PalierApprobateurEnum). This may be unwanted even though the generat
 Warning|<global>|encountered multiple names for the same choice set (Severit<hash>Enum). This may be unwanted even though the generated s
 Warning|<global>|encountered multiple names for the same choice set (SeveriteDe#Enum). This may be unwanted even though the generated sch
 Warning|<global>|encountered multiple names for the same choice set (StatutLegacyEnum). This may be unwanted even though the generated sc

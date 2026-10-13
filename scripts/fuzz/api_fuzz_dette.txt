@@ -1784,3 +1784,39 @@ API rejected schema-compliant request|PATCH /api/django/core/workflow-definition
 API rejected schema-compliant request|PATCH /api/django/stock/blocages-qualite/{id}/
 API rejected schema-compliant request|PUT /api/django/stock/blocages-qualite/{id}/
 API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/depuis-ocr/
+# Vague 7 (13/10/2026) — lignes gelées sur dev-all-laptop absentes de main après fusion (union).
+API accepted schema-violating request|GET /api/django/crm/leads/
+API rejected schema-compliant request|PATCH /api/django/core/dashboards-partages-internes/{id}/
+API rejected schema-compliant request|PUT /api/django/core/dashboards-partages-internes/{id}/
+API rejected schema-compliant request|PUT /api/django/core/workflow-definitions/{id}/
+API rejected schema-compliant request|PUT /api/django/core/workflow-step-definitions/{id}/
+# PR #991, 1er tirage (13/10/2026) — 6 constats PRÉ-EXISTANTS (ids FK du fuzz, énumérations de filtres, Allow OPTIONS portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -RECORDS / -PORTAIL.
+API accepted schema-violating request|GET /api/django/ged/documents/
+API accepted schema-violating request|GET /api/django/records/activities/
+API rejected schema-compliant request|PATCH /api/django/ged/routages-documentaires/{id}/
+API rejected schema-compliant request|POST /api/django/ged/vues/
+API rejected schema-compliant request|POST /api/django/records/activities/{id}/done/
+Invalid Allow header|OPTIONS /api/django/portail/paiements-facture-portail/
+# PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
+API accepted schema-violating request|GET /api/django/parametres/audit/
+# PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.
+API accepted schema-violating request|PATCH /api/django/ged/dossiers/{id}/
+API accepted schema-violating request|PATCH /api/django/ged/types-champ-signature/{id}/
+API accepted schema-violating request|POST /api/django/ged/types-champ-signature/
+API accepted schema-violating request|PUT /api/django/ged/dossiers/{id}/
+API accepted schema-violating request|PUT /api/django/ged/tags/{id}/
+API accepted schema-violating request|PUT /api/django/ged/types-champ-signature/{id}/
+API rejected schema-compliant request|PATCH /api/django/ged/exigences-dossier/{id}/
+API rejected schema-compliant request|PATCH /api/django/parametres/document-templates/update/
+API rejected schema-compliant request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
+API rejected schema-compliant request|POST /api/django/ged/dossiers/{id}/deplacer/
+API rejected schema-compliant request|POST /api/django/ged/exigences-dossier/
+API rejected schema-compliant request|POST /api/django/ged/lots-envoi/envoi-masse/
+API rejected schema-compliant request|POST /api/django/ged/modeles-document/
+API rejected schema-compliant request|POST /api/django/portail/demandes-ticket-portail/
+API rejected schema-compliant request|PUT /api/django/ged/coffres/{id}/
+API rejected schema-compliant request|PUT /api/django/parametres/document-templates/update/
+API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/
+Response violates schema|PATCH /api/django/ged/coffres/{id}/
+# Groupe de merge #991 (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH portail/documents-client-portail, route non modifiée), porté par ERR-ENF11-FUZZ-PORTAIL (suite).
+API rejected schema-compliant request|PATCH /api/django/portail/documents-client-portail/{id}/

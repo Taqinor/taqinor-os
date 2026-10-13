@@ -65,7 +65,6 @@ import ReferentielsSection from './ReferentielsSection'
 import RealisationsSection from './RealisationsSection'
 import ModelesBrandesSection from './ModelesBrandesSection'
 import ExportsPlanifiesSection from './ExportsPlanifiesSection'
-import ApprobationsPolitiquesSection from './ApprobationsPolitiquesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
 
@@ -102,10 +101,6 @@ const MODELES_BRANDES_TAB = { key: 'modeles_brandes', label: 'Modèles brandés'
 // PACT123 — onglet « Exports planifiés » (core.ScheduledExport FG383 : livraison
 // récurrente SFTP/S3, distincte de l'export manuel de l'onglet « Données »).
 const EXPORTS_PLANIFIES_TAB = { key: 'exports_planifies', label: 'Exports planifiés', group: 'avance' }
-// PACT147 — onglet « Politiques d'approbation » (parametres.ApprovalPolicy FG25 :
-// ce qui DÉCLENCHE une approbation — à ne pas confondre avec la boîte de
-// réception des approbations en attente, qui est un autre écran).
-const APPROBATIONS_POLITIQUES_TAB = { key: 'approbations_politiques', label: "Politiques d'approbation", group: 'automatisation' }
 // NTDMO27 — onglet « Démo & Onboarding » (regroupe mode présentation NTDMO10,
 // reset démo NTDMO7, « Revoir les visites guidées » NTDMO16 et le toggle
 // global `tours_actifs`). Ajouté localement, même logique que N96/N94/etc.
@@ -148,7 +143,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, DEMO_ONBOARDING_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -1095,8 +1090,6 @@ export default function ParametresEntreprise() {
           {tab === 'modeles_brandes' && <ModelesBrandesSection />}
           {/* PACT123 — exports planifiés vers SFTP/S3 (statut explicite). */}
           {tab === 'exports_planifies' && <ExportsPlanifiesSection />}
-          {/* PACT147 — configuration de ce qui déclenche une approbation. */}
-          {tab === 'approbations_politiques' && <ApprobationsPolitiquesSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}

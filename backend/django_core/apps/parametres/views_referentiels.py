@@ -16,10 +16,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view,
 )
-from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
-from rest_framework.response import Response
 
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
@@ -72,30 +70,6 @@ class TauxTVAViewSet(_ReferentielViewSet):
 
     def get_queryset(self):
         return filtrer_actif(self.request, super().get_queryset())
-
-    @extend_schema(request=None, responses=TauxTVASerializer)
-    @action(detail=True, methods=['post'])
-    def set_defaut(self, request, pk=None):
-        """Désigne ce taux comme STANDARD par défaut (un seul par société).
-
-        Bascule ``defaut`` sur la ligne visée et le retire de toutes les autres
-        de la même société — garantit l'unicité que ``default_taux`` suppose.
-        """
-        taux = self.get_object()
-        company = taux.company
-        ancien = (TauxTVA.objects.filter(company=company, defaut=True)
-                  .exclude(pk=taux.pk).first())
-        TauxTVA.objects.filter(company=company, defaut=True).exclude(
-            pk=taux.pk).update(defaut=False)
-        if not taux.defaut:
-            taux.defaut = True
-            taux.save(update_fields=['defaut'])
-        # APAR28 — le changement du taux par défaut est journalisé.
-        self._journaliser(
-            taux.pk, 'désigné par défaut',
-            old=f'{ancien.libelle if ancien else "—"}',
-            new=f'{getattr(taux, "libelle", taux.pk)}')
-        return Response(self.get_serializer(taux).data)
 
 
 @extend_schema_view(list=extend_schema(parameters=[ACTIF_PARAM]))

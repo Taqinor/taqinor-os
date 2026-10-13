@@ -5,7 +5,7 @@
 // StatutsSection) : elle charge ses propres données et écrit via parametresApi.
 // L'écriture est réservée admin/responsable côté serveur (403 sinon).
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Star } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Input, Button, IconButton, Switch, Spinner, Badge } from '../../ui'
@@ -47,10 +47,6 @@ function TauxTvaList() {
     try { await parametresApi.updateTauxTva(row.id, { actif: !row.actif }); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
-  const setDefaut = async (row) => {
-    try { await parametresApi.setDefautTauxTva(row.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
-  }
   const remove = async (row) => {
     try { await parametresApi.deleteTauxTva(row.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
@@ -64,15 +60,10 @@ function TauxTvaList() {
           <div className="flex-1">
             <div className="font-medium flex items-center gap-2">
               {row.libelle}
-              {row.defaut && <Badge>Par défaut</Badge>}
               {!row.actif && <Badge>Inactif</Badge>}
             </div>
             <div className="text-sm text-muted-foreground">{row.code} — {row.taux} %</div>
           </div>
-          <IconButton title="Définir par défaut" onClick={() => setDefaut(row)}
-            disabled={row.defaut}>
-            <Star className={row.defaut ? 'text-amber-500' : ''} size={16} />
-          </IconButton>
           <Switch checked={row.actif} onCheckedChange={() => toggle(row)}
             aria-label="Actif" />
           <IconButton title="Supprimer" onClick={() => remove(row)}>
@@ -223,9 +214,9 @@ export default function ReferentielsSection() {
         <CardContent className="space-y-3 pt-4">
           <SectionTitle icon={REF_ICON} label="Taux de TVA" />
           <p className="text-sm text-muted-foreground">
-            Taux de TVA de référence de la société. Le taux « par défaut »
-            alimente les nouveaux documents ; il ne réécrit jamais un document
-            déjà émis.
+            Taux de TVA applicables de la société. Le taux par défaut des
+            nouveaux documents se règle dans Société (« TVA standard ») ; il ne
+            réécrit jamais un document déjà émis.
           </p>
           <TauxTvaList />
         </CardContent>

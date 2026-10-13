@@ -5,6 +5,3 @@
 # frontend/src/api/portailApi.js utilise par un fichier non-test de
 # frontend/src/features/portail/), sa ligne DOIT etre retiree, sinon la garde
 # echoue (« lignes inutiles »).
-mes-factures-fournisseur
-ma-performance
-ressources

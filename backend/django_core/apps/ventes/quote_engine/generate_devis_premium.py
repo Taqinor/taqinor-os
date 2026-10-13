@@ -528,7 +528,7 @@ def _apply_seller(seller):
     tel = (seller.get("telephone") or "").strip()
     if not nom:
         return
-    bits = f"Votre conseiller&#160;: {_esc(nom)}"
+    bits = _L("lg_votre_conseiller").format(nom=_esc(nom))
     if tel:
         bits += f" &#8212; {_esc(tel)}"
     ENT_CONTACT_LINE = (f"{ENT_CONTACT_LINE} &nbsp;&#183;&nbsp; {bits}"
@@ -665,7 +665,7 @@ def _note_client_html(font_pt="8"):
             note = f"{tronquee} ({_renvoi_texte_integral()})"
     return (f'<div style="font-size:{font_pt}pt;color:{CN};white-space:pre-line;'
             f'margin-bottom:4px;"><b style="text-transform:uppercase;'
-            f'letter-spacing:.8px;margin-right:6px;">Note</b>{note}</div>')
+            f'letter-spacing:.8px;margin-right:6px;">{_L("res_note")}</b>{note}</div>')
 DATE_ACCEPTATION = ""
 # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple), posé
 # depuis data["savings_method"]. Vide → aucun bloc rendu (byte-identique).
@@ -699,30 +699,34 @@ def _savings_method_html():
     sm = SAVINGS_METHOD
     if not isinstance(sm, dict) or not sm.get("ligne_methode"):
         return ""
-    methode = _esc(sm.get("ligne_methode", ""))
-    exemple = sm.get("exemple")
+    # AMOT52 — en / ar : la phrase et l'exemple du modèle employé, par LA
+    # fonction du gabarit résidentiel (catalogue ``res_methode_*``).
+    from .residential.trust import _methode_traduite
+    methode, exemple = ((_esc(sm.get("ligne_methode", "")), sm.get("exemple"))
+                        if LANGUE_SORTIE == i18n_labels.LANGUE_DE_REPLI
+                        else _methode_traduite({"langue_sortie": LANGUE_SORTIE}, sm))
     # QJR123 — la mention d'estimation s'affiche INDÉPENDAMMENT de l'exemple :
     # le modèle « estimation » du builder pose ``approximatif=True`` mais
     # ``exemple=None``, donc la mention n'apparaissait JAMAIS sur les devis
     # qu'elle devait précisément qualifier.
-    approx = (" (approximatif)"
+    approx = (_L("res_approximatif")
               if (sm.get("approximatif") or SAVINGS_ESTIMATED) else "")
     ex_html = ""
     if exemple:
         ex_html = (
             f'<div style="margin-top:4px;font-size:8pt;color:{CN};font-weight:700;">'
-            f'{_esc(exemple)}{approx}</div>')
+            f'{_esc(exemple) if LANGUE_SORTIE == "fr" else exemple}{approx}</div>')
     elif approx:
         ex_html = (
             f'<div style="margin-top:4px;font-size:7.5pt;color:{CG4};'
-            f'font-style:italic;">Économies estimées{approx} — '
-            f'à confirmer sur vos factures.</div>')
+            f'font-style:italic;">{_L("lg_eco_estimees_confirmer").format(approx=approx)}'
+            f'</div>')
     return (
         f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
         f'border:1px solid {CG2};border-left:4px solid {CA};margin-bottom:5px;">'
         f'<div style="font-size:9pt;font-weight:700;color:{CN};'
         f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
-        f'Comment nous calculons vos &#233;conomies</div>'
+        f'{_L("lg_methode_titre")}</div>'
         f'<div style="font-size:7.5pt;color:{CG7};line-height:1.4;">{methode}</div>'
         f'{ex_html}</div>')
 
@@ -745,10 +749,14 @@ def _hypotheses_html():
     h = HYPOTHESES
     if not isinstance(h, dict):
         return ""
-    items = [i for i in (h.get("items") or []) if i]
+    # AMOT52 — en / ar : chaque phrase du builder dans la langue du document
+    # (catalogue ``res_hyp_*``) ; français : la phrase telle quelle.
+    from .residential.trust import hypothese_traduite
+    items = [hypothese_traduite(LANGUE_SORTIE, i) for i in (h.get("items") or []) if i]
     if not items:
         return ""
-    titre = _esc(h.get("titre") or "Nos hypothèses")
+    titre = (_esc(h.get("titre") or "Nos hypothèses")
+             if LANGUE_SORTIE == "fr" else _L("res_hyp_titre"))
     lis = "".join(
         f'<li style="font-size:7.3pt;color:{CG7};padding-left:11px;'
         f'position:relative;line-height:1.35;margin-bottom:1px;">'
@@ -780,13 +788,13 @@ def _multi_proprietes_line_html():
         return ""
     total_txt = ""
     if DISPLAY_TOTAL_MULTI:
-        total_txt = (f' &#8212; total pour {NB_PROPRIETES} propriétés&#160;: '
-                     f'<b>{fmt(DISPLAY_TOTAL_MULTI)}</b>')
+        total_txt = _L("lg_multi_total").format(
+            n=NB_PROPRIETES, montant=fmt(DISPLAY_TOTAL_MULTI))
     return (
         f'<div style="background:{CAL};border:1px solid {CA};border-radius:8px;'
         f'padding:6px 12px;margin-bottom:5px;font-size:8.5pt;color:{CN};">'
-        f'&#215;&#160;{NB_PROPRIETES} propriétés identiques'
-        f'{total_txt}</div>')
+        f'{_L("lg_multi_identiques").format(n=NB_PROPRIETES, total=total_txt)}'
+        f'</div>')
 
 
 def _multi_villa_html():
@@ -832,7 +840,7 @@ def _multi_villa_html():
     if isinstance(gt.get("ttc"), (int, float)):
         rows += (
             f'<tr style="background:{CN};"><td style="padding:4px 8px;color:{CA};'
-            f'font-weight:800;">Total général</td>'
+            f'font-weight:800;">{_L("res_total_general")}</td>'
             f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;">'
             f'{_mont(gt, "ht_net", _fmt2)}</td>'
             f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;'
@@ -842,15 +850,15 @@ def _multi_villa_html():
         f'margin-bottom:5px;">'
         f'<div style="background:{CG1};padding:5px 12px;font-size:9pt;'
         f'font-weight:700;color:{CN};text-transform:uppercase;'
-        f'letter-spacing:.8px;">Détail par propriété</div>'
+        f'letter-spacing:.8px;">{_L("res_detail_propriete")}</div>'
         f'<table style="width:100%;border-collapse:collapse;font-size:8pt;">'
         f'<thead><tr>'
         f'<th style="padding:3px 8px;text-align:left;color:{CG4};font-size:6.5pt;'
-        f'text-transform:uppercase;">Propriété</th>'
+        f'text-transform:uppercase;">{_L("res_propriete")}</th>'
         f'<th style="padding:3px 8px;text-align:right;color:{CG4};font-size:6.5pt;'
-        f'text-transform:uppercase;">Total HT</th>'
+        f'text-transform:uppercase;">{_L("total_ht")}</th>'
         f'<th style="padding:3px 8px;text-align:right;color:{CG4};font-size:6.5pt;'
-        f'text-transform:uppercase;">Total TTC</th>'
+        f'text-transform:uppercase;">{_L("total_ttc")}</th>'
         f'</tr></thead><tbody>{rows}</tbody></table></div>')
 
 
@@ -962,7 +970,8 @@ def _acceptance_stamp_html():
     date = (DATE_ACCEPTATION or "").strip()
     if not nom or not date:
         return ""
-    tmpl = _doc_text("acceptance_stamp") or DEFAULT_DOC_TEXTS["acceptance_stamp"]
+    tmpl = (_doc_text_langue("acceptance_stamp", "lg_accepte_le")
+            or DEFAULT_DOC_TEXTS["acceptance_stamp"])
     try:
         txt = tmpl.format(date=date, nom=nom)
     except (KeyError, IndexError, ValueError):
@@ -1241,10 +1250,10 @@ def _marques_correction_html(style):
     révisé (octet-identique)."""
     out = ""
     if MIS_A_JOUR_LE:
-        out += (f'<div style="{style}">Document mis &#224; jour le '
-                f'{MIS_A_JOUR_LE}</div>')
+        out += (f'<div style="{style}">'
+                f'{_L("lg_mis_a_jour_le").format(date=MIS_A_JOUR_LE)}</div>')
     if REMPLACE_REF:
-        out += f'<div style="{style}">Remplace le devis {REMPLACE_REF}</div>'
+        out += f'<div style="{style}">{_L("lg_remplace_devis").format(ref=REMPLACE_REF)}</div>'
     return out
 
 
@@ -1255,7 +1264,7 @@ def footer_p1():
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
+            f'<div style="font-size:7pt;color:#888888;">{_L("res_page")} 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; {_L("lg_ref")}&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>')
 
 def footer(n, total=None):
@@ -1266,7 +1275,7 @@ def footer(n, total=None):
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888;">Page {n}&nbsp;/&nbsp;{total} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
+            f'<div style="font-size:7pt;color:#888;">{_L("res_page")} {n}&nbsp;/&nbsp;{total} &nbsp;|&nbsp; {_L("lg_ref")}&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>')
 
 def footer_p3(extra_style=""):
@@ -1276,7 +1285,7 @@ def footer_p3(extra_style=""):
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
+            f'<div style="font-size:7pt;color:#888;">{_L("res_page")} {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; {_L("lg_ref")}&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>'
             f'<div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">'
             f'{ENT_LEGAL_LINE}'
@@ -1545,8 +1554,7 @@ def _note_remise_par_ligne():
     if DISCOUNT_PCT <= 0:
         return ""
     pct = pct_fr(DISCOUNT_PCT)  # AMOT24
-    return (f"Remise de {pct} % appliquée sur chaque ligne "
-            f"— prix catalogue barrés, totaux après remise.")
+    return _L("lg_note_remise").format(pct=pct)
 
 
 def _desc_lines_html(it, max_lines, font_pt):
@@ -1594,33 +1602,33 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     # inf\u00e9rieur : une ligne VISIBLE entre la remise et le Total HT (les prix
     # des lignes ne bougent pas), absente quand le total y est d\u00e9j\u00e0.
     arrondi = totaux.get("arrondi") or 0
-    rows = row("Sous-total HT", _fmt2(total_ht), fig="sous_total_ht")
+    rows = row(_L("sous_total_ht"), _fmt2(total_ht), fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
         pct = pct_fr(DISCOUNT_PCT)  # AMOT24
-        rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True,
+        rows += row(_L("lg_remise_pct").format(pct=pct), "\u2212" + _fmt2(remise), neg=True,
                     fig="remise")
     if arrondi > 0:
         rows += row(_L("arrondi"), "\u2212" + _fmt2(arrondi), neg=True,
                     fig="arrondi")
     if DISCOUNT_PCT > 0 or arrondi > 0:
-        rows += row("Total HT", _fmt2(net_ht), fig="total_ht")
+        rows += row(_L("total_ht"), _fmt2(net_ht), fig="total_ht")
     # TVA \u00e9clat\u00e9e par taux (r\u00e9forme 10/20) \u2014 une ligne par taux pr\u00e9sent ;
     # un seul taux (devis historiques) \u2192 exactement l'ancienne ligne unique.
     buckets = totaux.get("tva_par_taux") or []
     if len(buckets) > 1:
         for b in buckets:
             r = pct_fr(b["taux"])  # AMOT24
-            rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]),
+            rows += row(_L("lg_tva_pct").format(r=r), _fmt2(b["montant"]),
                         fig="tva_taux", taux=b["taux"])
     else:
         rate = buckets[0]["taux"] if buckets else TVA_PCT
         tva_pct = pct_fr(rate)  # AMOT24
-        rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva), fig="tva")
+        rows += row(_L("lg_tva_pct").format(r=tva_pct), _fmt2(tva), fig="tva")
     # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
     # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
     # (52 655,42 + 10 531,08 s'imprimait « 63 186 MAD »), et c'est ce montant
     # qui sert de base à l'échéancier de la page 3.
-    rows += row("Total TTC", _fmt2_mad(ttc), navy=True, fig="total_ttc")
+    rows += row(_L("total_ttc"), _fmt2_mad(ttc), navy=True, fig="total_ttc")
     return rows
 
 
@@ -1640,7 +1648,7 @@ def _gar_de_la_fiche(it):
     pas une déduction sur son nom.
     """
     n = _ans(it.get("garantie_mois"))
-    return f"{n} ans" if n else ""
+    return _L("res_n_ans").format(n=n) if n else ""
 
 
 def _garanties_du_devis():
@@ -1681,18 +1689,18 @@ def _garanties_du_devis():
     out = []
     n = _premier(_ond, "garantie_mois")
     if n:
-        out.append((n, "Onduleur"))
+        out.append((n, _L("lg_gar_onduleur")))
     n = _premier(_pan, "garantie_mois")
     if n:
-        out.append((n, "Panneaux (produit)"))
+        out.append((n, _L("lg_gar_panneaux_produit")))
     n = _premier(_pan, "garantie_production_mois")
     if n:
         # Sans le pourcentage : « 87,4 % » est une spec Canadian Solar, elle ne
         # vaut pas pour un panneau d'une autre marque garanti la même durée.
-        out.append((n, "Performance panneau"))
+        out.append((n, _L("lg_gar_performance")))
     n = _premier(_bat, "garantie_mois")
     if n:
-        out.append((n, "Batterie"))
+        out.append((n, _L("lg_gar_batterie")))
     return out
 
 
@@ -1879,9 +1887,7 @@ def page1():
     _mt_note = (
         '<div style="background:#FFF8E1;border:1px solid #E8A020;'
         'border-radius:5px;padding:5px 9px;font-size:6.5pt;line-height:1.35;'
-        f'color:{CG4};">Raccordement MOYENNE TENSION&#160;: les &#233;conomies '
-        'et le retour sur investissement seront chiffr&#233;s sur le bar&#232;me '
-        'MT, jamais au bar&#232;me basse tension.</div>')
+        f'color:{CG4};">{_L("lg_mt_note")}</div>')
     if MASQUER_ECONOMIES or PUISSANCE_INCONNUE:
         # M2 — puissance sans ancrage : les économies et le retour sur
         # investissement en dérivent (ils valent 0), on les OMET plutôt que
@@ -1895,15 +1901,15 @@ def page1():
             'background:#e8f5e9;color:#2e7d32;border-radius:12px;'
             'padding:4px 10px;font-size:13px;font-weight:600;'
             f'margin-bottom:7px;">{SVG_CHART}'
-            + ('Non rentabilisé sur 25 ans' if ROI_S_JAMAIS
-               else f'Retour en {ROI_S} ans') + '</div>')
+            + (_L("res_non_rentabilise_25") if ROI_S_JAMAIS
+               else _L("lg_retour_en").format(n=ROI_S)) + '</div>')
         _roi_pill_a = (
             '<div style="display:inline-block;align-self:flex-start;'
             'background:#1a1a2e;color:white;border-radius:12px;'
             'padding:4px 10px;font-size:13px;font-weight:600;'
             f'margin-bottom:7px;">{SVG_CHART2}'
-            + ('Non rentabilisé sur 25 ans' if ROI_A_JAMAIS
-               else f'Retour en {ROI_A} ans') + '</div>')
+            + (_L("res_non_rentabilise_25") if ROI_A_JAMAIS
+               else _L("lg_retour_en").format(n=ROI_A)) + '</div>')
         _mt_src = (
             f'<div style="font-size:6pt;color:{CG4};margin-top:3px;'
             f'line-height:1.3;">{TARIF_MT_MENTION}</div>'
@@ -1916,17 +1922,17 @@ def page1():
             f'<div style="background:{CG1};border:1px solid {CG2};'
             'border-radius:5px;padding:5px 9px;">\n'
             f'        <span style="font-size:7pt;color:{CG4};">'
-            '&#201;conomie estim&#233;e&#160;: </span>\n'
+            f'{_L("lg_eco_estimee")}</span>\n'
             f'        <span style="font-size:10pt;font-weight:800;color:{CN};">'
-            f'{esa_mad}/an</span>{_mt_src}\n'
+            f'{esa_mad}{_L("lg_par_an")}</span>{_mt_src}\n'
             '      </div>')
         _eco_box_a = (
             f'<div style="background:white;border:1px solid {CG2};'
             'border-radius:5px;padding:5px 9px;">\n'
             f'        <span style="font-size:7pt;color:{CG4};">'
-            '&#201;conomie estim&#233;e&#160;: </span>\n'
+            f'{_L("lg_eco_estimee")}</span>\n'
             f'        <span style="font-size:10pt;font-weight:800;color:{CN};">'
-            f'{eaa_mad}/an</span>{_mt_src}\n'
+            f'{eaa_mad}{_L("lg_par_an")}</span>{_mt_src}\n'
             '      </div>')
     # Scenario-aware option card visibility
     _s1   = 'display:none;' if SCENARIO == 'Avec batterie' else ''
@@ -1940,9 +1946,9 @@ def page1():
     _badge_css = (f'position:absolute;top:0;left:0;right:0;background:{CA};color:{CN};'
                   f'font-size:7pt;font-weight:700;letter-spacing:1px;padding:5px 9px;'
                   f'border-radius:4px 4px 0 0;text-transform:uppercase;text-align:center;')
-    _r1   = (f'<div style="{_badge_css}">{SVG_STAR} RECOMMAND\u00c9</div>'
+    _r1   = (f'<div style="{_badge_css}">{SVG_STAR} {_L("lg_recommande_maj")}</div>'
              if _both and RECOMMENDED == 'Sans batterie' else '')
-    _r2   = (f'<div style="{_badge_css}">{SVG_STAR} RECOMMAND\u00c9</div>'
+    _r2   = (f'<div style="{_badge_css}">{SVG_STAR} {_L("lg_recommande_maj")}</div>'
              if _both and RECOMMENDED == 'Avec batterie' else '')
     # Price display — crossed-out original + discount badge + new price when discount active
     if DISCOUNT_PCT > 0:
@@ -1960,7 +1966,7 @@ def page1():
             f'opacity:0.75;margin-bottom:1px;white-space:nowrap;">{_s_before}</div>'
             f'<div style="margin-bottom:4px;">'
             f'<span style="background:{CA};color:{CN};border-radius:3px;padding:2px 8px;'
-            f'font-size:6pt;font-weight:800;letter-spacing:0.5px;">{_disc_str}\u00a0REMISE</span>'
+            f'font-size:6pt;font-weight:800;letter-spacing:0.5px;">{_disc_str}\u00a0{_L("lg_remise_maj")}</span>'
             f'</div>'
             f'<div class="serif" style="font-size:27pt;font-weight:400;color:{CGR};'
             f'line-height:1.0;letter-spacing:-0.5px;margin-bottom:2px;">'
@@ -1971,7 +1977,7 @@ def page1():
             f'opacity:0.75;margin-bottom:1px;white-space:nowrap;">{_a_before}</div>'
             f'<div style="margin-bottom:4px;">'
             f'<span style="background:{CA};color:{CN};border-radius:3px;padding:2px 8px;'
-            f'font-size:6pt;font-weight:800;letter-spacing:0.5px;">{_disc_str}\u00a0REMISE</span>'
+            f'font-size:6pt;font-weight:800;letter-spacing:0.5px;">{_disc_str}\u00a0{_L("lg_remise_maj")}</span>'
             f'</div>'
             f'<div class="serif" style="font-size:27pt;font-weight:400;color:{CGR};'
             f'line-height:1.0;letter-spacing:-0.5px;margin-bottom:2px;">'
@@ -1995,8 +2001,8 @@ def page1():
     # « avec »). Options égales ⇒ les deux kWc valent ``KWC``, byte-identique.
     _kwc_s = KWC_SANS if (PANNEAUX_DIVERGENTS and KWC_SANS > 0) else KWC
     _kwc_a = KWC_AVEC if (PANNEAUX_DIVERGENTS and KWC_AVEC > 0) else KWC
-    _pkwc_s = f' &#183; soit {fmt(TOTAL_SANS / _kwc_s)}/kWc' if _kwc_s > 0 else ''
-    _pkwc_a = f' &#183; soit {fmt(TOTAL_AVEC / _kwc_a)}/kWc' if _kwc_a > 0 else ''
+    _pkwc_s = _L("lg_soit_kwc").format(prix=fmt(TOTAL_SANS / _kwc_s)) if _kwc_s > 0 else ''
+    _pkwc_a = _L("lg_soit_kwc").format(prix=fmt(TOTAL_AVEC / _kwc_a)) if _kwc_a > 0 else ''
     # QA-FIGURES — une carte MASQUÉE (``display:none`` selon le scénario) ne
     # porte aucun marqueur : seul ce que le client VOIT est comparé.
     _fig_eco = not (MASQUER_ECONOMIES or PUISSANCE_INCONNUE)
@@ -2023,34 +2029,35 @@ def page1():
     # Puces générées depuis l'équipement RÉEL de chaque option (jamais de
     # texte boilerplate qui contredirait la liste d'équipements).
     _sb_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in SANS_BULLETS) or \
-        f"<li>{SVG_CHECK}Équipement détaillé en page 2</li>"
+        f"<li>{SVG_CHECK}{_L('lg_eq_detaille_p2')}</li>"
     _ab_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in AVEC_BULLETS) or \
-        f"<li>{SVG_CHECK}Équipement détaillé en page 2</li>"
+        f"<li>{SVG_CHECK}{_L('lg_eq_detaille_p2')}</li>"
     # KPI economies card — scenario-aware
     # QXMT — dossier MT sans économies d'étude : la vignette annonce l'absence
     # de chiffre plutôt qu'un montant calculé au barème BASSE TENSION.
+    # AMOT52 — chaque branche pose ses trois valeurs en une instruction ; le
+    # sous-libellé suit la langue du document.
     if MASQUER_ECONOMIES:
-        _eco_val   = '<span style="white-space:nowrap;">&#8212;</span>'
-        _eco_size  = "17pt"
-        _eco_sub   = "chiffr&#233;es sur bar&#232;me MT"
+        _eco_val, _eco_size, _eco_sub = (
+            '<span style="white-space:nowrap;">&#8212;</span>', "17pt", _L("lg_chiffrees_mt"))
     else:
         # M10 — une économie du modèle « estimation » porte la mention sur TOUS
         # les formats : sans barème réel du client, le chiffre est un ordre de
         # grandeur, et le document doit le dire là où il l'affiche.
-        _est = " (estimation)" if SAVINGS_ESTIMATED else ""
+        _est = _L("op_estimation") if SAVINGS_ESTIMATED else ""
         if SCENARIO == 'Sans batterie':
-            _eco_val = f'<span style="white-space:nowrap;">{esa_mad}</span>'
-            _eco_size = "17pt"
-            _eco_sub = f"&#233;conomies par an{_est}"
+            _eco_val, _eco_size, _eco_sub = (
+                f'<span style="white-space:nowrap;">{esa_mad}</span>', "17pt",
+                _L("lg_eco_par_an").format(est=_est))
         elif SCENARIO == 'Avec batterie':
-            _eco_val = f'<span style="white-space:nowrap;">{eaa_mad}</span>'
-            _eco_size = "17pt"
-            _eco_sub = f"&#233;conomies par an{_est}"
+            _eco_val, _eco_size, _eco_sub = (
+                f'<span style="white-space:nowrap;">{eaa_mad}</span>', "17pt",
+                _L("lg_eco_par_an").format(est=_est))
         else:
-            _eco_val = (f'<span style="white-space:nowrap;">{esa_mad}'
-                        f'&nbsp;&#8211;&nbsp;{eaa_mad}</span>')
-            _eco_size = "13pt"
-            _eco_sub = f"selon option choisie{_est}"
+            _eco_val, _eco_size, _eco_sub = (
+                f'<span style="white-space:nowrap;">{esa_mad}'
+                f'&nbsp;&#8211;&nbsp;{eaa_mad}</span>', "13pt",
+                _L("lg_selon_option").format(est=_est))
         # QA-FIGURES — l'ancre suit EXACTEMENT les montants imprimés.
         if SCENARIO != 'Avec batterie':
             _eco_val += _ancre_figure("economie_annuelle", esa_mad, "sans")
@@ -2069,8 +2076,8 @@ def page1():
         # M3 — « × W » seulement si la puissance unitaire a été LUE quelque
         # part (désignation ou fiche produit) ; sinon « N panneaux » tout court.
         if NB_PAN > 0:
-            _pan_line = (f'{NB_PAN} panneaux &#215; {WP}&nbsp;W' if WP > 0
-                         else f'{NB_PAN} panneaux')
+            _pan_line = (_L("lg_n_panneaux_w").format(n=NB_PAN, w=WP) if WP > 0
+                         else _L("lg_n_panneaux").format(n=NB_PAN))
         else:
             _pan_line = ""
         # F1/L-2OPT (26/08/2026) — sur un document qui rend LES DEUX options
@@ -2090,8 +2097,7 @@ def page1():
             _kpi_kwc = (f'{kwc_fr(KWC_SANS)}&#160;&#183;&#160;'
                         f'{kwc_fr(KWC_AVEC)}&nbsp;kWc')
             _kpi_kwc_pt = '14pt'
-            _pan_line = (f'{NB_PAN_SANS} &#183; {NB_PAN_AVEC} panneaux '
-                         f'(sans &#183; avec)')
+            _pan_line = _L("lg_n_panneaux_sa").format(s=NB_PAN_SANS, a=NB_PAN_AVEC)
         if _kpi_kwc_pt == '14pt':
             _fig_kwc = (_ancre_figure("puissance_kwc", kwc_fr(KWC_SANS), "sans")
                         + _ancre_figure("puissance_kwc", kwc_fr(KWC_AVEC),
@@ -2100,7 +2106,7 @@ def page1():
             _fig_kwc = _ancre_figure("puissance_kwc", kwc_fr(KWC))
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
-            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">{_L("lg_kpi_puissance")}</div>'
             f'<div class="serif" style="font-size:{_kpi_kwc_pt};color:{CN};line-height:1.05;">{_kpi_kwc}</div>'
             + _fig_kwc
             + (f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_pan_line}</div>'
@@ -2119,20 +2125,20 @@ def page1():
         _kpi_prod = f'{pk}&nbsp;kWh'
         _kpi_prod_pt = '19pt'
         _fig_prod = _ancre_figure("production_annuelle_kwh", pk)
-        _prod_sub = '&#233;nergie propre / an'
+        _prod_sub = _L("lg_energie_propre_an")
         if (PANNEAUX_DIVERGENTS and _both and PROD_KWH_SANS > 0
                 and PROD_KWH_AVEC > 0 and PROD_KWH_SANS != PROD_KWH_AVEC):
             _pk_s = f"{PROD_KWH_SANS:,}".replace(",", _s)
             _pk_a = f"{PROD_KWH_AVEC:,}".replace(",", _s)
             _kpi_prod = f'{_pk_s}&#160;&#183;&#160;{_pk_a}&nbsp;kWh'
             _kpi_prod_pt = '13pt'
-            _prod_sub = '&#233;nergie propre / an (sans &#183; avec)'
+            _prod_sub = _L("lg_energie_propre_an_sa")
             _fig_prod = (
                 _ancre_figure("production_annuelle_kwh", _pk_s, "sans")
                 + _ancre_figure("production_annuelle_kwh", _pk_a, "avec"))
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
-            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">{_L("lg_kpi_production")}</div>'
             f'<div class="serif" style="font-size:{_kpi_prod_pt};color:{CN};line-height:1.05;">{_kpi_prod}</div>'
             + _fig_prod +
             f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_prod_sub}</div>'
@@ -2140,7 +2146,7 @@ def page1():
     if not PUISSANCE_INCONNUE:
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;overflow-wrap:anywhere;border:2px solid {CA};border-left:5px solid {CA};border-radius:6px;padding:14px 12px;background:#FFFBF2;box-shadow:0 2px 10px rgba(245,166,35,0.18);">'
-            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">&#201;conomies estim&#233;es / an</div>'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("op_economies_estimees_an")}</div>'
             f'<div class="serif" style="font-size:{_eco_size};color:{CN};line-height:1.1;">{_eco_val}</div>'
             f'<div style="font-size:6.5pt;color:{CA};font-weight:600;margin-top:3px;">{_eco_sub}</div>'
             '</div>')
@@ -2160,10 +2166,8 @@ def page1():
     # la ville du client (Settat → Casablanca), la pastille le DIT au lieu de
     # présenter une valeur de Casablanca comme « donnée PVGIS à Settat ».
     _ville_est_ref = bool(_h.get("productible_ville_est_reference"))
-    _prod_suffixe = (
-        "(donn&#233;e PVGIS)" if _ville_est_ref
-        else "(donn&#233;e PVGIS &#8212; ville de r&#233;f&#233;rence "
-             "la plus proche)")
+    _prod_suffixe = (_L("lg_donnee_pvgis") if _ville_est_ref
+                     else _L("lg_donnee_pvgis_ref"))
     # La pastille courte garde son ``nowrap`` d'origine (rendu inchangé) ; la
     # forme longue s'autorise un retour à la ligne plutôt que de déborder.
     _prod_wrap = "white-space:nowrap;" if _ville_est_ref else ""
@@ -2171,8 +2175,9 @@ def page1():
         '<span style="background:rgba(255,255,255,0.08);border:1px solid '
         'rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;'
         f'font-size:6.5pt;color:white;{_prod_wrap}">'
-        f'{SVG_SUN}&#8776;&#160;{fnum(_prod_net)}&#160;kWh par kWc et par an '
-        f'&#224; {_esc(_prod_ville.title())} {_prod_suffixe}</span>'
+        f'{SVG_SUN}'
+        f'{_L("lg_pill_productible").format(n=fnum(_prod_net), ville=_esc(_prod_ville.title()), suffixe=_prod_suffixe)}'
+        f'</span>'
     ) if (_prod_net and _prod_ville) else ""
     return f"""
 <div class="page" style="background:#FFFFFF !important;">
@@ -2186,8 +2191,8 @@ def page1():
     <div style="display:flex;align-items:flex-start;justify-content:space-between;">
       {logo_p1_dark()}
       <div style="text-align:right;padding-top:2px;">
-        <div style="font-size:7px;color:rgba(255,255,255,0.38);line-height:1.7;">Installation solaire photovolta&#239;que</div>
-        <div style="font-size:7px;color:rgba(255,255,255,0.38);">Proposition commerciale &#8212; Confidentiel</div>
+        <div style="font-size:7px;color:rgba(255,255,255,0.38);line-height:1.7;">{_L("lg_hero_l1")}</div>
+        <div style="font-size:7px;color:rgba(255,255,255,0.38);">{_L("lg_hero_l2")}</div>
       </div>
     </div>
 
@@ -2202,13 +2207,13 @@ def page1():
 
       <!-- LEFT: PROPOSITION label + serif title -->
       <div style="flex:1;min-width:0;">
-        <div style="font-size:6.5pt;letter-spacing:2.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:6px;">PROPOSITION COMMERCIALE</div>
-        <div class="serif" style="font-size:44pt;font-weight:400;color:white;line-height:1.0;letter-spacing:-0.5px;margin-bottom:8px;">Installation<br>Solaire</div>
+        <div style="font-size:6.5pt;letter-spacing:2.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:6px;">{_L("lg_proposition_commerciale")}</div>
+        <div class="serif" style="font-size:44pt;font-weight:400;color:white;line-height:1.0;letter-spacing:-0.5px;margin-bottom:8px;">{_L("lg_titre_hero")}</div>
       </div>
 
       <!-- RIGHT: Ref label + N°412 + date + Validité badge -->
       <div style="text-align:right;flex-shrink:0;">
-        <div style="font-size:7pt;color:{CG4};margin-bottom:1px;">R&#233;f&#233;rence devis</div>
+        <div style="font-size:7pt;color:{CG4};margin-bottom:1px;">{_L("lg_reference_devis")}</div>
         <div class="serif" style="font-size:17.5pt;font-weight:400;color:{CA};line-height:0.90;letter-spacing:-1px;">N&#176;&nbsp;{REF}</div>
         <div style="font-size:8.5pt;color:rgba(255,255,255,0.82);margin-top:5px;">{DATE_STR}</div>
         {_marques_correction_html("font-size:7pt;color:rgba(255,255,255,0.82);margin-top:2px;")}
@@ -2234,7 +2239,7 @@ def page1():
   <div style="padding:8px 24px 4px;flex-shrink:0;background:#FFFFFF !important;">
     <div style="font-size:13pt;font-weight:700;color:{CA};margin-bottom:2px;">{CLIENT_NAME}</div>
     <div style="font-size:8pt;color:{CG4};line-height:1.6;">{CLIENT_ADDR}<br>{CLIENT_PHONE}{'<br><span style="color:' + CG7 + ';"><span style="font-weight:600;">ICE&#160;:</span>&#160;' + CLIENT_ICE + '</span>' if CLIENT_ICE else ''}</div>
-    <div style="margin-top:4px;display:inline-block;background:{CN};border-radius:3px;padding:2px 7px;font-size:7.5px;color:white;">{SVG_FACTORY if 'ndustr' in INST_TYPE else SVG_HOUSE}{INST_TYPE}</div>
+    <div style="margin-top:4px;display:inline-block;background:{CN};border-radius:3px;padding:2px 7px;font-size:7.5px;color:white;">{SVG_FACTORY if 'ndustr' in INST_TYPE else SVG_HOUSE}{i18n_labels.nom_option(INST_TYPE, LANGUE_SORTIE)}</div>
   </div>
 
   <!-- KPI CARDS -->
@@ -2253,7 +2258,7 @@ def page1():
   <!-- SECTION TITLE -->
   <div style="padding:5px 24px 7px;flex-shrink:0;background:#FFFFFF !important;">
     <div style="display:block;background:#FFFFFF !important;">
-      <div style="font-size:7pt;letter-spacing:3px;color:{CG4};font-weight:500;text-transform:uppercase;">Vos Options d&#8217;Installation</div>
+      <div style="font-size:7pt;letter-spacing:3px;color:{CG4};font-weight:500;text-transform:uppercase;">{_L("lg_vos_options")}</div>
       <div style="height:2px;background:{CA};border-radius:1px;margin-top:3px;width:40px;"></div>
     </div>
   </div>
@@ -2267,11 +2272,11 @@ def page1():
     <!-- OPTION 1 -->
     <div style="flex:1;min-width:0;overflow:hidden;{_opt1_margin}border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFFFFF;position:relative;{_s1}">
       {_r1}
-      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">Option 1</div>
-      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">Sans batterie</div>
-      <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">Autoconsommation directe</div>
+      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=1)}</div>
+      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE)}</div>
+      <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_L("lg_autoconso_directe")}</div>
       {_ts_price}
-      <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">Prix total TTC{_pkwc_s}</div>
+      <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">{_L("lg_prix_total_ttc")}{_pkwc_s}</div>
       {_roi_pill_s}
       <div style="height:1px;background:{CG2};margin-bottom:6px;"></div>
       <ul style="list-style:none;padding:0;font-size:7pt;line-height:1.8;color:{CG7};margin-bottom:6px;">
@@ -2284,11 +2289,11 @@ def page1():
     <!-- OPTION 2 -->
     <div style="flex:1;min-width:0;overflow:hidden;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFF3E0;position:relative;{_s2}">
       {_r2}
-      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">Option 2</div>
-      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{LIBELLE_AVEC}</div>
+      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=2)}</div>
+      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE)}</div>
       <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_sous_titre_avec()}</div>
       {_ta_price}
-      <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">Prix total TTC{_pkwc_a}</div>
+      <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">{_L("lg_prix_total_ttc")}{_pkwc_a}</div>
       {_roi_pill_a}
       <div style="height:1px;background:{CG2};margin-bottom:6px;"></div>
       <ul style="list-style:none;padding:0;font-size:7pt;line-height:1.8;color:{CG7};margin-bottom:6px;">
@@ -2306,12 +2311,12 @@ def page1():
   <div style="background:{CN};flex-shrink:0;display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:8px 24px;gap:16px;">
     <div style="display:flex;gap:5px;flex-shrink:0;">
       {_pill_productible}
-      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_ZAP}Prix ONEE en hausse</span>
-      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_GLOBE}&#201;nergie propre</span>
+      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_ZAP}{_L("lg_prix_onee_hausse")}</span>
+      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_GLOBE}{_L("lg_energie_propre")}</span>
     </div>
     <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);flex-shrink:0;"></div>
     <div style="font-size:6.5pt;color:rgba(255,255,255,0.70);white-space:nowrap;flex-shrink:0;">
-      {svg_num(1)} Devis {SVG_ARROW} {svg_num(2)} Visite {SVG_ARROW} {svg_num(3)} Installation {SVG_ARROW} {svg_num(4)} Mise en service
+      {svg_num(1)} {_L("lg_etape_devis")} {SVG_ARROW} {svg_num(2)} {_L("lg_etape_visite")} {SVG_ARROW} {svg_num(3)} {_L("res_installation")} {SVG_ARROW} {svg_num(4)} {_L("res_mise_en_service")}
     </div>
   </div>
 
@@ -2373,7 +2378,7 @@ def page2(sans_items, img_roi, img_mon):
         f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;'
         f'flex-shrink:0;">'
         f'<svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-        f' Gain cumulé sur 25 ans — Point de retour sur investissement'
+        f' {_L("lg_gain_cumule_titre")}'
         f'</div>'
         f'<img src="{img_roi}" style="width:680px;height:170px;display:block;">'
         f'</div>'
@@ -2389,9 +2394,9 @@ def page2(sans_items, img_roi, img_mon):
         f'<line x1="1" y1="5" x2="11" y2="5" stroke="{CN}" stroke-width="1"/>'
         f'<line x1="4" y1="1" x2="4" y2="3" stroke="{CN}" stroke-width="1.3" stroke-linecap="round"/>'
         f'<line x1="8" y1="1" x2="8" y2="3" stroke="{CN}" stroke-width="1.3" stroke-linecap="round"/>'
-        f'</svg> \u00c9conomies mensuelles estim\u00e9es (MAD\u00a0/\u00a0mois)</div>'
+        f'</svg> {_L("lg_eco_mensuelles")}</div>'
         f'<div style="font-size:6pt;color:{CG4};font-style:italic;margin-bottom:4px;flex-shrink:0;">'
-        f'{"Facture ONEE vs &#233;conomies solaires par mois" if FACTURES_M else "&#201;conomies solaires par mois"}</div>'
+        f'{_L("lg_facture_vs_eco") if FACTURES_M else _L("lg_eco_solaires_mois")}</div>'
         f'<img src="{img_mon}" style="width:680px;height:170px;display:block;">'
         f'</div>'
     ) if img_mon else ""
@@ -2415,11 +2420,11 @@ def page2(sans_items, img_roi, img_mon):
                 f'<tr><td class="tl">{_o.get("designation", "")}</td>'
                 f'<td class="tc">{_oq_s}</td>'
                 f'<td class="tr">{_fmt2(float(_o.get("total_ttc", 0) or 0))}'
-                f'&#160;MAD TTC</td></tr>')
+                f'&#160;{_L("cgv_mad_ttc")}</td></tr>')
         _options_p2 = (
             f'<div style="margin-top:5px;font-size:6.5pt;font-weight:800;'
             f'color:{CA};text-transform:uppercase;letter-spacing:.6px;">'
-            f'Options propos&#233;es (non incluses dans le total)</div>'
+            f'{_L("lg_options_proposees")}</div>'
             f'<table class="eq" style="border:1px dashed {CA};">{_orows}</table>')
 
     return f"""
@@ -2427,8 +2432,8 @@ def page2(sans_items, img_roi, img_mon):
   {tbl_css}
   <div style="background:{CN};padding:9px 24px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">D\u00e9tail des \u00e9quipements &amp; Analyse financi\u00e8re</div>
-      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_p2_titre")}</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
     </div>
     {logo_html("42px")}
   </div>
@@ -2438,22 +2443,22 @@ def page2(sans_items, img_roi, img_mon):
     <div style="display:flex;gap:10px;">
 
       <div style="flex:1;min-width:0;{_p2_s1}">
-        <div style="background:{CN};color:white;font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">Option 1 \u2014 Sans batterie</div>
+        <div style="background:{CN};color:white;font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{_L("res_option_n_nom").format(n=1, option=i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE))}</div>
         <table class="eq">
           <thead><tr>
-            <th class="ti"></th><th>D\u00e9signation</th>
-            <th class="tc">Garantie</th><th class="tc">Qt\u00e9</th><th class="tr">P.U. HT</th><th class="tc">TVA</th><th class="tr">Total HT</th>
+            <th class="ti"></th><th>{_L("lg_th_designation")}</th>
+            <th class="tc">{_L("lg_th_garantie")}</th><th class="tc">{_L("lg_th_qte")}</th><th class="tr">{_L("pu_ht")}</th><th class="tc">{_L("tva")}</th><th class="tr">{_L("total_ht")}</th>
           </tr></thead>
           <tbody>{sr}</tbody>
         </table>
       </div>
 
       <div style="flex:1;min-width:0;{_p2_s2}">
-        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">Option 2 \u2014 {LIBELLE_AVEC}</div>
+        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{_L("res_option_n_nom").format(n=2, option=i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE))}</div>
         <table class="eq">
           <thead><tr>
-            <th class="ti"></th><th>D\u00e9signation</th>
-            <th class="tc">Garantie</th><th class="tc">Qt\u00e9</th><th class="tr">P.U. HT</th><th class="tc">TVA</th><th class="tr">Total HT</th>
+            <th class="ti"></th><th>{_L("lg_th_designation")}</th>
+            <th class="tc">{_L("lg_th_garantie")}</th><th class="tc">{_L("lg_th_qte")}</th><th class="tr">{_L("pu_ht")}</th><th class="tc">{_L("tva")}</th><th class="tr">{_L("total_ht")}</th>
           </tr></thead>
           <tbody>{ar}</tbody>
         </table>
@@ -2489,16 +2494,16 @@ def page3():
     if _gars:
         _cards = "".join(
             f'<div style="flex:1;border:2px solid '
-            f'{CA if lbl.startswith("Performance") else CN};border-top:4px solid '
-            f'{CN if lbl.startswith("Performance") else CA};border-radius:8px;'
+            f'{CA if lbl == _L("lg_gar_performance") else CN};border-top:4px solid '
+            f'{CN if lbl == _L("lg_gar_performance") else CA};border-radius:8px;'
             f'padding:6px 5px;text-align:center;'
-            f'background:{CAL if lbl.startswith("Performance") else "white"};">'
+            f'background:{CAL if lbl == _L("lg_gar_performance") else "white"};">'
             f'<div class="serif" style="font-size:38px;'
-            f'color:{CA if lbl.startswith("Performance") else CN};'
+            f'color:{CA if lbl == _L("lg_gar_performance") else CN};'
             f'line-height:1.0;letter-spacing:-1px;">{n}</div>'
             f'<div style="font-size:12px;font-weight:700;'
-            f'color:{CN if lbl.startswith("Performance") else CA};'
-            f'letter-spacing:1px;text-transform:uppercase;">ANS</div>'
+            f'color:{CN if lbl == _L("lg_gar_performance") else CA};'
+            f'letter-spacing:1px;text-transform:uppercase;">{_L("lg_ans_maj")}</div>'
             f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">{lbl}</div>'
             f'</div>'
             for n, lbl in _gars[:4])
@@ -2513,13 +2518,12 @@ def page3():
     # à défaut, texte composé ; aucune garantie saisie ⇒ formulation sobre,
     # sans durée inventée.
     _gar_titre = _doc_text("garantie_titre") or (
-        f"Garanties jusqu&#8217;&#224; {max(n for n, _ in _gars)} ans"
-        if _gars else "Nos garanties")
+        _L("lg_garanties_jusqu").format(n=max(n for n, _ in _gars))
+        if _gars else _L("res_nos_garanties"))
     _gar_detail = _doc_text("garantie_detail") or (
-        ", ".join(f"{lbl.lower()} {n} ans" for n, lbl in _gars).capitalize() + "."
-        if _gars else
-        "Garanties fabricant des produits install&#233;s, telles que "
-        "d&#233;taill&#233;es sur leurs fiches techniques.")
+        ", ".join(_L("lg_gar_ligne").format(lbl=lbl.lower(), n=n)
+                  for n, lbl in _gars).capitalize() + "."
+        if _gars else _L("lg_garanties_fabricant"))
 
     # ── QJR121 — LA CARTE « ÉQUIPEMENTS » NOMME LES MARQUES DU DEVIS ────────
     # Elle affirmait « Panneaux Canadian Solar, onduleurs Huawei & Deye —
@@ -2533,11 +2537,11 @@ def page3():
     if _marques:
         _bouts = []
         if _marques.get("panneaux"):
-            _bouts.append("Panneaux %s" % " & ".join(_marques["panneaux"]))
+            _bouts.append(_L("lg_eq_panneaux").format(m=" & ".join(_marques["panneaux"])))
         if _marques.get("onduleurs"):
-            _bouts.append("onduleurs %s" % " & ".join(_marques["onduleurs"]))
+            _bouts.append(_L("lg_eq_onduleurs").format(m=" & ".join(_marques["onduleurs"])))
         if _marques.get("batteries"):
-            _bouts.append("batterie %s" % " & ".join(_marques["batteries"]))
+            _bouts.append(_L("lg_eq_batterie").format(m=" & ".join(_marques["batteries"])))
         _equip_txt = _esc(", ".join(_bouts))
         _equip_card = f"""
       <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
@@ -2547,8 +2551,8 @@ def page3():
           </svg>
         </div>
         <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Équipements de votre installation</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_equip_txt} — avec la garantie fabricant de chaque produit.</div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_L("lg_eq_titre")}</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_equip_txt}{_L("lg_eq_garantie")}</div>
         </div>
       </div>
 """
@@ -2567,8 +2571,8 @@ def page3():
           </svg>
         </div>
         <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Suivi en temps réel</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Supervision de la production, des économies et de l’état de votre installation, via le matériel de communication chiffré au devis.</div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_L("res_suivi_temps_reel")}</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_L("lg_monitoring_texte")}</div>
         </div>
       </div>
 """
@@ -2578,24 +2582,24 @@ def page3():
     # sous-titre VIDE : le document ne promet alors aucun délai. Ces
     # délais ne figurent plus dans la boîte « Conditions », où ils se
     # lisaient comme des engagements contractuels.
-    _etape_visite = (f"Sous {DELAI_VISITE} (indicatif)"
+    _etape_visite = (_L("lg_delai_sous").format(delai=DELAI_VISITE)
                      if DELAI_VISITE else "")
-    _etape_install = (f"{DELAI_INSTALLATION} (indicatif)"
+    _etape_install = (_L("res_delai_indicatif").format(delai=DELAI_INSTALLATION)
                       if DELAI_INSTALLATION else "")
 
     # "Option choisie" tick-boxes — only shown when both options are presented
     _opt = (
         f'<div style="margin-bottom:6px;">'
         f'<div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;'
-        f'letter-spacing:1px;margin-bottom:5px;">Option choisie par le client</div>'
+        f'letter-spacing:1px;margin-bottom:5px;">{_L("lg_option_choisie")}</div>'
         f'<div style="display:flex;gap:10px;">'
         # Sans batterie box
         f'<div style="flex:1;border:1.5px solid {CG2};border-radius:7px;padding:7px 11px;'
         f'background:white;display:flex;align-items:center;gap:9px;">'
         f'<div style="width:17px;height:17px;border:2px solid {CG7};border-radius:3px;flex-shrink:0;"></div>'
         f'<div>'
-        f'<div style="font-size:9pt;font-weight:700;color:{CN};">Sans batterie</div>'
-        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">Option 1 &#8212; R&#233;seau uniquement</div>'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};">{i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE)}</div>'
+        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">{_L("lg_option1_reseau")}</div>'
         f'</div>'
         f'</div>'
         # Avec batterie box
@@ -2603,8 +2607,8 @@ def page3():
         f'background:{CAL};display:flex;align-items:center;gap:9px;">'
         f'<div style="width:17px;height:17px;border:2px solid {CA};border-radius:3px;flex-shrink:0;"></div>'
         f'<div>'
-        f'<div style="font-size:9pt;font-weight:700;color:{CN};">{LIBELLE_AVEC}</div>'
-        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">Option 2 &#8212; {_composition_avec()}</div>'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};">{i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE)}</div>'
+        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">{_L("lg_option2_compo").format(compo=_composition_avec())}</div>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -2613,16 +2617,16 @@ def page3():
         # Document à option unique : UNE confirmation, pas de cases à choix
         f'<div style="margin-bottom:6px;">'
         f'<div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;'
-        f'letter-spacing:1px;margin-bottom:5px;">Confirmation de la commande</div>'
+        f'letter-spacing:1px;margin-bottom:5px;">{_L("lg_confirmation_commande")}</div>'
         f'<div style="border:1.5px solid {CA};border-radius:7px;padding:7px 11px;'
         f'background:{CAL};display:flex;align-items:center;gap:9px;">'
         f'<div style="width:17px;height:17px;border:2px solid {CA};border-radius:3px;flex-shrink:0;"></div>'
         f'<div>'
         f'<div style="font-size:9pt;font-weight:700;color:{CN};">'
-        f'Syst&#232;me photovolta&#239;que{_kwc_mention()} &#8212; '
-        f'{"Sans batterie" if SCENARIO == "Sans batterie" else LIBELLE_AVEC}</div>'
+        f'{_L("lg_systeme_pv").format(kwc=_kwc_mention())}'
+        f'{i18n_labels.nom_option("Sans batterie" if SCENARIO == "Sans batterie" else LIBELLE_AVEC, LANGUE_SORTIE)}</div>'
         f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">'
-        f'Je confirme la commande du syst&#232;me d&#233;crit dans ce devis</div>'
+        f'{_L("lg_je_confirme")}</div>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -2669,9 +2673,9 @@ def page3():
         # bascule sur un échéancier à DEUX cases (Acompte + Solde) qui somment
         # à 100 % — plus de pourcentages faux. Chemin standard (materiel > 0) :
         # trois cases, rendu inchangé. Le solde reprend le reliquat exact.
-        _ac_l = 'Acompte · À la signature'
-        _mt_l = 'Matériel · Avant installation'
-        _sd_l = 'Solde · Après installation'
+        _ac_l = _L("lg_pay_acompte")
+        _mt_l = _L("lg_pay_materiel")
+        _sd_l = _L("lg_pay_solde")
         if not _rep:
             # Charge utile sans montants du builder : aucune case inventée.
             _boxes = ""
@@ -2682,19 +2686,19 @@ def page3():
         else:
             _solde2, _pct_s2 = _rep['solde2'], _rep['pct_s2']  # reliquat exact
             _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
-                      + _pay_box(_pct_s2, _solde2, 'Solde · À la livraison'))
+                      + _pay_box(_pct_s2, _solde2, _L("lg_pay_solde_livraison")))
 
         _payment_html = (
             f'<div style="margin-bottom:4px;">'
             f'<div style="border-left:3px solid {CN};padding-left:8px;margin-bottom:4px;">'
-            f'<div style="font-size:8pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;">Modalités de paiement</div>'
+            f'<div style="font-size:8pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;">{_L("lg_modalites_paiement")}</div>'
             f'</div>'
             f'<div style="display:flex;gap:6px;margin-bottom:3px;">'
             f'{_boxes}'
             f'</div>'
             # Note
             f'<div style="font-size:7pt;color:{CG4};font-style:italic;margin-bottom:3px;">'
-            f'* La r\u00e9ception du mat\u00e9riel et le solde s\u2019appliquent m\u00eame si r\u00e9alis\u00e9s le m\u00eame jour.'
+            f'{_L("lg_pay_note")}'
             f'</div>'
             # RIB bar — APDF2 : omise quand la société n'a pas de RIB.
             # QJR146 (e) — SUBSTITUTION LITTÉRALE, JAMAIS ``.format()``.
@@ -2705,7 +2709,7 @@ def page3():
             # de tout try — le PDF entier échouait sur un caractère du nom de
             # la société. ``str.replace`` ne lit aucun champ de format.
             + (f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
-               f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
+               f'<div style="font-size:7pt;color:{CG4};">{_L("lg_virement")}'
                f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
                f'</div>' if ENT_RIB_LINE else '')
             + f'</div>'
@@ -2716,7 +2720,7 @@ def page3():
   <div style="background:{CN};padding:9px 24px;display:flex;align-items:center;justify-content:space-between;">
     <div>
       <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_confiance_bpa")}</div>
-      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME}</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME}</div>
     </div>
     {logo_html("42px")}
   </div>
@@ -2738,8 +2742,8 @@ def page3():
           </svg>
         </div>
         <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Ing\u00e9nieurs sp\u00e9cialis\u00e9s</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Installation conforme aux normes marocaines et internationales, r\u00e9alis\u00e9e par des techniciens certifi\u00e9s.</div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_L("lg_ingenieurs")}</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_L("lg_ingenieurs_texte")}</div>
         </div>
       </div>
 
@@ -2782,17 +2786,16 @@ def page3():
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
-      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">{_doc_text("cgv_titre")}</div>
+      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">{_doc_text_langue("cgv_titre", "ci_cgv_titre")}</div>
       <ul style="list-style:none;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">{_cgv_bullets_html()}</ul>
     </div>
   </div>
 
   <!-- NOTRE ENGAGEMENT -->
   <div style="background:{CA};padding:7px 18px;text-align:center;margin:0 24px 5px;border-radius:8px;">
-    <div style="font-size:8pt;letter-spacing:2px;color:{CN};font-weight:800;text-transform:uppercase;margin-bottom:2px;">Notre Engagement</div>
+    <div style="font-size:8pt;letter-spacing:2px;color:{CN};font-weight:800;text-transform:uppercase;margin-bottom:2px;">{_L("lg_engagement_titre")}</div>
     <div style="font-style:italic;color:white;font-size:9.5pt;line-height:1.4;">
-      Notre \u00e9quipe reste \u00e0 votre disposition pour toute question.<br>
-      Nous planifierons l&#8217;installation d\u00e8s validation du devis.
+      {_L("lg_engagement_texte")}
     </div>
   </div>
 
@@ -2800,28 +2803,28 @@ def page3():
   <div style="padding:0 24px;margin-bottom:5px;">
     <div style="background:#F8F6F0;border:1px solid #EAECF0;border-radius:10px;padding:8px 12px;margin:2px 0;">
       <div style="border-left:4px solid #F5A623;padding-left:10px;margin-bottom:5px;">
-        <div style="font-size:12px;font-weight:700;letter-spacing:2px;color:{CN};text-transform:uppercase;">PROCHAINES \u00c9TAPES</div>
+        <div style="font-size:12px;font-weight:700;letter-spacing:2px;color:{CN};text-transform:uppercase;">{_L("lg_prochaines_etapes")}</div>
       </div>
       <div style="display:flex;gap:6px;">
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">1</div>
-          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Signature du devis</div>
-          <div style="font-size:10px;color:{CG4};margin-top:2px;">+ acompte {PAY_A}&#37;</div>
+          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_L("res_signature_devis")}</div>
+          <div style="font-size:10px;color:{CG4};margin-top:2px;">{_L("lg_plus_acompte").format(pct=PAY_A)}</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">2</div>
-          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Visite technique</div>
+          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_L("res_visite_technique")}</div>
           <div style="font-size:10px;color:{CG4};margin-top:2px;">{_etape_visite}</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">3</div>
-          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Installation</div>
+          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_L("res_installation")}</div>
           <div style="font-size:10px;color:{CG4};margin-top:2px;">{_etape_install}</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">4</div>
-          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Mise en service</div>
-          <div style="font-size:10px;color:{CG4};margin-top:2px;">Tests + formation</div>
+          <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_L("res_mise_en_service")}</div>
+          <div style="font-size:10px;color:{CG4};margin-top:2px;">{_L("lg_tests_formation")}</div>
         </div>
       </div>
     </div>
@@ -2838,20 +2841,20 @@ def page3():
     {_payment_html}
     <div style="display:flex;gap:18px;margin-bottom:4px;">
       <div style="flex:1;border:1px solid {CG2};border-radius:8px;padding:{'6px 10px' if DEVIS_FINAL else '8px 12px'};min-height:{'50' if DEVIS_FINAL else '65'}px;background:white;">
-        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature du client</div>
+        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">{_L("lg_signature_client")}</div>
         <div style="border-bottom:1px solid {CG2};min-height:{'10' if DEVIS_FINAL else '14'}px;margin-bottom:3px;"></div>
-        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">Nom&#160;: <strong style="color:{CG7};">{CLIENT_NAME}</strong></div>
+        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">{_L("lg_nom")} <strong style="color:{CG7};">{CLIENT_NAME}</strong></div>
         <div style="border-bottom:1px solid {CG2};min-height:{'8' if DEVIS_FINAL else '12'}px;margin-top:3px;margin-bottom:3px;"></div>
-        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};">Date&#160;: _______________</div>
+        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};">{_L("lg_date_ligne")}</div>
         <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text_langue("bpa_mention", "ci_bpa_mention")}</div>
       </div>
       <div style="flex:1;border:1px solid {CG2};border-radius:8px;padding:{'6px 10px' if DEVIS_FINAL else '8px 12px'};min-height:{'50' if DEVIS_FINAL else '65'}px;background:white;">
-        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature {ENT_NOM_MARQUE}</div>
+        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">{_L("lg_signature_marque").format(marque=ENT_NOM_MARQUE)}</div>
         <div style="border-bottom:1px solid {CG2};min-height:{'10' if DEVIS_FINAL else '14'}px;margin-bottom:3px;"></div>
-        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">Repr\u00e9sentant&#160;: <span style="display:inline-block;min-width:80px;border-bottom:1px solid {CG2};">&nbsp;</span></div>
+        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">{_L("lg_representant")} <span style="display:inline-block;min-width:80px;border-bottom:1px solid {CG2};">&nbsp;</span></div>
         <div style="border-bottom:1px solid {CG2};min-height:{'8' if DEVIS_FINAL else '12'}px;margin-top:3px;margin-bottom:3px;"></div>
-        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};">Date&#160;: _______________</div>
-        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">Cachet et signature de la soci\u00e9t\u00e9</div>
+        <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};">{_L("lg_date_ligne")}</div>
+        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_L("lg_cachet_societe")}</div>
       </div>
     </div>
 
@@ -3024,17 +3027,16 @@ def _bankable_block_html(bank):
     p50 = pr.get("p50_kwh")
     if p50 not in (None, ""):
         morceaux.append(
-            f'Production P50 (m\u00e9diane)\u00a0: <b>{fnum(p50)}\u00a0kWh/an</b>')
+            _L("lg_p50").format(v=fnum(p50)))
     p90 = pr.get("p90_kwh")
     if p90 not in (None, ""):
         morceaux.append(
-            f'P90 (retenue par les banques)\u00a0: <b>{fnum(p90)}\u00a0kWh/an</b>')
+            _L("lg_p90").format(v=fnum(p90)))
     ratio = pr.get("performance_ratio")
     try:
         if ratio not in (None, ""):
             morceaux.append(
-                'Ratio de performance\u00a0: <b>'
-                + _bankable_pct(float(ratio) * 100.0) + '\u00a0%</b>')
+                _L("lg_ratio_perf").format(v=_bankable_pct(float(ratio) * 100.0)))
     except (TypeError, ValueError):
         pass
     ligne = " \u00b7 ".join(morceaux)
@@ -3052,7 +3054,8 @@ def _bankable_block_html(bank):
             except (TypeError, ValueError):
                 continue
         for _val, poste, texte in sorted(lisibles, key=lambda x: -x[0]):
-            libelle = _BANKABLE_POSTES_FR.get(str(poste), _esc(poste))
+            libelle = (_L(f"lg_poste_{poste}") if str(poste) in _BANKABLE_POSTES_FR
+                       else _esc(poste))
             puces.append(
                 f'<span style="display:inline-block;background:{CG1};'
                 f'border:1px solid {CG2};border-radius:9px;padding:1px 6px;'
@@ -3062,7 +3065,7 @@ def _bankable_block_html(bank):
         puces.append(
             f'<span style="display:inline-block;border-radius:9px;'
             f'padding:1px 6px;margin:0 4px 3px 0;color:{CN};font-weight:700;">'
-            f'Total\u00a0{total}\u00a0%</span>')
+            f'{_L("lg_total_pct").format(v=total)}</span>')
 
     if not ligne and not puces:
         return ""
@@ -3071,14 +3074,14 @@ def _bankable_block_html(bank):
                   if ligne else "")
     pertes_html = (
         f'<div style="font-size:6.5pt;color:{CG4};margin-top:5px;">'
-        f'Cascade de pertes\u00a0: {"".join(puces)}</div>') if puces else ""
+        f'{_L("lg_cascade")}{"".join(puces)}</div>') if puces else ""
     return (
         f'<div style="background:white;border:1px solid {CG2};'
         f'border-left:4px solid {CA};border-radius:6px;padding:9px 12px;'
         f'margin-top:9px;">'
         f'<div style="font-size:5.5pt;letter-spacing:1.2px;color:{CG4};'
         f'text-transform:uppercase;margin-bottom:4px;">'
-        f'\u00c9tude bancable \u2014 productible et pertes</div>'
+        f'{_L("lg_bancable_titre")}</div>'
         f'{ligne_html}{pertes_html}</div>')
 
 
@@ -3132,12 +3135,12 @@ def _branche_nommee():
         return ""
     if _capacite_batterie_vendue() <= 0:
         return ""
-    return f" &#8212; option {_libelle_avec_minuscule()}"
+    return _L("lg_branche_option").format(option=_libelle_avec_minuscule())
 
 
 def _branche_phrase():
     """QJR159 (c) — la MÊME précision, en incise dans une phrase."""
-    return (f" (option {_libelle_avec_minuscule()})"
+    return (_L("lg_branche_incise").format(option=_libelle_avec_minuscule())
             if _branche_nommee() else "")
 
 
@@ -3147,21 +3150,19 @@ def _phrase_methode_etude():
     seulement si les lignes d'onduleur les portent, « sans batterie » seulement
     pour un document sans batterie ; jamais une affirmation technique fixe
     (« irradiation moyenne du Maroc », « onduleur réseau, triphasé »)."""
-    debut = ("Simulation \u00e9tablie sur le productible de "
-             f"{_esc(VILLE_CALCUL)}" if VILLE_CALCUL
-             else "Simulation \u00e9tablie")
+    debut = "lg_methode_etude_ville" if VILLE_CALCUL else "lg_methode_etude"
     precisions = []
     if SCENARIO == "Sans batterie" or _capacite_batterie_vendue() <= 0:
-        precisions.append("sans batterie")
+        precisions.append(i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE, minuscule=True))
     noms = " ".join(str(it.get("designation") or "").lower()
                     for it in list(SANS_ITEMS) + list(AVEC_ITEMS)
                     if "onduleur" in str(it.get("designation") or "").lower())
     if "triphas" in noms and "monophas" not in noms:
-        precisions.append("raccordement triphas\u00e9")
+        precisions.append(_L("lg_racc_tri"))
     elif "monophas" in noms and "triphas" not in noms:
-        precisions.append("raccordement monophas\u00e9")
-    phrase = (f"{debut} et le profil de consommation communiqu\u00e9. "
-              f"Mode\u00a0: {INST_TYPE}")
+        precisions.append(_L("lg_racc_mono"))
+    phrase = _L(debut).format(ville=_esc(VILLE_CALCUL),
+                              mode=i18n_labels.nom_option(INST_TYPE, LANGUE_SORTIE))
     if precisions:
         phrase += " \u2014 " + ", ".join(precisions)
     return phrase + "."
@@ -3176,20 +3177,20 @@ def _batterie_differee():
 def _libelle_avec_minuscule():
     """AMOT21 — le libellé serveur de l'option 2, en incise (« avec
     batterie » / « hybride, batterie plus tard »)."""
-    return LIBELLE_AVEC[:1].lower() + LIBELLE_AVEC[1:]
+    return i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE, minuscule=True)
 
 
 def _sous_titre_avec():
     """AMOT21 — sous-titre de la carte option 2 : aucun stockage promis
     quand la batterie n'est pas vendue."""
-    return ("Onduleur hybride &#8212; batterie ajoutable"
-            if _batterie_differee() else "Stockage + autonomie nocturne")
+    return (_L("lg_sous_titre_hybride")
+            if _batterie_differee() else _L("lg_sous_titre_stockage"))
 
 
 def _composition_avec():
     """AMOT21 — composition affichée de l'option 2 (« Réseau + Stockage »
     seulement quand une batterie est vendue)."""
-    return "Hybride" if _batterie_differee() else "R&#233;seau + Stockage"
+    return _L("lg_compo_hybride") if _batterie_differee() else _L("lg_compo_stockage")
 
 
 def _config_identifiante(panneaux, batterie_kwh):
@@ -3388,12 +3389,12 @@ def page_etude():
     # (jamais d'\u00ab Autoconsommation 100 % \u00bb fabriqu\u00e9e).
     has_conso = e.get("conso_annuelle") not in (None, "", 0)
     cards1 = (
-        card("Puissance cr\u00eate", f"{kwc_fr(KWC)}\u00a0kWc", accent=True,
+        card(_L("lg_puissance_crete"), f"{kwc_fr(KWC)}\u00a0kWc", accent=True,
              fig="puissance_kwc")
-        + _card_if("Production annuelle", "production_annuelle", "\u00a0kWh",
+        + _card_if(_L("op_production_annuelle"), "production_annuelle", "\u00a0kWh",
                    fig="production_annuelle_kwh")
-        + _card_if("Consommation annuelle", "conso_annuelle", "\u00a0kWh")
-        + _card_if("Prix par kWc", "prix_kwc", "\u00a0MAD")
+        + _card_if(_L("lg_conso_annuelle"), "conso_annuelle", "\u00a0kWh")
+        + _card_if(_L("op_prix_par_kwc"), "prix_kwc", "\u00a0MAD")
     )
     # CIQ129 \u2014 les taux (et, en C&I, le retour) sont ceux du moteur C&I
     # (``CHIFFRES_CI`` = ``chiffres_cles(synthese_ci)``, la projection de la
@@ -3409,24 +3410,21 @@ def page_etude():
         return card(label, f"{v}{suffix}", accent=accent, fig=fig)
 
     cards2 = (
-        (_card_ci("Taux d'autoconsommation", "taux_autoconso_pct", "\u00a0%",
+        (_card_ci(_L("lg_taux_autoconso"), "taux_autoconso_pct", "\u00a0%",
                   fig="autoconsommation_pct")
          if has_conso else "")
-        + (_card_ci("Taux de couverture", "taux_couverture_pct", "\u00a0%",
+        + (_card_ci(_L("lg_taux_couverture"), "taux_couverture_pct", "\u00a0%",
                     fig="couverture_pct")
            if has_conso else "")
-        + _card_if("\u00c9conomies annuelles", "economies_annuelles", "\u00a0MAD",
+        + _card_if(_L("lg_eco_annuelles"), "economies_annuelles", "\u00a0MAD",
                    fig="economie_annuelle")
-        + (_card_ci("Retour sur investissement", "payback_ans", "\u00a0ans",
+        + (_card_ci(_L("res_retour_invest"), "payback_ans", _L("lg_unite_ans"),
                     fig="payback_ans", accent=False)
            if _ci is not None else
-           _card_if("Retour sur investissement", "payback", "\u00a0ans",
+           _card_if(_L("res_retour_invest"), "payback", _L("lg_unite_ans"),
                     fig="payback_ans"))
     )
-    _rates_note = (
-        "* Taux d'autoconsommation : part de la production solaire "
-        "consommée sur site. Taux de couverture : part de la "
-        "consommation totale couverte par le solaire. ") if has_conso else ""
+    _rates_note = _L("lg_rates_note") if has_conso else ""
     # CJ2b-bis — falaise tarifaire / remplissage batterie / part des glitchs.
     # ADDITIF, comme le bloc bancable ci-dessous : absent des deux sources ⇒
     # '' → page BYTE-IDENTIQUE à avant ce lot (aucun des deux devis de test
@@ -3441,25 +3439,25 @@ def page_etude():
     if _falaise_ctx or _glitch_pct is not None:
         _fcells = []
         if _falaise_ctx and _falaise_ctx.get("residuel_kwh_mois") is not None:
-            _txt = f"{fnum(_falaise_ctx['residuel_kwh_mois'])} kWh/mois"
-            _fcells.append(card(f"Résiduel sous la marche{_branche}", _txt,
+            _txt = _L("lg_kwh_mois").format(n=fnum(_falaise_ctx['residuel_kwh_mois']))
+            _fcells.append(card(_L("lg_residuel_marche").format(branche=_branche), _txt,
                                 accent=True))
         if _falaise_ctx and _falaise_ctx.get("tranche_actuelle"):
             _fcells.append(
-                card("Tranche actuelle", _esc(_falaise_ctx["tranche_actuelle"])))
+                card(_L("lg_tranche_actuelle"), _esc(_falaise_ctx["tranche_actuelle"])))
         if _falaise_ctx and _falaise_ctx.get("remplissage_pct") is not None:
             # Décision fondateur 24/08 — un ratio brut ≥ 100 % (le
             # générateur interne le montre tel quel) est ABSURDE côté
             # client : re-libellé en phrase qualitative, jamais un
             # pourcentage > 100 % ni un pourcentage plafonné inventé.
             _rpct = _falaise_ctx["remplissage_pct"]
-            _rval = ("La batterie se remplit chaque jour" if _rpct >= 100
+            _rval = (_L("lg_batterie_remplit") if _rpct >= 100
                       else f"{_rpct} %")
             _fcells.append(
-                card(f"Remplissage batterie (moyen){_branche}", _rval))
+                card(_L("lg_remplissage").format(branche=_branche), _rval))
         if _glitch_pct is not None:
             _fcells.append(card(
-                f"Part des pointes rattrapée par la batterie{_branche}",
+                _L("lg_part_pointes").format(branche=_branche),
                 f"{_glitch_pct} %"))
         if _fcells:
             falaise_cards = (
@@ -3468,16 +3466,14 @@ def page_etude():
         if (_falaise_ctx and _falaise_ctx.get("tranche_actuelle")
                 and _falaise_ctx.get("residuel_kwh_mois") is not None):
             _sous = (
-                f" sous la marche {_esc(_falaise_ctx['tranche_apres'])}"
+                _L("lg_sous_marche").format(t=_esc(_falaise_ctx['tranche_apres']))
                 if _falaise_ctx.get("tranche_apres") else "")
             falaise_sentence = (
                 f'<div style="margin-top:8px;font-size:7pt;color:{CG4};">'
-                f'Aujourd&rsquo;hui, votre facture se calcule sur la tranche '
-                f'{_esc(_falaise_ctx["tranche_actuelle"])}. Ce dimensionnement'
-                f'{_branche_phrase()} '
-                f'fait atterrir votre consommation résiduelle à '
-                f'{fnum(_falaise_ctx["residuel_kwh_mois"])} kWh/mois{_sous}.'
-                f'</div>')
+                + _L("lg_falaise_phrase").format(
+                    t=_esc(_falaise_ctx["tranche_actuelle"]), branche=_branche_phrase(),
+                    n=fnum(_falaise_ctx["residuel_kwh_mois"]), sous=_sous)
+                + '</div>')
     # PV77 — bloc bancable ADDITIF : présent uniquement quand le devis porte
     # une simulation (etude_params['simulation']), sinon '' → page inchangée.
     bankable_html = _bankable_block_html(e.get("bankable"))
@@ -3485,7 +3481,7 @@ def page_etude():
         f'<div style="background:{CG1};border-radius:7px;padding:10px 12px;'
         f'border:1px solid {CG2};margin-top:10px;">'
         f'<div style="font-size:7pt;font-weight:700;color:{CN};text-transform:uppercase;'
-        f'letter-spacing:.5px;margin-bottom:5px;">Production PV vs consommation \u2014 mensuel</div>'
+        f'letter-spacing:.5px;margin-bottom:5px;">{_L("lg_chart_etude")}</div>'
         f'<img src="{img}" style="width:680px;height:200px;object-fit:contain;display:block;">'
         f'</div>'
     ) if img else ""
@@ -3494,8 +3490,8 @@ def page_etude():
 <div class="page">
   <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">\u00c9tude d'autoconsommation</div>
-      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_etude_titre")}</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
     </div>
     {logo_html("42px")}
   </div>
@@ -3512,14 +3508,14 @@ def page_etude():
     {bankable_html}
     {chart_html}
     <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
-      {_rates_note}Estimations non contractuelles.
+      {_rates_note}{_L("lg_estimations_nc")}
     </div>
   </div>
 
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
     <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
-    <div style="font-size:7pt;color:#888;">\u00c9tude \u2014 R\u00e9f.\u00a0{REF}</div>
+    <div style="font-size:7pt;color:#888;">{_L("lg_etude_pied").format(ref=REF)}</div>
   </div>
 </div>
 """
@@ -3542,7 +3538,7 @@ def page_annexe_technique():
         f'padding:8px 10px;margin-bottom:10px;">'
         f'<div style="font-size:7pt;font-weight:700;color:{CN};'
         f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">'
-        f'Sch\u00e9ma unifilaire</div>{SLD_SVG}</div>'
+        f'{_L("lg_schema")}</div>{SLD_SVG}</div>'
     ) if SLD_SVG else ""
 
     def _cell(texte, align="left", bold=False):
@@ -3571,23 +3567,21 @@ def page_annexe_technique():
     if _bom_reste > 0:
         lignes.append(
             f'<tr><td colspan="3" style="padding:3px 6px;font-style:italic;'
-            f'font-size:6.5pt;color:{CG4};">&#8230; et {_bom_reste} autre'
-            f'{"s" if _bom_reste > 1 else ""} composant'
-            f'{"s" if _bom_reste > 1 else ""} &#8212; nomenclature '
-            f'compl&#232;te fournie avec le dossier technique.</td></tr>')
+            f'font-size:6.5pt;color:{CG4};">'
+            f'{_L("lg_bom_reste_n" if _bom_reste > 1 else "lg_bom_reste_1").format(n=_bom_reste)}</td></tr>')
     bom_html = (
         f'<div style="background:{CG1};border:1px solid {CG2};border-radius:7px;'
         f'padding:8px 10px;">'
         f'<div style="font-size:7pt;font-weight:700;color:{CN};'
         f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">'
-        f'Nomenclature \u00e9lectrique</div>'
+        f'{_L("lg_nomenclature")}</div>'
         f'<table style="width:100%;border-collapse:collapse;font-size:7pt;">'
         f'<tr><th style="text-align:left;padding:3px 6px;border-bottom:2px solid '
-        f'{CN};">D\u00e9signation</th>'
+        f'{CN};">{_L("lg_th_designation")}</th>'
         f'<th style="text-align:right;padding:3px 6px;border-bottom:2px solid '
-        f'{CN};">Qt\u00e9</th>'
+        f'{CN};">{_L("lg_th_qte")}</th>'
         f'<th style="text-align:left;padding:3px 6px;border-bottom:2px solid '
-        f'{CN};">Sp\u00e9cification</th></tr>'
+        f'{CN};">{_L("lg_th_spec")}</th></tr>'
         + "".join(lignes) + '</table></div>'
     ) if lignes else ""
 
@@ -3595,11 +3589,11 @@ def page_annexe_technique():
     _phases = parametres.get("phases")
     reperes = []
     if design.get("chaines"):
-        reperes.append("%d cha\u00eene(s)" % len(design["chaines"]))
+        reperes.append(_L("lg_chaines").format(n=len(design["chaines"])))
     if _phases:
-        reperes.append("triphas\u00e9" if int(_phases) == 3 else "monophas\u00e9")
+        reperes.append(_L("lg_triphase") if int(_phases) == 3 else _L("lg_monophase"))
     if parametres.get("regime"):
-        reperes.append("r\u00e9gime %s" % _esc(parametres["regime"]))
+        reperes.append(_L("lg_regime").format(r=_esc(parametres["regime"])))
     # Python 3.11 (prod/CI) refuse un antislash dans l'EXPRESSION d'une
     # f-string (3.12+ l'accepte \u2014 vert local trompeur) : s\u00e9parateur hiss\u00e9.
     sep_reperes = " \u2014 "
@@ -3611,8 +3605,8 @@ def page_annexe_technique():
 <div class="page">
   <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">Annexe technique</div>
-      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_annexe_technique")}</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
     </div>
     {logo_html("42px")}
   </div>
@@ -3623,22 +3617,20 @@ def page_annexe_technique():
     {schema_html}
     {bom_html}
     <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
-      Pi\u00e8ce technique jointe au dossier de raccordement. Les quantit\u00e9s de
-      l'annexe sont donn\u00e9es \u00e0 titre d'\u00e9tude\u00a0; seule la liste d'\u00e9quipements du
-      devis fait foi commercialement.
+      {_L("lg_annexe_note")}
     </div>
   </div>
 
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
     <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
-    <div style="font-size:7pt;color:#888;">Annexe technique \u2014 R\u00e9f.\u00a0{REF}</div>
+    <div style="font-size:7pt;color:#888;">{_L("lg_annexe_pied").format(ref=REF)}</div>
   </div>
 </div>
 """
 
 
-def page_annexe_domicile():
+def page_annexe_domicile(pied=None):
     """CAD122 — annexe de rétractation, signature AU DOMICILE (loi 31-08).
 
     Décision fondateur du 21/09/2026. La visite technique se passe chez le
@@ -3659,19 +3651,23 @@ def page_annexe_domicile():
         que c'est la main du client qui les écrit (art. 47 al. 2) ;
       * ce n'est PAS une seconde voie de PDF (règle #4) : c'est une page de
         plus, rendue par le moteur vendu, dans le même document.
+
+    AMOT53 (D-AMOT-2 = a) — le une-page signé au domicile porte cette MÊME
+    page en 2ᵉ page déclarée ; ``pied`` (« … · Page 2 / 2 ») la compte. Sans
+    ``pied`` (document plein format) : le pied d'hier, octet pour octet.
     """
     # AMOT23 — le CORPS vient de la fonction partagée (annexe_domicile) :
     # le gabarit résidentiel 3 pages imprime la MÊME annexe.
     _corps = _corps_annexe_domicile(
         ref=REF, vendeur=ENT_NOM_MARQUE,
         couleurs={'navy': CN, 'texte': CG7, 'muet': CG4, 'fond': CG1,
-                  'filet': CG2})
+                  'filet': CG2}, langue=LANGUE_SORTIE)
     return f"""
 <div class="page">
   <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">Annexe — Droit de rétractation</div>
-      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N° {REF} — {CLIENT_NAME} — {DATE_STR}</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_ret_titre")}</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} — {CLIENT_NAME} — {DATE_STR}</div>
     </div>
     {logo_html("42px")}
   </div>
@@ -3684,7 +3680,7 @@ def page_annexe_domicile():
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
     <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
-    <div style="font-size:7pt;color:#888;">Rétractation — Réf. {REF}</div>
+    <div style="font-size:7pt;color:#888;">{pied or _L("lg_ret_pied").format(ref=REF)}</div>
   </div>
 </div>
 """
@@ -3712,8 +3708,8 @@ def page_calepinage():
 <div class="page">
   <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">Calepinage</div>
-      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N° {REF} — {CLIENT_NAME} — {DATE_STR}</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_calepinage")}</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} — {CLIENT_NAME} — {DATE_STR}</div>
     </div>
     {logo_html("42px")}
   </div>
@@ -3721,15 +3717,12 @@ def page_calepinage():
 
   <div style="padding:14px 24px;flex:1;min-height:0;">
     <div style="font-size:8pt;color:{CG4};margin-bottom:10px;">
-      Implantation des modules relevée sur la toiture, à l'échelle portée par
-      la planche. Les cotes sont mesurées sur la géométrie de la conception.
+      {_L("lg_calep_intro")}
     </div>
     <div style="background:white;border:1px solid {CG2};border-radius:7px;
                 padding:6px;text-align:center;">{CALEPINAGE_SVG}</div>
     <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
-      Pièce technique jointe à la proposition. L'implantation définitive est
-      confirmée à la visite technique ; seule la liste d'équipements du devis
-      fait foi commercialement.
+      {_L("lg_calep_note")}
     </div>
     {empreinte_html}
   </div>
@@ -3737,7 +3730,7 @@ def page_calepinage():
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
     <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
-    <div style="font-size:7pt;color:#888;">Calepinage — Réf. {REF}</div>
+    <div style="font-size:7pt;color:#888;">{_L("lg_calep_pied").format(ref=REF)}</div>
   </div>
 </div>
 """
@@ -3774,9 +3767,9 @@ def build_html():
     # document est byte-identique à celui d'avant (art. 32 inchangé).
     domicile_html = page_annexe_domicile() if SIGNE_AU_DOMICILE else ""
     return f"""<!DOCTYPE html>
-<html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
+<html {_attributs_langue_html()} style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis TAQINOR N\u00b0 {REF}</title>
-<style>{CSS}</style></head>
+<style>{CSS}{_css_arabe() if i18n_labels.est_rtl(LANGUE_SORTIE) else ""}</style></head>
 <body style="background:#FFFFFF !important;">
 {page1()}
 {page2(SANS_ITEMS, img_roi, img_mon)}
@@ -3950,8 +3943,12 @@ def _cartes_pompage_synthese(synthese):
              f"{_fdec_fr(_dq, 1)} m&#179;/h",
              _ancre_figure("pompe_debit_m3h", _fdec_fr(_dq, 1))))
     _m3j, _hrs = eau.get("m3_jour"), eau.get("heures_pompage")
+    # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ : la carte le dit.
+    from .agricole.synthese import debit_declare_sans_courbe
     if _m3j is not None and _hrs is not None:
-        _est = f"{_L('estimation')}, " if eau.get("estimation") else ""
+        _est = (f"{_L('estimation')} &#183; {_L('lg_debit_declare_par_vous')}, "
+                if debit_declare_sans_courbe({"etude": ETUDE, "all_items": SANS_ITEMS + AVEC_ITEMS})
+                else f"{_L('estimation')}, " if eau.get("estimation") else "")
         cellules.append(
             (f"{_L('eau_jour')} &#8212; {_est}"
              f"{_L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
@@ -4330,12 +4327,11 @@ def page_onepage(items, tronquees=0):
             f'<div style="padding:8px 24px 0;">'
             f'<div style="font-size:7pt;font-weight:800;color:{CA};'
             f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
-            f'Options propos&#233;es (non incluses dans le total)</div>'
+            f'{_L("lg_options_proposees")}</div>'
             f'<table style="width:100%;border-collapse:collapse;font-size:8pt;'
             f'border:1px dashed {CA};">{_opt_rows}</table>'
             f'<div style="font-size:6.5pt;color:{CG4};font-style:italic;'
-            f'margin-top:2px;">Activez une option avant signature pour l&#8217;'
-            f'inclure &#224; votre devis.</div></div>')
+            f'margin-top:2px;">{_L("lg_activez_option")}</div></div>')
 
     # LANE CHOIX-AVEC (fondateur, 25/08/2026) — le mot de la note SUIT
     # ``ONEPAGE_BRANCHE`` au lieu de le supposer « sans » : builder.py rend
@@ -4442,7 +4438,7 @@ def page_onepage(items, tronquees=0):
       <div style="font-size:7pt;color:#888;text-align:center;">
         {ENT_CONTACT_LINE}
       </div>
-      <div style="font-size:7pt;color:#888;">{_L("reference")}&#160;{REF}</div>
+      <div style="font-size:7pt;color:#888;">{_L("reference")}&#160;{REF}{(" &#183; " + _L("res_page") + " 1&nbsp;/&nbsp;2") if SIGNE_AU_DOMICILE else ""}</div>
     </div>
     <div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">
       {ENT_LEGAL_LINE}
@@ -4484,13 +4480,17 @@ def _attributs_langue_html():
 
 
 def build_html_onepage(items, tronquees=0):
-    """Minimal HTML shell for the one-page PDF."""
+    """Minimal HTML shell for the one-page PDF.
+
+    AMOT53 (D-AMOT-2 = a) — bon de commande signé au domicile : l'annexe de
+    rétractation (``page_annexe_domicile``, corps partagé AMOT23) suit en 2ᵉ
+    page DÉCLARÉE ; jamais une copie de son HTML."""
     return f"""<!DOCTYPE html>
 <html {_attributs_langue_html()} style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis {ENT_NOM_MARQUE} N\u00b0 {REF}</title>
 <style>{CSS}{_css_arabe() if i18n_labels.est_rtl(LANGUE_SORTIE) else ""}</style></head>
 <body style="background:#FFFFFF !important;">
-{page_onepage(items, tronquees)}
+{page_onepage(items, tronquees)}{page_annexe_domicile(pied=f"{_L('lg_ret_pied').format(ref=REF)} &#183; {_L('res_page')} 2&nbsp;/&nbsp;2") if SIGNE_AU_DOMICILE else ""}
 </body></html>"""
 
 
