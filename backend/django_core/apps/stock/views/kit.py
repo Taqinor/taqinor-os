@@ -12,7 +12,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, corps
+from ..utils.params import corps_objet
 from ..serializers import RevisionKitSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
@@ -27,6 +29,7 @@ from ..serializers import KitComposantSerializer, KitProduitSerializer
 # dans serializers.py (fichier-mur, C20 : aucune croissance nette).
 extend_schema_serializer(component_name='KitProduitComposant')(KitComposantSerializer)
 
+_BOOLEENS = ('1', '0', 'true', 'false', 'True', 'False')
 READ_ACTIONS = ['list', 'retrieve', 'exploser', 'revisions',
                 'composition_au', 'disponibilite']
 WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer',
@@ -54,9 +57,14 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         # OPT-IN : l'explosion récursive par kit a un coût — le comportement
         # par défaut de la liste reste strictement inchangé.
         context = super().get_serializer_context()
-        context['avec_disponibilite'] = (
-            self.request.query_params.get('avec_disponibilite')
-            in ('1', 'true', 'True')) if self.request else False
+        valeurs = (self.request.query_params.getlist('avec_disponibilite')
+                   if self.request else [])
+        # ERR fuzz : drapeau déclaré booléen — toute autre valeur (``null``,
+        # répétée…) était lue « non » en silence ; elle répond 400.
+        if len(valeurs) > 1 or any(v not in _BOOLEENS for v in valeurs):
+            raise ValidationError(
+                {'avec_disponibilite': ['Booléen attendu (true/false).']})
+        context['avec_disponibilite'] = bool(valeurs) and valeurs[0] in ('1', 'true', 'True')
         return context
 
     def get_permissions(self):
@@ -209,7 +217,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         arrondi propre). La copie reçoit sa révision n°1."""
         from ..services import dupliquer_kit
         kit = self.get_object()
-        facteur = request.data.get('facteur_echelle')
+        facteur = corps_objet(request).get('facteur_echelle')
         try:
             copie = dupliquer_kit(
                 kit, user=request.user, facteur_echelle=facteur)
@@ -233,15 +241,16 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         L'application (dry_run=false) est ATOMIQUE ; chaque kit modifié crée
         sa révision XMFG18 + une ligne d'audit récapitulative."""
         from ..services import remplacer_composant_masse
-        dry_run = request.data.get('dry_run', True)
+        donnees = corps_objet(request)
+        dry_run = donnees.get('dry_run', True)
         if isinstance(dry_run, str):
             dry_run = dry_run.lower() not in ('0', 'false', 'non')
         try:
             resultat = remplacer_composant_masse(
                 request.user.company,
-                produit_ancien_id=request.data.get('produit_ancien'),
-                produit_nouveau_id=request.data.get('produit_nouveau'),
-                ratio_quantite=request.data.get('ratio_quantite'),
+                produit_ancien_id=donnees.get('produit_ancien'),
+                produit_nouveau_id=donnees.get('produit_nouveau'),
+                ratio_quantite=donnees.get('ratio_quantite'),
                 dry_run=dry_run,
                 user=request.user)
         except ValueError as exc:
