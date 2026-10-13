@@ -3630,7 +3630,7 @@ def page_annexe_technique():
 """
 
 
-def page_annexe_domicile():
+def page_annexe_domicile(pied=None):
     """CAD122 — annexe de rétractation, signature AU DOMICILE (loi 31-08).
 
     Décision fondateur du 21/09/2026. La visite technique se passe chez le
@@ -3651,6 +3651,10 @@ def page_annexe_domicile():
         que c'est la main du client qui les écrit (art. 47 al. 2) ;
       * ce n'est PAS une seconde voie de PDF (règle #4) : c'est une page de
         plus, rendue par le moteur vendu, dans le même document.
+
+    AMOT53 (D-AMOT-2 = a) — le une-page signé au domicile porte cette MÊME
+    page en 2ᵉ page déclarée ; ``pied`` (« … · Page 2 / 2 ») la compte. Sans
+    ``pied`` (document plein format) : le pied d'hier, octet pour octet.
     """
     # AMOT23 — le CORPS vient de la fonction partagée (annexe_domicile) :
     # le gabarit résidentiel 3 pages imprime la MÊME annexe.
@@ -3676,7 +3680,7 @@ def page_annexe_domicile():
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
     <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
-    <div style="font-size:7pt;color:#888;">{_L("lg_ret_pied").format(ref=REF)}</div>
+    <div style="font-size:7pt;color:#888;">{pied or _L("lg_ret_pied").format(ref=REF)}</div>
   </div>
 </div>
 """
@@ -4430,7 +4434,7 @@ def page_onepage(items, tronquees=0):
       <div style="font-size:7pt;color:#888;text-align:center;">
         {ENT_CONTACT_LINE}
       </div>
-      <div style="font-size:7pt;color:#888;">{_L("reference")}&#160;{REF}</div>
+      <div style="font-size:7pt;color:#888;">{_L("reference")}&#160;{REF}{(" &#183; " + _L("res_page") + " 1&nbsp;/&nbsp;2") if SIGNE_AU_DOMICILE else ""}</div>
     </div>
     <div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">
       {ENT_LEGAL_LINE}
@@ -4472,13 +4476,17 @@ def _attributs_langue_html():
 
 
 def build_html_onepage(items, tronquees=0):
-    """Minimal HTML shell for the one-page PDF."""
+    """Minimal HTML shell for the one-page PDF.
+
+    AMOT53 (D-AMOT-2 = a) — bon de commande signé au domicile : l'annexe de
+    rétractation (``page_annexe_domicile``, corps partagé AMOT23) suit en 2ᵉ
+    page DÉCLARÉE ; jamais une copie de son HTML."""
     return f"""<!DOCTYPE html>
 <html {_attributs_langue_html()} style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis {ENT_NOM_MARQUE} N\u00b0 {REF}</title>
 <style>{CSS}{_css_arabe() if i18n_labels.est_rtl(LANGUE_SORTIE) else ""}</style></head>
 <body style="background:#FFFFFF !important;">
-{page_onepage(items, tronquees)}
+{page_onepage(items, tronquees)}{page_annexe_domicile(pied=f"{_L('lg_ret_pied').format(ref=REF)} &#183; {_L('res_page')} 2&nbsp;/&nbsp;2") if SIGNE_AU_DOMICILE else ""}
 </body></html>"""
 
 
