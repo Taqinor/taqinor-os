@@ -1761,3 +1761,7 @@ API rejected schema-compliant request|PATCH /api/django/parametres/tarification/
 API accepted schema-violating request|POST /api/django/sav/tickets/actions-groupees/
 API accepted schema-violating request|PUT /api/django/sav/categories-equipement/{id}/
 API accepted schema-violating request|PUT /api/django/sav/equipes-maintenance/{id}/
+# PR #987 (13/10/2026) : constats core PRÉ-EXISTANTS rendus visibles par le seed stock du harnais (scope core) — portés par ERR-ENF11-FUZZ-CORE (session dev-all-laptop), à corriger à la cause
+API accepted schema-violating request|POST /api/django/core/dossiers/{id}/checklist/
+API rejected schema-compliant request|PATCH /api/django/core/formulaires/{id}/
+API rejected schema-compliant request|PATCH /api/django/core/workflow-step-definitions/{id}/
