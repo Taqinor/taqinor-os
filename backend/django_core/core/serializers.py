@@ -505,7 +505,8 @@ class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.Mode
         return attrs
 
 
-class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class FormulaireDefinitionSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                     serializers.ModelSerializer):
     """NTWFL12 — formulaire dynamique rattachable à une étape de workflow.
 
     ``company`` imposée côté serveur (``TenantMixin``). ``schema``/
@@ -567,7 +568,8 @@ class FormulaireChampReutilisableSerializer(CompanyScopedRelationsMixin, seriali
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class DashboardSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                          serializers.ModelSerializer):
     """FG381 — dashboard sans-code sauvegardé.
 
     ``company`` et ``owner`` ne sont JAMAIS lus du corps : ``company`` est
@@ -646,7 +648,8 @@ class PaymentTransactionSerializer(ChampsStrictsMixin, CompanyScopedRelationsMix
         return attrs
 
 
-class SavedQuerySerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class SavedQuerySerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                           serializers.ModelSerializer):
     """FG382 — requête d'analyse ad-hoc sauvegardée.
 
     ``company`` et ``owner`` ne sont JAMAIS lus du corps (imposés côté serveur).
@@ -664,7 +667,8 @@ class SavedQuerySerializer(CompanyScopedRelationsMixin, serializers.ModelSeriali
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 
-class ScheduledExportSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class ScheduledExportSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                serializers.ModelSerializer):
     """FG383 — extrait planifié vers SFTP/S3.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le résultat de
@@ -732,7 +736,8 @@ class ModuleToggleSerializer(CompanyScopedRelationsMixin, serializers.ModelSeria
                             'created_at', 'updated_at']
 
 
-class TenantThemeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class TenantThemeSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                            serializers.ModelSerializer):
     """FG392 — thème white-label par société.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
@@ -863,7 +868,8 @@ class RegistreTraitementSerializer(CompanyScopedRelationsMixin, serializers.Mode
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class BackupRunSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class BackupRunSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                          serializers.ModelSerializer):
     """FG395 — opération de sauvegarde/restauration (libre-service).
 
     ``company`` et ``declenche_par`` ne sont JAMAIS lus du corps (imposés côté

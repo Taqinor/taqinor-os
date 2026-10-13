@@ -101,6 +101,26 @@ class CrudScopingTests(TestCase):
         vue.refresh_from_db()
         self.assertEqual(vue.equipe, 'equipe-nord')
 
+    def test_types_stricts_post_put_patch(self):
+        # CI #985 (api-fuzz) — ``"est_defaut": 0`` (booléen) et ``"nom": 0``
+        # (chaîne) étaient convertis en silence (200) : 400 nommant le champ.
+        vue = VuePersonnalisee.objects.create(
+            company=self.company, owner=self.user, cible='crm.lead',
+            nom='Fuzz')
+        base = {'cible': '0', 'nom': '0', 'config': {}, 'partage': 'prive',
+                'equipe': '', 'role_tier': ''}
+        for corps, champ in (({**base, 'est_defaut': 0}, 'est_defaut'),
+                             ({**base, 'nom': 0}, 'nom'),
+                             ({**base, 'equipe': False}, 'equipe')):
+            for methode, url in (('post', URL), ('put', f'{URL}{vue.id}/'),
+                                 ('patch', f'{URL}{vue.id}/')):
+                with self.subTest(methode=methode, champ=champ):
+                    res = getattr(self.api, methode)(url, corps, format='json')
+                    self.assertEqual(res.status_code, 400, res.data)
+                    self.assertIn(champ, res.data)
+        vue.refresh_from_db()
+        self.assertEqual((vue.nom, vue.est_defaut), ('Fuzz', False))
+
     def test_view_of_another_company_is_never_reachable(self):
         etrangere = VuePersonnalisee.objects.create(
             company=self.autre, cible='crm.lead', nom='Étrangère',

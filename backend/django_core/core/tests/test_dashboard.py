@@ -57,6 +57,35 @@ class DashboardViewSetTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('partage', resp.data)
 
+    def test_texte_chaine_stricte_post_put_patch(self):
+        # CI #985 (api-fuzz) — ``"description": 0`` était converti en "0"
+        # (200) alors que le schéma déclare une chaîne : 400 nommant le champ.
+        dash = Dashboard.objects.create(
+            company=self.company, owner=self.user, titre='Fuzz')
+        corps = {'titre': '0', 'description': 0, 'layout': {},
+                 'partage': False}
+        for methode, action, chemin, kwargs in (
+                ('post', 'create', '/dashboards/', {}),
+                ('put', 'update', f'/dashboards/{dash.pk}/', {'pk': dash.pk}),
+                ('patch', 'partial_update', f'/dashboards/{dash.pk}/',
+                 {'pk': dash.pk})):
+            with self.subTest(methode=methode):
+                req = getattr(self.factory, methode)(
+                    chemin, corps, format='json')
+                force_authenticate(req, user=self.user)
+                resp = DashboardViewSet.as_view({methode: action})(
+                    req, **kwargs)
+                self.assertEqual(resp.status_code,
+                                 status.HTTP_400_BAD_REQUEST)
+                self.assertIn('description', resp.data)
+        req = self.factory.post('/dashboards/', {'titre': 7}, format='json')
+        force_authenticate(req, user=self.user)
+        resp = DashboardViewSet.as_view({'post': 'create'})(req)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('titre', resp.data)
+        dash.refresh_from_db()
+        self.assertEqual(dash.description, '')
+
     def test_scoping_personal_and_shared(self):
         Dashboard.objects.create(
             company=self.company, owner=self.user, titre='A perso')

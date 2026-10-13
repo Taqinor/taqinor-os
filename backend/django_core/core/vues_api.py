@@ -22,6 +22,7 @@ from authentication.role_tiers import (
     ROLE_ADMIN, ROLE_NORMAL, ROLE_RESPONSABLE,
 )
 
+from .champs_stricts import ChampsStrictsMixin
 from .conflit_etat import ConflitEtat
 from .models import VuePersonnalisee
 from .openapi_erreurs import EXTENSION_CORPS_RESSERRE
@@ -50,7 +51,10 @@ _CREATION_PUBLIEE = {'anyOf': [
 _MAJ_PUBLIEE = {'anyOf': [_PAS_EQUIPE, _EQUIPE_NON_BLANCHE]}
 
 
-class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+# CI #985 (api-fuzz) — texte et booléens stricts : ``est_defaut: 0`` ou
+# ``nom: 0`` étaient convertis en silence au lieu d'un 400.
+class VuePersonnaliseeSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                 serializers.ModelSerializer):
     partage_label = serializers.CharField(
         source='get_partage_display', read_only=True)
     owner_username = serializers.CharField(

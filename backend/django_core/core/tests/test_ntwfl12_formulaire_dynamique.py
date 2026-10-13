@@ -51,6 +51,23 @@ class FormulaireSchemaPublieTests(TestCase):
                         {'schema': [{'ref': 0}]}, {'schema': ['A']}):
             self.assertFalse(self._valide(**donnees), donnees)
 
+    def test_types_stricts_refuses(self):
+        # CI #985 (api-fuzz) — ``"actif": 0`` (booléen) et ``"nom": 0``
+        # (chaîne) étaient convertis en silence (200) : refus nommant le champ.
+        from core.serializers import FormulaireDefinitionSerializer
+        for donnees, champ in (({'actif': 0}, 'actif'),
+                               ({'actif': 'true'}, 'actif'),
+                               ({'nom': 0}, 'nom'),
+                               ({'code': ['f']}, 'code')):
+            for partiel in (False, True):
+                with self.subTest(donnees=donnees, partiel=partiel):
+                    s = FormulaireDefinitionSerializer(
+                        data={'code': 'f', 'nom': 'F', 'schema': [],
+                              'champs_conditionnels': {}, **donnees},
+                        partial=partiel)
+                    self.assertFalse(s.is_valid())
+                    self.assertIn(champ, s.errors)
+
 
 class FormulaireBloqueApprobationTests(TestCase):
     @classmethod
