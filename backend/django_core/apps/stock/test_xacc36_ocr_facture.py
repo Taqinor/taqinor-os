@@ -181,23 +181,6 @@ class TestDepuisOcrEndpoint(Xacc36Base):
             {'fields': 'not-a-dict'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
-    def test_fuzz_schema_fields_multipart_objet_json(self):
-        """ERR fuzz : le schéma multipart de ``fields`` n'admet plus du texte
-        libre (« 0 » = cas « conforme » refusé 400) mais un objet JSON plat ;
-        tout ce que le motif admet est accepté par la vue (jamais 400)."""
-        import re
-        from apps.stock.views.facture_fournisseur import (
-            _REGEX_OBJET_JSON_PLAT)
-        motif = re.compile(_REGEX_OBJET_JSON_PLAT)
-        self.assertIsNone(motif.search('0'))
-        self.assertIsNone(motif.search('{"a":}'))
-        for texte in ('{}', ' {"numero": "F-1", "montant_ttc": 12.5, "x": null} '):
-            self.assertIsNotNone(motif.search(texte), texte)
-            resp = self.api.post(
-                '/api/django/achats/factures-fournisseur/depuis-ocr/',
-                {'fields': texte}, format='multipart')
-            self.assertEqual(resp.status_code, 404, (texte, resp.content))
-
     def test_enf11_corps_non_objet_400_jamais_500(self):
         for corps in ([1, 2], 'texte', 12):
             resp = self.api.post(

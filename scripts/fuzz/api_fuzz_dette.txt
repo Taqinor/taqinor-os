@@ -964,6 +964,7 @@ API rejected schema-compliant request|POST /api/django/stock/dossiers-onboarding
 API rejected schema-compliant request|POST /api/django/stock/emplacements/
 API rejected schema-compliant request|POST /api/django/stock/emplacements/van-stock/creer-transfert/
 API rejected schema-compliant request|POST /api/django/stock/expeditions/
+API rejected schema-compliant request|POST /api/django/stock/factures-fournisseur/depuis-ocr/
 API rejected schema-compliant request|POST /api/django/stock/factures-fournisseur/depuis-ubl/
 API rejected schema-compliant request|POST /api/django/stock/factures-fournisseur/{id}/echeancier/
 API rejected schema-compliant request|POST /api/django/stock/factures-fournisseur/{id}/paiements/

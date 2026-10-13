@@ -1,4 +1,3 @@
-from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, serializers, status
@@ -77,19 +76,6 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
                 created_by=self.request.user,
             )
         create_with_reference(RetourFournisseur, 'RF', company, _save)
-
-    def perform_update(self, serializer):
-        """ERR fuzz : ``lignes`` est un sérialiseur imbriqué en écriture, que
-        ``ModelSerializer.update`` refuse (AssertionError -> 500). Les lignes
-        d'un retour brouillon (le figé est refusé en amont) sont remplacées
-        avec l'en-tête, dans une seule transaction."""
-        lignes = serializer.validated_data.pop('lignes', None)
-        with transaction.atomic():
-            retour = serializer.save()
-            if lignes is not None:
-                retour.lignes.all().delete()
-                for ligne in lignes:
-                    retour.lignes.create(**ligne)
 
     @extend_schema(request=None, responses=RetourFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='valider')

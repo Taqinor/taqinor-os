@@ -46,17 +46,6 @@ class TrancheEcheancierSerializer(serializers.Serializer):
     date_echeance = serializers.DateField()
 
 
-# ERR fuzz (achats) : `fields` multipart est un objet JSON sérialisé ; le schéma
-# ne sait pas dire « JSON valide », on déclare donc le sous-ensemble plat
-# (clé -> chaîne/nombre/booléen/null) que l'API accepte à coup sûr — du texte
-# libre (ex. « 0 ») était un cas « conforme » refusé en 400.
-_CHAINE = r'"[^"\\\x00-\x1f]*"'
-_VAL = r'(?:' + _CHAINE + r'|-?[0-9]+(?:\.[0-9]+)?|null|true|false)'
-_PAIRE = _CHAINE + r'\s*:\s*' + _VAL
-_REGEX_OBJET_JSON_PLAT = (
-    r'^\s*\{\s*(?:' + _PAIRE + r'(?:\s*,\s*' + _PAIRE + r')*)?\s*\}\s*$')
-
-
 @extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('statut', STR,
                                                                                                        False,
                                                                                                        'Statut')]))
@@ -267,7 +256,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         request={'multipart/form-data': corps('FactureDepuisOcrMultipart',
-                                              fields=serializers.RegexField(_REGEX_OBJET_JSON_PLAT, help_text='Objet JSON'),
+                                              fields=serializers.CharField(help_text='JSON'),
                                               file=serializers.FileField(required=False),
                                               confirmer_malgre_doublon=serializers.BooleanField(required=False)),
                  'application/json': corps('FactureDepuisOcrJson', fields=serializers.DictField(),
