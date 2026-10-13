@@ -1799,3 +1799,22 @@ API rejected schema-compliant request|POST /api/django/records/activities/{id}/d
 Invalid Allow header|OPTIONS /api/django/portail/paiements-facture-portail/
 # PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
 API accepted schema-violating request|GET /api/django/parametres/audit/
+# PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.
+API accepted schema-violating request|PATCH /api/django/ged/dossiers/{id}/
+API accepted schema-violating request|PATCH /api/django/ged/types-champ-signature/{id}/
+API accepted schema-violating request|POST /api/django/ged/types-champ-signature/
+API accepted schema-violating request|PUT /api/django/ged/dossiers/{id}/
+API accepted schema-violating request|PUT /api/django/ged/tags/{id}/
+API accepted schema-violating request|PUT /api/django/ged/types-champ-signature/{id}/
+API rejected schema-compliant request|PATCH /api/django/ged/exigences-dossier/{id}/
+API rejected schema-compliant request|PATCH /api/django/parametres/document-templates/update/
+API rejected schema-compliant request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
+API rejected schema-compliant request|POST /api/django/ged/dossiers/{id}/deplacer/
+API rejected schema-compliant request|POST /api/django/ged/exigences-dossier/
+API rejected schema-compliant request|POST /api/django/ged/lots-envoi/envoi-masse/
+API rejected schema-compliant request|POST /api/django/ged/modeles-document/
+API rejected schema-compliant request|POST /api/django/portail/demandes-ticket-portail/
+API rejected schema-compliant request|PUT /api/django/ged/coffres/{id}/
+API rejected schema-compliant request|PUT /api/django/parametres/document-templates/update/
+API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/
+Response violates schema|PATCH /api/django/ged/coffres/{id}/
