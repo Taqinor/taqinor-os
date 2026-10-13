@@ -714,8 +714,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // sa seule référence (« SUN-12K-SG05LP3 ») mais déclaré `onduleur_hybride`
   // n'avait sinon AUCUNE section fiche — donc non chiffrable dans le devis.
   const ficheType = typeFicheFormulaire({
-    typeClient: fields.role_devis || classifyProduct(fields.nom) || produit?.role_devis_effectif || null,
-    nom: fields.nom, typeFicheServeur: ficheTypeServeur,
+    typeClient: fields.role_devis || classifyProduct(fields.nom) || produit?.role_devis_effectif || null, nom: fields.nom, typeFicheServeur: ficheTypeServeur,
     rolePompage: fields.role_pompage,
     estPompe: typeOfProduit({ categorie: categorieTapee }) === 'pompe' || isPompe(fields.nom),
     estVariateurPompage: estVariateurPompageLu,
