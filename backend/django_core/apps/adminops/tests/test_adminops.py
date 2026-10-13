@@ -232,6 +232,47 @@ class EnfSchemaValidationTests(TestCase):
             f'{base}exporter/', {'nom': 0}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_config_package_contenu_mal_forme_400(self):
+        """ENF11 — contenu structurellement faux = 400 (était 500)."""
+        base = '/api/django/adminops/config-packages/'
+        mauvais = [
+            {'roles_custom': 5},
+            {'roles_custom': [{'permissions': []}]},
+            {'custom_fields': [{'code': ['x']}]},
+            {'message_templates': ['a']},
+            {'_version': 'x'},
+            {'_nom': 'a' * 200},
+        ]
+        for action in ('previsualiser', 'appliquer'):
+            for contenu in mauvais:
+                resp = self.client_api.post(
+                    f'{base}{action}/', {'contenu': contenu}, format='json')
+                self.assertEqual(
+                    resp.status_code, 400, (action, contenu, resp.content))
+
+    def test_reglages_booleen_strict(self):
+        # api-fuzz (#988) : `sandbox_autorise: 0` n'est pas un booléen JSON.
+        resp = self.client_api.patch(
+            '/api/django/adminops/settings/',
+            {'sandbox_autorise': 0}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_tracker_usage_texte_strict_et_bornes_reglages(self):
+        """ENF11 — ``ecran`` numérique = 400 ; bornes des réglages = 400."""
+        resp = self.client_api.post(
+            '/api/django/adminops/tracker-usage/',
+            {'module': '0', 'ecran': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.client_api.patch(
+            '/api/django/adminops/settings/',
+            {'sandbox_duree_defaut_jours': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.client_api.patch(
+            '/api/django/adminops/settings/',
+            {'sandbox_duree_defaut_jours': 10,
+             'retention_evenements_usage_jours': 60}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_settings_date_modification_nulle_avant_enregistrement(self):
         resp = self.client_api.get('/api/django/adminops/settings/')
         self.assertEqual(resp.status_code, 200)

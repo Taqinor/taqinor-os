@@ -105,6 +105,22 @@ class Aud402RegisterViewTest(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
         self.assertFalse(User.objects.filter(username='collab402').exists())
 
+    def test_register_types_stricts_et_role_mal_forme_400(self):
+        """ENF11 — mot de passe non texte, ``role`` illisible : 400, pas 500."""
+        for corps in (
+                {'username': 'u1', 'password': 12345678},
+                {'username': 'u2', 'password': STRONG, 'role': 'abc'},
+                {'username': 'u3', 'password': STRONG, 'role': [1]}):
+            r = self.api.post('/api/django/register/', corps, format='json')
+            self.assertIn(r.status_code, (400, 201), (corps, r.content))
+        r = self.api.post(
+            '/api/django/register/', {'username': 'u4', 'password': 12345678},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(
+            '/api/django/register/', [1], format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_mot_de_passe_valide_accepte(self):
         r = self._post(STRONG)
         self.assertEqual(r.status_code, 201, r.data)

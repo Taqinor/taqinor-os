@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
 from .models import CustomUser, Company, UserSession
 
 
@@ -150,8 +151,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
 
-class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+class RegisterSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    password = ChaineStricte(write_only=True)
     role = serializers.PrimaryKeyRelatedField(
         required=False,
         allow_null=True,
@@ -228,8 +229,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
-class UserSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=False)
+class UserSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    password = ChaineStricte(write_only=True, required=False)
     company_nom = serializers.CharField(
         source='company.nom', read_only=True,
         allow_null=True,
