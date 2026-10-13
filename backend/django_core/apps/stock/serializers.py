@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
-from core.champs_stricts import ChampsStrictsMixin, DecimalStricte
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin, DecimalStricte
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
@@ -1426,7 +1426,7 @@ class PalierPrixFournisseurSerializer(serializers.ModelSerializer):
         fields = ['id', 'qte_min', 'prix']
 
 
-class PrixFournisseurSerializer(CompanyScopedRelationsMixin,
+class PrixFournisseurSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2387,7 +2387,7 @@ class KitProduitSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixi
     # liste/fiche l'affiche sans alourdir le comportement par défaut.
     disponibilite_potentielle = serializers.SerializerMethodField()
     # ASTK93 — même déclaration explicite que Produit.sku (optionnel, '' → None).
-    sku = serializers.CharField(
+    sku = ChaineStricte(  # ERR fuzz : un nombre JSON (``0``) était converti en silence
         required=False, allow_null=True, allow_blank=True, max_length=50)
 
     def validate_sku(self, value):

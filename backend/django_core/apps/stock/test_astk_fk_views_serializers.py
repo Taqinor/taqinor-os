@@ -323,6 +323,21 @@ class CorpsFuzzTests(TestCase):
         r = self.api.get(f'{url}?avec_disponibilite=null&avec_disponibilite=null')
         self.assertEqual(r.status_code, 400, r.content)
         self.assertEqual(self.api.get(f'{url}?avec_disponibilite=true').status_code, 200)
+        r = self.api.get(f'{url}exploser/?quantite=null&quantite=null')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.put(url, {'nom': 'K', 'sku': 0, 'composants': []}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        for facteur, attendu in (('0', 400), (0.00001, 400), (2, 201)):
+            with self.subTest(facteur=facteur):
+                r = self.api.post(f'{url}dupliquer/', {'facteur_echelle': facteur}, format='json')
+                self.assertEqual(r.status_code, attendu, r.content)
+
+    def test_fuzz_prix_fournisseur_texte_strict(self):
+        r = self.api.post(f'{BASE}/prix-fournisseurs/', {
+            'produit': self.pa.id, 'fournisseur': self.fa.id, 'prix_achat': '5',
+            'ref_produit_fournisseur': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('ref_produit_fournisseur', r.data)
 
     def test_fuzz_fournisseur_et_inventaire_stricts(self):
         url = f'{BASE}/fournisseurs/'
