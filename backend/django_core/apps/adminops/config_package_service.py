@@ -60,7 +60,7 @@ def valider_contenu_import(contenu):
             erreurs[categorie] = ['Liste attendue.']
             continue
         for i, item in enumerate(liste):
-            if not isinstance(item, dict)                     or not isinstance(item.get(cle), str):
+            if not isinstance(item, dict) or not isinstance(item.get(cle), str):
                 erreurs[categorie] = [
                     f'Élément {i} : objet avec « {cle} » (texte) attendu.']
                 break
