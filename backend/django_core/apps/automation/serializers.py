@@ -1,6 +1,7 @@
 import datetime
 
 from drf_spectacular.utils import extend_schema_field
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -222,7 +223,13 @@ class AutomationApprovalSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = fields
 
 
-class ApprovalRequestTypeSerializer(serializers.ModelSerializer):
+class ApprovalRequestTypeSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    # ERR fuzz : colonnes non nulles -> schéma explicite (liste / objet), sinon
+    # le schéma JSONField annonçait `null`, que l'API refuse à raison (400).
+    champs_requis = serializers.ListField(child=ChaineStricte(), required=False)
+    champs_optionnels = serializers.ListField(child=ChaineStricte(), required=False)
+    champs_config = serializers.DictField(required=False)
+
     class Meta:
         model = ApprovalRequestType
         # `company` posée côté serveur (TenantMixin) — jamais lue du corps.

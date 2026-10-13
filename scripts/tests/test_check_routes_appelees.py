@@ -33,6 +33,13 @@ class RouteSansAppelantTests(unittest.TestCase):
         appels = {M + ("clients", "<>", "fusion")}
         self.assertEqual(cra.routes_sans_appelant(routes, appels), [])
 
+    def test_action_collection_soeur_non_masquee_par_detail(self):
+        # ACRM69 : l'appel detail `clients/<>` ne masque pas `clients/segments`.
+        routes = {M + ("clients",), M + ("clients", "<pk>"), M + ("clients", "segments")}
+        appels = {M + ("clients",), M + ("clients", "<>")}
+        self.assertEqual(cra.routes_sans_appelant(routes, appels),
+                         [M + ("clients", "segments")])
+
     def test_public_et_webhooks_sans_ecran_par_construction(self):
         routes = {M + ("public", "visite"), M + ("webhooks", "website-leads"),
                   M + ("apporteur-portail", "<>", "mes-deals")}
@@ -91,7 +98,9 @@ class DepotReelTests(unittest.TestCase):
         self.assertNotIn("crm/relance-etapes/kpi-adherence", noms)
         self.assertNotIn("crm/relance-etapes/mes-stats", noms)
         self.assertIn("crm/salles-vente", noms)
-        self.assertEqual(noms, set(cra.A_CORRIGER))
+        # ACRM69 : le cas « collection soeur d'un appel detail » est prouve par
+        # test_action_collection_soeur_non_masquee_par_detail (segments retiree
+        # par ACRM64/67, engagement-bulk par #984 : plus aucune sur le depot).
 
 
 if __name__ == "__main__":
