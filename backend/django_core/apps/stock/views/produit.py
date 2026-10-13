@@ -87,6 +87,32 @@ CHAMPS_DUPLICATION_EXCLUS = frozenset({
 })
 
 
+def _params_bulk(donnees):
+    """ERR fuzz (produits/bulk) — paramètres d'action validés AVANT le service :
+    un objet/liste (``categorie_id: {}``), une marque non texte ou trop longue,
+    une garantie hors entier PostgreSQL levaient TypeError/AttributeError/
+    DataError (500) ; chacun répond 400 nommant le champ. Les chaînes que
+    l'écran envoie (``"12"``, ``""``) restent acceptées."""
+    from rest_framework.exceptions import ValidationError
+    params = {cle: donnees.get(cle) for cle in (
+        'mode', 'valeur', 'garantie_mois', 'garantie_production_mois',
+        'categorie_id', 'marque') if cle in donnees}
+    for cle, valeur in params.items():
+        if isinstance(valeur, (dict, list, bool)):
+            raise ValidationError({cle: ['Valeur simple attendue.']})
+    for cle in ('mode', 'marque'):
+        if params.get(cle) is not None and not isinstance(params[cle], str):
+            raise ValidationError({cle: ['Texte attendu.']})
+    if len(params.get('marque') or '') > 100:
+        raise ValidationError({'marque': ['100 caractères au plus.']})
+    for cle in ('garantie_mois', 'garantie_production_mois'):
+        if cle in params:
+            params[cle] = entier_ou_400(params[cle], cle, mini=0, maxi=2147483647)
+    if params.get('categorie_id') not in (None, '', 'null'):
+        params['categorie_id'] = entier_ou_400(params['categorie_id'], 'categorie_id')
+    return params
+
+
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
 from .negoce import AtpProduitMixin  # noqa: E402
 
@@ -524,7 +550,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         try:
             result = apply_product_bulk(
                 company=request.user.company, user=request.user,
-                ids=ids, op=op, params=donnees)
+                ids=ids, op=op, params=_params_bulk(donnees))
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

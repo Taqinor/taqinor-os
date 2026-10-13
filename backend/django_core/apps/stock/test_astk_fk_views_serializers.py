@@ -290,6 +290,10 @@ class CorpsFuzzTests(TestCase):
             ('produits/bulk/', {'action': 'set_price', 'ids': [{}], 'mode': '0',
                                 'valeur': '0'}),
             ('produits/bulk/', {'action': {}, 'ids': [0]}),
+            ('produits/bulk/', {'action': 'set_category', 'ids': [self.pa.id], 'categorie_id': {}}),
+            ('produits/bulk/', {'action': 'set_brand', 'ids': [self.pa.id], 'marque': 5}),
+            ('produits/bulk/', {'action': 'set_warranty', 'ids': [self.pa.id],
+                                'garantie_mois': '99999999999'}),
             ('produits/decoupes/', {'produit_source': self.pa.id, 'produit_cible': {},
                                     'quantite_consommee': 1, 'quantite_produite': 1}),
         )
@@ -332,6 +336,11 @@ class CorpsFuzzTests(TestCase):
         r = self.api.post(url, {'nom': 'F escompte', 'escompte_pct': 0}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(f'{BASE}/inventaire-sessions/', {'motif': 0, 'lignes': []}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(f'{BASE}/inventaire-sessions/', {'motif': 'm', 'lignes': []}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self.api.patch(f"{BASE}/inventaire-sessions/{r.data['id']}/",
+                           {'lignes': [{'quantite_comptee': 1}]}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
     def test_fuzz_bornes_publiees_et_doublon_409(self):
