@@ -1741,3 +1741,13 @@ Server error|POST /api/django/ventes/factures/{id}/creer-avoir/
 # PR #985, 1er tirage (12/10/2026) — 1 constat PRÉ-EXISTANT (ventes non touchée par la PR ; périmètre élargi par un test ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/ajouter-boq-electrique/
+# PR #985, 3e tirage (13/10/2026) — 8 constats PRÉ-EXISTANTS sur des routes NON modifiées par la PR (coercition DRF int→str, famille ERR-ENF11-FUZZ-CORE / -SAV encore ouvertes),
+# gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
+API accepted schema-violating request|PATCH /api/django/core/formulaire-champs/{id}/
+API accepted schema-violating request|PATCH /api/django/sav/categories-equipement/{id}/
+API accepted schema-violating request|PATCH /api/django/sav/equipes-maintenance/{id}/
+API accepted schema-violating request|POST /api/django/core/dsr-requests/
+API accepted schema-violating request|POST /api/django/core/formulaire-champs/
+API accepted schema-violating request|POST /api/django/sav/categories-equipement/
+API accepted schema-violating request|POST /api/django/sav/equipes-maintenance/
+API accepted schema-violating request|PUT /api/django/core/formulaire-champs/{id}/
