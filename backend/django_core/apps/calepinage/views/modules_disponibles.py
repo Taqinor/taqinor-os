@@ -25,16 +25,20 @@ route en silence.
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import forme_du_contrat
 from ..services.modules_stock import modules_disponibles_du_calepinage
 from .calepinages import CalepinageViewSet
 
 __all__ = ['modules_disponibles']
 
 
+@extend_schema(responses=forme_du_contrat(
+    'CalepinageModulesDisponibles', 'calepinage_modules_disponibles.json'))
 @action(detail=True, methods=['get'], url_path='modules-disponibles',
         permission_classes=[PeutVoirCalepinage])
 def modules_disponibles(self, request, pk=None):

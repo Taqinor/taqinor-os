@@ -265,11 +265,131 @@ class TrancheParCleTests(TestCase):
         self.assertEqual(facture.montant_ttc, Decimal('12000.00'))
         self.assertEqual(facture.statut, 'emise')
 
-    def test_put_formulaire_remise_modifiee_sur_facture_emise_400(self):
-        """ATOT35 — une VALEUR d'argent qui change reste refusée (avoir)."""
+    def test_put_formulaire_remise_modifiee_sur_facture_emise_409(self):
+        """ATOT35 — une VALEUR d'argent qui change reste refusée (avoir) ;
+        refus d'ÉTAT (facture émise) = 409 ConflitEtat (ENF11, M1 tour 3)."""
         facture = self._facture_emise()
         r = self._put_formulaire(facture, remise_globale='5')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Montant figé', str(r.data))
         facture.refresh_from_db()
         self.assertEqual(facture.remise_globale, Decimal('0'))
+
+    def _tranche_brute(self, devis, cle, statut='emise'):
+        from apps.ventes.models import Facture
+        return Facture.objects.create(
+            company=self.company, reference=f'FAC-VNT15-{_nxt()}',
+            client=self.client_obj, devis=devis, statut=statut,
+            cle_tranche=cle, taux_tva=Decimal('20.00'),
+            montant_ht=Decimal('100.00'), montant_tva=Decimal('20.00'),
+            montant_ttc=Decimal('120.00'))
+
+    def test_vnt15_une_tranche_vivante_par_cle(self):
+        """VNT15 — ``uq_facture_tranche_vivante`` : deux tranches VIVANTES de
+        même clé sur un devis → IntegrityError (double clic = deux acomptes,
+        prod 12/10) ; annulée + vivante, ou clé vide ×2 → admis."""
+        from django.db import IntegrityError, transaction
+        devis = self._devis()
+        self._tranche_brute(devis, 'acompte', statut='brouillon')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._tranche_brute(devis, 'acompte')
+        autre = self._devis()
+        self._tranche_brute(autre, 'acompte', statut='annulee')
+        self._tranche_brute(autre, 'acompte')
+        self._tranche_brute(autre, '')
+        self._tranche_brute(autre, '')
+
+    def test_vnt15_instantanes_objet_vente_garanties(self):
+        """VNT15 — ``objet_vente`` / ``garanties`` : JSON NULL par défaut
+        (brouillon = blocs vivants), relus tels qu'écrits."""
+        from apps.ventes.models import Facture
+        facture = self._tranche_brute(self._devis(), 'acompte')
+        self.assertIsNone(facture.objet_vente)
+        self.assertIsNone(facture.garanties)
+        Facture.objects.filter(pk=facture.pk).update(
+            objet_vente={'lignes': []}, garanties=[{'libelle': 'Panneaux'}])
+        facture.refresh_from_db()
+        self.assertEqual(facture.objet_vente, {'lignes': []})
+        self.assertEqual(facture.garanties, [{'libelle': 'Panneaux'}])
+
+    def test_vnt17_tranches_a_venir_388_apres_acompte_15000(self):
+        """VNT17 — ``next_tranche`` = 1er élément de ``tranches_a_venir``
+        (adaptateur de ``plan_facturation``). Panier réel du 388, échéancier
+        société 30/60/10, acompte 15 000 émis ⇒ Livraison du matériel
+        29 400,00 puis Solde 4 600,00 (D-VNT-6)."""
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            VENT_ACOMPTE_15000, creer_devis_388, facture_tranche)
+        from apps.ventes.utils.echeancier import next_tranche, tranches_a_venir
+        from apps.ventes.utils.options import option_totaux
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT17-{_nxt()}')
+        tot = option_totaux(devis)
+        self.assertEqual(
+            [(Decimal(str(b['base_ht'])), Decimal(str(b['montant'])))
+             for b in tot['tva_par_taux']],
+            [(Decimal('8640.00'), Decimal('864.00')),
+             (Decimal('32913.33'), Decimal('6582.67'))])
+        facture_tranche(devis, f'FAC-VNT17-{_nxt()}', 'acompte', '15000.00',
+                        '12720.41', '2279.59', ventilation=VENT_ACOMPTE_15000)
+        a_venir = tranches_a_venir(devis)
+        self.assertEqual(
+            [(t['libelle'], t['montant_ttc'], t['ht'], t['tva'])
+             for t in a_venir],
+            [('Livraison du matériel', Decimal('29400.00'),
+              Decimal('24932.00'), Decimal('4468.00')),
+             ('Solde', Decimal('4600.00'), Decimal('3900.92'),
+              Decimal('699.08'))])
+        self.assertEqual(a_venir[0]['ventilation_tva'], [
+            {'taux': '10.00', 'base_ht': '5184.00', 'montant': '518.40'},
+            {'taux': '20.00', 'base_ht': '19748.00', 'montant': '3949.60'}])
+        self.assertEqual(a_venir[1]['ventilation_tva'], [
+            {'taux': '10.00', 'base_ht': '811.10', 'montant': '81.11'},
+            {'taux': '20.00', 'base_ht': '3089.82', 'montant': '617.97'}])
+        nt = next_tranche(devis)
+        self.assertEqual((nt['cle'], nt['ttc'], nt['ht'], nt['tva']),
+                         ('materiel', Decimal('29400.00'),
+                          Decimal('24932.00'), Decimal('4468.00')))
+        self.assertFalse(nt['is_last'])
+
+    def test_vnt18_libelle_de_l_echeancier_et_part_reelle(self):
+        """VNT18 — acompte libre 15 000 / 60 % / reste ⇒ « Acompte »,
+        « Livraison du matériel 60 % », « Solde » (jamais « devis DEV-… ») ;
+        ``pourcentage`` = part réelle (solde 9,39)."""
+        from apps.ventes.models import Facture
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            ECHEANCIER_LIBRE, creer_devis_388)
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT18-{_nxt()}', ECHEANCIER_LIBRE)
+        factures = []
+        for _ in range(3):
+            r = self._generer(devis)
+            self.assertEqual(r.status_code, 201, r.data)
+            factures.append(Facture.objects.get(pk=r.data['id']))
+        self.assertEqual([f.libelle for f in factures],
+                         ['Acompte', 'Livraison du matériel 60 %', 'Solde'])
+        self.assertEqual([f.montant_ttc for f in factures],
+                         [Decimal('15000.00'), Decimal('29400.00'),
+                          Decimal('4600.00')])
+        self.assertEqual(factures[-1].pourcentage, Decimal('9.39'))
+        self.assertFalse(any(devis.reference in f.libelle for f in factures))
+
+    def test_vnt18_solde_1600_porte_sa_part_reelle_jamais_10(self):
+        """30/60/10 sur 49 000 ; acompte 14 700 et matériel 32 700 (base
+        54 500 de la V1) émis ⇒ solde 1 600, part 3,27 %, libellé « Solde »."""
+        from apps.ventes.models import Facture
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388, facture_tranche)
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-VNT18B-{_nxt()}')
+        facture_tranche(devis, f'FAC-VNT18-{_nxt()}', 'acompte', '14700.00',
+                        '12466.00', '2234.00')
+        facture_tranche(devis, f'FAC-VNT18-{_nxt()}', 'materiel', '32700.00',
+                        '27731.00', '4969.00', type_facture='intermediaire')
+        r = self._generer(devis)
+        self.assertEqual(r.status_code, 201, r.data)
+        solde = Facture.objects.get(pk=r.data['id'])
+        self.assertEqual(solde.montant_ttc, Decimal('1600.00'))
+        self.assertEqual(solde.pourcentage, Decimal('3.27'))
+        self.assertEqual(solde.libelle, 'Solde')
+        self.assertTrue(solde.libelle.startswith('Solde'))

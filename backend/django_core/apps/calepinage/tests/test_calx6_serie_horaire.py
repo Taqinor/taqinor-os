@@ -167,7 +167,7 @@ class RefusQuiNommeLeChampTest(SimpleTestCase):
     def test_serie_absente_le_refus_nomme_points(self):
         reponse = _appeler(_Calepinage(resultat={}), quoi='horaire')
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('points', reponse.data)
         self.assertIn('simulation', reponse.data['points'][0].lower())
         self.assertEqual(list(reponse.data['exports_disponibles']),
@@ -179,20 +179,20 @@ class RefusQuiNommeLeChampTest(SimpleTestCase):
         reponse = _appeler(_Calepinage(resultat={'serie_horaire': vide}),
                            quoi='horaire')
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('points', reponse.data)
 
     def test_mensuel_absent_le_refus_nomme_mensuel(self):
         reponse = _appeler(_Calepinage(resultat={}), quoi='mensuel')
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('mensuel', reponse.data)
 
     def test_ombrage_absent_le_refus_nomme_la_matrice(self):
         reponse = _appeler(_Calepinage(resultat=_resultat_simule()),
                            quoi='ombrage')
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('shading12x24', reponse.data)
 
     def test_export_inconnu_refuse_en_listant_les_exports(self):
@@ -208,7 +208,8 @@ class RefusQuiNommeLeChampTest(SimpleTestCase):
         """Le défaut du serveur reste ``horaire`` — le panneau s'y fie."""
         reponse = _appeler(_Calepinage(resultat={}))
 
-        self.assertEqual(reponse.status_code, 400)
+        # Série absente = ÉTAT du calepinage (409), le champ ``points`` nommé.
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('points', reponse.data)
 
 

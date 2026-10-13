@@ -473,7 +473,7 @@ def semer_objets_references(company, user):
 # (motif du gabarit de chemin, champs du corps/de la requête, modèle,
 #  filtre optionnel ``f(qs, company) -> qs``, longueur max d'une liste).
 REGLES_PAR_CHEMIN = (
-    (r'^/api/django/stock/', ('lot', 'lot_id'), 'stock.LotEntrepot',
+    (r'^/api/django/(stock|achats)/', ('lot', 'lot_id'), 'stock.LotEntrepot',
      None, None),
     (r'^/api/django/records/', ('activity_type', 'type_suivant'),
      'records.ActivityType', None, None),

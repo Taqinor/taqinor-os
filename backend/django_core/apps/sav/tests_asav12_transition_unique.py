@@ -160,5 +160,5 @@ class TransitionUniqueTests(TestCase):
             type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.EN_COURS,
             created_by=self.admin)
         r = self.api.post(f'/api/django/sav/tickets/{t.pk}/reouvrir/')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('statut', r.data)

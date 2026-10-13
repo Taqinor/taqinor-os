@@ -22,14 +22,15 @@ from ..serializers_facturation import (
 )
 from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
 from ..serializers import EmailLogSerializer
-from ..utils.corps import valider_corps
-from rest_framework.permissions import BasePermission
+from ..utils.corps import valider_corps, valider_corps_lignes
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    IsAdminOrResponsableTier,
     HasPermissionOrLegacy,
 )
+from core.conflit_etat import ConflitEtat
 from core.permissions import declared_action_permissions
 
 # ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
@@ -122,19 +123,12 @@ def _montants_ligne_corrective(i, ligne):
     return (qte, pu, remise, taux_tva), None
 
 
-class IsSuperuserOnly(BasePermission):
-    """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
-
-    ``IsAdminRole`` était trop large pour un geste destructeur : il passe pour
-    TOUT rôle portant la permission ``roles_gerer``
-    (``authentication/models.py`` ``is_admin_role``) — un « Directeur » ou un
-    « Admin adjoint » entrait donc, alors que la suppression d'une facture
-    emporte ses encaissements. Le texte « admin uniquement » était vrai au sens
-    du décorateur, faux au sens de qui peut réellement le faire."""
-
-    def has_permission(self, request, view):
-        user = request.user
-        return bool(user and user.is_authenticated and user.is_superuser)
+#: VNT13 (D-VNT-1, arbitrage 5) — annuler une facture / supprimer un
+#: brouillon : palier responsable/admin ET un code d'écriture ``ventes_*``.
+#: Jamais un Commercial (codes sans palier), ni un Technicien responsable ou
+#: un Admin RH (palier sans code ventes). Remplace IsSuperuserOnly (AUD103) :
+#: la garde destructive est désormais ``perform_destroy`` (brouillon seul).
+PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -142,7 +136,10 @@ class IsSuperuserOnly(BasePermission):
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]))
+    parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]),
+    # VNT14 — seul un « BROUILLON-<id> » se supprime : 409 sinon (ENF11).
+    destroy=extend_schema(
+        responses={204: None, 409: D.ErreurSuppressionFacture}))
 class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
@@ -229,18 +226,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'liberer_retenue',
         ]:
             return [IsResponsableOrAdmin()]
-        # AUD103 — SUPPRIMER une facture n'est PAS « annuler » : c'est le seul
-        # geste qui emporte les encaissements en cascade. Réservé au
-        # superutilisateur, jamais au palier « admin » élargi (tout rôle
-        # portant ``roles_gerer``).
+        # VNT13 — supprimer un brouillon : même garde qu'annuler.
         elif self.action == 'destroy':
-            return [IsSuperuserOnly()]
-        # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
-        # AUD124 — `marquer_payee` rejoint ce palier : faire disparaître une
-        # créance de la balance âgée sans encaissement est un geste comptable,
-        # pas de l'édition courante. (`destroy` reste sur IsSuperuserOnly —
-        # AUD103, plus strict.)
-        elif self.action in ['annuler', 'marquer_payee']:
+            return [p() for p in PEUT_ANNULER]
+        # AUD124 — `marquer_payee` : geste comptable, palier admin.
+        elif self.action == 'marquer_payee':
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
@@ -316,37 +306,37 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     def perform_destroy(self, instance):
         """AUD103 (FICHE-DEL) — la suppression d'une facture cesse d'emporter
-        les encaissements en cascade.
+        les encaissements en cascade (DRF appelait ``instance.delete()`` nu :
+        une facture émise/payée partait avec ses ``Paiement``, l'écriture au
+        grand livre survivait en orphelin).
 
-        Le viewset ne surchargeait NI ``destroy`` NI ``perform_destroy`` : DRF
-        appelait donc ``instance.delete()`` nu. Une facture ÉMISE, EN_RETARD ou
-        PAYÉE se supprimait aussi bien qu'un brouillon — alors que ``annuler``
-        REFUSE explicitement une facture payée : la suppression contournait la
-        garde métier de l'annulation. Aucun verrou de période non plus (la
-        garde YLEDG3 était câblée en sept points, jamais sur ``destroy``). Et
-        la cascade emportait ``Paiement`` : des MAD réellement encaissés
-        partaient en silence, pendant que l'écriture au grand livre — qui
-        n'est PAS liée par FK (compta la retrouve par ``source_type``/
-        ``source_id``) — SURVIVAIT en orphelin, faisant diverger le GL du
-        registre des ventes définitivement.
-
-        Trois gardes, plus une traduction :
+        Gardes, plus une traduction :
           1. seul un BROUILLON est supprimable (tout le reste s'ANNULE) ;
+          1 bis. VNT14 (D-VNT-1) — seul un « BROUILLON-<id> » : une référence
+             LÉGALE remise en brouillon s'annule (409 ``reference_legale``),
+             sinon « plus-haut-utilisé + 1 » réutiliserait le numéro ;
           2. aucun paiement, même rejeté (piste d'audit) ;
           3. verrou de période comptable ;
           4. ``ProtectedError`` (avoir, note de débit, intention de paiement
-             portail) devient un 400 français, plus une 500 non traduite.
+             portail) devient un refus français, plus une 500 non traduite.
+        Chaque refus dépend de l'ÉTAT de la facture, pas du corps : 409
+        ``ConflitEtat`` (ENF11, ``core/conflit_etat.py``), jamais un 400.
         """
         from django.db.models import ProtectedError
+        from core.numbering import est_reference_provisoire
 
         if instance.statut != Facture.Statut.BROUILLON:
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 'Seule une facture brouillon peut être supprimée. Une facture '
                 'émise, en retard ou payée s\'ANNULE (elle porte un numéro '
                 'légal et, le cas échéant, des encaissements).'
             )})
+        if not est_reference_provisoire(instance.reference):
+            raise ConflitEtat({'code': 'reference_legale', 'detail': (
+                f'Cette facture porte le numéro {instance.reference} : '
+                'annulez-la (un numéro légal ne se supprime jamais).')})
         if instance.paiements.exists():
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 'Cette facture porte au moins un paiement : la supprimer '
                 'effacerait des encaissements réels. Annulez-la ou rejetez '
                 'd\'abord ses paiements.'
@@ -354,13 +344,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             instance.delete()
         except ProtectedError:
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 'Suppression impossible : cette facture est référencée par un '
                 'avoir, une note de débit ou un paiement du portail client. '
                 'Annulez-la plutôt que de la supprimer.'
             )})
 
     def perform_update(self, serializer):
+        # Refus d'ÉTAT (facture non brouillon) : 409 ConflitEtat (ENF11).
         # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
         # (défaut) → comportement actuel byte-identique. Flag ON et facture
         # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
@@ -380,7 +371,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         argent_touche = argent_modifie(
             facture, serializer.validated_data, FACTURE_CHAMPS_ARGENT)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),
             })
@@ -392,7 +383,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     set(serializer.validated_data.keys())
                     & FACTURE_CHAMPS_FINANCIERS)
                 if champs_touches:
-                    raise ValidationError({
+                    raise ConflitEtat({
                         'detail': (
                             "Facture immuable : les champs financiers d'une "
                             "facture émise ne peuvent plus être modifiés. "
@@ -435,13 +426,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Seule une facture brouillon peut être émise.'},
                 status=status.HTTP_409_CONFLICT,
             )
-        if not facture.lignes.exists():
-            return Response(
-                {'detail': (
-                    'La facture doit contenir au moins une ligne.'
-                )},
-                status=status.HTTP_409_CONFLICT,
-            )
         # AUD101 — l'émission (workflow de revue XFAC18, verrou de période,
         # blocage crédit XFAC28, dérivation d'échéance XFAC23, pose du statut
         # et émission de `facture_emise`) vit DANS le service unique. L'écran
@@ -449,11 +433,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..domain.facturation_ops import EmissionRefusee, emettre_facture
         from ..domain.recouvrement import CreditHoldError
         try:
-            anomalies = emettre_facture(
-                facture, user=request.user, source='ecran_facture')
+            anomalies = emettre_facture(  # VNT32 : lignes OU libellé
+                facture, user=request.user, source='ecran_facture',
+                exiger_lignes=True)
         except EmissionRefusee as exc:
-            return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+            vide = not (facture.lignes.exists() or facture.libelle)
+            return Response({'detail': exc.motif}, status=(
+                status.HTTP_409_CONFLICT if vide
+                else status.HTTP_400_BAD_REQUEST))
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_403_FORBIDDEN)
@@ -582,15 +569,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if motif_refus:
             return Response({'detail': motif_refus},
                             status=status.HTTP_409_CONFLICT)
-        motif = ((request.data or {}).get('motif') or '').strip()
-        if not motif:
-            return Response(
-                {'detail': (
-                    'Motif obligatoire : marquer une facture payée sans '
-                    'encaissement doit être justifié et tracé.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        motif = valider_corps(request, D.MarquerPayeeRequest)['motif'].strip()
         # Résiduel réel vs tolérance société (XFAC13, défaut 0 = aucun
         # résiduel toléré). Au-dessus, ce n'est pas un « marquer payée » :
         # c'est un abandon de créance, qui a son propre geste et son écriture.
@@ -627,310 +606,28 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         activity.log_facture_marquee_payee(facture, request.user, motif)
         return Response(FactureSerializer(facture).data)
 
-    @extend_schema(request=D.FactureAnnulerRequest, responses=FactureSerializer)
+    @extend_schema(request=D.FactureAnnulerRequest, responses=D.FactureAnnulee)
     @action(detail=True, methods=['post'], url_path='annuler',
-            permission_classes=[IsAdminRole])
+            permission_classes=PEUT_ANNULER)
     def annuler(self, request, pk=None):
-        """Annule une facture — admin only.
-
-        FG50 — sort l'acompte de la facture morte. Le corps peut porter une
-        directive ``acompte`` traitant les paiements (acompte) restés sur la
-        facture annulée :
-
-          - ``{"acompte": {"action": "transferer", "facture_cible": <id>}}``
-            re-pointe TOUS les paiements de la facture annulée vers une AUTRE
-            facture (active) du MÊME devis (mêmes société + devis) ; les soldes
-            des deux factures se redérivent automatiquement (``montant_paye`` /
-            ``montant_du`` sont calculés depuis les lignes Paiement).
-          - ``{"acompte": {"action": "rembourser"}}`` écrit un Paiement NÉGATIF
-            de contre-passation sur la facture annulée : son ``montant_paye``
-            net retombe à 0 et l'écriture négative matérialise l'obligation de
-            remboursement (l'acompte n'est plus « coincé » sur une facture
-            morte).
-
-        AFAC12 — sans directive, une facture qui porte de l'argent est
-        REFUSÉE (400 ``directive_acompte_requise``) ; une facture sous avoir
-        actif aussi (400 ``avoir_actif``). Sans argent rattaché : on bascule
-        seulement le statut. Les avances ventilées suivent le transfert.
+        """Annule une facture — délégué mince (VNT10) : le corps vit dans
+        ``domain/annulation_facture.annuler_facture`` (FG50, AFAC12, AFAC23,
+        YEVNT6) ; un refus y lève ``AnnulationRefusee`` → 400, corps inchangé.
+        ENF11 : corps validé par son sérialiseur déclaré (400, jamais 500) ;
+        réponse = facture + ``avoir`` (contrat ``facture_annulation.json``).
         """
-        from decimal import Decimal
+        from ..domain.annulation_facture import (
+            AnnulationRefusee, annuler_facture, avoir_annulation_corps,
+        )
         facture = self.get_object()
-        if facture.statut == Facture.Statut.PAYEE:
-            return Response(
-                {'detail': 'Une facture payée ne peut pas être annulée.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if facture.statut == Facture.Statut.ANNULEE:
-            return Response(
-                {'detail': 'Cette facture est déjà annulée.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # AFAC32 (D-AFAC-C4) — jamais une note de débit ÉMISE sur une facture
-        # annulée : la ND active s'annule d'abord (par avoir de ND).
-        from ..domain.facturation_ops import notes_debit_actives
-        nd_actives = notes_debit_actives(facture)
-        if nd_actives:
-            return Response(
-                {'detail': (
-                    'Cette facture porte une note de débit active ('
-                    + ', '.join(nd.reference for nd in nd_actives)
-                    + ') : annulez-la d\'abord (avoir de note de débit).'
-                ),
-                 'code': 'note_debit_active'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # AFAC12 (C-AFAC-002) — jamais une facture annulée sous un avoir
-        # ACTIF : l'avoir crédite une facture vivante ; il s'annule d'abord.
-        # L'avoir de note de débit (AFAC32 : il NEUTRALISE une ND, `note_debit_id`
-        # renseigné) n'est pas un crédit client : il ne bloque pas l'annulation.
-        avoirs_actifs = [a for a in facture.avoirs.all()
-                         if a.statut != 'annulee'
-                         and getattr(a, 'note_debit_id', None) is None]
-        if avoirs_actifs:
-            return Response(
-                {'detail': (
-                    'Cette facture porte un avoir actif ('
-                    + ', '.join(a.reference for a in avoirs_actifs)
-                    + ") : annulez-le d'abord."
-                ),
-                 'code': 'avoir_actif'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        directive = request.data.get('acompte') or {}
-        if not isinstance(directive, dict):
-            return Response(
-                {'detail': 'Directive « acompte » invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        acompte_action = (directive.get('action') or '').strip()
-
-        # Paiements « bloqués » sur la facture morte (l'acompte versé). On ne
-        # déplace/contre-passe que le NET : si la facture porte déjà des
-        # écritures négatives (remboursement partiel antérieur), elles entrent
-        # dans le total.
-        from .. import activity
-        with transaction.atomic():
-            locked = Facture.objects.select_for_update().get(pk=facture.pk)
-            if locked.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
-                return Response(
-                    {'detail': 'Cette facture ne peut plus être annulée.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            # ATOT7 (D-ATOT-4) — LA définition unique du payé : un paiement
-            # REJETÉ (chèque impayé) n'est ni remboursé ni transféré, et le
-            # net est `Facture.montant_paye` — plus aucune somme locale de
-            # `p.montant` (elle remboursait 45 000 jamais encaissés).
-            paiements = [p for p in locked.paiements.all()
-                         if p.statut not in Paiement.STATUTS_NON_COMPTES]
-            net_acompte = Decimal(str(locked.montant_paye))
-
-            if acompte_action == 'transferer':
-                if net_acompte <= 0:
-                    return Response(
-                        {'detail': (
-                            'Aucun acompte à transférer sur cette facture.'
-                        )},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                cible_id = directive.get('facture_cible')
-                if not cible_id:
-                    return Response(
-                        {'detail': 'La facture cible est requise.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                try:
-                    cible_id = int(cible_id)
-                except (TypeError, ValueError):
-                    return Response(
-                        {'detail': 'Facture cible invalide.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if cible_id == locked.pk:
-                    return Response(
-                        {'detail': (
-                            "La facture cible doit être différente de celle "
-                            "annulée."
-                        )},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                # Le devis source doit exister pour relier les deux factures.
-                if locked.devis_id is None:
-                    return Response(
-                        {'detail': (
-                            "Transfert impossible : la facture n'est pas liée "
-                            "à un devis."
-                        )},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                cible = Facture.objects.select_for_update().filter(
-                    pk=cible_id).first()
-                # Validation multi-tenant + même devis + cible vivante.
-                if cible is None or cible.company_id != locked.company_id:
-                    return Response(
-                        {'detail': 'Facture cible inconnue.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if cible.devis_id != locked.devis_id:
-                    return Response(
-                        {'detail': (
-                            "La facture cible doit appartenir au même devis."
-                        )},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if cible.statut == Facture.Statut.ANNULEE:
-                    return Response(
-                        {'detail': (
-                            "Impossible de transférer vers une facture "
-                            "annulée."
-                        )},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                # AFAC9 — la facture CIBLE passe LA porte unique
-                # d'encaissement (brouillon, soldée, acompte CAD122).
-                from ..domain.encaissements import motif_non_encaissable
-                motif_cible = motif_non_encaissable(cible)
-                if motif_cible and cible.statut != Facture.Statut.PAYEE:
-                    return Response(
-                        {'detail': f'Facture cible : {motif_cible}'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                # AUD125 — CE QUE LA CIBLE PEUT ABSORBER. Le transfert
-                # re-pointait les paiements sans jamais lire `cible.montant_du`
-                # ni le comparer au net transféré : un acompte de 30 000
-                # déplacé sur une facture de solde de 20 000 créait un
-                # trop-perçu de 10 000 INVISIBLE (aucune des deux factures ne
-                # le signale). La garde est la même que celle du chemin
-                # unitaire (ERR72) : tolérance d'un centime, lecture sous le
-                # verrou déjà pris sur la cible.
-                from core.money import quantize_mad
-                reste_cible = cible.montant_du
-                if quantize_mad(net_acompte) - reste_cible > Decimal('0.01'):
-                    return Response(
-                        {'detail': (
-                            f"L'acompte transféré "
-                            f"({quantize_mad(net_acompte):.2f} MAD) dépasse le "
-                            f"reste à payer de la facture cible "
-                            f"({reste_cible:.2f} MAD)."
-                        )},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                # Re-pointe les paiements vers la cible : les soldes des deux
-                # factures se redérivent (propriétés calculées).
-                nb = len(paiements)
-                from ..domain.encaissements import _rattacher_paiement
-                for p in paiements:
-                    # AFAC17 — LE geste de déplacement partagé avec
-                    # ``reaffecter_paiement``.
-                    _rattacher_paiement(p, cible)
-                # AFAC12 — les avances VENTILÉES suivent aussi : le net
-                # transféré (``montant_paye``) les comptait déjà, mais elles
-                # restaient sur la facture morte (la cible recevait moins).
-                for a in locked.affectations_paiement.select_related(
-                        'paiement'):
-                    if a.paiement.statut in Paiement.STATUTS_NON_COMPTES:
-                        continue
-                    a.facture = cible
-                    a.save(update_fields=['facture'])
-                    nb += 1
-                locked.statut = Facture.Statut.ANNULEE
-                locked.save(update_fields=['statut'])
-                activity.log_facture_acompte_transfere_sortie(
-                    locked, request.user, cible, net_acompte, nb)
-                activity.log_facture_acompte_transfere_entree(
-                    cible, request.user, locked, net_acompte, nb)
-                # AUD125 (moitié restante) — quand le transfert SOLDE la
-                # cible, elle doit basculer PAYÉE et émettre `facture_payee`,
-                # faute de quoi elle reste EMISE donc relancée bien
-                # qu'entièrement couverte. Cette bascule DOIT passer par le
-                # service unique `marquer_facture_soldee` d'AUD102 : le
-                # dépôt compte déjà neuf transitions concurrentes, en écrire
-                # une dixième ici est exactement ce qu'AUD125 interdit.
-                # AUD102 est sur cette base : bascule par LE service unique,
-                # sur la cible rafraîchie — jamais une 10e transition manuelle.
-                cible.refresh_from_db()
-                if cible.montant_du <= 0 and cible.statut != Facture.Statut.PAYEE:
-                    from ..domain.encaissements import marquer_facture_soldee
-                    marquer_facture_soldee(
-                        cible, montant=net_acompte, user=request.user,
-                        source='transfert_acompte')
-                facture = locked
-
-            elif acompte_action == 'rembourser':
-                if net_acompte <= 0:
-                    return Response(
-                        {'detail': (
-                            'Aucun acompte à rembourser sur cette facture.'
-                        )},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                # Contre-passation : un Paiement négatif soldant l'acompte. Le
-                # net retombe à 0 → l'acompte n'est plus « coincé » ; la ligne
-                # négative porte l'obligation de remboursement.
-                from django.utils import timezone as _tz
-                Paiement.objects.create(
-                    facture=locked, company=locked.company,
-                    montant=-net_acompte, date_paiement=_tz.now().date(),
-                    mode=Paiement.Mode.AUTRE,
-                    note='Remboursement acompte (annulation facture)',
-                    created_by=request.user,
-                )
-                locked.statut = Facture.Statut.ANNULEE
-                locked.save(update_fields=['statut'])
-                activity.log_facture_acompte_rembourse(
-                    locked, request.user, net_acompte)
-                facture = locked
-
-            elif acompte_action:
-                return Response(
-                    {'detail': (
-                        "Action acompte invalide. Valeurs : « transferer », "
-                        "« rembourser »."
-                    )},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            else:
-                # AFAC12 (C-AFAC-002, D-AFAC-C5 a) — une facture qui porte de
-                # l'argent (paiements valides, avances ventilées, escomptes)
-                # ne s'annule JAMAIS sans dire où il va : l'argent restait
-                # sur une facture morte et la porte suivante re-facturait
-                # 100 % (contrat ``facture_annulation.json``).
-                if net_acompte > 0:
-                    from ..domain.encaissements import (
-                        argent_rattache, decrire_argent_rattache,
-                    )
-                    argent = argent_rattache(locked)
-                    return Response(
-                        {'code': 'directive_acompte_requise',
-                         'detail': (
-                             "Cette facture porte de l'argent ("
-                             + decrire_argent_rattache(argent)
-                             + ') : choisissez de le transférer vers une '
-                             'autre facture du devis ou de le rembourser '
-                             "avant d'annuler."),
-                         'argent_rattache': {
-                             cle: f'{Decimal(str(v or 0)):.2f}'
-                             for cle, v in argent.items()}},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                # Sans argent rattaché : simple bascule de statut.
-                locked.statut = Facture.Statut.ANNULEE
-                locked.save(update_fields=['statut'])
-                facture = locked
-
-            # AFAC23 (C-AFAC-018) — les trois branches convergent vers
-            # ANNULEE : les liens « Payer en ligne » ouverts sont fermés dans
-            # la même transaction (la page client répond « annulé »).
-            from ..domain.encaissements import fermer_liens_paiement
-            from ..models import PaymentLink
-            fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
-
-        # YEVNT6 — événement documentaire (best-effort), une fois pour les
-        # trois branches ci-dessus (toutes convergent vers ANNULEE).
-        from core.events import facture_annulee
-        facture_annulee.send(
-            sender=Facture, instance=facture, company=facture.company)
-        return Response(FactureSerializer(facture).data)
+        try:
+            facture = annuler_facture(
+                facture, user=request.user, directive=valider_corps(
+                    request, D.FactureAnnulerRequest).get('acompte'))
+        except AnnulationRefusee as refus:
+            return Response(refus.corps, status=status.HTTP_400_BAD_REQUEST)
+        return Response({**FactureSerializer(facture).data,
+                         'avoir': avoir_annulation_corps(facture)})
 
     @extend_schema(responses=PaiementSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='paiements',
@@ -1461,23 +1158,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reprend TOUTES les lignes de la facture à l'identique (les `lignes`
         du corps sont ignorées) et, à son émission, la facture d'origine
         passe ``annulee`` avec un ``FactureActivity`` liant les deux pièces.
-        Refusé (400) si la facture a déjà des paiements (dû négatif évité)."""
+        Refusé (409) si la facture a déjà des paiements (dû négatif évité)."""
         facture = self.get_object()
+        # Tour 3 M1 — corps validé (types, listes, enums) AVANT toute lecture.
+        valider_corps_lignes(request, D.CreerAvoirRequest)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un avoir ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
+        # `mode` ∈ enum garanti par le corps validé ; refus d'ÉTAT = 409 (ENF11).
         mode = (request.data.get('mode') or 'correction').strip()
-        if mode not in ('correction', 'contre_passation'):
-            return Response(
-                {'detail': "mode doit être 'correction' ou 'contre_passation'."},
-                status=status.HTTP_400_BAD_REQUEST)
         if mode == 'contre_passation' and facture.montant_paye > 0:
             return Response(
                 {'detail': ("Contre-passation refusée : cette facture a déjà "
                             "des paiements enregistrés.")},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # AFAC32 (D-AFAC-C4) — la contre-passation ANNULE la facture : ses
         # notes de débit actives s'annulent d'abord (par avoir de ND).
         from ..domain.facturation_ops import notes_debit_actives
@@ -1486,7 +1182,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': ("Contre-passation refusée : la facture porte une "
                             "note de débit active — annulez-la d'abord."),
                  'code': 'note_debit_active'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
         lignes = None if mode == 'contre_passation' \
@@ -1508,10 +1204,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if isinstance(lignes, list) and lignes:
             clean_lignes = []
             for i, ligne in enumerate(lignes, start=1):
-                if not isinstance(ligne, dict):
-                    return Response(
-                        {'detail': f'Ligne {i} invalide.'},
-                        status=status.HTTP_400_BAD_REQUEST)
                 designation = (ligne.get('designation') or '').strip()
                 if not designation:
                     return Response(
@@ -1555,6 +1247,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 lignes_saisies=clean_lignes,
                 type_avoir=str(request.data.get('type') or '').strip() or None)
         except AvoirRefuse as exc:
+            # Refus de VALEUR (ligne, type, plafond créditable) : 400 — les
+            # oracles ATOT (machine, reste, avoir/échéancier, AUD126) le
+            # figent ; seul le refus d'ÉTAT ci-dessus est un 409 (ENF11).
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
@@ -1723,11 +1418,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Un retour ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        motif = (request.data.get('motif') or '').strip()
-        if not motif:
-            return Response(
-                {'detail': 'Le motif du retour est obligatoire.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        motif = valider_corps(request, D.RetourClientRequest)['motif'].strip()
         restocker = bool(request.data.get('restocker', False))
         lignes = request.data.get('lignes')
         if not isinstance(lignes, list) or not lignes:

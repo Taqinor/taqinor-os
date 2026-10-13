@@ -30,6 +30,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import forme_du_contrat
 from .calepinages import CalepinageViewSet
 
 __all__ = ['versions_diff']
@@ -48,7 +49,9 @@ INTROUVABLE = 'Version introuvable.'
                      location=OpenApiParameter.QUERY, required=False,
                      description=("La version de droite ; absente, l'état "
                                   'courant du calepinage.')),
-])
+],
+    responses=forme_du_contrat('CalepinageVersionsDiff',
+                               'calepinage_versions_diff.json'))
 @action(detail=True, methods=['get'],
         url_path=r'versions/(?P<version_id>[^/.]+)/diff',
         url_name='versions-diff', permission_classes=[PeutVoirCalepinage])

@@ -108,6 +108,24 @@ class PaymentTransactionViewSetTests(TestCase):
         # statut en lecture seule + initiation no-op : reste « initié ».
         self.assertEqual(tx.statut, PaymentTransaction.STATUT_INITIE)
 
+    def test_types_stricts_et_reponse_conforme(self):
+        # ERR-ENF11-FUZZ-CORE — un montant nombre JSON ou une devise entière
+        # (hors schéma) étaient convertis en silence ; `redirect_url` vide
+        # violait le `format: uri` publié.
+        view = PaymentTransactionViewSet.as_view({'post': 'create'})
+        for corps in ({'montant': 750}, {'montant': '750.00', 'devise': 0}):
+            req = self.factory.post('/paiements-en-ligne/', corps,
+                                    format='json')
+            force_authenticate(req, user=self.user)
+            self.assertEqual(view(req).status_code,
+                             status.HTTP_400_BAD_REQUEST, corps)
+        req = self.factory.post('/paiements-en-ligne/',
+                                {'montant': '750.00'}, format='json')
+        force_authenticate(req, user=self.user)
+        resp = view(req)
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['redirect_url'], '')
+
     def test_company_isolation(self):
         PaymentTransaction.objects.create(
             company=self.other_co, montant=Decimal('1'), provider='cmi')

@@ -36,7 +36,9 @@ d'autre :
 from __future__ import annotations
 
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    PolymorphicProxySerializer, extend_schema, inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -97,6 +99,33 @@ MESSAGE_SANS_DESIGNATION = (
 )
 
 
+def _refus_designation(corps):
+    """Le refus d'un dossier non désigné : 400 si le corps n'en désigne AUCUN
+    (entrée manquante), 404 s'il désigne un dossier/gabarit qui n'existe pas
+    (ou pas pour cette société) — jamais un 400 sur un identifiant bien formé."""
+    designe = (corps.get('dossier') is not None
+               or corps.get('gabarit') is not None)
+    return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
+                    status=(status.HTTP_404_NOT_FOUND if designe
+                            else status.HTTP_400_BAD_REQUEST))
+
+
+def _corps_designant_un_dossier(nom, **autres):
+    """Le corps désigne un dossier (``dossier``) OU un gabarit (``gabarit``) :
+    l'un des deux est OBLIGATOIRE (sinon 400 sous ``dossier``) — deux formes,
+    ``oneOf``."""
+    facultatif = serializers.IntegerField(required=False)
+    return PolymorphicProxySerializer(
+        component_name=nom, resource_type_field_name=None, serializers=[
+            inline_serializer(nom + 'ParDossier', {
+                'dossier': serializers.IntegerField(), 'gabarit': facultatif,
+                **autres}),
+            inline_serializer(nom + 'ParGabarit', {
+                'gabarit': serializers.IntegerField(), 'dossier': facultatif,
+                **autres}),
+        ])
+
+
 def _forme_generation():
     """La forme DÉCLARÉE de la réponse de génération (CALX40)."""
     return inline_serializer('CalepinageGenererDossier', {
@@ -150,7 +179,8 @@ def _dossier_en_base(calepinage, compose):
     return dossier
 
 
-@extend_schema(responses={200: _forme_generation()})
+@extend_schema(request=_corps_designant_un_dossier(
+    'CalepinageGenererDossierCorps'), responses={200: _forme_generation()})
 @action(detail=True, methods=['post'], url_path='generer-dossier',
         permission_classes=[PeutGererCalepinage])
 def generer_dossier(self, request, pk=None):
@@ -168,28 +198,27 @@ def generer_dossier(self, request, pk=None):
     if agregat.get('message_aucun_gabarit'):
         # Société sans AUCUN gabarit déposé : le message dit quoi déposer.
         return Response({'gabarit': [agregat['message_aucun_gabarit']]},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
 
     compose = _compose_designe(agregat, corps)
     if compose is None:
-        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return _refus_designation(corps)
     if not (compose.get('gabarit') or {}).get('present'):
         return Response({'gabarit': [compose['motif_non_generable']]},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     if not compose.get('peut_generer'):
         return Response({'dossier': [compose['motif_non_generable']]},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
 
     dossier = _dossier_en_base(calepinage, compose)
     if dossier is None:
-        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return _refus_designation(corps)
     try:
         pack = construire_pack_dossier(dossier, created_by=request.user)
     except DossierRefuse as refus:
         return Response({refus.piece or 'dossier': [str(refus)]},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_400_BAD_REQUEST if refus.entree
+                                else status.HTTP_409_CONFLICT))
 
     document = pack.get('document')
     dossier.document_id = getattr(document, 'pk', None)
@@ -211,7 +240,10 @@ def generer_dossier(self, request, pk=None):
 
 # ── CALX41 — ENREGISTRER LES CHAMPS À COMPLÉTER ───────────────────────────
 
-@extend_schema(responses={200: _FORME_DOSSIERS})
+@extend_schema(request=_corps_designant_un_dossier(
+    'CalepinageChampsDossierCorps',
+    champs=serializers.DictField(required=False)),
+    responses={200: _FORME_DOSSIERS})
 @action(detail=True, methods=['post'], url_path='champs-dossier',
         permission_classes=[PeutGererCalepinage])
 def champs_dossier(self, request, pk=None):
@@ -231,15 +263,13 @@ def champs_dossier(self, request, pk=None):
 
     if agregat.get('message_aucun_gabarit'):
         return Response({'gabarit': [agregat['message_aucun_gabarit']]},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     compose = _compose_designe(agregat, corps)
     if compose is None:
-        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return _refus_designation(corps)
     dossier = _dossier_en_base(calepinage, compose)
     if dossier is None:
-        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return _refus_designation(corps)
     try:
         enregistrer_champs(dossier, corps.get('champs'))
     except ChampsDossierInvalides as refus:
@@ -271,8 +301,13 @@ def _forme_piece_jointe():
 _FORME_PIECE_JOINTE = _forme_piece_jointe()  # UNE instance : 200 et 201
 
 
-@extend_schema(responses={200: _FORME_PIECE_JOINTE,
-                          201: _FORME_PIECE_JOINTE})
+@extend_schema(
+    request=_corps_designant_un_dossier(
+        'CalepinageJoindrePieceCorps',
+        piece=serializers.CharField(),
+        fichier=serializers.FileField(required=False),
+        retirer=serializers.BooleanField(required=False)),
+    responses={200: _FORME_PIECE_JOINTE, 201: _FORME_PIECE_JOINTE})
 @action(detail=True, methods=['post'], url_path='joindre-piece',
         permission_classes=[PeutGererCalepinage])
 def joindre_piece(self, request, pk=None):
@@ -292,8 +327,7 @@ def joindre_piece(self, request, pk=None):
     dossier = (_dossier_en_base(calepinage, compose)
                if compose is not None else None)
     if dossier is None:
-        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return _refus_designation(corps)
     retirer = str(corps.get('retirer') or '').strip().lower() in (
         '1', 'true', 'vrai', 'oui', 'on')
     try:

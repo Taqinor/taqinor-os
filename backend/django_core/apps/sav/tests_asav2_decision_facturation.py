@@ -115,7 +115,7 @@ class DecisionFacturationTests(TestCase):
         ticket = self._ticket('SAV-A2-9')
         r = self.api.post(f'{BASE}/{ticket.pk}/creer-devis/', {},
                           format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         ticket.refresh_from_db()
         self.assertIsNone(ticket.devis_id_ext)
         self.assertEqual(Devis.objects.filter(

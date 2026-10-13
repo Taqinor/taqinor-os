@@ -43,9 +43,12 @@ __all__ = [
 class EtiquetteRefusee(ValueError):
     """Refus métier, message français, champ fautif NOMMÉ."""
 
-    def __init__(self, message, *, champ='tag_id'):
+    def __init__(self, message, *, champ='tag_id', introuvable=False):
         super().__init__(message)
         self.champ = champ
+        #: Vrai quand l'étiquette DÉSIGNÉE n'existe pas pour la société : la
+        #: vue répond 404 (une ressource absente), non un 400.
+        self.introuvable = introuvable
 
 
 def _type_calepinage():
@@ -106,7 +109,8 @@ def _resoudre(company, corps):
         if tag is None:
             raise EtiquetteRefusee(
                 'Étiquette introuvable dans le vocabulaire de cette société '
-                '(tag_id : %s).' % (brut_id,), champ='tag_id')
+                '(tag_id : %s).' % (brut_id,), champ='tag_id',
+                introuvable=True)
         champ = 'tag_id'
     elif nom:
         tag = (Tag.objects.filter(company=company, nom=nom).first()
@@ -116,7 +120,7 @@ def _resoudre(company, corps):
                 "Aucune étiquette « %s » dans le vocabulaire de la société : "
                 "une étiquette ne se crée pas depuis un calepinage — "
                 "ajoutez-la d'abord au vocabulaire des étiquettes." % nom,
-                champ='nom')
+                champ='nom', introuvable=True)
         champ = 'nom'
     else:
         raise EtiquetteRefusee(

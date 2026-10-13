@@ -226,3 +226,54 @@ class FkCrossTenantPortailTests(TestCase):
             data={'client_id': 987654321}, context=contexte(self.user_a))
         self.assertFalse(ser.is_valid())
         self.assertIn('client_id', ser.errors)
+
+
+class ContratApiFuzzPortailTests(TestCase):
+    """ERR-ENF11-FUZZ-PORTAIL — les données hors schéma OpenAPI sont refusées
+    (400) au lieu d'être converties ou ignorées (api-fuzz « accepted
+    schema-violating request », nocturne 38129616897)."""
+
+    LISTES = ('acceptations-devis-portail', 'comptes-portail',
+              'demandes-ticket-portail', 'documents-client-portail',
+              'jalons-chantier-portail', 'paiements-facture-portail')
+    URL = '/api/django/portail/demandes-ticket-portail/'
+
+    def setUp(self):
+        self.a = make_company('enf11-portail-a', 'ENF11 Portail A')
+        self.api = auth(make_responsable(self.a, 'enf11-portail-resp'))
+        self.client_a = make_client_crm(self.a, 'Alpha')
+        self.demande = DemandeTicketPortail.objects.create(
+            company=self.a, client_id=self.client_a.id, sujet='Onduleur')
+
+    def test_listes_page_size_hors_schema_400(self):
+        for liste in self.LISTES:
+            with self.subTest(liste=liste):
+                res = self.api.get(f'/api/django/portail/{liste}/',
+                                   {'page_size': 'null'})
+                self.assertEqual(res.status_code, 400, res.content)
+                self.assertEqual(
+                    self.api.get(f'/api/django/portail/{liste}/').status_code,
+                    200)
+
+    def test_demande_ticket_types_stricts_400(self):
+        valide = {'client_id': self.client_a.id, 'sujet': 'Onduleur'}
+        for champ, brut in (('client_id', str(self.client_a.id)),
+                            ('client_id', True), ('chantier_id', '1'),
+                            ('sujet', 123), ('description', False)):
+            corps = {**valide, champ: brut}
+            with self.subTest(champ=champ, brut=brut):
+                res = self.api.post(self.URL, corps, format='json')
+                self.assertEqual(res.status_code, 400, res.content)
+                self.assertIn(champ, res.data)
+                res = self.api.put(f'{self.URL}{self.demande.id}/', corps,
+                                   format='json')
+                self.assertEqual(res.status_code, 400, res.content)
+                res = self.api.patch(f'{self.URL}{self.demande.id}/',
+                                     {champ: brut}, format='json')
+                self.assertEqual(res.status_code, 400, res.content)
+        res = self.api.post(self.URL, [valide], format='json')
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(DemandeTicketPortail.objects.filter(
+            company=self.a).count(), 1)
+        self.demande.refresh_from_db()
+        self.assertEqual(self.demande.sujet, 'Onduleur')

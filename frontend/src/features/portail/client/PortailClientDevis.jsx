@@ -24,6 +24,12 @@ import { formatMAD, formatDate } from '../../../lib/format'
    plus la raison sociale, la qualité du signataire et l'ICE, envoyés dans le
    bloc `entreprise`. Le serveur valide (même règle que la page publique) ;
    son 400 `{detail, champ}` s'affiche SOUS le champ fautif.
+
+   APDF36 (C-APDF-005, contrat `mes_devis_liste.json`) — le dialogue affiche
+   `conditions_titre` et les puces `conditions` servies par la liste (même
+   source que la page publique et le PDF) ; la case unique « J’accepte ce devis
+   et les conditions générales » envoie `accepte_conditions` avec le
+   consentement, comme la case de la page /proposition.
    ========================================================================== */
 
 const CHAMPS_ENTREPRISE = [
@@ -82,7 +88,7 @@ export default function PortailClientDevis() {
     if (aSigner.deux_options && !option) return
     setEnvoi(true)
     setErreurs({})
-    const corps = { nom: nom.trim(), consent_esign: true }
+    const corps = { nom: nom.trim(), consent_esign: true, accepte_conditions: true }
     // ADOC114 — devis à deux options : le client choisit, le serveur
     // refuse (400) un corps sans `option`.
     if (aSigner.deux_options) corps.option = option
@@ -232,11 +238,24 @@ export default function PortailClientDevis() {
                 </div>
               )
             })}
+            {Array.isArray(aSigner?.conditions) && aSigner.conditions.length > 0 && (
+              <section className="flex flex-col gap-1.5" data-testid="portail-devis-conditions">
+                {aSigner.conditions_titre && (
+                  <h2 className="text-sm font-medium">{aSigner.conditions_titre}</h2>
+                )}
+                <ul className="list-disc ps-5 text-xs text-muted-foreground">
+                  {aSigner.conditions.map((puce, i) => (
+                    <li key={`${i}-${puce}`}>{puce}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <label className="flex items-start gap-2 text-sm">
               <Checkbox checked={consent}
                         onCheckedChange={(v) => setConsent(v === true)} />
               <span>
-                J’accepte ce devis et je consens à sa signature électronique.
+                J’accepte ce devis et les conditions générales, et je consens
+                à sa signature électronique.
               </span>
             </label>
           </div>

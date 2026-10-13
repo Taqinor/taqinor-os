@@ -88,7 +88,7 @@ class SyncDevisTest(BaseApiCalepinage):
             company=self.company, lead_id=self.lead_lie.pk, titre='Nu',
             roof_layout=LAYOUT, layout_hash='e' * 64)
         reponse = self.api.post(url_sync(nu.pk), {}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('devis', reponse.data)
         self.assertIn('Générer le devis', str(reponse.data['devis']))
 

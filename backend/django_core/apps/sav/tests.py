@@ -391,11 +391,11 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertEqual(r.data['statut'], 'nouveau')
 
     def test_illegal_status_jump_rejected(self):
-        # YDOCF1 — un saut NOUVEAU → CLOTURE (hors graphe) est refusé (400).
+        # YDOCF1 — un saut NOUVEAU → CLOTURE (hors graphe) est refusé (409, conflit d'état).
         tid = self._open_ticket().data['id']
         r = self.api.post(f'/api/django/sav/tickets/{tid}/cloturer/',
                           {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_default_list_shows_open_only(self):
         open_id = self._open_ticket().data['id']
@@ -635,11 +635,13 @@ class ContratsFiltreClientTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self._ids(r), [self.c1.id])
 
-    def test_client_invalide_ignore(self):
+    def test_client_invalide_refuse_400(self):
+        # ENF11 : le seul appelant (InstallationDetail) envoie un id entier ;
+        # un `?client=abc` est une erreur de l'appelant -> 400 nommant le champ.
         r = self.api.get('/api/django/sav/contrats-maintenance/',
                          {'client': 'abc'})
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(len(self._ids(r)), 2)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('client', r.json())
 
 
 class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
@@ -679,6 +681,24 @@ class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
         for champ, valeur in (('protege', 0), ('actif', 'False'), ('nom', 0)):
             with self.assertRaises(ValidationError, msg=champ):
                 champs[champ].run_validation(valeur)
+
+    def test_champs_probleme_reponse_type_sla_stricts(self):
+        # CI #985 (api-fuzz) : cause_racine=0, archived=0, csat_detaille_actif=0
+        # étaient coercés en "0"/False au lieu d'être refusés.
+        from rest_framework.exceptions import ValidationError
+        from apps.sav.serializers import (
+            ProblemeSerializer, ReponseTypeSerializer,
+            SavSlaSettingsSerializer)
+        for ser, champ, bon, mauvais in (
+                (ProblemeSerializer, 'cause_racine', 'Câble', 0),
+                (ProblemeSerializer, 'description', 'x', 5),
+                (ReponseTypeSerializer, 'archived', True, 0),
+                (ReponseTypeSerializer, 'corps', 'x', 0),
+                (SavSlaSettingsSerializer, 'csat_detaille_actif', False, 0)):
+            champs = ser().fields
+            self.assertEqual(champs[champ].run_validation(bon), bon)
+            with self.assertRaises(ValidationError, msg=champ):
+                champs[champ].run_validation(mauvais)
 
     def test_limit_des_similaires_entier_strict_minimum_un(self):
         from rest_framework.exceptions import ValidationError

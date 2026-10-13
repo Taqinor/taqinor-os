@@ -433,7 +433,7 @@ class EndpointPlanCablageEnBaseTest(BaseApiCalepinage):
     def test_sans_chaine_400_en_nommant_le_chainage(self):
         for suffixe in ('plan-cablage.pdf', 'plan-cablage.dxf'):
             reponse, rendu = self._get(self.calepinage, suffixe, table=[])
-            self.assertEqual(reponse.status_code, 400)
+            self.assertEqual(reponse.status_code, 409)
             self.assertIn('electrique.chainage', reponse.data)
             rendu.assert_not_called()
 

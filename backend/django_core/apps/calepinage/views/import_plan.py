@@ -161,7 +161,13 @@ def _format_refuse(contenu):
     return None
 
 
-@extend_schema(responses={200: _forme()})
+@extend_schema(
+    request=inline_serializer('CalepinageImporterPlanCorps', {
+        CHAMP_FICHIER: serializers.FileField(),
+        CHAMP_CALQUE: serializers.CharField(required=False),
+        CHAMP_ENTITE: serializers.IntegerField(required=False),
+        CHAMP_CALAGE: serializers.JSONField(required=False)}),
+    responses={200: _forme()})
 @action(detail=True, methods=['post'], url_path='importer-plan',
         url_name='importer-plan',
         permission_classes=[PeutGererCalepinage],

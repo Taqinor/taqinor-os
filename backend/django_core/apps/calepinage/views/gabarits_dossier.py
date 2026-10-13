@@ -21,7 +21,9 @@ traduire HTTP ↔ service.
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_serializer, inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.response import Response
 
@@ -54,15 +56,27 @@ _FORME_GABARIT = inline_serializer('CalepinageGabaritDossier', {
 
 _CORPS_GABARIT = inline_serializer('CalepinageGabaritDossierCorps', {
     'fichier': serializers.FileField(required=False),
-    'pays': serializers.CharField(required=False),
-    'code': serializers.CharField(required=False),
-    'genre': serializers.CharField(required=False),
-    'intitule': serializers.CharField(required=False),
-    'version': serializers.CharField(required=False),
+    'pays': serializers.RegexField(r'^[A-Za-z]{2}$', max_length=2),
+    'code': serializers.SlugField(max_length=60),
+    'genre': serializers.SlugField(required=False, max_length=40,
+                                   allow_blank=True),
+    'intitule': serializers.CharField(max_length=200),
+    'version': serializers.CharField(required=False, max_length=20,
+                                     allow_blank=True),
     'actif': serializers.BooleanField(required=False),
-    'pieces_attendues': serializers.JSONField(required=False),
-    'champs': serializers.JSONField(required=False),
+    'pieces_attendues': serializers.ListField(
+        child=serializers.DictField(), required=False),
+    'champs': serializers.ListField(
+        child=serializers.DictField(), required=False),
 })
+
+
+@extend_schema_serializer(many=False)
+class CalepinageGabaritsListe(serializers.Serializer):
+    """``{gabarits: [...]}`` : l'action s'appelle ``list`` mais ne rend PAS
+    un tableau (``many=False`` empêche drf-spectacular de l'envelopper)."""
+
+    gabarits = serializers.ListField(child=serializers.DictField())
 
 
 def _donnees(request):
@@ -100,12 +114,7 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
 
     # Schéma brut (dict) : un sérialiseur serait enveloppé en tableau par
     # drf-spectacular sur l'action ``list`` alors que la réponse est un objet.
-    @extend_schema(responses={200: {
-        'type': 'object',
-        'properties': {'gabarits': {
-            'type': 'array', 'items': {'type': 'object'}}},
-        'required': ['gabarits'],
-    }})
+    @extend_schema(responses={200: CalepinageGabaritsListe})
     def list(self, request, *args, **kwargs):
         gabarits = self.filter_queryset(self.get_queryset())
         return Response({'gabarits': [gabarit_publie(g) for g in gabarits]})

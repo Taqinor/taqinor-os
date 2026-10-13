@@ -8,17 +8,23 @@ existante ne peut pas migrer.
 """
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
-from core.champs_stricts import TypageStrictMixin
+
+from core.conflit_etat import ConflitEtat
+from core.unicite import ConflitUnicite
+
+from .requetes_strictes import TypageStrictParametres
 
 from .models_payment_terms import ConditionPaiement
-from .models_relance import CadenceRelanceEtape
+from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 
 
 @extend_schema_field({
     'type': 'string', 'nullable': True,
-    'pattern': r'^\d{2}:\d{2}(:\d{2})?$',
+    # ENF11 — heures réelles seulement : « 62:60 » correspondait au motif
+    # mais DRF le refuse (400) — requête « conforme » refusée.
+    'pattern': r'^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$',
     'description': 'Heure HH:MM[:SS] (sans fuseau).'})
 class HeureLocaleField(serializers.TimeField):
     """ENF8 — heure locale « HH:MM:SS » : ``format: time`` d'OpenAPI exige un
@@ -71,12 +77,14 @@ class UniciteSocieteMixin:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 cible = next(c for c in groupe if c != 'company')
-                raise serializers.ValidationError(
-                    {cible: [self.message_doublon]})
+                # ENF11 — un doublon est un conflit D'ÉTAT (409), comme celui
+                # que ``core.unicite`` rend quand le corps porte tous les
+                # champs de la contrainte : le corps était conforme au schéma.
+                raise ConflitUnicite(self.message_doublon, champs=[cible])
         return attrs
 
 
-class TauxTVASerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
+class TauxTVASerializer(TypageStrictParametres, UniciteSocieteMixin, serializers.ModelSerializer):
     message_doublon = 'Un taux avec ce code existe déjà.'  # APAR37
 
     class Meta:
@@ -95,12 +103,13 @@ class TauxTVASerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.Mode
         if self.instance is not None:
             new_code = attrs.get('code')
             if new_code and new_code != self.instance.code:
-                raise serializers.ValidationError(
-                    {'code': "Le code d'un taux existant ne peut pas changer."})
+                # ENF11 — refus d'ÉTAT (code déjà posé) : 409, pas 400.
+                raise ConflitEtat(
+                    "Le code d'un taux existant ne peut pas changer.")
         return attrs
 
 
-class ConditionPaiementSerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
+class ConditionPaiementSerializer(TypageStrictParametres, UniciteSocieteMixin, serializers.ModelSerializer):
     message_doublon = 'Cette condition existe déjà.'  # APAR37
 
     class Meta:
@@ -117,7 +126,7 @@ class ConditionPaiementSerializer(TypageStrictMixin, UniciteSocieteMixin, serial
         return value
 
 
-class UniteMesureSerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
+class UniteMesureSerializer(TypageStrictParametres, UniciteSocieteMixin, serializers.ModelSerializer):
     message_doublon = 'Une unité avec ce code existe déjà.'  # APAR37
 
     class Meta:
@@ -136,13 +145,12 @@ class UniteMesureSerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.
         if self.instance is not None:
             new_code = attrs.get('code')
             if new_code and new_code != self.instance.code:
-                raise serializers.ValidationError(
-                    {'code': "Le code d'une unité existante ne peut pas "
-                             'changer.'})
+                raise ConflitEtat(
+                    "Le code d'une unité existante ne peut pas changer.")
         return attrs
 
 
-class CadenceRelanceEtapeSerializer(TypageStrictMixin, UniciteSocieteMixin, serializers.ModelSerializer):
+class CadenceRelanceEtapeSerializer(TypageStrictParametres, UniciteSocieteMixin, serializers.ModelSerializer):
     """RELANCE FOUNDATION — gabarit de cadence de relance (Paramètres → CRM).
 
     Purement un ordonnancement de rappels internes (délai + canal + libellé),
@@ -176,11 +184,11 @@ class CadenceRelanceEtapeSerializer(TypageStrictMixin, UniciteSocieteMixin, seri
         cadence = attrs.get('cadence')
         if (instance is not None and (instance.cle or '')
                 and cadence is not None and cadence != instance.cadence):
-            raise serializers.ValidationError({'cadence': (
+            raise ConflitEtat(
                 '« Cadence » : ce barreau est une étape du moteur (clé '
                 f'« {instance.cle} ») — il reste dans sa cadence. Modifiez '
                 'son libellé, son délai, son canal ou son heure, ou '
-                'désactivez-le.')})
+                'désactivez-le.')
         return attrs
 
     def validate_libelle(self, value):
@@ -207,3 +215,32 @@ class CadenceRelanceEtapeSerializer(TypageStrictMixin, UniciteSocieteMixin, seri
                 'Le délai en minutes ne peut pas être négatif — il va de 0 '
                 'à 1439.')
         return value
+
+
+MESSAGE_CADENCE_MOTEUR = (
+    'Les barreaux de cette cadence sont fixés par leur clé ; '
+    'modifiez-les, ne les ajoutez pas.')
+
+
+class _CadenceAjoutable(serializers.ChoiceField):
+    """ENF11 — cadence d'un barreau AJOUTÉ : les cadences moteur sont exclues
+    du schéma (le moteur ne lit que leurs barreaux à clé) ; la valeur reste
+    refusée avec le message historique (D3), sous le champ ``cadence``."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, str) and data in CADENCES_MOTEUR:
+            raise serializers.ValidationError(MESSAGE_CADENCE_MOTEUR)
+        return super().to_internal_value(data)
+
+
+class CadenceRelanceEtapeCreationSerializer(CadenceRelanceEtapeSerializer):
+    """Corps de ``POST cadence-relance/`` : mêmes champs que la lecture/
+    modification, ``cadence`` restreinte aux cadences où l'ajout est permis."""
+
+    cadence = _CadenceAjoutable(
+        choices=[(valeur, libelle) for valeur, libelle in Cadence.choices
+                 if valeur not in CADENCES_MOTEUR],
+        required=False)
+
+    class Meta(CadenceRelanceEtapeSerializer.Meta):
+        pass

@@ -13,7 +13,73 @@ SOLMVP, en cours de mise en coquille par la lane SOLMVP30b), donc
 n'existent plus. Aucun test ne couvrait cette catégorie par sa clé (vérifié)."""
 from __future__ import annotations
 
+from rest_framework import serializers
+
 from .models import ConfigPackage, ConfigPackageApplication
+
+_INT_MAX = 2147483647
+
+
+def _contient_nul(valeur):
+    """Un caractère NUL fait échouer l'écriture PostgreSQL (500)."""
+    if isinstance(valeur, str):
+        return '\x00' in valeur
+    if isinstance(valeur, dict):
+        return any(_contient_nul(k) or _contient_nul(v)
+                   for k, v in valeur.items())
+    if isinstance(valeur, list):
+        return any(_contient_nul(v) for v in valeur)
+    return False
+
+
+def valider_contenu_import(contenu):
+    """ENF11 (api-fuzz « Server error ») — valide la FORME d'un package avant
+    toute lecture/écriture : un contenu mal formé (liste là où une chaîne est
+    attendue, clé naturelle absente ou non texte, NUL…) levait ``KeyError`` /
+    ``TypeError`` / ``DataError`` (500). Lève une 400 nommant le champ fautif ;
+    un package bien formé (même vide) passe inchangé."""
+    erreurs = {}
+    if _contient_nul(contenu):
+        erreurs['contenu'] = ['Caractère nul interdit.']
+    nom = contenu.get('_nom', '')
+    if not isinstance(nom, str) or len(nom) > 150:
+        erreurs['_nom'] = ['Chaîne de 150 caractères maximum attendue.']
+    version = contenu.get('_version', 1)
+    if (isinstance(version, bool) or not isinstance(version, int)
+            or not 0 <= version <= _INT_MAX):
+        erreurs['_version'] = ['Entier positif attendu.']
+    # (catégorie, clé naturelle, {champ texte: longueur max})
+    for categorie, cle, textes in (
+            ('roles_custom', 'nom', {'nom': 100}),
+            ('custom_fields', 'code',
+             {'code': 50, 'module': 60, 'type': 12, 'libelle': 120}),
+            ('message_templates', 'cle',
+             {'cle': 40, 'corps_fr': None, 'corps_darija': None})):
+        liste = contenu.get(categorie, [])
+        if not isinstance(liste, list):
+            erreurs[categorie] = ['Liste attendue.']
+            continue
+        for i, item in enumerate(liste):
+            if not isinstance(item, dict) or not isinstance(item.get(cle), str):
+                erreurs[categorie] = [
+                    f'Élément {i} : objet avec « {cle} » (texte) attendu.']
+                break
+            faux = [
+                c for c, maxi in textes.items()
+                if c in item and (not isinstance(item[c], str)
+                                  or (maxi and len(item[c]) > maxi))]
+            if categorie == 'roles_custom' and 'permissions' in item and (
+                    not isinstance(item['permissions'], list)
+                    or not all(isinstance(x, str)
+                               for x in item['permissions'])):
+                faux.append('permissions')
+            if faux:
+                erreurs[categorie] = [
+                    f'Élément {i} : champ(s) invalide(s) : '
+                    f'{", ".join(faux)}.']
+                break
+    if erreurs:
+        raise serializers.ValidationError(erreurs)
 
 
 def _roles_custom(company):
@@ -79,6 +145,7 @@ def _diff_liste(actuel, importe, cle):
 def previsualiser_import(company, contenu_importe):
     """NTADM14 — dry-run, N'ÉCRIT RIEN : diff structuré entre `contenu_importe`
     et l'état courant de `company`."""
+    valider_contenu_import(contenu_importe)
     actuel = construire_contenu(company)
     return {
         'roles_custom': _diff_liste(

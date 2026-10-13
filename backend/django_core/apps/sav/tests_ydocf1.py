@@ -59,7 +59,7 @@ class YDOCF1MachineEtatsTest(TestCase):
 
     def test_saut_illegal_nouveau_vers_cloture_refuse(self):
         resp = self._post('cloturer')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('statut', resp.data)
         # Le message nomme le statut courant ET les cibles permises.
         message = str(resp.data['statut'])

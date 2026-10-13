@@ -205,3 +205,15 @@ describe('renderProposalChart — mode compact (PREVIEW-V3)', () => {
     expect(svg).toContain('<desc>');
   });
 });
+
+describe('ERR-WEB-SVG-HEIGHT-AUTO — aucun height="auto" sur un <svg>', () => {
+  it('les gabarits SVG des courbes ne posent pas height="auto" (longueur SVG invalide)', async () => {
+    const { readFileSync } = await import('node:fs');
+    for (const f of ['proposalChart.ts', 'proposalCurve.ts', 'batterySim.ts']) {
+      const src = readFileSync(new URL(`../src/lib/${f}`, import.meta.url), 'utf8');
+      expect(src, f).not.toMatch(/<svg[^>]*\sheight="auto"/);
+    }
+    const svg = renderProposalChart(PROD, CONS);
+    expect(svg).not.toMatch(/<svg[^>]*\sheight="auto"/);
+  });
+});

@@ -95,6 +95,32 @@ class SavedQueryViewSetTests(TestCase):
         self.assertEqual(sq.company, self.company)
         self.assertEqual(sq.owner, self.user)
 
+    def test_types_stricts_post_put_patch(self):
+        # CI #985 (api-fuzz) — ``"partage": 0`` (booléen) et ``"titre": 0``
+        # (chaîne) étaient convertis en silence (200) : 400 nommant le champ.
+        sq = SavedQuery.objects.create(
+            company=self.company, owner=self.user, titre='Fuzz',
+            dataset='utilisateurs')
+        for corps, champ in (
+                ({'titre': '0', 'dataset': '0', 'spec': {}, 'partage': 0},
+                 'partage'),
+                ({'titre': 0, 'dataset': 'utilisateurs', 'spec': {}},
+                 'titre')):
+            for methode, action, kwargs in (
+                    ('post', 'create', {}),
+                    ('put', 'update', {'pk': sq.pk}),
+                    ('patch', 'partial_update', {'pk': sq.pk})):
+                with self.subTest(methode=methode, champ=champ):
+                    req = getattr(self.factory, methode)(
+                        '/saved-queries/', corps, format='json')
+                    force_authenticate(req, user=self.user)
+                    resp = SavedQueryViewSet.as_view({methode: action})(
+                        req, **kwargs)
+                    self.assertEqual(resp.status_code,
+                                     status.HTTP_400_BAD_REQUEST)
+                    self.assertIn(champ, resp.data)
+        self.assertEqual(SavedQuery.objects.count(), 1)
+
     def test_run_adhoc_corps_hors_schema_400(self):
         # ERR-ENF11-FUZZ-CORE — `dataset` liste (500 avant), `spec` non objet.
         view = SavedQueryViewSet.as_view({'post': 'run_adhoc'})

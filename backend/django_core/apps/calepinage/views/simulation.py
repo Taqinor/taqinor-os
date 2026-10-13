@@ -23,6 +23,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
+from ..serializers import forme_reponse
 from ..serializers_pertes import (
     PertesCalepinageSerializer, PostesDePertesSerializer,
 )
@@ -171,7 +172,16 @@ def _forme_simulation():
     })
 
 
-@extend_schema(responses={202: _forme_simulation()})
+@extend_schema(
+    request=inline_serializer('CalepinageSimulerCorps', {
+        'forcer': serializers.BooleanField(required=False),
+        'variante_id': serializers.IntegerField(required=False)}),
+    responses={
+        200: forme_reponse(
+            'CalepinageSimulationDejaCalculee', 'calcule_le', 'hash_entree',
+            deja_calcule=serializers.BooleanField(),
+            detail=serializers.CharField()),
+        202: _forme_simulation()})
 @action(detail=True, methods=['post'], url_path='simuler',
         permission_classes=[PeutGererCalepinage])
 def simuler(self, request, pk=None):

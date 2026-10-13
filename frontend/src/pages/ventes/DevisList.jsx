@@ -33,7 +33,7 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 // même « record focalisé » que la surbrillance de ligne existante).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
-import FacturerDevisDialog from '../../features/ventes/FacturerDevisDialog'
+import FacturerVenteDialog from '../../features/ventes/vente/FacturerVenteDialog'
 // La fête « affaire signée » est rendue par l'hôte global (ShellGlobal).
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../ui/dealSignedBus'
 import { DataTable } from '../../ui/datatable'
@@ -915,7 +915,7 @@ export default function DevisList() {
         onGenererUn={pdf.handleGenererPdf}
       />
 
-      <FacturerDevisDialog
+      <FacturerVenteDialog
         devis={facturerTarget}
         onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
         onDone={() => dispatch(fetchDevis())}

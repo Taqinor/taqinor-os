@@ -23,6 +23,7 @@ from .views import (
 )
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
+from .query_params import DATE_OU_VIDE, EXPORT_XLSX, LIMITE
 
 router = DefaultRouter()
 router.register(r'equipements', EquipementViewSet)
@@ -68,10 +69,11 @@ def parts_forecast_view(request):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('group_by', OpenApiTypes.STR, required=False,
-                         enum=['produit', 'fournisseur']),
-        OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
-        OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
+        OpenApiParameter('group_by', {
+            'type': 'string', 'enum': ['produit', 'fournisseur', '']},
+            required=False),
+        OpenApiParameter('date_debut', DATE_OU_VIDE, required=False),
+        OpenApiParameter('date_fin', DATE_OU_VIDE, required=False),
     ],
     responses=inline_serializer('SavParetoPannes', {
         'group_by': drf_serializers.CharField(),
@@ -86,7 +88,7 @@ def pareto_pannes_view(request):
 
 
 @extend_schema(
-    parameters=[OpenApiParameter('limit', OpenApiTypes.INT, required=False)],
+    parameters=[OpenApiParameter('limit', LIMITE, required=False)],
     responses=inline_serializer('SavFiabiliteParc', {
         'results': drf_serializers.ListField(
             child=drf_serializers.DictField()),
@@ -118,10 +120,9 @@ def file_action_view(request):
 
 
 @extend_schema(parameters=[
-    OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
-    OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
-    OpenApiParameter('export', OpenApiTypes.STR, required=False,
-                     enum=['xlsx'],
+    OpenApiParameter('date_debut', DATE_OU_VIDE, required=False),
+    OpenApiParameter('date_fin', DATE_OU_VIDE, required=False),
+    OpenApiParameter('export', EXPORT_XLSX, required=False,
                      description="'xlsx' : export tableur de la liste."),
 ], responses={
     (200, 'application/json'): inline_serializer('SavFcrInsight', {
@@ -161,10 +162,9 @@ def fcr_insight_view(request):
 
 
 @extend_schema(parameters=[
-    OpenApiParameter('date_debut', OpenApiTypes.DATE, required=False),
-    OpenApiParameter('date_fin', OpenApiTypes.DATE, required=False),
-    OpenApiParameter('export', OpenApiTypes.STR, required=False,
-                     enum=['xlsx'],
+    OpenApiParameter('date_debut', DATE_OU_VIDE, required=False),
+    OpenApiParameter('date_fin', DATE_OU_VIDE, required=False),
+    OpenApiParameter('export', EXPORT_XLSX, required=False,
                      description="'xlsx' : export tableur de la liste."),
 ], responses={
     (200, 'application/json'): inline_serializer('SavPerformanceAgentInsight', {

@@ -11,7 +11,7 @@ métier : ``cible`` reste une chaîne.
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, PolymorphicProxySerializer, extend_schema,
-    inline_serializer,
+    extend_schema_view, inline_serializer,
 )
 from rest_framework import serializers
 from rest_framework.parsers import JSONParser
@@ -22,8 +22,11 @@ from authentication.role_tiers import (
     ROLE_ADMIN, ROLE_NORMAL, ROLE_RESPONSABLE,
 )
 
+from .champs_stricts import ChampsStrictsMixin
+from .conflit_etat import ConflitEtat
 from .models import VuePersonnalisee
-from .parseurs import ChoixDocumente
+from .openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from .parseurs import ChoixDocumente, ObjetJSON
 from .viewsets import CompanyScopedModelViewSet
 from .vues import (
     demarquer_defauts_concurrents, filtre_visibilite, resoudre_vue_defaut,
@@ -35,7 +38,23 @@ from .vues import (
 TIERS_VALIDES = frozenset({ROLE_ADMIN, ROLE_NORMAL, ROLE_RESPONSABLE})
 
 
-class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+_EQUIPE_REQUISE = "Une vue partagée à l'équipe doit désigner une équipe."
+# ERR-ENF11-FUZZ-CORE — la règle ci-dessus, publiée sur le corps de chaque
+# écriture (``core.openapi_erreurs.EXTENSION_CORPS_RESSERRE``). Création :
+# `partage: equipe` exige `equipe` non blanc. Mise à jour : seule une
+# `equipe` BLANCHE envoyée avec `partage: equipe` est hors schéma (le reste
+# dépend de la vue enregistrée — 409).
+_PAS_EQUIPE = {'properties': {'partage': {'not': {'enum': ['equipe']}}}}
+_EQUIPE_NON_BLANCHE = {'properties': {'equipe': {'pattern': r'\S'}}}
+_CREATION_PUBLIEE = {'anyOf': [
+    _PAS_EQUIPE, {**_EQUIPE_NON_BLANCHE, 'required': ['equipe']}]}
+_MAJ_PUBLIEE = {'anyOf': [_PAS_EQUIPE, _EQUIPE_NON_BLANCHE]}
+
+
+# CI #985 (api-fuzz) — texte et booléens stricts : ``est_defaut: 0`` ou
+# ``nom: 0`` étaient convertis en silence au lieu d'un 400.
+class VuePersonnaliseeSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+                                 serializers.ModelSerializer):
     partage_label = serializers.CharField(
         source='get_partage_display', read_only=True)
     owner_username = serializers.CharField(
@@ -44,6 +63,9 @@ class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelS
     # inconnu était conforme au schéma (texte libre) puis refusé.
     role_tier = ChoixDocumente(
         ['', *sorted(TIERS_VALIDES)], required=False, allow_blank=True)
+    # ERR-ENF11-FUZZ-CORE — objet JSON publié et exigé (``null`` était
+    # conforme au schéma ``{}`` puis refusé par le champ de modèle non nul).
+    config = ObjetJSON(required=False)
 
     class Meta:
         model = VuePersonnalisee
@@ -61,9 +83,13 @@ class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelS
             getattr(instance, 'partage', VuePersonnalisee.Partage.PRIVE))
         equipe = attrs.get('equipe', getattr(instance, 'equipe', ''))
         if partage == VuePersonnalisee.Partage.EQUIPE and not (equipe or '').strip():
-            raise serializers.ValidationError(
-                {'equipe': "Une vue partagée à l'équipe doit désigner une "
-                           "équipe."})
+            # ERR-ENF11-FUZZ-CORE — si la valeur manquante vient de la vue
+            # ENREGISTRÉE (PUT/PATCH sans `partage` ou sans `equipe`), le corps
+            # est conforme : c'est l'état qui s'y oppose (409, pas 400).
+            if instance is not None and not (
+                    'partage' in attrs and 'equipe' in attrs):
+                raise ConflitEtat(_EQUIPE_REQUISE)
+            raise serializers.ValidationError({'equipe': _EQUIPE_REQUISE})
         # NTEXT17 — un défaut de RÔLE doit désigner un palier connu.
         role_tier = (attrs.get(
             'role_tier', getattr(instance, 'role_tier', '')) or '').strip()
@@ -85,6 +111,12 @@ _VUES_PAGE = inline_serializer('VuesPage', {
 })
 
 
+@extend_schema_view(
+    create=extend_schema(extensions={
+        EXTENSION_CORPS_RESSERRE: _CREATION_PUBLIEE}),
+    **{action: extend_schema(extensions={
+        EXTENSION_CORPS_RESSERRE: _MAJ_PUBLIEE})
+       for action in ('update', 'partial_update')})
 class VuePersonnaliseeViewSet(CompanyScopedModelViewSet):
     """CRUD des vues personnalisées, bornées à la société ET à la visibilité."""
 

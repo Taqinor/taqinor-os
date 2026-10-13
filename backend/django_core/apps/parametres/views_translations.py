@@ -30,6 +30,8 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
+from core.parametres_requete import choix_ou_400
+
 from .localisation import PeutGererLocalisation
 from .requetes_strictes import TraductionsBulkRequestSerializer, valider_corps
 from .models import SettingsAuditLog
@@ -70,7 +72,8 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        locale = self.request.query_params.get('locale')
+        # ENF11 — langue hors énumération publiée : 400 (liste vide en 200).
+        locale = choix_ou_400(self.request, 'locale', sorted(VALID_LOCALES))
         if locale:
             qs = qs.filter(locale=locale)
         return qs

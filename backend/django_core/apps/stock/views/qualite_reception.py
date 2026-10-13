@@ -17,6 +17,7 @@ from authentication.permissions import (
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.viewsets import CompanyScopedModelViewSet
 
+from ..openapi_helpers import EntierBornePublie
 from ..serializers_wms import TexteLie
 from ..models import ControleReception, PlanEchantillonnage
 
@@ -28,6 +29,10 @@ class PlanEchantillonnageSerializer(ChampsTexteBooleenStricts, CompanyScopedRela
                                     serializers.ModelSerializer):
     categorie_nom = TexteLie(
         source='categorie.nom', read_only=True, default='')
+    # ERR fuzz : borne PUBLIÉE au schéma (``maximum: 100``) — un taux > 100
+    # passait pour conforme puis était refusé ; le refus reste celui de
+    # ``validate_taux_echantillon_pct`` (message et code du contrat).
+    taux_echantillon_pct = EntierBornePublie('max', min_value=0, max_value=100, required=False)
 
     class Meta:
         model = PlanEchantillonnage

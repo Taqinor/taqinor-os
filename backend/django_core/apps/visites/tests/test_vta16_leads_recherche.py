@@ -120,7 +120,7 @@ class LeadsRechercheTests(TestCase):
 
     def test_limite_non_entiere_refusee_en_400(self):
         # ENF11 — ``limit=null`` était accepté en silence (200).
-        for brut in ('null', 'abc', '2.5'):
+        for brut in ('null', 'abc', '2.5', '5_0', '+5', ' 5', '٥'):
             resp = auth(self.bureau).get(URL, {'q': 'Zahra', 'limit': brut})
             self.assertEqual(resp.status_code, 400, (brut, resp.data))
             self.assertIn('limit', resp.data)

@@ -87,7 +87,17 @@ FORME_PROPOSITION = inline_serializer('CalepinageConsommationProposee', {
 })
 
 
-@extend_schema(request=None, responses={200: FORME_PROPOSITION})
+@extend_schema(
+    request=inline_serializer('CalepinageConsommationProposerCorps', {
+        'source': serializers.ChoiceField(
+            choices=['lead', 'factures', 'appareils', 'csv']),
+        'factures': serializers.JSONField(required=False),
+        'classe': serializers.CharField(required=False),
+        'appareils': serializers.JSONField(required=False),
+        'charges': serializers.JSONField(required=False),
+        'csv': serializers.JSONField(required=False),
+        'ramadan': serializers.JSONField(required=False)}),
+    responses={200: FORME_PROPOSITION})
 @action(detail=True, methods=['post'], url_path='consommation/proposer',
         url_name='consommation-proposer',
         permission_classes=[PeutGererCalepinage])

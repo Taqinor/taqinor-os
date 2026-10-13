@@ -30,11 +30,15 @@ from __future__ import annotations
 from rest_framework import status
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.utils import (
+    OpenApiParameter, PolymorphicProxySerializer, inline_serializer,
+)
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
+from ..serializers import forme_du_contrat
 from .calepinages import CalepinageViewSet
 
 __all__ = ['etiquettes']
@@ -49,12 +53,28 @@ def _corps(request):
     return corps
 
 
+_FORME_ETIQUETTES = forme_du_contrat(
+    'CalepinageEtiquettes', 'calepinage_etiquettes.json')
+
+
+@extend_schema(methods=['GET'], responses=_FORME_ETIQUETTES)
+@extend_schema(
+    methods=['POST'],
+    request=PolymorphicProxySerializer(
+        component_name='CalepinageEtiquetteCorps',
+        resource_type_field_name=None, serializers=[
+            inline_serializer('CalepinageEtiquetteParId',
+                              {'tag_id': serializers.IntegerField()}),
+            inline_serializer('CalepinageEtiquetteParNom',
+                              {'nom': serializers.CharField()})]),
+    responses=_FORME_ETIQUETTES)
 @extend_schema(
     methods=['DELETE'],
     parameters=[
         OpenApiParameter('tag_id', OpenApiTypes.STR, required=False),
         OpenApiParameter('nom', OpenApiTypes.STR, required=False),
-    ])
+    ],
+    responses={200: _FORME_ETIQUETTES})
 @action(detail=True, methods=['get', 'post', 'delete'],
         url_path='etiquettes', url_name='etiquettes',
         permission_classes=[PeutLireOuEcrireCalepinage])
@@ -73,7 +93,8 @@ def etiquettes(self, request, pk=None):
         return Response(geste(calepinage, _corps(request), user=request.user))
     except EtiquetteRefusee as refus:
         return Response({refus.champ or 'tag_id': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_404_NOT_FOUND if refus.introuvable
+                                else status.HTTP_400_BAD_REQUEST))
 
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par

@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import P, STR, corps
+from ..utils.params import corps_objet
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import TransfertStock
 from ..serializers import TransfertStockSerializer
@@ -56,14 +57,15 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
 
     def create(self, request, *args, **kwargs):
         from ..services import transfer_stock
+        donnees = corps_objet(request)
         try:
             transfert = transfer_stock(
                 company=request.user.company, user=request.user,
-                produit_id=request.data.get('produit'),
-                source_id=request.data.get('source'),
-                destination_id=request.data.get('destination'),
-                quantite=request.data.get('quantite'),
-                note=request.data.get('note') or '')
+                produit_id=donnees.get('produit'),
+                source_id=donnees.get('source'),
+                destination_id=donnees.get('destination'),
+                quantite=donnees.get('quantite'),
+                note=donnees.get('note') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -85,14 +87,15 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
         inchangé — ce cycle est une porte d'entrée SÉPARÉE."""
         from ..services_transfert_deux_temps import creer_demande_transfert
 
+        donnees = corps_objet(request)
         try:
             transfert = creer_demande_transfert(
                 company=request.user.company, user=request.user,
-                produit_id=request.data.get('produit'),
-                source_id=request.data.get('source'),
-                destination_id=request.data.get('destination'),
-                quantite=request.data.get('quantite'),
-                note=request.data.get('note') or '')
+                produit_id=donnees.get('produit'),
+                source_id=donnees.get('source'),
+                destination_id=donnees.get('destination'),
+                quantite=donnees.get('quantite'),
+                note=donnees.get('note') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

@@ -83,6 +83,10 @@ LIBELLES = {
 
 _PAIRE = re.compile(r'\s*(.+?)\s+([−-])?\s?([0-9]+\.[0-9]{2}) MAD')
 _TAUX = re.compile(r'\(([0-9]+(?:\.[0-9]+)?) ?%\)')
+#: Pied courant d'un saut de page (« Société FAC-… Page 1 / 2 ») collé
+#: devant le libellé suivant quand la chaîne chevauche deux pages (VNT40 :
+#: le bloc « Situation de la vente » allonge la facture).
+_SAUT_PAGE = re.compile(r'^.*\bPage [0-9]+ / [0-9]+\s*')
 
 
 def _q(valeur):
@@ -110,7 +114,8 @@ def figures_lues(texte, lib_sous_total, lib_ttc):
     tva = []
     total_ht = None
     for m in _PAIRE.finditer(texte, debut):
-        libelle, montant = m.group(1).strip(), Decimal(m.group(3))
+        libelle = _SAUT_PAGE.sub('', m.group(1).strip())
+        montant = Decimal(m.group(3))
         if libelle == lib_ttc:
             lues['ttc'] = montant
             break
@@ -376,6 +381,144 @@ class PariteDocumentsArgentTests(TestCase):
             'ajoutez-les à cette suite.')
         self.assertEqual(GABARITS_COUVERTS - gabarits, set(),
                          'Gabarit couvert qui n\'importe plus la macro.')
+
+
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class SituationVentePdfTests(TestCase):
+    """VNT40 — « vente en 2 factures » sur le panier RÉEL du 388 : le PDF du
+    solde imprime, APRÈS le Total TTC, la situation de la vente (factures
+    ÉMISES, cette facture, total facturé, payé et reste dû sur la vente),
+    chaque montant LU égal à ``etat_vente`` au centime ; la chaîne d'argent
+    de la facture reste lisible par ``figures_lues``."""
+
+    LIBRE = [{'type': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+              'pct_or_montant': 15000},
+             {'type': 'solde', 'libelle': 'Solde', 'unite': 'montant',
+              'pct_or_montant': 34000}]
+
+    def setUp(self):
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _lu(self, texte, libelle):
+        m = re.search(re.escape(libelle) + r' ([0-9]+\.[0-9]{2}) MAD', texte)
+        self.assertIsNotNone(m, f'« {libelle} » absent : {texte[-1500:]}')
+        return Decimal(m.group(1))
+
+    def test_vente_en_deux_factures(self, _dl):
+        from datetime import date
+
+        from apps.ventes.domain.encaissements import (
+            recalculer_statut_paiement)
+        from apps.ventes.models import Facture, Paiement
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        from apps.ventes.vente_facturation import etat_vente
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                'DEV-VNT40-0388', self.LIBRE)
+        acompte = creer_facture_tranche(devis, self.user, self.company, None)
+        Facture.objects.filter(pk=acompte.pk).update(
+            date_emission=date(2026, 10, 12))
+        Paiement.objects.create(
+            company=self.company, facture=acompte, montant=Decimal('15000'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        recalculer_statut_paiement(acompte)
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.statut, 'payee')
+        solde = creer_facture_tranche(devis, self.user, self.company, None)
+        self.assertEqual(solde.total_ttc, Decimal('34000.00'))
+        patcheur, boite = _capturer_upload()
+        with patcheur:
+            generate_facture_pdf(solde.pk)
+        texte = _texte_pdf(boite['pdf'])
+        self.assertIn(f'{acompte.reference} · 12/10/2026 · 15000.00 MAD · '
+                      'Payée', texte)
+        self.assertIn('Situation de la vente au', texte)
+        self.assertIn('Cette facture 34000.00 MAD', texte)
+        self.assertNotIn('Reste à facturer', texte)
+        etat = etat_vente(devis)
+        lus = {cle: self._lu(texte, libelle) for cle, libelle in (
+            ('prix_convenu_ttc', 'Prix convenu'),
+            ('emis_ttc', 'Total facturé'),
+            ('paye_ttc', 'Payé sur la vente'),
+            ('reste_a_payer_ttc', 'Reste dû sur la vente'))}
+        for cle, montant in lus.items():
+            self.assertEqual(montant, Decimal(etat[cle]), cle)
+        self.assertEqual(lus['paye_ttc'], Decimal('15000.00'))
+        self.assertEqual(lus['reste_a_payer_ttc'], Decimal('34000.00'))
+        self.assertEqual(lus['prix_convenu_ttc'] - lus['paye_ttc'],
+                         Decimal('34000.00'))
+        # La chaîne d'argent de la facture reste lue AVANT la situation.
+        lues = figures_lues(texte, *LIBELLES['facture'])
+        self.assertEqual(lues['ttc'], Decimal('34000.00'))
+
+
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class ProchainesEcheancesPdfTests(TestCase):
+    """VNT41 (D-VNT-6) — 388, échéancier [acompte 15 000 MAD, matériel 60 %,
+    solde 10 %] : l'acompte émis et payé imprime « Livraison du matériel :
+    29400.00 MAD TTC » puis « Solde : 4600.00 MAD TTC » (libellés de
+    l'échéancier, montants == ``etat_vente``) ; la tranche matériel ensuite
+    créée vaut EXACTEMENT 29400.00 ; bloc absent sur la dernière tranche."""
+
+    ECHEANCIER = [{'type': 'acompte', 'libelle': 'Acompte',
+                   'unite': 'montant', 'pct_or_montant': 15000},
+                  {'type': 'materiel', 'pct_or_montant': 60},
+                  {'type': 'solde', 'pct_or_montant': 10}]
+
+    setUp = SituationVentePdfTests.setUp
+
+    def _texte(self, facture):
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        patcheur, boite = _capturer_upload()
+        with patcheur:
+            generate_facture_pdf(facture.pk)
+        return _texte_pdf(boite['pdf'])
+
+    def test_acompte_annonce_materiel_puis_solde(self, _dl):
+        from datetime import date
+
+        from apps.ventes.domain.encaissements import (
+            recalculer_statut_paiement)
+        from apps.ventes.models import Paiement
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        from apps.ventes.vente_facturation import etat_vente
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                'DEV-VNT41-0388', self.ECHEANCIER)
+        acompte = creer_facture_tranche(devis, self.user, self.company, None)
+        self.assertEqual(acompte.total_ttc, Decimal('15000.00'))
+        Paiement.objects.create(
+            company=self.company, facture=acompte, montant=Decimal('15000'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        recalculer_statut_paiement(acompte)
+        texte = self._texte(acompte)
+        self.assertIn('Livraison du matériel : 29400.00 MAD TTC', texte)
+        self.assertIn('Solde : 4600.00 MAD TTC', texte)
+        self.assertNotIn('Mise en service', texte)
+        self.assertLess(texte.index('Livraison du matériel : 29400.00'),
+                        texte.index('Solde : 4600.00'))
+        lus = [Decimal(m) for m in re.findall(
+            r'(?:Livraison du matériel|Solde) : ([0-9]+\.[0-9]{2}) MAD TTC',
+            texte)]
+        attendus = [Decimal(e['montant_ttc'])
+                    for e in etat_vente(devis)['prochaines_echeances']]
+        self.assertEqual(lus, attendus)
+        self.assertEqual(Decimal('15000.00') + sum(lus), Decimal('49000.00'))
+        materiel = creer_facture_tranche(devis, self.user, self.company, None)
+        self.assertEqual(materiel.total_ttc, Decimal('29400.00'))
+        solde = creer_facture_tranche(devis, self.user, self.company, None)
+        self.assertEqual(solde.total_ttc, Decimal('4600.00'))
+        texte_solde = self._texte(solde)
+        self.assertNotIn('chaines échéances', texte_solde)
+        self.assertIn('Solde : 4600.00 MAD TTC (reste de la vente)',
+                      texte_solde)
 
 
 class FiguresLuesTests(SimpleTestCase):

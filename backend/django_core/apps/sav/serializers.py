@@ -31,11 +31,11 @@ class EquipementSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = (
         'categorie', 'client_vente', 'installation', 'produit',
         'remplace_par_ticket')
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True, allow_null=True, default=None)
-    produit_marque = serializers.CharField(source='produit.marque', read_only=True, allow_null=True, default=None)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True, allow_null=True, default=None)
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True, allow_null=True)
+    produit_marque = serializers.CharField(source='produit.marque', read_only=True, allow_null=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True, allow_null=True)
     installation_reference = serializers.CharField(
-        source='installation.reference', read_only=True, allow_null=True, default=None)
+        source='installation.reference', read_only=True, allow_null=True)
     client_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -43,10 +43,10 @@ class EquipementSerializer(SameCompanyFKSerializerMixin,
     garantie_jours_restants = serializers.SerializerMethodField()
     # L632 — qui/quand : nom du créateur (les dates sont déjà sérialisées).
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
     # L629 — référence du ticket SAV qui a remplacé l'appareil (statut remplacé).
     remplace_par_ticket_reference = serializers.CharField(
-        source='remplace_par_ticket.reference', read_only=True, allow_null=True, default=None)
+        source='remplace_par_ticket.reference', read_only=True, allow_null=True)
     # L624 — nombre de tickets SAV ouverts liés à cet équipement.
     nb_tickets_ouverts = serializers.SerializerMethodField()
     # FG90 — nombre de tickets correctifs sur les 12 derniers mois (citron).
@@ -57,7 +57,7 @@ class EquipementSerializer(SameCompanyFKSerializerMixin,
     sous_garantie_legale_seule = serializers.BooleanField(read_only=True)
     # ZMFG2 — catégorie de parc (libellé lecture).
     categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True, allow_null=True, default=None)
+        source='categorie.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = Equipement
@@ -189,7 +189,7 @@ class TicketActiviteAFaireSerializer(SameCompanyFKSerializerMixin,
     type_display = serializers.CharField(
         source='get_type_display', read_only=True)
     assigne_nom = serializers.CharField(
-        source='assigne.username', read_only=True, allow_null=True, default=None)
+        source='assigne.username', read_only=True, allow_null=True)
     en_retard = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -210,11 +210,11 @@ class PieceRetireeSerializer(SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptible bornée à la société.
     same_company_fields = ('produit',)
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, allow_null=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True)
     produit_marque = serializers.CharField(
-        source='produit.marque', read_only=True, allow_null=True, default=None)
+        source='produit.marque', read_only=True, allow_null=True)
     produit_sku = serializers.CharField(
-        source='produit.sku', read_only=True, allow_null=True, default=None)
+        source='produit.sku', read_only=True, allow_null=True)
     destination_display = serializers.CharField(
         source='get_destination_display', read_only=True)
     # ZMFG8 — typage opérationnel explicite (ajout/retrait/recyclage).
@@ -243,9 +243,9 @@ class PretEquipementSerializer(SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('produit', 'ticket')
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, allow_null=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True)
     produit_marque = serializers.CharField(
-        source='produit.marque', read_only=True, allow_null=True, default=None)
+        source='produit.marque', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     en_retard = serializers.BooleanField(read_only=True)
@@ -270,11 +270,11 @@ class PieceConsommeeSerializer(SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptible bornée à la société.
     same_company_fields = ('produit',)
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, allow_null=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True)
     produit_marque = serializers.CharField(
-        source='produit.marque', read_only=True, allow_null=True, default=None)
+        source='produit.marque', read_only=True, allow_null=True)
     produit_sku = serializers.CharField(
-        source='produit.sku', read_only=True, allow_null=True, default=None)
+        source='produit.sku', read_only=True, allow_null=True)
 
     class Meta:
         model = PieceConsommee
@@ -305,7 +305,7 @@ class TicketInterventionSerializer(serializers.Serializer):
 class TicketChecklistItemSerializer(serializers.ModelSerializer):
     """FG82 — Item de checklist sur un ticket (coché/non coché)."""
     coche_par_nom = serializers.CharField(
-        source='coche_par.username', read_only=True, allow_null=True, default=None)
+        source='coche_par.username', read_only=True, allow_null=True)
 
     class Meta:
         model = TicketChecklistItem
@@ -336,19 +336,18 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
     # VX108 — tap-to-call : numéro du client du ticket (lecture seule).
     client_telephone = serializers.SerializerMethodField()
     installation_reference = serializers.CharField(
-        source='installation.reference', read_only=True, allow_null=True, default=None)
+        source='installation.reference', read_only=True, allow_null=True)
     equipement_serie = serializers.CharField(
-        source='equipement.numero_serie', read_only=True, allow_null=True, default=None)
+        source='equipement.numero_serie', read_only=True, allow_null=True)
     equipement_produit = serializers.CharField(
-        source='equipement.produit.nom', read_only=True, allow_null=True, default=None)
+        source='equipement.produit.nom', read_only=True, allow_null=True)
     equipement_fin_garantie = serializers.DateField(
-        source='equipement.date_fin_garantie', read_only=True, allow_null=True, default=None)
+        source='equipement.date_fin_garantie', read_only=True, allow_null=True)
     # ASAV44 — fin de garantie EFFECTIVE (max légale / constructeur), celle
     # que ``sous_garantie_effectif`` utilise ; la constructeur reste servie
     # ci-dessus.
     equipement_fin_garantie_effective = serializers.DateField(
-        source='equipement.date_fin_garantie_effective', read_only=True, allow_null=True,
-        default=None)
+        source='equipement.date_fin_garantie_effective', read_only=True, allow_null=True)
     # ASAV39 — l'utilisateur courant suit-il ce ticket ?
     je_suis_abonne = serializers.SerializerMethodField()
     # ASAV43 — transitions que le serveur accepte depuis le statut courant.
@@ -373,19 +372,19 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
     reopen_count = serializers.IntegerField(read_only=True)
     # XSAV14 — taxonomie panne / cause / remède (libellés lecture).
     cause_nom = serializers.CharField(
-        source='cause.nom', read_only=True, allow_null=True, default=None)
+        source='cause.nom', read_only=True, allow_null=True)
     remede_nom = serializers.CharField(
-        source='remede.nom', read_only=True, allow_null=True, default=None)
+        source='remede.nom', read_only=True, allow_null=True)
     # ZSAV2 — catégorie de ticket configurable (libellé lecture).
     categorie_nom = serializers.CharField(
-        source='categorie.libelle', read_only=True, allow_null=True, default=None)
+        source='categorie.libelle', read_only=True, allow_null=True)
     # ZMFG1 — équipe de maintenance assignée (libellé lecture).
     equipe_nom = serializers.CharField(
-        source='equipe.nom', read_only=True, allow_null=True, default=None)
+        source='equipe.nom', read_only=True, allow_null=True)
     # ZMFG7 — catégorie d'équipement d'origine (libellé lecture, routage
     # par alias e-mail).
     categorie_equipement_nom = serializers.CharField(
-        source='categorie_equipement.nom', read_only=True, allow_null=True, default=None)
+        source='categorie_equipement.nom', read_only=True, allow_null=True)
     # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
     # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
     equipement_couvert = serializers.SerializerMethodField()
@@ -576,7 +575,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
 
 # ENF11 — `list` renvoie l'objet unique (singleton société), pas un tableau.
 @extend_schema_serializer(many=False)
-class SavSlaSettingsSerializer(serializers.ModelSerializer):
+class SavSlaSettingsSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     class Meta:
         model = SavSlaSettings
         fields = [
@@ -630,9 +629,9 @@ class WarrantyClaimSerializer(SameCompanyFKSerializerMixin,
     resolution_display = serializers.CharField(
         source='get_resolution_display', read_only=True)
     equipement_serie = serializers.CharField(
-        source='equipement.numero_serie', read_only=True, allow_null=True, default=None)
+        source='equipement.numero_serie', read_only=True, allow_null=True)
     equipement_produit = serializers.CharField(
-        source='equipement.produit.nom', read_only=True, allow_null=True, default=None)
+        source='equipement.produit.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = WarrantyClaim
@@ -652,9 +651,9 @@ class KbArticleSerializer(SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptible bornée à la société.
     same_company_fields = ('produit',)
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, allow_null=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
 
     class Meta:
         model = KbArticle
@@ -687,13 +686,13 @@ class AlarmeOnduleurSerializer(SameCompanyFKSerializerMixin,
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     equipement_serie = serializers.CharField(
-        source='equipement.numero_serie', read_only=True, allow_null=True, default=None)
+        source='equipement.numero_serie', read_only=True, allow_null=True)
     equipement_produit = serializers.CharField(
-        source='equipement.produit.nom', read_only=True, allow_null=True, default=None)
+        source='equipement.produit.nom', read_only=True, allow_null=True)
     ticket_reference = serializers.CharField(
-        source='ticket.reference', read_only=True, allow_null=True, default=None)
+        source='ticket.reference', read_only=True, allow_null=True)
     acquittee_par_nom = serializers.CharField(
-        source='acquittee_par.username', read_only=True, allow_null=True, default=None)
+        source='acquittee_par.username', read_only=True, allow_null=True)
 
     class Meta:
         model = AlarmeOnduleur
@@ -734,7 +733,7 @@ class CategorieTicketSerializer(TypageStrictMixin, serializers.ModelSerializer):
 
 class EquipeMaintenanceSerializer(serializers.ModelSerializer):
     responsable_nom = serializers.CharField(
-        source='responsable.username', read_only=True, allow_null=True, default=None)
+        source='responsable.username', read_only=True, allow_null=True)
     membres_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -780,12 +779,12 @@ class CategorieEquipementSerializer(SameCompanyFKSerializerMixin,
     # déjà par ``validate_responsable``).
     same_company_fields = ('equipe_responsable',)
     responsable_nom = serializers.CharField(
-        source='responsable.username', read_only=True, allow_null=True, default=None)
+        source='responsable.username', read_only=True, allow_null=True)
     # Compteur d'équipements par catégorie (smart-button façon Odoo).
     nb_equipements = serializers.SerializerMethodField()
     # ZMFG7 — équipe responsable (libellé lecture).
     equipe_responsable_nom = serializers.CharField(
-        source='equipe_responsable.nom', read_only=True, allow_null=True, default=None)
+        source='equipe_responsable.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = CategorieEquipement
@@ -822,7 +821,7 @@ class EquipementDowntimeSerializer(SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('equipement', 'ticket')
     ticket_reference = serializers.CharField(
-        source='ticket.reference', read_only=True, allow_null=True, default=None)
+        source='ticket.reference', read_only=True, allow_null=True)
     en_cours = serializers.SerializerMethodField()
 
     class Meta:
@@ -864,7 +863,7 @@ class ReleveCompteurEquipementSerializer(SameCompanyFKSerializerMixin,
 
 # ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
 
-class ReponseTypeSerializer(serializers.ModelSerializer):
+class ReponseTypeSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     class Meta:
         model = ReponseType
         fields = [
@@ -906,11 +905,11 @@ class CompatibilitePieceSerializer(SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('piece', 'produit_equipement', 'remplace_par')
     produit_equipement_nom = serializers.CharField(
-        source='produit_equipement.nom', read_only=True, allow_null=True, default=None)
+        source='produit_equipement.nom', read_only=True, allow_null=True)
     piece_nom = serializers.CharField(
-        source='piece.nom', read_only=True, allow_null=True, default=None)
+        source='piece.nom', read_only=True, allow_null=True)
     remplace_par_nom = serializers.CharField(
-        source='remplace_par.nom', read_only=True, allow_null=True, default=None)
+        source='remplace_par.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = CompatibilitePiece
@@ -939,7 +938,7 @@ class TicketWorksheetSerializer(SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('modele', 'ticket')
     modele_nom = serializers.CharField(
-        source='modele.nom', read_only=True, allow_null=True, default=None)
+        source='modele.nom', read_only=True, allow_null=True)
     champs_requis_manquants = serializers.SerializerMethodField()
 
     class Meta:
@@ -961,7 +960,7 @@ class TicketWorksheetSerializer(SameCompanyFKSerializerMixin,
 
 # ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────
 
-class ProblemeSerializer(serializers.ModelSerializer):
+class ProblemeSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """NTSRV16 — un problème + le NOMBRE de tickets rattachés.
 
     ``reference`` et ``company`` sont posés côté serveur (numérotation

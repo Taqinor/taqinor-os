@@ -166,3 +166,161 @@ class ResteUniqueTests(TestCase):
         cible = Facture.objects.get(pk=cible.pk)
         self.assertEqual(Decimal(str(cible.montant_paye)), Decimal('10000.00'))
         self.assertTrue(Devis.objects.filter(pk=devis.pk).exists())
+
+
+class EtatVenteVNT23Tests(TestCase):
+    """VNT23 — ``vente_facturation.etat_vente`` (contrat
+    ``ventes/contract_samples/vente_etat.json``) : toute la chaîne, brouillon
+    = prévu, révision en cours ⇒ tous gestes fermés, ``peut`` = même
+    prédicat que les permissions des vues."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='VNT23')
+
+    def _devis(self, statut='accepte', **champs):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        return creer_devis_388(self.company, self.user, self.client_obj,
+                               f'DEV-VNT23-{_nxt()}', statut=statut,
+                               lead=self.lead, **champs)
+
+    def _reviser(self, v1, statut='accepte'):
+        from apps.ventes.models import Devis
+        v2 = self._devis(statut=statut, version=v1.version + 1,
+                         version_parent=v1.version_parent or v1)
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        return Devis.objects.get(pk=v2.pk)
+
+    def _facture(self, devis, cle, ttc, statut='emise', reference=None):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            facture_tranche)
+        ht = (Decimal(ttc) / Decimal('1.18')).quantize(Decimal('0.01'))
+        return facture_tranche(
+            devis, reference or f'FAC-VNT23-{_nxt()}', cle, ttc, str(ht),
+            str(Decimal(ttc) - ht), statut=statut)
+
+    def _contrat(self):
+        import json
+        from pathlib import Path
+        chemin = (Path(__file__).resolve().parents[2] / 'ventes'
+                  / 'contract_samples' / 'vente_etat.json')
+        return json.loads(chemin.read_text(encoding='utf-8'))
+
+    def test_chaine_kharbachi_et_cles_du_contrat(self):
+        from apps.ventes.models import Devis, Paiement
+        from apps.ventes.vente_facturation import etat_vente
+        v367 = self._devis(remise_globale=Decimal('0'))
+        v387 = self._reviser(v367)
+        v388 = self._reviser(v387)
+        f6 = self._facture(v367, 'materiel', '32700.00')
+        f7 = self._facture(v387, 'acompte', '14700.00', statut='payee')
+        Paiement.objects.create(
+            company=self.company, facture=f7, montant=Decimal('14700'),
+            date_paiement=date(2026, 10, 12), mode='virement')
+        f8 = self._facture(v388, 'solde', '1600.00')
+        v389 = self._devis()
+        self._facture(v389, 'acompte', '14700.00')
+        etat = etat_vente(Devis.objects.get(pk=v388.pk), self.user)
+        self.assertEqual(etat['prix_convenu_ttc'], '49000.00')
+        self.assertEqual({f['id'] for f in etat['factures']},
+                         {f6.pk, f7.pk, f8.pk})
+        self.assertEqual(etat['paye_ttc'], '14700.00')
+        self.assertEqual(etat['reste_a_payer_ttc'], '34300.00')
+        self.assertEqual([v['id'] for v in etat['versions']],
+                         [v367.pk, v387.pk, v388.pk])
+        self.assertTrue(etat['est_tete'])
+        exemple = self._contrat()['exemple_acompte_paye_solde_a_faire']
+        self.assertEqual(set(etat), set(exemple['vente']))
+        facture = exemple['vente']['factures'][0]
+        servie = next(f for f in etat['factures'] if f['id'] == f7.pk)
+        self.assertEqual(set(servie), set(facture))
+        self.assertEqual(set(servie['peut']), set(facture['peut']))
+        self.assertEqual(set(servie['paiements'][0]),
+                         set(facture['paiements'][0]))
+        self.assertEqual(set(etat['peut']), set(exemple['vente']['peut']))
+        ancienne = etat_vente(Devis.objects.get(pk=v387.pk), self.user)
+        self.assertFalse(ancienne['est_tete'])
+        self.assertEqual(ancienne['tete_id'], v388.pk)
+        self.assertFalse(any(ancienne['peut'].values()))
+        self.assertIn('remplacée', ancienne['raison_bloquee'])
+
+    def test_un_brouillon_ne_bloque_rien(self):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            ECHEANCIER_LIBRE)
+        from apps.ventes.vente_facturation import etat_vente
+        devis = self._devis(echeancier=ECHEANCIER_LIBRE)
+        brouillon = self._facture(devis, 'acompte', '15000.00',
+                                  statut='brouillon',
+                                  reference=f'BROUILLON-{_nxt()}')
+        etat = etat_vente(devis, self.user)
+        self.assertEqual(etat['brouillons_ttc'], '15000.00')
+        self.assertEqual(etat['emis_ttc'], '0.00')
+        self.assertEqual(etat['reste_a_facturer_ttc'], '34000.00')
+        self.assertEqual(etat['reste_a_payer_ttc'], '49000.00')
+        self.assertFalse(etat['peut']['facturer_acompte'])
+        self.assertEqual(etat['factures'][0]['id'], brouillon.pk)
+        self.assertTrue(etat['factures'][0]['peut']['emettre'])
+        self.assertTrue(etat['factures'][0]['peut']['supprimer'])
+        self.assertEqual(etat['raison_bloquee'],
+                         "L'acompte est en brouillon : émettez-le.")
+        self.assertEqual(
+            [(e['libelle'], e['montant_ttc'])
+             for e in etat['prochaines_echeances']],
+            [('Livraison du matériel', '29400.00'), ('Solde', '4600.00')])
+
+    def test_revision_en_cours_ferme_tous_les_gestes(self):
+        from apps.ventes.vente_facturation import etat_vente
+        v1 = self._devis()
+        v2 = self._reviser(v1, statut='brouillon')
+        v1.refresh_from_db()
+        etat = etat_vente(v1, self.user)
+        self.assertEqual(etat['revision_en_cours'],
+                         {'id': v2.pk, 'reference': v2.reference})
+        self.assertTrue(etat['est_tete'])
+        self.assertEqual(etat['tete_id'], v1.pk)
+        self.assertFalse(any(etat['peut'].values()))
+        self.assertEqual(etat['prochaine_action'], 'aucune')
+        self.assertTrue(etat['raison_bloquee'].startswith(
+            f'Révision {v2.reference} en cours'))
+
+    def test_parite_des_peut_sur_quatre_roles(self):
+        from types import SimpleNamespace
+        from apps.ventes.vente_facturation import etat_vente
+        from apps.ventes.views.facture import FactureViewSet
+        from authentication.permissions import (
+            IsAdminOrResponsableTier, IsResponsableOrAdmin)
+        devis = self._devis()
+        self._facture(devis, 'acompte', '14700.00')
+        self._facture(devis, 'materiel', '29400.00', statut='brouillon',
+                      reference=f'BROUILLON-{_nxt()}')
+        roles = [User.objects.create_user(
+            username=f'vnt23_{role}_{_nxt()}', password='x',
+            role_legacy=role, company=self.company)
+            for role in ('admin', 'responsable', 'normal')]
+        su = User.objects.create_superuser(
+            username=f'vnt23_su_{_nxt()}', password='x', email='')
+        su.company = self.company
+        su.save(update_fields=['company'])
+        for user in roles + [su]:
+            with self.subTest(user=user.username):
+                req = SimpleNamespace(user=user, method='POST')
+                vue = FactureViewSet()
+                attendu = (
+                    IsAdminOrResponsableTier().has_permission(req, vue)
+                    and IsResponsableOrAdmin().has_permission(req, vue))
+                etat = etat_vente(devis, user)
+                emise, brouillon = etat['factures']
+                self.assertEqual(emise['peut']['annuler'], attendu)
+                self.assertEqual(brouillon['peut']['supprimer'], attendu)
+                self.assertEqual(brouillon['peut']['modifier_montant'],
+                                 attendu)
+                self.assertEqual(etat['peut']['prix_negocie'], attendu)
+        normal = etat_vente(devis, roles[2])
+        self.assertFalse(normal['factures'][0]['peut']['annuler'])

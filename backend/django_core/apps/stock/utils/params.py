@@ -55,3 +55,15 @@ def decimal_ou_400(valeur, nom, defaut=None):
     if not n.is_finite():
         raise ValidationError({nom: ['Nombre attendu.']})
     return n
+
+
+def corps_objet(request):
+    """Corps de requête OBJET (ERR fuzz stock) : un corps JSON non objet
+    (``[null, null]``, ``null``, nombre) levait AttributeError sur ``.get``
+    (500) ; il répond 400. Rend ``request.data`` (dict ou QueryDict)."""
+    from rest_framework.exceptions import ValidationError
+    donnees = request.data
+    if not hasattr(donnees, 'get'):
+        raise ValidationError(
+            {'non_field_errors': ['Le corps doit être un objet JSON.']})
+    return donnees

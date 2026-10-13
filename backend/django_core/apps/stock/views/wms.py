@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from ..openapi_helpers import BINARY, BOOL, DATE, INT, OBJET, P, PDF, STR, corps
 from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
+from ..utils.params import corps_objet, entier_ou_400
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -52,8 +53,9 @@ def _relations_scopees(view, request, noms):
 
     champs = view.get_serializer().fields
     resolues, erreurs = {}, {}
+    donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
     for nom in noms:
-        valeur = request.data.get(nom)
+        valeur = donnees.get(nom)
         if valeur in (None, ''):
             resolues[nom] = None
             continue
@@ -615,8 +617,11 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..services import creer_expedition_transporteur
         company = request.user.company
+        # ERR fuzz : corps non objet / id non entier ({}) -> 400, pas 500.
+        unite_id = entier_ou_400(
+            corps_objet(request).get('unite_logistique'), 'unite_logistique')
         unite = UniteLogistique.objects.filter(
-            id=request.data.get('unite_logistique'), company=company).first()
+            id=unite_id, company=company).first()
         try:
             expedition = creer_expedition_transporteur(
                 company=company, unite=unite,

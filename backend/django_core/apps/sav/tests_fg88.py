@@ -83,6 +83,15 @@ class TestTourneePreventive(TestCase):
         self.assertEqual(r.data['count'], 1)
         self.assertEqual(r.data['results'][0]['reference'], 'SAV-OK')
 
+    def test_coordonnees_invalides_refusees_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : lat/lng illisibles ou hors bornes ne
+        # sont plus ignorées en silence — 400 nommé.
+        for requete in ('?lat=abc', '?lng=null', '?lat=91', '?lng=-181',
+                        '?lat=nan', '?lng=inf'):
+            r = self.api.get(TOURNEE + requete)
+            self.assertEqual(r.status_code, 400, (requete, r.content))
+        self.assertEqual(self.api.get(TOURNEE + '?lat=&lng=').status_code, 200)
+
     def test_proximity_sort_from_origin(self):
         # Origine = Casablanca : le voisin proche doit précéder Rabat.
         _preventif(self.company, self.client_obj, self.rabat, 'SAV-RBT')
@@ -204,6 +213,14 @@ class TestPlanifierTournee(TestCase):
             self.api.post(PLANIFIER, {
                 'ticket_ids': [t1.id], 'date_tournee': 'pas-une-date'},
                 format='json').status_code, 400)
+
+    def test_ticket_ids_vide_ou_hors_bornes_refuse_400(self):
+        # Le schéma publie `minItems: 1` et des ids >= 1 : même verdict ici.
+        for ids in ([], [0], [-1], ['abc']):
+            r = self.api.post(PLANIFIER, {
+                'ticket_ids': ids, 'date_tournee': date.today().isoformat(),
+            }, format='json')
+            self.assertEqual(r.status_code, 400, (ids, r.content))
 
     def test_date_tournee_is_read_only_on_ticket_update(self):
         # FG88 — date_tournee ne peut PAS être posée via PATCH direct du ticket

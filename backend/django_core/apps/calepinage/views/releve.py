@@ -20,19 +20,34 @@ CE QUE L'ACTION GARANTIT
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import status
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutLireOuEcrireCalepinage
+from ..serializers import forme_reponse
 
 __all__ = ['ReleveTerrainMixin']
+
+
+_FORME_RELEVE = forme_reponse('CalepinageReleveTerrain', 'releve', 'releves',
+                              'releve_courant_id')
 
 
 class ReleveTerrainMixin:
     """``GET``/``POST`` ``calepinages/<pk>/releve/`` — les relevés terrain."""
 
+    @extend_schema(methods=['GET'], responses=_FORME_RELEVE)
+    @extend_schema(
+        methods=['POST'],
+        request=inline_serializer('CalepinageReleveCorps', {
+            'releve_le': serializers.CharField(required=False),
+            'notes': serializers.CharField(required=False, allow_blank=True),
+            'chaines': serializers.JSONField(required=False)}),
+        responses={201: _FORME_RELEVE})
     @action(detail=True, methods=['get', 'post'], url_path='releve',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def releve(self, request, pk=None):
@@ -65,10 +80,15 @@ class ReleveTerrainMixin:
                          'releve_courant_id': releve_courant_id(calepinage)},
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[OpenApiParameter(
-        name='releve_id', type=OpenApiTypes.INT,
-        location=OpenApiParameter.PATH,
-        description="Identifiant du relevé terrain (sous-ressource).")])
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            name='releve_id', type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="Identifiant du relevé terrain (sous-ressource).")],
+        request=inline_serializer('CalepinageReleveModifCorps', {
+            'notes': serializers.CharField(required=False, allow_blank=True),
+            'chaines': serializers.JSONField(required=False)}),
+        responses={200: _FORME_RELEVE, 204: None})
     @action(detail=True, methods=['patch', 'delete'],
             url_path=r'releve/(?P<releve_id>[^/.]+)',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -110,10 +130,17 @@ class ReleveTerrainMixin:
         return Response({'releve': releve_en_ligne(releve),
                          'releve_courant_id': releve_courant_id(calepinage)})
 
-    @extend_schema(parameters=[OpenApiParameter(
-        name='releve_id', type=OpenApiTypes.INT,
-        location=OpenApiParameter.PATH,
-        description="Identifiant du relevé terrain (sous-ressource).")])
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            name='releve_id', type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="Identifiant du relevé terrain (sous-ressource).")],
+        request=inline_serializer('CalepinageAppliquerCoteCorps', {
+            'zone_id': serializers.CharField(),
+            'cote_index': serializers.IntegerField(),
+            'longueur_m': serializers.FloatField()}),
+        responses={200: forme_reponse('CalepinageAppliquerCote',
+                                      'roof_layout', 'version')})
     @action(detail=True, methods=['post'],
             url_path=r'releve/(?P<releve_id>[^/.]+)/appliquer-cote',
             permission_classes=[PeutGererCalepinage])

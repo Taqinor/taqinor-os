@@ -175,6 +175,19 @@ class XSAV16DowntimeTest(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(len(resp.data), 1)
 
+    def test_api_downtime_corps_invalide_400_et_formulaire_415(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV (500 sur POST downtime en formulaire) :
+        # un corps mal typé répond 400 nommé, un formulaire 415 (JSON seul).
+        api = auth(self.admin)
+        url = f'/api/django/sav/equipements/{self.equip.id}/downtime/'
+        for corps in ({'debut': 'pas-une-date'}, {'ticket': 'abc'},
+                      {'ticket': 0}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = api.post(url, {'motif': 'x'}, format='multipart')
+        self.assertEqual(resp.status_code, 415, resp.content)
+        self.assertFalse(self.equip.downtimes.exists())
+
     def test_api_ouvre_refuse_chevauchement(self):
         api = auth(self.admin)
         resp = api.post(
@@ -192,3 +205,13 @@ class XSAV16DowntimeTest(TestCase):
             f'/api/django/sav/equipements/{self.equip.id}/disponibilite/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn('disponibilite_pct', resp.data)
+
+    def test_disponibilite_dates_invalides_refusees_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : une date illisible n'est plus ignorée
+        # (période par défaut) — 400 nommé ; vide = borne par défaut.
+        api = auth(self.admin)
+        url = f'/api/django/sav/equipements/{self.equip.id}/disponibilite/'
+        for requete in ('?fin=hier', '?debut=2026-13-45', '?debut=2026-1-1'):
+            resp = api.get(url + requete)
+            self.assertEqual(resp.status_code, 400, (requete, resp.content))
+        self.assertEqual(api.get(url + '?debut=&fin=').status_code, 200)

@@ -209,3 +209,147 @@ class AcompteImprimeEgalFactureTest(TestCase):
                                   'custom_acompte': 12000})
         self.assertNotIn('payment_mode', opts)
         self.assertNotIn('custom_acompte', opts)
+
+
+# ── VNT16 — plan_facturation sur le panier RÉEL du devis 388 ────────────────
+#: Lignes reproduisant ``option_totaux(388)`` (prod 12/10/2026) : HT 41 553,33
+#: / TVA 7 446,67 / TTC 49 000,00 ; 10 % base 8 640,00 / 864,00 ; 20 % base
+#: 32 913,33 / 6 582,67 (remise 10 %, arrondi au 100 MAD inférieur).
+LIGNES_388 = [('Panneau 600 W', '8', '1200', '10'),
+              ('Onduleur + structure + pose', '1', '36643.50', '20')]
+ECHEANCIER_LIBRE = [
+    {'type': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+     'pct_or_montant': 15000},
+    {'type': 'materiel', 'libelle': 'Livraison du matériel',
+     'pct_or_montant': 60},
+    {'type': 'solde', 'libelle': 'Solde', 'unite': 'montant',
+     'pct_or_montant': 4600}]
+
+
+def creer_devis_388(company, user, client, reference, echeancier=None,
+                    statut='accepte', **champs):
+    """Devis ACCEPTÉ au panier réel du 388 (partagé par les tests VNT)."""
+    from apps.ventes.models import Devis
+    from apps.ventes.tests._quote_engine_common import make_devis
+    devis = make_devis(company, user, client, LIGNES_388,
+                       remise_globale='10', reference=reference)
+    Devis.objects.filter(pk=devis.pk).update(
+        statut=statut, echeancier=echeancier, **champs)
+    devis.refresh_from_db()
+    return devis
+
+
+def facture_tranche(devis, reference, cle, ttc, ht, tva, statut='emise',
+                    type_facture='acompte', ventilation=None):
+    from apps.ventes.models import Facture
+    return Facture.objects.create(
+        company=devis.company, reference=reference, devis=devis,
+        client=devis.client, statut=statut, type_facture=type_facture,
+        cle_tranche=cle, montant_ttc=Decimal(ttc), montant_ht=Decimal(ht),
+        montant_tva=Decimal(tva), ventilation_tva=ventilation)
+
+
+VENT_ACOMPTE_15000 = [{'taux': '10.00', 'base_ht': '2644.90', 'montant': '264.49'},
+                      {'taux': '20.00', 'base_ht': '10075.51',
+                       'montant': '2015.10'}]
+
+
+class PlanFacturationVenteTest(TestCase):
+    """VNT16 — ``vente_facturation.plan_facturation`` : cibles cumulatives
+    bornées, chaîne de versions (``superseded_by``), brouillon = PRÉVU, TVA
+    close au centime par taux. Goldens vérifiés sur le panier réel du 388."""
+
+    def setUp(self):
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _devis(self, reference, echeancier=None, **champs):
+        return creer_devis_388(self.company, self.user, self.client_obj,
+                               reference, echeancier, **champs)
+
+    def test_fixture_rend_les_bases_du_388(self):
+        from apps.ventes.utils.options import option_totaux
+        tot = option_totaux(self._devis('DEV-VNT16-FIX'))
+        self.assertEqual((tot['ht'], tot['tva'], tot['ttc']),
+                         (Decimal('41553.33'), Decimal('7446.67'),
+                          Decimal('49000.00')))
+        self.assertEqual(
+            [(Decimal(str(b['base_ht'])), Decimal(str(b['montant'])))
+             for b in tot['tva_par_taux']],
+            [(Decimal('8640.00'), Decimal('864.00')),
+             (Decimal('32913.33'), Decimal('6582.67'))])
+
+    def test_facture_rattachee_depuis_la_v1_cible_cumulee(self):
+        """[15 000 MAD, 60 %, reste] ; facture émise 16 350 rattachée depuis
+        la V1 ⇒ matériel 28 050 (= 44 400 − 16 350), solde 4 600, Σ 49 000."""
+        from apps.ventes.models import Devis
+        from apps.ventes.vente_facturation import (
+            chaine_vente, factures_de_la_vente, plan_facturation)
+        v1 = self._devis('DEV-VNT16-V1', ECHEANCIER_LIBRE)
+        v2 = self._devis('DEV-VNT16-V2', ECHEANCIER_LIBRE,
+                         version=2, version_parent=v1)
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        f1 = facture_tranche(v1, 'FAC-VNT16-1', 'acompte', '16350.00',
+                             '13865.00', '2485.00')
+        v2.refresh_from_db()
+        self.assertEqual([d.pk for d in chaine_vente(v2)], [v1.pk, v2.pk])
+        self.assertEqual([f.pk for f in factures_de_la_vente(v2)], [f1.pk])
+        plan = plan_facturation(v2)
+        tr = {t['cle']: t for t in plan['tranches']}
+        self.assertEqual(tr['acompte']['statut'], 'emise')
+        self.assertEqual(tr['materiel']['montant_ttc'], Decimal('28050.00'))
+        self.assertEqual(tr['materiel']['cible_cumul_ttc'],
+                         Decimal('44400.00'))
+        self.assertEqual(tr['solde']['montant_ttc'], Decimal('4600.00'))
+        self.assertEqual(sum(t['montant_ttc'] for t in plan['tranches']),
+                         Decimal('49000.00'))
+        for t in plan['tranches']:
+            self.assertEqual(t['ht'] + t['tva'], t['montant_ttc'], t['cle'])
+        self.assertEqual(plan['emis_net'], Decimal('16350.00'))
+        self.assertEqual(plan['prochaine']['cle'], 'materiel')
+
+    def test_golden_388_acompte_libre_et_solde(self):
+        from apps.ventes.vente_facturation import plan_facturation
+        devis = self._devis('DEV-VNT16-388', [
+            {'type': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+             'pct_or_montant': 15000},
+            {'type': 'solde', 'libelle': 'Solde', 'unite': 'montant',
+             'pct_or_montant': 34000}])
+        plan = plan_facturation(devis)
+        acompte, solde = plan['tranches']
+        self.assertEqual((acompte['montant_ttc'], acompte['ht'], acompte['tva']),
+                         (Decimal('15000.00'), Decimal('12720.41'),
+                          Decimal('2279.59')))
+        self.assertEqual(acompte['ventilation_tva'], VENT_ACOMPTE_15000)
+        self.assertEqual((solde['montant_ttc'], solde['ht'], solde['tva']),
+                         (Decimal('34000.00'), Decimal('28832.92'),
+                          Decimal('5167.08')))
+        self.assertEqual(solde['ventilation_tva'], [
+            {'taux': '10.00', 'base_ht': '5995.10', 'montant': '599.51'},
+            {'taux': '20.00', 'base_ht': '22837.82', 'montant': '4567.57'}])
+        for taux, base, tva in (('10.00', '8640.00', '864.00'),
+                                ('20.00', '32913.33', '6582.67')):
+            vents = [b for t in plan['tranches'] for b in t['ventilation_tva']
+                     if b['taux'] == taux]
+            self.assertEqual(sum(Decimal(b['base_ht']) for b in vents),
+                             Decimal(base))
+            self.assertEqual(sum(Decimal(b['montant']) for b in vents),
+                             Decimal(tva))
+        self.assertEqual(acompte['pourcentage'], Decimal('30.61'))
+
+    def test_un_brouillon_est_prevu_jamais_emis(self):
+        from apps.ventes.vente_facturation import plan_facturation
+        devis = self._devis('DEV-VNT16-BR', ECHEANCIER_LIBRE)
+        facture_tranche(devis, 'BROUILLON-VNT16', 'acompte', '15000.00',
+                        '12720.41', '2279.59', statut='brouillon')
+        plan = plan_facturation(devis)
+        self.assertEqual(plan['emis_net'], Decimal('0.00'))
+        self.assertEqual(plan['brouillons'], Decimal('15000.00'))
+        self.assertEqual(plan['reste_a_facturer'], Decimal('34000.00'))
+        self.assertEqual(plan['tranches'][0]['statut'], 'brouillon')
+        self.assertEqual(plan['prochaine']['cle'], 'materiel')
+        self.assertEqual(plan['prochaine']['montant_ttc'], Decimal('29400.00'))

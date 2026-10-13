@@ -32,9 +32,7 @@ _UPLOAD_IMAGE = inline_serializer('UploadImageRequest', {
 
 
 @extend_schema(request={'multipart/form-data': _UPLOAD_IMAGE},
-               responses=CompanyProfileSerializer)
-@extend_schema(request={'multipart/form-data': _UPLOAD_IMAGE},
-               responses=CompanyProfileSerializer)
+               responses={200: CompanyProfileSerializer})
 @api_view(['POST'])
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
@@ -46,6 +44,10 @@ def upload_logo(request):
     return _upload_image(request, field='logo_key', prefix='logos')
 
 
+# ENF11 — la signature n'avait AUCUN schéma (corps et réponse « non devinés ») :
+# le fuzzeur postait sans fichier. Même contrat que le logo.
+@extend_schema(request={'multipart/form-data': _UPLOAD_IMAGE},
+               responses={200: CompanyProfileSerializer})
 @api_view(['POST'])
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable

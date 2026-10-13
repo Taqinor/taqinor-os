@@ -2,7 +2,9 @@
 import re
 
 from rest_framework import serializers
-from core.champs_stricts import TypageStrictMixin
+
+from core.conflit_etat import ConflitEtat
+from .requetes_strictes import TypageStrictParametres
 
 from .models_email import (
     EMAIL_TEMPLATE_PLACEHOLDERS, EmailTemplate, erreur_de_rendu,
@@ -27,7 +29,7 @@ def _unknown_placeholders(text, cle):
     return seen
 
 
-class EmailTemplateSerializer(TypageStrictMixin, serializers.ModelSerializer):
+class EmailTemplateSerializer(TypageStrictParametres, serializers.ModelSerializer):
     class Meta:
         model = EmailTemplate
         fields = ['id', 'cle', 'sujet', 'corps']
@@ -63,7 +65,8 @@ class EmailTemplateSerializer(TypageStrictMixin, serializers.ModelSerializer):
         if self.instance is not None:
             new_cle = attrs.get('cle')
             if new_cle and new_cle != self.instance.cle:
-                raise serializers.ValidationError(
-                    {'cle': "La clé d'un modèle d'e-mail ne peut pas changer — "
-                            "créez-en un autre."})
+                # ENF11 — refus d'ÉTAT (clé déjà posée) : 409, pas 400.
+                raise ConflitEtat(
+                    "La clé d'un modèle d'e-mail ne peut pas changer — "
+                    "créez-en un autre.")
         return attrs

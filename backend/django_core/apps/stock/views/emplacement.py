@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
+from ..utils.params import corps_objet
 from ..models import Produit, EmplacementStock, TransfertStock
 from ..serializers import EmplacementStockSerializer, TransfertStockSerializer
 from authentication.permissions import IsAnyRole, IsAdminRole
@@ -100,7 +101,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         from rest_framework.fields import BooleanField
 
         emp = self.get_object()
-        demande = request.data.get('archived')
+        demande = corps_objet(request).get('archived')
         if demande is not None and not emp.archived:
             try:
                 archiver = BooleanField().to_internal_value(demande)

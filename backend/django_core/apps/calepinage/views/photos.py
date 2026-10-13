@@ -23,13 +23,16 @@ CE QUE L'ACTION GARANTIT
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import status
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
+from ..serializers import forme_reponse
 
 __all__ = ['PhotosSiteMixin', 'reponse_fichier']
 
@@ -64,9 +67,24 @@ def fichier_introuvable():
                     status=status.HTTP_404_NOT_FOUND)
 
 
+_CHAMPS_PHOTO = {
+    'genre': serializers.CharField(required=False),
+    'prise_le': serializers.CharField(required=False),
+    'legende': serializers.CharField(required=False, allow_blank=True),
+}
+_FORME_PHOTO = forme_reponse('CalepinagePhotoSite', 'photo', 'photos')
+
+
 class PhotosSiteMixin:
     """``GET``/``POST`` ``calepinages/<pk>/photos/`` — les photos du site."""
 
+    @extend_schema(methods=['GET'],
+                   responses=forme_reponse('CalepinagePhotosSite', 'photos'))
+    @extend_schema(
+        methods=['POST'],
+        request=inline_serializer('CalepinagePhotoCorps', {
+            'photo': serializers.ImageField(), **_CHAMPS_PHOTO}),
+        responses={201: _FORME_PHOTO})
     @action(detail=True, methods=['get', 'post'], url_path='photos',
             permission_classes=[PeutLireOuEcrireCalepinage],
             parser_classes=[MultiPartParser, FormParser])
@@ -99,9 +117,14 @@ class PhotosSiteMixin:
                          'photos': photos_site(calepinage)},
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[OpenApiParameter(
-        name='photo_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
-        description="Identifiant de la photo de site (sous-ressource du calepinage).")])
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            name='photo_id', type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="Identifiant de la photo de site (sous-ressource du calepinage).")],
+        request=inline_serializer('CalepinagePhotoModifCorps',
+                                  _CHAMPS_PHOTO),
+        responses={200: _FORME_PHOTO})
     @action(detail=True, methods=['patch', 'delete'],
             url_path=r'photos/(?P<photo_id>[^/.]+)',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -143,9 +166,14 @@ class PhotosSiteMixin:
 
     #: YAPIC6 — ``photo_id`` n'est pas un champ du pivot : sans cette déclaration,
     #: drf-spectacular publie un paramètre de chemin sans type.
-    @extend_schema(parameters=[OpenApiParameter(
-        name='photo_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
-        description="Identifiant de la photo de site (sous-ressource du calepinage).")])
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            name='photo_id', type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="Identifiant de la photo de site (sous-ressource du calepinage).")],
+        request=inline_serializer('CalepinagePhotoCalageCorps', {
+            'calage': serializers.JSONField(allow_null=True)}),
+        responses={200: _FORME_PHOTO})
     @action(detail=True, methods=['patch'],
             url_path=r'photos/(?P<photo_id>[^/.]+)/calage',
             permission_classes=[PeutLireOuEcrireCalepinage])

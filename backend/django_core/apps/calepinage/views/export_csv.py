@@ -53,6 +53,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import REPONSE_REFUS_ETAT
 from ..services.export_csv import (
     EXPORTS, ExportImpossible, document_exportable, encoder_pour_tableur,
 )
@@ -63,12 +64,19 @@ from .calepinages import CalepinageViewSet
 
 __all__ = ['export_csv_simulation']
 
+#: Les champs dont le refus dit l'ÉTAT du calepinage (rien à exporter tant que
+#: la simulation n'a pas tourné) : 409, et non une entrée mal formée (400).
+CHAMPS_D_ETAT = frozenset({'production', 'points', 'mensuel',
+                           'shading12x24'})
+
 
 @extend_schema(
-    responses={(200, 'text/csv'): OpenApiTypes.BINARY},
+    responses={(200, 'text/csv'): OpenApiTypes.BINARY,
+               409: REPONSE_REFUS_ETAT},
     parameters=[
         OpenApiParameter(
             name='quoi', type=OpenApiTypes.STR, required=False,
+            enum=list(EXPORTS),
             description="Export demandé : horaire (défaut), mensuel ou "
                         'ombrage.'),
         OpenApiParameter(
@@ -80,6 +88,7 @@ __all__ = ['export_csv_simulation']
                         'inchangé). Colonne inconnue -> 400, nommée.'),
         OpenApiParameter(
             name='pas', type=OpenApiTypes.STR, required=False,
+            enum=['horaire', '15min'],
             description="CALX313, export horaire SEULEMENT — 'horaire' "
                         "(défaut) ou '15min' (REFUSÉ : la série 15 minutes "
                         "n'est pas encore produite, jamais une "
@@ -111,9 +120,14 @@ def export_csv_simulation(self, request, pk=None):
         texte = construire_csv(document_exportable(calepinage),
                                quoi=quoi, colonnes=colonnes, pas=pas)
     except ExportImpossible as erreur:
+        # 409 : l'ÉTAT du calepinage ne permet pas l'export (pas de série,
+        # simulation périmée, pas de 15 min produit) ; 400 : entrée inconnue.
+        etat = (erreur.champ in CHAMPS_D_ETAT
+                or (erreur.champ == 'pas' and pas == '15min'))
         return Response({erreur.champ or 'export': [erreur.motif],
                          'exports_disponibles': list(EXPORTS)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_409_CONFLICT if etat
+                                else status.HTTP_400_BAD_REQUEST))
 
     # ACAL234 — LE nom (``planche.nom_de_fichier``, ``quoi`` sans titre :
     # même nom qu'avant) et LA réponse de téléchargement du module.

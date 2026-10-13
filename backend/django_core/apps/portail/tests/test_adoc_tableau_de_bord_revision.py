@@ -86,7 +86,8 @@ class TableauDeBordRevisionTests(TestCase):
         reviser_devis(self.d1, user=self.commercial)
         res = self.api.post(
             f'{LISTE}{self.d1.id}/accepter/',
-            {'nom': 'Client', 'consent_esign': True}, format='json')
+            {'nom': 'Client', 'consent_esign': True,
+             'accepte_conditions': True}, format='json')
         self.assertEqual(res.status_code, 404, res.content)
         self.d1.refresh_from_db()
         self.assertEqual(self.d1.statut, Devis.Statut.ENVOYE)

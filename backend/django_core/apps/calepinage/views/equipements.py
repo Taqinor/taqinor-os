@@ -21,16 +21,20 @@ elle-même. L'import de ``urls.py`` doit s'exécuter AVANT
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import forme_du_contrat
 from ..services.equipements import equipements_du_calepinage
 from .calepinages import CalepinageViewSet
 
 __all__ = ['equipements']
 
 
+@extend_schema(responses=forme_du_contrat(
+    'CalepinageEquipementsDevis', 'calepinage_equipements.json'))
 @action(detail=True, methods=['get'], url_path='equipements',
         permission_classes=[PeutVoirCalepinage])
 def equipements(self, request, pk=None):

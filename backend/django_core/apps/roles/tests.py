@@ -41,6 +41,13 @@ class RolesRbacTest(TestCase):
         token = str(AccessToken.for_user(self.admin))
         self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
+    def test_role_nom_numerique_refuse_400(self):
+        """ENF11 — ``nom`` doit être une chaîne JSON (pas de coercition)."""
+        resp = self.api.post(
+            '/api/django/roles/', {'nom': 5, 'permissions': []}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('nom', resp.data)
+
     # ── Liste des utilisateurs assignés ──────────────────────────────────
     def test_role_serializer_lists_assigned_users(self):
         role = Role.objects.create(

@@ -109,7 +109,7 @@ class RefusTest(SimpleTestCase):
                         return_value=_agregat([], MESSAGE_AUCUN_GABARIT)):
             reponse = generer_dossier(_Vue(), _Requete({'gabarit': 3}))
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.data, {'gabarit': [MESSAGE_AUCUN_GABARIT]})
 
     def test_aucun_dossier_designe_le_dit_sous_le_champ_dossier(self):
@@ -129,7 +129,7 @@ class RefusTest(SimpleTestCase):
                         return_value=_agregat([compose])):
             reponse = generer_dossier(_Vue(), _Requete({'dossier': 7}))
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.data, {'gabarit': [motif]})
 
     def test_dossier_incomplet_refuse_avec_le_motif_du_serveur(self):
@@ -140,7 +140,7 @@ class RefusTest(SimpleTestCase):
                         return_value=_agregat([compose])):
             reponse = generer_dossier(_Vue(), _Requete({'dossier': 7}))
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.data, {'dossier': [motif]})
 
     def test_un_refus_du_service_sort_sous_le_code_de_sa_piece(self):
@@ -155,7 +155,7 @@ class RefusTest(SimpleTestCase):
                            side_effect=refus):
             reponse = generer_dossier(_Vue(), _Requete({'dossier': 7}))
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.data, {'note_calcul': [str(refus)]})
 
 

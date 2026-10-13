@@ -86,7 +86,7 @@ class ChoixDuSystemeTest(BaseApiCalepinage):
             reponse = self.api.post(url_fixation(self.calepinage.pk),
                                     {'systeme_id': identifiant},
                                     format='json')
-            self.assertEqual(reponse.status_code, 400, reponse.data)
+            self.assertEqual(reponse.status_code, 404, reponse.data)
             self.assertIn('systeme_id', reponse.data)
             refus.append(str(reponse.data['systeme_id'])
                          .replace(str(identifiant), '<id>'))
