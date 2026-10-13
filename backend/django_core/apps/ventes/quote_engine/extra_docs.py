@@ -30,7 +30,7 @@ from .generate_devis_premium import (
     _DMSANS400, _DMSANS500, _DMSANS700, _DS400,
     _font_face,
 )
-from .montants import fmt_centimes_mad
+from .montants import fmt_centimes_mad, pct_fr
 import logging
 
 logger = logging.getLogger(__name__)
@@ -268,8 +268,8 @@ RELANCE_TONES = {
             "référencée ci-dessus reste impayée à ce jour. Le délai de "
             "règlement convenu est désormais dépassé.",
             "Nous vous demandons de régulariser cette situation sans délai. À "
-            "défaut de paiement sous huitaine, nous serons contraints "
-            "d'engager les démarches de recouvrement prévues.",
+            "défaut de paiement, nous serons contraints d'engager les "
+            "démarches de recouvrement prévues.",
             "Nous vous invitons à nous contacter rapidement si un différend "
             "ou une difficulté justifie ce retard, afin de trouver ensemble "
             "une solution.",
@@ -283,17 +283,48 @@ RELANCE_TONES = {
             "facture référencée ci-dessus demeure intégralement impayée. Par "
             "la présente, nous vous mettons formellement en demeure de "
             "procéder à son règlement.",
-            "Vous disposez d'un délai de QUINZE (15) JOURS à compter de la "
-            "réception de la présente pour vous acquitter de la somme due. À "
-            "défaut, nous nous réservons le droit d'engager toute procédure de "
-            "recouvrement contentieux, sans nouvel avis, à vos frais et "
-            "risques.",
-            "La présente mise en demeure fait courir les intérêts de retard et "
-            "vaut interpellation au sens de la loi. Nous vous invitons à "
-            "donner à cette affaire toute l'attention qu'elle requiert.",
+            "Nous vous demandons de vous acquitter de la somme due dès "
+            "réception de la présente. À défaut, nous nous réservons le droit "
+            "d'engager toute procédure de recouvrement contentieux, sans "
+            "nouvel avis, à vos frais et risques.",
+            "La présente mise en demeure vaut interpellation au sens de la "
+            "loi. Nous vous invitons à donner à cette affaire toute "
+            "l'attention qu'elle requiert.",
         ],
     },
 }
+
+
+# AMOT55 (C-AMOT-042, D-AMOT-5 = a) — le corps PAR DÉFAUT n'engage la société
+# que sur ce qu'elle a RÉGLÉ : aucun délai chiffré (« huitaine », « QUINZE
+# JOURS ») ni intérêts de retard en dur. Ils ne s'impriment que depuis les
+# réglages de relance du niveau (``FollowupLevel`` : délai jusqu'au niveau
+# suivant, ``taux_interet_annuel > 0``, ``frais_fixes > 0``) — jamais sur la
+# lettre courtoise (niveau 1), jamais par-dessus un message saisi.
+PHRASE_DELAI = ("Délai accordé pour ce règlement : {jours} jours à compter de "
+                "la réception de la présente.")
+PHRASE_INTERETS = ("Conformément à nos conditions de relance, des intérêts de "
+                   "retard au taux annuel de {taux} % s'appliquent à la somme "
+                   "due.")
+PHRASE_FRAIS = ("Conformément à nos conditions de relance, des frais de "
+                "recouvrement de {frais} s'appliquent à la somme due.")
+
+
+def _paras_reglages(niveau, reglages):
+    """Phrases tirées des réglages de relance du niveau (vide sans réglage)."""
+    if int(niveau) < 2 or not reglages:
+        return []
+    paras = []
+    jours = reglages.get("delai_jours")
+    if isinstance(jours, int) and jours > 0:
+        paras.append(PHRASE_DELAI.format(jours=jours))
+    taux = reglages.get("taux_interet_annuel") or 0
+    if taux > 0:
+        paras.append(PHRASE_INTERETS.format(taux=pct_fr(taux)))
+    frais = reglages.get("frais_fixes") or 0
+    if frais > 0:
+        paras.append(PHRASE_FRAIS.format(frais=fmt_centimes_mad(frais)))
+    return paras
 
 
 def _facture_resume(facture):
@@ -333,7 +364,8 @@ def _custom_message_paras(message, resume):
     return [block.strip() for block in text.splitlines() if block.strip()]
 
 
-def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
+def build_lettre_relance_html(ctx, client, resume, niveau, message=None,
+                              reglages=None):
     """HTML de la lettre de relance de niveau ``niveau`` (1/2/3).
 
     Si ``message`` (texte du ``FollowupLevel`` du niveau) est fourni et non vide,
@@ -341,13 +373,17 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
     (ton doux J+7 → ferme J+30). Sinon, le corps par défaut du ton est conservé
     (comportement historique). La MISE EN PAGE premium reste identique : seul le
     texte des paragraphes change.
+
+    AMOT55 — ``reglages`` (``_reglages_niveau``) : délai / intérêts / frais
+    RÉGLÉS du niveau, ajoutés au seul corps par défaut.
     """
     niveau = int(niveau)
     tone = RELANCE_TONES.get(niveau, RELANCE_TONES[1])
     ref_line = (f"Facture {escape(str(resume['reference']))}<br>"
                 f"Le {escape(_fr_date(date.today()))}")
     custom_paras = _custom_message_paras(message, resume)
-    body_paras = custom_paras if custom_paras else tone["paras"]
+    body_paras = (custom_paras if custom_paras
+                  else tone["paras"] + _paras_reglages(niveau, reglages))
     paras = "".join(f"<p>{escape(p)}</p>" for p in body_paras)
     # QJR146 (d) — ON N'AFFIRME PAS UN RETARD QU'ON NE SAIT PAS CHIFFRER.
     # ``jours_retard`` à 0 ou ``None`` produisait la ligne « Retard : échéance
@@ -393,24 +429,49 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
     return _shell(ctx, tone["marker"], ref_line, body, title)
 
 
+def _niveaux_configures(facture):
+    """Les ``FollowupLevel`` de la société de la facture, triés par délai
+    (J+7 → J+15 → J+30) ; ``None`` si la lecture échoue (mode dégradé)."""
+    try:
+        from apps.ventes.models import FollowupLevel
+        return list(
+            FollowupLevel.objects.filter(company=facture.company)
+            .order_by("delai_jours", "ordre"))
+    except Exception:
+        logger.warning("extra_docs._level_message_for : erreur ignorée (mode dégradé)", exc_info=True)
+        return None
+
+
 def _level_message_for(facture, niveau):
     """Texte du ``FollowupLevel`` (du niveau demandé) configuré pour la société
     de la facture, ou ``None``. Mappe le niveau 1/2/3 sur le n-ième seuil de
     relance trié par délai (J+7 → J+15 → J+30). Lecture seule, jamais d'erreur
     bloquante : si aucun niveau n'est configuré on retombe sur le corps par
     défaut (comportement historique)."""
-    try:
-        from apps.ventes.models import FollowupLevel
-        levels = list(
-            FollowupLevel.objects.filter(company=facture.company)
-            .order_by("delai_jours", "ordre"))
-    except Exception:
-        logger.warning("extra_docs._level_message_for : erreur ignorée (mode dégradé)", exc_info=True)
+    levels = _niveaux_configures(facture)
+    if levels is None:
         return None
     idx = int(niveau) - 1
     if 0 <= idx < len(levels):
         return levels[idx].message or None
     return None
+
+
+def _reglages_niveau(facture, niveau):
+    """AMOT55 — réglages de relance du niveau demandé : ``delai_jours`` = écart
+    (jours) jusqu'au niveau SUIVANT configuré (aucun suivant ⇒ ``None``),
+    ``taux_interet_annuel`` et ``frais_fixes`` du niveau. ``None`` sans niveau
+    configuré : la lettre garde son corps par défaut, sans chiffre."""
+    levels = _niveaux_configures(facture) or []
+    idx = int(niveau) - 1
+    if not 0 <= idx < len(levels):
+        return None
+    niveau_cfg = levels[idx]
+    suivant = levels[idx + 1] if idx + 1 < len(levels) else None
+    ecart = (suivant.delai_jours - niveau_cfg.delai_jours) if suivant else None
+    return {"delai_jours": ecart if ecart and ecart > 0 else None,
+            "taux_interet_annuel": niveau_cfg.taux_interet_annuel,
+            "frais_fixes": niveau_cfg.frais_fixes}
 
 
 def render_lettre_relance_pdf(facture, niveau, message=None):
@@ -441,7 +502,8 @@ def render_lettre_relance_pdf(facture, niveau, message=None):
     if message:
         from apps.ventes.recouvrement import rendre_message_relance
         message = rendre_message_relance(message, facture)
-    html = build_lettre_relance_html(ctx, client_block, resume, niveau, message)
+    html = build_lettre_relance_html(ctx, client_block, resume, niveau, message,
+                                     reglages=_reglages_niveau(facture, niveau))
     return _render_pdf(html)
 
 
