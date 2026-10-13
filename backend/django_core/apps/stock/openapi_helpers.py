@@ -105,3 +105,25 @@ class _EmplacementTiersNomme(OpenApiSerializerExtension):
                             'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
              'required': ['type_proprietaire', 'tiers_nom']},
         ]}
+
+
+class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
+    """ERR fuzz (POST/PUT budgets-departement) — règle croisée PUBLIÉE : un
+    budget mensuel porte un mois 1-12, un budget annuel le mois 0 (ou rien) ;
+    le montant alloué n'est jamais négatif. Sinon des corps « conformes »
+    étaient refusés en 400. Enums enveloppés : voir ``_EmplacementTiersNomme``."""
+    target_class = 'apps.stock.views.budget_departement.BudgetDepartementSerializer'
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(self.target, direction, bypass_extensions=True)
+        if direction != 'request' or auto_schema.method == 'PATCH':
+            return schema
+        montant = dict(schema['properties']['montant_alloue'])
+        montant['pattern'] = montant['pattern'].replace('^-?', '^', 1)
+        return {**schema, 'properties': {**schema['properties'], 'montant_alloue': montant}, 'anyOf': [
+            {'properties': {'periodicite': {'anyOf': [{'enum': ['mensuelle']}]},
+                            'mois': {'minimum': 1, 'maximum': 12}},
+             'required': ['periodicite', 'mois']},
+            {'properties': {'periodicite': {'anyOf': [{'enum': ['annuelle']}]},
+                            'mois': {'maximum': 0}}},
+        ]}
