@@ -259,6 +259,46 @@ def _methode_traduite(d, sm):
                         c=nombres[3]) if nombres else exemple)
 
 
+#: AMOT52 (D-AMOT-1 = a) — phrases « Nos hypothèses » du builder et de
+#: ``pricing`` → clés du catalogue. Le français de chaque clé EST la phrase
+#: servie, ``{…}`` marquant une valeur (nombre, distributeur, sous-phrase).
+_CLES_HYPOTHESES = (
+    "res_hyp_tarif_estime", "res_hyp_tarif_retenu", "res_hyp_tarif_saisi",
+    "res_hyp_bareme", "res_hyp_revente_bt", "res_hyp_production",
+    "res_hyp_autoconso", "res_hyp_degradation", "res_hyp_tarif_constant",
+    "res_hyp_tarif_hausse", "res_hyp_stockage_publie", "res_hyp_stockage_ref",
+    "res_hyp_batt_omis", "res_hyp_provision", "res_hyp_sans_provision",
+    "res_hyp_estimations_nc")
+
+
+def _motif_hypothese(cle):
+    """Expression qui reconnaît la phrase française de ``cle`` (valeurs
+    capturées par nom)."""
+    from .. import i18n_labels
+    fr = re.escape(i18n_labels.libelle(cle, "fr"))
+    return re.compile(re.sub(r"\\\{(\w+)\\\}", r"(?P<\1>.*?)", fr), re.S)
+
+
+def hypothese_traduite(langue, phrase):
+    """AMOT52 — une phrase du bloc « Nos hypothèses » dans ``langue``.
+
+    Français (ou langue inconnue) : la phrase telle quelle, octet pour octet.
+    En / ar : la clé dont le gabarit français reconnaît la phrase, ses valeurs
+    reportées (une valeur qui est elle-même une phrase du catalogue — le
+    tarif supposé, la note batterie — est traduite à son tour) ; une phrase
+    hors catalogue reste telle quelle. Aucun chiffre n'est reformaté."""
+    from .. import i18n_labels
+    if i18n_labels.normaliser(langue) == "fr" or not phrase:
+        return phrase
+    for cle in _CLES_HYPOTHESES:
+        trouve = _motif_hypothese(cle).fullmatch(phrase)
+        if trouve:
+            valeurs = {nom: hypothese_traduite(langue, val)
+                       for nom, val in trouve.groupdict().items()}
+            return i18n_labels.libelle(cle, langue).format(**valeurs)
+    return phrase
+
+
 def build(ctx) -> str:
     from . import theme
     # APDF8 — libellés FIXES de la page de confiance (fr : littéral d'origine,

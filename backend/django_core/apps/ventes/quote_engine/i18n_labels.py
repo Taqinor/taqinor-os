@@ -1768,6 +1768,500 @@ LIBELLES = {
                'définitive'),
         'en': 'retention of {taux} %, released on final acceptance',
         'ar': 'اقتطاع ضمان بنسبة {taux} %، يُحرَّر عند الاستلام النهائي'},
+    # ── AMOT52 (D-AMOT-1 = a) — moteur LEGACY plein format (pages 1 à annexe) ─
+    # Préfixe ``lg_`` : le français est le littéral EXACT du gabarit
+    # (entités, espaces insécables et sauts de ligne compris) ; en / ar
+    # reçoivent les MÊMES ``{…}`` que le français.
+    'lg_hero_l1': {'fr': 'Installation solaire photovolta&#239;que', 'en': 'Solar photovoltaic installation',
+                   'ar': 'منظومة طاقة شمسية كهروضوئية'},
+    'lg_hero_l2': {'fr': 'Proposition commerciale &#8212; Confidentiel',
+                   'en': 'Commercial proposal &#8212; Confidential', 'ar': 'عرض تجاري &#8212; سري'},
+    'lg_proposition_commerciale': {'fr': 'PROPOSITION COMMERCIALE', 'en': 'COMMERCIAL PROPOSAL',
+                                   'ar': 'عرض تجاري'},
+    'lg_titre_hero': {'fr': 'Installation<br>Solaire', 'en': 'Solar<br>Installation', 'ar': 'منظومة<br>شمسية'},
+    'lg_reference_devis': {'fr': 'R&#233;f&#233;rence devis', 'en': 'Quote reference', 'ar': 'مرجع العرض'},
+    'lg_type_commerciale': {'fr': 'Commerciale', 'en': 'Commercial', 'ar': 'تجارية'},
+    'lg_type_agricole': {'fr': 'Agricole', 'en': 'Agricultural', 'ar': 'فلاحية'},
+    'lg_kpi_puissance': {'fr': 'Puissance Install&#233;e', 'en': 'Installed Power', 'ar': 'القدرة المركبة'},
+    'lg_kpi_production': {'fr': 'Production Annuelle', 'en': 'Annual Production', 'ar': 'الإنتاج السنوي'},
+    'lg_energie_propre_an': {'fr': '&#233;nergie propre / an', 'en': 'clean energy / year',
+                             'ar': 'طاقة نظيفة / سنة'},
+    'lg_energie_propre_an_sa': {'fr': '&#233;nergie propre / an (sans &#183; avec)',
+                                'en': 'clean energy / year (without &#183; with)',
+                                'ar': 'طاقة نظيفة / سنة (بدون &#183; مع)'},
+    'lg_n_panneaux_w': {'fr': '{n} panneaux &#215; {w}&nbsp;W', 'en': '{n} panels &#215; {w}&nbsp;W',
+                        'ar': '{n} ألواح &#215; {w}&nbsp;W'},
+    'lg_n_panneaux': {'fr': '{n} panneaux', 'en': '{n} panels', 'ar': '{n} ألواح'},
+    'lg_n_panneaux_sa': {'fr': '{s} &#183; {a} panneaux (sans &#183; avec)',
+                         'en': '{s} &#183; {a} panels (without &#183; with)',
+                         'ar': '{s} &#183; {a} ألواح (بدون &#183; مع)'},
+    'lg_par_an': {'fr': '/an', 'en': '/yr', 'ar': '/سنة'},
+    'lg_eco_estimee': {'fr': '&#201;conomie estim&#233;e&#160;: ', 'en': 'Estimated savings: ',
+                       'ar': 'التوفير المقدر: '},
+    'lg_mt_note': {
+        'fr': ('Raccordement MOYENNE TENSION&#160;: les &#233;conomies et le retour sur investissement seront '
+               'chiffr&#233;s sur le bar&#232;me MT, jamais au bar&#232;me basse tension.'),
+        'en': ('MEDIUM VOLTAGE connection: savings and payback will be calculated on the MV tariff, never on '
+               'the low-voltage tariff.'),
+        'ar': ('ربط بالجهد المتوسط: سيُحتسب التوفير وعائد الاستثمار وفق تعريفة الجهد المتوسط، وليس أبدًا وفق '
+               'تعريفة الجهد المنخفض.')},
+    'lg_retour_en': {'fr': 'Retour en {n} ans', 'en': 'Payback in {n} years', 'ar': 'استرداد خلال {n} سنوات'},
+    'lg_recommande_maj': {'fr': 'RECOMMANDÉ', 'en': 'RECOMMENDED', 'ar': 'موصى به'},
+    'lg_remise_maj': {'fr': 'REMISE', 'en': 'DISCOUNT', 'ar': 'خصم'},
+    'lg_soit_kwc': {'fr': ' &#183; soit {prix}/kWc', 'en': ' &#183; i.e. {prix}/kWc', 'ar': ' &#183; أي {prix}/kWc'},
+    'lg_eq_detaille_p2': {'fr': 'Équipement détaillé en page 2', 'en': 'Equipment detailed on page 2',
+                          'ar': 'تفاصيل المعدات في الصفحة 2'},
+    'lg_chiffrees_mt': {'fr': 'chiffr&#233;es sur bar&#232;me MT', 'en': 'calculated on the MV tariff',
+                        'ar': 'محتسبة وفق تعريفة الجهد المتوسط'},
+    'lg_eco_par_an': {'fr': '&#233;conomies par an{est}', 'en': 'savings per year{est}', 'ar': 'توفير سنوي{est}'},
+    'lg_selon_option': {'fr': 'selon option choisie{est}', 'en': 'depending on the chosen option{est}',
+                        'ar': 'حسب الخيار المختار{est}'},
+    'lg_pill_productible': {
+        'fr': '&#8776;&#160;{n}&#160;kWh par kWc et par an &#224; {ville} {suffixe}',
+        'en': '&#8776;&#160;{n}&#160;kWh per kWc per year in {ville} {suffixe}',
+        'ar': '&#8776;&#160;{n}&#160;kWh لكل kWc سنويًا في {ville} {suffixe}'},
+    'lg_donnee_pvgis': {'fr': '(donn&#233;e PVGIS)', 'en': '(PVGIS data)', 'ar': '(بيانات PVGIS)'},
+    'lg_donnee_pvgis_ref': {
+        'fr': '(donn&#233;e PVGIS &#8212; ville de r&#233;f&#233;rence la plus proche)',
+        'en': '(PVGIS data &#8212; nearest reference city)', 'ar': '(بيانات PVGIS &#8212; أقرب مدينة مرجعية)'},
+    'lg_vos_options': {'fr': 'Vos Options d&#8217;Installation', 'en': 'Your Installation Options',
+                       'ar': 'خيارات التركيب الخاصة بكم'},
+    'lg_autoconso_directe': {'fr': 'Autoconsommation directe', 'en': 'Direct self-consumption',
+                             'ar': 'استهلاك ذاتي مباشر'},
+    'lg_sous_titre_hybride': {'fr': 'Onduleur hybride &#8212; batterie ajoutable',
+                              'en': 'Hybrid inverter &#8212; battery can be added',
+                              'ar': 'عاكس هجين &#8212; يمكن إضافة بطارية'},
+    'lg_sous_titre_stockage': {'fr': 'Stockage + autonomie nocturne', 'en': 'Storage + night-time autonomy',
+                               'ar': 'تخزين + استقلالية ليلية'},
+    'lg_prix_total_ttc': {'fr': 'Prix total TTC', 'en': 'Total price incl. VAT', 'ar': 'السعر الإجمالي شامل الضريبة'},
+    'lg_prix_onee_hausse': {'fr': 'Prix ONEE en hausse', 'en': 'Rising ONEE prices', 'ar': 'أسعار ONEE في ارتفاع'},
+    'lg_energie_propre': {'fr': '&#201;nergie propre', 'en': 'Clean energy', 'ar': 'طاقة نظيفة'},
+    'lg_etape_devis': {'fr': 'Devis', 'en': 'Quote', 'ar': 'العرض'},
+    'lg_etape_visite': {'fr': 'Visite', 'en': 'Visit', 'ar': 'الزيارة'},
+    'lg_ref': {'fr': 'Réf.', 'en': 'Ref.', 'ar': 'المرجع'},
+    'lg_mis_a_jour_le': {'fr': 'Document mis &#224; jour le {date}', 'en': 'Document updated on {date}',
+                         'ar': 'تم تحديث المستند في {date}'},
+    'lg_remplace_devis': {'fr': 'Remplace le devis {ref}', 'en': 'Replaces quote {ref}',
+                          'ar': 'يحل محل العرض {ref}'},
+    'lg_votre_conseiller': {'fr': 'Votre conseiller&#160;: {nom}', 'en': 'Your advisor: {nom}',
+                            'ar': 'مستشاركم: {nom}'},
+    'lg_methode_titre': {'fr': 'Comment nous calculons vos &#233;conomies', 'en': 'How we calculate your savings',
+                         'ar': 'كيف نحتسب توفيركم'},
+    'lg_eco_estimees_confirmer': {
+        'fr': 'Économies estimées{approx} — à confirmer sur vos factures.',
+        'en': 'Estimated savings{approx} — to be confirmed on your bills.',
+        'ar': 'التوفير المقدر{approx} — يُؤكَّد على فواتيركم.'},
+    'lg_multi_total': {
+        'fr': ' &#8212; total pour {n} propriétés&#160;: <b>{montant}</b>',
+        'en': ' &#8212; total for {n} properties: <b>{montant}</b>',
+        'ar': ' &#8212; المجموع لـ {n} عقارات: <b>{montant}</b>'},
+    'lg_multi_identiques': {'fr': '&#215;&#160;{n} propriétés identiques{total}',
+                            'en': '&#215;&#160;{n} identical properties{total}',
+                            'ar': '&#215;&#160;{n} عقارات متطابقة{total}'},
+    'lg_options_proposees': {'fr': 'Options propos&#233;es (non incluses dans le total)',
+                             'en': 'Proposed options (not included in the total)',
+                             'ar': 'خيارات مقترحة (غير مدرجة في المجموع)'},
+    'lg_activez_option': {
+        'fr': 'Activez une option avant signature pour l&#8217;inclure &#224; votre devis.',
+        'en': 'Activate an option before signing to include it in your quote.',
+        'ar': 'فعّلوا خيارًا قبل التوقيع لإدراجه في عرضكم.'},
+    'lg_p2_titre': {'fr': 'Détail des équipements &amp; Analyse financière',
+                    'en': 'Equipment details &amp; Financial analysis', 'ar': 'تفاصيل المعدات والتحليل المالي'},
+    'lg_devis_n_nbsp': {'fr': 'Devis N°\xa0{ref}', 'en': 'Quote No.\xa0{ref}', 'ar': 'عرض رقم\xa0{ref}'},
+    'lg_th_designation': {'fr': 'Désignation', 'en': 'Description', 'ar': 'البيان'},
+    'lg_th_garantie': {'fr': 'Garantie', 'en': 'Warranty', 'ar': 'الضمان'},
+    'lg_th_qte': {'fr': 'Qté', 'en': 'Qty', 'ar': 'الكمية'},
+    'lg_th_spec': {'fr': 'Spécification', 'en': 'Specification', 'ar': 'المواصفة'},
+    'lg_gain_cumule_titre': {
+        'fr': 'Gain cumulé sur 25 ans — Point de retour sur investissement',
+        'en': 'Cumulative gain over 25 years — Payback point',
+        'ar': 'الربح التراكمي على 25 سنة — نقطة استرداد الاستثمار'},
+    'lg_eco_mensuelles': {'fr': 'Économies mensuelles estimées (MAD\xa0/\xa0mois)',
+                          'en': 'Estimated monthly savings (MAD\xa0/\xa0month)',
+                          'ar': 'التوفير الشهري المقدر (MAD\xa0/\xa0شهر)'},
+    'lg_facture_vs_eco': {'fr': 'Facture ONEE vs &#233;conomies solaires par mois',
+                          'en': 'ONEE bill vs solar savings per month',
+                          'ar': 'فاتورة ONEE مقابل التوفير الشمسي شهريًا'},
+    'lg_eco_solaires_mois': {'fr': '&#201;conomies solaires par mois', 'en': 'Solar savings per month',
+                             'ar': 'التوفير الشمسي شهريًا'},
+    'lg_remise_pct': {'fr': 'Remise ({pct} %)', 'en': 'Discount ({pct} %)', 'ar': 'خصم ({pct} %)'},
+    'lg_tva_pct': {'fr': 'TVA ({r} %)', 'en': 'VAT ({r} %)', 'ar': 'ض.ق.م ({r} %)'},
+    'lg_note_remise': {
+        'fr': 'Remise de {pct} % appliquée sur chaque ligne — prix catalogue barrés, totaux après remise.',
+        'en': '{pct} % discount applied to each line — list prices struck through, totals after discount.',
+        'ar': 'خصم {pct} % مطبق على كل سطر — أسعار الكتالوج مشطوبة، والمجاميع بعد الخصم.'},
+    'lg_ans_maj': {'fr': 'ANS', 'en': 'YEARS', 'ar': 'سنوات'},
+    'lg_gar_onduleur': {'fr': 'Onduleur', 'en': 'Inverter', 'ar': 'العاكس'},
+    'lg_gar_panneaux_produit': {'fr': 'Panneaux (produit)', 'en': 'Panels (product)', 'ar': 'الألواح (المنتج)'},
+    'lg_gar_performance': {'fr': 'Performance panneau', 'en': 'Panel performance', 'ar': 'أداء الألواح'},
+    'lg_gar_batterie': {'fr': 'Batterie', 'en': 'Battery', 'ar': 'البطارية'},
+    'lg_garanties_jusqu': {'fr': 'Garanties jusqu&#8217;&#224; {n} ans', 'en': 'Warranties up to {n} years',
+                           'ar': 'ضمانات تصل إلى {n} سنوات'},
+    'lg_gar_ligne': {'fr': '{lbl} {n} ans', 'en': '{lbl} {n} years', 'ar': '{lbl} {n} سنوات'},
+    'lg_garanties_fabricant': {
+        'fr': ('Garanties fabricant des produits install&#233;s, telles que d&#233;taill&#233;es sur leurs '
+               'fiches techniques.'),
+        'en': 'Manufacturer warranties for the installed products, as detailed in their datasheets.',
+        'ar': 'ضمانات المصنّع للمنتجات المركبة، كما هي مفصلة في بطاقاتها التقنية.'},
+    'lg_eq_panneaux': {'fr': 'Panneaux {m}', 'en': '{m} panels', 'ar': 'ألواح {m}'},
+    'lg_eq_onduleurs': {'fr': 'onduleurs {m}', 'en': '{m} inverters', 'ar': 'عاكسات {m}'},
+    'lg_eq_batterie': {'fr': 'batterie {m}', 'en': '{m} battery', 'ar': 'بطارية {m}'},
+    'lg_eq_titre': {'fr': 'Équipements de votre installation', 'en': 'Your installation equipment',
+                    'ar': 'معدات منظومتكم'},
+    'lg_eq_garantie': {'fr': ' — avec la garantie fabricant de chaque produit.',
+                       'en': ' — with the manufacturer warranty of each product.',
+                       'ar': ' — مع ضمان المصنّع لكل منتج.'},
+    'lg_monitoring_texte': {
+        'fr': ('Supervision de la production, des économies et de l’état de votre installation, via le '
+               'matériel de communication chiffré au devis.'),
+        'en': ('Monitoring of production, savings and the status of your installation, through the '
+               'communication equipment priced in the quote.'),
+        'ar': 'مراقبة الإنتاج والتوفير وحالة منظومتكم، عبر معدات الاتصال المسعّرة في العرض.'},
+    'lg_delai_sous': {'fr': 'Sous {delai} (indicatif)', 'en': 'Within {delai} (indicative)',
+                      'ar': 'خلال {delai} (إرشادي)'},
+    'lg_option_choisie': {'fr': 'Option choisie par le client', 'en': 'Option chosen by the client',
+                          'ar': 'الخيار الذي اختاره العميل'},
+    'lg_option1_reseau': {'fr': 'Option 1 &#8212; R&#233;seau uniquement', 'en': 'Option 1 &#8212; Grid only',
+                          'ar': 'الخيار 1 &#8212; الشبكة فقط'},
+    'lg_option2_compo': {'fr': 'Option 2 &#8212; {compo}', 'en': 'Option 2 &#8212; {compo}',
+                         'ar': 'الخيار 2 &#8212; {compo}'},
+    'lg_compo_hybride': {'fr': 'Hybride', 'en': 'Hybrid', 'ar': 'هجين'},
+    'lg_compo_stockage': {'fr': 'R&#233;seau + Stockage', 'en': 'Grid + Storage', 'ar': 'الشبكة + التخزين'},
+    'lg_confirmation_commande': {'fr': 'Confirmation de la commande', 'en': 'Order confirmation',
+                                 'ar': 'تأكيد الطلبية'},
+    'lg_systeme_pv': {'fr': 'Syst&#232;me photovolta&#239;que{kwc} &#8212; ', 'en': 'Photovoltaic system{kwc} &#8212; ',
+                      'ar': 'نظام كهروضوئي{kwc} &#8212; '},
+    'lg_je_confirme': {'fr': 'Je confirme la commande du syst&#232;me d&#233;crit dans ce devis',
+                       'en': 'I confirm the order of the system described in this quote',
+                       'ar': 'أؤكد طلب النظام الموصوف في هذا العرض'},
+    'lg_pay_acompte': {'fr': 'Acompte · À la signature', 'en': 'Down payment · On signature',
+                       'ar': 'دفعة مقدمة · عند التوقيع'},
+    'lg_pay_materiel': {'fr': 'Matériel · Avant installation', 'en': 'Equipment · Before installation',
+                        'ar': 'المعدات · قبل التركيب'},
+    'lg_pay_solde': {'fr': 'Solde · Après installation', 'en': 'Balance · After installation',
+                     'ar': 'الرصيد · بعد التركيب'},
+    'lg_pay_solde_livraison': {'fr': 'Solde · À la livraison', 'en': 'Balance · On delivery',
+                               'ar': 'الرصيد · عند التسليم'},
+    'lg_modalites_paiement': {'fr': 'Modalités de paiement', 'en': 'Payment terms', 'ar': 'طرق الأداء'},
+    'lg_pay_note': {
+        'fr': '* La réception du matériel et le solde s’appliquent même si réalisés le même jour.',
+        'en': '* Equipment delivery and the balance apply even if they take place on the same day.',
+        'ar': '* يُطبَّق استلام المعدات والرصيد حتى لو تمّا في اليوم نفسه.'},
+    'lg_virement': {'fr': 'Virement bancaire\xa0: ', 'en': 'Bank transfer: ', 'ar': 'تحويل بنكي: '},
+    'lg_ingenieurs': {'fr': 'Ingénieurs spécialisés', 'en': 'Specialised engineers', 'ar': 'مهندسون متخصصون'},
+    'lg_ingenieurs_texte': {
+        'fr': ('Installation conforme aux normes marocaines et internationales, réalisée par des techniciens '
+               'certifiés.'),
+        'en': ('Installation compliant with Moroccan and international standards, carried out by certified '
+               'technicians.'),
+        'ar': 'تركيب مطابق للمعايير المغربية والدولية، ينجزه تقنيون معتمدون.'},
+    'lg_engagement_titre': {'fr': 'Notre Engagement', 'en': 'Our Commitment', 'ar': 'التزامنا'},
+    'lg_engagement_texte': {
+        'fr': ('Notre équipe reste à votre disposition pour toute question.<br>\n'
+               '      Nous planifierons l&#8217;installation dès validation du devis.'),
+        'en': ('Our team remains at your disposal for any question.<br>\n'
+               '      We will schedule the installation as soon as the quote is approved.'),
+        'ar': 'يبقى فريقنا رهن إشارتكم لأي سؤال.<br>\n      سنبرمج التركيب فور المصادقة على العرض.'},
+    'lg_prochaines_etapes': {'fr': 'PROCHAINES ÉTAPES', 'en': 'NEXT STEPS', 'ar': 'الخطوات التالية'},
+    'lg_plus_acompte': {'fr': '+ acompte {pct}&#37;', 'en': '+ {pct}&#37; down payment',
+                        'ar': '+ دفعة مقدمة {pct}&#37;'},
+    'lg_tests_formation': {'fr': 'Tests + formation', 'en': 'Tests + training', 'ar': 'اختبارات + تكوين'},
+    'lg_signature_client': {'fr': 'Signature du client', 'en': 'Client signature', 'ar': 'توقيع العميل'},
+    'lg_nom': {'fr': 'Nom&#160;:', 'en': 'Name:', 'ar': 'الاسم:'},
+    'lg_date_ligne': {'fr': 'Date&#160;: _______________', 'en': 'Date: _______________',
+                      'ar': 'التاريخ: _______________'},
+    'lg_signature_marque': {'fr': 'Signature {marque}', 'en': 'Signature {marque}', 'ar': 'توقيع {marque}'},
+    'lg_representant': {'fr': 'Représentant&#160;:', 'en': 'Representative:', 'ar': 'الممثل:'},
+    'lg_cachet_societe': {'fr': 'Cachet et signature de la société', 'en': 'Company stamp and signature',
+                          'ar': 'ختم وتوقيع الشركة'},
+    'lg_accepte_le': {'fr': 'Accepté le {date} par {nom}', 'en': 'Accepted on {date} by {nom}',
+                      'ar': 'تم القبول بتاريخ {date} من طرف {nom}'},
+    'lg_puissance_crete': {'fr': 'Puissance crête', 'en': 'Peak power', 'ar': 'القدرة القصوى'},
+    'lg_conso_annuelle': {'fr': 'Consommation annuelle', 'en': 'Annual consumption', 'ar': 'الاستهلاك السنوي'},
+    'lg_taux_autoconso': {'fr': "Taux d'autoconsommation", 'en': 'Self-consumption rate',
+                          'ar': 'نسبة الاستهلاك الذاتي'},
+    'lg_taux_couverture': {'fr': 'Taux de couverture', 'en': 'Coverage rate', 'ar': 'نسبة التغطية'},
+    'lg_eco_annuelles': {'fr': 'Économies annuelles', 'en': 'Annual savings', 'ar': 'التوفير السنوي'},
+    'lg_unite_ans': {'fr': '\xa0ans', 'en': '\xa0years', 'ar': '\xa0سنوات'},
+    'lg_rates_note': {
+        'fr': ("* Taux d'autoconsommation : part de la production solaire consommée sur site. Taux de "
+               "couverture : part de la consommation totale couverte par le solaire. "),
+        'en': ('* Self-consumption rate: share of solar production consumed on site. Coverage rate: share of '
+               'total consumption covered by solar. '),
+        'ar': ('* نسبة الاستهلاك الذاتي: حصة الإنتاج الشمسي المستهلكة في الموقع. نسبة التغطية: حصة الاستهلاك '
+               'الإجمالي التي تغطيها الطاقة الشمسية. ')},
+    'lg_kwh_mois': {'fr': '{n} kWh/mois', 'en': '{n} kWh/month', 'ar': '{n} kWh/شهر'},
+    'lg_residuel_marche': {'fr': 'Résiduel sous la marche{branche}', 'en': 'Residual below the threshold{branche}',
+                           'ar': 'المتبقي تحت العتبة{branche}'},
+    'lg_tranche_actuelle': {'fr': 'Tranche actuelle', 'en': 'Current bracket', 'ar': 'الشطر الحالي'},
+    'lg_batterie_remplit': {'fr': 'La batterie se remplit chaque jour', 'en': 'The battery fills up every day',
+                            'ar': 'تمتلئ البطارية كل يوم'},
+    'lg_remplissage': {'fr': 'Remplissage batterie (moyen){branche}', 'en': 'Battery filling (average){branche}',
+                       'ar': 'امتلاء البطارية (المتوسط){branche}'},
+    'lg_part_pointes': {'fr': 'Part des pointes rattrapée par la batterie{branche}',
+                        'en': 'Share of peaks covered by the battery{branche}',
+                        'ar': 'حصة الذروات التي تغطيها البطارية{branche}'},
+    'lg_sous_marche': {'fr': ' sous la marche {t}', 'en': ' below the {t} threshold', 'ar': ' تحت عتبة {t}'},
+    'lg_falaise_phrase': {
+        'fr': ('Aujourd&rsquo;hui, votre facture se calcule sur la tranche {t}. Ce dimensionnement{branche} '
+               'fait atterrir votre consommation résiduelle à {n} kWh/mois{sous}.'),
+        'en': ('Today, your bill is calculated on the {t} bracket. This sizing{branche} brings your residual '
+               'consumption down to {n} kWh/month{sous}.'),
+        'ar': ('اليوم، تُحتسب فاتورتكم على الشطر {t}. هذا التحجيم{branche} ينزل باستهلاككم المتبقي إلى '
+               '{n} kWh/شهر{sous}.')},
+    'lg_branche_option': {'fr': ' &#8212; option {option}', 'en': ' &#8212; option {option}',
+                          'ar': ' &#8212; خيار {option}'},
+    'lg_branche_incise': {'fr': ' (option {option})', 'en': ' (option {option})', 'ar': ' (خيار {option})'},
+    'lg_chart_etude': {'fr': 'Production PV vs consommation — mensuel', 'en': 'PV production vs consumption — monthly',
+                       'ar': 'الإنتاج الكهروضوئي مقابل الاستهلاك — شهريًا'},
+    'lg_etude_titre': {'fr': "Étude d'autoconsommation", 'en': 'Self-consumption study',
+                       'ar': 'دراسة الاستهلاك الذاتي'},
+    'lg_etude_pied': {'fr': 'Étude — Réf.\xa0{ref}', 'en': 'Study — Ref.\xa0{ref}', 'ar': 'الدراسة — المرجع\xa0{ref}'},
+    'lg_estimations_nc': {'fr': 'Estimations non contractuelles.', 'en': 'Non-contractual estimates.',
+                          'ar': 'تقديرات غير تعاقدية.'},
+    'lg_methode_etude_ville': {
+        'fr': ('Simulation établie sur le productible de {ville} et le profil de consommation communiqué. '
+               'Mode\xa0: {mode}'),
+        'en': 'Simulation based on the solar yield of {ville} and the consumption profile provided. Mode: {mode}',
+        'ar': 'محاكاة مبنية على المردودية الشمسية لـ{ville} وعلى بيانات الاستهلاك المقدمة. النمط: {mode}'},
+    'lg_methode_etude': {
+        'fr': 'Simulation établie et le profil de consommation communiqué. Mode\xa0: {mode}',
+        'en': 'Simulation based on the consumption profile provided. Mode: {mode}',
+        'ar': 'محاكاة مبنية على بيانات الاستهلاك المقدمة. النمط: {mode}'},
+    'lg_racc_tri': {'fr': 'raccordement triphasé', 'en': 'three-phase connection', 'ar': 'ربط ثلاثي الطور'},
+    'lg_racc_mono': {'fr': 'raccordement monophasé', 'en': 'single-phase connection', 'ar': 'ربط أحادي الطور'},
+    'lg_p50': {'fr': 'Production P50 (médiane)\xa0: <b>{v}\xa0kWh/an</b>',
+               'en': 'P50 production (median): <b>{v}\xa0kWh/yr</b>',
+               'ar': 'إنتاج P50 (الوسيط): <b>{v}\xa0kWh/سنة</b>'},
+    'lg_p90': {'fr': 'P90 (retenue par les banques)\xa0: <b>{v}\xa0kWh/an</b>',
+               'en': 'P90 (used by banks): <b>{v}\xa0kWh/yr</b>',
+               'ar': 'P90 (المعتمد لدى البنوك): <b>{v}\xa0kWh/سنة</b>'},
+    'lg_ratio_perf': {'fr': 'Ratio de performance\xa0: <b>{v}\xa0%</b>', 'en': 'Performance ratio: <b>{v}\xa0%</b>',
+                      'ar': 'نسبة الأداء: <b>{v}\xa0%</b>'},
+    'lg_poste_temperature': {'fr': 'Température', 'en': 'Temperature', 'ar': 'الحرارة'},
+    'lg_poste_soiling': {'fr': 'Salissures', 'en': 'Soiling', 'ar': 'الاتساخ'},
+    'lg_poste_shading': {'fr': 'Ombrage', 'en': 'Shading', 'ar': 'التظليل'},
+    'lg_poste_wiring': {'fr': 'Câblage', 'en': 'Wiring', 'ar': 'الأسلاك'},
+    'lg_poste_inverter': {'fr': 'Onduleur', 'en': 'Inverter', 'ar': 'العاكس'},
+    'lg_poste_mismatch': {'fr': 'Dispersion modules', 'en': 'Module mismatch', 'ar': 'تباين الألواح'},
+    'lg_poste_availability': {'fr': 'Disponibilité', 'en': 'Availability', 'ar': 'التوفر'},
+    'lg_poste_lid': {'fr': 'LID (1re année)', 'en': 'LID (1st year)', 'ar': 'LID (السنة الأولى)'},
+    'lg_poste_reflection': {'fr': 'Réflexion (IAM)', 'en': 'Reflection (IAM)', 'ar': 'الانعكاس (IAM)'},
+    'lg_total_pct': {'fr': 'Total\xa0{v}\xa0%', 'en': 'Total\xa0{v}\xa0%', 'ar': 'المجموع\xa0{v}\xa0%'},
+    'lg_cascade': {'fr': 'Cascade de pertes\xa0: ', 'en': 'Loss cascade: ', 'ar': 'تسلسل الخسائر: '},
+    'lg_bancable_titre': {'fr': 'Étude bancable — productible et pertes', 'en': 'Bankable study — yield and losses',
+                          'ar': 'دراسة قابلة للتمويل — المردودية والخسائر'},
+    'lg_schema': {'fr': 'Schéma unifilaire', 'en': 'Single-line diagram', 'ar': 'المخطط أحادي الخط'},
+    'lg_bom_reste_1': {
+        'fr': '&#8230; et {n} autre composant &#8212; nomenclature compl&#232;te fournie avec le dossier technique.',
+        'en': '&#8230; and {n} more component &#8212; full bill of materials provided with the technical file.',
+        'ar': '&#8230; و{n} مكوّن آخر &#8212; القائمة الكاملة مرفقة بالملف التقني.'},
+    'lg_bom_reste_n': {
+        'fr': '&#8230; et {n} autres composants &#8212; nomenclature compl&#232;te fournie avec le dossier technique.',
+        'en': '&#8230; and {n} more components &#8212; full bill of materials provided with the technical file.',
+        'ar': '&#8230; و{n} مكونات أخرى &#8212; القائمة الكاملة مرفقة بالملف التقني.'},
+    'lg_nomenclature': {'fr': 'Nomenclature électrique', 'en': 'Electrical bill of materials',
+                        'ar': 'القائمة الكهربائية'},
+    'lg_chaines': {'fr': '{n} chaîne(s)', 'en': '{n} string(s)', 'ar': '{n} سلسلة (سلاسل)'},
+    'lg_triphase': {'fr': 'triphasé', 'en': 'three-phase', 'ar': 'ثلاثي الطور'},
+    'lg_monophase': {'fr': 'monophasé', 'en': 'single-phase', 'ar': 'أحادي الطور'},
+    'lg_regime': {'fr': 'régime {r}', 'en': 'earthing system {r}', 'ar': 'نظام التأريض {r}'},
+    'lg_annexe_technique': {'fr': 'Annexe technique', 'en': 'Technical appendix', 'ar': 'الملحق التقني'},
+    'lg_annexe_note': {
+        'fr': ("Pièce technique jointe au dossier de raccordement. Les quantités de\n"
+               "      l'annexe sont données à titre d'étude\xa0; seule la liste d'équipements du\n"
+               "      devis fait foi commercialement."),
+        'en': ('Technical document attached to the grid-connection file. The quantities in the\n'
+               '      appendix are given for study purposes; only the equipment list of the\n'
+               '      quote is commercially binding.'),
+        'ar': ('وثيقة تقنية مرفقة بملف الربط بالشبكة. الكميات الواردة في الملحق\n'
+               '      مقدمة على سبيل الدراسة؛ لائحة معدات العرض وحدها هي المعتمدة تجاريًا.')},
+    'lg_annexe_pied': {'fr': 'Annexe technique — Réf.\xa0{ref}', 'en': 'Technical appendix — Ref.\xa0{ref}',
+                       'ar': 'الملحق التقني — المرجع\xa0{ref}'},
+    'lg_ret_titre': {'fr': 'Annexe — Droit de rétractation', 'en': 'Appendix — Right of withdrawal',
+                     'ar': 'ملحق — حق التراجع'},
+    'lg_ret_pied': {'fr': 'Rétractation — Réf. {ref}', 'en': 'Withdrawal — Ref. {ref}',
+                    'ar': 'التراجع — المرجع {ref}'},
+    'lg_calepinage': {'fr': 'Calepinage', 'en': 'Panel layout', 'ar': 'مخطط توزيع الألواح'},
+    'lg_calep_intro': {
+        'fr': ("Implantation des modules relevée sur la toiture, à l'échelle portée par\n"
+               "      la planche. Les cotes sont mesurées sur la géométrie de la conception."),
+        'en': ('Module layout surveyed on the roof, at the scale shown on\n'
+               '      the drawing. Dimensions are measured on the design geometry.'),
+        'ar': ('توزيع الألواح كما تم رفعه على السطح، بالمقياس المبيّن على\n'
+               '      اللوحة. الأبعاد مقيسة على هندسة التصميم.')},
+    'lg_calep_note': {
+        'fr': ("Pièce technique jointe à la proposition. L'implantation définitive est\n"
+               "      confirmée à la visite technique ; seule la liste d'équipements du devis\n"
+               "      fait foi commercialement."),
+        'en': ('Technical document attached to the proposal. The final layout is\n'
+               '      confirmed at the technical visit; only the equipment list of the quote\n'
+               '      is commercially binding.'),
+        'ar': ('وثيقة تقنية مرفقة بالعرض. يُؤكَّد التوزيع النهائي\n'
+               '      عند الزيارة التقنية؛ لائحة معدات العرض وحدها هي المعتمدة تجاريًا.')},
+    'lg_calep_pied': {'fr': 'Calepinage — Réf. {ref}', 'en': 'Panel layout — Ref. {ref}',
+                      'ar': 'مخطط توزيع الألواح — المرجع {ref}'},
+    # AMOT52 — phrases « Nos hypothèses » du builder et de ``pricing`` : le
+    # français est le texte EXACT servi ; ``residential.trust.hypothese_traduite``
+    # le reconnaît (``{…}`` = valeur) et rend la langue du document.
+    'res_hyp_titre': {'fr': 'Nos hypothèses', 'en': 'Our assumptions', 'ar': 'فرضياتنا'},
+    'res_hyp_tarif_estime': {
+        'fr': ('Tarif électricité : référence prudente (estimation) — transmettez une facture récente et '
+               'nous recalculons vos économies par tranches, sur votre barème exact.'),
+        'en': ('Electricity tariff: cautious reference (estimate) — send us a recent bill and we will '
+               'recalculate your savings by bracket, on your exact tariff.'),
+        'ar': ('تعريفة الكهرباء: مرجع حذر (تقدير) — أرسلوا لنا فاتورة حديثة وسنعيد احتساب توفيركم حسب '
+               'الأشطر، وفق تعريفتكم الدقيقة.')},
+    'res_hyp_tarif_retenu': {'fr': 'Tarif électricité retenu : {tarif} MAD/kWh ({distributeur})',
+                             'en': 'Electricity tariff used: {tarif} MAD/kWh ({distributeur})',
+                             'ar': 'تعريفة الكهرباء المعتمدة: {tarif} MAD/kWh ({distributeur})'},
+    'res_hyp_tarif_saisi': {
+        'fr': ('Tarif électricité : {tarif} MAD/kWh, saisi pour ce devis — un calcul par tranches sur facture '
+               'réelle reste possible.'),
+        'en': ('Electricity tariff: {tarif} MAD/kWh, entered for this quote — a bracket calculation on an '
+               'actual bill remains possible.'),
+        'ar': ('تعريفة الكهرباء: {tarif} MAD/kWh، مُدخلة لهذا العرض — يبقى الاحتساب حسب الأشطر على '
+               'فاتورة فعلية ممكنًا.')},
+    'res_hyp_bareme': {'fr': 'Tarif électricité : barème {distributeur} par tranche (barème national)',
+                       'en': 'Electricity tariff: {distributeur} schedule by bracket (national schedule)',
+                       'ar': 'تعريفة الكهرباء: جدول {distributeur} حسب الأشطر (الجدول الوطني)'},
+    'res_hyp_revente_bt': {
+        'fr': ("Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation "
+               "dimensionnée pour l'autoconsommation. Seuls les kWh autoconsommés réduisent la facture."),
+        'en': ('Resale of surplus not yet open on low voltage — ANRE decision 04/26; installation sized for '
+               'self-consumption. Only self-consumed kWh reduce the bill.'),
+        'ar': ('بيع الفائض غير متاح بعد على الجهد المنخفض — قرار ANRE 04/26؛ المنظومة محجّمة للاستهلاك '
+               'الذاتي. وحدها الكيلوواط ساعة المستهلكة ذاتيًا تخفض الفاتورة.')},
+    'res_hyp_production': {
+        'fr': 'Production estimée : ≈ {kwh} kWh par kWc et par an, pertes système de {pertes} % déduites.',
+        'en': 'Estimated production: ≈ {kwh} kWh per kWc per year, system losses of {pertes} % deducted.',
+        'ar': 'الإنتاج المقدر: ≈ {kwh} kWh لكل kWc سنويًا، بعد خصم خسائر النظام البالغة {pertes} %.'},
+    'res_hyp_autoconso': {
+        'fr': 'Autoconsommation retenue : {sans} % sans batterie · {avec} % avec batterie.',
+        'en': 'Self-consumption used: {sans} % without battery · {avec} % with battery.',
+        'ar': 'الاستهلاك الذاتي المعتمد: {sans} % بدون بطارية · {avec} % مع بطارية.'},
+    'res_hyp_degradation': {
+        'fr': ("Dégradation panneau {pct} %/an intégrée ; {tarif} ; coûts d'exploitation (nettoyage, "
+               "maintenance, assurance) non déduits de ce résultat."),
+        'en': ('Panel degradation of {pct} %/yr included; {tarif}; operating costs (cleaning, maintenance, '
+               'insurance) not deducted from this result.'),
+        'ar': ('تدهور الألواح {pct} %/سنة محتسب؛ {tarif}؛ تكاليف التشغيل (التنظيف، الصيانة، التأمين) غير '
+               'مخصومة من هذه النتيجة.')},
+    'res_hyp_tarif_constant': {
+        'fr': ('aucune hausse du tarif électrique supposée — projection à tarif constant, toute hausse réelle '
+               'améliore votre résultat'),
+        'en': ('no electricity tariff increase assumed — projection at a constant tariff, any real increase '
+               'improves your result'),
+        'ar': 'لا يُفترض أي ارتفاع في تعريفة الكهرباء — إسقاط بتعريفة ثابتة، وكل ارتفاع فعلي يحسّن نتيجتكم'},
+    'res_hyp_tarif_hausse': {'fr': 'hausse du tarif électrique supposée {pct} %/an',
+                             'en': 'electricity tariff increase assumed at {pct} %/yr',
+                             'ar': 'ارتفاع مفترض في تعريفة الكهرباء بنسبة {pct} %/سنة'},
+    'res_hyp_stockage_publie': {
+        'fr': ('Stockage : rendement aller-retour batterie {pct} % appliqué aux kWh qui transitent par la '
+               'batterie (valeur publiée sur la fiche technique du produit chiffré).{omis}'),
+        'en': ('Storage: battery round-trip efficiency of {pct} % applied to the kWh that pass through the '
+               'battery (value published on the datasheet of the quoted product).{omis}'),
+        'ar': ('التخزين: مردود الشحن والتفريغ للبطارية {pct} % مطبق على الكيلوواط ساعة التي تمر عبر '
+               'البطارية (قيمة منشورة في البطاقة التقنية للمنتج المسعّر).{omis}')},
+    'res_hyp_stockage_ref': {
+        'fr': ('Stockage : rendement aller-retour batterie {pct} % appliqué aux kWh qui transitent par la '
+               'batterie — hypothèse de référence, le constructeur de ce produit ne publie pas cette valeur '
+               'dans notre fiche.{omis}'),
+        'en': ('Storage: battery round-trip efficiency of {pct} % applied to the kWh that pass through the '
+               'battery — reference assumption, the manufacturer of this product does not publish this value '
+               'in our datasheet.{omis}'),
+        'ar': ('التخزين: مردود الشحن والتفريغ للبطارية {pct} % مطبق على الكيلوواط ساعة التي تمر عبر '
+               'البطارية — فرضية مرجعية، لا ينشر مصنّع هذا المنتج هذه القيمة في بطاقتنا.{omis}')},
+    'res_hyp_batt_omis': {
+        'fr': " Aucune perte de capacité ni remplacement de la batterie n'est provisionné sur les {ans} ans.",
+        'en': ' No capacity loss or battery replacement is provisioned over the {ans} years.',
+        'ar': ' لا يُرصد أي فقدان للسعة ولا استبدال للبطارية على مدى {ans} سنة.'},
+    'res_hyp_provision': {
+        'fr': ("Provision de remplacement de l'onduleur en année {an} : {montant} MAD (le prix de l'onduleur "
+               "de ce devis) — c'est le palier visible sur la courbe de rentabilité."),
+        'en': ('Inverter replacement provision in year {an}: {montant} MAD (the price of the inverter in this '
+               'quote) — this is the step visible on the return curve.'),
+        'ar': ('مخصص استبدال العاكس في السنة {an}: {montant} MAD (سعر العاكس في هذا العرض) — وهو '
+               'الدرجة الظاهرة على منحنى المردودية.')},
+    'res_hyp_sans_provision': {
+        'fr': 'Projection établie hors provision de remplacement onduleur (aucun onduleur chiffré sur ce devis).',
+        'en': 'Projection made without an inverter replacement provision (no inverter priced in this quote).',
+        'ar': 'إسقاط دون مخصص لاستبدال العاكس (لا عاكس مسعّر في هذا العرض).'},
+    'res_hyp_estimations_nc': {'fr': 'Estimations non contractuelles.', 'en': 'Non-contractual estimates.',
+                               'ar': 'تقديرات غير تعاقدية.'},
+    # AMOT52 — annexe de rétractation (``annexe_domicile``, loi 31-08), partagée
+    # par le legacy et le résidentiel 3 pages : français = le littéral EXACT du
+    # corps (sauts de ligne compris). Traduction à relire par le fondateur.
+    'res_ret_kicker': {'fr': 'Annexe', 'en': 'Appendix', 'ar': 'ملحق'},
+    'res_ret_titre': {'fr': 'Droit de rétractation', 'en': 'Right of withdrawal', 'ar': 'حق التراجع'},
+    'res_ret_intro': {
+        'fr': ("Cette commande a été signée à votre domicile. La loi\n"
+               "      n° 31-08 édictant des mesures de protection du consommateur vous\n"
+               "      ouvre un délai de rétractation de\n"
+               "      <strong>{jours} jours</strong> à\n"
+               "      compter de la commande. Pendant ce délai, <strong>aucun acompte ni\n"
+               "      aucun paiement ne peut être exigé ni encaissé</strong>\n"
+               "      (articles 49 et 50)."),
+        'en': ('This order was signed at your home. Law No. 31-08 on consumer protection\n'
+               '      gives you a withdrawal period of <strong>{jours} days</strong> from the order.\n'
+               '      During this period, <strong>no down payment and no payment may be demanded\n'
+               '      or collected</strong> (articles 49 and 50).'),
+        'ar': ('وُقّعت هذه الطلبية بمنزلكم. يمنحكم القانون رقم 31.08 القاضي بتحديد تدابير لحماية\n'
+               '      المستهلك أجلًا للتراجع مدته <strong>{jours} أيام</strong> ابتداءً من تاريخ الطلبية.\n'
+               '      خلال هذا الأجل، <strong>لا يجوز المطالبة بأي دفعة مقدمة أو أي أداء ولا\n'
+               '      استخلاصه</strong> (المادتان 49 و50).')},
+    'res_ret_mentions_titre': {'fr': 'Mentions de l&#8217;article 48', 'en': 'Article 48 particulars',
+                               'ar': 'بيانات المادة 48'},
+    'res_ret_mention_1': {
+        'fr': 'Nom et adresse du vendeur, et nom du représentant qui vous a rendu visite.',
+        'en': 'Name and address of the seller, and name of the representative who visited you.',
+        'ar': 'اسم البائع وعنوانه، واسم الممثل الذي زاركم.'},
+    'res_ret_mention_2': {
+        'fr': 'Désignation précise de la nature et des caractéristiques des biens ou services proposés.',
+        'en': 'Precise description of the nature and characteristics of the goods or services offered.',
+        'ar': 'التعيين الدقيق لطبيعة وخصائص السلع أو الخدمات المقترحة.'},
+    'res_ret_mention_3': {
+        'fr': 'Conditions d&#8217;exécution du contrat, notamment les modalités et le délai de livraison.',
+        'en': 'Terms of performance of the contract, in particular the delivery arrangements and deadline.',
+        'ar': 'شروط تنفيذ العقد، ولا سيما كيفيات التسليم وأجله.'},
+    'res_ret_mention_4': {'fr': 'Prix global à payer et modalités de paiement.',
+                          'en': 'Total price payable and payment terms.',
+                          'ar': 'الثمن الإجمالي الواجب أداؤه وكيفيات الأداء.'},
+    'res_ret_mention_5': {
+        'fr': ('Faculté de renonciation, ainsi que ses conditions d&#8217;exercice, et de façon apparente le '
+               'texte intégral des articles 49 et 50.'),
+        'en': ('Right of withdrawal and the conditions for exercising it, and, conspicuously, the full text of '
+               'articles 49 and 50.'),
+        'ar': 'إمكانية التراجع وشروط ممارسته، مع النص الكامل للمادتين 49 و50 بشكل بارز.'},
+    'res_ret_detachez': {
+        'fr': ("Détachez, complétez et renvoyez le formulaire ci-dessous si vous\n"
+               "      souhaitez renoncer à cette commande."),
+        'en': ('Detach, complete and return the form below if you\n'
+               '      wish to withdraw from this order.'),
+        'ar': 'افصلوا الاستمارة أدناه واملؤوها وأعيدوها إذا رغبتم\n      في التراجع عن هذه الطلبية.'},
+    'res_ret_formulaire': {'fr': 'Formulaire détachable de rétractation', 'en': 'Detachable withdrawal form',
+                           'ar': 'استمارة التراجع القابلة للفصل'},
+    'res_ret_formulaire_corps': {
+        'fr': ("À l&#8217;attention de : <strong>{vendeur}</strong><br>\n"
+               "        Je soussigné(e) : _______________________________________________<br>\n"
+               "        Adresse : ____________________________________________________<br>\n"
+               "        déclare renoncer à la commande n° <strong>{ref}</strong>,\n"
+               "        signée le : ___/___/______<br>\n"
+               "        Fait à : _______________________ le : ___/___/______"),
+        'en': ('For the attention of: <strong>{vendeur}</strong><br>\n'
+               '        I, the undersigned: _______________________________________________<br>\n'
+               '        Address: ____________________________________________________<br>\n'
+               '        hereby withdraw from order No. <strong>{ref}</strong>,\n'
+               '        signed on: ___/___/______<br>\n'
+               '        Done at: _______________________ on: ___/___/______'),
+        'ar': ('إلى عناية: <strong>{vendeur}</strong><br>\n'
+               '        أنا الموقع(ة) أدناه: _______________________________________________<br>\n'
+               '        العنوان: ____________________________________________________<br>\n'
+               '        أصرّح بالتراجع عن الطلبية رقم <strong>{ref}</strong>،\n'
+               '        الموقعة بتاريخ: ___/___/______<br>\n'
+               '        حُرّر في: _______________________ بتاريخ: ___/___/______')},
+    'res_ret_signature': {'fr': 'Signature du client (de sa main)', 'en': 'Client signature (handwritten)',
+                          'ar': 'توقيع العميل (بخط يده)'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',
@@ -1785,6 +2279,12 @@ CLES_OPTION = {
     'Sans batterie': 'res_opt_sans',
     'Avec batterie': 'res_opt_avec',
     'Hybride, batterie plus tard': 'res_opt_hybride',
+    # AMOT52 — types d'installation que le legacy imprime (``inst_type`` du
+    # builder), traduits par la même fonction ``nom_option``.
+    'Résidentielle': 'res_tag_residentielle',
+    'Industrielle': 'ci_ind_tag',
+    'Commerciale': 'lg_type_commerciale',
+    'Agricole': 'lg_type_agricole',
 }
 
 
