@@ -504,7 +504,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
         op = donnees.get('action')
         ids = donnees.get('ids') or []
-        if op not in BULK_ACTIONS:
+        if not isinstance(op, str) or op not in BULK_ACTIONS:  # {} : TypeError (500)
             return Response({'detail': 'Action en masse inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(ids, list) or not ids:
@@ -1034,8 +1034,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 user=request.user,
                 fournisseur_id=fournisseur_id)
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ERR fuzz : le corps était conforme — fournisseur inconnu = 404,
+            # « rien à réapprovisionner » = refus d'ÉTAT (409), jamais 400.
+            code = (status.HTTP_404_NOT_FOUND if 'introuvable' in str(exc)
+                    else status.HTTP_409_CONFLICT)
+            return Response({'detail': str(exc)}, status=code)
         return Response(result, status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[P('jours', INT, False, 'Fenêtre en jours (défaut 180)')], responses=LISTE)
