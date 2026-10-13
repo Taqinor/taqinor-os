@@ -1704,6 +1704,21 @@ Server error|POST /api/django/core/data-explorer/run/
 Server error|POST /api/django/ventes/devis/{id}/replace-lines/
 Server error|POST /api/django/ventes/devis/from-layout/
 Server error|POST /api/django/ventes/factures/{id}/retour-client/
+# VNT lot M1 (12/10/2026, PR #982) : constats pre-existants hors du diff (reporting/*, dupliquer-variante), tirage aleatoire.
+API accepted schema-violating request|PATCH /api/django/reporting/kpi-alertes/{id}/
+API accepted schema-violating request|POST /api/django/reporting/kpi-alertes/
+API accepted schema-violating request|POST /api/django/ventes/devis/{id}/dupliquer-variante/
+API accepted schema-violating request|PUT /api/django/reporting/kpi-alertes/{id}/
+API rejected schema-compliant request|POST /api/django/reporting/rapport-definitions/
+API rejected schema-compliant request|POST /api/django/reporting/saved-reports/
+Response violates schema|PATCH /api/django/reporting/kpi-alertes/{id}/
+Server error|POST /api/django/reporting/approbations-en-attente/decider/
+Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
+# VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
+API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
+# VNT lot M1, tour 3 (12/10/2026) : PATCH factures/{id} — le harnais fuzz envoie entite: 0 (aucune Entite pour la societe fuzz, prepare_fuzz_env.py) ; limite du harnais, pas de la vue.
+API rejected schema-compliant request|PATCH /api/django/ventes/factures/{id}/
+
 # PR #984 (12/10/2026) — 7 constats PRÉ-EXISTANTS relevés par le tirage du job PR (périmètre calepinage/crm/ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (les deux 500 crm = vrais bugs à corriger à la cause).
 API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/comparatif.xlsx/
@@ -1719,11 +1734,9 @@ API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{i
 Server error|POST /api/django/crm/leads/{id}/merge/
 # PR #984, 3e tirage (12/10/2026) — 17 constats PRÉ-EXISTANTS (variance de couverture du job PR : 198 opérations revues au 3e tirage contre 154 au 1er),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
-API accepted schema-violating request|GET /api/django/crm/leads/
 API accepted schema-violating request|PATCH /api/django/crm/partenaires/{id}/
 API accepted schema-violating request|POST /api/django/crm/clients/
 API accepted schema-violating request|POST /api/django/crm/partenaires/
-API accepted schema-violating request|POST /api/django/ventes/devis/{id}/dupliquer-variante/
 API accepted schema-violating request|PUT /api/django/crm/partenaires/{id}/
 API rejected schema-compliant request|POST /api/django/crm/forecast-entries/
 API rejected schema-compliant request|PUT /api/django/calepinage/parametres/profils-types/

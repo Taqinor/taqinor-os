@@ -6,6 +6,7 @@ viewsets, jamais désérialisés. Aucun prix exposé.
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
@@ -129,11 +130,19 @@ class DossierExchangeSerializer(SameCompanyFKSerializerMixin,
             raise
 
 
-class SubventionDossierSerializer(SameCompanyFKSerializerMixin,
+class SubventionDossierSerializer(ChampsStrictsMixin,
+                                  SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):
     """FG270 — dossier de subvention/incitation."""
+    # Tour 3 M1 (api-fuzz) — champs STRICTS (texte, décimaux-chaînes : aucun
+    # nombre/booléen JSON converti en silence) et ``pieces`` déclarée telle
+    # qu'elle est stockée, une LISTE d'objets ``{code, label, fourni}`` jamais
+    # nulle : le ``JSONField`` publiait « toute valeur, null comprise » puis
+    # refusait ``null`` en 400 (« Ce champ ne peut être nul »).
     # ENF17 — devis d'une AUTRE société = id absent (400).
     same_company_fields = ('devis',)
+    pieces = serializers.ListField(
+        child=serializers.DictField(), required=False)
     programme_label = serializers.CharField(
         source='get_programme_display', read_only=True)
     statut_label = serializers.CharField(

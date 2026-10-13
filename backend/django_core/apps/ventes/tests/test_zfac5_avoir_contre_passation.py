@@ -106,7 +106,7 @@ class TestAvoirContrePassation(TestCase):
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'mode': 'contre_passation'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
 

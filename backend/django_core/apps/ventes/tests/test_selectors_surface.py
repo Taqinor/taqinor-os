@@ -210,3 +210,21 @@ class SurfaceSelectorsVentes(SimpleTestCase):
             with self.subTest(nom=nom):
                 self.assertTrue(hasattr(selectors, nom))
                 self.assertIn(nom, locaux)
+
+    def test_vnt23_etat_vente_re_exporte_jamais_redefini(self):
+        """VNT23 — ``etat_vente`` / ``etat_vente_map`` : définis UNE fois
+        (``vente_facturation.py``), servis par la façade par IMPORT ; aucun
+        ``selectors*.py`` ne les définit (jumeau interdit)."""
+        from apps.ventes import selectors, vente_facturation
+        definis = _definitions()
+        for nom in ('etat_vente', 'etat_vente_map'):
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(selectors, nom),
+                              getattr(vente_facturation, nom))
+                self.assertNotIn(nom, definis)
+        source = (VENTES / 'vente_facturation.py').read_text(
+            encoding='utf-8')
+        for nom in ('plan_facturation', 'etat_vente', 'factures_de_la_vente',
+                    'chaine_vente'):
+            with self.subTest(defini_une_fois=nom):
+                self.assertEqual(source.count(f'\ndef {nom}('), 1)

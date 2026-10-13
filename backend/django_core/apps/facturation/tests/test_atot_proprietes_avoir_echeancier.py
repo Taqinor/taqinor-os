@@ -136,7 +136,7 @@ class ProprietesAvoirEcheancierTests(_Base):
         total = Avoir.objects.get(pk=r.data['id'])
         self.assertEqual(Decimal(str(total.total_ttc)), ttc)
         verifier_chaine_document(total)
-        # Plus rien à créditer : tout avoir supplémentaire = 400.
+        # Plus rien à créditer : tout avoir supplémentaire = 400 (plafond).
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
             {'lignes': [{'designation': 'Trop', 'quantite': '1',
