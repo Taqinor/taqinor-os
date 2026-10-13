@@ -1751,3 +1751,12 @@ API rejected schema-compliant request|PATCH /api/django/parametres/tarification/
 API accepted schema-violating request|POST /api/django/sav/tickets/actions-groupees/
 API accepted schema-violating request|PUT /api/django/sav/categories-equipement/{id}/
 API accepted schema-violating request|PUT /api/django/sav/equipes-maintenance/{id}/
+# Vague 7 (13/10/2026) — constats core PRÉ-EXISTANTS rendus visibles par le seed FK du harnais (#989) : règles métier et coercition, portés par ERR-ENF11-FUZZ-CORE (ouverte).
+API accepted schema-violating request|POST /api/django/core/dossiers/{id}/checklist/
+API rejected schema-compliant request|PATCH /api/django/core/formulaires/{id}/
+API rejected schema-compliant request|PATCH /api/django/core/workflow-step-definitions/{id}/
+API rejected schema-compliant request|PATCH /api/django/core/dashboards-partages-internes/{id}/
+API rejected schema-compliant request|PUT /api/django/core/dashboards-partages-internes/{id}/
+API rejected schema-compliant request|PATCH /api/django/core/workflow-definitions/{id}/
+API rejected schema-compliant request|PUT /api/django/core/workflow-definitions/{id}/
+API rejected schema-compliant request|PUT /api/django/core/workflow-step-definitions/{id}/
