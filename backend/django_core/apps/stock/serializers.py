@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
-from core.champs_stricts import ChaineStricte, ChampsStrictsMixin, DecimalStricte
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin, DecimalStricte, TexteLie
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
@@ -2697,8 +2697,8 @@ class LotEntrepotSerializer(CompanyScopedRelationsMixin,
     # société (mixin) si l'une redevient inscriptible.
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True)
-    emplacement_nom = serializers.CharField(
-        source='emplacement.nom', read_only=True)
+    emplacement_nom = TexteLie(  # ERR fuzz : clé TOUJOURS servie (null sans emplacement)
+        source='emplacement.nom', read_only=True, default=None, allow_null=True)
     est_perime = serializers.BooleanField(read_only=True)
 
     class Meta:

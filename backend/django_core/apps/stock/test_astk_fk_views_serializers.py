@@ -386,6 +386,8 @@ class CorpsFuzzTests(TestCase):
         url = f'{BASE}/budgets-departement/'
         r = self.api.post(url, {'annee': 2026, 'periodicite': 'annuelle', 'note': 0}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'annee': 2026, 'periodicite': 'annuelle', 'montant_alloue': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(url, {'annee': 2026, 'periodicite': 'mensuelle', 'mois': 5,
                                 'montant_alloue': '10'}, format='json')
         self.assertEqual(r.status_code, 201, r.content)

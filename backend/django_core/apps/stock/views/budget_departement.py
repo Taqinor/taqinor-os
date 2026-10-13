@@ -18,7 +18,8 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.mixins import TenantMixin
-from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
+from core.champs_stricts import ChampsStrictsMixin
+from core.serializers import CompanyScopedRelationsMixin
 from ..openapi_helpers import BOOL, INT, NUM, OBJET, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -27,7 +28,7 @@ from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..models import BudgetDepartement, EngagementBudget
 
 
-class BudgetDepartementSerializer(ChampsTexteBooleenStricts, MasqueMontantsAchatMixin,
+class BudgetDepartementSerializer(ChampsStrictsMixin, MasqueMontantsAchatMixin,
                                   serializers.ModelSerializer):
     champs_montants_achat = ('montant_alloue',)  # ERR-STK-PRIX-ACHAT-SUITE
     periodicite_display = serializers.CharField(
