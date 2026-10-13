@@ -120,3 +120,92 @@ class FormeUrlUniqueTest(SimpleTestCase):
         self.assertNotIn(
             'calepinage', PREFIXES_URL_AUTORISES,
             "Aucun second préfixe ne doit servir l'objet métier lui-même.")
+
+
+class SchemaOpenApiDuModuleTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE — le schéma publié DIT ce que le module sert.
+
+    Sans ``@extend_schema``, drf-spectacular publie le ``Calepinage`` du
+    viewset comme requête ET réponse de TOUTE ``@action`` : un schéma qui ment
+    (60 « réponses hors schéma » à l'api-fuzz du 11/10/2026).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        generateur = SchemaGenerator(patterns=[
+            path('api/django/calepinage/', include('apps.calepinage.urls'))])
+        cls.schema = generateur.get_schema(request=None, public=True)
+
+    def _refs(self, noeud):
+        import json
+
+        return json.dumps(noeud, sort_keys=True)
+
+    def test_aucune_operation_ne_publie_le_serialiseur_du_pivot_en_reponse(self):
+        fautives = []
+        for chemin, item in self.schema['paths'].items():
+            for methode, operation in item.items():
+                if methode not in ('get', 'post', 'patch', 'put', 'delete'):
+                    continue
+                for code, reponse in operation.get('responses', {}).items():
+                    if code[0] != '2':
+                        continue
+                    if '#/components/schemas/Calepinage"' in self._refs(
+                            reponse):
+                        fautives.append(f'{methode.upper()} {chemin}')
+        self.assertEqual(
+            fautives, [],
+            "Ces opérations publient le serialiseur « Calepinage » (écriture) "
+            "comme réponse : déclarer @extend_schema(responses=…) à côté de "
+            f"l'@action (forme_reponse / forme_du_contrat) : {fautives}")
+
+    def test_aucune_action_ne_demande_le_corps_du_pivot_par_defaut(self):
+        fautives = []
+        for chemin, item in self.schema['paths'].items():
+            for methode, operation in item.items():
+                if methode not in ('post', 'put'):
+                    continue
+                corps = operation.get('requestBody')
+                refs = self._refs(corps) if corps else ''
+                if '#/components/schemas/CalepinageRequest"' in refs:
+                    fautives.append(f'{methode.upper()} {chemin}')
+        self.assertEqual(
+            fautives, [],
+            "Ces opérations héritent du corps du pivot sans l'avoir déclaré "
+            f"(@extend_schema(request=…)) : {fautives}")
+
+    def test_la_liste_et_les_ecritures_publient_la_forme_lue(self):
+        """Ce que ``to_representation`` rend : ``lead`` en objet, ``nom``."""
+        composants = self.schema['components']['schemas']
+        lecture = composants['CalepinageLecture']['properties']
+        self.assertIn('nom', lecture)
+        self.assertNotEqual(lecture['lead'].get('type'), 'integer')
+
+    def test_les_formes_du_contrat_suivent_leurs_echantillons(self):
+        import json
+
+        from apps.calepinage.serializers import (
+            FORMES_DU_CONTRAT, forme_du_contrat,
+        )
+
+        self.assertGreater(len(FORMES_DU_CONTRAT), 20)
+        composants = self.schema['components']['schemas']
+        for composant, (fichier, cle) in sorted(FORMES_DU_CONTRAT.items()):
+            with self.subTest(composant=composant):
+                echantillon = (RACINE_APP / 'contract_samples' / fichier)
+                attendu = set(json.loads(
+                    echantillon.read_text(encoding='utf-8'))[cle])
+                self.assertTrue(attendu, f'{fichier}[{cle}] est vide')
+                if composant in composants:
+                    self.assertEqual(
+                        set(composants[composant]['properties']), attendu,
+                        f"{composant} a dérivé de {fichier}[{cle}] : "
+                        "régénérer la forme depuis l'échantillon.")
+        self.assertEqual(
+            set(forme_du_contrat('CalepinageTestDerive',
+                                 'calepinage_troncons.json').fields),
+            {'troncons', 'totaux', 'omissions', 'verdicts'})

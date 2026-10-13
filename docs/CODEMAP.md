@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 27b8cb4f09f333908506952aa19994d5a931a61f6a9dac80f8936fdf2b206c00
+Structure fingerprint: 15716cd7fe6e099b29b3f4aaf67ee6c63e221fdfa0241d643b3e102333e9bcc1
 Plan fingerprint: 3dde676e788775d812dd71d6a64ae02afdece67a71886b97b2de4cff29fae8af
 
 
@@ -2003,4 +2003,3 @@ Things this map could not fully verify from source — do not over-trust:
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
 - `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
-

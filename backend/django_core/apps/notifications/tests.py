@@ -944,3 +944,74 @@ class FkNotificationsBorneesSocieteTests(TestCase):
             'event_type': EventType.FACTURE_OVERDUE,
             'target_user': self.user_a.pk}, format='json')
         self.assertEqual(r_ok.status_code, 201, r_ok.data)
+
+
+# ── ERR-ENF11-FUZZ-NOTIFICATIONS (2e tour) — entrées hors schéma = 400 ────
+class Enf11Notifications2eTourTests(TestCase):
+    def setUp(self):
+        self.company = _make_company('ENF11 N2')
+        self.admin = User.objects.create_user(
+            username='enf11_n2', password='pw', company=self.company,
+            role_legacy='admin')
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+        self.base = '/api/django/notifications/'
+
+    def test_filtres_enumeres_hors_schema_400(self):
+        for chemin, requete in (
+                ('notifications/', 'unread=zzz'),
+                ('routing-rules/', 'enabled=zzz'),
+                ('whatsapp-templates/', 'statut_approbation=zzz'),
+                ('annonces/', 'active=zzz'),
+                ('annonces/', 'epinglee=zzz'),
+                ('holidays/', 'year=abc'),
+                ('calendar/check/', 'date=20250101'),
+                ('calendar/check/', 'date=2025-W01-1')):
+            r = self.client.get(f'{self.base}{chemin}?{requete}')
+            self.assertEqual(r.status_code, 400, (chemin, requete, r.content))
+
+    def test_valeurs_publiees_toujours_acceptees(self):
+        # ``unread=0`` : le cloche de l'écran demande « toutes ».
+        for chemin, requete in (
+                ('notifications/', 'unread=0'), ('notifications/', 'unread=1'),
+                ('routing-rules/', 'enabled=false'),
+                ('annonces/', 'active=1&epinglee=0'),
+                ('holidays/', 'year=2026'), ('holidays/', 'year=99999999999'),
+                ('calendar/check/', 'date=2025-06-23')):
+            r = self.client.get(f'{self.base}{chemin}?{requete}')
+            self.assertEqual(r.status_code, 200, (chemin, requete, r.content))
+
+    def test_push_cles_trop_longues_400_pas_500(self):
+        url = f'{self.base}push/subscribe/'
+        r = self.client.post(url, {
+            'endpoint': 'https://push.example/x',
+            'keys': {'p256dh': 'k' * 256, 'auth': 'a'}}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.client.post(url, {
+            'endpoint': 'https://push.example/' + 'e' * 1000,
+            'keys': {'p256dh': 'k', 'auth': 'a'}}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.client.post(f'{self.base}push/unsubscribe/', {
+            'endpoint': 'https://push.example/' + 'e' * 1000}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_longueur_brute_et_decimal_litteral(self):
+        # Le surplus de blancs de bord ne masque plus un dépassement de longueur.
+        r = self.client.post(f'{self.base}holidays/', {
+            'date': '2026-05-01', 'nom': ' ' + 'x' * 150}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.client.post(f'{self.base}holidays/', {
+            'date': '2026-05-01', 'nom': 'Fête du travail'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        url = f'{self.base}working-hours/1/'
+        for valeur in ('1e1', ' 8', '+8', '8_0'):
+            r = self.client.patch(url, {'hours_per_day': valeur}, format='json')
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+        r = self.client.patch(url, {'hours_per_day': '7.50'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_message_accueil_corps_blanc_400(self):
+        r = self.client.post(f'{self.base}messages-accueil/', {
+            'destinataire': self.admin.id, 'corps': '   ',
+            'visible_a_partir_de': '2026-01-01T08:00:00Z'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)

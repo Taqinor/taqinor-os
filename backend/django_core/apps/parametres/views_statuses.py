@@ -26,6 +26,8 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
 
+from core.parametres_requete import choix_ou_400
+
 from .models import SettingsAuditLog
 from .models_statuses import StatutConfig
 from .serializers_statuses import StatutConfigSerializer
@@ -112,7 +114,9 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
 
     def get_queryset(self):
         qs = super().get_queryset()
-        domaine = self.request.query_params.get('domaine')
+        # ENF11 — domaine hors énumération publiée : 400 (liste vide en 200
+        # avant, indiscernable d'un domaine sans surcharge).
+        domaine = choix_ou_400(self.request, 'domaine', _DOMAINE_ENUM)
         if domaine:
             qs = qs.filter(domaine=domaine)
         return qs

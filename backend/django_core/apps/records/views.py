@@ -25,7 +25,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
-from core.champs_stricts import drapeau_ou_400
+from core.champs_stricts import EntierStrict, drapeau_ou_400
 from core.selectors import get_company_object
 
 from .models import (
@@ -33,7 +33,7 @@ from .models import (
 )
 from .openapi import (
     CibleModelField, CibleQuerySerializer, ParsersParActionMixin,
-    SourceApprobationField, paginee,
+    SourceApprobationField, cible_corps_ou_400, cible_requete_ou_400, paginee,
 )
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
@@ -43,6 +43,9 @@ from .serializers import (
 from .storage import delete_attachment, fetch_attachment, store_attachment
 
 logger = logging.getLogger(__name__)
+
+# Borne haute d'une clé primaire entière (PostgreSQL ``integer``).
+_ID_MAX = 2147483647
 
 
 # ── ENF7 — schéma OpenAPI exact (briques partagées) ─────────────────────────
@@ -92,12 +95,12 @@ _ACTIVITE_CREATION = _S('ActiviteCreation', {
 
 _ACTIVITE_FAITE_CORPS = _S('ActiviteFaiteCorps', {
     'next': _S('ActiviteSuite', {
-        'activity_type': drf.IntegerField(),
+        'activity_type': drf.IntegerField(min_value=1, max_value=_ID_MAX),
         'summary': drf.CharField(
             required=False, allow_blank=True, max_length=255),
         'note': drf.CharField(required=False, allow_blank=True),
         'due_date': drf.DateField(required=False, allow_null=True),
-    }, required=False),
+    }, required=False, allow_null=True),
 })
 
 _ACTIVITE_FAITE = _S('ActiviteFaite', {
@@ -116,7 +119,7 @@ _SNOOZE_CORPS = _S('ActiviteSnoozeCorps', {
 
 _SNOOZE_APPRO_CORPS = _S('SnoozeApprobationCorps', {
     'source': SourceApprobationField(),
-    'id': drf.IntegerField(min_value=1),
+    'id': EntierStrict(min_value=1, max_value=_ID_MAX),
     'snoozed_until': drf.DateField(required=False, allow_null=True),
 })
 
@@ -255,6 +258,16 @@ def _exiger_objet(request):
     return request.data
 
 
+def _corps_valide(schema, data):
+    """Valide ``data`` contre un corps de schéma inline (400 sinon).
+
+    ``inline_serializer`` renvoie une INSTANCE (pas une classe) : l'appeler
+    levait ``TypeError`` (500) — on ré-instancie sa classe avec ``data``."""
+    corps = type(schema)(data=data)
+    corps.is_valid(raise_exception=True)
+    return corps.validated_data
+
+
 def _texte_ou_400(valeur, nom):
     """Valeur optionnelle qui doit être une vraie chaîne (400 nommant le
     champ sinon) — ``.strip()`` sur un nombre/une liste levait un 500."""
@@ -324,7 +337,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
         qs = qs.exclude(
             models.Q(personnelle=True) & ~models.Q(created_by=self.request.user))
         params = self.request.query_params
-        model, oid = params.get('model'), params.get('id')
+        model, oid = cible_requete_ou_400(self.request)
         # CI #956 (fuzz) — drapeaux déclarés ``enum=['1']`` : une autre valeur
         # (``personnelle=AAA``) est un 400, plus un « non » silencieux.
         personnelle = drapeau_ou_400(params.get('personnelle'), 'personnelle')
@@ -344,8 +357,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         company = _company(request)
         _exiger_objet(request)
-        model = request.data.get('model')
-        oid = request.data.get('id')
+        model, oid = cible_corps_ou_400(request.data)
         # XKB4 — à-faire personnel : pas de cible métier (model/id absents).
         if not model and not oid:
             ser = self.get_serializer(data=request.data)
@@ -576,14 +588,17 @@ class ActivityViewSet(viewsets.ModelViewSet):
     def marquer_fait(self, request, pk=None):
         act = self.get_object()
         _exiger_objet(request)
+        # Corps typé selon le schéma (``next`` objet ou nul, dates valides) :
+        # avant, une suite illisible était avalée et la clôture répondait 200.
+        suite = _corps_valide(
+            _ACTIVITE_FAITE_CORPS, request.data).get('next')
         chained = None
         suggestion = None
         first_close = not act.done
         # ASEC6 — AVANT toute écriture : l'enchaînement et la suite demandée ne
         # désignent qu'un type de la société de l'activité (400 sinon, rien
         # n'est modifié, aucun libellé étranger renvoyé ; id inexistant = 400).
-        refus = _refus_types_hors_societe(act, request.data.get('next'),
-                                          first_close)
+        refus = _refus_types_hors_societe(act, suite, first_close)
         if refus is not None:
             return refus
         if first_close:
@@ -597,7 +612,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             # déclenche/ne suggère jamais une 2ᵉ fois — idempotence).
             chained, suggestion = _appliquer_enchainement(act, request.user)
         # Planifier la suite si demandé explicitement par le front.
-        nxt = request.data.get('next')
+        nxt = suite
         created = None
         if isinstance(nxt, dict) and nxt.get('activity_type'):
             try:
@@ -641,20 +656,15 @@ class ActivityViewSet(viewsets.ModelViewSet):
         from .services import snooze_activity, valid_snooze_trigger_event
         act = self.get_object()
         _exiger_objet(request)
-        raw = request.data.get('snoozed_until')
         trigger = (_texte_ou_400(
             request.data.get('snooze_trigger_event'),
             'snooze_trigger_event') or '').strip()
         if not valid_snooze_trigger_event(trigger):
             return Response({'snooze_trigger_event': 'Déclencheur invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        d = None
-        if raw:
-            from django.utils.dateparse import parse_date
-            d = parse_date(str(raw))
-            if d is None:
-                return Response({'snoozed_until': 'Date invalide.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        # ``snoozed_until`` : date ISO ou ``null`` — ``""``, ``0`` ou ``false``
+        # annulaient le report en silence alors que le schéma les refuse.
+        d = _corps_valide(_SNOOZE_CORPS, request.data).get('snoozed_until')
         snooze_activity(act, d, trigger)
         return Response(ActivitySerializer(act).data)
 
@@ -678,12 +688,12 @@ class ActivityViewSet(viewsets.ModelViewSet):
         from apps.reporting import approbations as appro
         _exiger_objet(request)
         source = request.data.get('source')
-        obj_id = request.data.get('id')
         # ``source`` non hashable (liste/objet) levait TypeError au ``in`` (500).
-        if (not isinstance(source, str) or isinstance(obj_id, (dict, list))
-                or source not in appro._SOURCE_LOADERS or not obj_id):
+        if not isinstance(source, str) or source not in appro._SOURCE_LOADERS:
             return Response({'detail': 'Source ou id invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        corps = _corps_valide(_SNOOZE_APPRO_CORPS, request.data)
+        obj_id = corps['id']
         matches = [
             it for it in appro._SOURCE_LOADERS[source](company)
             if str(it.get('id')) == str(obj_id)]
@@ -697,13 +707,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
         from apps.notifications.services import (
             snooze_approbation_item, unsnooze_approbation_item,
         )
-        raw = request.data.get('snoozed_until')
-        if raw:
-            from django.utils.dateparse import parse_date
-            d = parse_date(str(raw))
-            if d is None:
-                return Response({'snoozed_until': 'Date invalide.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        d = corps.get('snoozed_until')
+        if d:
             snooze_approbation_item(company, request.user, source, obj_id, d)
         else:
             unsnooze_approbation_item(request.user, source, obj_id)
@@ -981,8 +986,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         qs = _scoped(
             Comment.objects.select_related('author', 'content_type'),
             self.request.user)
-        model = self.request.query_params.get('model')
-        oid = self.request.query_params.get('id')
+        model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
                 ct, _ = resolve_target(model, oid, _company(self.request))
@@ -991,17 +995,22 @@ class CommentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(content_type=ct, object_id=oid)
         # XKB13 — ?resolved=true|false : masque/affiche les fils résolus
         # (le frontend masque les fils résolus par défaut).
+        # Déclaré booléen au schéma : « true »/« false » seulement (autre valeur
+        # = 400, elle était lue en silence comme « non »).
         resolved = self.request.query_params.get('resolved')
         if resolved is not None:
-            qs = qs.filter(resolved=resolved.lower() in ('1', 'true', 'yes'))
+            if resolved not in ('true', 'false'):
+                raise drf.ValidationError(
+                    {'resolved': ['« true » ou « false » attendu.']})
+            qs = qs.filter(resolved=resolved == 'true')
         return qs
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
         _exiger_objet(request)
+        model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(
-                request.data.get('model'), request.data.get('id'), company)
+            ct, _obj = resolve_target(model, oid, company)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1013,7 +1022,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         comment = ser.save(
             company=company,
             content_type=ct,
-            object_id=request.data.get('id'),
+            object_id=oid,
             author=request.user)
         # Notifie les @mentions (best-effort, jamais d'erreur remontée).
         # VX85(b) — content_type/object_id passés pour un lien cliquable.
@@ -1063,8 +1072,7 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         qs = _scoped(
             Attachment.objects.select_related('uploaded_by', 'content_type'),
             self.request.user)
-        model = self.request.query_params.get('model')
-        oid = self.request.query_params.get('id')
+        model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
                 ct, _ = resolve_target(model, oid, _company(self.request))
@@ -1076,9 +1084,9 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         company = _company(request)
         _exiger_objet(request)
+        model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(
-                request.data.get('model'), request.data.get('id'), company)
+            ct, _obj = resolve_target(model, oid, company)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1099,7 +1107,7 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         if phase not in ('', 'avant', 'pendant', 'apres'):
             phase = ''
         att = Attachment.objects.create(
-            company=company, content_type=ct, object_id=request.data.get('id'),
+            company=company, content_type=ct, object_id=oid,
             uploaded_by=request.user, phase=phase, **meta)
         return Response(AttachmentSerializer(att).data,
                         status=status.HTTP_201_CREATED)
@@ -1111,7 +1119,9 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         """N5/L5 — re-tague la phase (avant/pendant/après) d'une pièce jointe
         sans supprimer/ré-uploader le fichier. Scopé société par get_object."""
         att = self.get_object()  # déjà borné à la société par get_queryset
-        phase = (request.data.get('phase') or '').strip().lower()
+        _exiger_objet(request)
+        phase = (_texte_ou_400(request.data.get('phase'), 'phase')
+                 or '').strip().lower()
         if phase not in ('', 'avant', 'pendant', 'apres'):
             return Response({'phase': 'Phase invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1206,8 +1216,7 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
             qs = TaggedItem.objects.select_related('tag', 'content_type').all()
         else:
             return TaggedItem.objects.none()
-        model = self.request.query_params.get('model')
-        oid = self.request.query_params.get('id')
+        model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
                 ct, _ = resolve_target(model, oid, _company(self.request))
@@ -1219,9 +1228,9 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         company = _company(request)
         _exiger_objet(request)
+        model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(
-                request.data.get('model'), request.data.get('id'), company)
+            ct, _obj = resolve_target(model, oid, company)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1229,7 +1238,11 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         tag_id = request.data.get('tag')
-        if isinstance(tag_id, (dict, list, bool)):
+        if isinstance(tag_id, str) and tag_id.isascii() and tag_id.isdigit():
+            tag_id = int(tag_id)
+        if tag_id is not None and (
+                isinstance(tag_id, bool) or not isinstance(tag_id, int)
+                or tag_id > _ID_MAX):
             return Response({'detail': 'tag invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         if not tag_id:
@@ -1243,7 +1256,7 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Tag introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
         item, created = TaggedItem.objects.get_or_create(
-            tag=tag, content_type=ct, object_id=request.data.get('id'))
+            tag=tag, content_type=ct, object_id=oid)
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(TaggedItemSerializer(item).data, status=code)
 
@@ -1274,8 +1287,7 @@ class FollowerViewSet(viewsets.ModelViewSet):
         qs = _scoped(
             Follower.objects.select_related('user', 'content_type'),
             self.request.user)
-        model = self.request.query_params.get('model')
-        oid = self.request.query_params.get('id')
+        model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
                 ct, _ = resolve_target(model, oid, _company(self.request))
@@ -1289,9 +1301,9 @@ class FollowerViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         company = _company(request)
         _exiger_objet(request)
+        model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(
-                request.data.get('model'), request.data.get('id'), company)
+            ct, _obj = resolve_target(model, oid, company)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1305,7 +1317,7 @@ class FollowerViewSet(viewsets.ModelViewSet):
         from .services import follow
         obj = follow(
             company=company, content_type=ct,
-            object_id=request.data.get('id'), user=request.user,
+            object_id=oid, user=request.user,
             sous_type=sous_type)
         return Response(FollowerSerializer(obj).data,
                         status=status.HTTP_201_CREATED)
@@ -1385,14 +1397,17 @@ def attachments_all(request):
     since = p.get('since')
     if since:
         try:
+            from datetime import datetime as _dt, timezone as _tz
             from django.utils.dateparse import parse_datetime, parse_date
-            from django.utils import timezone as tz
             dt = parse_datetime(since)
             if dt is None:
                 d = parse_date(since)
                 if d:
-                    dt = tz.datetime(d.year, d.month, d.day, tzinfo=tz.utc)
+                    dt = _dt(d.year, d.month, d.day, tzinfo=_tz.utc)
             if dt:
+                # Une date-heure aux bornes (an 1 + décalage) déborde à la
+                # conversion UTC faite par le pilote -> OverflowError (500).
+                dt.astimezone(_tz.utc)
                 qs = qs.filter(created_at__gte=dt)
         except Exception:
             logger.warning("views.attachments_all : erreur ignorée (mode dégradé)", exc_info=True)
@@ -1409,8 +1424,7 @@ def attachments_all(request):
 @permission_classes([IsAnyRole])
 def attachments_count(request):
     """Compteur de pièces jointes pour un enregistrement (badge trombone)."""
-    model = request.query_params.get('model')
-    oid = request.query_params.get('id')
+    model, oid = cible_requete_ou_400(request)
     if not (model and oid):
         return Response({'count': 0})
     try:

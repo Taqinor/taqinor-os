@@ -25,7 +25,13 @@
             "libelle": "Avec batterie"
           }
         ],
-        "exige_identite_entreprise": true
+        "exige_identite_entreprise": true,
+        "conditions_titre": "Conditions générales du devis",
+        "conditions": [
+          "Offre valable jusqu'au 28/10/2026",
+          "Acompte à la commande : 50%",
+          "50% à la réception du matériel"
+        ]
       },
       {
         "id": 400,
@@ -39,7 +45,9 @@
         "mis_a_jour_le": null,
         "deux_options": false,
         "options": null,
-        "exige_identite_entreprise": false
+        "exige_identite_entreprise": false,
+        "conditions_titre": "Conditions générales du devis",
+        "conditions": null
       }
     ]
   },
@@ -86,7 +94,7 @@
     ]
   },
   "deux_options": "ADOC110 (C-ADOC-043) — booléen ADDITIF sur chaque élément : verdict de `apps.ventes.utils.options.deux_options_declarees(devis)`, LE prédicat QJR55 que `accept_devis` relit (ventes/domain/cycle_vie.py:1376-1381). ADOC113 : SERVI par `devis_du_client_portail` (ventes/selectors_portail.py) — la clé est versée dans `exemple` (comparé clé à clé au sélecteur par test_portail_devis_mis_a_jour et test_adoc_devis_deux_options) ; `exemple_deux_options` reste l'illustration d'un devis à deux options.",
-  "conditions": "APDF1 (C-APDF-005, contrat d'abord PACT10) — deux clés ADDITIVES sur chaque élément NON brouillon : `conditions_titre` (chaîne, le titre du bloc CGV du PDF, « Conditions générales du devis » par défaut) et `conditions` (liste de textes : les puces CGV REMPLIES de CE devis — validité, acompte, matériel, solde, TVA… — ou null si rien). SOURCE UNIQUE : la même fonction que la page publique /proposition, `_conditions_publiques` (ventes/public/payload_conditions.py), qui relit les CGV GELÉES à l'envoi (QJR668) par la fonction de remplissage du moteur — jamais une copie locale du texte ; même forme de puces que `conditions` de la page publique (public_views.py). Aucun montant d'achat, aucun prix_achat. Tant qu'APDF35 (selectors_portail.devis_du_client_portail) ne les sert pas, les deux clés vivent dans `exemple_conditions` (PAS dans `exemple`, que test_portail_devis_mis_a_jour et test_adoc_devis_deux_options comparent clé à clé au sélecteur actuel — même précédent que CIQ9) ; APDF35 les verse dans `exemple` en même temps que le sélecteur qui les émet, APDF36 (PortailClientDevis.jsx) les affiche.",
+  "conditions": "APDF1 (C-APDF-005, contrat d'abord PACT10) — deux clés ADDITIVES sur chaque élément NON brouillon : `conditions_titre` (chaîne, le titre du bloc CGV du PDF, « Conditions générales du devis » par défaut) et `conditions` (liste de textes : les puces CGV REMPLIES de CE devis — validité, acompte, matériel, solde, TVA… — ou null si rien). SOURCE UNIQUE : la même fonction que la page publique /proposition, `_conditions_publiques` (ventes/public/payload_conditions.py), qui relit les CGV GELÉES à l'envoi (QJR668) par la fonction de remplissage du moteur — jamais une copie locale du texte ; même forme de puces que `conditions` de la page publique (public_views.py). Aucun montant d'achat, aucun prix_achat. APDF35 : SERVIES par `selectors_portail.devis_du_client_portail` (`_conditions_portail`, même donnée moteur que la page publique) — les deux clés sont versées dans `exemple` (comparé clé à clé au sélecteur) ; `exemple_conditions` reste l'illustration ; APDF36 (PortailClientDevis.jsx) les affiche dans le dialogue d'acceptation.",
   "exemple_conditions": {
     "results": [
       {
@@ -143,12 +151,14 @@
       "nom": "str, requis",
       "consent_esign": "bool, requis (consentement explicite, QX9)",
       "option": "'sans_batterie'|'avec_batterie', REQUIS quand `deux_options` est vrai, facultatif sinon (ADOC110)",
-      "entreprise": "{raison_sociale, signataire_qualite, ice} — REQUIS (les trois, non vides) quand `exige_identite_entreprise` est vrai (CIQ321, même règle et même lecteur que la page publique : `lire_entreprise_acceptation`, ICE validé par `validate_ice_ma`) ; IGNORÉ sinon. Forme : `exemple_portail.corps.entreprise` de `apps/ventes/contract_samples/acceptation_entreprise.json`."
+      "entreprise": "{raison_sociale, signataire_qualite, ice} — REQUIS (les trois, non vides) quand `exige_identite_entreprise` est vrai (CIQ321, même règle et même lecteur que la page publique : `lire_entreprise_acceptation`, ICE validé par `validate_ice_ma`) ; IGNORÉ sinon. Forme : `exemple_portail.corps.entreprise` de `apps/ventes/contract_samples/acceptation_entreprise.json`.",
+      "accepte_conditions": "bool, REQUIS (APDF35, C-APDF-005) : case explicite « J'accepte ce devis et les conditions générales » ; absent/faux → 400 `400_conditions`, aucun statut changé. Vérifié après le consentement et après la branche « déjà accepté » (ADOC127), avant l'identité entreprise."
     },
     "exemple_corps_deux_options": {
       "nom": "Karim Alaoui",
       "consent_esign": true,
-      "option": "avec_batterie"
+      "option": "avec_batterie",
+      "accepte_conditions": true
     },
     "reponses": {
       "200": {
@@ -168,6 +178,10 @@
       "400_entreprise": {
         "detail": "L'ICE de l'entreprise est requis pour accepter ce devis.",
         "champ": "entreprise.ice"
+      },
+      "400_conditions": {
+        "detail": "Acceptez les conditions générales pour signer.",
+        "champ": "accepte_conditions"
       }
     },
     "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable).",

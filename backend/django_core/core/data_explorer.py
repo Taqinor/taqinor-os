@@ -47,6 +47,8 @@ planifié continue de livrer ses colonnes légitimes.
 """
 from __future__ import annotations
 
+from django.core.exceptions import FieldError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Avg, Count, Max, Min, Sum
 
 from core.analytics_db import analytics_queryset
@@ -76,6 +78,64 @@ class DatasetInconnu(Exception):
 
 class ChampNonAutorise(Exception):
     """Champ/filtre hors de la liste blanche du dataset."""
+
+
+class SpecInvalide(ChampNonAutorise):
+    """ERR-ENF11-FUZZ-CORE — spec mal FORMÉE (type d'un élément, valeur de
+    filtre illisible pour le champ, lookup inconnu). Sous-classe de
+    ``ChampNonAutorise`` : chaque appelant (data-explorer run/drill,
+    saved-queries, formule/tester, widgets de dashboard) la rend déjà en 400
+    ou en erreur DU widget — jamais un 500."""
+
+
+_SEQUENCES = (list, tuple)
+
+
+def _liste_de_textes(valeur, cle):
+    if not isinstance(valeur, _SEQUENCES) or not all(
+            isinstance(v, str) for v in valeur):
+        raise SpecInvalide(f'« {cle} » : liste de noms de champs attendue.')
+    return list(valeur)
+
+
+def _liste_d_objets(valeur, cle, textes):
+    """Liste d'objets dont les clés ``textes`` sont, si présentes, des
+    chaînes (``{"fn": []}`` levait ``TypeError: unhashable`` → 500)."""
+    if not isinstance(valeur, _SEQUENCES):
+        raise SpecInvalide(f"« {cle} » : liste d'objets attendue.")
+    for element in valeur:
+        if not isinstance(element, dict) or any(
+                element.get(t) is not None and not isinstance(element[t], str)
+                for t in textes):
+            raise SpecInvalide(
+                f'« {cle} » : chaque élément est un objet '
+                f'{{{", ".join(textes)}}} de chaînes.')
+    return list(valeur)
+
+
+def _spec_lue(spec):
+    """Lit la spec en vérifiant sa FORME avant tout accès ORM (un élément
+    mal typé levait ``AttributeError``/``TypeError`` → 500)."""
+    if not isinstance(spec, dict):
+        raise SpecInvalide('La spec doit être un objet JSON.')
+    filtres = spec.get('filters') or {}
+    if not isinstance(filtres, dict):
+        raise SpecInvalide(
+            '« filters » : objet {champ__lookup: valeur} attendu.')
+    lue = {cle: _liste_de_textes(spec.get(cle) or [], cle)
+           for cle in ('select', 'group_by', 'order_by')}
+    lue['filters'] = dict(filtres)
+    lue['aggregates'] = _liste_d_objets(
+        spec.get('aggregates') or [], 'aggregates', ('fn', 'field', 'alias'))
+    mesures = _liste_d_objets(
+        spec.get('formula_measures') or [], 'formula_measures',
+        ('alias', 'expression'))
+    if any(not m.get('alias') or not m.get('expression') for m in mesures):
+        raise SpecInvalide(
+            '« formula_measures » : chaque mesure porte « alias » et '
+            '« expression ».')
+    lue['formula_measures'] = mesures
+    return lue
 
 
 # ── NTDATA5 — MÉTADONNÉES BI D'UN CHAMP ─────────────────────────────────────
@@ -340,12 +400,13 @@ def run_query(name, company, user, spec):
     qs = analytics_queryset(dataset['provider'](company, user))
 
     spec = spec or {}
-    select = list(spec.get('select') or [])
-    filters = dict(spec.get('filters') or {})
-    group_by = list(spec.get('group_by') or [])
-    aggregates = list(spec.get('aggregates') or [])
-    formula_measures = list(spec.get('formula_measures') or [])
-    order_by = list(spec.get('order_by') or [])
+    lue = _spec_lue(spec)
+    select = lue['select']
+    filters = lue['filters']
+    group_by = lue['group_by']
+    aggregates = lue['aggregates']
+    formula_measures = lue['formula_measures']
+    order_by = lue['order_by']
     limit = spec.get('limit')
 
     _check_fields(allowed, list(filters.keys()))
@@ -365,9 +426,6 @@ def run_query(name, company, user, spec):
             _sans_champs_interdits(interdits, select, filters, group_by,
                                    order_by, aggregates))
 
-    if filters:
-        qs = qs.filter(**filters)
-
     annotations = {}
     for agg in aggregates:
         fn = _AGGREGATES.get(agg.get('fn'))
@@ -377,14 +435,39 @@ def run_query(name, company, user, spec):
         field = agg.get('field') or 'id'
         annotations[alias] = fn(field)
 
+    try:
+        lim = int(limit) if limit is not None else 1000
+    except (TypeError, ValueError):
+        lim = 1000
+    lim = max(1, min(lim, 5000))
+    # ERR-ENF11-FUZZ-CORE — une valeur de filtre illisible pour son champ
+    # (``{"id": {}}``, une date « abc »), un lookup inconnu ou un alias
+    # d'agrégat en conflit sont des ENTRÉES invalides : l'ORM les signale par
+    # ces exceptions (levées à la construction du queryset), rendues ici en
+    # ``SpecInvalide`` (400) au lieu d'un 500.
+    try:
+        rows = _lignes(qs, allowed, select, filters, group_by, annotations,
+                       order_by, lim)
+    except (FieldError, DjangoValidationError, ValueError, TypeError) as exc:
+        raise SpecInvalide(
+            'Spec invalide pour ce dataset (filtre, champ ou agrégat '
+            'illisible).') from exc
+    return _apply_formula_measures(rows, formula_measures)
+
+
+def _lignes(qs, allowed, select, filters, group_by, annotations, order_by,
+            lim):
+    """Construit et évalue le queryset d'une spec déjà validée."""
+    if filters:
+        qs = qs.filter(**filters)
+
     if group_by:
         qs = qs.values(*group_by)
         if annotations:
             qs = qs.annotate(**annotations)
     elif annotations:
         # Agrégation globale (sans group_by) → un seul dict.
-        rows = [qs.aggregate(**annotations)]
-        return _apply_formula_measures(rows, formula_measures)
+        return [qs.aggregate(**annotations)]
     else:
         # AUD801 — JAMAIS ``values()`` sans argument : cela projetterait TOUTES
         # les colonnes du modèle, champs gated compris. Une projection vidée
@@ -395,11 +478,4 @@ def run_query(name, company, user, spec):
 
     if order_by:
         qs = qs.order_by(*order_by)
-
-    try:
-        lim = int(limit) if limit is not None else 1000
-    except (TypeError, ValueError):
-        lim = 1000
-    lim = max(1, min(lim, 5000))
-    rows = list(qs[:lim])
-    return _apply_formula_measures(rows, formula_measures)
+    return list(qs[:lim])

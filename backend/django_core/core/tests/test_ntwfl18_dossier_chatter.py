@@ -101,6 +101,17 @@ class ChatterDossierTests(TestCase):
         self.assertEqual(reponse.status_code, 400)
         self.assertEqual(self.dossier.activites.count(), avant + 1)
 
+    def test_note_mal_formee_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-CORE (api-fuzz « Server error ») : `body` non
+        # textuel ou corps tableau levaient AttributeError.
+        avant = self.dossier.activites.count()
+        for corps in ({'body': [None, None]}, {'body': 0}, [None, None]):
+            requete = APIRequestFactory().post('/', corps, format='json')
+            force_authenticate(requete, user=self.user)
+            reponse = NOTER(requete, pk=self.dossier.pk)
+            self.assertEqual(reponse.status_code, 400, corps)
+        self.assertEqual(self.dossier.activites.count(), avant)
+
     def test_changement_de_statut_journalise_une_seule_fois(self):
         avant = self.dossier.activites.count()
 

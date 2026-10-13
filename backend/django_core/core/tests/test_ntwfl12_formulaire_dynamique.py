@@ -31,6 +31,46 @@ def _instance_avec_formulaire(company, schema, champs_conditionnels=None):
     return instance, formulaire
 
 
+class FormulaireSchemaPublieTests(TestCase):
+    """ERR-ENF11-FUZZ-CORE — le serializer applique EXACTEMENT le schéma
+    publié : listes/objets non nuls, champ = « nom » non vide OU « ref »
+    entière >= 1."""
+
+    def _valide(self, **donnees):
+        from core.serializers import FormulaireDefinitionSerializer
+        return FormulaireDefinitionSerializer(
+            data={'code': 'f', 'nom': 'F', **donnees}).is_valid()
+
+    def test_schema_conforme_accepte(self):
+        self.assertTrue(self._valide(schema=[{'nom': 'A'}, {'ref': 3}],
+                                     champs_conditionnels={}))
+
+    def test_hors_schema_refuse(self):
+        for donnees in ({'schema': None}, {'champs_conditionnels': None},
+                        {'schema': [{'nom': 5}]}, {'schema': [{'ref': True}]},
+                        {'schema': [{'ref': 0}]}, {'schema': ['A']},
+                        # CI #985 (api-fuzz) : un nom fait d'espaces (\f) était avalé.
+                        {'schema': [{'nom': '\f'}]}, {'schema': [{'nom': '  '}]}):
+            self.assertFalse(self._valide(**donnees), donnees)
+
+    def test_types_stricts_refuses(self):
+        # CI #985 (api-fuzz) — ``"actif": 0`` (booléen) et ``"nom": 0``
+        # (chaîne) étaient convertis en silence (200) : refus nommant le champ.
+        from core.serializers import FormulaireDefinitionSerializer
+        for donnees, champ in (({'actif': 0}, 'actif'),
+                               ({'actif': 'true'}, 'actif'),
+                               ({'nom': 0}, 'nom'),
+                               ({'code': ['f']}, 'code')):
+            for partiel in (False, True):
+                with self.subTest(donnees=donnees, partiel=partiel):
+                    s = FormulaireDefinitionSerializer(
+                        data={'code': 'f', 'nom': 'F', 'schema': [],
+                              'champs_conditionnels': {}, **donnees},
+                        partial=partiel)
+                    self.assertFalse(s.is_valid())
+                    self.assertIn(champ, s.errors)
+
+
 class FormulaireBloqueApprobationTests(TestCase):
     @classmethod
     def setUpTestData(cls):

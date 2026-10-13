@@ -28,6 +28,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
+from ..serializers import forme_du_contrat
 from ..services.reprise_visite import (
     RepriseRefusee, etat_reprise, reprendre_visite,
 )
@@ -36,8 +37,13 @@ from .calepinages import CalepinageViewSet
 __all__ = ['releve_visite']
 
 
+_FORME_REPRISE = forme_du_contrat(
+    'CalepinageRepriseVisite', 'calepinage_releve_visite.json')
+
+
+@extend_schema(methods=['GET'], responses=_FORME_REPRISE)
 @extend_schema(
-    methods=['POST'],
+    methods=['POST'], responses={200: _FORME_REPRISE, 201: _FORME_REPRISE},
     request=inline_serializer('CalepinageRepriseVisiteRequete', {
         'remplacer': drf_serializers.BooleanField(required=False)}))
 @action(detail=True, methods=['get', 'post'], url_path='releve-visite',

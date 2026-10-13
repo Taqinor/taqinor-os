@@ -37,9 +37,14 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import APIException
+from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
+from ..serializers import (
+    REPONSE_REFUS_ETAT, forme_du_contrat, forme_reponse,
+)
 from ..services.planche import (
     MOTIF_SANS_PARCELLE as SANS_PARCELLE)
 
@@ -170,7 +175,8 @@ def inventaire_des_sorties(calepinage):
 def porte_execution(calepinage, piece):
     """ACAL116 — la porte UNIQUE des pièces d'exécution
     (``feu_vert.PIECES_EXECUTION``) : feu vert / approbation à jour, sinon
-    400 ``{approbation | feu_vert}`` nommé et RIEN n'est produit."""
+    409 ``{approbation | feu_vert}`` nommé (un ÉTAT à corriger, pas une
+    entrée mal formée) et RIEN n'est produit."""
     from ..services.feu_vert import (
         GESTE_EXECUTION, PIECES_EXECUTION, verifier_avant_publication,
     )
@@ -179,19 +185,33 @@ def porte_execution(calepinage, piece):
         # Lot 2 critique #20 — une vraie exception (``assert`` disparaît
         # sous ``python -O`` et la pièce passerait sans porte).
         raise ValueError(f"Pièce d'exécution inconnue : {piece!r}")
-    verifier_avant_publication(calepinage, geste=GESTE_EXECUTION)
+    try:
+        verifier_avant_publication(calepinage, geste=GESTE_EXECUTION)
+    except DrfValidationError as refus:
+        raise PieceNonPubliable(refus.detail)
+
+
+class PieceNonPubliable(APIException):
+    """ERR-ENF11-FUZZ-CALEPINAGE — le refus d'état de la porte d'exécution
+    (feu vert / approbation) : 409, corps ``{champ: [messages]}`` inchangé."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = 'piece_non_publiable'
 
 
 class SortiesMixin:
     """Les ``@action`` de sortie, greffées sur le viewset pivot du module."""
 
+    @extend_schema(responses=forme_du_contrat(
+        'CalepinageSortiesInventaire', 'calepinage_sorties.json'))
     @action(detail=True, methods=['get'], url_path='sorties',
             permission_classes=[PeutVoirCalepinage])
     def sorties(self, request, pk=None):
         """CAL175 — l'INVENTAIRE des sorties disponibles de ce calepinage."""
         return Response(inventaire_des_sorties(self.get_object()))
 
-    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'planche\.pdf',
             url_name='planche-pdf', permission_classes=[PeutVoirCalepinage])
     def planche_pdf(self, request, pk=None):
@@ -206,12 +226,13 @@ class SortiesMixin:
                                         company=calepinage.company)
         except PlancheRefusee as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return reponse_de_fichier(
             octets, mime=MIME_PDF,
             nom_fichier=nom_de_fichier(calepinage, 'pdf'))
 
-    @extend_schema(responses={(200, MIME_SVG): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_SVG): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'planche\.svg',
             url_name='planche-svg', permission_classes=[PeutVoirCalepinage])
     def planche_svg(self, request, pk=None):
@@ -230,7 +251,7 @@ class SortiesMixin:
             svg = rendre_planche_svg(calepinage)
         except PlancheRefusee as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return reponse_de_fichier(
             svg.encode('utf-8'), mime=MIME_SVG,
             nom_fichier=nom_de_fichier(calepinage, 'svg'))
@@ -253,12 +274,13 @@ class SortiesMixin:
                                          company=calepinage.company)
         except PlancheRefusee as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return reponse_de_fichier(
             octets, mime=MIME_PDF,
             nom_fichier=nom_de_fichier(calepinage, '%s.pdf' % contenu))
 
-    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'plan-pose\.pdf',
             url_name='plan-pose-pdf', permission_classes=[PeutVoirCalepinage])
     def plan_pose_pdf(self, request, pk=None):
@@ -269,7 +291,8 @@ class SortiesMixin:
 
         return self._plan(CONTENU_POSE)
 
-    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'plan-toiture\.pdf',
             url_name='plan-toiture-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -279,7 +302,8 @@ class SortiesMixin:
 
         return self._plan(CONTENU_TOITURE)
 
-    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'plan-masse\.pdf',
             url_name='plan-masse-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -290,7 +314,8 @@ class SortiesMixin:
         return self._plan(CONTENU_MASSE)
 
     # ── CAL176/CAL177 — la note de calcul ──────────────────────────────────
-    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'note-calcul\.pdf',
             url_name='note-calcul-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -305,13 +330,14 @@ class SortiesMixin:
                                         company=calepinage.company)
         except NoteRefusee as refus:
             return Response({refus.champ or 'resultat': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return reponse_de_fichier(
             octets, mime=MIME_PDF,
             nom_fichier=nom_de_fichier(calepinage, 'note.pdf'))
 
     # ── CAL178/CAL179 — les exports réutilisables ──────────────────────────
-    @extend_schema(responses={(200, MIME_DXF): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_DXF): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'export\.dxf',
             url_name='export-dxf', permission_classes=[PeutVoirCalepinage])
     def export_dxf(self, request, pk=None):
@@ -325,19 +351,21 @@ class SortiesMixin:
             octets = exporter_dxf(calepinage)
         except PlancheRefusee as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return reponse_de_fichier(
             octets, mime=MIME_DXF,
             nom_fichier=nom_de_fichier(calepinage, 'dxf'))
 
-    @extend_schema(responses={(200, MIME_XLSX): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, MIME_XLSX): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'export\.xlsx',
             url_name='export-xlsx', permission_classes=[PeutVoirCalepinage])
     def export_xlsx(self, request, pk=None):
         """CAL179 — modules, chaînes et nomenclature. AUCUN prix."""
         return self._tableur('xlsx')
 
-    @extend_schema(responses={(200, 'text/csv'): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, 'text/csv'): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path=r'export\.csv',
             url_name='export-csv', permission_classes=[PeutVoirCalepinage])
     def export_csv(self, request, pk=None):
@@ -362,12 +390,15 @@ class SortiesMixin:
         except (ExportRefuse, PlancheRefusee) as refus:
             return Response({getattr(refus, 'champ', '') or 'roof_layout':
                              str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return reponse_de_fichier(
             octets, mime=MIME_CSV if extension == 'csv' else MIME_XLSX,
             nom_fichier=nom_de_fichier(calepinage, extension))
 
     # ── CAL181 — le dossier technique ──────────────────────────────────────
+    @extend_schema(request=None, responses={201: forme_reponse(
+        'CalepinagePackTechnique', 'document', 'nom', 'pieces',
+        'pages_attendues', 'signalements')})
     @action(detail=True, methods=['post'], url_path='pack-technique',
             url_name='pack-technique',
             permission_classes=[PeutGererCalepinage])
@@ -387,7 +418,7 @@ class SortiesMixin:
                                        created_by=request.user)
         except PackRefuse as refus:
             return Response({refus.piece or 'pieces': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         document = resultat['document']
         return Response({
             'document': getattr(document, 'pk', None),
@@ -400,6 +431,8 @@ class SortiesMixin:
         }, status=status.HTTP_201_CREATED)
 
     # ── CALX17 — la masse posée et la feuille de lestage ───────────────────
+    @extend_schema(responses=forme_du_contrat(
+        'CalepinageMasseLestage', 'calepinage_masse_lestage.json'))
     @action(detail=True, methods=['get'], url_path='masse-lestage',
             url_name='masse-lestage',
             permission_classes=[PeutVoirCalepinage])

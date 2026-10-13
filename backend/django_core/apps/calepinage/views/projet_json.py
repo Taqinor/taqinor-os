@@ -69,8 +69,14 @@ IMPORT_PROJET_SCHEMA = inline_serializer('CalepinageImportProjet', {
 })
 
 
-@extend_schema(responses={200: IMPORT_PROJET_SCHEMA,
-                          201: IMPORT_PROJET_SCHEMA})
+@extend_schema(
+    request=inline_serializer('CalepinageImportProjetCorps', {
+        'projet': serializers.JSONField(),
+        'apercu': serializers.BooleanField(required=False),
+        'lead': serializers.IntegerField(required=False),
+        'client': serializers.IntegerField(required=False),
+        'titre': serializers.CharField(required=False, allow_blank=True)}),
+    responses={200: IMPORT_PROJET_SCHEMA, 201: IMPORT_PROJET_SCHEMA})
 @action(detail=False, methods=['post'], url_path='import-projet',
         permission_classes=[PeutGererCalepinage])
 def import_projet(self, request):

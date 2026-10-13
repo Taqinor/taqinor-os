@@ -82,6 +82,7 @@ describe('PortailClientDevis — CIQ322 identité d’entreprise', () => {
     expect(corps).toEqual({
       nom: CORPS_PORTAIL.nom,
       consent_esign: CORPS_PORTAIL.consent_esign,
+      accepte_conditions: true,
       entreprise,
     })
   })
@@ -121,6 +122,7 @@ describe('PortailClientDevis — CIQ322 identité d’entreprise', () => {
     expect(portailApi.devis.accepter.mock.calls[0][1]).toEqual({
       nom: CORPS_PORTAIL.nom,
       consent_esign: true,
+      accepte_conditions: true,
     })
   })
 })

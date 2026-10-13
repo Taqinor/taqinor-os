@@ -39,6 +39,7 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole
 
+from .champs_stricts import ChaineStricte
 from .parseurs import corps_valide
 
 __all__ = [
@@ -64,23 +65,23 @@ def _limite(brut):
 # (``core.parseurs.corps_valide``) : un corps non objet ou un champ de mauvais
 # type répond 400 nommant le champ (500 avant, ``dataset: true``).
 _REQUETE_TEST = inline_serializer('FormuleTestRequete', {
-    'expression': drf_serializers.CharField(error_messages={
+    'expression': ChaineStricte(error_messages={
         'required': "L'expression à tester est requise."}),
-    'dataset': drf_serializers.CharField(error_messages={
+    'dataset': ChaineStricte(error_messages={
         'required': 'Le dataset à interroger est requis.'}),
     'filtres': drf_serializers.DictField(required=False),
     'limite': drf_serializers.IntegerField(required=False),
     'group_by': drf_serializers.ListField(
-        child=drf_serializers.CharField(), required=False),
+        child=ChaineStricte(), required=False),
     'agregats': drf_serializers.ListField(
         child=drf_serializers.DictField(), required=False),
 })
 _REQUETE_VALIDER = inline_serializer('FormuleValiderRequete', {
     # Absente : le serveur répond 200 {ok: false} (dry-run).
-    'expression': drf_serializers.CharField(
+    'expression': ChaineStricte(
         required=False, allow_blank=True),
     'variables': drf_serializers.ListField(
-        child=drf_serializers.CharField(), required=False),
+        child=ChaineStricte(), required=False),
 })
 
 

@@ -14,11 +14,14 @@ défaut du viewset est le bon comportement.
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
+from ..serializers import forme_reponse
 from ..services.io_layout import (
     ImportLayoutRefuse, exporter_layout, importer_layout,
 )
@@ -33,6 +36,10 @@ def _attacher(viewset_classe):
     viewset_classe.import_layout = import_layout
 
 
+@extend_schema(responses=forme_reponse(
+    'CalepinageExportLayout', 'roof_layout',
+    layout_hash=drf_serializers.CharField(allow_blank=True),
+    schema_version=drf_serializers.IntegerField()))
 @action(detail=True, methods=['get'], url_path='export-layout',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def export_layout(self, request, pk=None):
@@ -41,6 +48,14 @@ def export_layout(self, request, pk=None):
     return Response(exporter_layout(calepinage))
 
 
+@extend_schema(
+    request=inline_serializer('CalepinageImportLayoutCorps', {
+        'roof_layout': drf_serializers.JSONField()}),
+    responses=forme_reponse(
+        'CalepinageImportLayout', calepinage=drf_serializers.IntegerField(),
+        layout_hash=drf_serializers.CharField(allow_blank=True,
+                                              allow_null=True),
+        inchange=drf_serializers.BooleanField()))
 @action(detail=True, methods=['post'], url_path='import-layout',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def import_layout(self, request, pk=None):

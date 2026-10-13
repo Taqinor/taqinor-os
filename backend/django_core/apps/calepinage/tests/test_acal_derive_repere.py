@@ -321,7 +321,7 @@ class DeriveRepereTest(BaseApiCalepinage):
             company=self.company, lead_id=lead.pk, titre='Sans repère',
             roof_layout=dict(self.layout))
         reponse = self._poster('recentrer-sur-lead', calepinage)
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('repere_lead', reponse.data)
 
     def test_autre_societe_introuvable(self):

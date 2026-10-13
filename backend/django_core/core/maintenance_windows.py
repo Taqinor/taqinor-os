@@ -21,11 +21,12 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from rest_framework import generics, serializers, status
+from rest_framework import generics, serializers
 
 from core.champs_stricts import ChaineStricte
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import NotFound
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import (
     SAFE_METHODS, BasePermission, IsAuthenticated,
@@ -288,7 +289,9 @@ def annuler_fenetre(request, pk):
     try:
         fenetre = qs.get(pk=pk)
     except MaintenanceWindow.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        # ERR-ENF11-FUZZ-CORE — 404 au corps JSON documenté (il était vide,
+        # sans Content-Type : « JSON deserialization error » au fuzz).
+        raise NotFound()
     fenetre.statut = MaintenanceWindow.Statut.ANNULE
     fenetre.save(update_fields=['statut', 'updated_at'])
     _notifier_annulation(fenetre)

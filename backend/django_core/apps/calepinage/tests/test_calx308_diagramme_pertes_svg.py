@@ -226,14 +226,14 @@ class EndpointDiagrammeEnBaseTest(BaseApiCalepinage):
 
     def test_sans_resultat_400_nommant_resultat(self):
         reponse = self._get(self.sans_resultat)
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('resultat', reponse.data)
 
     def test_sans_cascade_400_nommant_cascade(self):
         servi = copy.deepcopy(RESULTAT)
         servi['cascade'] = None
         reponse = self._get(self.calepinage, servi=servi)
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('cascade', reponse.data)
 
     def test_une_autre_societe_est_introuvable(self):

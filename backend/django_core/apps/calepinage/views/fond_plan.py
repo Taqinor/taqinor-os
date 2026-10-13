@@ -37,14 +37,18 @@ REFUS_FOND_PLAN = ("Seuls les plans PNG et JPEG se posent en fond : un DXF ou "
                    "un PDF passe par l'import de plan.")
 
 
-@extend_schema(responses={200: inline_serializer('CalepinageFondPlan', {
-    'roof_layout': serializers.DictField(),
-    'underlay': serializers.DictField(),
-    'empreinte_document': serializers.CharField(allow_null=True),
-    'layout_hash': serializers.CharField(allow_null=True),
-    'inchange': serializers.BooleanField(),
-    'version': serializers.IntegerField(allow_null=True),
-})})
+@extend_schema(
+    request=inline_serializer('CalepinageFondPlanCorps', {
+        CHAMP_FICHIER: serializers.ImageField(),
+        'base_empreinte': serializers.CharField()}),
+    responses={200: inline_serializer('CalepinageFondPlan', {
+        'roof_layout': serializers.DictField(),
+        'underlay': serializers.DictField(),
+        'empreinte_document': serializers.CharField(allow_null=True),
+        'layout_hash': serializers.CharField(allow_null=True),
+        'inchange': serializers.BooleanField(),
+        'version': serializers.IntegerField(allow_null=True),
+    })})
 @action(detail=True, methods=['post'], url_path='fond-plan',
         url_name='fond-plan', permission_classes=[PeutGererCalepinage],
         parser_classes=[MultiPartParser, FormParser])

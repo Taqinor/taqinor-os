@@ -73,6 +73,18 @@ class ZMFG12MiseAuRebutTest(TestCase):
             {}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
+    def test_motif_non_chaine_refuse_400(self):
+        # CI #985 (api-fuzz) : `motif: [null, null]` levait `.strip()` → 500.
+        eq = self._equip()
+        for motif in ([None, None], {}, 3, ''):
+            r = self.api.post(
+                f'/api/django/sav/equipements/{eq.id}/mettre-au-rebut/',
+                {'motif': motif}, format='json')
+            self.assertEqual(r.status_code, 400, (motif, r.content))
+            self.assertIn('motif', r.json())
+        eq.refresh_from_db()
+        self.assertFalse(eq.mis_au_rebut)
+
     def test_mise_au_rebut_exclut_du_parc_actif(self):
         eq = self._equip()
         r = self.api.post(

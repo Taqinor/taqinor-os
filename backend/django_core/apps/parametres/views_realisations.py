@@ -21,7 +21,9 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models_realisations import Realisation
 from .serializers_realisations import RealisationSerializer
-from .views_common import ACTIF_PARAM, SettingsAuditedMixin
+from .views_common import (
+    ACTIF_PARAM, SettingsAuditedMixin, filtrer_actif,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -48,8 +50,4 @@ class RealisationViewSet(SettingsAuditedMixin, CompanyScopedModelViewSet):
                 HasPermissionOrLegacy('parametres_modifier')()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        actif = self.request.query_params.get('actif')
-        if actif in ('true', '1'):
-            qs = qs.filter(actif=True)
-        return qs
+        return filtrer_actif(self.request, super().get_queryset())

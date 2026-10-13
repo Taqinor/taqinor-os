@@ -72,7 +72,7 @@ class AUD514TransitionsGardeesTest(TestCase):
         resp = auth(self.admin).post(
             f'/api/django/sav/tickets/{ticket.pk}/resoudre/', {},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         ticket.refresh_from_db()
         self.assertEqual(ticket.statut, Ticket.Statut.NOUVEAU)
 

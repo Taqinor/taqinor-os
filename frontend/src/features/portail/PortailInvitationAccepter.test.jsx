@@ -64,7 +64,7 @@ describe('PortailInvitationAccepter — ADOC117', () => {
 
   it('un jeton invalide affiche le detail du serveur', async () => {
     portailApi.invitation.accepter.mockRejectedValue({
-      response: { status: 400, data: contrat.exemple_jeton_invalide },
+      response: { status: 404, data: contrat.exemple_jeton_invalide },
     })
     renderPage()
     saisir('Un-mot-de-passe-solide-2026')

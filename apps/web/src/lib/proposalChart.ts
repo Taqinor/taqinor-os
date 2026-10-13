@@ -325,5 +325,5 @@ export function renderProposalChart(
   const d = descByLang[lang];
   const desc = series.mode === 'comparison' ? d.comparison : d.production;
 
-  return `<svg viewBox="0 0 ${box.width} ${box.height}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" role="img" xmlns="http://www.w3.org/2000/svg"><title>${esc(d.title)}</title><desc>${esc(desc)}</desc>${baseline}${prodBars}${consBars}${labels}${peakAnnual}</svg>`;
+  return `<svg viewBox="0 0 ${box.width} ${box.height}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" xmlns="http://www.w3.org/2000/svg"><title>${esc(d.title)}</title><desc>${esc(desc)}</desc>${baseline}${prodBars}${consBars}${labels}${peakAnnual}</svg>`;
 }

@@ -132,3 +132,30 @@ class ParametresRequeteTests(TestCase):
                 f'?client={self.client_obj.pk}&since=2026-06-01'
                 '&until=2026-06-30')
         self.assertEqual(r.status_code, 200)
+
+    # ── ERR-ENF11-FUZZ-MONITORING (2e tour) — forme EXACTE du schéma ──────
+    def test_formes_non_publiees_400(self):
+        cid = self.config.pk
+        for url, param in (
+                ('configs/co2-fleet/?since=20250101', 'since'),
+                ('configs/co2-fleet/?since=%20', 'since'),
+                ('configs/co2-fleet/?until=2025-W01-1', 'until'),
+                (f'configs/{cid}/history/?months=5_0', 'months'),
+                (f'configs/{cid}/history/?months=%2B5', 'months'),
+                ('configs/fleet/?window_days=%2090', 'window_days'),
+                ('readings/?installation=1e1', 'installation'),
+                (f'warranties/{self.garantie.pk}/curve/?drift_threshold_pct=1e1',
+                 'drift_threshold_pct')):
+            self._400(url, param)
+
+    def test_borne_vide_reste_acceptee(self):
+        self.assertEqual(self._get('configs/co2-fleet/?since=').status_code, 200)
+
+    def test_reglage_seuil_decimal_litteral(self):
+        for valeur in ('1e1', ' 8', '+8', '8_0'):
+            r = self.api.post(f'{BASE}/settings/', {
+                'underperf_threshold_pct': valeur}, format='json')
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+        r = self.api.post(f'{BASE}/settings/', {
+            'underperf_threshold_pct': '15.50'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)

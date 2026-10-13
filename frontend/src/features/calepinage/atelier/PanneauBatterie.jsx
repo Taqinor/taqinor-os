@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
@@ -130,15 +130,15 @@ function DeclarationBatterie({ id, onRelancer }) {
   const [message, setMessage] = useState(null)
   const [enCours, setEnCours] = useState(false)
 
-  const lire = () => Promise.resolve(calepinageApi.calepinages.entreeElectrique(id))
+  const lire = useCallback(() => Promise.resolve(calepinageApi.calepinages.entreeElectrique(id))
     .then((res) => {
       const lue = res?.data?.entree ?? {}
       setEntree(lue)
       setEtat(depuisEntree(lue))
     })
-    .catch(() => { setEntree({}); setEtat(depuisEntree({})) })
+    .catch(() => { setEntree({}); setEtat(depuisEntree({})) }), [id])
 
-  useEffect(() => { lire() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps -- lecture au montage / changement de calepinage
+  useEffect(() => { lire() }, [lire]) // lecture au montage / changement de calepinage
 
   if (!etat) return null
   const poser = (cle, valeur) => setEtat((s) => ({ ...s, [cle]: valeur }))

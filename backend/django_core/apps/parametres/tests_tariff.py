@@ -410,6 +410,20 @@ class TariffApiTest(TestCase):
         # Surplus non compensé → valorisation 0.
         self.assertEqual(r.data['valorisation_surplus'], '0.00')
 
+    def test_compute_roi_corps_hors_schema_400_jamais_500(self):
+        # ENF11 (api-fuzz, 500 + « acceptée ») — nombres JSON réels bornés ;
+        # chaîne, objet, entier > 1e308 ou démesure : 400, jamais 200 muet / 500.
+        for corps in ({'kwc': '10'}, {'kwc': 10 ** 400}, {'kwc': 4.4e77},
+                      {'cout_total_ttc': 2e12}, {'classe': 5},
+                      {'productible_kwh_kwc': {}}, [1, 2]):
+            with self.subTest(corps=corps):
+                r = self.api.post(ROI_URL, corps, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(ROI_URL, {
+            'kwc': 5, 'conso_mensuelle_kwh': 200, 'autoconsommation_pct': None,
+            'productible_kwh_kwc': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_productible_endpoint_offline_fallback(self):
         # Endpoint ne dépend pas du réseau : avec PVGIS désactivé → manual.
         self.api.patch(PUT_URL, {'pvgis_actif': False}, format='json')

@@ -63,7 +63,11 @@ class FormuleValiderTests(TestCase):
     def test_corps_hors_schema_400(self):
         # ERR-ENF11-FUZZ-CORE — `variables: [""]` (minLength 1 au schéma) et un
         # corps tableau étaient acceptés en 200.
-        for corps in ({'expression': 'a', 'variables': ['']}, [None, None]):
+        # Un entier n'est pas un nom de variable (`variables: [0]` était
+        # converti en "0" puis accepté — api-fuzz PR #956).
+        for corps in ({'expression': 'a', 'variables': ['']}, [None, None],
+                      {'expression': 'a', 'variables': [0]},
+                      {'expression': 0}):
             with self.subTest(corps=corps):
                 res = self.api.post(URL, corps, format='json')
                 self.assertEqual(res.status_code, 400, res.data)

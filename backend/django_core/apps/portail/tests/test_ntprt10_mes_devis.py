@@ -16,7 +16,9 @@ Couvre :
 * ``/proposal`` : le client propriétaire passe, un autre client reçoit 404
   (aucun oracle d'existence), l'interne reste inchangé ;
 * l'acceptation exige nom + consentement EXPLICITE, bascule le devis par le
-  chemin unique de ``ventes`` et est idempotente.
+  chemin unique de ``ventes`` et est idempotente ;
+* APDF35 — la liste sert ``conditions_titre``/``conditions`` égales à celles
+  de la page publique, et l'acceptation exige ``accepte_conditions``.
 
 Run :
     python manage.py test apps.portail.tests.test_ntprt10_mes_devis -v2
@@ -25,7 +27,7 @@ import itertools
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
@@ -274,7 +276,8 @@ class AccepterDevisPortailTests(TestCase):
     def test_acceptation_bascule_le_devis_par_le_chemin_unique(self):
         self.api.force_authenticate(user=self.user_a)
         res = self.api.post(
-            self.url, {'nom': 'Sami Client', 'consent_esign': True},
+            self.url, {'nom': 'Sami Client', 'consent_esign': True,
+                       'accepte_conditions': True},
             format='json')
 
         self.assertEqual(res.status_code, 200, res.data)
@@ -285,7 +288,8 @@ class AccepterDevisPortailTests(TestCase):
     def test_trace_portail_posee(self):
         from apps.portail.models import AcceptationDevisPortail
         self.api.force_authenticate(user=self.user_a)
-        self.api.post(self.url, {'nom': 'Sami', 'consent_esign': True},
+        self.api.post(self.url, {'nom': 'Sami', 'consent_esign': True,
+                                 'accepte_conditions': True},
                       format='json')
         acc = AcceptationDevisPortail.objects.get(
             company=self.company, devis=self.devis)
@@ -301,7 +305,8 @@ class AccepterDevisPortailTests(TestCase):
 
     def test_nom_obligatoire(self):
         self.api.force_authenticate(user=self.user_a)
-        res = self.api.post(self.url, {'consent_esign': True}, format='json')
+        res = self.api.post(self.url, {'consent_esign': True,
+                                       'accepte_conditions': True}, format='json')
         self.assertEqual(res.status_code, 400)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
@@ -309,17 +314,115 @@ class AccepterDevisPortailTests(TestCase):
     def test_un_autre_client_ne_peut_pas_accepter(self):
         self.api.force_authenticate(user=self.user_b)
         res = self.api.post(
-            self.url, {'nom': 'Intrus', 'consent_esign': True}, format='json')
+            self.url, {'nom': 'Intrus', 'consent_esign': True,
+                       'accepte_conditions': True}, format='json')
         self.assertEqual(res.status_code, 404)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
 
     def test_idempotent(self):
         self.api.force_authenticate(user=self.user_a)
-        payload = {'nom': 'Sami', 'consent_esign': True}
+        payload = {'nom': 'Sami', 'consent_esign': True,
+                   'accepte_conditions': True}
         premier = self.api.post(self.url, payload, format='json')
         second = self.api.post(self.url, payload, format='json')
         self.assertEqual(premier.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
+
+
+@override_settings(CACHES={'default': {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+class ConditionsPortailTests(TestCase):
+    """APDF35 (C-APDF-005) — « Mes devis » sert ``conditions_titre`` et
+    ``conditions`` lus par LA fonction de la page publique /proposition, et
+    l'acceptation portail exige ``accepte_conditions``."""
+
+    def setUp(self):
+        self.company = make_company('apdf35-co', 'APDF35 Société')
+        self.client_a = make_client(self.company, 'Alpha')
+        self.devis = self._devis_servable()
+        self.user_a = make_portal_user(
+            self.company, 'apdf35-portail-a',
+            CustomUser.PORTEE_PORTAIL_CLIENT, self.client_a.id)
+        self.url = f'/api/django/portail/mes-devis/{self.devis.id}/accepter/'
+        self.api = APIClient()
+        self.api.force_authenticate(user=self.user_a)
+
+    def _devis_servable(self):
+        """Panneaux + UN onduleur réseau : servable par ``/proposal`` (même
+        fixture que ventes/tests/test_preview_v3_conditions_publiques)."""
+        from apps.stock.models import Produit
+        from apps.ventes.models import LigneDevis
+        devis = make_devis(self.company, self.client_a)
+        for nom, sku, qte, pu in (('Panneau', 'APDF35-PAN', '10', '1000'),
+                                  ('Onduleur réseau', 'APDF35-OND', '1',
+                                   '11700')):
+            produit = Produit.objects.create(
+                company=self.company, nom=nom, sku=sku,
+                prix_vente=Decimal(pu), quantite_stock=100)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'))
+        return devis
+
+    def _publique(self):
+        from apps.ventes.models import ShareLink
+        lien = ShareLink.for_devis(self.devis)
+        with patch('apps.ventes.public_views._notify_open'):
+            res = APIClient().get(
+                f'/api/django/public/proposal/{lien.token}/data/')
+        self.assertEqual(res.status_code, 200, res.content[:300])
+        return res.json()
+
+    def _ligne(self):
+        res = self.api.get('/api/django/portail/mes-devis/')
+        self.assertEqual(res.status_code, 200, res.content)
+        return {d['id']: d for d in res.json()['results']}[self.devis.id]
+
+    def test_liste_sert_conditions_egales_page_publique(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        for cas in ('defaut', 'societe'):
+            with self.subTest(cas=cas):
+                if cas == 'societe':
+                    textes = DocumentTemplates.get(self.company)
+                    textes.cgv_titre = 'Conditions APDF35'
+                    textes.cgv_bullets = [
+                        'Offre APDF35 valable trente jours',
+                        'Acompte à la commande : {acompte}%']
+                    textes.save()
+                ligne = self._ligne()
+                publique = self._publique()
+                self.assertTrue(ligne['conditions'])
+                self.assertEqual(ligne['conditions'], publique['conditions'])
+                self.assertEqual(ligne['conditions_titre'],
+                                 publique['conditions_titre'])
+                if cas == 'societe':
+                    self.assertEqual(ligne['conditions_titre'],
+                                     'Conditions APDF35')
+                    self.assertIn('Offre APDF35 valable trente jours',
+                                  ligne['conditions'])
+
+    def test_accept_sans_conditions_400(self):
+        for corps in ({'nom': 'Sami', 'consent_esign': True},
+                      {'nom': 'Sami', 'consent_esign': True,
+                       'accepte_conditions': False}):
+            with self.subTest(corps=corps):
+                res = self.api.post(self.url, corps, format='json')
+                self.assertEqual(res.status_code, 400, res.content)
+                self.assertEqual(res.json()['champ'], 'accepte_conditions')
+                self.assertIn('conditions générales', res.json()['detail'])
+                self.devis.refresh_from_db()
+                self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+
+    def test_accept_avec_200(self):
+        with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            res = self.api.post(
+                self.url, {'nom': 'Sami', 'consent_esign': True,
+                           'accepte_conditions': True}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
+        self.assertEqual(self._ligne()['statut'], 'accepte')

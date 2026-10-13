@@ -221,13 +221,13 @@ class ErreursMetierTests(TestCase):
         self.assertIsNotNone(Document.objects.get(pk=jete.pk).supprime_le)
         self.assertTrue(ArchivageLegal.objects.filter(document=vivant).exists())
 
-    def test_archiver_corbeille_400(self):
+    def test_archiver_corbeille_409(self):
         doc = Document.objects.create(company=self.co, folder=self.folder,
                                       nom='jete.pdf')
         services.mettre_en_corbeille(doc, self.admin)
         resp = self.api.post(f'{BASE}archivages-legaux/',
                              {'document': doc.pk}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertFalse(ArchivageLegal.objects.filter(document=doc).exists())
 
 
@@ -344,3 +344,212 @@ class Enf7ContratGedTests(TestCase):
         liste = chemins['/api/django/ged/documents/']['get']
         noms = {p['name'] for p in liste['parameters']}
         self.assertTrue({'folder', 'coffre', 'tag', 'statut'} <= noms, noms)
+
+
+class Enf11FuzzGedParametresTests(TestCase):
+    """ERR-ENF11-FUZZ-GED — paramètres de requête stricts (api-fuzz « accepted
+    schema-violating request ») : vide / illisible / hors bornes = 400."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='enf11-ged-q', defaults={'nom': 'ENF11 GED Q'})[0]
+        self.admin = User.objects.create_user(
+            username='enf11-ged-q-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.api = auth(self.admin)
+
+    def test_dates_vides_400(self):
+        for route in ('analytique/', 'demandes-signature/tableau-bord/'):
+            for param in ('date_debut', 'date_fin'):
+                resp = self.api.get(f'{BASE}{route}?{param}=')
+                self.assertEqual(resp.status_code, 400, (route, resp.content))
+            resp = self.api.get(f'{BASE}{route}?date_fin=2026-01-31')
+            self.assertEqual(resp.status_code, 200, (route, resp.content))
+
+    def test_filtres_identifiant_vides_ou_illisibles_400(self):
+        for route, param in (
+                ('dossiers/', 'parent'), ('dossiers/', 'cabinet'),
+                ('tags/', 'parent'), ('documents/', 'folder'),
+                ('documents/', 'coffre'), ('documents/', 'tag'),
+                ('documents/', 'proprietaire'), ('documents/', 'contact')):
+            for valeur in ('', 'abc'):
+                resp = self.api.get(f'{BASE}{route}?{param}={valeur}')
+                self.assertEqual(
+                    resp.status_code, 400, (route, param, valeur, resp.content))
+
+    def test_filtres_identifiant_valides(self):
+        resp = self.api.get(f'{BASE}dossiers/?parent=null')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['count'], 1)
+        resp = self.api.get(f'{BASE}dossiers/?cabinet={self.cab.pk}')
+        self.assertEqual(resp.data['count'], 1)
+        # Un entier hors plage 32 bits n'existe pas : liste vide, jamais 500.
+        resp = self.api.get(f'{BASE}dossiers/?cabinet=99999999999999999999')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['count'], 0)
+        resp = self.api.get(f'{BASE}tags/?parent=null')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_limites_k_et_limit_bornees(self):
+        for route, param in (('documents/docqa/', 'k'),
+                             ('mes-recents/', 'limit')):
+            for valeur in ('', 'null', '0', '51', '-1'):
+                resp = self.api.get(f'{BASE}{route}?{param}={valeur}')
+                self.assertEqual(
+                    resp.status_code, 400, (route, valeur, resp.content))
+            resp = self.api.get(f'{BASE}{route}?{param}=5')
+            self.assertEqual(resp.status_code, 200, (route, resp.content))
+
+    def test_permissions_effectives_csv_erreur_en_json(self):
+        # `?format=csv` choisit le moteur CSV avant la vue : l'erreur 404 est
+        # un corps JSON et l'annonce (Content-Type documenté application/json).
+        for route in ('dossiers/999999/permissions-effectives/',
+                      'documents/999999/permissions-effectives/'):
+            resp = self.api.get(f'{BASE}{route}?format=csv')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            self.assertTrue(
+                resp['Content-Type'].startswith('application/json'),
+                resp['Content-Type'])
+        resp = self.api.get(
+            f'{BASE}dossiers/{self.folder.pk}/permissions-effectives/'
+            '?format=csv')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp['Content-Type'].startswith('text/csv'))
+
+
+class Enf11FuzzGedCorpsTests(TestCase):
+    """ERR-ENF11-FUZZ-GED — corps JSON des actions lues à la main, validés par
+    sérialiseur (le schéma OpenAPI = le comportement) : 500 -> 400, données
+    invalides refusées, refus d'état -> 409."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='enf11-ged-c', defaults={'nom': 'ENF11 GED C'})[0]
+        self.admin = User.objects.create_user(
+            username='enf11-ged-c-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='d.pdf')
+        self.api = auth(self.admin)
+
+    def _post(self, route, corps):
+        return self.api.post(f'{BASE}{route}', corps, format='json')
+
+    def test_operations_lot_corps_strict(self):
+        route = 'documents/operations-lot/'
+        for corps in (
+                {'documents': [self.doc.pk], 'operation': 'inconnue'},
+                {'documents': ['a'], 'operation': 'corbeille'},
+                {'documents': [], 'operation': 'corbeille'},
+                {'documents': [self.doc.pk], 'operation': 'tagger',
+                 'params': {'tag': []}},
+                {'documents': [self.doc.pk], 'operation': 'deplacer',
+                 'params': {}},
+                {'documents': [self.doc.pk], 'operation': 'corbeille',
+                 'params': 'x'},
+                {'documents': [self.doc.pk], 'operation': 'demander_signature',
+                 'params': {'signataire_nom': 'x' * 300}}):
+            resp = self._post(route, corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self._post(route, {
+            'documents': [self.doc.pk], 'operation': 'corbeille'})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_demande_signature_texte_trop_long_ou_nul_400(self):
+        base = {'document': self.doc.pk, 'signataire_nom': 'Ali',
+                'signataire_email': 'ali@example.com'}
+        for modif in ({'signataire_nom': 'x' * 256},
+                      {'signataire_nom': 'a' + chr(0)},
+                      {'signataire_email': 'pas-un-courriel'},
+                      {'signataire_email': 5},
+                      {'document': 2 ** 40}):
+            resp = self._post('demandes-signature/', {**base, **modif})
+            self.assertEqual(resp.status_code, 400, (modif, resp.content))
+
+    def test_legal_hold_corps_strict(self):
+        for corps in ({'document': self.doc.pk, 'motif': None},
+                      {'document': str(self.doc.pk)},
+                      {'document': 2 ** 40}, {}):
+            resp = self._post('legal-holds/', corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self._post(f'documents/{self.doc.pk}/placer-legal-hold/',
+                          {'motif': None})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self._post('legal-holds/', {'document': self.doc.pk})
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_classer_apres_vente_corps_strict(self):
+        base = {'nom': 'N', 'source_type': 'sav.ticket', 'source_id': 1}
+        for modif in ({'description': {}}, {'source_id': 'abc'},
+                      {'cabinet': 5}, {'nom': 'x' * 256}, {'file_key': None}):
+            resp = self._post('documents/classer-apres-vente/',
+                              {**base, **modif})
+            self.assertEqual(resp.status_code, 400, (modif, resp.content))
+
+    def test_archiver_legalement_corps_et_conflit(self):
+        route = f'documents/{self.doc.pk}/archiver-legalement/'
+        for corps in ({'motif': None}, {'retain_until': ''},
+                      {'retain_until': 'null'}, {'retain_until': '2026-1-1'}):
+            resp = self._post(route, corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'abc', None)):
+            resp = self._post(route, {'retain_until': None})
+            self.assertEqual(resp.status_code, 201, resp.content)
+            # Déjà archivé : conflit d'état (409), pas une saisie invalide.
+            resp = self._post(route, {})
+            self.assertEqual(resp.status_code, 409, resp.content)
+            resp = self._post('archivages-legaux/', {'document': self.doc.pk})
+            self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_disposition_corps_strict_et_lot_non_eligible_409(self):
+        for corps in ({'libelle': 'x', 'documents': [{}]},
+                      {'libelle': 'x', 'documents': ['a']},
+                      {'libelle': 'x', 'documents': []},
+                      {'libelle': 'x', 'documents': [self.doc.pk],
+                       'action': 'autre'},
+                      {'libelle': 'x' * 201, 'documents': [self.doc.pk]}):
+            resp = self._post('demandes-disposition/', corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self._post('demandes-disposition/', {
+            'libelle': 'x', 'action': 'archiver',
+            'documents': [self.doc.pk + 1000]})
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_textes_trop_longs_ou_nuls_400_sans_stockage(self):
+        # `nom` > 255 / NUL faisaient lever DataError (500) APRÈS le stockage.
+        fichier = io.BytesIO(b'%PDF-1.4 x')
+        fichier.name = 'a.pdf'
+        for nom in ('x' * 256, 'a' + chr(0)):
+            fichier.seek(0)
+            with mock.patch('apps.ged.views.store_attachment') as stockage:
+                resp = self.api.post(
+                    f'{BASE}documents/televerser/',
+                    {'folder': self.folder.pk, 'nom': nom, 'file': fichier},
+                    format='multipart')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            stockage.assert_not_called()
+        resp = self._post(f'documents/{self.doc.pk}/planifier/', {
+            'libelle': 'x' * 201, 'echeance': '2030-01-01'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_import_masse_nom_trop_long_est_une_erreur_de_ligne(self):
+        # Un nom > 255 (ou un NUL) dans le CSV faisait lever DataError (500) ;
+        # c'est désormais une erreur de LIGNE, le reste de l'import continue.
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        lf = chr(10)
+        contenu = lf.join(['nom,description', 'Bon,ok', 'y' * 300 + ',trop long', '']).encode('utf-8')
+        resp = self.api.post(f'{BASE}documents/import-masse/', {
+            'folder': self.folder.pk,
+            'csv': SimpleUploadedFile('m.csv', contenu, 'text/csv')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['crees'], 1)
+        self.assertEqual(resp.data['erreurs'], [
+            {'ligne': 2, 'detail': 'Nom : 255 caractères au plus.'}])

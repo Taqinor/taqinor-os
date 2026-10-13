@@ -299,7 +299,7 @@ class EndpointRapportEnBaseTest(BaseApiCalepinage):
 
     def test_sans_resultat_400_en_nommant_resultat(self):
         reponse, rendu = self._get(self.sans_resultat)
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('resultat', reponse.data)
         rendu.assert_not_called()
 
@@ -309,7 +309,7 @@ class EndpointRapportEnBaseTest(BaseApiCalepinage):
         self.calepinage.resultat = donnees
         self.calepinage.save(update_fields=['resultat'])
         reponse, _rendu = self._get(self.calepinage)
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertTrue(any('prix_achat' in cle for cle in reponse.data))
 
     def test_une_autre_societe_est_introuvable(self):

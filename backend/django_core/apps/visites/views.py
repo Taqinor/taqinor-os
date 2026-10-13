@@ -124,18 +124,45 @@ def _schema_qualification():
     }
 
 
+def _codes_tous_gabarits(extraire):
+    """Codes (ordre stable, sans doublon) que ``extraire(categorie)`` rend sur
+    TOUS les gabarits — le vocabulaire fermé que la checklist accepte, publié au
+    schéma (un texte libre annonçait valide un code que le serveur refuse)."""
+    vus = {}
+    for gabarit, contexte in (
+            (checklist.GABARIT_TOITURE, {}),
+            (checklist.GABARIT_POINT_EAU, {}),
+            (checklist.GABARIT_CI, checklist._CONTEXTE_CI_COMPLET)):
+        for categorie in checklist.categories(gabarit, **contexte):
+            for code in extraire(categorie):
+                vus[code] = None
+    return list(vus)
+
+
 class MesuresSerializer(serializers.Serializer):
-    categorie = serializers.CharField()
+    categorie = serializers.ChoiceField(choices=_codes_tous_gabarits(
+        lambda categorie: [categorie['categorie']]))
     valeurs = serializers.DictField()
 
 
+class _CoinsCalageSerializer(serializers.Serializer):
+    """Calage normalisé : quatre coins ``[latitude, longitude]``."""
+    coins = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.FloatField(), min_length=2, max_length=2),
+        min_length=4, max_length=4)
+
+
 class CalageSerializer(serializers.Serializer):
-    texture_calage = serializers.CharField(allow_blank=True)
+    # ``null`` efface le calage ; la clé est obligatoire (son absence effaçait
+    # le calage en silence).
+    texture_calage = _CoinsCalageSerializer(allow_null=True)
 
 
 class PhotoVisiteSerializer(serializers.Serializer):
     fichier = serializers.FileField()
-    slot_code = serializers.CharField()
+    slot_code = serializers.ChoiceField(choices=_codes_tous_gabarits(
+        lambda categorie: [slot['code'] for slot in categorie['slots']]))
     commentaire = serializers.CharField(required=False, allow_blank=True)
     gps_lat = serializers.FloatField(required=False)
     gps_lng = serializers.FloatField(required=False)
@@ -675,6 +702,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         refus = self._refus_si_gelee(visite)
         if refus is not None:
             return refus
+        if (not isinstance(request.data, dict)
+                or 'texture_calage' not in request.data):
+            return _erreur('texture_calage',
+                           'Le champ texture_calage est obligatoire '
+                           '(null pour effacer le calage).')
         calage = request.data.get('texture_calage')
         if calage is None:
             visite.texture_calage = None
@@ -799,6 +831,10 @@ class LeadsRechercheView(APIView):
         limite = request.query_params.get('limit')
         if limite not in (None, ''):
             try:
+                # Forme exacte du schéma : ``int()`` lit « 5_0 », « +5 »,
+                # « 5 » entouré de blancs ou des chiffres non latins.
+                if not (limite.isascii() and limite.lstrip('-').isdigit()):
+                    raise ValueError(limite)
                 int(limite)
             except (TypeError, ValueError):
                 raise ValidationError(

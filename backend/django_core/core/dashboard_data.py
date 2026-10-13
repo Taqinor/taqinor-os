@@ -60,6 +60,20 @@ class FiltreGlobalInvalide(Exception):
     """Filtres globaux mal formés (corps/paramètre illisible)."""
 
 
+#: ERR-ENF11-FUZZ-CORE — schéma PUBLIÉ des filtres globaux (``?filtre=`` de
+#: ``dashboards/{id}/donnees/``), aligné sur ``normaliser_filtres``.
+SCHEMA_FILTRES_GLOBAUX = {
+    'type': 'object', 'additionalProperties': True,
+    'properties': {CLE_PERIODE: {
+        'type': 'object', 'additionalProperties': True,
+        'properties': {
+            'debut': {'type': 'string', 'nullable': True},
+            'fin': {'type': 'string', 'nullable': True},
+        },
+    }},
+}
+
+
 # ---------------------------------------------------------------------------
 # NTDATA34 — widget branché sur une MÉTRIQUE NOMMÉE plutôt qu'une spec inline.
 #
@@ -179,9 +193,13 @@ def normaliser_filtres(globaux):
     out = {}
     for cle, valeur in globaux.items():
         if cle == CLE_PERIODE:
-            if not isinstance(valeur, dict):
+            if not isinstance(valeur, dict) or any(
+                    valeur.get(k) not in (None, '')
+                    and not isinstance(valeur.get(k), str)
+                    for k in ('debut', 'fin')):
                 raise FiltreGlobalInvalide(
-                    'La période doit être un objet { debut, fin }.')
+                    'La période doit être un objet { debut, fin } de dates '
+                    'textuelles.')
             periode = {k: v for k, v in valeur.items()
                        if k in ('debut', 'fin') and v not in (None, '')}
             if periode:

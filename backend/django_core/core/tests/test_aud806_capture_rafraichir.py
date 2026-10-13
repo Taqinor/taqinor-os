@@ -128,13 +128,15 @@ class Aud806RafraichirCaptureTests(TestCase):
     def test_patch_object_id_sur_transaction_en_attente_refuse(self):
         avant = self.tx.object_id
         resp = self._patch(self.responsable, {'object_id': 4242})
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        # ERR-ENF11-FUZZ-CORE — corps conforme, ÉTAT opposé : 409.
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('object_id', resp.data['detail'])
         self.tx.refresh_from_db()
         self.assertEqual(self.tx.object_id, avant)
 
     def test_patch_montant_sur_transaction_en_attente_refuse(self):
         resp = self._patch(self.responsable, {'montant': '1.00'})
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
         self.tx.refresh_from_db()
         self.assertEqual(self.tx.montant, Decimal('1200.00'))
 

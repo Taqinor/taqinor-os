@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -207,7 +207,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
   }, [opacite])
 
   // Boot carte (une fois le calepinage/la photo connus) + 4 poignées.
-  useEffect(() => {
+  const demarrerCarte = useEffectEvent(() => {
     if (!photo || mapRef.current || !containerRef.current) return undefined
     const pin = contexte?.pin
     const centre = (pin?.lat != null && pin?.lng != null)
@@ -241,8 +241,8 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
       markersRef.current = []
       polygonRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photo?.id])
+  })
+  useEffect(() => demarrerCarte(), [photo?.id])
 
   useEffect(() => { redessiner() }, [photo?.url, opacite, redessiner])
 
