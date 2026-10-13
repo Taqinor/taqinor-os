@@ -2262,6 +2262,10 @@ LIBELLES = {
                '        حُرّر في: _______________________ بتاريخ: ___/___/______')},
     'res_ret_signature': {'fr': 'Signature du client (de sa main)', 'en': 'Client signature (handwritten)',
                           'ar': 'توقيع العميل (بخط يده)'},
+    # AMOT56 (D-AMOT-7 = a) — étiquette du m³/jour d'une pompe SANS courbe
+    # dont le débit est déclaré (une-page et document agricole).
+    'lg_debit_declare_par_vous': {'fr': 'débit déclaré par vous', 'en': 'flow rate declared by you',
+                                  'ar': 'صبيب صرّحتم به'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

@@ -3943,8 +3943,12 @@ def _cartes_pompage_synthese(synthese):
              f"{_fdec_fr(_dq, 1)} m&#179;/h",
              _ancre_figure("pompe_debit_m3h", _fdec_fr(_dq, 1))))
     _m3j, _hrs = eau.get("m3_jour"), eau.get("heures_pompage")
+    # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ : la carte le dit.
+    from .agricole.synthese import debit_declare_sans_courbe
     if _m3j is not None and _hrs is not None:
-        _est = f"{_L('estimation')}, " if eau.get("estimation") else ""
+        _est = (f"{_L('estimation')} &#183; {_L('lg_debit_declare_par_vous')}, "
+                if debit_declare_sans_courbe({"etude": ETUDE, "all_items": SANS_ITEMS + AVEC_ITEMS})
+                else f"{_L('estimation')}, " if eau.get("estimation") else "")
         cellules.append(
             (f"{_L('eau_jour')} &#8212; {_est}"
              f"{_L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
