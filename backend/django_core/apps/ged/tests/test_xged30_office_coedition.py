@@ -101,4 +101,7 @@ class RoutesRetireesTests(XGed30Base):
                 f'/api/django/ged/documents/{self.doc.pk}/office-sauvegarder/'):
             with self.subTest(url=url):
                 resp = api.post(url, {}, format='json')
-                self.assertEqual(resp.status_code, 404, resp.content)
+                # 404 (chemin inconnu) ou 405 : « classer-apres-vente » tombe
+                # désormais sur la route détail `documents/<pk>/` qui n'accepte
+                # pas POST — dans les deux cas l'action n'existe plus.
+                self.assertIn(resp.status_code, (404, 405), resp.content)

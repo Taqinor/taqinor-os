@@ -221,6 +221,14 @@ safe_migrations:
     # ParametresCalepinage.gabarits_dossier, jumelle dormante du modele
     # GabaritDossierReglementaire (aucune lecture hors serialisation). Reversible
     # (colonne recreee, defaut {}). Dry-run en lecture avant deploiement. Revue.
+    # APAR44 (D-APAR-1, fondateur 09/10/2026 ; vague 7 du 13/10/2026) — RemoveField
+    # revu : `TauxTVA.defaut` était un DRAPEAU MORT (le profil société `tva_standard`
+    # est la seule source du taux par défaut ; son unique lecteur,
+    # `ventes/serializers._fallback_taux_tva`, était une branche morte retirée dans
+    # la même PR). Aucune donnée décisionnelle perdue ; réversible par renversement
+    # de la migration (recrée la colonne avec son défaut False) — pas de plan de
+    # données compagnon nécessaire.
+    - "backend/django_core/apps/parametres/migrations/0125_apar44_reglages_morts.py"
     - "backend/django_core/authentication/migrations/0004_customuser_role_legacy.py"
     - "backend/django_core/authentication/migrations/0007_mark_owner_protected.py"
     - "backend/django_core/authentication/migrations/0013_customuser_poste_ref.py"

@@ -1790,3 +1790,10 @@ API rejected schema-compliant request|PATCH /api/django/core/dashboards-partages
 API rejected schema-compliant request|PUT /api/django/core/dashboards-partages-internes/{id}/
 API rejected schema-compliant request|PUT /api/django/core/workflow-definitions/{id}/
 API rejected schema-compliant request|PUT /api/django/core/workflow-step-definitions/{id}/
+# PR #991, 1er tirage (13/10/2026) — 6 constats PRÉ-EXISTANTS (ids FK du fuzz, énumérations de filtres, Allow OPTIONS portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -RECORDS / -PORTAIL.
+API accepted schema-violating request|GET /api/django/ged/documents/
+API accepted schema-violating request|GET /api/django/records/activities/
+API rejected schema-compliant request|PATCH /api/django/ged/routages-documentaires/{id}/
+API rejected schema-compliant request|POST /api/django/ged/vues/
+API rejected schema-compliant request|POST /api/django/records/activities/{id}/done/
+Invalid Allow header|OPTIONS /api/django/portail/paiements-facture-portail/
