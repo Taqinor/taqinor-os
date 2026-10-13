@@ -709,8 +709,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const nomVariateur = /variateur/i.test(fields.nom) && !/afficheur/i.test(fields.nom)
   const estVariateurPompageLu = typeOfProduit({ categorie: categorieTapee }) === 'variateur'
     ? !/afficheur/i.test(fields.nom) : nomVariateur
+  // Rôle de devis DÉCLARÉ d'abord, puis le nom, puis le rôle effectif serveur
+  // (même ordre que `role_devis_effectif`, STKCAT21) : un onduleur nommé par
+  // sa seule référence (« SUN-12K-SG05LP3 ») mais déclaré `onduleur_hybride`
+  // n'avait sinon AUCUNE section fiche — donc non chiffrable dans le devis.
   const ficheType = typeFicheFormulaire({
-    typeClient: classifyProduct(fields.nom), nom: fields.nom, typeFicheServeur: ficheTypeServeur,
+    typeClient: fields.role_devis || classifyProduct(fields.nom) || produit?.role_devis_effectif || null, nom: fields.nom, typeFicheServeur: ficheTypeServeur,
     rolePompage: fields.role_pompage,
     estPompe: typeOfProduit({ categorie: categorieTapee }) === 'pompe' || isPompe(fields.nom),
     estVariateurPompage: estVariateurPompageLu,

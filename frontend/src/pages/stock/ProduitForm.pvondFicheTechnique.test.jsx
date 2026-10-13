@@ -102,6 +102,17 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     expect(screen.queryByLabelText('Plage batterie — tension mini (V)')).not.toBeInTheDocument()
   })
 
+  // Incident 13/10/2026 — « SUN-12K-SG05LP3 » (nom = référence seule) déclaré
+  // `role_devis: onduleur_hybride` n'affichait AUCUNE section fiche : le type
+  // ne se lisait que dans le nom. Le rôle déclaré décide d'abord.
+  it('un onduleur nommé par sa seule référence mais DÉCLARÉ hybride affiche la fiche hybride', async () => {
+    renderEdit({ nom: 'SUN-12K-SG05LP3', role_devis: 'onduleur_hybride' })
+    await screen.findByText(/Éditer/)
+    expect(await screen.findByText('Fiche technique')).toBeInTheDocument()
+    expect(screen.getByLabelText('Puissance AC (kW)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Plage batterie — tension mini (V)')).toBeInTheDocument()
+  })
+
   it('remplir les champs onduleur éteint « Non chiffrable » et affiche « Chiffrable ✓ »', async () => {
     renderEdit()
     await screen.findByText(/Éditer/)
