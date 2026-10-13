@@ -1187,7 +1187,15 @@ def normalise_call(raw: str, default_mount: str):
     return tuple(segments) if segments else None
 
 
-def compatible(call: tuple, route: tuple) -> bool:
+def compatible(call: tuple, route: tuple, strict: bool = False) -> bool:
+    """Appel front et route sont-ils joints ?
+
+    ``strict`` (ACRM69, sens route -> appelant) : le `<>` d'un appel DETAIL ne
+    matche plus un litteral de la route (`crm/clients/<>` n'atteint pas l'action
+    collection `crm/clients/segments`) ; un `<>` ne couvre qu'un `<pk>`/`<>` de
+    la route, SAUF apres un autre `<>` (`activites/<>/<>` = nom d'action dynamique).
+    Defaut False : le sens front -> route garde le joker.
+    """
     if len(call) != len(route):
         return False
     dernier = len(call) - 1
@@ -1198,6 +1206,8 @@ def compatible(call: tuple, route: tuple) -> bool:
             if index == dernier and a != ANY and est_nom_d_action(a):
                 return False
             continue
+        if strict and a == ANY and b != ANY and index and call[index - 1] != ANY:
+            return False
         if a == b or a == ANY or b == ANY:
             continue
         return False
