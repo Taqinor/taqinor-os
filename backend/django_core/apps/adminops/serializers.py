@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
@@ -132,7 +133,7 @@ class ConfigPackageSerializer(serializers.ModelSerializer):
                             'cree_par', 'date_creation']
 
 
-class AdminOpsSettingsSerializer(serializers.ModelSerializer):
+class AdminOpsSettingsSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     # ENF11 — null tant que les réglages par défaut ne sont pas enregistrés.
     date_modification = serializers.DateTimeField(read_only=True, allow_null=True)
 

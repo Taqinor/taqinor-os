@@ -250,6 +250,13 @@ class EnfSchemaValidationTests(TestCase):
                 self.assertEqual(
                     resp.status_code, 400, (action, contenu, resp.content))
 
+    def test_reglages_booleen_strict(self):
+        # api-fuzz (#988) : `sandbox_autorise: 0` n'est pas un booléen JSON.
+        resp = self.client_api.patch(
+            '/api/django/adminops/settings/',
+            {'sandbox_autorise': 0}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
     def test_tracker_usage_texte_strict_et_bornes_reglages(self):
         """ENF11 — ``ecran`` numérique = 400 ; bornes des réglages = 400."""
         resp = self.client_api.post(
