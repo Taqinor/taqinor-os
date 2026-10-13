@@ -144,6 +144,12 @@ class AdminOpsSettingsSerializer(serializers.ModelSerializer):
             'sandbox_autorise', 'date_modification',
         ]
         read_only_fields = ['date_modification']
+        # Bornes DÉCLARÉES au schéma (api-fuzz : un 0 « conforme » était refusé).
+        extra_kwargs = {
+            'sandbox_duree_defaut_jours': {'min_value': 7, 'max_value': 30},
+            'retention_evenements_usage_jours': {
+                'min_value': 30, 'max_value': 365},
+        }
 
     def validate_sandbox_duree_defaut_jours(self, v):
         if not (7 <= v <= 30):

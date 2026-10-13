@@ -250,6 +250,22 @@ class EnfSchemaValidationTests(TestCase):
                 self.assertEqual(
                     resp.status_code, 400, (action, contenu, resp.content))
 
+    def test_tracker_usage_texte_strict_et_bornes_reglages(self):
+        """ENF11 — ``ecran`` numérique = 400 ; bornes des réglages = 400."""
+        resp = self.client_api.post(
+            '/api/django/adminops/tracker-usage/',
+            {'module': '0', 'ecran': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.client_api.patch(
+            '/api/django/adminops/settings/',
+            {'sandbox_duree_defaut_jours': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.client_api.patch(
+            '/api/django/adminops/settings/',
+            {'sandbox_duree_defaut_jours': 10,
+             'retention_evenements_usage_jours': 60}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_settings_date_modification_nulle_avant_enregistrement(self):
         resp = self.client_api.get('/api/django/adminops/settings/')
         self.assertEqual(resp.status_code, 200)
