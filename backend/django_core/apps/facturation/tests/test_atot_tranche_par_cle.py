@@ -265,11 +265,12 @@ class TrancheParCleTests(TestCase):
         self.assertEqual(facture.montant_ttc, Decimal('12000.00'))
         self.assertEqual(facture.statut, 'emise')
 
-    def test_put_formulaire_remise_modifiee_sur_facture_emise_400(self):
-        """ATOT35 — une VALEUR d'argent qui change reste refusée (avoir)."""
+    def test_put_formulaire_remise_modifiee_sur_facture_emise_409(self):
+        """ATOT35 — une VALEUR d'argent qui change reste refusée (avoir) ;
+        refus d'ÉTAT (facture émise) = 409 ConflitEtat (ENF11, M1 tour 3)."""
         facture = self._facture_emise()
         r = self._put_formulaire(facture, remise_globale='5')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Montant figé', str(r.data))
         facture.refresh_from_db()
         self.assertEqual(facture.remise_globale, Decimal('0'))

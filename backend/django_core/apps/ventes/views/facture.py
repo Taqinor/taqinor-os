@@ -1247,8 +1247,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 lignes_saisies=clean_lignes,
                 type_avoir=str(request.data.get('type') or '').strip() or None)
         except AvoirRefuse as exc:
+            # Refus de VALEUR (ligne, type, plafond créditable) : 400 — les
+            # oracles ATOT (machine, reste, avoir/échéancier, AUD126) le
+            # figent ; seul le refus d'ÉTAT ci-dessus est un 409 (ENF11).
             return Response({'detail': exc.motif},
-                            status=status.HTTP_409_CONFLICT)
+                            status=status.HTTP_400_BAD_REQUEST)
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf

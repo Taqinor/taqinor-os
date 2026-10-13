@@ -170,7 +170,7 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '20000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.status_code, 400)
         self.assertIn('dépasse', resp.data['detail'])
         self.assertEqual(Avoir.objects.count(), 0)
 
@@ -188,7 +188,7 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '5000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(r2.status_code, 409)
+        self.assertEqual(r2.status_code, 400)
         self.assertEqual(Avoir.objects.count(), 1)
 
     def test_corps_hors_schema_400_jamais_500(self):
