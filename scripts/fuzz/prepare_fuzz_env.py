@@ -13,7 +13,10 @@
 2. Inventorie, pour chaque NOM de champ clé étrangère des modèles Django,
    les ids qui EXISTENT dans la société de fuzz (cluster C12 « Clé primaire
    0 non valide ») ; lus par ``scripts/fuzz/schemathesis_hooks.py``.
-3. Écrit l'état (ids du compte, de la société, table des ids FK) en JSON.
+3. ENF11 — sème UNE ligne par modèle référencé que la base démo n'a pas
+   (``SEMEURS``) et inventorie des ids PAR CHEMIN (``REGLES_PAR_CHEMIN``)
+   quand un même nom de champ vise des modèles différents selon l'app.
+4. Écrit l'état (ids du compte, de la société, tables des ids FK) en JSON.
 
 Refuse de tourner hors DEBUG (même garde qu'ERR88 sur seed_demo).
 """
@@ -111,6 +114,96 @@ def _cibles_par_nom():
     return cibles
 
 
+# ── ENF11 — un objet RÉEL par modèle référencé (seed du fuzz) ────────────
+# Les lanes ont mesuré des « API rejected schema-compliant request » dus à
+# une base de fuzz SANS ligne du modèle visé : le fuzzeur envoyait ``lot: 0``,
+# ``dashboard: 0``… et l'API répondait 400, à raison. Chaque semeur crée UNE
+# ligne minimale de la société de fuzz si elle n'en a aucune (idempotent),
+# dans un point de sauvegarde : un échec est journalisé, jamais bloquant.
+
+def _modele(label):
+    from django.apps import apps
+
+    return apps.get_model(label)
+
+
+def _premier(label, company, **filtres):
+    return (_modele(label).objects.filter(company=company, **filtres)
+            .order_by('pk').first())
+
+
+def _semer(nom, fabrique):
+    from django.db import transaction
+
+    try:
+        with transaction.atomic():
+            objet = fabrique()
+        print(f'  seed {nom} : id {getattr(objet, "pk", None)}')
+        return objet
+    except Exception as exc:  # donnée de seed impossible : on continue
+        print(f'  (seed ignoré) {nom} : {exc}', file=sys.stderr)
+        return None
+
+
+def _semer_lot(company, user):
+    existant = _premier('stock.LotEntrepot', company)
+    if existant is not None:
+        return existant
+    produit = _premier('stock.Produit', company)
+    if produit is None:
+        raise ValueError('aucun produit dans la société de fuzz')
+    return _modele('stock.LotEntrepot').objects.create(
+        company=company, produit=produit, numero_lot='FUZZ-LOT-0001',
+        created_by=user)
+
+
+SEMEURS = (
+    ('stock.LotEntrepot', _semer_lot),
+)
+
+
+def semer_objets_references(company, user):
+    for nom, fabrique in SEMEURS:
+        _semer(nom, lambda f=fabrique: f(company, user))
+
+
+# ── ENF11 — ids par CHEMIN : un même nom de champ vise des modèles différents
+# selon l'app (``lot`` = stock.LotEntrepot ici, ventes.LotDevis ailleurs ;
+# ``tag`` = records.Tag ou ged.DocumentTag…). La table par nom (intersection
+# ou union) donnait alors des ids d'un AUTRE modèle. Chaque règle :
+# (motif du gabarit de chemin, champs du corps/de la requête, modèle,
+#  filtre optionnel ``f(qs, company) -> qs``, longueur max d'une liste).
+REGLES_PAR_CHEMIN = (
+    (r'^/api/django/stock/', ('lot', 'lot_id'), 'stock.LotEntrepot',
+     None, None),
+)
+
+
+def inventorier_ids_par_chemin(company):
+    regles = []
+    for motif, champs, label, filtre, maxi in REGLES_PAR_CHEMIN:
+        try:
+            qs = _modele(label)._default_manager.all()
+            if _a_un_champ_company(qs.model):
+                qs = qs.filter(company=company)
+            if filtre is not None:
+                qs = filtre(qs, company)
+            ids = [v for v in qs.order_by('pk').values_list('pk', flat=True)
+                   .distinct()[:MAX_IDS_PAR_CHAMP]
+                   if isinstance(v, int) and not isinstance(v, bool)]
+        except Exception as exc:  # modèle absent / filtre cassé : ignoré
+            print(f'  (règle ignorée) {motif} {champs}: {exc}',
+                  file=sys.stderr)
+            continue
+        if ids:
+            regles.append({'motif': motif, 'champs': list(champs),
+                           'ids': ids, 'max': maxi})
+        else:
+            print(f'  (règle sans id) {motif} {champs} -> {label}',
+                  file=sys.stderr)
+    return regles
+
+
 def inventorier_ids_fk(company):
     cache = {}
     table = {}
@@ -142,7 +235,9 @@ def main():
     company = apps.get_model('authentication', 'Company').objects.get(
         slug=SLUG_DEMO)
     user = preparer_compte(company, password)
+    semer_objets_references(company, user)
     table = inventorier_ids_fk(company)
+    regles = inventorier_ids_par_chemin(company)
     etat = {
         'username': USERNAME,
         'user_id': user.pk,
@@ -150,6 +245,8 @@ def main():
         # ENF1b — rôle du compte, protégé par le crochet ``before_call``.
         'role_id': user.role_id,
         'fk_ids': table,
+        # ENF11 — ids par chemin (prioritaires sur ``fk_ids``).
+        'fk_ids_chemin': regles,
     }
     with open(sys.argv[1], 'w', encoding='utf-8') as fh:
         json.dump(etat, fh, ensure_ascii=False, indent=1, sort_keys=True)
