@@ -116,14 +116,21 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
 
     def map_serializer(self, auto_schema, direction):
         schema = auto_schema._map_serializer(self.target, direction, bypass_extensions=True)
-        if direction != 'request' or auto_schema.method == 'PATCH':
+        if direction != 'request':
             return schema
         montant = dict(schema['properties']['montant_alloue'])
         montant['pattern'] = montant['pattern'].replace('^-?', '^', 1)
-        return {**schema, 'properties': {**schema['properties'], 'montant_alloue': montant}, 'anyOf': [
+        branches = [
             {'properties': {'periodicite': {'anyOf': [{'enum': ['mensuelle']}]},
                             'mois': {'minimum': 1, 'maximum': 12}},
              'required': ['periodicite', 'mois']},
             {'properties': {'periodicite': {'anyOf': [{'enum': ['annuelle']}]},
                             'mois': {'maximum': 0}}},
-        ]}
+        ]
+        if auto_schema.method == 'PATCH':
+            # Partiel : la période est relue sur l'instance — on n'annonce que
+            # les corps que la vue accepte QUEL QUE SOIT l'état (période ET
+            # mois cohérents, période annuelle seule, ou ni l'une ni l'autre).
+            branches[1]['required'] = ['periodicite']
+            branches.append({'not': {'anyOf': [{'required': ['periodicite']}, {'required': ['mois']}]}})
+        return {**schema, 'properties': {**schema['properties'], 'montant_alloue': montant}, 'anyOf': branches}

@@ -381,3 +381,15 @@ class CorpsFuzzTests(TestCase):
         autre = Categorie.objects.create(company=self.a, nom='Libre')
         r = self.api.patch(f'{BASE}/categories/{autre.id}/', {'nom': 'Prise'}, format='json')
         self.assertEqual(r.status_code, 409, r.content)
+
+    def test_fuzz_budget_note_stricte_et_passage_annuel(self):
+        url = f'{BASE}/budgets-departement/'
+        r = self.api.post(url, {'annee': 2026, 'periodicite': 'annuelle', 'note': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'annee': 2026, 'periodicite': 'mensuelle', 'mois': 5,
+                                'montant_alloue': '10'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        # Passer en annuel sans renvoyer le mois remet le mois à 0 (plus de 400).
+        r = self.api.patch(f"{url}{r.data['id']}/", {'periodicite': 'annuelle'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['mois'], 0)
