@@ -194,6 +194,38 @@ class ManagementEndpointTests(TestCase):
                 '/api/django/publicapi/sandbox/try/', corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
 
+    def test_webhook_events_mal_formes_400_jamais_500(self):
+        """ENF11 — events non tableau / code non texte : 400 sur ``events``."""
+        api = session_auth(self.admin)
+        for events in (5, [1, 2], [None], {'a': 1}):
+            resp = api.post('/api/django/publicapi/webhooks/', {
+                'label': 'x', 'target_url': 'https://8.8.8.8/hook',
+                'events': events}, format='json')
+            self.assertEqual(resp.status_code, 400, (events, resp.content))
+            self.assertIn('events', resp.data, (events, resp.content))
+
+    def test_webhook_label_et_enabled_stricts(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/webhooks/', {
+            'label': 0, 'enabled': 1, 'target_url': 'https://8.8.8.8/hook',
+            'events': []}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('label', resp.data)
+        self.assertIn('enabled', resp.data)
+
+    def test_compte_de_service_et_rotation_types_stricts(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/identity/service-accounts/',
+                        {'nom': 5}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        key = api.post('/api/django/publicapi/keys/', {
+            'label': 'k', 'scopes': []}, format='json')
+        self.assertEqual(key.status_code, 201, key.content)
+        resp = api.post(
+            f"/api/django/publicapi/keys/{key.data['id']}/rotate/",
+            {'grace_jours': '5'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_webhook_http_refuse_par_le_schema(self):
         api = session_auth(self.admin)
         resp = api.post('/api/django/publicapi/webhooks/', {

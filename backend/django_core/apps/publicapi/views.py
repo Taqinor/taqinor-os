@@ -26,7 +26,7 @@ from .serializers import (
 from . import delivery as delivery_service
 from rest_framework.parsers import JSONParser
 
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, EntierStrict
 from core.parseurs import PARSEURS_JSON
 
 
@@ -150,12 +150,12 @@ class OcrToCrmSerializer(drf_serializers.Serializer):
 class RotationCleSerializer(drf_serializers.Serializer):
     # ENF11 — bornes déclarées ET appliquées (un jour négatif ou démesuré
     # était accepté puis ramené à 1, ou levait OverflowError).
-    grace_jours = drf_serializers.IntegerField(
+    grace_jours = EntierStrict(
         required=False, min_value=0, max_value=3650)
 
 
 class ServiceAccountCreerSerializer(drf_serializers.Serializer):
-    nom = drf_serializers.CharField(max_length=120)
+    nom = ChaineStricte(max_length=120)
     scopes = drf_serializers.ListField(
         child=ChaineStricte(), required=False)
     expire_le = drf_serializers.DateTimeField(required=False, allow_null=True)
