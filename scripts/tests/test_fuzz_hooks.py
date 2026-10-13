@@ -252,6 +252,39 @@ class IdsFkImbriquesTests(unittest.TestCase):
         self.assertEqual(corps['lignes'][0]['produit'], 0)
 
 
+class IdsFkParCheminStockTests(unittest.TestCase):
+    """ENF11 (stock/achats) — ``lot``/``retour`` du corps = ids du BON modèle
+    sous /stock/ et /achats/ seulement ; ailleurs, comportement inchangé."""
+
+    @classmethod
+    def setUpClass(cls):
+        regle = {'motif': r'^/api/django/(stock|achats)/', 'champs': ['lot'],
+                 'ids': [40]}
+        cls.hooks = _charger_hooks({
+            'user_id': 4, 'company_id': 2, 'role_id': 7,
+            'fk_ids': {'lot': [900, 901]},
+            'fk_ids_chemin': [regle, dict(regle, champs=['retour'], ids=[7])]})
+
+    def _corps(self, chemin, corps, mode='POSITIVE'):
+        cas = _cas(self.hooks, 'POST', chemin, corps, mode=mode)
+        self.hooks.before_call(None, cas, {})
+        return cas.body
+
+    def test_stock_et_achats(self):
+        self.assertEqual(self._corps('/api/django/stock/alertes-rappel/',
+                                     {'lot': 0})['lot'], 40)
+        self.assertEqual(self._corps('/api/django/achats/x/',
+                                     {'retour': 3})['retour'], 7)
+
+    def test_autres_routes_et_negatif_inchanges(self):
+        self.assertIn(self._corps('/api/django/core/x/', {'lot': 0})['lot'],
+                      (900, 901))
+        self.assertEqual(self._corps('/api/django/core/x/',
+                                     {'retour': 3})['retour'], 3)
+        self.assertEqual(self._corps('/api/django/stock/x/', {'lot': 0},
+                                     mode='NEGATIVE')['lot'], 0)
+
+
 def _charger_inventaire():
     sys.path.insert(0, str(ROOT / 'scripts' / 'fuzz'))
     try:

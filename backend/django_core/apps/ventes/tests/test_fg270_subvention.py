@@ -62,6 +62,30 @@ class SubventionDossierApiTest(TestCase):
         self.assertEqual(subv.montant_demande, Decimal('25000.00'))
         self.assertEqual(len(subv.pieces), 1)
 
+    def test_corps_fuzz_pieces_liste_jamais_nulle(self):
+        # CI M1 tour 3 (api-fuzz run 38295727060) — le ``JSONField`` publiait
+        # ``pieces`` « toute valeur » puis refusait ``null`` (400 sur un corps
+        # conforme). ``pieces`` est désormais une LISTE d'objets : ``null`` est
+        # hors schéma (400), ``[]`` est accepté ; les décimaux et textes sont
+        # stricts (un nombre JSON n'est plus converti en silence).
+        corps = {'devis': self.devis.id, 'programme': 'masen',
+                 'statut': 'a_qualifier', 'montant_demande': '0',
+                 'montant_accorde': '0', 'reference': '',
+                 'eligibilite_note': None, 'pieces': None,
+                 'date_depot': '2000-01-01', 'date_decision': None}
+        self.assertEqual(
+            self.api.post(self.url, corps, format='json').status_code, 400)
+        for champ, valeur in (('pieces', [1]), ('montant_demande', 0),
+                              ('reference', 0)):
+            with self.subTest(champ=champ):
+                resp = self.api.post(self.url, {**corps, 'pieces': [],
+                                                champ: valeur}, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertFalse(SubventionDossier.objects.exists())
+        resp = self.api.post(self.url, {**corps, 'pieces': []}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['pieces'], [])
+
     def test_devis_of_other_company_refused(self):
         other_user = make_user(self.other, 'subv_o')
         other_devis = make_devis(self.other, other_user, ref='DEV-OTHER-SUB')

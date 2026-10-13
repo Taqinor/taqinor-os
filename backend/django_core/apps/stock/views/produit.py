@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from core.entite_scoping import EntiteScopeMixin
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
-from ..utils.params import date_ou_400
+from ..utils.params import corps_objet, date_ou_400, entier_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
@@ -85,6 +85,32 @@ CHAMPS_DUPLICATION_EXCLUS = frozenset({
     'id', 'company', 'nom', 'sku', 'code_barres', 'quantite_stock',
     'is_archived', 'date_creation', 'date_mise_a_jour', 'photo',
 })
+
+
+def _params_bulk(donnees):
+    """ERR fuzz (produits/bulk) — paramètres d'action validés AVANT le service :
+    un objet/liste (``categorie_id: {}``), une marque non texte ou trop longue,
+    une garantie hors entier PostgreSQL levaient TypeError/AttributeError/
+    DataError (500) ; chacun répond 400 nommant le champ. Les chaînes que
+    l'écran envoie (``"12"``, ``""``) restent acceptées."""
+    from rest_framework.exceptions import ValidationError
+    params = {cle: donnees.get(cle) for cle in (
+        'mode', 'valeur', 'garantie_mois', 'garantie_production_mois',
+        'categorie_id', 'marque') if cle in donnees}
+    for cle, valeur in params.items():
+        if isinstance(valeur, (dict, list, bool)):
+            raise ValidationError({cle: ['Valeur simple attendue.']})
+    for cle in ('mode', 'marque'):
+        if params.get(cle) is not None and not isinstance(params[cle], str):
+            raise ValidationError({cle: ['Texte attendu.']})
+    if len(params.get('marque') or '') > 100:
+        raise ValidationError({'marque': ['100 caractères au plus.']})
+    for cle in ('garantie_mois', 'garantie_production_mois'):
+        if cle in params:
+            params[cle] = entier_ou_400(params[cle], cle, mini=0, maxi=2147483647)
+    if params.get('categorie_id') not in (None, '', 'null'):
+        params['categorie_id'] = entier_ou_400(params['categorie_id'], 'categorie_id')
+    return params
 
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
@@ -501,14 +527,17 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         """Édition en masse d'une sélection de produits (prix %/fixe, garantie,
         catégorie, marque). Le prix d'achat n'est jamais modifié."""
         from ..services import BULK_ACTIONS, apply_product_bulk
-        op = request.data.get('action')
-        ids = request.data.get('ids') or []
-        if op not in BULK_ACTIONS:
+        donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
+        op = donnees.get('action')
+        ids = donnees.get('ids') or []
+        if not isinstance(op, str) or op not in BULK_ACTIONS:  # {} : TypeError (500)
             return Response({'detail': 'Action en masse inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'Sélectionnez au moins un produit.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ERR fuzz : un id non entier ({}, liste…) levait TypeError (500).
+        ids = [entier_ou_400(i, 'ids') for i in ids]
         # ASTK20 (D-ASTK-3) — la variation de prix en masse = écriture du prix
         # catalogue : même helper que ProduitSerializer (jumeau unique).
         from ..serializers import peut_modifier_prix_catalogue
@@ -521,7 +550,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         try:
             result = apply_product_bulk(
                 company=request.user.company, user=request.user,
-                ids=ids, op=op, params=request.data)
+                ids=ids, op=op, params=_params_bulk(donnees))
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -627,10 +656,12 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         "lot_source" (optionnel, id LotEntrepot)}."""
         from ..services import decouper_produit
         company = request.user.company
-        source = Produit.objects.filter(
-            company=company, id=request.data.get('produit_source')).first()
-        cible = Produit.objects.filter(
-            company=company, id=request.data.get('produit_cible')).first()
+        # ERR fuzz : corps non objet / id non entier ({}) -> 400, pas 500.
+        donnees = corps_objet(request)
+        source = Produit.objects.filter(company=company, id=entier_ou_400(
+            donnees.get('produit_source'), 'produit_source')).first()
+        cible = Produit.objects.filter(company=company, id=entier_ou_400(
+            donnees.get('produit_cible'), 'produit_cible')).first()
         if source is None or cible is None:
             return Response(
                 {'detail': 'Produit source ou cible introuvable.'},
@@ -643,7 +674,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 {'detail': 'Quantités invalides.'},
                 status=status.HTTP_400_BAD_REQUEST)
         lot_source = None
-        lot_source_id = request.data.get('lot_source')
+        lot_source_id = entier_ou_400(donnees.get('lot_source'), 'lot_source')
         if lot_source_id:
             from ..models import LotEntrepot
             lot_source = LotEntrepot.objects.filter(
@@ -653,7 +684,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                     {'detail': 'Lot source introuvable.'},
                     status=status.HTTP_404_NOT_FOUND)
         emplacement = None
-        emplacement_id = request.data.get('emplacement')
+        emplacement_id = entier_ou_400(
+            donnees.get('emplacement'), 'emplacement')
         if emplacement_id:
             emplacement = EmplacementStock.objects.filter(
                 company=company, id=emplacement_id).first()
@@ -1019,15 +1051,20 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         """FG54 — Génère un BCF BROUILLON pour tous les produits sous seuil.
         Réutilise create_with_reference('BCF'). INTERNE."""
         from ..services import generer_bcf_reappro
-        fournisseur_id = request.data.get('fournisseur_id')
+        # ERR fuzz : corps non objet / id non entier ([null, null]) -> 400.
+        fournisseur_id = entier_ou_400(
+            corps_objet(request).get('fournisseur_id'), 'fournisseur_id')
         try:
             result = generer_bcf_reappro(
                 company=request.user.company,
                 user=request.user,
                 fournisseur_id=fournisseur_id)
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ERR fuzz : le corps était conforme — fournisseur inconnu = 404,
+            # « rien à réapprovisionner » = refus d'ÉTAT (409), jamais 400.
+            code = (status.HTTP_404_NOT_FOUND if 'introuvable' in str(exc)
+                    else status.HTTP_409_CONFLICT)
+            return Response({'detail': str(exc)}, status=code)
         return Response(result, status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[P('jours', INT, False, 'Fenêtre en jours (défaut 180)')], responses=LISTE)

@@ -462,16 +462,19 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         conflit = _refus_si_rejete(paiement)
         if conflit is not None:
             return conflit
-        from ..utils.pdf import generate_recu_pdf
+        from ..utils.pdf import assurer_numero_recu, generate_recu_pdf
         try:
             pdf_bytes = generate_recu_pdf(paiement)
-        except Exception as exc:
+        except Exception:
+            # VNT43 — message générique : l'exception brute reste au journal.
             logger.warning("paiement.PaiementViewSet.recu_pdf : erreur ignorée (mode dégradé)", exc_info=True)
-            return Response({'detail': f'PDF indisponible : {exc}'},
+            return Response({'detail': 'PDF du reçu indisponible.'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # VNT43 — fichier nommé par le numéro de reçu de la société (posé au
+        # rendu, stable), comme l'e-mail — jamais par l'id technique.
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
-            f'inline; filename="Quittance_{paiement.id}.pdf"')
+            f'inline; filename="Quittance_{assurer_numero_recu(paiement)}.pdf"')
         return resp
 
     @extend_schema(request=D.EnvoyerRecuRequest,

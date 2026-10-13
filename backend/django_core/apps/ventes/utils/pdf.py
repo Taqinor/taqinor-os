@@ -177,7 +177,13 @@ CLES_IDENTITE_VENDEUR = (
     'entreprise_ice', 'entreprise_if', 'entreprise_rc', 'entreprise_patente',
     'entreprise_cnss', 'couleur_principale', 'rib', 'banque',
     'instructions_paiement', 'conditions_generales',
+    # VNT39 — forme juridique et capital (phrase de la bande légale).
+    'entreprise_forme_juridique', 'entreprise_capital_social',
 )
+
+#: VNT39 — clés qu'une facture ÉMISE ne lit JAMAIS du profil vivant : sans
+#: instantané (facture antérieure) ou instantané sans ces clés ⇒ vides.
+CLES_CAPITAL_FIGE = ('entreprise_forme_juridique', 'entreprise_capital_social')
 
 
 def identite_vendeur_courante(company):
@@ -238,7 +244,32 @@ def _identite_textes(profile):
         'banque': profile.banque,
         'instructions_paiement': getattr(profile, 'instructions_paiement', ''),
         'conditions_generales': getattr(profile, 'conditions_generales', ''),
+        'entreprise_forme_juridique': getattr(profile, 'forme_juridique', ''),
+        'entreprise_capital_social': getattr(profile, 'capital_social', ''),
     }
+
+
+def _mention_capital(context, facture):
+    """VNT39 — « <raison sociale> <forme> au capital de <capital> » (phrase
+    de ``quote_engine/identite.mentions_legales``, sans balise) en tête de
+    la bande légale. Facture ÉMISE : forme et capital lus de l'instantané
+    SEUL (absents ⇒ rien d'imprimé, jamais le capital du jour) ; brouillon :
+    profil vivant."""
+    from html import unescape
+
+    from apps.ventes.quote_engine.identite import mentions_legales
+    if facture.statut != 'brouillon':
+        figee = (facture.identite_vendeur
+                 if isinstance(facture.identite_vendeur, dict) else {})
+        for cle in CLES_CAPITAL_FIGE:
+            context[cle] = figee.get(cle) or ''
+    forme = (context.get('entreprise_forme_juridique') or '').strip()
+    capital = (context.get('entreprise_capital_social') or '').strip()
+    lignes = (mentions_legales(
+        {'nom': context.get('entreprise_nom') or '', 'forme_juridique': forme,
+         'capital_social': capital}, gras=None) if forme or capital else None)
+    context['entreprise_mention_capital'] = unescape(lignes[0]) if lignes else ''
+    return context
 
 
 def _company_context(company=None):
@@ -275,6 +306,9 @@ def _company_context(company=None):
         # Feature B — blocs paiement & conditions (rendus seulement si non-vides).
         'instructions_paiement': getattr(profile, 'instructions_paiement', ''),
         'conditions_generales': getattr(profile, 'conditions_generales', ''),
+        # VNT39 — forme juridique et capital (bande légale de la facture).
+        'entreprise_forme_juridique': getattr(profile, 'forme_juridique', ''),
+        'entreprise_capital_social': getattr(profile, 'capital_social', ''),
         'logo_uri':      None,
         'signature_uri': None,
     }
@@ -396,6 +430,7 @@ def generate_facture_pdf(facture_id):
     # (repli documenté : sans instantané, le profil vivant comme avant).
     _appliquer_identite_figee(
         context, getattr(facture, 'identite_vendeur', None))
+    _mention_capital(context, facture)
     context['facture'] = facture
     # AFAC56 — ICE/IF/RC du client imprimés selon la règle B2B du modèle.
     context['client_est_pro'] = Facture._client_est_pro(facture.client)
@@ -427,6 +462,9 @@ def generate_facture_pdf(facture_id):
     # Fondateur 05/10/2026 — bloc « Déjà payé / Reste à payer » après le
     # Total TTC. None (aucun règlement) → rien d'imprimé, PDF inchangé.
     context['reglements'] = reglements_facture_pdf(facture)
+    # Groupe VNT — la vente sur la facture (objet, garanties, situation,
+    # prochaines échéances) ; clés absentes = blocs omis (gabarit inchangé).
+    context.update(contexte_vente_facture(facture, langue))
 
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)
@@ -456,12 +494,17 @@ def generate_facture_pdf(facture_id):
     # WIR165 — premier émetteur RÉEL de core.events.document_produit (ZGED6).
     # ADOC74 — l'émission est factorisée dans ``_emettre_document_produit``
     # (helper unique des quatre générateurs facture/avoir/note de débit/
-    # bordereau de remise).
-    _emettre_document_produit(
-        'ventes_facture', facture.company, pdf_bytes, facture.reference,
-        date=facture.date_emission,
-        client_nom=getattr(facture.client, 'nom', '') or '',
-        uploaded_by=facture.created_by)
+    # bordereau de remise). VNT34 — réservé aux factures à référence
+    # LÉGALE : un brouillon (« BROUILLON-<id> », sans valeur comptable)
+    # n'est jamais archivé en GED.
+    from core.numbering import est_reference_provisoire
+    if (facture.statut != Facture.Statut.BROUILLON
+            and not est_reference_provisoire(facture.reference)):
+        _emettre_document_produit(
+            'ventes_facture', facture.company, pdf_bytes, facture.reference,
+            date=facture.date_emission,
+            client_nom=getattr(facture.client, 'nom', '') or '',
+            uploaded_by=facture.created_by)
 
     return key
 
@@ -553,6 +596,139 @@ def reglements_facture_pdf(facture):
     }
 
 
+# ── Groupe VNT — la vente sur la facture (« facture qui fait confiance ») ──
+
+def _est_tranche_de_vente(facture):
+    """Une facture de TRANCHE rattachée à un devis : aucune ligne (une
+    facture complète montre déjà son matériel)."""
+    return bool(facture.devis_id) and not list(facture.lignes.all())
+
+
+def objet_vente_pdf(facture):
+    """VNT35 — bloc « Objet de la vente » d'une facture de tranche : l'
+    instantané figé à l'émission (``Facture.objet_vente``) pour une facture
+    émise, sinon (brouillon, émise antérieure sans instantané) la vente
+    VIVANTE (version qui fait foi). ``None`` sans devis ou avec lignes."""
+    if not _est_tranche_de_vente(facture):
+        return None
+    if facture.statut != 'brouillon' and facture.objet_vente:
+        return facture.objet_vente
+    from apps.ventes.domain.instantanes_facture import (
+        devis_de_la_vente, objet_vente_du_devis)
+    return objet_vente_du_devis(devis_de_la_vente(facture.devis))
+
+
+def garanties_pdf(facture, langue='fr'):
+    """VNT38 — tableau « Garanties » de toute facture rattachée à un devis :
+    l'instantané figé à l'émission pour une émise, sinon (brouillon, émise
+    antérieure sans instantané) les garanties VIVANTES du catalogue.
+    ``[]`` (tableau omis) sans devis ou sans garantie connue."""
+    if not facture.devis_id:
+        return []
+    if facture.statut != 'brouillon' and facture.garanties is not None:
+        return facture.garanties
+    from apps.ventes.domain.instantanes_facture import (
+        devis_de_la_vente, garanties_du_devis)
+    return garanties_du_devis(devis_de_la_vente(facture.devis), langue)
+
+
+def _libelle_tranche_facture(facture, tete):
+    """Libellé de l'échéancier de la tranche de ``facture`` (sa clé), sinon
+    le type de facture — jamais lu du libellé de la facture."""
+    from apps.ventes.utils.echeancier import (
+        cles_tranches, tranches_normalisees)
+    tranches = tranches_normalisees(tete)
+    libelles = dict(zip(cles_tranches(tranches),
+                        (t['libelle'] for t in tranches)))
+    return (libelles.get(facture.cle_tranche)
+            or facture.get_type_facture_display())
+
+
+def part_vente_pdf(facture, tete, etat):
+    """VNT36 — la part de la vente portée par une facture de tranche,
+    CALCULÉE au rendu (jamais lue du libellé ni de ``Facture.pourcentage``) :
+    ``{libelle, ttc, pourcentage, prix_convenu, derniere}``. ``derniere`` =
+    cette facture ferme la vente (rien ne reste à facturer et c'est la plus
+    récente facture vivante) ⇒ « reste de la vente »."""
+    from decimal import Decimal
+
+    from core.money import quantize_mad
+    if not _est_tranche_de_vente(facture):
+        return None
+    prix = Decimal(etat['prix_convenu_ttc'])
+    ttc = quantize_mad(facture.total_ttc or 0)
+    vivantes = [f['id'] for f in etat['factures']
+                if f['statut'] != 'annulee']
+    derniere = bool(Decimal(etat['reste_a_facturer_ttc']) <= 0 and vivantes
+                    and facture.pk == max(vivantes))
+    pct = quantize_mad(ttc / prix * 100) if prix > 0 else Decimal('0.00')
+    return {'libelle': _libelle_tranche_facture(facture, tete),
+            'ttc': f'{ttc:.2f}', 'pourcentage': f'{pct:.2f}',
+            'prix_convenu': etat['prix_convenu_ttc'], 'derniere': derniere}
+
+
+#: VNT40 — statuts d'une facture ÉMISE (un brouillon n'est jamais facturé).
+STATUTS_EMIS_VENTE = ('emise', 'payee', 'en_retard')
+_CLES_FACTURE_SITUATION = ('id', 'reference', 'date_emission', 'nature',
+                           'total_ttc', 'montant_paye', 'statut')
+
+
+def situation_vente_pdf(tete, etat):
+    """VNT40 — « Situation de la vente » : sous-ensemble ÉMIS de
+    ``etat_vente`` (mêmes noms que le bloc ``vente`` de ``vente_etat.json``,
+    contrat ``facture_situation_vente.json``), VIVANT (un état de paiement,
+    comme « Déjà payé »). Chaque facture émise porte aussi ``reste_du_ttc``
+    (TTC − payé, texte) pour la ligne « payée ou reste »."""
+    from decimal import Decimal
+    factures = []
+    for f in etat['factures']:
+        if f['statut'] not in STATUTS_EMIS_VENTE:
+            continue
+        ligne = {cle: f[cle] for cle in _CLES_FACTURE_SITUATION}
+        reste = Decimal(f['total_ttc']) - Decimal(f['montant_paye'])
+        ligne['reste_du_ttc'] = f'{max(reste, Decimal("0")):.2f}'
+        factures.append(ligne)
+    return {
+        'devis_reference': tete.reference,
+        **{cle: etat[cle] for cle in (
+            'prix_convenu_ttc', 'emis_ttc', 'paye_ttc', 'reste_a_payer_ttc',
+            'reste_a_facturer_ttc')},
+        'factures': factures,
+    }
+
+
+def prochaines_echeances_pdf(part, etat):
+    """VNT41 (D-VNT-6) — « Prochaines échéances » d'une facture de tranche
+    NON dernière : les tranches encore à facturer de la vente, libellé de
+    l'échéancier du devis qui fait foi et TTC projeté par le plan
+    (``etat_vente.prochaines_echeances`` ← ``tranches_a_venir``, la formule
+    de ``next_tranche``) — jamais une date ni un événement inventés. ``[]``
+    (bloc omis) sur la dernière tranche, une facture complète ou quand rien
+    ne reste."""
+    if not part or part['derniere']:
+        return []
+    return list(etat['prochaines_echeances'])
+
+
+def contexte_vente_facture(facture, langue='fr'):
+    """Les blocs de la vente du PDF facture (dict à fusionner dans le
+    contexte du gabarit) ; une facture sans devis n'en porte aucun. L'état
+    de la vente est lu UNE fois (``vente_facturation.etat_vente`` sur la
+    version qui fait foi)."""
+    if not facture.devis_id:
+        return {}
+    from apps.ventes.domain.instantanes_facture import devis_de_la_vente
+    from apps.ventes.vente_facturation import etat_vente
+    tete = devis_de_la_vente(facture.devis)
+    etat = etat_vente(tete)
+    part = part_vente_pdf(facture, tete, etat)
+    return {'objet_vente': objet_vente_pdf(facture),
+            'part_vente': part,
+            'prochaines_echeances': prochaines_echeances_pdf(part, etat),
+            'garanties_vente': garanties_pdf(facture, langue),
+            'situation_vente': situation_vente_pdf(tete, etat)}
+
+
 def _facture_render_data(facture) -> dict:
     """Données qui déterminent le RENDU du PDF facture — miroir, réduit au
     moteur LÉGATAIRE de la facture (règle #4), de ce que ``build_quote_data``
@@ -611,7 +787,27 @@ def _facture_render_data(facture) -> dict:
         # seulement si présente : empreinte d'hier inchangée sans instantané).
         **({'identite_vendeur': facture.identite_vendeur}
            if getattr(facture, 'identite_vendeur', None) else {}),
+        # VNT42 — blocs de la vente et filigrane (clés posées seulement si
+        # présentes : empreinte d'une facture émise sans devis inchangée).
+        **_vente_empreinte(facture),
     }
+
+
+def _vente_empreinte(facture):
+    """VNT42 — ce que les blocs de la vente impriment entre dans l'empreinte
+    PVFRESH : un paiement sur une facture SŒUR (situation) ou le passage
+    brouillon → émise re-rend ; une révision de la tête ou une garantie
+    changée ne re-rend une ÉMISE que si son rendu change (instantanés
+    ``objet_vente``/``garanties`` figés), un brouillon toujours (vivant)."""
+    blocs = {}
+    if facture.statut == 'brouillon':
+        blocs['filigrane'] = True
+    if facture.devis_id:
+        from apps.ventes.domain.instantanes_facture import (
+            langue_de_la_facture)
+        blocs['vente'] = contexte_vente_facture(
+            facture, langue_de_la_facture(facture))
+    return blocs
 
 
 def _reglements_empreinte(facture):

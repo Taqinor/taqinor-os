@@ -77,10 +77,18 @@ class TestDoubleFacturationDevis(TestCase):
 
     # ── Sens 1 : BC facturé, puis l'échéancier ────────────────────────────
 
+    def _emettre(self, facture_id):
+        return self.api.post(
+            f'/api/django/ventes/factures/{facture_id}/emettre/', {},
+            format='json')
+
     def test_bc_facture_puis_echeancier_refuse(self):
         resp = self._facturer_bc()
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(Facture.objects.count(), 1)
+        # VNT20 — la facture de BC naît BROUILLON et ne ferme aucune porte
+        # tant qu'elle n'est pas ÉMISE : c'est la facture émise qui bloque.
+        self.assertEqual(self._emettre(resp.data['id']).status_code, 200)
 
         resp2 = self._facturer_tranche()
         self.assertEqual(resp2.status_code, 400, resp2.data)
@@ -109,7 +117,10 @@ class TestDoubleFacturationDevis(TestCase):
     def test_le_solde_devis_voit_la_facture_du_bon_de_commande(self):
         from apps.ventes.utils.echeancier import solde_devis
 
-        self._facturer_bc()
+        resp = self._facturer_bc()
+        # VNT19/VNT20 — un brouillon est PRÉVU, jamais facturé : le solde
+        # voit la facture de BC une fois ÉMISE.
+        self.assertEqual(self._emettre(resp.data['id']).status_code, 200)
         self.devis.refresh_from_db()
         solde = solde_devis(self.devis)
         # ATOT2 — comportement INVERSÉ par la tâche : `tranches_facturees` ne

@@ -11,7 +11,7 @@ import {
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
-import FacturerDevisDialog from '../../ventes/FacturerDevisDialog'
+import FacturerVenteDialog from '../../ventes/vente/FacturerVenteDialog'
 import installationsApi from '../../../api/installationsApi'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -962,7 +962,7 @@ export default function DevisTab({
           </div>
         </DialogContent>
       </Dialog>
-      <FacturerDevisDialog
+      <FacturerVenteDialog
         devis={facturerTarget}
         onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
         onDone={() => onAction?.('refresh')}

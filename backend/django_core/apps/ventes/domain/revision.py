@@ -139,11 +139,16 @@ def renouveler_devis(devis, *, user=None):
 
 
 class RevisionError(Exception):
-    """QJR521 — une révision refusée (déjà remplacé, brouillon) → 409."""
+    """QJR521 — une révision refusée (déjà remplacé, brouillon) → 409.
+    VNT24 — ``code`` machine (``version_remplacee`` | ``brouillon``) et, pour
+    une version remplacée, ``successeur`` ``{id, reference}`` (tête de chaîne)
+    lu SOUS le verrou."""
 
-    def __init__(self, message):
+    def __init__(self, message, *, code=None, successeur=None):
         super().__init__(message)
         self.message = message
+        self.code = code
+        self.successeur = successeur
 
 
 def reviser_devis(devis, *, user=None):
@@ -171,15 +176,17 @@ def reviser_devis(devis, *, user=None):
         old = (Devis.objects.select_for_update(of=('self',))
                .get(pk=devis.pk))
         if not old.is_active:
-            ref = (Devis.objects.filter(pk=old.superseded_by_id)
-                   .values_list('reference', flat=True).first()
-                   if old.superseded_by_id else None)
+            from apps.ventes.domain.modifiabilite import (
+                CODE_VERSION_REMPLACEE, successeur_actif)
+            tete = successeur_actif(old)
             raise RevisionError(
-                f'Déjà remplacé par {ref}.' if ref
-                else 'Ce devis est archivé : il ne se révise plus.')
+                f"Déjà remplacé par {tete['reference']}." if tete
+                else 'Ce devis est archivé : il ne se révise plus.',
+                code=CODE_VERSION_REMPLACEE, successeur=tete)
         if old.statut == Devis.Statut.BROUILLON:
             raise RevisionError(
-                'Un brouillon se modifie directement (pas de révision).')
+                'Un brouillon se modifie directement (pas de révision).',
+                code='brouillon')
         # QJR558 — ``revision=True`` : la V+1 garde le travail manuel
         # (toiture 3D, registre D12, tailles explorées, rendu toiture).
         nd = cloner_devis(

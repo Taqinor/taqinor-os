@@ -91,6 +91,14 @@ FK_IDS = {
     for nom, ids in (_ETAT.get('fk_ids') or {}).items() if ids
 }
 _FK_IDS_SET = {nom: set(ids) for nom, ids in FK_IDS.items()}
+# ENF11 (stock/achats) — règles PAR CHEMIN (prepare_fuzz_env.REGLES_PAR_CHEMIN) :
+# sous /stock/ et /achats/, ``lot`` = stock.LotEntrepot (pas ventes.LotDevis)
+# et ``retour`` = achats.RetourFournisseur. Champs de PREMIER niveau du corps
+# seulement, appliquées APRÈS la table par nom (elles la corrigent).
+FK_REGLES = [
+    (re.compile(r['motif']), tuple(r['champs']), list(r['ids']))
+    for r in (_ETAT.get('fk_ids_chemin') or []) if r.get('ids')
+]
 
 
 def _charger_ids_chemin():
@@ -240,6 +248,19 @@ def _ids_fk_connus(case):
     if not isinstance(corps, dict):
         return
     _remplacer_ids_fk(corps)
+    _ids_par_chemin(case.operation.path, corps)
+
+
+def _ids_par_chemin(chemin, corps):
+    for motif, champs, ids in FK_REGLES:
+        if not motif.search(chemin or ''):
+            continue
+        for nom in champs:
+            valeur = corps.get(nom)
+            if isinstance(valeur, bool) or not isinstance(valeur, int):
+                continue
+            if valeur not in ids:
+                corps[nom] = ids[valeur % len(ids)]
 
 
 # ── 4. Ids RÉELS pour les paramètres de chemin (ENF11) ─────────────────

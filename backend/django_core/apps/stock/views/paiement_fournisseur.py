@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import BasePermission
 from ..openapi_helpers import BINARY, DATE, INT, P, XLSX
-from ..utils.params import date_ou_400
+from ..utils.params import corps_objet, date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import FactureFournisseur, PaiementFournisseur
 from ..serializers import PaiementFournisseurSerializer
@@ -108,7 +108,11 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         # le blocage et que le fournisseur a un document de conformité
         # obligatoire manquant/expiré. No-op (comportement historique) quand
         # le paramètre est OFF (défaut).
-        facture_id = request.data.get('facture')
+        facture_id = corps_objet(request).get('facture')
+        try:
+            facture_id = int(facture_id) if facture_id else None
+        except (TypeError, ValueError):
+            facture_id = None  # illisible : le sérialiseur répond 400
         if facture_id:
             try:
                 from ..services import (

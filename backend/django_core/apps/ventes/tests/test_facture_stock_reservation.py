@@ -173,3 +173,59 @@ class U9StockReservationTests(TestCase):
         self.assertEqual(self.onduleur.quantite_stock, -2)
         self.assertEqual(self._sorties(self.onduleur).count(), 1)
         self.assertEqual(devis.factures.count(), 1)
+
+    # ── VNT21 — la sortie U9 vit à l'ÉMISSION, jamais à la création ────────
+    def _brouillon(self, devis, cle, ttc='1200.00', ligne=False):
+        from apps.ventes.models import Facture, LigneFacture
+        ttc = Decimal(ttc)
+        facture = Facture.objects.create(
+            company=self.company, reference=f'BROUILLON-VNT21-{cle}-{devis.pk}',
+            devis=devis, client=self.cl, statut=Facture.Statut.BROUILLON,
+            type_facture='acompte', cle_tranche=cle, libelle='Acompte',
+            taux_tva=Decimal('20.00'), montant_ttc=ttc,
+            montant_ht=(ttc / Decimal('1.2')).quantize(Decimal('0.01')),
+            montant_tva=ttc - (ttc / Decimal('1.2')).quantize(Decimal('0.01')),
+            created_by=self.user)
+        if ligne:
+            LigneFacture.objects.create(
+                facture=facture, produit=self.panneau, designation='Panneau',
+                quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+                taux_tva=Decimal('20.00'))
+        return facture
+
+    def test_vnt21_brouillon_supprime_ne_sort_rien(self):
+        devis = self._devis(f'DEV-{MONTH}-9121')
+        brouillon = self._brouillon(devis, 'acompte')
+        brouillon.delete()
+        self.assertEqual(self._sorties(self.panneau).count(), 0)
+        self.assertEqual(self._sorties(self.onduleur).count(), 0)
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 100)
+
+    def test_vnt21_emission_bulk_puis_service_une_sortie(self):
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        devis = self._devis(f'DEV-{MONTH}-9122')
+        acompte = self._brouillon(devis, 'acompte')
+        self.assertEqual(self._sorties(self.panneau).count(), 0)
+        r = self.api.post('/api/django/ventes/factures/bulk/',
+                          {'action': 'emettre', 'ids': [acompte.id]},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data[acompte.id]['ok'], r.data)
+        self.assertEqual(self._sorties(self.panneau).count(), 1)
+        self.assertEqual(self._sorties(self.onduleur).count(), 1)
+        emettre_facture(self._brouillon(devis, 'materiel'), user=self.user,
+                        source='test')
+        self.assertEqual(self._sorties(self.panneau).count(), 1)
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 90)
+
+    def test_vnt21_emission_par_la_vue_une_sortie(self):
+        devis = self._devis(f'DEV-{MONTH}-9123')
+        brouillon = self._brouillon(devis, 'acompte', ligne=True)
+        r = self.api.post(
+            f'/api/django/ventes/factures/{brouillon.id}/emettre/', {},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._sorties(self.panneau).count(), 1)
+        self.assertEqual(self._sorties(self.onduleur).count(), 1)

@@ -196,6 +196,8 @@ class DevisCycleActionsMixin:
         scopé société. Retourne la liste des devis créés.
         """
         source = self.get_object()
+        # Tour 3 M1 — corps hors schéma (``variante_pct: {}``…) = 400.
+        valider_corps(request, D.DupliquerVarianteRequest)
         company = source.company
         root = source.version_parent or source
 
@@ -418,7 +420,14 @@ class DevisCycleActionsMixin:
         try:
             nd = reviser_devis(old, user=request.user)
         except RevisionError as exc:
-            return Response({'detail': exc.message},
+            # VNT24 — même forme 409 que accepter / refuser / envoyer.
+            from ..domain.modifiabilite import (
+                CODE_VERSION_REMPLACEE, corps_version_remplacee)
+            if exc.code == CODE_VERSION_REMPLACEE:
+                old.refresh_from_db(fields=['is_active', 'superseded_by'])
+                return Response(corps_version_remplacee(old, exc.message),
+                                status=status.HTTP_409_CONFLICT)
+            return Response({'detail': exc.message, 'code': exc.code},
                             status=status.HTTP_409_CONFLICT)
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
@@ -625,8 +634,18 @@ class DevisCycleActionsMixin:
                  'sale_warning': True},
                 status=status.HTTP_403_FORBIDDEN)
         except AcceptError as exc:
+            # VNT24 — version remplacée : LA forme 409 avec ``successeur``.
+            from ..domain.modifiabilite import (
+                CODE_VERSION_REMPLACEE, corps_version_remplacee)
+            if exc.code == CODE_VERSION_REMPLACEE:
+                devis.refresh_from_db(fields=['is_active', 'superseded_by'])
+                return Response(corps_version_remplacee(devis),
+                                status=status.HTTP_409_CONFLICT)
+            corps = {'detail': exc.message}
+            if exc.code:
+                corps['code'] = exc.code
             return Response(
-                {'detail': exc.message},
+                corps,
                 status=(status.HTTP_409_CONFLICT if exc.conflict
                         else status.HTTP_400_BAD_REQUEST))
         return Response(

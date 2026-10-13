@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4802, operations: 7552, components: 3469}
+counts: {paths: 4804, operations: 7556, components: 3480}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3543,6 +3543,8 @@ operations:
 - get /api/django/ventes/devis/{id}/etude-params/ -> django_ventes_devis_etude_params_retrieve
 - patch /api/django/ventes/devis/{id}/etude-params/ -> django_ventes_devis_etude_params_partial_update
 - post /api/django/ventes/devis/{id}/facturer-complet/ -> django_ventes_devis_facturer_complet_create
+- get /api/django/ventes/devis/{id}/facturer/ -> django_ventes_devis_facturer_retrieve
+- post /api/django/ventes/devis/{id}/facturer/ -> django_ventes_devis_facturer_create
 - post /api/django/ventes/devis/{id}/generer-facture/ -> django_ventes_devis_generer_facture_create
 - post /api/django/ventes/devis/{id}/generer-pdf/ -> django_ventes_devis_generer_pdf_create
 - get /api/django/ventes/devis/{id}/historique-configuration/ -> django_ventes_devis_historique_configuration_retrieve
@@ -7322,6 +7324,8 @@ operations:
 - get /api/v1/ventes/devis/{id}/etude-params/ -> v1_ventes_devis_etude_params_retrieve
 - patch /api/v1/ventes/devis/{id}/etude-params/ -> v1_ventes_devis_etude_params_partial_update
 - post /api/v1/ventes/devis/{id}/facturer-complet/ -> v1_ventes_devis_facturer_complet_create
+- get /api/v1/ventes/devis/{id}/facturer/ -> v1_ventes_devis_facturer_retrieve
+- post /api/v1/ventes/devis/{id}/facturer/ -> v1_ventes_devis_facturer_create
 - post /api/v1/ventes/devis/{id}/generer-facture/ -> v1_ventes_devis_generer_facture_create
 - post /api/v1/ventes/devis/{id}/generer-pdf/ -> v1_ventes_devis_generer_pdf_create
 - get /api/v1/ventes/devis/{id}/historique-configuration/ -> v1_ventes_devis_historique_configuration_retrieve
@@ -10041,6 +10045,14 @@ components:
 - DevisFacturerCompletPaiement
 - DevisFacturerCompletRequestRequest
 - DevisFacturerCompletResponse
+- DevisFacturerVenteApercu
+- DevisFacturerVenteErreur
+- DevisFacturerVenteFacture
+- DevisFacturerVenteMontants
+- DevisFacturerVentePlanLigne
+- DevisFacturerVenteProchaine
+- DevisFacturerVenteRequestRequest
+- DevisFacturerVenteResponse
 - DevisFromLayoutRequestRequest
 - DevisFromLayoutResponse
 - DevisGenererFactureRequestRequest
@@ -10243,6 +10255,8 @@ components:
 - FactureAbandonnerSoldeRequestMotifEnum
 - FactureAbandonnerSoldeRequestRequest
 - FactureActivity
+- FactureAnnulationAvoir
+- FactureAnnulee
 - FactureAnnulerAcompteActionEnum
 - FactureAnnulerAcompteRequest
 - FactureAnnulerRequestRequest
@@ -10269,6 +10283,7 @@ components:
 - FactureEnvoyerEmailResponse
 - FactureErreurChamp
 - FactureErreurEnvoiEmail
+- FactureErreurSuppression
 - FactureExclureRelanceRequestRequest
 - FactureFournisseur
 - FactureFournisseurRequest

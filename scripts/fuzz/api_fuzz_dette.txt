@@ -222,6 +222,7 @@ API accepted schema-violating request|GET /api/django/offlinesync/operations/
 API accepted schema-violating request|GET /api/django/outillage/kit-items/
 API accepted schema-violating request|GET /api/django/outillage/kits/
 API accepted schema-violating request|GET /api/django/outillage/outils/
+API accepted schema-violating request|GET /api/django/parametres/approbations/
 API accepted schema-violating request|GET /api/django/parametres/cadence-relance/
 API accepted schema-violating request|GET /api/django/parametres/conditions-paiement/
 API accepted schema-violating request|GET /api/django/parametres/email-templates/
@@ -415,6 +416,7 @@ API accepted schema-violating request|PATCH /api/django/notifications/annonces/{
 API accepted schema-violating request|PATCH /api/django/notifications/holidays/{id}/
 API accepted schema-violating request|PATCH /api/django/notifications/whatsapp-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/notifications/working-hours/{id}/
+API accepted schema-violating request|PATCH /api/django/parametres/approbations/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/conditions-paiement/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/email-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/messages/
@@ -457,6 +459,7 @@ API accepted schema-violating request|POST /api/django/facturation/factures/{id}
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/exclure-relance/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/whatsapp/
 API accepted schema-violating request|POST /api/django/ged/cabinets/
+API accepted schema-violating request|POST /api/django/ged/documents/classer-apres-vente/
 API accepted schema-violating request|POST /api/django/ged/documents/{id}/archiver-legalement/
 API accepted schema-violating request|POST /api/django/ged/documents/{id}/placer-legal-hold/
 API accepted schema-violating request|POST /api/django/ged/exigences-dossier/
@@ -490,6 +493,7 @@ API accepted schema-violating request|POST /api/django/notifications/whatsapp-te
 API accepted schema-violating request|POST /api/django/notifications/whatsapp-templates/{id}/decision/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API accepted schema-violating request|POST /api/django/outillage/kits/
+API accepted schema-violating request|POST /api/django/parametres/approbations/
 API accepted schema-violating request|POST /api/django/parametres/cadence-relance/
 API accepted schema-violating request|POST /api/django/parametres/conditions-paiement/
 API accepted schema-violating request|POST /api/django/parametres/config-import/
@@ -542,6 +546,7 @@ API accepted schema-violating request|PUT /api/django/notifications/holidays/{id
 API accepted schema-violating request|PUT /api/django/notifications/whatsapp-templates/{id}/
 API accepted schema-violating request|PUT /api/django/notifications/working-hours/{id}/
 API accepted schema-violating request|PUT /api/django/outillage/kits/{id}/
+API accepted schema-violating request|PUT /api/django/parametres/approbations/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/cadence-relance/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/conditions-paiement/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/email-templates/bulk/
@@ -814,6 +819,7 @@ API rejected schema-compliant request|POST /api/django/ged/documents/{id}/archiv
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/caviarder/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/deplacer/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/office-ouvrir/
+API rejected schema-compliant request|POST /api/django/ged/documents/{id}/office-sauvegarder/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/restaurer/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/tagger/
 API rejected schema-compliant request|POST /api/django/ged/legal-holds/
@@ -903,6 +909,7 @@ API rejected schema-compliant request|POST /api/django/notifications/messages-ac
 API rejected schema-compliant request|POST /api/django/notifications/routing-rules/
 API rejected schema-compliant request|POST /api/django/outillage/kit-items/
 API rejected schema-compliant request|POST /api/django/outillage/outils/{id}/calibrer/
+API rejected schema-compliant request|POST /api/django/parametres/approbations/
 API rejected schema-compliant request|POST /api/django/parametres/cadence-relance/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/
@@ -1321,6 +1328,7 @@ Response violates schema|POST /api/django/crm/leads/{id}/relance/initialiser/
 Response violates schema|POST /api/django/crm/leads/{id}/restaurer/
 Response violates schema|POST /api/django/crm/partenaires/
 Response violates schema|POST /api/django/facturation/factures/
+Response violates schema|POST /api/django/ged/documents/classer-apres-vente/
 Response violates schema|POST /api/django/ged/documents/{id}/assigner/
 Response violates schema|POST /api/django/ged/documents/{id}/check-in/
 Response violates schema|POST /api/django/ged/documents/{id}/check-out/
@@ -1696,6 +1704,21 @@ Server error|POST /api/django/core/data-explorer/run/
 Server error|POST /api/django/ventes/devis/{id}/replace-lines/
 Server error|POST /api/django/ventes/devis/from-layout/
 Server error|POST /api/django/ventes/factures/{id}/retour-client/
+# VNT lot M1 (12/10/2026, PR #982) : constats pre-existants hors du diff (reporting/*, dupliquer-variante), tirage aleatoire.
+API accepted schema-violating request|PATCH /api/django/reporting/kpi-alertes/{id}/
+API accepted schema-violating request|POST /api/django/reporting/kpi-alertes/
+API accepted schema-violating request|POST /api/django/ventes/devis/{id}/dupliquer-variante/
+API accepted schema-violating request|PUT /api/django/reporting/kpi-alertes/{id}/
+API rejected schema-compliant request|POST /api/django/reporting/rapport-definitions/
+API rejected schema-compliant request|POST /api/django/reporting/saved-reports/
+Response violates schema|PATCH /api/django/reporting/kpi-alertes/{id}/
+Server error|POST /api/django/reporting/approbations-en-attente/decider/
+Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
+# VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
+API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
+# VNT lot M1, tour 3 (12/10/2026) : PATCH factures/{id} — le harnais fuzz envoie entite: 0 (aucune Entite pour la societe fuzz, prepare_fuzz_env.py) ; limite du harnais, pas de la vue.
+API rejected schema-compliant request|PATCH /api/django/ventes/factures/{id}/
+
 # PR #984 (12/10/2026) — 7 constats PRÉ-EXISTANTS relevés par le tirage du job PR (périmètre calepinage/crm/ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (les deux 500 crm = vrais bugs à corriger à la cause).
 API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/comparatif.xlsx/
@@ -1711,11 +1734,9 @@ API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{i
 Server error|POST /api/django/crm/leads/{id}/merge/
 # PR #984, 3e tirage (12/10/2026) — 17 constats PRÉ-EXISTANTS (variance de couverture du job PR : 198 opérations revues au 3e tirage contre 154 au 1er),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
-API accepted schema-violating request|GET /api/django/crm/leads/
 API accepted schema-violating request|PATCH /api/django/crm/partenaires/{id}/
 API accepted schema-violating request|POST /api/django/crm/clients/
 API accepted schema-violating request|POST /api/django/crm/partenaires/
-API accepted schema-violating request|POST /api/django/ventes/devis/{id}/dupliquer-variante/
 API accepted schema-violating request|PUT /api/django/crm/partenaires/{id}/
 API rejected schema-compliant request|POST /api/django/crm/forecast-entries/
 API rejected schema-compliant request|PUT /api/django/calepinage/parametres/profils-types/
@@ -1751,12 +1772,21 @@ API rejected schema-compliant request|PATCH /api/django/parametres/tarification/
 API accepted schema-violating request|POST /api/django/sav/tickets/actions-groupees/
 API accepted schema-violating request|PUT /api/django/sav/categories-equipement/{id}/
 API accepted schema-violating request|PUT /api/django/sav/equipes-maintenance/{id}/
-# Vague 7 (13/10/2026) — constats core PRÉ-EXISTANTS rendus visibles par le seed FK du harnais (#989) : règles métier et coercition, portés par ERR-ENF11-FUZZ-CORE (ouverte).
+# PR #987 (13/10/2026) : constats core PRÉ-EXISTANTS rendus visibles par le seed stock du harnais (scope core) — portés par ERR-ENF11-FUZZ-CORE (session dev-all-laptop), à corriger à la cause
 API accepted schema-violating request|POST /api/django/core/dossiers/{id}/checklist/
 API rejected schema-compliant request|PATCH /api/django/core/formulaires/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/workflow-step-definitions/{id}/
+# PR #987, 2e tirage (13/10/2026) : constats PRÉ-EXISTANTS sur des routes non modifiées par la PR (core : ERR-ENF11-FUZZ-CORE ; stock blocages-qualite ; achats depuis-ocr, motif `fields` non publié au schéma multipart) — à corriger à la cause
+API accepted schema-violating request|PATCH /api/django/core/matrices-approbation/{id}/
+API accepted schema-violating request|POST /api/django/core/matrices-approbation/
+API accepted schema-violating request|PUT /api/django/core/matrices-approbation/{id}/
+API rejected schema-compliant request|PATCH /api/django/core/workflow-definitions/{id}/
+API rejected schema-compliant request|PATCH /api/django/stock/blocages-qualite/{id}/
+API rejected schema-compliant request|PUT /api/django/stock/blocages-qualite/{id}/
+API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/depuis-ocr/
+# Vague 7 (13/10/2026) — lignes gelées sur dev-all-laptop absentes de main après fusion (union).
+API accepted schema-violating request|GET /api/django/crm/leads/
 API rejected schema-compliant request|PATCH /api/django/core/dashboards-partages-internes/{id}/
 API rejected schema-compliant request|PUT /api/django/core/dashboards-partages-internes/{id}/
-API rejected schema-compliant request|PATCH /api/django/core/workflow-definitions/{id}/
 API rejected schema-compliant request|PUT /api/django/core/workflow-definitions/{id}/
 API rejected schema-compliant request|PUT /api/django/core/workflow-step-definitions/{id}/

@@ -1355,8 +1355,15 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
         # écriture comptable à zéro). Elle hérite ainsi du verrou de période,
         # du blocage crédit XFAC28 et de `facture_emise` — qu'elle n'avait
         # jamais alors qu'elle posait EMISE.
-        from apps.ventes.domain.facturation_ops import emettre_facture
-        emettre_facture(facture, user=user, source='consolidation')
+        from apps.ventes.domain.facturation_ops import (
+            EmissionRefusee, emettre_facture)
+        try:
+            emettre_facture(facture, user=user, source='consolidation')
+        except EmissionRefusee as exc:
+            # VNT20 — un refus d'émission est un 400 français (la vue rend
+            # ``exc.detail``), jamais un 500 ; l'atomic défait le brouillon.
+            raise ValidationError({'detail': exc.motif,
+                                   'code': 'emission_refusee'})
 
     return facture
 

@@ -73,10 +73,12 @@ class TestSuppressionFacture(TestCase):
             company=self.company, nom='Onduleur', sku=f'AUD103-{_nxt()}',
             prix_vente=Decimal('5000'), quantite_stock=10)
 
-    def _facture(self, statut=Facture.Statut.BROUILLON, avec_ligne=True):
+    def _facture(self, statut=Facture.Statut.BROUILLON, avec_ligne=True,
+                 reference=None):
         n = _nxt()
         facture = Facture.objects.create(
-            company=self.company, reference=f'FAC-AUD103-{n:04d}',
+            company=self.company,
+            reference=f'FAC-AUD103-{n:04d}' if reference is None else reference,
             client=self.client_obj, statut=statut, taux_tva=Decimal('20'))
         if avec_ligne:
             LigneFacture.objects.create(
@@ -96,14 +98,14 @@ class TestSuppressionFacture(TestCase):
             company=self.company, facture=facture, montant=Decimal('1000'),
             date_paiement=date(2026, 3, 1), mode='virement')
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
         self.assertTrue(Paiement.objects.filter(pk=paiement.pk).exists())
 
     def test_facture_payee_refusee(self):
         facture = self._facture(statut=Facture.Statut.PAYEE)
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
 
     def test_brouillon_avec_paiement_refuse(self):
@@ -113,23 +115,64 @@ class TestSuppressionFacture(TestCase):
             company=self.company, facture=facture, montant=Decimal('10'),
             date_paiement=date(2026, 3, 1), mode='especes')
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
 
-    # ── Permission : « admin » élargi ≠ superutilisateur ──────────────────
+    # ── VNT13 (D-VNT-1, arbitrage 5) — palier responsable/admin ET un code
+    # d'écriture ventes_* : le Directeur non superutilisateur et le
+    # Responsable annulent et suppriment un brouillon ; jamais un Commercial
+    # (codes ventes sans palier), un Technicien responsable ni un Admin RH
+    # (palier responsable sans aucun code ventes_*). ─────────────────────
 
-    def test_role_roles_gerer_non_superuser_refuse(self):
+    def _api_role(self, nom, permissions):
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom=f'{nom} {_nxt()}',
+            permissions=list(permissions))
+        return _auth(User.objects.create_user(
+            username=f'vnt13_{_nxt()}', password='x', role=role,
+            role_legacy='normal', company=self.company))
+
+    def test_vnt13_annuler_et_supprimer_palier_et_code_ventes(self):
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+            RESPONSABLE_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS,
+        )
         self.assertTrue(self.directeur.is_admin_role)
         self.assertFalse(self.directeur.is_superuser)
-        facture = self._facture()
-        resp = self.api_dir.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 403, getattr(resp, 'data', resp))
-        self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
+        cas = (
+            ('Directeur', self.api_dir, True),
+            ('Responsable', self._api_role(
+                'Responsable', RESPONSABLE_PERMISSIONS), True),
+            ('Commercial', self._api_role(
+                'Commercial', COMMERCIAL_PERMISSIONS), False),
+            ('Technicien responsable', self._api_role(
+                'Technicien responsable', TECHNICIEN_RESP_PERMISSIONS), False),
+            ('Admin RH', self._api_role('Admin RH', ADMIN_RH_PERMISSIONS),
+             False),
+        )
+        for nom, api, autorise in cas:
+            with self.subTest(role=nom):
+                # Référence vide → « BROUILLON-<id> » (hors série légale).
+                brouillon = self._facture(reference='', avec_ligne=False)
+                r = api.delete(self._url(brouillon))
+                self.assertEqual(r.status_code, 204 if autorise else 403,
+                                 getattr(r, 'data', r))
+                self.assertEqual(
+                    Facture.objects.filter(pk=brouillon.pk).exists(),
+                    not autorise)
+                emise = self._facture(statut=Facture.Statut.EMISE)
+                r = api.post(self._url(emise) + 'annuler/', {}, format='json')
+                self.assertEqual(r.status_code, 200 if autorise else 403,
+                                 getattr(r, 'data', r))
+                emise.refresh_from_db()
+                self.assertEqual(emise.statut == Facture.Statut.ANNULEE,
+                                 autorise)
 
     # ── ProtectedError traduit, plus une 500 ──────────────────────────────
 
-    def test_facture_avec_avoir_repond_400_francais(self):
-        facture = self._facture()
+    def test_facture_avec_avoir_repond_409_francais(self):
+        facture = self._facture(reference='')  # VNT14 : brouillon provisoire
         Avoir.objects.create(
             company=self.company, reference=f'AV-AUD103-{_nxt()}',
             facture=facture, client=self.client_obj,
@@ -137,17 +180,39 @@ class TestSuppressionFacture(TestCase):
             montant_ht=Decimal('100'), montant_tva=Decimal('20'),
             montant_ttc=Decimal('120'))
         resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', resp))
         self.assertIn('avoir', str(resp.data).lower())
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
 
     # ── Le cas légitime reste possible ────────────────────────────────────
 
     def test_brouillon_nu_reste_supprimable_par_le_superutilisateur(self):
-        facture = self._facture(avec_ligne=False)
+        facture = self._facture(reference='', avec_ligne=False)
         resp = self.api_su.delete(self._url(facture))
         self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
         self.assertFalse(Facture.objects.filter(pk=facture.pk).exists())
+
+    # ── VNT14 (D-VNT-1) — seul un « BROUILLON-<id> » se supprime : une
+    # référence légale remise en brouillon s'ANNULE (jamais de trou ni de
+    # réutilisation du numéro par « plus-haut-utilisé + 1 »). ────────────
+
+    def test_vnt14_seul_un_brouillon_provisoire_se_supprime(self):
+        provisoire = self._facture(reference='', avec_ligne=False)
+        self.assertTrue(provisoire.reference.startswith('BROUILLON-'))
+        resp = self.api_su.delete(self._url(provisoire))
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', resp))
+        self.assertFalse(Facture.objects.filter(pk=provisoire.pk).exists())
+
+        legale = self._facture(reference='FAC-0012', avec_ligne=False)
+        resp = self.api_su.delete(self._url(legale))
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', resp))
+        self.assertEqual(resp.data['code'], 'reference_legale')
+        self.assertIn('FAC-0012', str(resp.data['detail']))
+        self.assertIn('annulez-la', str(resp.data['detail']))
+        # Le numéro reste porté : la série « plus-haut-utilisé + 1 » ne
+        # peut ni le réutiliser ni laisser de trou.
+        self.assertEqual(
+            Facture.objects.get(pk=legale.pk).reference, 'FAC-0012')
 
 
 class TestPaiementProtege(TestCase):

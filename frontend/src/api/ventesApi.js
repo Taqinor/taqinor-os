@@ -108,6 +108,11 @@ const ventesApi = {
   // UN appel atomique. Contrat : apps/ventes/contract_samples/devis_facturer_complet.json.
   facturerComplet: (devisId, { paiements = [] } = {}) =>
     api.post(`/ventes/devis/${devisId}/facturer-complet/`, { paiements }),
+  // VNT45 (D-VNT-3) — « Facturer la vente » : aperçu (plan, prochaine tranche,
+  // acompte proposé, état de la vente) puis création de la facture d'une nature
+  // donnée. Contrat : apps/ventes/contract_samples/devis_facturer.json.
+  apercuFacturerVente: (devisId) => api.get(`/ventes/devis/${devisId}/facturer/`),
+  facturerVente: (devisId, body) => api.post(`/ventes/devis/${devisId}/facturer/`, body),
   // ADOC131 (D-ADOC-4) — « Révoquer le lien client » : coupe immédiatement le
   // lien public (proposition ET suivi, même jeton). → { revoques, revoque_le }.
   revoquerLienPublic: (devisId) =>
@@ -431,6 +436,11 @@ const ventesApi = {
   // AFAC13 — corps optionnel `{acompte: {action, facture_cible?}}` (contrat
   // facture_annulation.json) : où va l'argent rattaché à la facture annulée.
   annulerFacture: (id, body) => api.post(`/ventes/factures/${id}/annuler/`, body),
+  // VNT46 (D-VNT-1) — suppression d'un brouillon `BROUILLON-<id>` SEUL (le serveur
+  // répond 409 `reference_legale` pour tout autre numéro : on annule, on ne supprime pas).
+  supprimerFacture: (id) => api.delete(`/ventes/factures/${id}/`),
+  // VNT43/VNT46 — quittance PDF d'UN paiement (fichier Quittance_<numero_recu>.pdf).
+  recuPdfPaiement: (id) => api.get(`/ventes/paiements/${id}/recu-pdf/`, { responseType: 'blob' }),
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   // ZFAC11 — reste à payer arrondi au pas de caisse société pour un règlement

@@ -14,6 +14,7 @@ from rest_framework import serializers
 from rest_framework.fields import SkipField
 
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
+from .openapi_helpers import EntierBornePublie
 from .permissions import MasqueMontantsAchatMixin
 
 from .models_wms import (
@@ -259,9 +260,14 @@ class ExpeditionTransporteurSerializer(MasqueMontantsAchatMixin,
         return bool(obj.etiquette_pdf_key)
 
 
-class PlanComptageTournantSerializer(CompanyScopedRelationsMixin,
+class PlanComptageTournantSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                      serializers.ModelSerializer):
     """NTWMS13 — fréquence de recomptage d'une classe ABC."""
+
+    # ERR fuzz : borne PUBLIÉE au schéma (``minimum: 1``) — 0 passait pour
+    # conforme puis était refusé ; le refus reste celui de
+    # ``validate_frequence_jours`` (message et code du contrat).
+    frequence_jours = EntierBornePublie('min', min_value=1, required=False)
 
     class Meta:
         model = PlanComptageTournant
