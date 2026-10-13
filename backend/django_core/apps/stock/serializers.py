@@ -2295,10 +2295,13 @@ class InventaireSessionSerializer(ChampsTexteBooleenStricts, serializers.ModelSe
         request = self.context.get('request')
         company_id = getattr(getattr(request, 'user', None), 'company_id',
                              None)
-        for ligne in value:
-            if ligne['produit'].company_id != company_id:
-                raise serializers.ValidationError(
-                    'Produit inconnu pour cette société.')
+        # ERR fuzz : un PATCH partiel laissait passer une ligne sans produit /
+        # compté -> KeyError (500) ; elle répond 400.
+        incomplete = any('produit' not in ligne or 'quantite_comptee' not in ligne for ligne in value)
+        if incomplete or any(ligne['produit'].company_id != company_id for ligne in value):
+            raise serializers.ValidationError(
+                'Chaque ligne exige produit et quantite_comptee.' if incomplete
+                else 'Produit inconnu pour cette société.')
         return value
 
     def create(self, validated_data):
