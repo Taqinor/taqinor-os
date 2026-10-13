@@ -58,7 +58,7 @@ class ConceptionPourLeadTest(TestCase):
 
     def test_toujours_les_deux_cles_sans_devis(self):
         self.assertEqual(conception_pour_lead(self.lead, self.company),
-                         {'kwc': None, 'image_url': None})
+                         {'kwc': None, 'image_url': None, 'calepinage': None})
 
     def test_kwc_lu_dans_le_calepinage(self):
         self._devis()
@@ -85,7 +85,7 @@ class ConceptionPourLeadTest(TestCase):
         self._devis(company=self.other)
         # Même lead, autre société sur le devis → rien ne remonte.
         self.assertEqual(conception_pour_lead(self.lead, self.company),
-                         {'kwc': None, 'image_url': None})
+                         {'kwc': None, 'image_url': None, 'calepinage': None})
 
     def test_image_url_chemin_relatif_meme_origine(self):
         # ACAL314 — un chemin RELATIF servi par Django, plus une URL
@@ -109,12 +109,48 @@ class ConceptionPourLeadTest(TestCase):
         self.assertTrue(resultat['image_url'].startswith('/api/django/'))
         self.assertEqual(resultat['kwc'], 7.7)
 
+    # ── ACAL273 — la pastille lit le kWc VENDU, sinon le calepinage ouvert ──
+    def test_pastille_lit_le_vendu(self):
+        """Devis 10 lignes de 550 W (5,5 kWc) sur un layout à 7,2 kWc (base
+        720 W) : la pastille dit 5,5 = ``puissance_kwc_du_devis``."""
+        from decimal import Decimal
+
+        from apps.stock.models import Produit
+        devis = self._devis(layout={'result': {'kwc': 7.2, 'panels': 10}})
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau Solar 550W', sku='ACAL273-550',
+            prix_vente=Decimal('1000'), prix_achat=Decimal('1'),
+            quantite_stock=100)
+        devis.lignes.create(
+            produit=produit, designation='Panneau Solar 550W',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+        resultat = conception_pour_lead(self.lead, self.company)
+        self.assertEqual(resultat['kwc'], 5.5)
+        self.assertEqual(resultat['kwc'], puissance_kwc_du_devis(devis))
+        self.assertIsNone(resultat['calepinage'])
+
+    def test_lead_sans_devis_lit_le_calepinage(self):
+        """Lead sans devis, calepinage ouvert de 12 modules de 710 Wc : 8,52
+        kWc lus par ``apps.calepinage.selectors`` avec l'id et le statut."""
+        from apps.calepinage.models import Calepinage
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Toit',
+            roof_layout={
+                'modules': [{'id': 'm710', 'pmaxWc': 710}],
+                'zones': [{'label': 'Sud',
+                           'geometry': {'count': 12, 'moduleId': 'm710'}}]})
+        resultat = conception_pour_lead(self.lead, self.company)
+        self.assertEqual(resultat['kwc'], 8.52)
+        self.assertEqual(resultat['calepinage'],
+                         {'id': calepinage.pk, 'statut': calepinage.statut})
+
     def test_selecteur_crm_passe_plat(self):
         self._devis()
         self.assertEqual(conception_3d_du_lead(self.lead),
                          conception_pour_lead(self.lead, self.company))
         self.assertEqual(conception_3d_du_lead(None),
-                         {'kwc': None, 'image_url': None})
+                         {'kwc': None, 'image_url': None, 'calepinage': None})
 
 
 class ConceptionSurLaFicheLeadTest(TestCase):
@@ -138,7 +174,7 @@ class ConceptionSurLaFicheLeadTest(TestCase):
         resp = self.api.get('/api/django/crm/leads/%s/' % self.lead.id)
         self.assertEqual(resp.status_code, 200)
         self.assertIn('conception', resp.data)
-        self.assertEqual(set(resp.data['conception']), {'kwc', 'image_url'})
+        self.assertEqual(set(resp.data['conception']), {'kwc', 'image_url', 'calepinage'})
         self.assertEqual(resp.data['conception']['kwc'], 7.7)
 
     def test_liste_ne_porte_pas_la_conception(self):

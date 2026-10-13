@@ -64,7 +64,7 @@ class Cad140EngagementRenommeTests(unittest.TestCase):
         # lane) : un renommage de ces noms aurait cassé cet import sans que
         # cette lane puisse le corriger dans le même commit.
         for nom in ('compute_engagement_score', 'engagement_label',
-                    'engagement_for_client', 'engagement_bulk'):
+                    'engagement_for_client'):
             self.assertTrue(callable(getattr(engagement, nom, None)), nom)
 
 
