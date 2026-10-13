@@ -106,6 +106,30 @@ def _sch(name, fields, extra=False, null=False, many=False):
     return inline_serializer(name, fields, many=many, allow_null=null)
 
 
+def _valider_corps(schema, data):
+    """Valide ``data`` par le sérialiseur inline déclaré au schéma (400 nommant
+    le champ fautif) et renvoie les données validées."""
+    serializer = type(schema)(data=data)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
+_SCHEMA_REBUT = _sch('SavMettreAuRebutRequete', {'motif': ChaineStricte()})
+
+
+# `description`/`cause_racine` peuvent être vides : l'écran « problème depuis
+# regroupement » envoie `cause_racine: ''` tant que l'utilisateur n'a rien saisi.
+_SCHEMA_PROBLEME_REGROUPEMENT = inline_serializer(
+    'SavProblemeDepuisRegroupementRequest', {
+        'titre': ChaineStricte(),
+        'description': ChaineStricte(required=False, allow_blank=True),
+        'cause_racine': ChaineStricte(required=False, allow_blank=True),
+        'ticket_ids': drf_serializers.ListField(
+            child=drf_serializers.IntegerField(min_value=1, max_value=ID_MAX),
+            min_length=1),
+    })
+
+
 class SavFacturerRequete(drf_serializers.Serializer):
     """Corps de ``facturer`` / ``generer-facture`` (ENF11 : validé, jamais
     coercé — ``override`` est un vrai booléen JSON ou absent)."""
@@ -373,8 +397,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             inst.save(update_fields=update_fields)
 
     @extend_schema(
-        request=_sch('SavMettreAuRebutRequete', {'motif': _CharF()}),
-        responses=EquipementSerializer)
+        request=_SCHEMA_REBUT, responses=EquipementSerializer)
     @action(detail=True, methods=['post'], url_path='mettre-au-rebut',
             permission_classes=[IsResponsableOrAdmin])
     def mettre_au_rebut(self, request, pk=None):
@@ -383,7 +406,9 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         futur) et exclut l'équipement du parc actif ET des générations de
         visites préventives (XSAV17 — voir `enregistrer_releve_compteur`)."""
         equipement = self.get_object()
-        motif = (request.data.get('motif') or '').strip()
+        # ENF11 : `motif` est une chaîne non vide (un tableau levait `.strip()` → 500).
+        motif = _valider_corps(
+            _SCHEMA_REBUT, request.data)['motif'].strip()
         if not motif:
             return Response(
                 {'motif': 'Le motif de mise au rebut est obligatoire.'},
@@ -1342,10 +1367,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if not isinstance(request.data.get('motif', ''), str):
             return Response({'motif': 'Une chaîne est attendue.'}, status=400)
         # ENF11 : `statut`/`priorite` sont publiés énumérés — une valeur fournie
-        # hors énumération est refusée, même quand l'opération ne la lit pas.
+        # hors énumération (chaîne vide comprise : l'écran n'envoie jamais que la
+        # clé de l'opération) est refusée, même quand l'opération ne la lit pas.
         for cle in ('statut', 'priorite'):
             valeur = request.data.get(cle)
-            if valeur not in (None, '') and (
+            if valeur is not None and (
                     not isinstance(valeur, str)
                     or valeur not in self._ACTIONS_GROUPEES_VALEURS[cle]):
                 return Response({cle: 'Valeur inconnue.'}, status=400)
@@ -3678,20 +3704,14 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         })
 
     @extend_schema(
-        request=inline_serializer('SavProblemeDepuisRegroupementRequest', {
-            'titre': drf_serializers.CharField(),
-            'description': drf_serializers.CharField(required=False),
-            'cause_racine': drf_serializers.CharField(required=False),
-            'ticket_ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField(min_value=1, max_value=ID_MAX),
-                min_length=1),
-        }),
-        responses=inline_serializer('SavProblemeDepuisRegroupementResponse', {
-            'id': drf_serializers.IntegerField(),
-            'reference': drf_serializers.CharField(),
-            'titre': drf_serializers.CharField(),
-            'nb_tickets': drf_serializers.IntegerField(),
-        }))
+        request=_SCHEMA_PROBLEME_REGROUPEMENT,
+        responses={201: inline_serializer(
+            'SavProblemeDepuisRegroupementResponse', {
+                'id': drf_serializers.IntegerField(),
+                'reference': drf_serializers.CharField(),
+                'titre': drf_serializers.CharField(),
+                'nb_tickets': drf_serializers.IntegerField(),
+            })})
     @action(detail=False, methods=['post'],
             url_path='creer-depuis-regroupement',
             permission_classes=[
@@ -3704,18 +3724,9 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         ids reçus sont rattachés (aucun « tout le groupe » implicite côté
         serveur). Tout ou rien : si un id est inconnu, RIEN n'est créé."""
         company = request.user.company
-        titre = str(request.data.get('titre') or '').strip()
-        if not titre:
-            raise ValidationError(
-                {'titre': 'Le titre du problème est obligatoire.'})
-        bruts = request.data.get('ticket_ids')
-        if not isinstance(bruts, (list, tuple)) or not bruts:
-            raise ValidationError(
-                {'ticket_ids': 'Cochez au moins un ticket à rattacher.'})
-        try:
-            demandes = [int(valeur) for valeur in bruts]
-        except (TypeError, ValueError):
-            raise ValidationError({'ticket_ids': 'Ticket inconnu.'})
+        corps = _valider_corps(_SCHEMA_PROBLEME_REGROUPEMENT, request.data)
+        titre = corps['titre'].strip()
+        demandes = corps['ticket_ids']
 
         # ASAV76 — bornés à la portée de l'utilisateur (comme lier-ticket).
         tickets = list(_tickets_visibles(request).filter(
@@ -3730,8 +3741,8 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 Probleme, 'PRB', company,
                 lambda ref: Probleme.objects.create(
                     company=company, reference=ref, titre=titre,
-                    description=str(request.data.get('description') or ''),
-                    cause_racine=str(request.data.get('cause_racine') or '')),
+                    description=corps.get('description', ''),
+                    cause_racine=corps.get('cause_racine', '')),
             )
             ProblemeIncident.objects.bulk_create([
                 ProblemeIncident(company=company, probleme=probleme,

@@ -60,6 +60,21 @@ class NTSRV31CreerDepuisRegroupementTest(TestCase):
             set(probleme.tickets.values_list('pk', flat=True)),
             {self.tickets[0].pk, self.tickets[1].pk})
 
+    def test_champs_texte_valides_par_le_schema(self):
+        # CI #985 (api-fuzz) : titre blanc / non-chaîne refusés ; la cause
+        # racine vide reste permise (l'écran l'envoie vide par défaut).
+        ids = [self.tickets[0].pk]
+        for corps in ({'titre': ''}, {'titre': [None]},
+                      {'titre': 'X', 'cause_racine': {'a': 1}},
+                      {'titre': 'X', 'description': [1]}):
+            resp = self.api.post(URL, {**corps, 'ticket_ids': ids},
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self.api.post(URL, {
+            'titre': 'Vide ok', 'cause_racine': '', 'ticket_ids': ids},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
     def test_ticket_decoche_reellement_exclu(self):
         resp = self.api.post(URL, {
             'titre': 'Onduleur X — Surchauffe',

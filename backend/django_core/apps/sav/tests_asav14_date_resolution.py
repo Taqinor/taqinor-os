@@ -92,6 +92,16 @@ class DateResolutionTests(TestCase):
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('statut', r.json())
 
+    def test_lot_priorite_ou_statut_vide_refuse_400(self):
+        # CI #985 (api-fuzz) : `priorite: ""` (minLength 1 au schéma) était ignoré.
+        t = self._ticket(Ticket.Statut.EN_COURS)
+        for cle in ('priorite', 'statut'):
+            r = self.api.post(f'{BASE}/actions-groupees/', {
+                'ids': [t.pk], 'operation': 'technicien', 'technicien': None,
+                cle: ''}, format='json')
+            self.assertEqual(r.status_code, 400, r.content)
+            self.assertIn(cle, r.json())
+
     def test_patch_ignore(self):
         t = self._ticket(Ticket.Statut.NOUVEAU)
         r = self.api.patch(f'{BASE}/{t.pk}/', {
