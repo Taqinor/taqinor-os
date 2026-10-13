@@ -262,6 +262,60 @@ def _clients_avec_installation(qs, company):
                      .values('client'))
 
 
+def _semer_dashboard(company, user):
+    existant = _premier('core.Dashboard', company)
+    if existant is not None:
+        return existant
+    return _modele('core.Dashboard').objects.create(
+        company=company, titre='Tableau de bord fuzz')
+
+
+def _semer_modele_marque(company, user):
+    existant = _premier('core.BrandedTemplate', company)
+    if existant is not None:
+        return existant
+    return _modele('core.BrandedTemplate').objects.create(
+        company=company, kind='email', code='fuzz-modele', nom='Modèle fuzz')
+
+
+def _semer_equipement(company, user):
+    existant = _premier('sav.Equipement', company)
+    if existant is not None:
+        return existant
+    produit = _premier('stock.Produit', company)
+    if produit is None:
+        raise ValueError('aucun produit dans la société de fuzz')
+    return _modele('sav.Equipement').objects.create(
+        company=company, produit=produit, numero_serie='FUZZ-SN-0001',
+        client_vente=_premier('crm.Client', company))
+
+
+def _semer_equipe_maintenance(company, user):
+    equipe, _ = _modele('sav.EquipeMaintenance').objects.get_or_create(
+        company=company, nom='Équipe fuzz')
+    return equipe
+
+
+def _semer_contrat_maintenance(company, user):
+    from django.utils import timezone
+
+    existant = _premier('sav.ContratMaintenance', company)
+    if existant is not None:
+        return existant
+    client = _premier('crm.Client', company)
+    if client is None:
+        raise ValueError('aucun client dans la société de fuzz')
+    return _modele('sav.ContratMaintenance').objects.create(
+        company=company, client=client, date_debut=timezone.localdate())
+
+
+def _utilisateurs_internes(qs, company):
+    """Comptes actifs de la société, hors comptes portail client."""
+    portail = getattr(qs.model, 'PORTEE_PORTAIL_CLIENT', None)
+    qs = qs.filter(is_active=True)
+    return qs.exclude(portee=portail) if portail else qs
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
     ('records.ActivityType', _semer_type_activite),
@@ -270,6 +324,11 @@ SEMEURS = (
     ('installations.Installation', _semer_installation),
     ('monitoring.MonitoringConfig', _semer_supervision),
     ('visites.VisiteTerrain', _semer_visite),
+    ('core.Dashboard', _semer_dashboard),
+    ('core.BrandedTemplate', _semer_modele_marque),
+    ('sav.Equipement', _semer_equipement),
+    ('sav.EquipeMaintenance', _semer_equipe_maintenance),
+    ('sav.ContratMaintenance', _semer_contrat_maintenance),
 )
 
 
@@ -294,6 +353,15 @@ REGLES_PAR_CHEMIN = (
      'installations.Installation', _installations_supervisees, None),
     (r'^/api/django/monitoring/', ('client', 'client_id'), 'crm.Client',
      _clients_avec_installation, None),
+    (r'^/api/django/sav/', ('equipe', 'equipe_id'), 'sav.EquipeMaintenance',
+     None, None),
+    (r'^/api/django/sav/', ('contrat', 'contrat_id'), 'sav.ContratMaintenance',
+     None, None),
+    (r'^/api/django/sav/', ('ticket_ids',), 'sav.Ticket', None, None),
+    (r'^/api/django/sav/', ('technicien', 'technicien_id'),
+     'authentication.CustomUser', _utilisateurs_internes, None),
+    (r'^/api/django/sav/tickets/actions-groupees/', ('ids',), 'sav.Ticket',
+     None, None),
 )
 
 
