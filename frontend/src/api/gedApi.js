@@ -438,19 +438,6 @@ const gedApi = {
   // (`GED_OFFICE_URL`) : 400 explicite sans URL configurée. Pose le check-out
   // (GED16) et renvoie { editor_url, document_id }.
   officeOuvrir: (id) => api.post(`/ged/documents/${id}/office-ouvrir/`),
-  // XGED30 — Callback de sauvegarde de l'éditeur Office : crée une NOUVELLE
-  // version depuis le contenu édité. `file` : Blob/File. NON consommé par un
-  // écran ERP aujourd'hui (le round-trip postMessage d'un éditeur embarqué
-  // réel — Collabora/OnlyOffice iframe — sort du périmètre de cette tâche) ;
-  // le wrapper existe pour une future intégration de l'éditeur embarqué.
-  officeSauvegarder: (id, file) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    return api.post(`/ged/documents/${id}/office-sauvegarder/`, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-  },
-
   // XGED14 — Opérations en lot sur une multi-sélection de documents.
   // `data` : { documents:[<id>,...], operation:'tagger'|'detaguer'|'deplacer'|
   // 'corbeille'|'partager'|'demander_signature'|'demander_revue', params?:{} }.

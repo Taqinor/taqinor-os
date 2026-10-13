@@ -2936,77 +2936,6 @@ def generer_document(modele, contexte, *, company, created_by=None,
     return document, True
 
 
-# ── GED29 — Filage (classement) des PDF après-vente (SAV) générés ──────────
-
-def classer_document_apres_vente(*, company, file_key='', contenu_bytes=None,
-                                 nom, source_type, source_id,
-                                 cabinet='Après-vente', dossier='Après-vente',
-                                 created_by=None, mime='application/pdf',
-                                 description=''):
-    """GED29 — Classe (file) un PDF APRÈS-VENTE (SAV) DÉJÀ généré dans la GED.
-
-    Point d'entrée de RÉCEPTION côté GED : une autre app (le module SAV /
-    après-vente, câblé dans une tâche FUTURE) produit un PDF après-vente
-    (rapport d'intervention, bon de SAV, attestation de garantie…) puis appelle
-    ce service pour le DÉPOSER et le CLASSER automatiquement dans un cabinet/
-    dossier « Après-vente » dédié — SANS importer les modèles GED, en RÉUTILISANT
-    les primitives existantes (`deposit_document`, lui-même fondé sur
-    `create_document`/`add_version` et le stockage objet `records.storage`). On ne
-    réimplémente ni le stockage ni le versionnage ni l'idempotence.
-
-    Multi-tenant : `company` est posée CÔTÉ SERVEUR par l'appelant (jamais lue
-    d'un corps de requête) ; cabinet, dossier, document et version héritent tous
-    de cette société. Le cabinet et le dossier « Après-vente » sont auto-créés
-    s'ils manquent (`ensure_cabinet` / `ensure_root_folder`, idempotents — via
-    `deposit_document`).
-
-    Source du contenu (au moins l'une) :
-      - `file_key` : la clé d'un objet déjà stocké en MinIO (records.storage),
-        p.ex. un PDF que l'app SAV a déjà téléversé.
-      - `contenu_bytes` : des octets bruts (rendu PDF en mémoire) téléversés ici
-        via le même stockage objet que `records.storage`.
-      Si AUCUN n'est fourni, un document « pointeur vide » est tout de même créé
-      (trace), comportement hérité de `deposit_document`.
-
-    CLASSEMENT : sous-dossier contextuel TRIVIAL réutilisant la résolution sûre de
-    GED28 — le nom de `dossier` peut porter des jetons ``{{ champ }}`` (ici borné à
-    l'année, ex. « Après-vente {{ annee }} » → « Après-vente 2026 ») résolus par
-    `fusionner_modele` (substitution SÛRE, jamais d'exécution de code). L'année
-    courante est injectée dans le contexte ; un `dossier` sans jeton est laissé
-    tel quel.
-
-    IDEMPOTENCE : ancrée sur (`source_type`, `source_id`) — l'objet métier SAV
-    source (ex. 'sav.ticket' + pk, ou 'sav.rapportintervention' + pk). Un dépôt
-    répété pour le MÊME objet source ne crée JAMAIS un second document : on
-    retrouve et on renvoie l'existant (idempotence native de `deposit_document`).
-
-    Renvoie `(document, created)` : le `Document` GED et un booléen (`created` =
-    True s'il vient d'être créé, False = déposé idempotent / déjà présent).
-    """
-    from django.utils import timezone
-
-    cabinet_nom = (cabinet or '').strip() or 'Après-vente'
-    # Sous-dossier contextuel trivial (GED28) : résout les jetons {{ annee }}
-    # depuis un contexte borné (année courante). Un dossier sans jeton est inchangé.
-    brut = (dossier or '').strip()
-    contexte = {'annee': timezone.now().year}
-    folder_nom = (fusionner_modele(brut, contexte).strip() if brut else '') \
-        or 'Après-vente'
-    return deposit_document(
-        company=company,
-        nom=nom,
-        source_type=source_type,
-        source_id=source_id,
-        file_key=file_key or '',
-        contenu_bytes=contenu_bytes,
-        mime=mime or 'application/pdf',
-        description=description or '',
-        cabinet_nom=cabinet_nom,
-        folder_nom=folder_nom,
-        created_by=created_by,
-    )
-
-
 # ── GED30 — Signature électronique (point d'intégration + STUB no-op) ─────────
 
 def esign_active():
@@ -6618,39 +6547,6 @@ def ouvrir_dans_editeur_office(document, *, user):
     assert_not_legal_hold(document)
     checkout_document(document, user)
     return {'editor_url': office_edit_url(), 'document_id': document.pk}
-
-
-def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
-                                      filename='', mime=''):
-    """XGED30 — Callback de sauvegarde de l'éditeur Office : crée une
-    NOUVELLE `DocumentVersion` à partir du contenu édité.
-
-    Respecte le check-out (GED16 — `assert_not_locked_by_other`, un
-    utilisateur tiers ne peut pas écraser la session d'édition d'un autre) et
-    les gardes GED23/24 (document archivé/hold → refus explicite, jamais une
-    500). Lève `ValueError` si le slot n'est pas activé. Renvoie la nouvelle
-    `DocumentVersion` créée (le check-out N'EST PAS libéré automatiquement —
-    l'utilisateur ferme l'éditeur puis check-in explicitement, même motif que
-    l'édition classique GED16)."""
-    if not office_edit_active():
-        raise ValueError(
-            "Co-édition Office non configurée (GED_OFFICE_URL absent) : "
-            "cette fonctionnalité est désactivée.")
-    assert_not_archive_legalement(document)
-    assert_not_legal_hold(document)
-    assert_aucune_signature_en_attente(document)  # ADOC175 (jumeau ADOC68)
-    # ADOC17 — garde de check-out portée par add_version(user=...) ; vérifiée
-    # aussi AVANT le stockage pour ne jamais téléverser un objet orphelin.
-    assert_not_locked_by_other(document, user)
-    key, meta = _store_bytes(contenu_bytes, mime=mime or 'application/octet-stream')
-    # ADOC8 — mime détecté par les octets, jamais le type déclaré.
-    version = add_version(
-        document, file_key=key, company=document.company,
-        filename=filename or meta.get('filename', ''),
-        size=len(contenu_bytes), mime=meta.get('mime', ''),
-        uploaded_by=user, user=user)
-    update_search_vector(document)
-    return version
 
 
 # ── ZGED6 — Centralisation des fichiers par module ───────────────────────────

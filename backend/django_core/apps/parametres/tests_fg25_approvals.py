@@ -32,15 +32,17 @@ class FG25ApprovalPolicyTest(TestCase):
         token = str(AccessToken.for_user(self.admin))
         self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
-    def test_create_policy_forces_company(self):
-        r = self.api.post('/api/django/parametres/approbations/', {
-            'action_type': 'purchase_order', 'seuil': '50000',
-            'approver_tier': 'admin', 'enabled': True,
-        }, format='json')
-        self.assertEqual(r.status_code, 201, r.content)
-        p = ApprovalPolicy.objects.get(pk=r.data['id'])
-        self.assertEqual(p.company_id, self.company.id)
-        self.assertEqual(p.action_type, 'purchase_order')
+    def test_apar44_route_approbations_retiree(self):
+        # D-APAR-2 : l'écran Paramètres › Approbations et ses routes sont
+        # retirés ; `discount_approval_threshold` reste l'unique réglage.
+        for appel in (
+            lambda: self.api.get('/api/django/parametres/approbations/'),
+            lambda: self.api.post('/api/django/parametres/approbations/', {
+                'action_type': 'purchase_order', 'seuil': '50000',
+                'approver_tier': 'admin', 'enabled': True}, format='json'),
+        ):
+            self.assertEqual(appel().status_code, 404)
+        self.assertFalse(ApprovalPolicy.objects.exists())
 
     def test_requires_approval_helper(self):
         ApprovalPolicy.objects.create(
@@ -60,23 +62,3 @@ class FG25ApprovalPolicyTest(TestCase):
             seuil=Decimal('0'), enabled=False)
         self.assertFalse(ApprovalPolicy.requires_approval(
             self.company, 'refund', amount=10000))
-
-    def test_unique_per_company_action(self):
-        ApprovalPolicy.objects.create(
-            company=self.company, action_type='contract', enabled=True)
-        r = self.api.post('/api/django/parametres/approbations/', {
-            'action_type': 'contract', 'approver_tier': 'admin',
-        }, format='json')
-        # ENF11 — doublon par société = conflit d'état : 409, champ nommé.
-        self.assertEqual(r.status_code, 409, r.content)
-
-    def test_write_requires_admin_tier(self):
-        viewer = User.objects.create_user(
-            username='fg25_viewer', password='pw', role_legacy='utilisateur',
-            company=self.company)
-        api = APIClient()
-        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(viewer)}')
-        r = api.post('/api/django/parametres/approbations/', {
-            'action_type': 'expense', 'approver_tier': 'admin',
-        }, format='json')
-        self.assertEqual(r.status_code, 403)

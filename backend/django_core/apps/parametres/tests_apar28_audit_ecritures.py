@@ -1,6 +1,6 @@
 """APAR28 — chaque écriture de réglage laisse une ligne dans le journal.
 
-Constat C-APAR-039 : taux de TVA (dont ``set_defaut``), conditions de
+Constat C-APAR-039 : taux de TVA, conditions de
 paiement, unités, cadence de relance, réalisations, et le CRUD DIRECT des
 statuts et des e-mails écrivaient sans aucune ligne ``SettingsAuditLog`` ; la
 réinitialisation d'un message effaçait le texte Darija sans trace.
@@ -59,8 +59,6 @@ class AuditEcrituresTests(TestCase):
         modif = self._lignes().order_by('-id').first()
         self.assertIn('TVA APAR28', modif.old_value)
         self.assertIn('TVA APAR28 bis', modif.new_value)
-        self._geste('taux-tva set_defaut', lambda: api.post(
-            f'{BASE}taux-tva/{tid}/set_defaut/', {}, format='json'), 200)
         autre = TauxTVA.objects.create(
             company=self.company, code='apar28-b', libelle='À supprimer',
             taux='3')

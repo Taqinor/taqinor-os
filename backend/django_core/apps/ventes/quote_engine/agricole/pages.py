@@ -30,7 +30,7 @@ from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
 from .schema import TEXTE_COURBE_ABSENTE, courbe_svg
-from .synthese import CONDITION_ECONOMIES
+from .synthese import CONDITION_ECONOMIES, debit_declare_sans_courbe
 
 NB_PAGES = 3
 
@@ -206,7 +206,7 @@ def _css(C, fonts, compact):
 
 # ── page 1 — l'eau et l'argent ──────────────────────────────────────────────
 
-def _hero(synthese, lg):
+def _hero(synthese, lg, declare=False):
     eau = synthese.get("eau") or {}
     m3 = _n(eau.get("m3_jour"))
     hmt = _n(eau.get("hmt_m"))
@@ -220,8 +220,12 @@ def _hero(synthese, lg):
              f'{ancre("pompe_hmt_m", hmt)}' if hmt is not None else "")
     sur = (_t(lg, "sur_heures_pompage", heures=heures)
            if heures is not None else "")
-    pastille = (f'<span class="ag-hero-e">{_t(lg, "estimation")}</span>'
-                if eau.get("estimation") else "")
+    # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ (pompe sans courbe) :
+    # la pastille le dit (« estimation · débit déclaré par vous »).
+    pastille = (f'<span class="ag-hero-e">{_t(lg, "estimation")}'
+                + (f' · {_t(lg, "lg_debit_declare_par_vous")}' if declare
+                   else "") + '</span>'
+                if eau.get("estimation") or declare else "")
     return (f'<div class="ag-hero"><div class="ag-hero-v">{m3}'
             f'{ancre("pompe_volume_m3_jour", m3)} <small>'
             f'{_t(lg, "agr_hero_m3_jour")}{a_hmt}</small></div>'
@@ -378,7 +382,8 @@ def page1(ctx):
     # … » : même décision du builder, même helper que les autres marchés.
     entete += "".join(f'<div class="ag-sub">{m}</div>'
                       for m in theme.marques_correction(d))
-    return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg)}'
+    declare = debit_declare_sans_courbe(d)
+    return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{_argent(synthese, lg)}{_qj(25)}'
             f'{_provenance(synthese, lg, ctx["nom_societe"])}'

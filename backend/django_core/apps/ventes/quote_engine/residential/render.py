@@ -89,11 +89,14 @@ def page_annexe_domicile(ctx) -> str:
         ref=theme._esc(d.get("ref") or ""),
         vendeur=ident.get("brand_name") or "",
         couleurs={"navy": C["navy"], "texte": C["ink"], "muet": C["muted"],
-                  "fond": C["paper"], "filet": C["line"]})
+                  "fond": C["paper"], "filet": C["line"]},
+        langue=theme.langue_doc(d))
+    # AMOT52 — titres de la page dans la langue du document (fr : octet pour
+    # octet, valeur française du catalogue).
     return f"""
 <div style="padding:11mm 14mm 0 14mm;">
-  <div style="font-size:8.5pt;letter-spacing:.24em;text-transform:uppercase;color:{C['gold']};font-weight:700;">Annexe</div>
-  <div style="font-family:{serif};font-weight:700;font-size:23pt;color:{C['navy']};line-height:1.04;margin:3px 0 8px;">Droit de rétractation</div>
+  <div style="font-size:8.5pt;letter-spacing:.24em;text-transform:uppercase;color:{C['gold']};font-weight:700;">{cover.libelle_cat(d, "res_ret_kicker")}</div>
+  <div style="font-family:{serif};font-weight:700;font-size:23pt;color:{C['navy']};line-height:1.04;margin:3px 0 8px;">{cover.libelle_cat(d, "res_ret_titre")}</div>
   {corps}
 </div>
 """

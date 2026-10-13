@@ -31,11 +31,10 @@ def _fallback_taux_tva(company, designation):
 
     ARC23 — pour une ligne STANDARD, le knob éditable en Paramètres
     (`CompanyProfile.tva_standard`, réglé par l'utilisateur) est PRIORITAIRE :
-    on le lit d'abord. Le référentiel `parametres.TauxTVA` (sans UI, seedé à
-    20 % pour chaque nouveau tenant par `signup_hooks.seed_taux_tva_hook`) ne
-    sert plus que de repli quand ce knob ne donne pas de taux, puis la constante
-    historique (20). Ainsi un tenant qui met « TVA standard » à 14 % voit 14 %
-    sur ses lignes de repli — le référentiel seedé ne le réprime plus. Un tenant
+    on le lit d'abord. D-APAR-1 (APAR44) : le profil est
+    l'UNIQUE source du taux par défaut — le référentiel `parametres.TauxTVA` ne
+    porte plus de défaut — puis la constante historique (20). Ainsi un tenant
+    qui met « TVA standard » à 14 % voit 14 % sur ses lignes de repli. Un tenant
     qui n'a jamais touché le champ garde sa valeur par défaut (20 %), inchangée.
     Un taux déjà figé sur un document existant n'est JAMAIS réécrit (règle #4).
     """
@@ -47,15 +46,8 @@ def _fallback_taux_tva(company, designation):
     standard = tva_standard(company)
     if standard is not None:
         return standard
-    # Repli : référentiel TauxTVA (sans UI), puis constante historique.
-    try:
-        from apps.parametres.models_taxes import TauxTVA
-        referentiel = TauxTVA.default_taux(company)
-    except Exception:
-        logger.warning("serializers._fallback_taux_tva : erreur ignorée (mode dégradé)", exc_info=True)
-        referentiel = None
-    if referentiel is not None:
-        return referentiel
+    # Repli ultime : constante historique (jamais atteint tant que le profil
+    # rend un Decimal). D-APAR-1 : le référentiel TauxTVA ne porte plus de défaut.
     from decimal import Decimal
     return Decimal('20')
 

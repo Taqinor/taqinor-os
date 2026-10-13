@@ -50,7 +50,7 @@ EXEMPTIONS = {
 
 #: Routes d'APAR5 sur lesquelles le Directeur doit RÉUSSIR (jamais 403).
 ROUTES_APAR5 = (
-    'messages/', 'email-templates/', 'statuts/', 'approbations/',
+    'messages/', 'email-templates/', 'statuts/',
     'taux-tva/', 'conditions-paiement/', 'unites-mesure/',
     'cadence-relance/', 'realisations/',
 )

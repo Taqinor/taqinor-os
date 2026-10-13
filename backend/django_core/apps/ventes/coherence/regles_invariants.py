@@ -12,7 +12,9 @@ le dict que le moteur imprime) :
   ``prix_achat`` d'une ligne du devis à une clé qui n'est pas un prix de
   VENTE ;
 * ``DOC_POMPAGE_SANS_ONDULEUR_BATTERIE`` — une composition de pompage
-  (``mode_installation = 'agricole'``) ne contient NI onduleur NI batterie.
+  (``mode_installation = 'agricole'``) ne contient NI onduleur NI batterie ;
+* ``DOC_POMPAGE_M3_SANS_COURBE`` (AMOT56, D-AMOT-7 = a) — un m³/jour imprimé
+  exige une pompe à courbe constructeur OU un débit déclaré étiqueté.
 
 Lecture pure : aucune écriture, aucun changement de statut (règle #4).
 """
@@ -142,6 +144,35 @@ def pompage_sans_onduleur_batterie(r, devis, ctx):
     return out
 
 
+@regle('DOC_POMPAGE_M3_SANS_COURBE',
+       "Un m³/jour imprimé pour une pompe sans courbe ni débit déclaré",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_DEVIS, besoin_rendu=True)
+def pompage_m3_sans_courbe(r, devis, ctx):
+    """Invariant maison (CLAUDE.md « Pompage sizing », amendé par D-AMOT-7 =
+    a) : le m³/jour que le document IMPRIME (``synthese_agricole`` — la
+    source du une-page, du document 3 pages et de /proposition) n'existe
+    que pour une pompe à courbe constructeur, OU sur le débit DÉCLARÉ d'une
+    pompe existante, que les gabarits étiquettent « débit déclaré par vous »
+    (``synthese.debit_declare_sans_courbe``, la MÊME fonction)."""
+    mode = (getattr(devis, "mode_installation", "") or "").strip().lower()
+    if mode != "agricole":
+        return []
+    from apps.ventes.quote_engine.agricole import synthese as S
+    data = ctx.donnees_devis(devis)
+    m3 = ((S.synthese_agricole(data).get("eau") or {}).get("m3_jour"))
+    if m3 is None:
+        return []
+    pompe = S._item_pompe(data.get("all_items") or [])
+    if S._courbe_points((pompe or {}).get("courbe_pompe")) is not None:
+        return []
+    if S.debit_declare_sans_courbe(data):
+        return []
+    return [r.violation(
+        devis, f"m³/jour imprimé ({m3}) pour une pompe sans courbe "
+               "constructeur ni débit déclaré.",
+        valeurs={"m3_jour": m3}, cle={"m3_jour": "sans_courbe"})]
+
+
 #: Le tableau de GOUVERNANCE : chaque invariant maison → la règle qui le
 #: garde, ou la RAISON écrite de son absence. Un invariant listé sans l'un
 #: ni l'autre fait échouer ``test_coherence_amot49_invariants_maison``.
@@ -150,6 +181,6 @@ INVARIANTS_MAISON = {
     "pompage sans onduleur ni batterie": "DOC_POMPAGE_SANS_ONDULEUR_BATTERIE",
     "total imprimé = noyau": "DOC_TOTAL_IMPRIME_NE_NOYAU",
     "chaîne des totaux imprimés au centime": "DOC_TOTAUX_IMPRIMES",
-    "m³/jour jamais imprimé pour une pompe sans courbe": (
-        "raison : attend la décision fondateur D-AMOT-7 (AMOT56)"),
+    "m³/jour jamais imprimé pour une pompe sans courbe":
+        "DOC_POMPAGE_M3_SANS_COURBE",
 }

@@ -328,7 +328,7 @@ export default function GedNavigator() {
   // XGED30/WIR249 — éditeur Office embarqué (KEY-GATED, GED_OFFICE_URL) :
   // ouvre l'URL renvoyée par le serveur dans un nouvel onglet. Le round-trip
   // de sauvegarde (postMessage d'un vrai éditeur Collabora/OnlyOffice iframe)
-  // sort du périmètre de cette tâche — `officeSauvegarder` reste API-only.
+  // sort du périmètre de cette tâche.
   const officeOuvrirAction = async (d) => {
     try {
       const res = await gedApi.officeOuvrir(d.id)

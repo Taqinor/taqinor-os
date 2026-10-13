@@ -7,7 +7,6 @@ from django.test import SimpleTestCase
 from rest_framework.parsers import JSONParser, MultiPartParser
 
 from . import views_uploads
-from .views_approvals import ApprovalPolicyViewSet
 from .views_email import EmailTemplateViewSet
 from .views_realisations import RealisationViewSet
 from .views_referentiels import (
@@ -21,7 +20,7 @@ from .views_translations import TranslationOverrideViewSet
 class ParametresParsersTests(SimpleTestCase):
     def test_vues_sans_upload_json_seul(self):
         for vue in (
-            ApprovalPolicyViewSet, EmailTemplateViewSet, RealisationViewSet,
+            EmailTemplateViewSet, RealisationViewSet,
             CadenceRelanceEtapeViewSet, ConditionPaiementViewSet,
             TauxTVAViewSet, UniteMesureViewSet, StatutConfigViewSet,
             TranslationOverrideViewSet,

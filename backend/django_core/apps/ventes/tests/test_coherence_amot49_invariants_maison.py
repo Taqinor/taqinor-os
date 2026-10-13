@@ -88,3 +88,30 @@ class InvariantsMaisonTests(TestCase):
         out = self._run('DOC_POMPAGE_SANS_ONDULEUR_BATTERIE', fautif,
                         _Ctx(self.company))
         self.assertTrue(out)
+
+    # AMOT56 (D-AMOT-7 = a) — DOC_POMPAGE_M3_SANS_COURBE : un m³/jour imprimé
+    # exige une pompe à courbe OU un débit déclaré (étiqueté par le gabarit).
+    # Test-du-test : faire rendre ``[]`` à la règle ⇒
+    # ``test_pompage_m3_sans_courbe`` échoue (cas fautif).
+    def test_pompage_m3_sans_courbe(self):
+        devis = self._devis([('Pompe immergée OSP 30/8 10 CV', '1', '15000'),
+                             ('Panneau mono 550W', '14', '1100')],
+                            mode='agricole')
+        base = copy.deepcopy(build_quote_data(devis, clean_pdf_options({})))
+        for it in base.get('all_items') or []:
+            it['courbe_pompe'] = None
+
+        def _avec(etude):
+            data = copy.deepcopy(base)
+            data['etude'] = etude
+            ctx = _Ctx(self.company)
+            ctx.injecter_donnees(devis, data)
+            return self._run('DOC_POMPAGE_M3_SANS_COURBE', devis, ctx)
+
+        heritee = {'m3_jour': 75, 'heures_pompage': 7, 'hmt_m': 40}
+        self.assertTrue(_avec(heritee))
+        declaree = dict(heritee, production={'mode': 'debit_declare'})
+        self.assertEqual(_avec(declaree), [])
+        self.assertEqual(_avec({'hmt_m': 40}), [])
+        self.assertIn('DOC_POMPAGE_M3_SANS_COURBE',
+                      INVARIANTS_MAISON.values())

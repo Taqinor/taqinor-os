@@ -394,3 +394,77 @@ class TestFicheRemisePremium(_Base):
         resp = api2.get(
             f'/api/django/ventes/chantiers/{chantier.id}/fiche-remise-premium/')
         self.assertEqual(resp.status_code, 404)
+
+
+# ── AMOT55 (C-AMOT-042, D-AMOT-5 = a) — le corps PAR DÉFAUT d'une relance ──
+# n'imprime ni délai chiffré ni intérêts : ils ne viennent que des réglages
+# de relance du niveau (délai jusqu'au niveau suivant, taux_interet_annuel > 0,
+# frais_fixes > 0). Rendu HTML réel (sans base) + bout en bout avec les
+# FollowupLevel de la société.
+# Test-du-test : remettre ``RELANCE_TONES[3]`` d'origine (« QUINZE (15)
+# JOURS », « fait courir les intérêts de retard ») ⇒
+# ``test_corps_par_defaut_sans_delai_ni_interets`` échoue.
+import re as _re  # noqa: E402
+
+from django.test import SimpleTestCase  # noqa: E402
+
+_RESUME_AMOT55 = {'reference': 'FAC-2026-0001', 'date_echeance': '01/09/2026',
+                  'jours_retard': 40, 'montant_du': Decimal('10000'),
+                  'total_ttc': Decimal('10000'), 'date_emission': '01/08/2026'}
+_CTX_AMOT55 = {'entreprise_nom': 'N106 Co'}
+_CLIENT_AMOT55 = {'nom': 'Bennani', 'prenom': 'Sara'}
+
+
+def _corps_amot55(niveau, **kw):
+    from apps.ventes.quote_engine.extra_docs import build_lettre_relance_html
+    html = build_lettre_relance_html(
+        _CTX_AMOT55, _CLIENT_AMOT55, _RESUME_AMOT55, niveau, **kw)
+    from html import unescape
+    return unescape(''.join(_re.findall(r'<p>(.*?)</p>', html, _re.S)))
+
+
+class RelanceSansDelaiNiInteretsTests(SimpleTestCase):
+
+    def test_corps_par_defaut_sans_delai_ni_interets(self):
+        for niveau in (1, 2, 3):
+            with self.subTest(niveau=niveau):
+                corps = _corps_amot55(niveau)
+                self.assertIsNone(_re.search(r'\d', corps), corps)
+                for mot in ('huitaine', 'QUINZE', 'intérêts', 'jours'):
+                    self.assertNotIn(mot, corps)
+
+    def test_reglages_du_niveau_imprimes(self):
+        reglages = {'delai_jours': 15, 'taux_interet_annuel': Decimal('10.00'),
+                    'frais_fixes': Decimal('150')}
+        corps = _corps_amot55(3, reglages=reglages)
+        self.assertIn('15 jours', corps)
+        self.assertIn('taux annuel de 10 %', corps)
+        self.assertIn('intérêts de retard', corps)
+        self.assertIn('150', corps)
+        # Taux et frais à 0, aucun délai : rien n'est ajouté.
+        nul = {'delai_jours': None, 'taux_interet_annuel': Decimal('0.00'),
+               'frais_fixes': Decimal('0')}
+        self.assertEqual(_corps_amot55(3, reglages=nul), _corps_amot55(3))
+        # La lettre courtoise n'en porte jamais ; un message saisi prime.
+        self.assertEqual(_corps_amot55(1, reglages=reglages), _corps_amot55(1))
+        self.assertNotIn('jours', _corps_amot55(
+            3, message='Texte société.', reglages=reglages))
+
+
+class RelanceReglagesSocieteTests(_Base):
+
+    def test_reglages_lus_sur_les_niveaux_de_la_societe(self):
+        from apps.ventes.quote_engine.extra_docs import _reglages_niveau
+        facture = self._facture()
+        self.assertIsNone(_reglages_niveau(facture, 3))
+        for ordre, (nom, delai, taux) in enumerate(
+                (('Rappel', 7, 0), ('Relance', 15, 0), ('Demeure', 30, 10))):
+            FollowupLevel.objects.create(
+                company=self.company, ordre=ordre, nom=nom, delai_jours=delai,
+                taux_interet_annuel=Decimal(taux))
+        deux = _reglages_niveau(facture, 2)
+        self.assertEqual(deux['delai_jours'], 15)
+        self.assertEqual(deux['taux_interet_annuel'], Decimal('0'))
+        trois = _reglages_niveau(facture, 3)
+        self.assertIsNone(trois['delai_jours'])
+        self.assertEqual(trois['taux_interet_annuel'], Decimal('10'))

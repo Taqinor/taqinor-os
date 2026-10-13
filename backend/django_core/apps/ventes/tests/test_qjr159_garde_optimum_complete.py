@@ -49,7 +49,7 @@ class _EtatMoteur(SimpleTestCase):
     """Pose/restaure les globales du moteur (il en écrit à l'ingestion)."""
 
     NOMS = ("ETUDE", "KWC", "NB_PAN", "BATTERIE_KWH_TOTAL", "ONEPAGE_BRANCHE",
-            "SCENARIO", "PUISSANCE_INCONNUE")
+            "SCENARIO", "PUISSANCE_INCONNUE", "LANGUE_SORTIE", "LIBELLES_DOC")
 
     #: Certaines globales n'existent qu'après ``apply_quote_data``.
     _ABSENT = object()
@@ -57,6 +57,14 @@ class _EtatMoteur(SimpleTestCase):
     def setUp(self):
         self._sauvegarde = {n: getattr(moteur, n, self._ABSENT)
                             for n in self.NOMS}
+        # AMOT52 — les libellés structurels du legacy suivent désormais
+        # ``LANGUE_SORTIE`` ; un test voisin du shard peut la laisser à « ar »
+        # (vu sur le groupe de merge de #991). Les assertions ci-dessous sont
+        # écrites en français : on fige la langue, restaurée par tearDown.
+        # ``_L`` lit d'abord la table ``LIBELLES_DOC`` du DERNIER document rendu
+        # (arabe sur le groupe de merge) avant ``LANGUE_SORTIE`` : on la vide.
+        moteur.LANGUE_SORTIE = "fr"
+        moteur.LIBELLES_DOC = {}
 
     def tearDown(self):
         for nom, valeur in self._sauvegarde.items():

@@ -993,3 +993,209 @@ class PucesCgvLangueTests(TestCase):
             with self.subTest(langue=langue):
                 self.assertIn("CLAUSE-SOCIETE-APDF10 conservée",
                               self._texte(self.devis[0], langue))
+
+
+# ── AMOT52 (C-AMOT-022, D-AMOT-1 = a) — moteur LEGACY plein format ─────────
+# Les libellés visibles du legacy (pages 1 à annexe : couverture, détail,
+# confiance, étude, annexe technique, calepinage, rétractation), du une-page
+# et du résidentiel 3 pages passent par ``i18n_labels`` ; ``lang`` = langue
+# résolue ; le français reste celui d'hier (goldens ``test_moteur_golden_legacy``
+# inchangés). Rendu réel du gabarit (HTML, sans base) : la garde compare chaque
+# rendu en / ar au rendu FRANÇAIS du même devis (méthode APDF46).
+# Test-du-test : remettre « Bon pour accord » en dur dans
+# ``residential/trust.py`` ou « Pièce technique jointe… » dans
+# ``page_annexe_technique`` ⇒ ``test_mots_temoins_mode_format_langue`` /
+# ``test_en_et_ar_aucun_mot_du_gabarit_legacy`` échouent.
+
+#: Mots-témoins de la sonde VB (C-AMOT-022), comparés à la casse.
+MOTS_TEMOINS_AMOT52 = (
+    "Bon pour accord", "Pourquoi", "Conditions", "Signez", "Validité",
+    "Clauses particulières", "Puissance crête", "Production annuelle", "Note")
+#: Unités, sigles et marque qui s'écrivent pareil dans les trois langues.
+MOTS_TOLERES_AMOT52 = frozenset({
+    "kwc", "kwh", "mad", "onee", "srm", "pvgis", "anre", "lid", "iam",
+    "taqa", "innovation", "nor"})
+#: Mots du gabarit français qui s'écrivent pareil en anglais (en plus de
+#: ``MOTS_FR_EGAUX_EN``) : relevés sur le legacy plein format traduit.
+MOTS_FR_EGAUX_EN_AMOT52 = MOTS_FR_EGAUX_EN | frozenset({
+    "article", "articles", "attention", "cascade", "conditions", "experts",
+    "installation", "maintenance", "mode", "national", "nature", "point",
+    "possible", "question", "ratio", "services", "simulation", "site",
+    "transition", "visible"})
+
+
+def hypotheses_reelles():
+    """Les phrases « Nos hypothèses » que le builder et ``pricing`` servent
+    vraiment (``pricing.cashflow_assumptions`` et
+    ``builder.ligne_tarif_hypothese`` appelés, jamais recopiés)."""
+    from apps.ventes.quote_engine import builder, pricing
+    from apps.ventes.quote_engine.constants_82_21 import MENTION_BT
+    items = [builder.ligne_tarif_hypothese("1,20", "ONEE", True),
+             builder.ligne_tarif_hypothese("1,35", "ONEE", False),
+             builder.ligne_tarif_hypothese("1,35", "", False),
+             "Tarif électricité : barème ONEE par tranche (barème national)",
+             f"{MENTION_BT}. Seuls les kWh autoconsommés réduisent la facture.",
+             "Production estimée : ≈ 1 420 kWh par kWc et par an, pertes "
+             "système de 20 % déduites.",
+             "Autoconsommation retenue : 60 % sans batterie · 85 % avec "
+             "batterie."]
+    for kw in ({}, {"stockage": True},
+               {"stockage": True, "battery_roundtrip": 0.92,
+                "battery_roundtrip_source": "fiche:1"},
+               {"inverter_replace_cost": 9000, "escalation": 0.03}):
+        items += pricing.cashflow_assumptions(**kw)["notes"]
+    return items + ["Estimations non contractuelles."]
+
+
+def cas_legacy_amot52():
+    """(variante, surcharges) qui ouvrent les branches du legacy plein
+    format : deux options, mono, long, étude (optimum / production unique),
+    annexe technique, calepinage, rétractation, devis final, multi-villas,
+    structure + options, acceptation, remise + conseiller + délais,
+    économies masquées."""
+    from apps.ventes.tests import test_moteur_golden_legacy as GL
+    hyp = {"hypotheses": {"titre": "Nos hypothèses",
+                          "items": hypotheses_reelles()}}
+    return (
+        ("deux", hyp), ("sans", hyp), ("long", hyp),
+        ("deux", dict(hyp, include_etude=True, etude=GL.ETUDE_OPTIMUM_PUBLIE,
+                      nb_panneaux=14, batterie_kwh_total=5.0)),
+        ("deux", dict(hyp, include_etude=True,
+                      etude=GL.ETUDE_PRODUCTION_UNIQUE, puissance_kwc=9.94)),
+        ("deux", dict(hyp, include_annexe_technique=True,
+                      electrical_design=GL.DESIGN_ELECTRIQUE)),
+        ("deux", dict(hyp, include_calepinage=True,
+                      include_calepinage_demande=True,
+                      calepinage_svg=GL.SVG_CALEPINAGE,
+                      calepinage_empreinte="calepinage ab12")),
+        ("deux", dict(hyp, signe_au_domicile=True)),
+        ("deux", dict(hyp, devis_final=True, show_monthly=True)),
+        ("sans", dict(hyp, nombre_proprietes=3, display_total_multi=100800.0,
+                      multi_villa=GL.MULTI_VILLA)),
+        ("deux", dict(hyp, lignes_structure=GL.LIGNES_STRUCTURE,
+                      options_proposees=GL.OPTIONS_PROPOSEES)),
+        ("deux", dict(hyp, accepte_par_nom="Karim Alaoui",
+                      date_acceptation="05/10/2026")),
+        ("deux", dict(VARIANTES_GARDE["complet"][1], **hyp)),
+        ("deux", {"masquer_economies": True}),
+    )
+
+
+def html_legacy(langue, variante="deux", **surcharges):
+    """HTML EXACT du legacy plein format (``render_html_for``, sans base)."""
+    from apps.ventes.quote_engine import generate_devis_premium as G
+    from apps.ventes.quote_engine import i18n_labels
+    from apps.ventes.tests import _moteur_fixtures as mf
+    surcharges = copy.deepcopy(surcharges)
+    if langue != "fr":
+        surcharges["langue_sortie"] = langue
+        surcharges["libelles_document"] = i18n_labels.libelles(langue)
+    with G._RENDER_LOCK:
+        return G.render_html_for(mf.donnees_legacy(variante, **surcharges))
+
+
+def texte_visible(html):
+    """Texte visible : ``<title>`` (métadonnée du PDF) retiré."""
+    return texte_html(re.sub(r"<title>.*?</title>", " ", html, flags=re.S))
+
+
+class LegacyPleinFormatLangueHtmlTests(SimpleTestCase):
+    """AMOT52 — legacy plein format, une-page et résidentiel en en / ar."""
+
+    def test_en_et_ar_aucun_mot_du_gabarit_legacy(self):
+        from apps.ventes.tests import _moteur_fixtures as mf
+        for i, (variante, surcharges) in enumerate(cas_legacy_amot52()):
+            fr = html_legacy("fr", variante, **surcharges)
+            gabarit = (mots(texte_visible(fr))
+                       - mots_donnees(mf.donnees_legacy(variante, **surcharges))
+                       - MOTS_IDENTITE - MOTS_TOLERES_AMOT52)
+            for langue in ("en", "ar"):
+                with self.subTest(cas=i, variante=variante, langue=langue):
+                    html = html_legacy(langue, variante, **surcharges)
+                    self.assertIn(f'<html lang="{langue}"', html)
+                    restes = gabarit & mots(texte_visible(html))
+                    if langue == "en":
+                        restes -= MOTS_FR_EGAUX_EN_AMOT52
+                    self.assertEqual(sorted(restes), [])
+
+    def test_mots_temoins_mode_format_langue(self):
+        from apps.ventes.tests import test_moteur_golden_legacy as GL
+        rendus = {
+            "legacy": lambda lg: html_legacy(lg),
+            "legacy_etude_domicile": lambda lg: html_legacy(
+                lg, include_etude=True, signe_au_domicile=True,
+                etude=GL.ETUDE_PRODUCTION_UNIQUE),
+            "une_page": lambda lg: html_une_page(
+                lg, note_client="Merci.",
+                clauses_cgv=[{"nom": "A", "corps_texte": "B"}]),
+            "residentiel_domicile": lambda lg: html_residentiel(
+                lg, signe_au_domicile=True),
+        }
+        for nom, rendu in rendus.items():
+            for langue in ("en", "ar"):
+                with self.subTest(format=nom, langue=langue):
+                    html = rendu(langue)
+                    self.assertIn(f'<html lang="{langue}"', html)
+                    # Comparaison À LA CASSE : « the conditions » est de
+                    # l'anglais, « Conditions » le titre français.
+                    texte = texte_normalise(texte_visible(html))
+                    self.assertEqual(
+                        [m for m in MOTS_TEMOINS_AMOT52 if m in texte
+                         and not (langue == "en" and m == "Note")], [])
+        # Le français garde ses libellés (rien n'est retiré en fr).
+        fr = texte_normalise(texte_visible(html_legacy("fr")))
+        self.assertIn("Bon pour accord", fr)
+        self.assertIn("Conditions générales du devis", fr)
+        self.assertIn('<html lang="fr"', html_legacy("fr"))
+
+    def test_residentiel_retractation_en_et_ar(self):
+        from apps.ventes.quote_engine.residential import sample_data
+        fr = html_residentiel("fr", signe_au_domicile=True)
+        gabarit = (mots(texte_html(fr))
+                   - mots_donnees(dict(sample_data.build("deux"),
+                                       signe_au_domicile=True))
+                   - MOTS_IDENTITE)
+        self.assertIn("rétractation", gabarit)
+        for langue in ("en", "ar"):
+            with self.subTest(langue=langue):
+                restes = gabarit & mots(texte_html(html_residentiel(
+                    langue, signe_au_domicile=True)))
+                if langue == "en":
+                    restes -= MOTS_FR_EGAUX_EN_AMOT52
+                self.assertEqual(sorted(restes), [])
+
+    def test_annexe_retractation_francais_inchange(self):
+        from apps.ventes.quote_engine import annexe_domicile as A
+        from apps.ventes.quote_engine import i18n_labels as L
+        self.assertEqual(
+            tuple(L.libelle(f"res_ret_mention_{i}", "fr")
+                  for i in range(1, len(A.MENTIONS_ARTICLE_48) + 1)),
+            A.MENTIONS_ARTICLE_48)
+        args = {"ref": "DEV-1", "vendeur": "SOLAIRE SARL",
+                "couleurs": {k: "#000" for k in
+                             ("navy", "texte", "muet", "fond", "filet")}}
+        fr = A.corps_annexe_domicile(**args)
+        self.assertEqual(fr, A.corps_annexe_domicile(langue="fr", **args))
+        self.assertIn("<strong>7 jours</strong>", fr)
+        en = A.corps_annexe_domicile(langue="en", **args)
+        self.assertIn("<strong>7 days</strong>", en)
+        self.assertIn("DEV-1", en)
+        self.assertNotIn("rétractation", en)
+
+    def test_hypotheses_du_builder_traduites(self):
+        from apps.ventes.quote_engine.residential.trust import (
+            hypothese_traduite)
+        for phrase in hypotheses_reelles():
+            self.assertEqual(hypothese_traduite("fr", phrase), phrase)
+            self.assertEqual(hypothese_traduite(None, phrase), phrase)
+            for langue in ("en", "ar"):
+                with self.subTest(phrase=phrase[:40], langue=langue):
+                    traduite = hypothese_traduite(langue, phrase)
+                    self.assertNotEqual(traduite, phrase)
+                    self.assertEqual(
+                        sorted(mots(traduite) & mots(phrase)
+                               - MOTS_TOLERES_AMOT52 - MOTS_FR_EGAUX_EN_AMOT52),
+                        [])
+        # Les nombres servis sont repris tels quels, jamais reformatés.
+        self.assertIn("9", hypothese_traduite("en", next(
+            p for p in hypotheses_reelles() if "Provision" in p)))

@@ -367,6 +367,24 @@ def _energie_actuelle(etude):
     return {"valeur": valeur, "provenance": provenance}
 
 
+def debit_declare_sans_courbe(data):
+    """AMOT56 (D-AMOT-7 = a) — le m³/jour du devis vient-il d'un débit
+    DÉCLARÉ (pompe existante, AGR114) faute de pompe à courbe constructeur ?
+
+    Vrai seulement quand AUCUNE ligne pompe ne porte de courbe et que la
+    production de l'étude est en mode ``debit_declare`` (ou ``repli_plat``,
+    dont le seul débit possible sans courbe est le débit déclaré —
+    ``core.pompage.volumes.production_mensuelle``). Les gabarits étiquettent
+    alors le m³/jour « débit déclaré par vous » ; la règle nocturne
+    ``DOC_POMPAGE_M3_SANS_COURBE`` lit la MÊME fonction. Pure."""
+    data = data if isinstance(data, dict) else {}
+    pompe = _item_pompe(data.get("all_items") or [])
+    if _courbe_points((pompe or {}).get("courbe_pompe")) is not None:
+        return False
+    mode = _dict(_dict(data.get("etude")).get("production")).get("mode")
+    return mode in ("debit_declare", "repli_plat")
+
+
 # ── la fonction publique ────────────────────────────────────────────────────
 
 def synthese_agricole(data):

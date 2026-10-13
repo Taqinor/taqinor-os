@@ -150,9 +150,11 @@ repo yet, the rule still applies to any future integration.
   enough at that HMT (`solar.js debitAtHmt`); matched VEICHI variateur (smallest kW ≥ pump kW,
   tension 220/380 assortie) + one AFFICHEUR SI22 by default. m³/jour = débit@HMT × heures
   (editable, default 7 h), computed ONCE at creation, stored in `etude_params`, rendered
-  identically on screen and the one-page PDF. Never print m³/jour for curve-less pumps (omit
-  the card). Pompage compositions contain NO inverter and NO battery; auto-fill never quotes a
-  price-less product (all guarded by tests).
+  identically on screen and the one-page PDF. Never print a COMPUTED m³/jour for curve-less pumps
+  (omit the card) — D-AMOT-7 (founder, 08/10/2026): when the client DECLARED the flow, the card stays
+  and reads « estimation · débit déclaré par vous » (nightly rule `DOC_POMPAGE_M3_SANS_COURBE` flags
+  any printed m³/jour with neither a curve pump nor a declared flow). Pompage compositions contain NO
+  inverter and NO battery; auto-fill never quotes a price-less product (all guarded by tests).
 - **Shared Claude memory.** Durable facts (founder decisions, standing approvals, open incidents)
   live in `docs/claude-memory/` so every machine and Claude account gets them after `git pull`;
   update them there by PR, never with secrets. Index:

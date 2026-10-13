@@ -2,7 +2,8 @@
 
 Couvre : lecture ouverte, écriture réservée admin/responsable (limité → 403),
 scoping société, company forcée côté serveur, non-migration du code, et
-l'action ``set_defaut`` (un seul taux par défaut).
+l'absence d'action ``set_defaut`` (D-APAR-1 : le profil ``tva_standard`` est
+l'unique source du taux par défaut).
 """
 from decimal import Decimal
 
@@ -48,7 +49,7 @@ class ReferentielsTest(TestCase):
     # ── TVA ──────────────────────────────────────────────────────────────
     def test_admin_creates_and_lists_taux(self):
         r = self.api.post(TVA, {'code': 'tva20', 'libelle': 'Normal',
-                                'taux': '20', 'defaut': True}, format='json')
+                                'taux': '20'}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         row = TauxTVA.objects.get(code='tva20')
         # company forcée côté serveur.
@@ -67,19 +68,23 @@ class ReferentielsTest(TestCase):
                             format='json')
         self.assertEqual(r.status_code, 403)
 
-    def test_set_defaut_is_exclusive(self):
+    def test_apar44_plus_de_set_defaut_ni_de_drapeau(self):
+        # D-APAR-1 : plus de bouton « Par défaut » — la route n'existe plus, le
+        # drapeau n'est plus servi, et le profil pilote le taux par défaut.
         a = TauxTVA.objects.create(company=self.company, code='a',
-                                   libelle='A', taux=Decimal('20'),
-                                   defaut=True)
-        b = TauxTVA.objects.create(company=self.company, code='b',
-                                   libelle='B', taux=Decimal('10'))
-        r = self.api.post(f'{TVA}{b.id}/set_defaut/')
-        self.assertEqual(r.status_code, 200)
-        a.refresh_from_db()
-        b.refresh_from_db()
-        self.assertFalse(a.defaut)
-        self.assertTrue(b.defaut)
-        self.assertEqual(TauxTVA.default_taux(self.company), Decimal('10'))
+                                   libelle='A', taux=Decimal('20'))
+        r = self.api.post(f'{TVA}{a.id}/set_defaut/')
+        self.assertEqual(r.status_code, 404)
+        lst = self.api.get(TVA)
+        rows = lst.data['results'] if isinstance(lst.data, dict) else lst.data
+        self.assertNotIn('defaut', rows[0])
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.serializers import _fallback_taux_tva
+        prof = CompanyProfile.get(company=self.company)
+        prof.tva_standard = Decimal('14')
+        prof.save(update_fields=['tva_standard'])
+        self.assertEqual(_fallback_taux_tva(self.company, 'Onduleur'),
+                         Decimal('14'))
 
     def test_code_cannot_migrate(self):
         row = TauxTVA.objects.create(company=self.company, code='a',

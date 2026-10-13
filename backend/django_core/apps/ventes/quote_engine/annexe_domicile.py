@@ -4,7 +4,11 @@ PURE partagée par le moteur legacy (``generate_devis_premium.page_annexe_domici
 et le gabarit résidentiel 3 pages (``residential/render``).
 
 Aucun chiffre inventé : le délai vient de la loi (art. 49 et 50) ; les dates
-restent à remplir à la main (art. 47 al. 2). Rendu seul, aucun statut
+restent à remplir à la main (art. 47 al. 2).
+
+AMOT52 (D-AMOT-1 = a) — chaque texte passe par ``i18n_labels`` (clés
+``res_ret_*``) : le français y est le littéral EXACT d'hier (octet pour
+octet), l'anglais et l'arabe suivent la langue du document. Rendu seul, aucun statut
 (règle #4) ; jamais une seconde voie de PDF : une page de plus du même
 document, seulement quand le bon de commande porte ``signe_au_domicile``.
 """
@@ -25,51 +29,45 @@ MENTIONS_ARTICLE_48 = (
 )
 
 
-def corps_annexe_domicile(*, ref, vendeur, couleurs) -> str:
+def corps_annexe_domicile(*, ref, vendeur, couleurs, langue=None) -> str:
     """Le corps (texte légal + mentions + formulaire détachable) de l'annexe.
 
     ``ref`` et ``vendeur`` sont déjà échappés par l'appelant ; ``couleurs`` =
-    ``{navy, texte, muet, fond, filet}`` (chaque gabarit garde sa charte)."""
+    ``{navy, texte, muet, fond, filet}`` (chaque gabarit garde sa charte).
+    AMOT52 — ``langue`` (fr/en/ar, repli fr) choisit les textes du catalogue."""
+    from . import i18n_labels
+
+    def t(cle):
+        return i18n_labels.libelle(cle, langue)
     c = couleurs
     cadre = (f'border:1px dashed {c["muet"]};border-radius:8px;'
              'padding:12px 14px;background:white;')
     mentions_html = "".join(
-        f'<li style="margin-bottom:3px;">{m}</li>' for m in MENTIONS_ARTICLE_48)
+        f'<li style="margin-bottom:3px;">{t(f"res_ret_mention_{i}")}</li>'
+        for i in range(1, len(MENTIONS_ARTICLE_48) + 1))
     return f"""
     <div style="font-size:8pt;color:{c['texte']};line-height:1.5;margin-bottom:10px;">
-      Cette commande a été signée à votre domicile. La loi
-      n° 31-08 édictant des mesures de protection du consommateur vous
-      ouvre un délai de rétractation de
-      <strong>{DELAI_RETRACTATION_DOMICILE_JOURS} jours</strong> à
-      compter de la commande. Pendant ce délai, <strong>aucun acompte ni
-      aucun paiement ne peut être exigé ni encaissé</strong>
-      (articles 49 et 50).
+      {t("res_ret_intro").format(jours=DELAI_RETRACTATION_DOMICILE_JOURS)}
     </div>
 
     <div style="background:{c['fond']};border:1px solid {c['filet']};border-radius:7px;padding:9px 12px;margin-bottom:12px;">
-      <div style="font-size:7.5pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Mentions de l&#8217;article 48</div>
+      <div style="font-size:7.5pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">{t("res_ret_mentions_titre")}</div>
       <ul style="margin:0;padding-left:16px;font-size:7.5pt;color:{c['texte']};line-height:1.45;">{mentions_html}</ul>
     </div>
 
     <div style="font-size:7.5pt;color:{c['muet']};font-style:italic;margin-bottom:8px;">
-      Détachez, complétez et renvoyez le formulaire ci-dessous si vous
-      souhaitez renoncer à cette commande.
+      {t("res_ret_detachez")}
     </div>
 
     <div style="{cadre}">
-      <div style="font-size:9pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Formulaire détachable de rétractation</div>
+      <div style="font-size:9pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">{t("res_ret_formulaire")}</div>
       <div style="font-size:8pt;color:{c['texte']};line-height:1.9;">
-        À l&#8217;attention de : <strong>{vendeur}</strong><br>
-        Je soussigné(e) : _______________________________________________<br>
-        Adresse : ____________________________________________________<br>
-        déclare renoncer à la commande n° <strong>{ref}</strong>,
-        signée le : ___/___/______<br>
-        Fait à : _______________________ le : ___/___/______
+        {t("res_ret_formulaire_corps").format(vendeur=vendeur, ref=ref)}
       </div>
       <div style="display:flex;gap:18px;margin-top:10px;">
         <div style="flex:1;">
           <div style="border-bottom:1px solid {c['filet']};min-height:26px;"></div>
-          <div style="font-size:7pt;color:{c['muet']};margin-top:3px;">Signature du client (de sa main)</div>
+          <div style="font-size:7pt;color:{c['muet']};margin-top:3px;">{t("res_ret_signature")}</div>
         </div>
       </div>
     </div>
