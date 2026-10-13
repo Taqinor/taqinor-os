@@ -1818,3 +1818,5 @@ API rejected schema-compliant request|PUT /api/django/ged/coffres/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/
 Response violates schema|PATCH /api/django/ged/coffres/{id}/
+# Groupe de merge #991 (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH portail/documents-client-portail, route non modifiée), porté par ERR-ENF11-FUZZ-PORTAIL (suite).
+API rejected schema-compliant request|PATCH /api/django/portail/documents-client-portail/{id}/
