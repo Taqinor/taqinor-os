@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, corps
-from ..utils.params import corps_objet
+from ..utils.params import corps_objet, decimal_ou_400
 from ..serializers import RevisionKitSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
@@ -29,6 +29,7 @@ from ..serializers import KitComposantSerializer, KitProduitSerializer
 # dans serializers.py (fichier-mur, C20 : aucune croissance nette).
 extend_schema_serializer(component_name='KitProduitComposant')(KitComposantSerializer)
 
+FACTEUR_MIN, FACTEUR_MAX = 0.0001, 1000
 _BOOLEENS = ('1', '0', 'true', 'false', 'True', 'False')
 READ_ACTIONS = ['list', 'retrieve', 'exploser', 'revisions',
                 'composition_au', 'disponibilite']
@@ -96,10 +97,9 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         jamais exposé."""
         from ..services import exploser_kit, KitCycleError
         kit = self.get_object()
-        try:
-            quantite = float(request.query_params.get('quantite', 1) or 1)
-        except (TypeError, ValueError):
-            quantite = 1
+        # ERR fuzz : ``quantite`` déclarée nombre — ``null`` (ou toute valeur
+        # illisible) était lue « 1 » en silence ; elle répond 400.
+        quantite = float(decimal_ou_400(request.query_params.get('quantite'), 'quantite', 1))
         if quantite <= 0:
             quantite = 1
         try:
@@ -205,10 +205,10 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(data)
 
-    @extend_schema(request=corps('KitDupliquerCorps', facteur_echelle=serializers.DecimalField(max_digits=10,
-                                                                                               decimal_places=4,
-                                                                                               required=False,
-                                                                                               allow_null=True)),
+    # ERR fuzz : nombre JSON borné (l'écran envoie ``Number(...)``) — le décimal-
+    # chaîne publié admettait « 0 », refusé ensuite (« rejected schema-compliant »).
+    @extend_schema(request=corps('KitDupliquerCorps', facteur_echelle=serializers.FloatField(
+        min_value=FACTEUR_MIN, max_value=FACTEUR_MAX, required=False, allow_null=True)),
                    responses={201: KitProduitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, *args, **kwargs):
@@ -218,6 +218,11 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         from ..services import dupliquer_kit
         kit = self.get_object()
         facteur = corps_objet(request).get('facteur_echelle')
+        if facteur is not None and (isinstance(facteur, bool) or not isinstance(facteur, (int, float))):
+            return Response({'detail': "Facteur d'échelle invalide."}, status=status.HTTP_400_BAD_REQUEST)
+        if facteur is not None and (0 < facteur < FACTEUR_MIN or facteur > FACTEUR_MAX):
+            return Response({'detail': "Facteur d'échelle hors bornes (0,0001 à 1000)."},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             copie = dupliquer_kit(
                 kit, user=request.user, facteur_echelle=facteur)
