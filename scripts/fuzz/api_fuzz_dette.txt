@@ -459,7 +459,6 @@ API accepted schema-violating request|POST /api/django/facturation/factures/{id}
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/exclure-relance/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/whatsapp/
 API accepted schema-violating request|POST /api/django/ged/cabinets/
-API accepted schema-violating request|POST /api/django/ged/documents/classer-apres-vente/
 API accepted schema-violating request|POST /api/django/ged/documents/{id}/archiver-legalement/
 API accepted schema-violating request|POST /api/django/ged/documents/{id}/placer-legal-hold/
 API accepted schema-violating request|POST /api/django/ged/exigences-dossier/
@@ -819,7 +818,6 @@ API rejected schema-compliant request|POST /api/django/ged/documents/{id}/archiv
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/caviarder/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/deplacer/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/office-ouvrir/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/office-sauvegarder/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/restaurer/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/tagger/
 API rejected schema-compliant request|POST /api/django/ged/legal-holds/
@@ -1328,7 +1326,6 @@ Response violates schema|POST /api/django/crm/leads/{id}/relance/initialiser/
 Response violates schema|POST /api/django/crm/leads/{id}/restaurer/
 Response violates schema|POST /api/django/crm/partenaires/
 Response violates schema|POST /api/django/facturation/factures/
-Response violates schema|POST /api/django/ged/documents/classer-apres-vente/
 Response violates schema|POST /api/django/ged/documents/{id}/assigner/
 Response violates schema|POST /api/django/ged/documents/{id}/check-in/
 Response violates schema|POST /api/django/ged/documents/{id}/check-out/

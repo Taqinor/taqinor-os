@@ -168,14 +168,6 @@ class SignatureFigeeTests(SignatureFigeeBase):
         self.assertEqual(resp.data['document'], genere.pk)
         self.assertEqual(genere.versions.count(), 2)
 
-    def test_editeur_office_refuse_pendant_signature(self):
-        with self.settings(GED_OFFICE_URL='http://office.test'):
-            with self.assertRaises(services.SignatureEnCoursError):
-                services.sauvegarder_depuis_editeur_office(
-                    self.doc, contenu_bytes=b'%PDF-1.4\n%o\n' + b'Z' * 50,
-                    user=self.admin, filename='o.pdf')
-        self.assertEqual(self.doc.versions.count(), 1)
-
     def test_pdf_signe_stable_apres_nouvelle_version(self):
         self._signer()
         self.assertIsNotNone(self.demande.version_signee_id)

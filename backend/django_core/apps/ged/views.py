@@ -46,7 +46,7 @@ from apps.records.serializers import CibleIntrouvable, resolve_target
 
 from . import openapi as oa, selectors, services
 from .corps_requete import (
-    GedArchiverLegalementCorps, GedClasserApresVenteCorps,
+    GedArchiverLegalementCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
     GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
     _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides,
@@ -480,7 +480,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     ACTIONS_ECRITURE_ACL = frozenset({
         'update', 'partial_update', 'destroy', 'assigner', 'deplacer',
         'mettre_en_corbeille', 'tagger', 'detagger', 'classer', 'restaurer',
-        'cycle_vie', 'check_out', 'check_in', 'office_sauvegarder',
+        'cycle_vie', 'check_out', 'check_in',
         'scinder', 'caviarder', 'ocr_piece', 'nouvelle_version',
         # ASEC38 — corbeille (restaurer / purger), fusion (cible ou dossier
         # de destination) et opérations par lot : écriture ACL exigée. Les
@@ -1074,54 +1074,6 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             {'crees': result['crees'], 'documents': ser.data,
              'erreurs': result['erreurs']}, status=http)
 
-    @extend_schema(
-        request=GedClasserApresVenteCorps,
-        responses={200: DocumentSerializer, 201: DocumentSerializer})
-    @action(detail=False, methods=['post'], url_path='classer-apres-vente')
-    def classer_apres_vente(self, request):
-        """GED29 — Classe un PDF APRÈS-VENTE (SAV) déjà généré dans la GED.
-
-        `POST …/documents/classer-apres-vente/` — corps JSON :
-        `{nom, source_type, source_id, file_key?, cabinet?, dossier?,
-        description?}`. Le PDF référencé par `file_key` (déjà stocké en MinIO)
-        est déposé et classé dans le cabinet/dossier « Après-vente » dédié
-        (auto-créés si absents). La société et le créateur sont posés CÔTÉ
-        SERVEUR (jamais lus du corps). Idempotent par (`source_type`,
-        `source_id`) : un appel répété pour le MÊME objet SAV source renvoie le
-        document déjà déposé (200) au lieu d'en dupliquer un (201).
-
-        Point d'entrée de réception : le câblage SAV (appel à l'émission d'un
-        document après-vente) est une tâche FUTURE distincte."""
-        corps = corps_valide(GedClasserApresVenteCorps, request)
-        nom = corps['nom'].strip()
-        source_type = corps['source_type'].strip()
-        source_id = corps['source_id']
-        file_key = corps.get('file_key', '').strip()
-        # ASEC37 — une clé d'un autre locataire (préfixe étranger ou clé plate
-        # jamais enregistrée chez nous) est refusée : on ne classe jamais le
-        # fichier d'une autre société.
-        if not services.cle_stockage_autorisee(request.user.company, file_key):
-            return Response(
-                {'file_key': 'Fichier inconnu pour votre société.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        document, created = services.classer_document_apres_vente(
-            company=request.user.company,
-            file_key=file_key,
-            nom=nom,
-            source_type=source_type,
-            source_id=source_id,
-            cabinet=(corps.get('cabinet') or 'Après-vente'),
-            dossier=(corps.get('dossier') or 'Après-vente'),
-            description=corps.get('description', ''),
-            created_by=request.user,
-        )
-        # GED11/GED12 — indexe le document déposé (no-op sémantique sans clé).
-        services.update_search_vector(document)
-        services.index_embedding(document)
-        return Response(
-            DocumentSerializer(document, context={'request': request}).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-
     @extend_schema(parameters=[oa.Q_Q], responses=oa.SEMANTIQUE_REPONSE)
     @action(detail=False, methods=['get'], url_path='semantique')
     def semantique(self, request):
@@ -1692,42 +1644,6 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(data)
-
-    @extend_schema(
-        request={'multipart/form-data': oa.FICHIER_CORPS},
-        responses={201: DocumentVersionSerializer})
-    @action(detail=True, methods=['post'], url_path='office-sauvegarder',
-            parser_classes=[MultiPartParser, FormParser, JSONParser])
-    def office_sauvegarder(self, request, pk=None):
-        """XGED30 — Callback de sauvegarde de l'éditeur Office : crée une
-        NOUVELLE version depuis le contenu édité.
-
-        `POST …/documents/<id>/office-sauvegarder/` — corps multipart
-        `{"file": <fichier>}`. Sans `GED_OFFICE_URL` : 400 explicite. Respecte
-        le check-out (un tiers ne peut pas écraser la session d'un autre —
-        409) et les gardes GED23/24 (403). Écriture : responsable/admin."""
-        document = self.get_object()
-        upload = request.FILES.get('file')
-        if upload is None:
-            return Response(
-                {'file': 'Un fichier est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        try:
-            version = services.sauvegarder_depuis_editeur_office(
-                document, contenu_bytes=upload.read(), user=request.user,
-                filename=upload.name)
-        except ValueError as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except (ArchivageLegalError, LegalHoldError, QuotaDepasseError) as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
-        except (PermissionError, services.SignatureEnCoursError) as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
-        data = DocumentVersionSerializer(
-            version, context={'request': request}).data
-        return Response(data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=oa.CYCLE_VIE_CORPS, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='cycle-vie')

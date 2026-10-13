@@ -173,16 +173,6 @@ class _DateIsoStricte(drf_serializers.Field):
         return value.isoformat()
 
 
-class GedClasserApresVenteCorps(drf_serializers.Serializer):
-    nom = _non_vide(max_length=255)
-    source_type = _non_vide()
-    source_id = EntierStrict()
-    file_key = ChaineStricte(required=False, allow_blank=True, max_length=500)
-    cabinet = ChaineStricte(required=False, allow_blank=True, max_length=150)
-    dossier = ChaineStricte(required=False, allow_blank=True, max_length=200)
-    description = ChaineStricte(required=False, allow_blank=True)
-
-
 class GedDemandeSignatureCorps(drf_serializers.Serializer):
     document = _id_corps()
     signataire_nom = _non_vide(max_length=255)

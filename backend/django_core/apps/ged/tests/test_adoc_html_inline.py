@@ -9,13 +9,12 @@ import zipfile
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ged import services
-from apps.ged.models import Cabinet, Document, DocumentVersion, Folder
+from apps.ged.models import Cabinet, DocumentVersion, Folder
 from authentication.models import Company
 
 User = get_user_model()
@@ -102,23 +101,6 @@ class HtmlInlineTests(TestCase):
         self._assert_jamais_inline(resp)
 
     @override_settings(GED_OFFICE_URL='https://office.example.test')
-    def test_office_mime_detecte(self):
-        doc = Document.objects.create(
-            company=self.co, folder=self.folder, nom='edit')
-        upload = SimpleUploadedFile('p.html', HTML, content_type='text/html')
-        with _minio():
-            resp = auth(self.admin).post(
-                f'{BASE}documents/{doc.pk}/office-sauvegarder/',
-                {'file': upload}, format='multipart')
-        self.assertIn(resp.status_code, (200, 201), resp.content)
-        version = DocumentVersion.objects.filter(document=doc).get()
-        self.assertEqual(version.mime, 'application/octet-stream')
-        # PATCH du mime ignoré (lecture seule).
-        auth(self.admin).patch(f'{BASE}versions/{version.pk}/',
-                               {'mime': 'text/html'}, format='json')
-        version.refresh_from_db()
-        self.assertEqual(version.mime, 'application/octet-stream')
-
     def test_pdf_reste_inline_avec_csp(self):
         with _minio():
             res = services.importer_en_masse(

@@ -484,14 +484,6 @@ class Enf11FuzzGedCorpsTests(TestCase):
         resp = self._post('legal-holds/', {'document': self.doc.pk})
         self.assertEqual(resp.status_code, 201, resp.content)
 
-    def test_classer_apres_vente_corps_strict(self):
-        base = {'nom': 'N', 'source_type': 'sav.ticket', 'source_id': 1}
-        for modif in ({'description': {}}, {'source_id': 'abc'},
-                      {'cabinet': 5}, {'nom': 'x' * 256}, {'file_key': None}):
-            resp = self._post('documents/classer-apres-vente/',
-                              {**base, **modif})
-            self.assertEqual(resp.status_code, 400, (modif, resp.content))
-
     def test_archiver_legalement_corps_et_conflit(self):
         route = f'documents/{self.doc.pk}/archiver-legalement/'
         for corps in ({'motif': None}, {'retain_until': ''},
