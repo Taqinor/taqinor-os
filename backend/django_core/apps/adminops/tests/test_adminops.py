@@ -232,6 +232,24 @@ class EnfSchemaValidationTests(TestCase):
             f'{base}exporter/', {'nom': 0}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_config_package_contenu_mal_forme_400(self):
+        """ENF11 — contenu structurellement faux = 400 (était 500)."""
+        base = '/api/django/adminops/config-packages/'
+        mauvais = [
+            {'roles_custom': 5},
+            {'roles_custom': [{'permissions': []}]},
+            {'custom_fields': [{'code': ['x']}]},
+            {'message_templates': ['a']},
+            {'_version': 'x'},
+            {'_nom': 'a' * 200},
+        ]
+        for action in ('previsualiser', 'appliquer'):
+            for contenu in mauvais:
+                resp = self.client_api.post(
+                    f'{base}{action}/', {'contenu': contenu}, format='json')
+                self.assertEqual(
+                    resp.status_code, 400, (action, contenu, resp.content))
+
     def test_settings_date_modification_nulle_avant_enregistrement(self):
         resp = self.client_api.get('/api/django/adminops/settings/')
         self.assertEqual(resp.status_code, 200)
