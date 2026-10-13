@@ -4,7 +4,6 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from .views_statuses import StatutConfigViewSet
 from .views_email import EmailTemplateViewSet
-from .views_approvals import ApprovalPolicyViewSet
 from .views_translations import TranslationOverrideViewSet
 from .views_gabarits import GabaritDocumentCustomViewSet
 from .views_referentiels import (
@@ -29,10 +28,8 @@ emails_router = DefaultRouter()
 emails_router.register(r'email-templates', EmailTemplateViewSet,
                        basename='email-template')
 
-# FG25 — politiques d'approbation configurables. Routeur isolé.
-approvals_router = DefaultRouter()
-approvals_router.register(r'approbations', ApprovalPolicyViewSet,
-                          basename='approval-policy')
+# D-APAR-2 (APAR44) : écran/routes `approbations` retirés ; le seuil de remise
+# reste `CompanyProfile.discount_approval_threshold`.
 
 # N94 — surcharges de traduction de l'interface (par langue/clé). Routeur isolé.
 translations_router = DefaultRouter()
@@ -94,8 +91,6 @@ urlpatterns = [
     path('', include(statuts_router.urls)),
     # FG17 — modèles d'e-mail éditables (sujet + corps), par société/clé.
     path('', include(emails_router.urls)),
-    # FG25 — politiques d'approbation configurables (CRUD).
-    path('', include(approvals_router.urls)),
     # N94 — surcharges de traduction de l'interface (CRUD + bulk + effective).
     path('', include(translations_router.urls)),
     # WIR66 — référentiels société : taux de TVA, conditions de paiement,

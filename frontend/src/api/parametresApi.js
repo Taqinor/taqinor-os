@@ -58,7 +58,6 @@ const parametresApi = {
   createTauxTva: (data) => api.post('/parametres/taux-tva/', data),
   updateTauxTva: (id, data) => api.patch(`/parametres/taux-tva/${id}/`, data),
   deleteTauxTva: (id) => api.delete(`/parametres/taux-tva/${id}/`),
-  setDefautTauxTva: (id) => api.post(`/parametres/taux-tva/${id}/set_defaut/`),
   getConditionsPaiement: (params) => api.get('/parametres/conditions-paiement/', { params }),
   createConditionPaiement: (data) =>
     api.post('/parametres/conditions-paiement/', data),

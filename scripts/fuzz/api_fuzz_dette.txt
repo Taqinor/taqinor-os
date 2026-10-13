@@ -222,7 +222,6 @@ API accepted schema-violating request|GET /api/django/offlinesync/operations/
 API accepted schema-violating request|GET /api/django/outillage/kit-items/
 API accepted schema-violating request|GET /api/django/outillage/kits/
 API accepted schema-violating request|GET /api/django/outillage/outils/
-API accepted schema-violating request|GET /api/django/parametres/approbations/
 API accepted schema-violating request|GET /api/django/parametres/cadence-relance/
 API accepted schema-violating request|GET /api/django/parametres/conditions-paiement/
 API accepted schema-violating request|GET /api/django/parametres/email-templates/
@@ -416,7 +415,6 @@ API accepted schema-violating request|PATCH /api/django/notifications/annonces/{
 API accepted schema-violating request|PATCH /api/django/notifications/holidays/{id}/
 API accepted schema-violating request|PATCH /api/django/notifications/whatsapp-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/notifications/working-hours/{id}/
-API accepted schema-violating request|PATCH /api/django/parametres/approbations/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/conditions-paiement/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/email-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/messages/
@@ -492,7 +490,6 @@ API accepted schema-violating request|POST /api/django/notifications/whatsapp-te
 API accepted schema-violating request|POST /api/django/notifications/whatsapp-templates/{id}/decision/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API accepted schema-violating request|POST /api/django/outillage/kits/
-API accepted schema-violating request|POST /api/django/parametres/approbations/
 API accepted schema-violating request|POST /api/django/parametres/cadence-relance/
 API accepted schema-violating request|POST /api/django/parametres/conditions-paiement/
 API accepted schema-violating request|POST /api/django/parametres/config-import/
@@ -545,7 +542,6 @@ API accepted schema-violating request|PUT /api/django/notifications/holidays/{id
 API accepted schema-violating request|PUT /api/django/notifications/whatsapp-templates/{id}/
 API accepted schema-violating request|PUT /api/django/notifications/working-hours/{id}/
 API accepted schema-violating request|PUT /api/django/outillage/kits/{id}/
-API accepted schema-violating request|PUT /api/django/parametres/approbations/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/cadence-relance/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/conditions-paiement/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/email-templates/bulk/
@@ -907,7 +903,6 @@ API rejected schema-compliant request|POST /api/django/notifications/messages-ac
 API rejected schema-compliant request|POST /api/django/notifications/routing-rules/
 API rejected schema-compliant request|POST /api/django/outillage/kit-items/
 API rejected schema-compliant request|POST /api/django/outillage/outils/{id}/calibrer/
-API rejected schema-compliant request|POST /api/django/parametres/approbations/
 API rejected schema-compliant request|POST /api/django/parametres/cadence-relance/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/

@@ -64,7 +64,6 @@ notifications.WhatsAppTemplateViewSet
 outillage.KitOutillageItemViewSet
 outillage.KitOutillageViewSet
 outillage.OutillageViewSet
-parametres.ApprovalPolicyViewSet
 parametres.EmailTemplateViewSet
 parametres.StatutConfigViewSet
 parametres.TranslationOverrideViewSet

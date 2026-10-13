@@ -70,13 +70,13 @@ class TestArc23TauxTVAMaster(TestCase):
         self.assertEqual(
             TauxTVA.objects.filter(company=self.company).count(), 5)
 
-    def test_default_taux_is_standard_20(self):
+    def test_referentiel_ne_porte_plus_de_defaut(self):
+        # D-APAR-1 (APAR44) : le profil `tva_standard` est l'unique source du
+        # taux par défaut — plus de drapeau `defaut` ni de `default_taux`.
         TauxTVA.seed_defaults(self.company)
-        self.assertEqual(TauxTVA.default_taux(self.company), Decimal('20'))
-        # Un seul défaut par société.
-        self.assertEqual(
-            TauxTVA.objects.filter(company=self.company, defaut=True).count(),
-            1)
+        self.assertFalse(hasattr(TauxTVA, 'default_taux'))
+        self.assertNotIn(
+            'defaut', [f.name for f in TauxTVA._meta.get_fields()])
 
     # ── Défauts branchés sur la création ─────────────────────────────────────
     def _set_profile_tva_standard(self, value):
@@ -107,7 +107,6 @@ class TestArc23TauxTVAMaster(TestCase):
 
     def test_no_referentiel_preserves_historical_behavior(self):
         # Aucun référentiel actif (setUp ne seede pas) → repli 20 % historique.
-        self.assertIsNone(TauxTVA.default_taux(self.company))
         produit = self._produit('Onduleur réseau', tva=None)
         ligne = self._create_line('Onduleur réseau', produit)
         self.assertEqual(ligne.taux_tva, Decimal('20'))
@@ -122,11 +121,10 @@ class TestArc23TauxTVAMaster(TestCase):
         self.assertEqual(ligne.taux_tva, Decimal('14'))
 
     def test_inactive_default_falls_back_to_historical(self):
-        # Défaut désactivé → default_taux None → repli historique 20 %.
+        # Taux « standard » désactivé : sans effet, le profil seul décide (20 %).
         TauxTVA.seed_defaults(self.company)
         TauxTVA.objects.filter(
             company=self.company, code='standard').update(actif=False)
-        self.assertIsNone(TauxTVA.default_taux(self.company))
         produit = self._produit('Onduleur réseau', tva=None)
         ligne = self._create_line('Onduleur réseau', produit)
         self.assertEqual(ligne.taux_tva, Decimal('20'))
@@ -155,6 +153,5 @@ class TestArc23TauxTVAMaster(TestCase):
         other = Company.objects.create(slug='arc23-other', nom='Autre')
         TauxTVA.seed_defaults(self.company)
         # L'autre société n'a AUCUN taux tant qu'elle n'est pas seedée.
-        self.assertIsNone(TauxTVA.default_taux(other))
         self.assertEqual(
             TauxTVA.objects.filter(company=other).count(), 0)
