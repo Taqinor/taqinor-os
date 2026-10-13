@@ -1797,3 +1797,5 @@ API rejected schema-compliant request|PATCH /api/django/ged/routages-documentair
 API rejected schema-compliant request|POST /api/django/ged/vues/
 API rejected schema-compliant request|POST /api/django/records/activities/{id}/done/
 Invalid Allow header|OPTIONS /api/django/portail/paiements-facture-portail/
+# PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
+API accepted schema-violating request|GET /api/django/parametres/audit/
