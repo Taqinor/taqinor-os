@@ -7,7 +7,7 @@ Test coverage:
   (b) Overpass error / timeout → returns None (graceful degradation).
   (c) No building found (empty elements) → returns [].
   (d) Company scoping: another company's lead returns 404.
-  (e) Lead with no GPS pin returns 400.
+  (e) Lead with no GPS pin returns 409 (ERR-ENF11-FUZZ-CRM).
   (f) a corrected gps_lat/gps_lng (different from roof_point) wins (QJR598).
   (g) gps_lat/gps_lng used when roof_point is absent.
 """
@@ -246,10 +246,10 @@ class LeadRoofFootprintViewTests(TestCase):
         self.assertEqual(response.status_code, 404)
         fetch.assert_not_called()
 
-    def test_no_gps_returns_400(self):
-        """(e) Lead has neither roof_point nor gps_lat/lng → 400."""
+    def test_no_gps_returns_409(self):
+        """(e) Lead has neither roof_point nor gps_lat/lng → 409."""
         lead = self._lead()
-        self.assertEqual(self._get(lead.pk).status_code, 400)
+        self.assertEqual(self._get(lead.pk).status_code, 409)
 
     def test_overpass_failure_returns_empty_polygon(self):
         """(b) Overpass unreachable → 200 with empty polygon + message."""

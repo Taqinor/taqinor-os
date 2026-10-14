@@ -16,7 +16,9 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
-from .params_requete import booleen_param, liste_ids
+from .params_requete import (
+    CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, RESOUDRE_GPS_REPERE, booleen_param,
+    corps_lu, liste_ids)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1171,7 +1173,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data)
 
-    @extend_schema(request=sd.corps('CrmResoudreGpsRequest', adresse=serializers.CharField(required=False), lien=serializers.CharField(required=False), ville=serializers.CharField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=CORPS_RESOUDRE_GPS, responses=sd.OBJ, extensions=RESOUDRE_GPS_REPERE)
     @action(detail=False, methods=['post'], url_path='resoudre-gps',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def resoudre_gps(self, request):
@@ -1186,30 +1188,30 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         (géocodeur), ``ville`` (centre-ville approximatif)."""
         from .geolocalisation import (
             coords_depuis_adresse, coords_depuis_lien_maps)
-        lien = (request.data.get('lien') or '').strip()
-        if lien:
+        corps = corps_lu(request, CORPS_RESOUDRE_GPS)  # ERR-ENF11-FUZZ-CRM
+        if lien := corps.get('lien', '').strip():
             coords = coords_depuis_lien_maps(lien)
-            if coords is None:
+            if coords is None:  # rien à trouver dans ce lien : 404
                 return Response(
                     {'detail': 'Aucune coordonnée trouvée dans ce lien '
                                'Google Maps.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
             lat, lng, precision = (*coords, 'lien')
         else:
             resultat = coords_depuis_adresse(
-                request.data.get('adresse'), request.data.get('ville'))
+                corps.get('adresse'), corps.get('ville'))
             if resultat is None:
                 return Response(
                     {'detail': "Adresse introuvable (ni géocodable, ni une "
                                'ville connue du gazetier).'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
             lat, lng, precision = resultat
         return Response({
             'gps_lat': str(lat), 'gps_lng': str(lng),
             'precision': precision,
         })
 
-    @extend_schema(request=sd.corps('CrmVilleStatutRequest', ville=serializers.CharField(required=False, allow_blank=True), gps_lat=serializers.FloatField(required=False), gps_lng=serializers.FloatField(required=False), proches=serializers.BooleanField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=CORPS_VILLE_STATUT, responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='ville-statut',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def ville_statut(self, request):
@@ -1224,7 +1226,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         les villes ERP triées par distance (vide sans position)."""
         from apps.parametres.villes_resolution import (
             resoudre_ville, villes_proches)
-        ville = (request.data.get('ville') or '').strip()
+        ville = corps_lu(request, CORPS_VILLE_STATUT).get('ville', '').strip()
         resultat = resoudre_ville(ville)
         position = None
         proches = []
@@ -1279,7 +1281,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # dossier. La lecture des visites passe par le SÉLECTEUR de ``apps.visites``
     # (frontière M3) : ce module n'importe jamais ses modèles.
 
-    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False), proprietaire_inconnu=serializers.BooleanField(required=False)), responses=inline_serializer('CrmLeadLocataire', {
+    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False), proprietaire_inconnu=serializers.BooleanField(required=False)), extensions=sd.LOCATAIRE_SUITE, responses=inline_serializer('CrmLeadLocataire', {
         'locataire': serializers.BooleanField(),
         'propose': serializers.ListField(child=serializers.CharField()),
         'motif_perte': serializers.CharField(),

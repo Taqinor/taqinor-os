@@ -9,6 +9,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
 
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).
 OBJ = OpenApiTypes.OBJECT
 
@@ -101,3 +103,66 @@ P_ENTITE = param('entite', OpenApiTypes.INT,
 P_ACTIVITE_ID = OpenApiParameter(
     'activite_id', OpenApiTypes.INT, OpenApiParameter.PATH,
     description="Identifiant de l'entrée du chatter du lead.")
+
+
+def _cible_unique(a, b):
+    """Exactement UN de ``a`` / ``b`` (entier) — l'autre absent ou nul."""
+    return {'oneOf': [
+        {'required': [a], 'properties': {a: {'type': 'integer'}}},
+        {'required': [b], 'properties': {b: {'type': 'integer'}}},
+    ]}
+
+
+#: ERR-ENF11-FUZZ-CRM — une salle de vente référence exactement un lead OU un
+#: client (``SalleVenteSerializer.validate``), à la création.
+SALLE_CIBLE_UNIQUE = {EXTENSION_CORPS_RESSERRE: _cible_unique('lead', 'client')}
+
+#: ERR-ENF11-FUZZ-CRM — un objectif mensuel (défaut) porte son mois, un
+#: trimestriel son trimestre (``ObjectifCommercialSerializer.validate``) ;
+#: création et remplacement (PUT), jamais le PATCH (repli sur la ligne).
+OBJECTIF_PERIODE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['period_type'],
+     'properties': {'period_type': {'enum': ['year']}}},
+    {'required': ['period_month'],
+     'properties': {'period_type': {'enum': ['month']},
+                    'period_month': {'type': 'integer'}}},
+    {'required': ['period_type', 'period_quarter'],
+     'properties': {'period_type': {'enum': ['quarter']},
+                    'period_quarter': {'type': 'integer'}}},
+]}}
+
+#: ERR-ENF11-FUZZ-CRM — conversion lead → client : le mode « lier » exige
+#: ``client_id`` (``clients_identite.convertir_lead_en_client``).
+CONVERSION_LIER_CLIENT = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'mode': {'enum': ['nouveau', 'aucun']}}},
+    {'required': ['client_id'], 'properties': {
+        'mode': {'enum': ['lier']}, 'client_id': {'type': 'integer'}}},
+]}}
+
+
+def _texte_avec(motif):
+    return {'type': 'string', 'pattern': motif}
+
+
+#: ERR-ENF11-FUZZ-CRM — « locataire » (``cadence_reponses.refus_proprietaire``) :
+#: ``proprietaire_inconnu: true`` OU les coordonnées du propriétaire — un nom
+#: non blanc et un numéro joignable (au moins un chiffre non nul ; le
+#: téléphone prime sur le WhatsApp quand il est renseigné). Textes sans NUL.
+_SANS_NUL = r'^[^\x00]*$'
+_NUMERO = r'^[^\x00]*[1-9][^\x00]*$'
+LOCATAIRE_SUITE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['proprietaire_inconnu'],
+     'properties': {'proprietaire_inconnu': {'enum': [True]}}},
+    {'required': ['proprietaire'], 'properties': {'proprietaire': {
+        'type': 'object', 'required': ['nom'],
+        'properties': {'nom': _texte_avec(r'^[^\x00]*\S[^\x00]*$'),
+                       'prenom': _texte_avec(_SANS_NUL)},
+        'anyOf': [
+            {'required': ['telephone'],
+             'properties': {'telephone': _texte_avec(_NUMERO),
+                            'whatsapp': _texte_avec(_SANS_NUL)}},
+            {'required': ['whatsapp'],
+             'properties': {'whatsapp': _texte_avec(_NUMERO),
+                            'telephone': {'type': 'string', 'maxLength': 0}}},
+        ]}}},
+]}}

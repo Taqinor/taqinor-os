@@ -151,11 +151,12 @@ class ResolveurHttpTests(TestCase):
         self.assertEqual(resp.data['gps_lng'], '-7.5898')
         self.assertEqual(resp.data['precision'], 'lien')
 
-    def test_lien_illisible_400(self):
+    def test_lien_illisible_404(self):
+        # ERR-ENF11-FUZZ-CRM : requête conforme, aucune coordonnée à trouver.
         resp = self.api.post(
             '/api/django/crm/leads/resoudre-gps/',
             {'lien': 'https://exemple.com/pas-une-carte'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_adresse_repli_ville(self):
         with patch('requests.get', side_effect=OSError('down')):

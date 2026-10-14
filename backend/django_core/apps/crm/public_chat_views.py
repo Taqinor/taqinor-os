@@ -29,6 +29,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.models import Company
+from core.champs_stricts import ChaineStricte
 
 from .models import ChatSessionPublique
 
@@ -138,7 +139,8 @@ def open_chat_session(request):
 
 @extend_schema(
     request=inline_serializer('PublicChatMessageRequete', {
-        'message': serializers.CharField(),
+        # ERR-ENF11-FUZZ-CRM — texte non blanc SANS NUL (motif publié).
+        'message': ChaineStricte(),
     }),
     responses={200: inline_serializer('PublicChatMessageReponse', {
         'reply': serializers.CharField(),
@@ -168,7 +170,13 @@ def post_chat_message(request, token):
             {'detail': 'Cette session est fermée.'},
             status=status.HTTP_410_GONE)
 
-    texte = str(request.data.get('message', '')).strip()
+    brut = request.data.get('message', '')
+    # ERR-ENF11-FUZZ-CRM — un nombre/objet était converti en texte et un NUL
+    # partait vers le transcript JSONB (refusé par Postgres) : 400 nommé.
+    if not isinstance(brut, str) or chr(0) in brut:
+        return Response(
+            {'detail': 'Message invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+    texte = brut.strip()
     if not texte:
         return Response(
             {'detail': 'Message vide.'}, status=status.HTTP_400_BAD_REQUEST)

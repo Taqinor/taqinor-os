@@ -56,6 +56,7 @@ from authentication.permissions import (
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 
 
+@extend_schema_view(create=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE))
 class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
@@ -1062,7 +1063,7 @@ class LeadClientsActionsMixin:
             return [HasPermissionOrLegacy('crm_modifier')()]
         return super().get_permissions()
 
-    @extend_schema(request=sd.corps('CrmConvertirClientRequest', mode=serializers.ChoiceField(choices=['nouveau', 'lier', 'aucun']), client_id=serializers.IntegerField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmConvertirClientRequest', mode=serializers.ChoiceField(choices=['nouveau', 'lier', 'aucun']), client_id=serializers.IntegerField(required=False)), responses=sd.OBJ, extensions=sd.CONVERSION_LIER_CLIENT)
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
@@ -1091,9 +1092,10 @@ class LeadClientsActionsMixin:
                     request.user))
         except ClientIntrouvable as exc:
             # LEVÉ, pas renvoyé (même motif que `placement_cadences`) : le
-            # contrat de la vue reste la forme de son 200 ; DRF rend le 400
-            # ``{client_id: [...]}``.
-            raise DRFValidationError({'client_id': [str(exc)]})
+            # contrat de la vue reste la forme de son 200. ERR-ENF11-FUZZ-CRM :
+            # id bien formé hors portée = ressource introuvable, 404.
+            from rest_framework.exceptions import NotFound
+            raise NotFound({'client_id': [str(exc)]})
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1317,7 +1319,7 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.param('metric', enum=ObjectifCommercial.Metric.values), sd.param('year', OpenApiTypes.INT), sd.param('period_type', enum=ObjectifCommercial.PeriodType.values), sd.P_OWNER_OU_NULL]))
+@extend_schema_view(list=extend_schema(parameters=[sd.param('metric', enum=ObjectifCommercial.Metric.values), sd.param('year', OpenApiTypes.INT), sd.param('period_type', enum=ObjectifCommercial.PeriodType.values), sd.P_OWNER_OU_NULL]), create=extend_schema(extensions=sd.OBJECTIF_PERIODE), update=extend_schema(extensions=sd.OBJECTIF_PERIODE))
 class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
