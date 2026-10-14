@@ -123,6 +123,10 @@ def remplissage_par_zone(company, *, emplacement_id=None):
 # NTWMS33 — Simulateur de capacité entrepôt (what-if)
 # ═══════════════════════════════════════════════════════════════════════════
 
+class ZoneIntrouvable(ValueError):
+    """Zone bien formée mais inconnue de la société : la vue répond 404."""
+
+
 def simuler_capacite(company, *, zone, quantite_supplementaire=0,
                      produit_id=None, emplacement_id=None):
     """Projette le taux de remplissage d'une ZONE si on y ajoutait
@@ -151,7 +155,7 @@ def simuler_capacite(company, *, zone, quantite_supplementaire=0,
     lignes = remplissage_par_zone(company, emplacement_id=emplacement_id)
     courante = next((z for z in lignes if z['zone'] == zone_cle), None)
     if courante is None:
-        raise ValueError(f'Zone « {zone_cle} » introuvable dans cette société.')
+        raise ZoneIntrouvable(f'Zone « {zone_cle} » introuvable dans cette société.')
 
     capacite = courante['capacite']
     occupe = courante['occupe']

@@ -110,7 +110,7 @@ def simuler_capacite_view(request):
     demandée — pour décider où stocker une grosse réception AVANT qu'elle
     n'arrive. Aucune écriture, aucune réservation.
     """
-    from ..selectors_entrepot import simuler_capacite
+    from ..selectors_entrepot import ZoneIntrouvable, simuler_capacite
 
     try:
         resultat = simuler_capacite(
@@ -122,6 +122,9 @@ def simuler_capacite_view(request):
             emplacement_id=_int_param(
                 request.query_params.get('emplacement'), None, 'emplacement'),
         )
+    except ZoneIntrouvable as exc:
+        return Response({'detail': str(exc)},
+                        status=status.HTTP_404_NOT_FOUND)
     except ValueError as exc:
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)
