@@ -185,3 +185,23 @@ class LienDocumentPortailTests(TestCase):
         ligne = (res.data.get('results') or res.data)[0]
         self.assertIsNone(ligne['lien_ged'])
         self.assertFalse(ligne['fichier_present'])
+
+    def test_lead_id_nullable_a_la_lecture_pas_a_lecriture(self):
+        """CI #997 api-fuzz « Response violates schema » : un dépôt sans lead
+        revient ``"lead_id": null`` ; le schéma de RÉPONSE le dit nullable, celui
+        de la REQUÊTE non (le formulaire multipart ne sait pas écrire un null)."""
+        from drf_spectacular.openapi import AutoSchema
+
+        from apps.portail.serializers import DocumentClientPortailSerializer
+
+        DocumentClientPortail.objects.create(
+            company=self.co, client_id=self.client_crm.id, libelle='Sans lead')
+        res = self.api.get('/api/django/portail/documents-client-portail/')
+        ligne = (res.data.get('results') or res.data)[0]
+        self.assertIn('lead_id', ligne)
+        self.assertIsNone(ligne['lead_id'])
+        champ = DocumentClientPortailSerializer().fields['lead_id']
+        self.assertNotIn(
+            'nullable', AutoSchema()._map_serializer_field(champ, 'request'))
+        self.assertTrue(
+            AutoSchema()._map_serializer_field(champ, 'response')['nullable'])

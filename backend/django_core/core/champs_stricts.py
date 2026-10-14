@@ -391,6 +391,31 @@ class BooleenStrict(serializers.BooleanField):
 QUANTITE_MAX = 1_000_000
 
 
+class EntierNullableEnLecture(serializers.IntegerField):
+    """Entier écrit SANS ``null`` mais lu avec ``null`` (CI #997 api-fuzz
+    « Response violates schema », portail/documents-client-portail : ``lead_id``
+    d'un dépôt sans lead). Le formulaire multipart ne sait pas écrire un
+    ``null`` (il part en texte « None » → 400), donc la REQUÊTE ne publie pas
+    ``nullable`` ; la RÉPONSE, elle, le publie : la clé revient ``null``."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+
+
+class _EntierNullableEnLecture(OpenApiSerializerFieldExtension):
+    target_class = 'core.champs_stricts.EntierNullableEnLecture'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'response':
+            return schema
+        schema = dict(schema)
+        schema['nullable'] = True
+        return schema
+
+
 class EntierStrict(serializers.IntegerField):
     """Entier JSON réel : ``"5"``, ``5.0`` et ``true`` sont refusés (400)."""
 
