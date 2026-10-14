@@ -2,9 +2,10 @@
 le CLONEUR DU DOMAINE.
 
 TEST ROUGE D'ABORD. Les deux vues réimplémentaient ``Devis.objects.create(...)``
-à la main et OMETTAIENT les SEPT champs que le cloneur du domaine porte
+à la main et OMETTAIENT les champs que le cloneur du domaine porte
 explicitement depuis QJR146(a) : ``devise``, ``taux_change``, ``echeancier``,
-``acompte_pct``, ``acompte_montant``, ``entite``, ``custom_data``. C'est le bug
+``entite``, ``custom_data`` (VNT103 : l'acompte persisté, sans lecteur, a
+quitté le modèle). C'est le bug
 corrigé ailleurs et jamais propagé ici — atteignable depuis ``DevisList.jsx`` en
 usage quotidien, et financièrement porteur (un échéancier NÉGOCIÉ et un acompte
 perdus : c'est la première tranche que l'email de confirmation annonce au
@@ -66,7 +67,6 @@ class _Base(TestCase):
         Devis.objects.filter(pk=self.source.pk).update(
             devise='EUR', taux_change=Decimal('11.0000'),
             echeancier=ECHEANCIER_NEGOCIE,
-            acompte_pct=Decimal('45.00'), acompte_montant=Decimal('1234.56'),
             entite=self.entite, custom_data={'dossier': 'X-42'})
         self.source.refresh_from_db()
 
@@ -74,9 +74,6 @@ class _Base(TestCase):
         self.assertEqual(copie.devise, 'EUR')
         self.assertEqual(Decimal(str(copie.taux_change)), Decimal('11.0000'))
         self.assertEqual(copie.echeancier, ECHEANCIER_NEGOCIE)
-        self.assertEqual(Decimal(str(copie.acompte_pct)), Decimal('45.00'))
-        self.assertEqual(Decimal(str(copie.acompte_montant)),
-                         Decimal('1234.56'))
         self.assertEqual(copie.entite_id, self.entite.pk)
         self.assertEqual(copie.custom_data, {'dossier': 'X-42'})
 
