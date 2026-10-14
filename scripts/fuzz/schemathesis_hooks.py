@@ -397,9 +397,36 @@ def _journal_couverture():
 atexit.register(_journal_couverture)
 
 
+# ── 5. Fichiers dont le FORMAT n'est pas exprimable au schéma ──────────
+# Un gabarit de dossier réglementaire se dépose en PDF SEULEMENT (règle
+# métier, « le fichier reçu n'en est pas un » sinon) ; OpenAPI ne dit que
+# ``format: binary``. Un cas POSITIF reçoit donc un PDF minimal valide
+# (octets ``%PDF-``) au lieu d'octets quelconques — même nature que les ids
+# réels : l'existence/le format d'une donnée que le schéma ne peut pas porter.
+_PDF_MINIMAL = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+_FICHIERS_PDF = re.compile(r'^/api/django/calepinage/gabarits-dossiers/')
+_METHODES_FICHIER = {'POST', 'PATCH'}
+
+
+def _fichiers_pdf(case):
+    meta = case.meta
+    if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
+        return
+    if case.operation.method.upper() not in _METHODES_FICHIER:
+        return
+    if not _FICHIERS_PDF.match(case.operation.path):
+        return
+    corps = case.body
+    if isinstance(corps, dict) and corps.get('fichier') is not None:
+        corps['fichier'] = (_PDF_MINIMAL.decode('latin-1')
+                            if isinstance(corps['fichier'], str)
+                            else _PDF_MINIMAL)
+
+
 @schemathesis.hook
 def before_call(context, case, kwargs):
     _ids_chemin_reels(case)
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
+    _fichiers_pdf(case)

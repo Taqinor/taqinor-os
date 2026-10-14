@@ -252,6 +252,45 @@ class IdsFkImbriquesTests(unittest.TestCase):
         self.assertEqual(corps['lignes'][0]['produit'], 0)
 
 
+class FichiersPdfTests(unittest.TestCase):
+    """CI #997 — le dépôt d'un gabarit réglementaire exige un PDF : un cas
+    POSITIF en reçoit un ; négatifs, autres chemins et autres champs intacts."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hooks = _charger_hooks(
+            {'user_id': 4, 'company_id': 2, 'role_id': 7, 'fk_ids': {}})
+
+    def _corps(self, methode='POST', chemin='/api/django/calepinage/gabarits-dossiers/',
+               corps=None, mode='POSITIVE'):
+        cas = _cas(self.hooks, methode, chemin,
+                   {'fichier': b'', 'code': '0'} if corps is None else corps,
+                   mode=mode)
+        self.hooks.before_call(None, cas, {})
+        return cas.body
+
+    def test_octets_quelconques_remplaces_par_un_pdf(self):
+        for methode, chemin in (
+                ('POST', '/api/django/calepinage/gabarits-dossiers/'),
+                ('PATCH', '/api/django/calepinage/gabarits-dossiers/{id}/')):
+            with self.subTest(methode=methode):
+                corps = self._corps(methode, chemin)
+                self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
+                self.assertEqual(corps['code'], '0')
+
+    def test_valeur_texte_reste_du_texte(self):
+        corps = self._corps(corps={'fichier': ''})
+        self.assertIsInstance(corps['fichier'], str)
+        self.assertTrue(corps['fichier'].startswith('%PDF-'))
+
+    def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
+        self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
+        self.assertEqual(
+            self._corps(chemin='/api/django/ged/documents/')['fichier'], b'')
+        self.assertEqual(self._corps(corps={'code': '0'}), {'code': '0'})
+        self.assertIsNone(self._corps(corps={'fichier': None})['fichier'])
+
+
 class IdsFkParCheminTests(unittest.TestCase):
     """ENF11 (seed) — une règle par chemin donne les ids du BON modèle
     (``lot`` de stock = LotEntrepot), dans le corps ET la query."""
