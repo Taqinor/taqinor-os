@@ -7,6 +7,7 @@ from core.champs_stricts import (  # ENF11
     ChampsStrictsEntiersMixin,
     ChampsStrictsMixin,
     ChampsStrictsSansDecimalMixin,
+    IdInconnu404Mixin,
     ListesStrictesMixin,
     TexteLie,
 )
