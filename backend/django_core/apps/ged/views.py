@@ -4423,13 +4423,14 @@ class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
         `crm.selectors.client_base_qs` — jamais un import de `crm.models`).
         Les erreurs par ligne sont rapportées dans `resultats` sans bloquer
         le lot. Écriture : responsable/admin."""
-        modele_id = request.data.get('modele')
-        if not modele_id:
+        # CI #993 : `0` est un id BIEN FORMÉ (inconnu → 404), pas une absence.
+        modele_pk = _pk(request.data.get('modele'), 'modele')
+        if modele_pk is None:
             return Response(
                 {'modele': 'Le modèle de document est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         modele = ModeleDocument.objects.filter(
-            company=request.user.company, pk=_pk(modele_id, 'modele')).first()
+            company=request.user.company, pk=modele_pk).first()
         if modele is None:
             return Response(
                 {'modele': 'Modèle inconnu.'}, status=status.HTTP_404_NOT_FOUND)
@@ -4448,17 +4449,12 @@ class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
             client_ids = (request.data.getlist('clients')
                           if hasattr(request.data, 'getlist')
                           else request.data.get('clients')) or []
-            if client_ids:
-                from apps.crm import selectors as crm_selectors
-                clients = crm_selectors.client_base_qs(
-                    request.user.company).filter(pk__in=_pks(client_ids))
-                for client in clients:
-                    nom_complet = ' '.join(
-                        p for p in [client.nom, getattr(client, 'prenom', '')]
-                        if p).strip() or client.nom
-                    destinataires.append({
-                        'nom': nom_complet, 'email': client.email or '',
-                    })
+            destinataires, inconnus = selectors.destinataires_depuis_clients(
+                request.user.company, client_ids)
+            if inconnus:
+                return Response(
+                    {'clients': [f'Clients inconnus : {inconnus}.']},
+                    status=status.HTTP_404_NOT_FOUND)
         if not destinataires:
             return Response(
                 {'detail': 'Aucun destinataire : fournir un CSV ou une '
