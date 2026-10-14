@@ -61,19 +61,25 @@ _CHAMPS_RESUME_PROGRESSION = {
 }
 
 
-_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetMarquerFaitReponse', {
-    **_CHAMPS_RESUME_PROGRESSION,
-})
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE = inline_serializer(
+    'ViewsOnboardingProgressViewSetMarquerFaitReponse',
+    {
+        **_CHAMPS_RESUME_PROGRESSION,
+    })
 
 
-_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_TOUT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerToutReponse', {
-    **_CHAMPS_RESUME_PROGRESSION,
-})
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_TOUT_REPONSE = inline_serializer(
+    'ViewsOnboardingProgressViewSetIgnorerToutReponse',
+    {
+        **_CHAMPS_RESUME_PROGRESSION,
+    })
 
 
-_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerReponse', {
-    **_CHAMPS_RESUME_PROGRESSION,
-})
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE = inline_serializer(
+    'ViewsOnboardingProgressViewSetIgnorerReponse',
+    {
+        **_CHAMPS_RESUME_PROGRESSION,
+    })
 
 
 _VIEWS_ONBOARDING_PROGRESS_VIEW_SET_LIST_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetListReponse', {
