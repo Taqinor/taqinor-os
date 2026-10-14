@@ -552,7 +552,7 @@ class Enf11FuzzGedCorpsTests(TestCase):
         import re
 
         from core.champs_stricts import MOTIF_URL_HTTP
-        cg = {'op': 'and', 'conditions': []}
+        cg = {'field': 'nom', 'operator': 'eq', 'value': 'x'}
         for route, corps, champ in (
                 ('regles-dossier/', {'folder': self.folder.pk, 'nom': 'r',
                                      'condition_group': cg, 'actions': None},
