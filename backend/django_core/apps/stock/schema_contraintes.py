@@ -46,6 +46,14 @@ PRODUIT_OU_DESIGNATION = {
     ],
 }
 
+#: ``lim_phases`` (fiche limiteur) : 1, 3 ou vide (``validate_lim_phases``).
+PHASES_LIMITEUR = {'type': 'integer', 'enum': [1, 3, None], 'nullable': True,
+                   'description': 'Limiteur — 1 ou 3 phases (vide = non publié).'}
+
+#: Rendement en % borné à [1 ; 100] avec UNE décimale
+#: (``MinValueValidator(1)`` / ``MaxValueValidator(100)``, ``decimal_places=1``).
+MOTIF_POURCENTAGE_1_100 = r'^(?:[1-9]\d?(?:\.\d?)?|100(?:\.0?)?)$'
+
 #: composant de requête -> {'proprietes': {champ: fragment fusionné},
 #: 'racine': fragment fusionné à la racine du composant}.
 CONTRAINTES = {
@@ -66,6 +74,17 @@ CONTRAINTES = {
     'PatchedLigneRetourFournisseurRequest': {'proprietes': QUANTITE_POSITIVE},
     'PaiementFournisseurRequest': {'montants_positifs': ['montant']},
     'PatchedPaiementFournisseurRequest': {'montants_positifs': ['montant']},
+    # ERR-ENF11-FUZZ-STOCK (CI #997) — fiche technique : les bornes que les
+    # validateurs du modèle appliquent et qu'une chaîne décimale ne porte pas.
+    # Rendements 1–100 % (1 décimale), C-rate ≥ 0,01, `lim_phases` = 1 ou 3.
+    'FicheTechniqueRequest': {
+        'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
+        'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
+        'remplacer': {'lim_phases': PHASES_LIMITEUR}},
+    'PatchedFicheTechniqueRequest': {
+        'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
+        'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
+        'remplacer': {'lim_phases': PHASES_LIMITEUR}},
     'PrixFournisseurRequest': {},
     'PatchedPrixFournisseurRequest': {},
     'TrancheEcheancierRequest': {},
@@ -145,6 +164,10 @@ def declarer_contraintes_achats(result, generator=None, request=None,
             if isinstance(propriete, dict) and propriete.get('pattern'):
                 propriete['pattern'] = _motif_decimal_positif(
                     propriete['pattern'])
+        for champ in regles.get('pourcentages_1_100') or ():
+            propriete = proprietes.get(champ)
+            if isinstance(propriete, dict) and propriete.get('pattern'):
+                propriete['pattern'] = MOTIF_POURCENTAGE_1_100
         for champ, remplacement in (regles.get('remplacer') or {}).items():
             if champ in proprietes:
                 proprietes[champ] = dict(remplacement)
