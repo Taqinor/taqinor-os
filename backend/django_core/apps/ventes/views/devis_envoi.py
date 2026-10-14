@@ -470,8 +470,10 @@ class DevisEnvoiActionsMixin:
         phone = devis_recipient_phone(devis)
         if not normalize_phone_e164(phone):
             return Response(
+                # ENF11 — le numéro vient de la FICHE client, pas du corps :
+                # refus d'état (409), la requête est valide.
                 {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         langue = request.data.get('langue')
         if langue is None:
@@ -527,8 +529,10 @@ class DevisEnvoiActionsMixin:
         phone = devis_recipient_phone(devis)
         if not normalize_phone_e164(phone):
             return Response(
+                # ENF11 — le numéro vient de la FICHE client, pas du corps :
+                # refus d'état (409), la requête est valide.
                 {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         langue = request.data.get('langue')
         if langue is None:

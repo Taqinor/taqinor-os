@@ -670,7 +670,6 @@ API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/generer
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/offres-tailles/appliquer/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/reappliquer-lead/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/roof-image/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/whatsapp-preview/
 API rejected schema-compliant request|POST /api/django/ventes/dossiers-checklist/
 API rejected schema-compliant request|POST /api/django/ventes/dossiers-echanges/
 API rejected schema-compliant request|POST /api/django/ventes/dossiers-reglementaires/
