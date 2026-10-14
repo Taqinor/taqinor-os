@@ -351,7 +351,7 @@
     "composant": "NoteDebitDialog",
     "action": "Note de débit"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.creer_note_debit",
+   "fonction_entree": "backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.creer_note_debit",
    "checkpoint": {
     "modifiable": true,
     "champs": [
@@ -622,7 +622,7 @@
     "etape": "PA4.04"
    },
    {
-    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.facturer_penalites._create",
+    "source": "backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.facturer_penalites._create",
     "etape": "PA4.16"
    }
   ],
