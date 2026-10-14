@@ -659,7 +659,8 @@ def acompte_a_l_acceptation(devis, user):
                 return None
             return creer_brouillon_tranche(devis, premiere, user)
     except Exception:  # noqa: BLE001 — best-effort, journalisé
-        logging.getLogger('apps.ventes.services').exception(
+        logger = logging.getLogger('apps.ventes.services')
+        logger.exception(
             "VNT62 : brouillon d'acompte automatique non créé (devis %s)",
             getattr(devis, 'reference', '?'))
         return None

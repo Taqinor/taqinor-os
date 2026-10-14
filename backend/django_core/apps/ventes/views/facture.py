@@ -1,11 +1,10 @@
-from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import ENTITE, qint, qstr
 from datetime import date as _date
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from . import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers as drf_serializers
@@ -19,10 +18,11 @@ from ..models import (
 from ..serializers_facturation import (
     FactureSerializer, FactureWriteSerializer, PaiementSerializer,
     AvoirSerializer, NoteDebitSerializer, RelanceLogSerializer,
+    FactureActivitySerializer, RelancerFactureSerializer,
 )
-from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
 from ..serializers import EmailLogSerializer
 from ..utils.corps import valider_corps, valider_corps_lignes
+from .facture_montant_tranche import FactureMontantTrancheMixin
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -136,7 +136,8 @@ PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
     # VNT14 — seul un « BROUILLON-<id> » se supprime : 409 sinon (ENF11).
     destroy=extend_schema(
         responses={204: None, 409: D.ErreurSuppressionFacture}))
-class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
+class FactureViewSet(FactureMontantTrancheMixin, EntiteScopeMixin,
+                     CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
@@ -611,19 +612,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(refus.corps, status=status.HTTP_400_BAD_REQUEST)
         return Response({**FactureSerializer(facture).data,
                          'avoir': avoir_annulation_corps(facture)})
-
-    @extend_schema(request=inline_serializer('FactureMontantTranche', {'montant_ttc': drf_serializers.CharField()}),
-                   responses={200: FactureSerializer, 400: D.ErreurDevisFige, 409: D.ErreurDevisFige})
-    @action(detail=True, methods=['post'], url_path='montant-tranche', permission_classes=PEUT_ANNULER)
-    def montant_tranche(self, request, pk=None):  # api-only: écran du panneau de vente (VNT75/VNT79).
-        """VNT67 — le TTC d'un BROUILLON de tranche (corps : ``facturation_vente.modifier_montant_tranche``)."""
-        from ..domain.facturation_vente import FacturationVenteRefusee, modifier_montant_tranche
-        corps = request.data if isinstance(request.data, dict) else {}
-        try:
-            facture = modifier_montant_tranche(self.get_object(), corps.get('montant_ttc'), user=request.user)
-        except FacturationVenteRefusee as exc:
-            return Response(exc.corps, status=exc.status)
-        return Response(FactureSerializer(facture).data)
 
     @extend_schema(responses=PaiementSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='paiements',

@@ -75,6 +75,19 @@ def garde_vente_unique(devis, *, user):
     raise exc
 
 
+def preparer_acceptation(devis, *, user):
+    """VNT54 + VNT57 — appelé par ``accept_devis`` sous son verrou, juste
+    avant la bascule (rien n'est encore écrit) : la garde « une vente en
+    vigueur par lead » puis, pour un BROUILLON, LA règle de gel du document
+    engagé (``envoi.geler_document_engage`` : approbation T17 — 400
+    ``approbation_requise`` —, ``date_envoi``, marge, CGV, barème)."""
+    from apps.ventes.domain.envoi import geler_document_engage
+    from apps.ventes.models import Devis
+    garde_vente_unique(devis, user=user)
+    if devis.statut == Devis.Statut.BROUILLON:
+        geler_document_engage(devis, user, acceptation=True)
+
+
 # ── VNT58 — l'aperçu « Prix négocié » (lecture pure) ─────────────────────────
 
 #: Messages des refus — contrat ``devis_prix_negocie.json`` (``erreurs_400`` /

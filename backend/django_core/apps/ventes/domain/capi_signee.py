@@ -51,19 +51,8 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
             getattr(devis, 'reference', '?'))
         return
 
-    # VNT52 — un AVENANT (version d'une vente DÉJÀ acceptée, ``avenant_de``
-    # de ``devis_accepted``) n'est pas une nouvelle vente : aucun POST (le
-    # dédoublonnage ``signedquote:<référence>`` ne couvre pas une nouvelle
-    # référence ⇒ ROAS gonflé à chaque version), une ligne de journal.
-    if isinstance(getattr(devis, 'pk', None), int):
-        from apps.ventes.selectors import predecesseur_accepte
-        avenant_de = predecesseur_accepte(devis)
-        if avenant_de is not None:
-            logger.info(
-                'VNT52: CAPI SignedQuote non émis pour devis %s — avenant de %s '
-                '(la vente a déjà été comptée).',
-                getattr(devis, 'reference', '?'), avenant_de.reference)
-            return
+    if _est_un_avenant(devis):  # VNT52
+        return
 
     pixel_id = (
         getattr(settings, 'META_CAPI_PIXEL_ID', None)
@@ -71,53 +60,15 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
         or ''
     ).strip()
 
-    # Récupère l'attribution snapshottée (QJ9) ou tente le lead directement.
-    attribution = {}
-    params = devis.etude_params or {}
-    if 'attribution' in params:
-        attribution = params['attribution']
-    else:
-        lead = getattr(devis, 'lead', None)
-        if lead is not None:
-            for field in _ATTRIBUTION_FIELDS:
-                val = getattr(lead, field, None)
-                if val:
-                    attribution[field] = val
+    attribution = _attribution_capi(devis)
 
-    import hashlib
     import time
     # QJR147 — ``urllib.parse`` n'est plus nécessaire : le jeton ne part plus
     # en query string (il est dans le corps JSON, voir plus bas).
     import urllib.request
     import json as _json
 
-    # Données de l'événement CAPI (hachage SHA-256 pour le PII).
-    def _sha256(val):
-        return hashlib.sha256((val or '').strip().lower().encode()).hexdigest()
-
     event_time = int(time.time())
-    client = getattr(devis, 'client', None)
-    email_hash = _sha256(getattr(client, 'email', '') or '') if client else ''
-    phone_raw = ''
-    if client:
-        phone_raw = getattr(client, 'telephone', '') or ''
-    # ── QJR136 / ES9 — LE TÉLÉPHONE PART EN E.164, PAS EN CHIFFRES NUS ──────
-    #
-    # CE QUI ÉTAIT FAUX. Le hash portait ``''.join(c for c in phone_raw if
-    # c.isdigit())`` — donc « 0600000000 » SANS indicatif pays, alors que Meta
-    # apparie sur un numéro E.164. L'appariement ``ph`` échouait donc
-    # SYSTÉMATIQUEMENT et l'EMQ chutait. La MÊME app expose déjà la règle
-    # (``utils/phone.normalize_phone_e164``), ``apps/adsengine/audiences.py``
-    # l'utilise pour ses uploads Meta, et ce fichier savait le faire cent
-    # lignes plus haut pour le lien wa.me : une quatrième dérivation locale
-    # n'avait aucune raison d'exister.
-    #
-    # Un numéro NON normalisable (local ambigu, saisie incomplète) ne produit
-    # plus un hash faux : il ne produit AUCUNE clé ``ph``.
-    from apps.ventes.utils.phone import normalize_phone_e164
-    phone_e164 = normalize_phone_e164(phone_raw)
-    phone_hash = _sha256(phone_e164) if phone_e164 else ''
-
     # ── QJR136 / ES8 — AUCUNE VALEUR N'EST ENVOYÉE SI ELLE N'EST PAS SÛRE ───
     #
     # Valeur de conversion : TTC REMISÉ de l'option acceptée (QX2 — chaîne
@@ -140,21 +91,8 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
             'deviné).', getattr(devis, 'reference', '?'), exc_info=True)
         return
 
-    user_data = {}
-    if email_hash:
-        user_data['em'] = [email_hash]
-    if phone_hash:
-        user_data['ph'] = [phone_hash]
+    user_data = _donnees_utilisateur(devis, attribution, ip, user_agent)
     fbclid = attribution.get('fbclid', '')
-    if fbclid:
-        user_data['fbc'] = f'fb.1.{int(time.time() * 1000)}.{fbclid}'
-    # ADSENG2 — EMQ (Event Match Quality) : ip + user_agent NON hachés (Meta les
-    # recommande tels quels). Déjà disponibles au point d'acceptation (accept_devis
-    # les reçoit), auparavant abandonnés ici. Aucune nouvelle collecte de donnée.
-    if ip:
-        user_data['client_ip_address'] = str(ip)
-    if user_agent:
-        user_data['client_user_agent'] = str(user_agent)
 
     custom_data = {
         'currency': 'MAD',
@@ -218,6 +156,91 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     except Exception as exc:
         logger.warning('QJ9: CAPI SignedQuote HTTP échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
+
+
+def _est_un_avenant(devis):
+    """VNT52 — un AVENANT (version d'une vente DÉJÀ acceptée, ``avenant_de``
+    de ``devis_accepted``) n'est pas une nouvelle vente : aucun POST (le
+    dédoublonnage ``signedquote:<référence>`` ne couvre pas une nouvelle
+    référence ⇒ ROAS gonflé à chaque version), une ligne de journal. Un
+    objet sans pk entier (stub de test) n'est jamais un avenant."""
+    if not isinstance(getattr(devis, 'pk', None), int):
+        return False
+    from apps.ventes.selectors import predecesseur_accepte
+    avenant_de = predecesseur_accepte(devis)
+    if avenant_de is None:
+        return False
+    logger.info(
+        'VNT52: CAPI SignedQuote non émis pour devis %s — avenant de %s '
+        '(la vente a déjà été comptée).',
+        getattr(devis, 'reference', '?'), avenant_de.reference)
+    return True
+
+
+def _attribution_capi(devis):
+    """QJ9 — l'attribution snapshottée (``etude_params``) ou, à défaut, lue
+    sur le lead (fbclid/UTM) pour un appariement maximal."""
+    attribution = {}
+    params = devis.etude_params or {}
+    if 'attribution' in params:
+        attribution = params['attribution']
+    else:
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            for field in _ATTRIBUTION_FIELDS:
+                val = getattr(lead, field, None)
+                if val:
+                    attribution[field] = val
+    return attribution
+
+
+def _donnees_utilisateur(devis, attribution, ip, user_agent):
+    """``user_data`` de l'événement CAPI (hachage SHA-256 pour le PII)."""
+    import hashlib
+    import time
+
+    def _sha256(val):
+        return hashlib.sha256((val or '').strip().lower().encode()).hexdigest()
+
+    client = getattr(devis, 'client', None)
+    email_hash = _sha256(getattr(client, 'email', '') or '') if client else ''
+    phone_raw = ''
+    if client:
+        phone_raw = getattr(client, 'telephone', '') or ''
+    # ── QJR136 / ES9 — LE TÉLÉPHONE PART EN E.164, PAS EN CHIFFRES NUS ──────
+    #
+    # CE QUI ÉTAIT FAUX. Le hash portait ``''.join(c for c in phone_raw if
+    # c.isdigit())`` — donc « 0600000000 » SANS indicatif pays, alors que Meta
+    # apparie sur un numéro E.164. L'appariement ``ph`` échouait donc
+    # SYSTÉMATIQUEMENT et l'EMQ chutait. La MÊME app expose déjà la règle
+    # (``utils/phone.normalize_phone_e164``), ``apps/adsengine/audiences.py``
+    # l'utilise pour ses uploads Meta, et ce fichier savait le faire cent
+    # lignes plus haut pour le lien wa.me : une quatrième dérivation locale
+    # n'avait aucune raison d'exister.
+    #
+    # Un numéro NON normalisable (local ambigu, saisie incomplète) ne produit
+    # plus un hash faux : il ne produit AUCUNE clé ``ph``.
+    from apps.ventes.utils.phone import normalize_phone_e164
+    phone_e164 = normalize_phone_e164(phone_raw)
+    phone_hash = _sha256(phone_e164) if phone_e164 else ''
+
+    user_data = {}
+    if email_hash:
+        user_data['em'] = [email_hash]
+    if phone_hash:
+        user_data['ph'] = [phone_hash]
+    fbclid = attribution.get('fbclid', '')
+    if fbclid:
+        user_data['fbc'] = f'fb.1.{int(time.time() * 1000)}.{fbclid}'
+    # ADSENG2 — EMQ (Event Match Quality) : ip + user_agent NON hachés (Meta les
+    # recommande tels quels). Déjà disponibles au point d'acceptation (accept_devis
+    # les reçoit), auparavant abandonnés ici. Aucune nouvelle collecte de donnée.
+    if ip:
+        user_data['client_ip_address'] = str(ip)
+    if user_agent:
+        user_data['client_user_agent'] = str(user_agent)
+
+    return user_data
 
 
 # ── PONT M3 : nom hébergé dans ``cycle_vie`` (import en bas de fichier) ──────

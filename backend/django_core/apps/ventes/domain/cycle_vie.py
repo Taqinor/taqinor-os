@@ -1439,9 +1439,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         _garde_blocages_acceptation(
             devis, user=user, override_credit=override_credit,
             override_avertissement=override_avertissement)
-        # VNT54 — une seule vente en vigueur par lead (hors chaîne de révision).
-        from apps.ventes.domain.negociation import garde_vente_unique
-        garde_vente_unique(devis, user=user)
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).
@@ -1513,9 +1510,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                       if scenario == 'Avec batterie'
                       else Devis.OptionAcceptee.SANS_BATTERIE)
 
-        if devis.statut == Devis.Statut.BROUILLON:  # VNT57 — T17 + gels (ADEV12)
-            from apps.ventes.domain.envoi import geler_document_engage
-            geler_document_engage(devis, user, acceptation=True)
+        # VNT54 vente unique par lead + VNT57 gel d'un brouillon (T17, ADEV12).
+        preparer_acceptation(devis, user=user)
         ancien = devis.statut
         devis.statut = Devis.Statut.ACCEPTE
         devis.date_acceptation = date_acc
@@ -1638,14 +1634,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # QJR560 / D-QJR5-11 — V2 d'un devis signé : BC et factures de la V1
         # passent à la V2, seul l'écart est régularisé. Point de sauvegarde :
         # un incident ici n'annule jamais la signature du client (journalisé).
-        try:
-            with transaction.atomic():
-                if not avenant:
-                    rattacher_aval_financier_revision(devis, user=user)
-        except Exception:  # noqa: BLE001 — best-effort, journalisé
-            logger.exception(
-                'QJR560 : aval financier de révision non rattaché (devis %s)',
-                getattr(devis, 'reference', '?'))
+        if not avenant:
+            _rattacher_revision_au_mieux(devis, user=user)
 
         # YDOCF3 + M6 — l'effondrement des sœurs ET la publication de
         # l'événement, sous le verrou du groupe pris plus haut.
@@ -1654,10 +1644,34 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             groupe=groupe)
 
     # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
-    if avenant:
-        return devis
-    from apps.ventes.domain.facturation_vente import acompte_a_l_acceptation  # VNT62
-    acompte_a_l_acceptation(devis, user)  # échéancier figé + brouillon d'acompte (D-SIGN-AUTO = a)
+    if not avenant:
+        _apres_commit_acceptation(devis, user=user, ip=ip,
+                                  user_agent=user_agent, lignes=lignes_devis)
+    return devis
+
+
+def _rattacher_revision_au_mieux(devis, *, user):
+    """QJR560 / D-QJR5-11 — V2 d'un devis signé : BC et factures de la V1
+    passent à la V2, seul l'écart est régularisé. Point de sauvegarde : un
+    incident ici n'annule jamais la signature du client (journalisé). Un
+    avenant négocié (VNT59) rattache, lui, en STRICT (``negociation.py``)."""
+    from django.db import transaction
+    try:
+        with transaction.atomic():
+            rattacher_aval_financier_revision(devis, user=user)
+    except Exception:  # noqa: BLE001 — best-effort, journalisé
+        logger.exception(
+            'QJR560 : aval financier de révision non rattaché (devis %s)',
+            getattr(devis, 'reference', '?'))
+
+
+def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
+    """L'APRÈS-COMMIT d'une acceptation (hors avenant négocié, VNT59) :
+    échéancier figé + brouillon d'acompte (VNT62, D-SIGN-AUTO = a), PDF
+    signé, e-mails et CAPI — entrées-sorties best-effort, jamais bloquantes.
+    Les noms restent lus sur CE module (``mock.patch`` des tests)."""
+    from apps.ventes.domain.facturation_vente import acompte_a_l_acceptation
+    acompte_a_l_acceptation(devis, user)
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
@@ -1668,10 +1682,11 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     try:
         devis.refresh_from_db(fields=['fichier_pdf'])
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.debug('QX9: fichier_pdf non relu pour devis %s',
+                     getattr(devis, 'reference', '?'))
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
     try:
-        _send_acceptance_emails(devis=devis, user=user, lignes=lignes_devis)
+        _send_acceptance_emails(devis=devis, user=user, lignes=lignes)
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
@@ -1683,7 +1698,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
-    return devis
 
 
 # ── Décision fondateur (Reda, 08/10/2026) — DÉS-ACCEPTATION ─────────────────
@@ -1999,3 +2013,5 @@ from apps.ventes.domain.revision import (  # noqa: E402
 from apps.ventes.domain.capi_signee import (  # noqa: E402
     _fire_capi_signed_quote,
 )
+# VNT54 / VNT57 — la préparation d'une acceptation (vente unique, gel).
+from apps.ventes.domain.negociation import preparer_acceptation  # noqa: E402
