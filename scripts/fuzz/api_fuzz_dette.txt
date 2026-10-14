@@ -318,7 +318,6 @@ JSON deserialization error|POST /api/django/core/maintenance-windows/{id}/annule
 Missing Content-Type header|POST /api/django/core/maintenance-windows/{id}/annuler/
 API accepted schema-violating request|PATCH /api/django/records/activity-types/{id}/
 Server error|POST /api/django/records/comments/
-API accepted schema-violating request|PATCH /api/django/roles/{id}/
 Server error|POST /api/django/agent/actions/automation-draft/
 API accepted schema-violating request|PUT /api/django/records/activity-types/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/theme/courant/

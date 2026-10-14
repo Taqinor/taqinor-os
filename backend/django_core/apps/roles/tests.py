@@ -172,6 +172,20 @@ class RolesRbacTest(TestCase):
         role.refresh_from_db()
         self.assertEqual(role.permissions, ['stock_voir'])
 
+    def test_entites_visibles_liste_sinon_400(self):
+        # ENF11 (api-fuzz) — `entites_visibles` est une liste d'identifiants :
+        # `{}` / texte / nombre = 400 (DRF lisait `{}` comme « liste vide »).
+        role = Role.objects.create(
+            company=self.company, nom='Perimetre', permissions=['stock_voir'])
+        url = f'/api/django/roles/{role.id}/'
+        for mauvais in ({}, 'x', 3):
+            resp = self.api.patch(
+                url, {'entites_visibles': mauvais}, format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+            self.assertIn('entites_visibles', resp.data)
+        resp = self.api.patch(url, {'entites_visibles': []}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_company_is_forced_server_side_on_create(self):
         other = Company.objects.create(nom='Autre', slug='autre-co')
         resp = self.api.post(

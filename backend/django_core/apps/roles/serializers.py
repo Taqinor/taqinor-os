@@ -31,6 +31,17 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
             'perimetre': {'required': False},
         }
 
+    def to_internal_value(self, data):
+        # ENF11 (api-fuzz) — DRF itère n'importe quel objet pour une relation
+        # multiple : `{}` valait « liste vide » (= rôle sans restriction
+        # d'entités). Le schéma dit « liste d'identifiants » : tout autre type
+        # JSON répond 400.
+        if hasattr(data, 'get') and 'entites_visibles' in data and (
+                not isinstance(data['entites_visibles'], (list, tuple))):
+            raise serializers.ValidationError(
+                {'entites_visibles': 'Liste d’identifiants attendue.'})
+        return super().to_internal_value(data)
+
     @extend_schema_field(serializers.IntegerField())
     def get_users_count(self, obj):
         return obj.users.count()
