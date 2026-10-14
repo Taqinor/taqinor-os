@@ -251,8 +251,10 @@ class TypageStrictMixin:
 #: conforme au schéma publié puis refusée en 400 (constat api-fuzz « API
 #: rejected schema-compliant request »). Le motif publié dit enfin cette règle ;
 #: la variante NON BLANCHE remplace le ``\S`` que ``core.openapi_erreurs``
-#: pose sur une chaîne obligatoire (``minLength`` >= 1).
-MOTIF_SANS_NUL = r'^[^\x00\ud800-\udfff]*$'
+#: pose sur une chaîne obligatoire (``minLength`` >= 1). ``MOTIF_SANS_NUL``
+#: exige AU MOINS un caractère : sur un champ à blanc autorisé, drf-spectacular
+#: publie ``oneOf [motif, maxLength 0]`` — ``""`` ne doit vérifier QU'UNE branche.
+MOTIF_SANS_NUL = r'^[^\x00\ud800-\udfff]+$'
 MOTIF_NON_BLANC_SANS_NUL = (
     r'^[^\x00\ud800-\udfff]*[^\s\x00\ud800-\udfff][^\x00\ud800-\udfff]*$')
 
