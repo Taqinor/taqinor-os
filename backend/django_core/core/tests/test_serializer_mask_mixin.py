@@ -4,6 +4,7 @@ Exerce le mixin sur un sérialiseur SYNTHÉTIQUE (aucune dépendance à une app
 métier) : un champ sensible est ABSENT (pas None) sans la permission, PRÉSENT
 avec, et jamais masqué sans requête (rendu serveur) ni pour un compte légacy.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import serializers
@@ -11,10 +12,11 @@ from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
 from authentication.models import Company
-from apps.roles.models import Role
 from core.serializer_mixins import (
     SensitiveFieldMaskMixin, SerializerMaskMixin,
 )
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

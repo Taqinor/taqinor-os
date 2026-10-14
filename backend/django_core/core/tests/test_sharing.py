@@ -6,14 +6,16 @@ l'expiration retire l'accès ; jamais cross-tenant.
 """
 from datetime import timedelta
 
+from django.apps import apps as django_apps
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.roles.models import Role
 from core.sharing import (
     SharingRule, can_write, share_object, visible_ids,
 )
 from testkit.factories import ClientFactory, CompanyFactory, UserFactory
+
+Role = django_apps.get_model('roles', 'Role')
 
 
 class SharingTests(TestCase):

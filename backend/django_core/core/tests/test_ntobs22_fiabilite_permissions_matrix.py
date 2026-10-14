@@ -19,16 +19,18 @@ Aucun rôle système « Comptable » n'existe dans ce dépôt (cf. la docstring 
 ``fiabilite_voir``/``fiabilite_administration`` ci-dessous sont des rôles
 CUSTOM créés pour le test, exactement comme un Directeur les octroierait
 depuis l'éditeur de rôles."""
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.roles.models import Role
 from authentication.models import Company
 from core.maintenance_windows import MaintenanceWindow
 from core.models import BackupRun
 from core.sla import SlaSnapshot, generer_snapshot_societe
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

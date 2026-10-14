@@ -21,13 +21,15 @@ Ce test prouve, par app, sur l'endpoint « liste » (GET) :
 * un compte LÉGACY sans rôle fin (``role_legacy=ROLE_RESPONSABLE``) garde
   l'accès historique complet (lecture ET écriture) — aucune régression.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import Role
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

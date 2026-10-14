@@ -17,9 +17,9 @@ assignés / qu'il a créés : ``visible_user_ids`` inclut toujours son propre id
 le narrowing par queryset filtre sur ``owner|created_by|assigné ∈ visible_ids``.
 Liste vide = rendu propre (aucune fuite, aucune erreur).
 """
-from django.db.models import Exists, OuterRef, Q
+from importlib import import_module
 
-from apps.roles.permissions_registre import SCOPE_TEAM, SCOPE_SUBTREE
+from django.db.models import Exists, OuterRef, Q
 
 __all__ = [
     'record_scope_for',
@@ -46,10 +46,13 @@ def record_scope_for(user):
     role = getattr(user, 'role', None)
     if not role:
         return 'all'  # compte légacy sans rôle fin → tout (historique)
+    # ENF20 : marqueurs lus dans leur emplacement unique (garde SPL300), sans
+    # arête statique core -> apps (contrat core-foundation-is-a-base-layer).
+    registre = import_module('apps.roles.permissions_registre')
     perms = role.permissions or []
-    if SCOPE_SUBTREE in perms:
+    if registre.SCOPE_SUBTREE in perms:
         return 'subtree'
-    if SCOPE_TEAM in perms:
+    if registre.SCOPE_TEAM in perms:
         return 'team'
     return 'all'
 

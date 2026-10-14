@@ -6,13 +6,15 @@ restreint ; scope société respecté.
 """
 from types import SimpleNamespace
 
+from django.apps import apps as django_apps
 from django.test import TestCase
 from rest_framework import serializers
 
-from apps.roles.models import Role
 from authentication.models import CustomUser
 from core.field_permissions import FieldPermissionMixin, FieldPermissionRule
 from testkit.factories import CompanyFactory, UserFactory
+
+Role = django_apps.get_model('roles', 'Role')
 
 
 class _UserFP(FieldPermissionMixin, serializers.ModelSerializer):

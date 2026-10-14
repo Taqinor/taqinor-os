@@ -6,17 +6,19 @@ import datetime
 from decimal import Decimal
 from unittest import mock
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from authentication.models import Company
-from apps.roles.models import Role
 
 from core.sla import (
     SlaCreditPolicy, SlaSnapshot, credit_pct_pour_uptime, generer_snapshot_societe,
     politique_active,
 )
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 
@@ -97,7 +99,6 @@ class MontantFactureMoisTest(TestCase):
         # Résolus par nom (jamais un import statique d'apps.crm/apps.
         # facturation) : core reste une couche de base même en test (AUD422,
         # ".importlinter").
-        from django.apps import apps as django_apps
         Client = django_apps.get_model('crm', 'Client')
         Facture = django_apps.get_model('facturation', 'Facture')
 
@@ -167,6 +168,5 @@ class SlaCreditsDusEndpointTest(TestCase):
         self.snap.refresh_from_db()
         self.assertEqual(self.snap.credit_statut, SlaSnapshot.CreditStatut.EMIS)
         # Résolu par nom (jamais un import statique d'apps.facturation).
-        from django.apps import apps as django_apps
         Avoir = django_apps.get_model('facturation', 'Avoir')
         self.assertEqual(Avoir.objects.filter(company=self.company).count(), 0)
