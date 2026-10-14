@@ -168,6 +168,7 @@ class FolderPathTests(GedBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_folder_rejects_parent_in_other_cabinet(self):
+        # CI #997 : parent d'un autre cabinet = objet inexistant pour la requête (404).
         cab_a2 = Cabinet.objects.create(company=self.co_a, nom='RH')
         parent = Folder.objects.create(
             company=self.co_a, cabinet=cab_a2, nom='Parent RH')
@@ -175,7 +176,7 @@ class FolderPathTests(GedBase):
         resp = api.post('/api/django/ged/dossiers/', {
             'cabinet': self.cab_a.id, 'parent': parent.id, 'nom': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_folder_tenant_isolation(self):
         Folder.objects.create(company=self.co_b, cabinet=self.cab_b, nom='Secret B')
