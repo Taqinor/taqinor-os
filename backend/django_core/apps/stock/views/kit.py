@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, corps
-from ..utils.params import corps_objet, decimal_ou_400
+from ..utils.params import corps_objet, decimal_ou_400, id_corps
 from ..serializers import RevisionKitSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
@@ -250,11 +250,16 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         dry_run = donnees.get('dry_run', True)
         if isinstance(dry_run, str):
             dry_run = dry_run.lower() not in ('0', 'false', 'non')
+        # CI #997 fuzz — ``produit_nouveau: {}`` faisait un TypeError ORM (500).
+        ancien, nouveau = (id_corps(donnees.get(c)) for c in ('produit_ancien', 'produit_nouveau'))
+        if ancien is None or nouveau is None:
+            return Response({'detail': 'Produit introuvable pour cette société.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             resultat = remplacer_composant_masse(
                 request.user.company,
-                produit_ancien_id=donnees.get('produit_ancien'),
-                produit_nouveau_id=donnees.get('produit_nouveau'),
+                produit_ancien_id=ancien,
+                produit_nouveau_id=nouveau,
                 ratio_quantite=donnees.get('ratio_quantite'),
                 dry_run=dry_run,
                 user=request.user)

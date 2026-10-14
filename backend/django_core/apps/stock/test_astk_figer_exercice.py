@@ -32,18 +32,18 @@ class FigerTests(TestCase):
     def _figer(self, exercice):
         return self.api.post(URL, {'exercice': exercice}, format='json')
 
-    def test_exercice_en_cours_400(self):
+    def test_exercice_en_cours_409(self):
         resp = self._figer(2026)
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertEqual(resp.json()['exercice'], [
             "L'exercice 2026 n'est pas clos (31/12/2026) : figez-le à partir "
             'du 01/01/2027.'])
         self.assertFalse(InventaireAnnuel.objects.filter(
             company=self.company, exercice=2026).exists())
 
-    def test_exercice_futur_400(self):
+    def test_exercice_futur_409(self):
         resp = self._figer(2027)
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('2027', resp.json()['exercice'][0])
         self.assertFalse(InventaireAnnuel.objects.filter(
             company=self.company, exercice__in=[2026, 2027]).exists())
@@ -57,7 +57,7 @@ class FigerTests(TestCase):
 
     @freeze_time('2026-12-31 12:00:00')
     def test_dernier_jour_de_l_exercice_encore_refuse(self):
-        self.assertEqual(self._figer(2026).status_code, 400)
+        self.assertEqual(self._figer(2026).status_code, 409)
 
     @freeze_time('2027-01-01 09:00:00')
     def test_lendemain_de_la_cloture_201(self):

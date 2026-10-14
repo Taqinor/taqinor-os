@@ -116,7 +116,7 @@ class TestMouvementValidation(TestCase):
         # ERR10 — une SORTIE ne peut jamais descendre le stock sous 0.
         r = self._post(produit=self.produit.id, type_mouvement='sortie',
                        quantite=99)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # CI #997 : état du stock, pas saisie
         self.assertIn('Stock insuffisant', str(r.data))
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 10)  # inchangé

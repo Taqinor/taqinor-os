@@ -14,7 +14,8 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.serializers import CompanyScopedRelationsMixin
-from ..openapi_helpers import BOOL, INT, P
+from ..openapi_helpers import BOOL, ID_OU_VIDE, P
+from ..utils.params import booleen_requete_ou_400, id_requete_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ProfilSaisonnier
@@ -37,7 +38,7 @@ class ProfilSaisonnierSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['date_creation', 'date_modification']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('produit', INT), P('categorie', INT), P('actif', BOOL)]))
+@extend_schema_view(list=extend_schema(parameters=[P('produit', ID_OU_VIDE), P('categorie', ID_OU_VIDE), P('actif', BOOL)]))
 class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
     """XSTK17 — profils saisonniers de seuils min/max/cible (produit XOR
     catégorie). Lecture tout rôle (un Acheteur doit voir la saison en
@@ -58,18 +59,15 @@ class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        params = self.request.query_params
-        produit_id = params.get('produit')
-        if produit_id:
-            qs = qs.filter(produit_id=produit_id)
-        categorie_id = params.get('categorie')
-        if categorie_id:
-            qs = qs.filter(categorie_id=categorie_id)
-        actif = params.get('actif')
-        if actif in ('0', 'false', 'False'):
-            qs = qs.filter(actif=False)
-        elif actif in ('1', 'true', 'True'):
-            qs = qs.filter(actif=True)
+        # CI #997 fuzz — filtres stricts : ``?actif=null`` / ``?produit=abc``
+        # répondent 400 (ils étaient ignorés en silence ou finissaient en 500).
+        for nom in ('produit', 'categorie'):
+            valeur = id_requete_ou_400(self.request, nom)
+            if valeur is not None:
+                qs = qs.filter(**{f'{nom}_id': valeur})
+        actif = booleen_requete_ou_400(self.request, 'actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif)
         return qs
 
     def create(self, request, *args, **kwargs):

@@ -5,10 +5,11 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
-from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, STR, XLSX, corps
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, ID_OU_VIDE, LISTE, P, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
+from ..erreurs_achats import ConflitEtat
 from ..models import Produit, MouvementStock
-from ..utils.params import choix_ou_400
+from ..utils.params import choix_ou_400, date_ou_400, id_requete_ou_400
 from ..serializers import MouvementStockSerializer
 from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
 import logging
@@ -24,8 +25,8 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('type_mouvement', STR, False, 'Type de mouvement'),
-                                                   P('produit', INT, False, 'Produit (id)'),
-                                                   P('date_min', DATE), P('date_max', DATE)]))
+                                                   P('produit', ID_OU_VIDE, False, 'Produit (id)'),
+                                                   P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE)]))
 class MouvementStockViewSet(CompanyScopedModelViewSet):
     # ARC4 — sweep : base transverse unique (TenantMixin + ModelViewSet, via
     # CompanyScopedModelViewSet). get_queryset AJOUTE le garde-fou
@@ -69,20 +70,22 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
         type_mv = params.get('type_mouvement')
         if type_mv:
             qs = qs.filter(type_mouvement=type_mv)
-        produit_id = params.get('produit')
-        if produit_id:
+        # CI #997 fuzz — bornes publiées « date OU vide » et lues strictement
+        # (``abc`` faisait un 500 ORM) ; produit : id entier ou vide.
+        produit_id = id_requete_ou_400(self.request, 'produit')
+        if produit_id is not None:
             qs = qs.filter(produit_id=produit_id)
-        date_min = params.get('date_min')
+        date_min = date_ou_400(params.get('date_min'), 'date_min')
         if date_min:
             qs = qs.filter(date__date__gte=date_min)
-        date_max = params.get('date_max')
+        date_max = date_ou_400(params.get('date_max'), 'date_max')
         if date_max:
             qs = qs.filter(date__date__lte=date_max)
         return qs
 
     @extend_schema(request=None, parameters=[P('type_mouvement', STR, False, 'Type de mouvement'),
-                                             P('produit', INT, False, 'Produit (id)'),
-                                             P('date_min', DATE), P('date_max', DATE)],
+                                             P('produit', ID_OU_VIDE, False, 'Produit (id)'),
+                                             P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE)],
                    responses={XLSX: BINARY,
                               202: corps('MouvementsExportAsyncReponse', detail=serializers.CharField(),
                                          job_id=serializers.IntegerField(), statut=serializers.CharField(),
@@ -136,8 +139,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED)
 
     @extend_schema(parameters=[P('group_by', STR, False, 'Regroupement', ['produit', 'type', 'mois', 'emplacement']),
-                               P('date_min', DATE), P('date_max', DATE), P('export', STR, False,
-                                                                           'xlsx pour télécharger', ['xlsx'])],
+                               P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE),
+                               P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])],
                    responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='agregation',
             permission_classes=[IsAnyRole])
@@ -152,8 +155,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
         try:
             rows = mouvements_agreges(
                 request.user.company, group_by=group_by,
-                date_min=request.query_params.get('date_min'),
-                date_max=request.query_params.get('date_max'))
+                date_min=date_ou_400(request.query_params.get('date_min'), 'date_min'),
+                date_max=date_ou_400(request.query_params.get('date_max'), 'date_max'))
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -232,27 +235,26 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                 qte_apres = qte_avant - qte
                 quantite = qte
                 # ERR10 — une SORTIE ne peut jamais faire descendre le stock
-                # sous zéro (garde plancher) : refus explicite en 400.
+                # sous zéro (garde plancher). CI #997 fuzz : c'est l'ÉTAT du
+                # stock qui s'oppose, le corps était conforme -> 409.
                 if qte_apres < 0:
-                    raise ValidationError(
-                        {'quantite': (
-                            'Stock insuffisant : la sortie dépasse le stock '
-                            f'disponible ({qte_avant}).')})
+                    raise ConflitEtat(
+                        'Stock insuffisant : la sortie dépasse le stock '
+                        f'disponible ({qte_avant}).')
                 # ASTK248 — jamais la part en quarantaine (garde unique WMS).
                 from ..services_wms import exiger_hors_quarantaine
                 try:
                     exiger_hors_quarantaine(produit.company, produit, qte)
                 except ValueError as exc:
-                    raise ValidationError({'quantite': str(exc)})
+                    raise ConflitEtat(str(exc))
             else:
                 # AJUSTEMENT — niveau visé → écart signé.
                 qte_apres = qte
                 quantite = abs(qte_apres - qte_avant)
                 if quantite == 0:
-                    raise ValidationError(
-                        {'quantite': (
-                            'Le niveau saisi est déjà le stock actuel '
-                            f'({qte_avant}) : aucun ajustement à poser.')})
+                    raise ConflitEtat(
+                        'Le niveau saisi est déjà le stock actuel '
+                        f'({qte_avant}) : aucun ajustement à poser.')
             note = donnees.get('note')
             if type_mv == MouvementStock.TypeMouvement.SORTIE:
                 # ERR-ASTK205 — SORTIE manuelle sans lot sur un produit suivi

@@ -28,7 +28,8 @@ from authentication.permissions import IsAnyRole
 from core.mixins import TenantMixin
 from core.serializers import CompanyScopedRelationsMixin
 
-from ..openapi_helpers import BOOL, INT, P, STR, corps
+from ..openapi_helpers import BOOL, ID_OU_VIDE, P, STR, corps
+from ..utils.params import booleen_requete_ou_400, id_requete_ou_400
 from ..models import FavorisCatalogueAchat, Produit
 
 
@@ -85,10 +86,9 @@ class CatalogueAchatSerializer(CompanyScopedRelationsMixin,
         return obj.prix_achat
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('q', STR, False, 'Recherche nom/SKU/catégorie'), P('categorie',
-                                                                                                        INT),
-                                                   P('fournisseur', INT), P('recent', BOOL, False,
-                                                                            'Derniers produits demandés')]))
+@extend_schema_view(list=extend_schema(parameters=[P('q', STR, False, 'Recherche nom/SKU/catégorie'),
+                                                   P('categorie', ID_OU_VIDE), P('fournisseur', ID_OU_VIDE),
+                                                   P('recent', BOOL, False, 'Derniers produits demandés')]))
 class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTP2P3 — catalogue d'achat en LECTURE SEULE, scopé société.
 
@@ -115,13 +115,12 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
                 Q(nom__icontains=recherche)
                 | Q(sku__icontains=recherche)
                 | Q(categorie__nom__icontains=recherche))
-        categorie = params.get('categorie')
-        if categorie:
-            qs = qs.filter(categorie_id=categorie)
-        fournisseur = params.get('fournisseur')
-        if fournisseur:
-            qs = qs.filter(fournisseur_id=fournisseur)
-        if params.get('recent') in ('1', 'true', 'True'):
+        # CI #997 fuzz — filtres stricts (``?recent=null`` était ignoré).
+        for nom in ('categorie', 'fournisseur'):
+            valeur = id_requete_ou_400(self.request, nom)
+            if valeur is not None:
+                qs = qs.filter(**{f'{nom}_id': valeur})
+        if booleen_requete_ou_400(self.request, 'recent'):
             qs = qs.filter(id__in=self._produits_recents(limite=50))
         return qs.order_by('nom', 'id')
 

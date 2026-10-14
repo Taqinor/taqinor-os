@@ -59,6 +59,40 @@ MOTIF_POURCENTAGE_1_100 = r'^(?:[1-9]\d?(?:\.\d?)?|100(?:\.0?)?)$'
 #: chaîne libre de 20 caractères.
 ICE_15_CHIFFRES = {'ice': {'pattern': r'^(?:\d{15})?$', 'maxLength': 15}}
 
+#: CI #997 fuzz — composant de kit (``KitComposantSerializer``) : un produit OU
+#: un sous-kit (``validate`` XOR, XMFG17), taux de perte dans [0 ; 100[.
+PRODUIT_XOR_SOUS_KIT = {'anyOf': [
+    {'required': ['produit'], 'properties': {
+        'produit': {'type': 'integer'}, 'composant_kit': {'nullable': True, 'enum': [None]}}},
+    {'required': ['composant_kit'], 'properties': {
+        'composant_kit': {'type': 'integer'}, 'produit': {'nullable': True, 'enum': [None]}}},
+]}
+MOTIF_TAUX_0_100 = r'^(?:\d{1,2}(?:\.\d{1,2})?|\.\d{1,2})$'
+
+#: CI #997 fuzz — mouvement libre (``MouvementStockViewSet.perform_create``) :
+#: le transfert a sa route (refusé ici) ; ENTREE/SORTIE > 0, AJUSTEMENT = un
+#: niveau visé ≥ 0.
+TYPE_MOUVEMENT_LIBRE = {'type': 'string', 'enum': ['entree', 'sortie', 'ajustement']}
+QUANTITE_SELON_TYPE = {'anyOf': [
+    {'properties': {'type_mouvement': {'enum': ['entree', 'sortie']}, 'quantite': {'minimum': 1}}},
+    {'properties': {'type_mouvement': {'enum': ['ajustement']}, 'quantite': {'minimum': 0}}},
+]}
+
+#: CI #997 fuzz — édition de prix en masse (``apply_product_bulk``) : mode
+#: percent (> -100 %) ou fixed (> 0), bornés à 99 999 999,99 ; les autres
+#: actions ignorent mode/valeur.
+MOTIF_VARIATION_PCT = r'^(?:-(?:[1-9]\d?|0)(?:\.\d{1,2})?|(?:[1-9]\d{0,7}|0)(?:\.\d{1,2})?)$'
+MOTIF_PRIX_FIXE = r'^(?:[1-9]\d{0,7}(?:\.\d{1,2})?|0\.(?:0[1-9]|[1-9]\d?))$'
+PRIX_EN_MASSE = {'anyOf': [
+    {'required': ['mode', 'valeur'], 'properties': {
+        'action': {'enum': ['set_price']}, 'mode': {'enum': ['percent']},
+        'valeur': {'type': 'string', 'pattern': MOTIF_VARIATION_PCT}}},
+    {'required': ['mode', 'valeur'], 'properties': {
+        'action': {'enum': ['set_price']}, 'mode': {'enum': ['fixed']},
+        'valeur': {'type': 'string', 'pattern': MOTIF_PRIX_FIXE}}},
+    {'properties': {'action': {'enum': ['set_warranty', 'set_category', 'set_brand']}}},
+]}
+
 #: composant de requête -> {'proprietes': {champ: fragment fusionné},
 #: 'racine': fragment fusionné à la racine du composant}.
 CONTRAINTES = {
@@ -92,8 +126,17 @@ CONTRAINTES = {
         'remplacer': {'lim_phases': PHASES_LIMITEUR}},
     'FournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     'PatchedFournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
-    'PrixFournisseurRequest': {},
-    'PatchedPrixFournisseurRequest': {},
+    # CI #997 fuzz — `prix_achat` : la fiche produit l'envoie en NOMBRE JSON
+    # (``parseFloat``), que le serveur accepte déjà (≤ 2 décimales).
+    'PrixFournisseurRequest': {'nombre_accepte': ['prix_achat']},
+    'PatchedPrixFournisseurRequest': {'nombre_accepte': ['prix_achat']},
+    # CI #997 fuzz — décimaux nullables : ``""`` est lu « non renseigné ».
+    'AccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
+    'PatchedAccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
+    'ToleranceRapprochementCategorieRequest': {
+        'vide_accepte': ['tolerance_prix_pct', 'tolerance_prix_absolu_mad']},
+    'PatchedToleranceRapprochementCategorieRequest': {
+        'vide_accepte': ['tolerance_prix_pct', 'tolerance_prix_absolu_mad']},
     'TrancheEcheancierRequest': {},
     # ERR-ENF11-FUZZ-STOCK — montants / facteurs strictement positifs et
     # quantités réellement lues (un corps sans ``quantite`` : « Quantité
@@ -114,9 +157,12 @@ CONTRAINTES = {
     'ProduitRebutCorpsRequest': {'proprietes': QUANTITE_POSITIVE},
     # Un mouvement libre ne déclare pas un rebut (motif obligatoire : la
     # déclaration de rebut) ; le scanner ne rend que ses trois gestes.
-    'MouvementStockRequest': {'remplacer': {'type_mouvement': {
-        'type': 'string',
-        'enum': ['entree', 'sortie', 'transfert', 'ajustement']}}},
+    'MouvementStockRequest': {'remplacer': {'type_mouvement': TYPE_MOUVEMENT_LIBRE},
+                              'racine': QUANTITE_SELON_TYPE},
+    'KitProduitComposantRequest': {'montants_positifs': ['quantite'],
+                                   'motifs': {'taux_perte_pct': MOTIF_TAUX_0_100},
+                                   'racine': PRODUIT_XOR_SOUS_KIT},
+    'ProduitBulkCorpsRequest': {'racine': PRIX_EN_MASSE},
     'ScannerMouvementCorpsRequest': {'proprietes': QUANTITE_POSITIVE},
     # ``poids_kg: ""`` est lu comme « non renseigné » (décimal nullable DRF).
     'UniteLogistiqueRequest': {'vide_accepte': ['poids_kg']},
@@ -142,6 +188,21 @@ def _motif_decimal_positif(motif: str) -> str:
         max(entiers - 1, 0), decimales)
     positif_fraction = r'0\.\d{0,%d}[1-9]' % max(decimales - 1, 0)
     return '^(?:%s|%s)$' % (positif_entier, positif_fraction)
+
+
+def _chaine_ou_nombre(propriete: dict) -> dict:
+    """Décimal-chaîne -> « chaîne OU nombre JSON » de même précision (bornes
+    et pas tirés du motif : un nombre à 3 décimales reste refusé)."""
+    tailles = [int(n) for n in _MOTIF_DECIMAL.findall(propriete['pattern'])]
+    entiers = tailles[0] if tailles else 12
+    decimales = tailles[1] if len(tailles) > 1 else 2
+    pas = 10 ** -decimales
+    maxi = round(10 ** entiers - pas, decimales)
+    chaine = {k: v for k, v in propriete.items() if k not in ('description', 'nullable')}
+    nombre = {'type': 'number', 'multipleOf': pas, 'maximum': maxi,
+              'minimum': -maxi if propriete['pattern'].startswith('^-?') else 0}
+    autres = {k: v for k, v in propriete.items() if k in ('description', 'nullable')}
+    return {**autres, 'anyOf': [chaine, nombre]}
 
 
 def _reparer_decimaux(proprietes: dict) -> None:
@@ -171,6 +232,9 @@ def declarer_contraintes_achats(result, generator=None, request=None,
             if isinstance(propriete, dict) and propriete.get('pattern'):
                 propriete['pattern'] = _motif_decimal_positif(
                     propriete['pattern'])
+        for champ, motif in (regles.get('motifs') or {}).items():
+            if isinstance(proprietes.get(champ), dict):
+                proprietes[champ]['pattern'] = motif
         for champ in regles.get('pourcentages_1_100') or ():
             propriete = proprietes.get(champ)
             if isinstance(propriete, dict) and propriete.get('pattern'):
@@ -184,6 +248,10 @@ def declarer_contraintes_achats(result, generator=None, request=None,
                 nullable = propriete.pop('nullable', False)
                 proprietes[champ] = {'nullable': nullable, 'oneOf': [
                     propriete, {'type': 'string', 'enum': ['']}]}
+        for champ in regles.get('nombre_accepte') or ():
+            propriete = proprietes.get(champ)
+            if isinstance(propriete, dict) and propriete.get('pattern'):
+                proprietes[champ] = _chaine_ou_nombre(propriete)
         for champ in regles.get('requis') or ():
             requis = composant.setdefault('required', [])
             if champ not in requis:

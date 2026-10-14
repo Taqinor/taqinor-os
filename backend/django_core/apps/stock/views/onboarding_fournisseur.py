@@ -18,7 +18,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import BINARY, INT, OBJET, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -53,6 +53,7 @@ class DocumentFournisseurSerializer(CompanyScopedRelationsMixin,
 
 class DossierOnboardingFournisseurSerializer(UniciteEn409Mixin,
                                              CompanyScopedRelationsMixin,
+                                             ChampsTexteBooleenStricts,
                                              serializers.ModelSerializer):
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default=None)

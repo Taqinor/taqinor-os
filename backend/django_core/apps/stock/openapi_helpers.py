@@ -10,7 +10,10 @@ from drf_spectacular.extensions import OpenApiSerializerExtension
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
+from django.db import models
 from rest_framework import serializers
+
+from core.serializers import ChampsTexteBooleenStricts
 
 STR = OpenApiTypes.STR
 INT = OpenApiTypes.INT
@@ -41,6 +44,27 @@ def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, p
     return OpenApiParameter(
         name=name, type=typ, location=OpenApiParameter.QUERY,
         required=required, description=desc or name, enum=enum)
+
+
+class NombreStrict(serializers.FloatField):
+    """CI #997 fuzz — nombre JSON réel : un booléen (``false`` lu 0.0) ou une
+    chaîne (``"50"``) étaient convertis en silence alors que le schéma publie
+    ``number`` ; ils répondent 400."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class ChampsStrictsProduitMixin:
+    """Fiche produit (CI #997 fuzz) : texte et booléens stricts
+    (``ChampsTexteBooleenStricts``) + flottants stricts (``NombreStrict``) ; les
+    décimaux restent lus tels quels (les écrans envoient des nombres JSON)."""
+    serializer_field_mapping = {
+        **ChampsTexteBooleenStricts.serializer_field_mapping,
+        models.FloatField: NombreStrict,
+    }
 
 
 PID = OpenApiParameter(
@@ -141,3 +165,8 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
 #: « date OU chaîne vide », ce que le serveur accepte.
 DATE_OU_VIDE = {'oneOf': [
     {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+#: CI #997 fuzz — filtre d'identifiant lu par ``utils.params.id_requete_ou_400`` :
+#: un id 1..2147483647, ou la chaîne vide (= filtre non posé).
+ID_OU_VIDE = {'oneOf': [
+    {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}, {'type': 'string', 'enum': ['']}]}
