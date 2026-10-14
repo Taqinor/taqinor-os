@@ -104,10 +104,6 @@ const ventesApi = {
   regenererOverride: (id, chemin) =>
     api.delete(`/ventes/devis/${id}/overrides/`, { params: { chemin } }),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
-  // « Facturer » un devis accepté : facture complète + paiements déjà reçus en
-  // UN appel atomique. Contrat : apps/ventes/contract_samples/devis_facturer_complet.json.
-  facturerComplet: (devisId, { paiements = [] } = {}) =>
-    api.post(`/ventes/devis/${devisId}/facturer-complet/`, { paiements }),
   // VNT45 (D-VNT-3) — « Facturer la vente » : aperçu (plan, prochaine tranche,
   // acompte proposé, état de la vente) puis création de la facture d'une nature
   // donnée. Contrat : apps/ventes/contract_samples/devis_facturer.json.
@@ -364,8 +360,6 @@ const ventesApi = {
   // (réponse 202 initiale de journalVentes / export-comptable) : poller
   // jusqu'à {status:'ready', download_url, filename} ou {status:'error'}.
   exportStatus: (jobId) => api.get(`/ventes/export/status/${jobId}/`),
-  // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
-  genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
   // QX29 — « Relances du jour » : devis nécessitant une action (envoyés sans
   // réponse par palier de cadence, acceptés non facturés — réutilise le
   // sélecteur ZFAC12, refusés sans motif, expirant bientôt). Miroir de
