@@ -563,3 +563,45 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(r.status_code, 400, r.content)
         r = api.post(url, {**corps, 'fournisseur': self.fa.id}, format='json')
         self.assertEqual(r.status_code, 201, r.content)
+
+    def test_fuzz_ci997_3_quantite_plafonnee_et_compteur_deborde_409(self):
+        """CI #997 fuzz (3) — mouvement libre et scan : quantité publiée
+        ``maximum`` QUANTITE_MAX, vérifiée avant tout calcul (400) ; un
+        compteur (stock produit, casier) qui déborderait sa colonne entière
+        répond 409 sans rien écrire (il faisait un 500 au save) ; un transfert
+        scanné vers un seul casier destination reste accepté."""
+        from apps.installations.models import BinAffectation
+        from apps.stock.models import MouvementStock
+        from core.champs_stricts import QUANTITE_MAX
+        api = self._api_admin()
+        pa = self.pa.id
+        mouvements = f'{BASE}/mouvements/'
+        scanner = f'{BASE}/scanner/mouvement/'
+        r = api.post(mouvements, {'produit': pa, 'type_mouvement': 'entree', 'quantite': QUANTITE_MAX + 1},
+                     format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('quantite', r.data)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'entree', 'quantite': QUANTITE_MAX + 1},
+                     format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.pa.refresh_from_db()
+        self.assertEqual(self.pa.quantite_stock, 50)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'transfert', 'quantite': 1,
+                               'bin_destination': self.bin_a.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        # Stock produit au bord de la colonne : l'entrée déborderait → 409.
+        Produit.objects.filter(pk=pa).update(quantite_stock=2147483647 - 10)
+        avant = MouvementStock.objects.count()
+        r = api.post(mouvements, {'produit': pa, 'type_mouvement': 'entree', 'quantite': 11}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'entree', 'quantite': 11}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(MouvementStock.objects.count(), avant)
+        # Casier au bord de la colonne : le transfert scanné déborderait → 409.
+        Produit.objects.filter(pk=pa).update(quantite_stock=50)
+        BinAffectation.objects.filter(bin=self.bin_a, produit_id=pa).update(quantite=2147483647)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'transfert', 'quantite': 1,
+                               'bin_destination': self.bin_a.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(MouvementStock.objects.count(), avant)
+        self.assertEqual(BinAffectation.objects.get(bin=self.bin_a, produit_id=pa).quantite, 2147483647)
