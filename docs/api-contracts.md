@@ -506,6 +506,8 @@
     detail:texte, recipients:liste
 - frontend/src/api/ventesApi.js :: deletePreset -> /api/django/ventes/presets/<>
     detail:texte
+- frontend/src/api/ventesApi.js :: demanderSignatureAvenant -> /api/django/ventes/devis/<>/avenant/demander-signature
+    code:texte, detail:texte, share_link:inconnu, tache_id:inconnu
 - frontend/src/api/ventesApi.js :: dgiConformiteFacture -> /api/django/ventes/factures/<>/dgi-conformite
     conforme:booleen, detail:texte, problemes:inconnu
 - frontend/src/api/ventesApi.js :: dupliquerVarianteGamme -> /api/django/ventes/devis/<>/dupliquer-variante-gamme
