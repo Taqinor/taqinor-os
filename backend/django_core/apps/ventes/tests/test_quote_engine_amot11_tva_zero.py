@@ -55,3 +55,18 @@ class TvaZeroTests(TestCase):
         self.assertAlmostEqual(float(data['totaux_all']['ttc']),
                                float(devis.total_ttc), places=2)
         self.assertGreater(float(data['totaux_all']['tva']), 0)
+
+    def test_rendu_premium_tva_zero_reste_zero(self):
+        """AMOT77 — le site de rendu (``apply_quote_data``) garde le 0 % :
+        plus de repli ``0 or 20``. Re-rendu ⇒ identique (persistance).
+        Mutant : remettre ``or 20`` ⇒ ``TVA_PCT`` vaut 20, rouge."""
+        from apps.ventes.quote_engine import generate_devis_premium as moteur
+        devis = self._devis('0', 'DEV-AMOT11-0P')
+        data = build_quote_data(devis, clean_pdf_options({'pdf_mode': 'full'}))
+        self.assertEqual(float(data['taux_tva']), 0.0)
+        with moteur._RENDER_LOCK:
+            for _ in range(2):
+                moteur.apply_quote_data(dict(data))
+                self.assertEqual(moteur.TVA_PCT, 0.0)
+                self.assertAlmostEqual(float(moteur.TOTAUX_ALL['ttc']),
+                                       float(devis.total_ttc), places=2)
