@@ -153,6 +153,23 @@ class PariteVolumesDevisCalepinageTest(TestCase):
         self.assertIsNone(donnees['volumes']['m3_mois_pvgis'])
         self.assertIsNotNone(donnees['volumes']['m3_mois_plat'])
 
+    def test_corps_hors_schema_refuse_400(self):
+        """api-fuzz : un choix texte qui n'est pas une chaîne (``0``) est un
+        400 qui nomme le champ — jamais « immergé » par défaut en silence ;
+        les nombres ``null`` restent acceptés (= non renseignés)."""
+        url = f'/api/django/calepinage/calepinages/{self.calepinage.pk}/pompage/'
+        for champ in ('type_pompe', 'alim', 'materiau_conduite'):
+            rep = self.api.post(url, {'hmt_saisie': None, champ: 0},
+                                format='json')
+            self.assertEqual(rep.status_code, 400, rep.content[:300])
+            self.assertIn(champ, rep.json(), champ)
+        rep = self.api.post(url, {'heures_pompage': 'beaucoup'}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content[:300])
+        donnees = self._calepinage({
+            'hmt_saisie': None, 'debit_souhaite_m3h': None,
+            'heures_pompage': None, 'volume_reservoir_m3': None})
+        self.assertEqual(donnees['entrees']['heures_pompage'], 7.0)
+
 
 class PariteHmtTest(TestCase):
     """La HMT du calepinage est celle de ``hmt_composantes`` (AGR111)."""
