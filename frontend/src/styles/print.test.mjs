@@ -104,8 +104,9 @@ test('SPL280 (a) — resolveCss inline ./styles/<dossier>/<f>.css verbatim, lais
   try {
     assert.equal(resolveCss(join(racine, 'index.css')), MONOLITHE)
   } finally { rmSync(racine, { recursive: true, force: true }) }
-  // L'index.css réel ne porte aucun @import de sous-dossier : octets inchangés.
-  assert.equal(INDEX_CSS, read('../index.css'))
+  // Sur l'index.css réel, le texte résolu ne garde AUCUN @import de sous-dossier
+  // (SPL281/SPL282 : ils sont tous inlinés par resolveCss).
+  assert.doesNotMatch(INDEX_CSS, /^@import\s+['"]\.\/styles\/[^/'"]+\/[^/'"]+\.css['"]/m)
 })
 
 test('SPL280 (b) — @import permutés ou octet changé dans un fichier de styles ⇒ écart', () => {
