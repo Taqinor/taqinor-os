@@ -572,6 +572,40 @@ class PorteePRTests(unittest.TestCase):
         self.assertEqual(revus, ['Server error|GET /a/'])
         self.assertEqual(self.m.verdict({'failures': []}, set()), ([], []))
 
+    def test_erreur_du_moteur_toujours_rouge_jamais_gelable(self):
+        # Rapport JSON Schemathesis 4.28 : `errors: [{title, count}]`, sans
+        # opération — une opération en erreur n'a pas été testée.
+        rapport = {'failures': [], 'errors': [{'title': "Unsupported type: 'Binary'",
+                                               'count': 1}],
+                   'operations': {'errored': 1}}
+        nouveaux, _ = self.m.verdict(
+            rapport, {"Erreur du moteur|Unsupported type: 'Binary'"})
+        self.assertEqual(nouveaux, ["Erreur du moteur|Unsupported type: 'Binary'"])
+        # Compteur seul (liste absente) : rouge quand même.
+        nouveaux, _ = self.m.verdict({'operations': {'errored': 2}}, set())
+        self.assertEqual(nouveaux, ['Erreur du moteur|2 opération(s) en erreur'])
+
+    def test_run_inexploitable_rouge(self):
+        self.assertEqual(self.m.verdict({'complete': False, 'stop_reason': 'interrupted'},
+                                        set())[0],
+                         ['Run incomplet|stop_reason=interrupted'])
+        self.assertEqual(self.m.verdict({'auth': {'reauth_broke': True}}, set())[0],
+                         ['Authentification perdue|reauth_broke'])
+        # Fin normale ou plafond --max-time : run exploitable.
+        for raison in ('completed', 'max_time'):
+            rapport = {'complete': True, 'stop_reason': raison,
+                       'auth': {'reauth_broke': False}, 'errors': [],
+                       'operations': {'errored': 0}}
+            self.assertEqual(self.m.verdict(rapport, set()), ([], []))
+
+    def test_resume_d_alerte_nomme_les_regressions(self):
+        texte = self.m.resume_markdown(['Server error|POST /b/'], ['Server error|GET /a/'])
+        self.assertIn('1 constat(s) api-fuzz HORS de la dette gelée', texte)
+        self.assertIn('- `Server error|POST /b/`', texte)
+        self.assertIn('Aucune régression', self.m.resume_markdown([], ['x']))
+        long = self.m.resume_markdown([f'Server error|GET /{i}/' for i in range(70)], [])
+        self.assertIn('… et 10 autre(s)', long)
+
     def test_dette_versionnee_bien_formee(self):
         dette = self.m.charger_dette()
         self.assertTrue(dette)
@@ -596,6 +630,9 @@ class PorteePRTests(unittest.TestCase):
             self.assertEqual(self.m.main(args), 0)
             dette.write_text('# raison\n', encoding='utf-8')
             self.assertEqual(self.m.main(args), 1)
+            resume = Path(tmp) / 'alerte.md'
+            self.assertEqual(self.m.main(args + ['--resume', str(resume)]), 1)
+            self.assertIn('Server error|GET /a/', resume.read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':
