@@ -257,6 +257,16 @@ class TestMaintenanceChecklist(TestCase):
         items = TicketChecklistItem.objects.filter(ticket=t)
         self.assertEqual(items.count(), 3)
 
+    def test_init_checklist_corps_illisible_400(self):
+        # CI #997 api-fuzz : `template_id: [null, null]` levait un 500.
+        t = make_ticket(self.co, self.user, self.client, self.inst)
+        for corps in ({'template_id': [None, None]}, {'template_id': 0},
+                      {}, [None, None]):
+            r = self.api.post(
+                f'/api/django/sav/tickets/{t.pk}/checklist/', corps,
+                format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+
     def test_init_checklist_idempotent(self):
         """FG82 — Initialiser deux fois ne duplique pas les items."""
         tmpl = self._make_template()
@@ -691,3 +701,54 @@ class TestFg84MonitoringHistory(TestCase):
         r = other_api.get(
             f'/api/django/monitoring/configs/{self.config.pk}/history/')
         self.assertEqual(r.status_code, 404)
+
+
+class CorpsStrictsCi997Tests(TestCase):
+    """CI #997 api-fuzz : le schéma publié dit EXACTEMENT ce que le serveur lit
+    (texte/booléen stricts, JSON non nuls déclarés listes, décimal sans chaîne
+    vide)."""
+
+    def _refus(self, classe, corps, champ):
+        ser = classe(data=corps, partial=True)
+        self.assertFalse(ser.is_valid(), (classe.__name__, corps))
+        self.assertIn(champ, ser.errors)
+
+    def test_types_stricts(self):
+        from apps.sav import serializers as S
+        for classe, corps, champ in (
+                (S.AlarmeOnduleurSerializer, {'description': 0}, 'description'),
+                (S.WarrantyClaimSerializer, {'description': 0}, 'description'),
+                (S.CategorieEquipementSerializer, {'alias_email': 0},
+                 'alias_email'),
+                (S.CompatibilitePieceSerializer, {'note': 0}, 'note'),
+                (S.EquipeMaintenanceSerializer, {'actif': 0}, 'actif'),
+                (S.EquipeMaintenanceSerializer, {'membres': {}}, 'membres'),
+                (S.KbArticleSerializer, {'tags': None}, 'tags'),
+                (S.KbArticleSerializer, {'tags': [1]}, 'tags'),
+                (S.WorksheetMaintenanceModeleSerializer, {'champs': None},
+                 'champs'),
+                (S.ReponseTypeSerializer, {'canaux_autorises': {}},
+                 'canaux_autorises')):
+            with self.subTest(classe=classe.__name__, corps=corps):
+                self._refus(classe, corps, champ)
+
+    def test_valeurs_conformes_acceptees(self):
+        from apps.sav import serializers as S
+        for classe, corps in (
+                (S.KbArticleSerializer, {'tags': ['a', '']}),
+                (S.WorksheetMaintenanceModeleSerializer,
+                 {'champs': [{'cle': 'p', 'type': 'nombre'}]}),
+                (S.ReponseTypeSerializer, {'canaux_autorises': None}),
+                (S.ReponseTypeSerializer, {'canaux_autorises': ['email']})):
+            with self.subTest(classe=classe.__name__, corps=corps):
+                ser = classe(data=corps, partial=True)
+                self.assertTrue(ser.is_valid(), ser.errors)
+
+    def test_prix_prestation_chaine_vide_refusee(self):
+        from apps.sav.serializers_maintenance import PrestationContratSerializer
+        for valeur, ok in (('', False), ('  ', False), (None, True),
+                           ('12.50', True), (12.5, True)):
+            ser = PrestationContratSerializer(data={'prix_ht': valeur},
+                                              partial=True)
+            with self.subTest(valeur=valeur):
+                self.assertEqual(ser.is_valid(), ok, ser.errors)

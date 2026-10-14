@@ -137,6 +137,16 @@ class ZSAV10ActionsGroupeesTest(TestCase):
         other_ticket.refresh_from_db()
         self.assertNotEqual(other_ticket.priorite, Ticket.Priorite.HAUTE)
 
+    def test_valeur_null_et_technicien_inconnu(self):
+        # CI #997 api-fuzz : `priorite: null` (énumération publiée) acceptée,
+        # technicien inconnu en 400 alors que la requête est conforme.
+        t1 = self._ticket()
+        r = self._post([t1.id], 'technicien', technicien=None, priorite=None)
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('priorite', r.data)
+        r = self._post([t1.id], 'technicien', technicien=99999999)
+        self.assertEqual(r.status_code, 404, r.data)
+
     def test_operation_inconnue_400(self):
         t1 = self._ticket()
         r = self._post([t1.id], 'demolir')

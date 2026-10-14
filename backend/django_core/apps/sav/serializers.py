@@ -4,7 +4,9 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 from django.utils import timezone
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import (
+    ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+    IdInconnu404Mixin, ListesStrictesMixin)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import TypageStrictMixin
 
@@ -24,7 +26,7 @@ from .models import (
 EXPIRING_SOON_DAYS = 90
 
 
-class EquipementSerializer(SameCompanyFKSerializerMixin,
+class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     # ENF17 — FK inscriptibles bornées à la société : un id d'ailleurs reçoit
     # la réponse d'un id absent (400), à la création comme au PATCH.
@@ -316,7 +318,7 @@ class TicketChecklistItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['cle', 'libelle', 'ordre', 'coche_par_nom', 'date_coche']
 
 
-class TicketSerializer(SameCompanyFKSerializerMixin,
+class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
     # ASEC34 — un id d'une autre société reçoit la réponse d'un id absent
     # (400 « objet inexistant »), à la création comme au PATCH.
@@ -620,7 +622,7 @@ class MaintenanceChecklistTemplateSerializer(ChampsStrictsMixin,
 
 # ── FG83 — Réclamation garantie fournisseur ───────────────────────────────────
 
-class WarrantyClaimSerializer(SameCompanyFKSerializerMixin,
+class WarrantyClaimSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                               serializers.ModelSerializer):
     # ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('equipement', 'ticket')
@@ -650,6 +652,10 @@ class KbArticleSerializer(SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
     # ENF17 — FK inscriptible bornée à la société.
     same_company_fields = ('produit',)
+    # CI #997 api-fuzz : le schéma publiait n'importe quel JSON (null compris)
+    # pour ce JSONField non nul → 400 ; il dit maintenant « liste de textes ».
+    tags = serializers.ListField(
+        child=ChaineStricte(allow_blank=True), required=False)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, allow_null=True)
     created_by_nom = serializers.CharField(
@@ -677,7 +683,7 @@ class TicketSatisfactionSerializer(serializers.ModelSerializer):
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
 
-class AlarmeOnduleurSerializer(SameCompanyFKSerializerMixin,
+class AlarmeOnduleurSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
     # ENF17 — FK inscriptible bornée à la société.
     same_company_fields = ('equipement',)
@@ -731,7 +737,8 @@ class CategorieTicketSerializer(TypageStrictMixin, serializers.ModelSerializer):
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
 
-class EquipeMaintenanceSerializer(serializers.ModelSerializer):
+class EquipeMaintenanceSerializer(ListesStrictesMixin, ChampsStrictsSansDecimalMixin,
+                                  serializers.ModelSerializer):
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True, allow_null=True)
     membres_count = serializers.SerializerMethodField()
@@ -773,7 +780,7 @@ class EquipeMaintenanceSerializer(serializers.ModelSerializer):
 
 # ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
 
-class CategorieEquipementSerializer(SameCompanyFKSerializerMixin,
+class CategorieEquipementSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                     serializers.ModelSerializer):
     # ENF17 — équipe responsable bornée à la société (le responsable l'est
     # déjà par ``validate_responsable``).
@@ -864,6 +871,12 @@ class ReleveCompteurEquipementSerializer(SameCompanyFKSerializerMixin,
 # ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
 
 class ReponseTypeSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    # CI #997 api-fuzz : JSONField publié « n'importe quoi » alors que seule
+    # une liste de canaux connus (ou null) est acceptée → schéma exact.
+    canaux_autorises = serializers.ListField(
+        child=serializers.ChoiceField(choices=ReponseType.CANAUX),
+        required=False, allow_null=True)
+
     class Meta:
         model = ReponseType
         fields = [
@@ -900,7 +913,7 @@ class ReponseTypeSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
 
 # ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
 
-class CompatibilitePieceSerializer(SameCompanyFKSerializerMixin,
+class CompatibilitePieceSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
     # ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('piece', 'produit_equipement', 'remplace_par')
@@ -924,6 +937,11 @@ class CompatibilitePieceSerializer(SameCompanyFKSerializerMixin,
 # ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
 
 class WorksheetMaintenanceModeleSerializer(serializers.ModelSerializer):
+    # CI #997 api-fuzz : JSONField non nul publié « n'importe quoi » (null
+    # compris, refusé en 400) → liste de définitions de champs.
+    champs = serializers.ListField(
+        child=serializers.DictField(), required=False)
+
     class Meta:
         model = WorksheetMaintenanceModele
         fields = [
