@@ -1165,6 +1165,22 @@ def assurer_numero_recu(paiement):
     raise IntegrityError('Numéro de reçu : trop de collisions concurrentes.')
 
 
+def reste_vente_recu(paiement):
+    """VNT92 — ce que le reçu imprime de la VENTE quand la facture réglée est
+    rattachée à un devis : ``{devis_reference, reste_a_payer_ttc}`` lus d'
+    ``etat_vente`` sur la version qui fait foi (le même état que le bloc
+    « Situation de la vente » du PDF facture). ``None`` pour un paiement
+    sans facture, réparti (affectations) ou dont la facture n'a pas de
+    devis : reçu inchangé."""
+    if not paiement.facture_id or not paiement.facture.devis_id:
+        return None
+    from apps.ventes.domain.instantanes_facture import devis_de_la_vente
+    from apps.ventes.vente_facturation import etat_vente
+    tete = devis_de_la_vente(paiement.facture.devis)
+    return {'devis_reference': tete.reference,
+            'reste_a_payer_ttc': etat_vente(tete)['reste_a_payer_ttc']}
+
+
 def generate_recu_pdf(paiement):
     """XFAC9 — quittance (reçu de paiement) PDF. Layout maison (PAS le moteur
     devis) : identité société, montant en chiffres ET en lettres, mode,
@@ -1200,6 +1216,9 @@ def generate_recu_pdf(paiement):
     context['affectations'] = affectations
     context['solde_restant'] = solde_restant
     context['montant_lettres'] = montant_en_lettres(paiement.montant)
+    # VNT92 — « Reste dû sur la vente » à côté du solde de la facture ;
+    # None (paiement sans facture de devis) → reçu inchangé.
+    context['reste_vente'] = reste_vente_recu(paiement)
     _contexte_langue(context, client, company, traduit=True)
 
     html = _render_html('recu.html', context)

@@ -243,6 +243,8 @@ TEXTES_AR = {
     'Facture réglée': 'الفاتورة المؤداة',
     'Montant affecté': 'المبلغ المخصص',
     'Solde restant dû': 'الرصيد المتبقي المستحق',
+    # VNT92 — reste dû sur la vente, imprimé par le reçu.
+    'Reste dû sur la vente': 'المتبقي المستحق من البيع',
     'sur': 'على',
     'Quittance générée automatiquement le': 'وصل مُنشأ تلقائيا بتاريخ',
     'Objet': 'الموضوع',
