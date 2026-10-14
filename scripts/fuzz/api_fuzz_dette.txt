@@ -51,8 +51,6 @@ API accepted schema-violating request|POST /api/django/core/registre-traitements
 API accepted schema-violating request|POST /api/django/core/regles/valider/
 API accepted schema-violating request|POST /api/django/core/ui-boutons/
 API accepted schema-violating request|POST /api/django/core/ui-onglets/
-API accepted schema-violating request|POST /api/django/imports/export-object/
-API accepted schema-violating request|POST /api/django/imports/sauvegarde/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API accepted schema-violating request|POST /api/django/records/activities/{id}/snooze/
 API accepted schema-violating request|POST /api/django/records/tags/
@@ -136,7 +134,6 @@ API rejected schema-compliant request|POST /api/django/facturation/factures/{id}
 API rejected schema-compliant request|POST /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/
 API rejected schema-compliant request|POST /api/django/imports/commit/
 API rejected schema-compliant request|POST /api/django/imports/dry-run/
-API rejected schema-compliant request|POST /api/django/imports/export/{entity}/
 API rejected schema-compliant request|POST /api/django/imports/mapping/
 API rejected schema-compliant request|POST /api/django/installations/appels-commande/
 API rejected schema-compliant request|POST /api/django/installations/bin-affectations/
@@ -293,7 +290,6 @@ Unsupported methods|TRACE /api/django/core/usage/couts/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
-Server error|POST /api/django/imports/mapping/
 API rejected schema-compliant request|PATCH /api/django/core/formulaire-champs/{id}/
 API accepted schema-violating request|PATCH /api/django/core/dossiers/{id}/
 API accepted schema-violating request|POST /api/django/core/dossiers/

@@ -20,6 +20,7 @@ from django.http import Http404
 from authentication.permissions import (
     IsResponsableOrAdmin, HasPermissionAndRole,
 )
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.selectors import get_company_object
 
 from . import services
@@ -268,10 +269,14 @@ def list_mappings(request):
 
 
 @extend_schema(
+    # ENF11 (api-fuzz) : un mapping vide est refusé (400) — le corps publié exige
+    # au moins une paire colonne→champ, de texte à texte.
+    extensions={EXTENSION_CORPS_RESSERRE: {
+        'type': 'object', 'properties': {'mapping': {'minProperties': 1}}}},
     request=inline_serializer('ImportMappingRequete', {
         'target': serializers.ChoiceField(choices=_CIBLES),
         'nom': serializers.CharField(),
-        'mapping': serializers.DictField()}),
+        'mapping': serializers.DictField(child=serializers.CharField())}),
     responses=inline_serializer('ImportMappingEnregistre', {
         'id': serializers.IntegerField(),
         'target': serializers.CharField(),
@@ -284,16 +289,21 @@ def save_mapping(request):
     """XPLT2 — sauvegarde (ou remplace) un mapping colonne→champ nommé pour une
     cible, réapplicable au prochain dry-run/commit via ``mapping=<nom>``."""
     target = request.data.get('target')
-    nom = (request.data.get('nom') or '').strip()
+    nom = request.data.get('nom')
+    # ENF11 — `nom` / `target` d'un autre type que le texte levaient
+    # AttributeError / TypeError (500) : 400 comme toute valeur invalide.
+    nom = nom.strip() if isinstance(nom, str) else ''
     mapping = request.data.get('mapping')
-    if target not in services.TARGETS:
+    if not isinstance(target, str) or target not in services.TARGETS:
         cibles = ', '.join(sorted(services.TARGETS))
         return Response(
             {'detail': f'Cible invalide (valeurs possibles : {cibles}).'},
             status=400)
     if not nom:
         return Response({'detail': 'Nom de mapping requis.'}, status=400)
-    if not isinstance(mapping, dict) or not mapping:
+    if not isinstance(mapping, dict) or not mapping or not all(
+            isinstance(k, str) and isinstance(v, str)
+            for k, v in mapping.items()):
         return Response(
             {'detail': 'Mapping invalide (dict colonne→champ attendu).'},
             status=400)

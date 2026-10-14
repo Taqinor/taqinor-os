@@ -33,6 +33,18 @@ class TestSavedMapping(ImportBase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_save_mapping_types_faux_400_jamais_500(self):
+        # ENF11 (api-fuzz) : nom / target non texte, mapping vide ou à valeurs
+        # non texte répondaient 500 ou passaient — tous 400 désormais.
+        for corps in (
+                {'target': 'leads', 'nom': [None, None], 'mapping': {'A': 'nom'}},
+                {'target': ['leads'], 'nom': 'X', 'mapping': {'A': 'nom'}},
+                {'target': 'leads', 'nom': 'X', 'mapping': {}},
+                {'target': 'leads', 'nom': 'X', 'mapping': {'A': 3}}):
+            resp = self.api.post(
+                '/api/django/imports/mapping/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
 
 class TestImportJobLog(ImportBase):
     def test_commit_creates_job_with_row_errors(self):
