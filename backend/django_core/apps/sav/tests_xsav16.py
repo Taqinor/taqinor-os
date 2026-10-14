@@ -197,7 +197,8 @@ class XSAV16DowntimeTest(TestCase):
         resp2 = api.post(
             f'/api/django/sav/equipements/{self.equip.id}/downtime/',
             {'motif': 'Panne 2'})
-        self.assertEqual(resp2.status_code, 400, resp2.content)
+        # ERR-ENF11-FUZZ-SAV : chevauchement = refus d'état, 409.
+        self.assertEqual(resp2.status_code, 409, resp2.content)
 
     def test_api_disponibilite_endpoint(self):
         api = auth(self.admin)

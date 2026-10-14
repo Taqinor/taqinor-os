@@ -140,6 +140,11 @@ def devis_post_save(sender, instance, created, **kwargs):
             'statut': instance.statut,
         })
     if instance.statut == Devis.Statut.ACCEPTE and old != Devis.Statut.ACCEPTE:
+        # VNT53 — un AVENANT (prédécesseur de révision accepté) n'est pas une
+        # nouvelle vente : aucun webhook ``devis.accepted``.
+        from apps.ventes.selectors import predecesseur_accepte
+        if predecesseur_accepte(instance) is not None:
+            return
         _safe_dispatch(instance.company_id, EVENT_DEVIS_ACCEPTED, {
             'event': EVENT_DEVIS_ACCEPTED,
             'id': instance.pk,

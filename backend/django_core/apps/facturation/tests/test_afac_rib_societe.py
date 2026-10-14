@@ -64,3 +64,22 @@ class RibSocieteTests(TestCase):
         self.assertEqual(_deposit_success_payload(sans, 'j')['rib'], '')
         self.assertNotIn('par virement sur', _acceptance_deposit_block(sans))
         self.assertEqual(_deposit_success_payload(avec, 'j')['rib'], RIB)
+
+    def test_vnt63_acompte_prevu_egal_a_la_facture_d_acompte(self):
+        """VNT63 — une fois le brouillon d'acompte posé, le mail et la page
+        lisent CE montant (1re tranche du plan), jamais la tranche suivante."""
+        from apps.ventes.domain.cycle_vie import _acceptance_deposit_block
+        from apps.ventes.domain.facturation_vente import facturer_vente
+        from apps.ventes.public.paiement_views import _deposit_success_payload
+        from django.contrib.auth import get_user_model
+        devis = self._devis(rib=RIB)
+        user = get_user_model().objects.create_user(
+            username=f'afac59-vnt63-{_nxt()}', password='x',
+            role_legacy='responsable', company=devis.company)
+        facture, _p = facturer_vente(devis, nature='acompte', user=user)
+        ttc = Decimal(str(facture.total_ttc))
+        self.assertGreater(ttc, Decimal('0'))
+        payload = _deposit_success_payload(devis, 'jeton')
+        self.assertEqual(Decimal(payload['acompte_ttc']), ttc)
+        montant = f'{ttc:,.2f}'.replace(',', ' ') + ' MAD'
+        self.assertIn(montant, _acceptance_deposit_block(devis))

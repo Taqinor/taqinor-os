@@ -54,6 +54,7 @@ from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
 )
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_NON_BLANC
 from core.permissions import ScopedPermission, declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -66,8 +67,8 @@ from ..permissions import (
 )
 from ..serializers import (
     CalepinageLectureSerializer, CalepinageSerializer,
-    CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, forme_du_contrat,
-    forme_reponse,
+    CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, corps_obligatoire,
+    forme_du_contrat, forme_reponse,
 )
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
 # (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
@@ -188,12 +189,38 @@ _PUBLICATION_DEVIS = forme_du_contrat(
 _REFUS_VENTES = OpenApiResponse(
     description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
                 "charge, mot pour mot.")
+#: ACAL316 — le 428 que sert une écriture complète sans jeton If-Match :
+#: DOCUMENTÉ (api-fuzz du 14/10/2026 : « code HTTP non documenté »).
+_REPONSE_JETON_MANQUANT = OpenApiResponse(
+    response=inline_serializer('CalepinageJetonManquant', {
+        'detail': drf_serializers.CharField()}),
+    description="Jeton de version (If-Match) absent ou blanc : rien n'est "
+                "écrit ; recharger la conception (GET ``layout``) puis "
+                "renvoyer son ``empreinte_document``.")
+#: OBLIGATOIRE et non blanc (``pattern`` = au moins un caractère visible, la
+#: règle exacte de ``_jeton_if_match``) : la précondition fait partie du
+#: contrat (api-fuzz du 14/10/2026 : « requête conforme rejetée » sur un
+#: en-tête vide). Un jeton périmé reste conforme et répond 409.
 _PARAM_IF_MATCH = OpenApiParameter(
-    'If-Match', OpenApiTypes.STR, OpenApiParameter.HEADER, required=False,
+    'If-Match', {'type': 'string', 'pattern': MOTIF_NON_BLANC},
+    OpenApiParameter.HEADER, required=True,
     description="Empreinte « document » lue avec la conception (GET "
                 "``layout``) ; l'ETag vide ``\"\"`` pour un document vide. "
-                "Exigé pour écrire : absent, 428 et rien n'est écrit (mais un "
-                "calepinage archivé ou un corps invalide est refusé avant).")
+                "Exigé pour écrire : absent ou blanc, 428 et rien n'est écrit "
+                "(mais un calepinage archivé ou un corps invalide est refusé "
+                "avant) ; périmé, 409.")
+#: ``_corps_de_layout`` : un objet NON VIDE ; une enveloppe seule
+#: (``{"layout": …}`` / ``{"roof_layout": …}``) porte un objet non vide. Un
+#: ``{}`` ou ``{"layout": null}`` était « conforme » puis refusé en 400.
+_CORPS_LAYOUT_RESSERRE = {EXTENSION_CORPS_RESSERRE: {
+    'type': 'object', 'minProperties': 1,
+    'properties': {
+        cle: {'type': 'object', 'minProperties': 1}
+        for cle in ('roof_layout', 'layout')}}}
+#: ``?etiquette=`` : identifiants entiers POSITIFS séparés par des virgules
+#: (jetons vides ignorés) — la règle de ``services/etiquettes.py``, publiée.
+_MOTIF_ETIQUETTES = (r'^\s*(?:0*[1-9][0-9]*)?\s*'
+                     r'(?:,\s*(?:0*[1-9][0-9]*)?\s*)*$')
 _CREATION_COMMUNE = {
     'titre': drf_serializers.CharField(required=False, allow_blank=True),
     'responsable': drf_serializers.IntegerField(required=False,
@@ -267,8 +294,8 @@ class _OrdreStatutDerive(filters.OrderingFilter):
         OpenApiParameter('responsable', OpenApiTypes.INT, OpenApiParameter.QUERY,
                          required=False,
                          description="Identifiant du responsable."),
-        OpenApiParameter('etiquette', OpenApiTypes.STR, OpenApiParameter.QUERY,
-                         required=False,
+        OpenApiParameter('etiquette', {'type': 'string', 'pattern': _MOTIF_ETIQUETTES},
+                         OpenApiParameter.QUERY, required=False,
                          description="Identifiant(s) d'étiquette, séparés par des virgules (ET logique)."),
     ]),
 )
@@ -418,6 +445,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                                       'detail': drf_serializers.CharField(
                                           required=False),
                                   })})
+    @corps_obligatoire
     def create(self, request, *args, **kwargs):
         """ACAL182 — la porte de l'écran Nouveau passe par ``creation.py``.
 
@@ -576,7 +604,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         request=inline_serializer('CalepinageLayoutCorps', {
             'roof_layout': drf_serializers.JSONField(required=False),
             'layout': drf_serializers.JSONField(required=False)}),
-        responses=_FORME_ECRITURE_LAYOUT)
+        responses={200: _FORME_ECRITURE_LAYOUT,
+                   428: _REPONSE_JETON_MANQUANT},
+        extensions=_CORPS_LAYOUT_RESSERRE)
+    @corps_obligatoire
     @action(detail=True, methods=['get', 'post'], url_path='layout',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def layout(self, request, pk=None):

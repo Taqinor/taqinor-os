@@ -920,6 +920,9 @@ def expire_stale_devis():
                 continue
             verrouille.statut = Devis.Statut.EXPIRE
             verrouille.save(update_fields=['statut'])
+            # VNT56 (D-ADEV-1) — une révision V2 expirée réactive la V1 acceptée.
+            from .revision import abandonner_revision
+            abandonner_revision(verrouille, None)
         devis.statut = Devis.Statut.EXPIRE
 
         # Chatter entry via ventes.activity (exists for devis accepted/sent —

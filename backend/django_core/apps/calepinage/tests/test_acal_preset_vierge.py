@@ -91,8 +91,8 @@ class PresetVierge(BaseApiCalepinage):
                                 'preset_id': 'voisin'})
         absent = self._creer({'lead_id': self.lead.pk,
                               'preset_id': 'inexistant'})
-        self.assertEqual(etranger.status_code, 400, etranger.data)
-        self.assertEqual(absent.status_code, 400, absent.data)
+        self.assertEqual(etranger.status_code, 404, etranger.data)
+        self.assertEqual(absent.status_code, 404, absent.data)
         self.assertEqual(
             str(etranger.data['preset_id']).replace('voisin', '<id>'),
             str(absent.data['preset_id']).replace('inexistant', '<id>'))

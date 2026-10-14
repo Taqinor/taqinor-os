@@ -4845,7 +4845,9 @@ def apply_quote_data(data: dict) -> None:
     RECOMMENDED  = data.get("recommended", "Avec batterie")
     SHOW_MONTHLY = data.get("show_monthly", True)
     DEVIS_FINAL    = data.get("devis_final", False)
-    TVA_PCT        = float(data.get("taux_tva", 20) or 20)
+    # AMOT77 — un 0 % explicite reste 0 % (seul ``None`` retombe sur 20).
+    TVA_PCT        = float(20 if data.get("taux_tva") is None
+                           else data["taux_tva"])
     MODE_INSTALLATION = data.get("mode_installation", "") or ""
     ETUDE          = data.get("etude") or {}
     # AGR313 — le une-page agricole lit ses cartes dans la synthèse agricole

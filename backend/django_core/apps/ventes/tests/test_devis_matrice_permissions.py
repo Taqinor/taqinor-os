@@ -28,6 +28,8 @@ RESP = 'IsResponsableOrAdmin'
 ADMIN = 'IsAdminRole'
 VALIDER = 'HasPermissionOrLegacy_ventes_valider'
 PORTAIL = 'IsInternalWriterOrPortalClientOwner'
+#: VNT60 — garde à deux classes (tuple : comparé tel quel, hors VERITE).
+PALIER_VENTE = ('IsAdminOrResponsableTier', 'IsResponsableOrAdmin')
 
 #: La garde effective de CHAQUE action, capturée sur le code d'avant QJR649.
 FIGEE = {
@@ -85,6 +87,12 @@ FIGEE = {
     'revoquer_lien_public': RESP,
     # ACAL314 : LECTURE des octets de l'affiche (proxy même origine).
     'roof_image_fichier': ANY,
+    # VNT60 — gestes d'argent de la vente (arbitrage 5) : DEUX gardes, le
+    # palier écarte un Commercial qui porte ``ventes_valider``.
+    'prix_negocie': PALIER_VENTE,
+    'avenant_demander_signature': PALIER_VENTE,
+    # VNT66 — réécrire l'échéancier d'une vente : même palier.
+    'echeancier_vente': PALIER_VENTE,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).
@@ -145,7 +153,9 @@ class MatricePermissionsDevis(TestCase):
         for action, attendu in FIGEE.items():
             with self.subTest(action=action):
                 self.assertEqual(
-                    [type(p).__name__ for p in _gardes(action)], [attendu])
+                    [type(p).__name__ for p in _gardes(action)],
+                    list(attendu) if isinstance(attendu, tuple)
+                    else [attendu])
 
     def test_matrice_action_role(self):
         fabrique = APIRequestFactory()

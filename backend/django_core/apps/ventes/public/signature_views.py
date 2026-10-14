@@ -440,6 +440,23 @@ def proposal_accept(request, token):
     refus = _refus_empreinte(request, devis)
     if refus is not None:
         return refus
+    # VNT61 — un AVENANT accepté en interne : la signature seule (preuve +
+    # PDF signé), aucun statut écrit, aucun événement (règle #4).
+    from ..domain.negociation import avenant_a_signer, signer_avenant
+    if avenant_a_signer(devis):
+        signature = signer_avenant(
+            devis, nom=nom, ip=_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
+            consentement=consentement, signature_image=signature_image,
+            signed_at_client=signed_at_client, on_behalf_of=on_behalf_of,
+            entreprise=entreprise)
+        if signature is not None:
+            return _noindex(Response({
+                'detail': 'Avenant accepté. Merci !',
+                'reference': devis.reference, 'statut': devis.statut,
+                'accepte_par_nom': devis.accepte_par_nom,
+                'avenant_signe': {'signe_le': signature.signed_at.isoformat()},
+            }))
     try:
         # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
         #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture

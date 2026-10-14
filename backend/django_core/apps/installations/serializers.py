@@ -1,7 +1,7 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin, TexteLie  # ENF11
+from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, TexteLie  # ENF11
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .serializers_stage import valider_unicite_societe
@@ -81,7 +81,7 @@ from .models import (
 )
 
 
-class ChecklistEtapeModeleSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ChecklistEtapeModeleSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('template',)
 
@@ -115,7 +115,7 @@ class ChecklistEtapeModeleSerializer(SameCompanyFKSerializerMixin, serializers.M
         return attrs
 
 
-class ChecklistTemplateSerializer(serializers.ModelSerializer):
+class ChecklistTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """N74 — modèle nommé de checklist + ses étapes ordonnées (imbriquées en
     lecture). `type_installation` auto-sélectionne le template à la création
     d'un chantier ; le template « Défaut » (type vide) est le repli protégé."""
@@ -148,7 +148,7 @@ class FicheInterventionChampSerializer(SameCompanyFKSerializerMixin, serializers
                   'ordre', 'obligatoire']
 
 
-class FicheInterventionTemplateSerializer(serializers.ModelSerializer):
+class FicheInterventionTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """ZFSM1 — gabarit de fiche d'intervention + ses champs ordonnés (imbriqués
     en lecture). `type_intervention` sélectionne le gabarit appliqué à une
     intervention de ce type."""
@@ -226,7 +226,7 @@ class PhotoChecklistMetaSerializer(SameCompanyFKSerializerMixin, serializers.Mod
         read_only_fields = ['id', 'horodatage_capture']
 
 
-class TypeInterventionSerializer(serializers.ModelSerializer):
+class TypeInterventionSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     en_usage = serializers.SerializerMethodField()
 
     class Meta:
@@ -424,7 +424,7 @@ class InterventionSerializer(SameCompanyFKSerializerMixin,
         return obj.reserves.filter(statut=Reserve.Statut.OUVERTE).count()
 
 
-class ShotListSlotSerializer(serializers.ModelSerializer):
+class ShotListSlotSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     phase_display = serializers.CharField(
         source='get_phase_display', read_only=True)
 
@@ -512,21 +512,28 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InstallationSerializer(SameCompanyFKSerializerMixin,
+class InstallationSerializer(ChampsStrictsEntiersMixin,
+                             SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC32 — technicien responsable d'une autre société = id absent (400).
     # ENF17 — + client, lead (FK cross-app bornées).
+    # CI #993 api-fuzz — texte/booléen/décimal/entier stricts (``0`` pour un
+    # texte → 400) ; libellés de choix vides et ``devis_reference`` publiés
+    # null-ables et TOUJOURS servis, y compris sur un PATCH.
     same_company_fields = ('technicien_responsable', 'etape', 'client', 'lead')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     raccordement_display = serializers.CharField(
-        source='get_raccordement_display', read_only=True, default=None)
+        source='get_raccordement_display', read_only=True, default=None,
+        allow_null=True)
     type_installation_display = serializers.CharField(
-        source='get_type_installation_display', read_only=True, default=None)
+        source='get_type_installation_display', read_only=True, default=None,
+        allow_null=True)
     # CIQ610 — niveau de tension recopié du lead (éditable via `niveau_tension`
     # du `__all__`) ; libellé en lecture seule.
     niveau_tension_display = serializers.CharField(
-        source='get_niveau_tension_display', read_only=True, default=None)
+        source='get_niveau_tension_display', read_only=True, default=None,
+        allow_null=True)
     # Position dans l'entonnoir — pour un tri non-alphabétique côté UI.
     statut_ordre = serializers.SerializerMethodField()
     # Statut rabattu sur sa colonne canonique (kanban/parc) — les valeurs
@@ -538,8 +545,8 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
     checklist_completion = serializers.SerializerMethodField()
     client_nom = serializers.SerializerMethodField()
     technicien_nom = serializers.SerializerMethodField()
-    devis_reference = serializers.CharField(
-        source='devis.reference', read_only=True, default=None)
+    devis_reference = TexteLie(
+        source='devis.reference', read_only=True, default=None, allow_null=True)
     lead_nom = serializers.SerializerMethodField()
     interventions = InterventionSerializer(many=True, read_only=True)
     nb_interventions = serializers.SerializerMethodField()
@@ -946,7 +953,7 @@ class ToolReturnSerializer(SameCompanyFKSerializerMixin,
 
 
 # ── F18 — consignes de sécurité ──────────────────────────────────────────────
-class SafetyChecklistSlotSerializer(serializers.ModelSerializer):
+class SafetyChecklistSlotSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     class Meta:
         model = SafetyChecklistSlot
         fields = ['id', 'cle', 'libelle', 'ordre', 'actif', 'protege']
@@ -1223,7 +1230,7 @@ class BudgetProjetSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeri
         return value
 
 
-class EquipeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class EquipeSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """DC40 — équipe terrain CANONIQUE. La société et `created_by` sont posés
     côté serveur (jamais lus du corps) ; les `membres` (M2M → utilisateurs) et
     le `chef` doivent appartenir à la société de l'utilisateur (validé côté
@@ -1283,7 +1290,7 @@ class SousTraitantSerializer(serializers.Serializer):
     ``Fournisseur.nom``) et ``contact_nom`` sur ``Fournisseur.contact_personne``
     pour préserver le contrat d'API FG304."""
     id = serializers.IntegerField(read_only=True)
-    raison_sociale = serializers.CharField()
+    raison_sociale = ChaineStricte()
     metier = serializers.ChoiceField(
         choices=[  # miroir de stock.SousTraitantProfile.Metier
             ('terrassement', 'Terrassement'),
@@ -1295,23 +1302,23 @@ class SousTraitantSerializer(serializers.Serializer):
         ],
         required=False, default='autre')
     metier_display = serializers.SerializerMethodField()
-    contact_nom = serializers.CharField(
+    contact_nom = ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
-    telephone = serializers.CharField(
+    telephone = ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
     email = serializers.EmailField(
         required=False, allow_blank=True, allow_null=True)
-    ice = serializers.CharField(
+    ice = ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
-    rib = serializers.CharField(
+    rib = ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
-    adresse = serializers.CharField(
+    adresse = ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
     # Un sous-traitant est ACTIF par défaut ; `default=True` garantit « actif » à
     # la création quel que soit le type de contenu (un BooleanField absent en
     # form-data serait sinon lu comme False et écraserait le défaut).
-    actif = serializers.BooleanField(required=False, default=True)
-    note = serializers.CharField(
+    actif = BooleenStrict(required=False, default=True)
+    note = ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
     date_creation = serializers.DateTimeField(read_only=True, allow_null=True)
     date_modification = serializers.DateTimeField(read_only=True, allow_null=True)
@@ -2069,7 +2076,7 @@ class ComptageLigneSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['session', 'quantite_theorique']
 
 
-class SessionComptageSerializer(SameCompanyFKSerializerMixin,
+class SessionComptageSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
     """FG324 - session de comptage tournant. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer` ; les
@@ -2246,7 +2253,7 @@ class KitComposantSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeri
         return attrs
 
 
-class KitSerializer(SameCompanyFKSerializerMixin,
+class KitSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                     serializers.ModelSerializer):
     """FG328 - definition d'un kit (article compose + nomenclature). Societe et
     `created_by` poses COTE SERVEUR. Les composants sont imbriques en lecture."""
@@ -2781,7 +2788,7 @@ class RetourLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         ]
 
 
-class CategorieStockageSerializer(serializers.ModelSerializer):
+class CategorieStockageSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """ZSTK9 - categorie de stockage (capacite/compatibilite) posable sur un
     BinLocation. Societe posee COTE SERVEUR."""
 

@@ -63,6 +63,14 @@ def import_layout(self, request, pk=None):
     contre le schéma v2 avant écriture — refus 400 champ par champ."""
     calepinage = self.get_object()
     corps = request.data
+    # CI #993 (api-fuzz-pr) — corps ABSENT (requête sans body) : `request.data`
+    # vaut `{}`, document vide valide contre le schéma v2, et la conception
+    # enregistrée était ÉCRASÉE par rien (200). Le corps est requis.
+    if not corps:
+        return Response(
+            {'roof_layout': 'Corps requis : le document de conception à '
+                            'importer.'},
+            status=status.HTTP_400_BAD_REQUEST)
     if isinstance(corps, dict) and set(corps.keys()) == {'roof_layout'}:
         corps = corps['roof_layout']
     try:

@@ -2337,12 +2337,12 @@ class CycleDeVieTests(GedBase):
         self.assertEqual(self.doc_a.statut, 'revue')
 
     def test_endpoint_rejects_invalid_transition(self):
-        """POST cycle-vie refuse une transition non permise (400)."""
+        """POST cycle-vie refuse une transition non permise (409 : état)."""
         api = auth(self.admin_a)
         resp = api.post(
             f'/api/django/ged/documents/{self.doc_a.id}/cycle-vie/',
             {'statut': 'archive'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.doc_a.refresh_from_db()
         self.assertEqual(self.doc_a.statut, 'brouillon')
 

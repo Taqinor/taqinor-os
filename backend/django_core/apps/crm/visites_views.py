@@ -14,12 +14,14 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.parseurs import ChoixDocumente
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset
 from .models import Appointment, Lead, RelanceEtape
 from .serializers import AppointmentSerializer
 from .actions_crud import READ_ACTIONS
-from .cadence_messages import CLES_MESSAGE_VISITE
+from .cadence_messages import (
+    CLES_MESSAGE_DOSSIER, CLES_MESSAGE_VISITE, LANGUES_MESSAGE_VISITE)
 from .cadence_views import _prochaine_touche_publique
 from . import activity
 from . import schema_docs as sd
@@ -379,7 +381,7 @@ class LeadVisitesActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(rendu)
 
-    @extend_schema(request=sd.corps('CrmMessageVisiteOuvertRequest', cle=serializers.CharField(), etape=serializers.CharField(required=False), langue=serializers.CharField(required=False)), responses=inline_serializer('CrmMessageVisiteOuvert', {
+    @extend_schema(request=sd.corps('CrmMessageVisiteOuvertRequest', cle=ChoixDocumente(choices=CLES_MESSAGE_VISITE + CLES_MESSAGE_DOSSIER), etape=serializers.CharField(required=False), langue=ChoixDocumente(choices=LANGUES_MESSAGE_VISITE, required=False)), responses=inline_serializer('CrmMessageVisiteOuvert', {
         'journalise': serializers.BooleanField(),
         'cle': serializers.CharField(),
         'langue': serializers.CharField(),

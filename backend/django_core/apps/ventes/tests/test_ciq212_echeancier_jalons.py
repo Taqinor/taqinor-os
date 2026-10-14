@@ -231,6 +231,19 @@ class FacturesDeTrancheTest(_Base):
                          Decimal(str(option_totaux(devis)['ttc'])))
         self.assertIsNone(jalons[0]['delai_reglement_jours'])
 
+    def test_vnt63_page_publique_lit_l_acompte_pas_la_tranche_suivante(self):
+        """VNT63 — l'acompte PRÉVU est la 1re tranche du plan : une fois la
+        facture d'acompte créée, la page sert SON montant (jamais les 40 %
+        de la livraison du matériel)."""
+        from apps.ventes.public.payload_conditions import _acompte_publique
+        devis = self._devis('industriel', 'DEV-CIQ212-0050')
+        r = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/generer-facture/')
+        self.assertEqual(r.status_code, 201, r.data)
+        acompte = _acompte_publique(devis)
+        self.assertEqual(Decimal(acompte['ttc']), Decimal(r.data['total_ttc']))
+        self.assertEqual(Decimal(acompte['pourcentage']), Decimal('30'))
+
 
 class ProfilSocieteTest(_Base):
     def test_payment_terms_effectifs_sans_reglage(self):

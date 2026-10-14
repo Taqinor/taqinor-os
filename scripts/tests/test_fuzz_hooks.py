@@ -287,6 +287,24 @@ class IdsFkParCheminTests(unittest.TestCase):
         cas = self._appel('/api/django/stock/x/', None, query={'lot': '7'})
         self.assertEqual(cas.query['lot'], '40')
 
+    def test_query_texte_substituee_garde_le_type_genere(self):
+        """CI #993 — phase coverage : la query part en chaînes mais le
+        cliché typé dit entier ; la FK substituée doit rester un entier, sinon
+        Schemathesis revalide ``'40'`` contre ``integer`` et bascule le cas
+        positif en négatif (« accepted schema-violating request » sur 200)."""
+        class Lieu(str, enum.Enum):
+            QUERY = 'query'
+
+        cas = _cas(self.hooks, 'GET', '/api/django/stock/x/')
+        cas.query = {'lot': '7', 'q': 'abc', 'ids': ['7']}
+        cas.meta.raw_containers = {
+            Lieu.QUERY: {'lot': 7, 'q': 'abc', 'ids': [7]}}
+        self.hooks.before_call(None, cas, {})
+        self.assertEqual(cas.query['lot'], 40)
+        self.assertEqual(cas.query['q'], 'abc')
+        # Clé non substituée (règle absente) : forme fil intacte.
+        self.assertEqual(cas.query['ids'], ['7'])
+
     def test_liste_bornee_et_objet_imbrique(self):
         cas = self._appel('/api/django/x/comparer/', {'ids': [7, 8, 9]})
         self.assertEqual(len(cas.body['ids']), 2)
@@ -572,6 +590,40 @@ class PorteePRTests(unittest.TestCase):
         self.assertEqual(revus, ['Server error|GET /a/'])
         self.assertEqual(self.m.verdict({'failures': []}, set()), ([], []))
 
+    def test_erreur_du_moteur_toujours_rouge_jamais_gelable(self):
+        # Rapport JSON Schemathesis 4.28 : `errors: [{title, count}]`, sans
+        # opération — une opération en erreur n'a pas été testée.
+        rapport = {'failures': [], 'errors': [{'title': "Unsupported type: 'Binary'",
+                                               'count': 1}],
+                   'operations': {'errored': 1}}
+        nouveaux, _ = self.m.verdict(
+            rapport, {"Erreur du moteur|Unsupported type: 'Binary'"})
+        self.assertEqual(nouveaux, ["Erreur du moteur|Unsupported type: 'Binary'"])
+        # Compteur seul (liste absente) : rouge quand même.
+        nouveaux, _ = self.m.verdict({'operations': {'errored': 2}}, set())
+        self.assertEqual(nouveaux, ['Erreur du moteur|2 opération(s) en erreur'])
+
+    def test_run_inexploitable_rouge(self):
+        self.assertEqual(self.m.verdict({'complete': False, 'stop_reason': 'interrupted'},
+                                        set())[0],
+                         ['Run incomplet|stop_reason=interrupted'])
+        self.assertEqual(self.m.verdict({'auth': {'reauth_broke': True}}, set())[0],
+                         ['Authentification perdue|reauth_broke'])
+        # Fin normale ou plafond --max-time : run exploitable.
+        for raison in ('completed', 'max_time'):
+            rapport = {'complete': True, 'stop_reason': raison,
+                       'auth': {'reauth_broke': False}, 'errors': [],
+                       'operations': {'errored': 0}}
+            self.assertEqual(self.m.verdict(rapport, set()), ([], []))
+
+    def test_resume_d_alerte_nomme_les_regressions(self):
+        texte = self.m.resume_markdown(['Server error|POST /b/'], ['Server error|GET /a/'])
+        self.assertIn('1 constat(s) api-fuzz HORS de la dette gelée', texte)
+        self.assertIn('- `Server error|POST /b/`', texte)
+        self.assertIn('Aucune régression', self.m.resume_markdown([], ['x']))
+        long = self.m.resume_markdown([f'Server error|GET /{i}/' for i in range(70)], [])
+        self.assertIn('… et 10 autre(s)', long)
+
     def test_dette_versionnee_bien_formee(self):
         dette = self.m.charger_dette()
         self.assertTrue(dette)
@@ -596,6 +648,35 @@ class PorteePRTests(unittest.TestCase):
             self.assertEqual(self.m.main(args), 0)
             dette.write_text('# raison\n', encoding='utf-8')
             self.assertEqual(self.m.main(args), 1)
+            resume = Path(tmp) / 'alerte.md'
+            self.assertEqual(self.m.main(args + ['--resume', str(resume)]), 1)
+            self.assertIn('Server error|GET /a/', resume.read_text(encoding='utf-8'))
+
+
+class ConfigSchemathesisTests(unittest.TestCase):
+    """CI #993 (KAogBl) — le 428 d'ACAL316 est un REJET pour
+    ``missing_required_header``, sur la SEULE opération ``layout``."""
+
+    def test_428_admis_pour_l_en_tete_if_match_du_seul_layout(self):
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        visees = [op for op in config['operations']
+                  if 'missing_required_header' in op.get('checks', {})]
+        self.assertEqual(len(visees), 1)
+        op = visees[0]
+        # Un SEUL filtre (deux filtres include se combinent en OU).
+        self.assertEqual(
+            {k for k in op if k.startswith(('include-', 'exclude-'))},
+            {'include-name'})
+        self.assertEqual(op['include-name'],
+                         'POST /api/django/calepinage/calepinages/{id}/layout/')
+        self.assertNotIn('enabled', op)
+        attendus = op['checks']['missing_required_header']['expected-statuses']
+        # Les défauts de Schemathesis 4.28 gardés, 428 ajouté.
+        self.assertEqual(sorted(attendus),
+                         [400, 401, 403, 406, 415, 422, 428])
 
 
 if __name__ == '__main__':

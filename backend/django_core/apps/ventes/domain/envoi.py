@@ -272,7 +272,6 @@ def mark_devis_sent(*, devis, user=None):
     Returns the (possibly unchanged) Devis. Tenant scoping is the caller's
     responsibility — the devis is always passed already company-resolved.
     """
-    from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from core.events import devis_sent
@@ -295,23 +294,53 @@ def mark_devis_sent(*, devis, user=None):
     # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
     # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
     # Lève ``RemiseNonApprouvee`` — le devis reste brouillon.
-    from apps.ventes.domain.tarification import exiger_approbation_remise
-    exiger_approbation_remise(devis, user)
-
+    # VNT57 — LA règle de gel du document engagé (T17, ``date_envoi``, marge,
+    # CGV, barème), partagée avec l'acceptation d'un brouillon.
     ancien = devis.statut
-    devis.statut = Devis.Statut.ENVOYE
+    geler_document_engage(devis, user, statut=Devis.Statut.ENVOYE)
+    activity.log_devis_sent(devis, user)
+    devis_sent.send(
+        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+    return devis
+
+
+def geler_document_engage(devis, user, *, statut=None, acceptation=False):
+    """VNT57 (D-ADEV-2, couvre ADEV12) — LA règle de gel d'un BROUILLON qui
+    devient un document engagé, par TOUTE transition vers envoyé
+    (:func:`mark_devis_sent`) ou accepté (``accept_devis`` d'un brouillon) :
+
+    1. approbation T17 de la remise (``exiger_approbation_remise``) AVANT
+       toute écriture — un administrateur approuve implicitement (consigné) ;
+       sinon ``RemiseNonApprouvee`` (``acceptation=True`` : traduite en
+       ``AcceptError`` 400 ``approbation_requise``) et rien n'est écrit ;
+    2. ``date_envoi`` horodatée (avec ``statut`` quand l'appelant le passe,
+       dans la même écriture) ;
+    3. marge interne figée, clauses / CGV gelées, barème des forfaits figé.
+
+    Le statut n'est écrit QUE s'il est passé par l'appelant (règle #4 : la
+    bascule reste celle de ``mark_devis_sent`` / ``accept_devis``)."""
+    from django.utils import timezone
+    from apps.ventes.domain.tarification import (
+        RemiseNonApprouvee, exiger_approbation_remise)
+    try:
+        exiger_approbation_remise(devis, user)
+    except RemiseNonApprouvee as exc:
+        if not acceptation:
+            raise
+        from apps.ventes.domain.cycle_vie import AcceptError
+        raise AcceptError(exc.message, code='approbation_requise') from exc
+    champs = ['date_envoi']
+    if statut is not None:
+        devis.statut = statut
+        champs.insert(0, 'statut')
     devis.date_envoi = timezone.now()
-    devis.save(update_fields=['statut', 'date_envoi'])
+    devis.save(update_fields=champs)
     # QX23be — fige la marge interne au moment de l'envoi (manager-only).
     refresh_marge_snapshot(devis)
     # QJR668 — fige les clauses/CGV de l'affaire au moment de l'envoi.
     figer_clauses_devis(devis)
     # ADEV30 — fige le barème des forfaits au panneau (D-ASTK-1).
     figer_baremes_forfaits(devis)
-    activity.log_devis_sent(devis, user)
-    devis_sent.send(
-        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
-    return devis
 
 
 def poser_validite_devis(devis, date_validite):

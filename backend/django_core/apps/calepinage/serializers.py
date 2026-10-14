@@ -29,6 +29,7 @@ Les lectures cross-app passent par les ``selectors.py`` des apps cibles
 """
 from __future__ import annotations
 
+from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.utils import (
     OpenApiResponse, extend_schema_field, inline_serializer,
 )
@@ -101,6 +102,30 @@ def forme_du_contrat(nom, fichier, cle='exemple', **typees):
 #: Le DÉTAIL agrégé (CAL17) : servi par ``retrieve`` et par ``depuis-modele``.
 FORME_DETAIL_CALEPINAGE = forme_du_contrat(
     'CalepinageDetail', 'calepinage_detail.json')
+
+
+class _SchemaCorpsObligatoire(AutoSchema):
+    """ERR-ENF11-FUZZ-CALEPINAGE — publie le corps de requête ``required``.
+
+    drf-spectacular ne marque un corps obligatoire que si son composant porte
+    des champs requis à la racine : un corps ``oneOf`` / ``anyOf`` (lead OU
+    client, dossier OU gabarit…) ou un schéma brut passait pour FACULTATIF,
+    et une requête SANS corps — refusée en 400 — était « conforme »."""
+
+    def _get_request_body(self, direction='request'):
+        corps = super()._get_request_body(direction)
+        if corps:
+            corps['required'] = True
+        return corps
+
+
+def corps_obligatoire(vue):
+    """Pose ``_SchemaCorpsObligatoire`` sur une vue ; à placer SOUS les
+    ``@extend_schema`` (qui en héritent) et AU-DESSUS de ``@action``."""
+    if getattr(vue, 'kwargs', None) is None:
+        vue.kwargs = {}
+    vue.kwargs['schema'] = _SchemaCorpsObligatoire
+    return vue
 
 
 class LeadApercuSerializer(serializers.Serializer):

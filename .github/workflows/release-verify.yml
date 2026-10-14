@@ -577,6 +577,11 @@ jobs:
     permissions:
       contents: read
       packages: read
+    # ENF11 — lus par `api-fuzz-alerte` : issue d'alerte dès la PREMIÈRE nuit
+    # où un constat sort de la dette gelée (régression), fermée au retour.
+    outputs:
+      regression: ${{ steps.regression.outcome }}
+      resume: ${{ steps.resume.outputs.texte }}
     defaults:
       run:
         shell: bash
@@ -750,6 +755,41 @@ jobs:
           if [ -n "$rapport" ]; then
             python scripts/fuzz/api_fuzz_scope.py soldes --rapport "$rapport" >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Régressions hors dette gelée (verdict d'alerte — ENF11)
+        # Le job est déjà ROUGE sur le moindre constat (étape schemathesis) ;
+        # tant que la dette n'est pas à zéro il l'est chaque nuit, et l'alerte
+        # « 2 nuits rouges » ne distingue plus rien. Cette étape isole ce qui
+        # est NOUVEAU (constat hors dette, erreur du moteur, run incomplet ou
+        # session perdue) — même verdict que le job PR `api-fuzz-pr` — et
+        # alimente `api-fuzz-alerte`. Rapport absent = run cassé = rouge.
+        id: regression
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/api-fuzz-regressions.md"
+          shopt -s nullglob
+          rapports=(schemathesis-report/json-*.json)
+          if [ "${#rapports[@]}" -eq 0 ]; then
+            echo "Aucun rapport JSON Schemathesis : run inexploitable." | tee "$RUNNER_TEMP/api-fuzz-regressions.md"
+            exit 1
+          fi
+          python scripts/fuzz/api_fuzz_scope.py verdict --rapport "${rapports[-1]}" \
+            --resume "$RUNNER_TEMP/api-fuzz-regressions.md"
+      - name: Corps d'alerte (sortie du job)
+        id: resume
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          corps="$RUNNER_TEMP/api-fuzz-regressions.md"
+          if [ ! -s "$corps" ]; then
+            echo "Aucun corps d'alerte produit (verdict non rendu)." > "$corps"
+          fi
+          {
+            echo 'texte<<FIN_RESUME_API_FUZZ'
+            cat "$corps"
+            echo 'FIN_RESUME_API_FUZZ'
+          } >> "$GITHUB_OUTPUT"
+          cat "$corps" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload le rapport Schemathesis
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -762,6 +802,83 @@ jobs:
             gunicorn-fuzz.log
           retention-days: 14
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # ENF11 — ALERTE API-FUZZ DÈS LA PREMIÈRE NUIT (régression hors dette gelée).
+  #
+  # `alert-on-repeated-failure` n'alerte qu'après 2 nuits rouges du workflow
+  # ENTIER — et tant que la dette api-fuzz n'est pas à zéro, `api-fuzz` est
+  # rouge chaque nuit : l'issue `nightly-alert` reste ouverte en permanence et
+  # une régression NOUVELLE s'y noie. Ce job lit le verdict d'alerte du job
+  # (`steps.regression` : constat hors `scripts/fuzz/api_fuzz_dette.txt`,
+  # erreur du moteur, run incomplet/session perdue) et :
+  #   * régression -> ouvre (ou commente) l'issue `api-fuzz-regression` avec
+  #     les constats NOMMÉS, et échoue franchement ;
+  #   * aucune régression -> ferme l'issue ouverte (commentaire daté).
+  # Même patron « opens-or-updates » que `alert-on-repeated-failure` ; aucun
+  # secret externe (GITHUB_TOKEN, `issues: write` sur CE job seulement).
+  # ---------------------------------------------------------------------------
+  api-fuzz-alerte:
+    if: ${{ always() && github.event_name == 'schedule' && needs.api-fuzz.result != 'skipped' }}
+    needs: api-fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Ouvrir/mettre à jour ou fermer l'issue api-fuzz-regression
+        uses: actions/github-script@v7
+        env:
+          REGRESSION: ${{ needs.api-fuzz.outputs.regression }}
+          RESUME: ${{ needs.api-fuzz.outputs.resume }}
+          RESULTAT_JOB: ${{ needs.api-fuzz.result }}
+        with:
+          script: |
+            const title = '[api-fuzz] Régression hors dette gelée au nocturne';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const regression = process.env.REGRESSION !== 'success';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'api-fuzz-regression',
+            });
+            const dup = existing.data.find(i => i.title === title);
+            if (!regression) {
+              if (dup) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: dup.number,
+                  body: `Nocturne sans régression hors dette gelée : ${run}`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: dup.number, state: 'closed',
+                });
+              }
+              return;
+            }
+            const body = [
+              `Run : ${run} (job api-fuzz : ${process.env.RESULTAT_JOB}, verdict : ${process.env.REGRESSION || 'non rendu'})`,
+              '',
+              process.env.RESUME || 'Aucun corps d\'alerte : le verdict n\'a pas été rendu (job interrompu ?).',
+              '',
+              'Corriger la cause (schéma exact ou validation de la vue) — jamais un ajout',
+              'à `scripts/fuzz/api_fuzz_dette.txt` (ne fait que rétrécir, ENF11).',
+            ].join('\n');
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: dup.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['api-fuzz-regression'],
+              });
+            }
+      - name: Échouer franchement (régression api-fuzz)
+        if: ${{ needs.api-fuzz.outputs.regression != 'success' }}
+        run: |
+          echo "::error::api-fuzz : régression hors dette gelée (ou verdict non rendu) — voir l'issue api-fuzz-regression."
+          exit 1
 
   # ---------------------------------------------------------------------------
   # CAD177 (28/09/2026) — ALERTE SI LE NOCTURNE ECHOUE/SAUTE 2 NUITS DE SUITE.

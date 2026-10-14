@@ -467,15 +467,10 @@ ignore_imports =
     core.** -> apps.roles.**
     core.** -> apps.records.**
     core.** -> apps.parametres.**
-# MÊME arête fondation→fondation, atteinte d'une hop plus loin :
-# `core.tenant_context -> authentication.cookie_auth -> authentication.
-# session_policy -> apps.parametres.models` (lecture fonction-locale du
-# `CompanyProfile` pour la politique de session). `authentication` est une app
-# de fondation autorisée (elle n'a jamais figuré parmi les 14 interdites), et
-# `parametres` l'est aussi : on élague cette SEULE hop, exactement comme les
-# exceptions `authentication.tasks -> …` plus bas. Toute arête DIRECTE
-# `core.* -> apps.<domaine>` reste détectée.
-    authentication.session_policy -> apps.parametres.models
+# ENF20 — l'exception `authentication.session_policy -> apps.parametres.models`
+# est RETIRÉE : la politique de session lit `CompanyProfile` par libellé
+# (`django_apps.get_model('parametres', 'CompanyProfile')`, même patron que
+# `cookie_auth`), plus aucune arête statique vers apps.parametres.
 # AUD231 — le test des huit balayages beat a DÉMÉNAGÉ dans apps/pos/tests
 # (contrat core = couche de base, fix-ci #620) : plus aucune arête core.tests
 # vers les domaines, les exceptions mortes sont retirées (06/09/2026).
@@ -538,31 +533,13 @@ ignore_imports =
 # notifications / ventes / stock / sav / publicapi / reporting) : les élaguer
 # aurait affaibli le contrat pour TOUT LE MONDE. Ne pas « simplifier » ce test
 # en réintroduisant les imports.
-# NTDMO25 — `authentication.tasks.seed_demo_company_task` (Celery envelope)
-# imports `authentication.views_demo_wizard` LAZILY (function-local, only at
-# call time), which itself pulls in `authentication.views_console` and, from
-# there, several domain selectors (the demo-kit wizard seeds sample data
-# across apps). grimp still sees the static edge, so the legitimate
-# core.tests.test_wir50_security_beat -> authentication.tasks foundation-app
-# edge (already allowed, `authentication` not in forbidden_modules) now
-# transitively reaches those domain apps through this ONE hop. Prune just
-# that hop — the same pattern as the test-only edges above, but for a lazy
-# production edge instead of a test edge.
-    authentication.tasks -> authentication.views_demo_wizard
-# NTDMO30 — MÊME motif, une hop de plus : la purge des sociétés démo expirées
-# (`purger_societes_demo_expirees_task`) écrit son PROPRE AuditLog avant chaque
-# suppression, via un import fonction-local `apps.audit.recorder` — exactement
-# comme `authentication.device`/`password_policy`/`services`/`views`/
-# `views_console` le font depuis longtemps, et comme les exceptions
-# `notifications.services -> apps.audit.recorder` (stock/automation/
-# dataimport passent par `core.audit_registry` depuis ENF20) plus haut dans ce fichier. grimp voit l'arête statique, donc l'arête
-# fondation LÉGITIME `core.tests.test_wir50_security_beat -> authentication.
-# tasks` (autorisée : `authentication` n'est pas dans forbidden_modules)
-# atteint maintenant apps.ventes/stock/sav de façon TRANSITIVE via
-# audit.recorder -> records.services -> <domaine>.selectors. On élague cette
-# SEULE hop : toute arête DIRECTE `core.* -> apps.*` reste détectée, et aucune
-# autre source ne gagne le moindre droit.
-    authentication.tasks -> apps.audit.recorder
+# ENF20 — les exceptions NTDMO25 `authentication.tasks -> authentication.
+# views_demo_wizard` et NTDMO30 `authentication.tasks -> apps.audit.recorder`
+# sont RETIRÉES : l'exécution du wizard démo (`_run_wizard`/`set_progress`) vit
+# dans `authentication.tasks` (la vue l'importe de là, jamais l'inverse) et la
+# purge des sociétés démo journalise via `core.audit_registry` (rempli par
+# apps.audit ready()). L'arête fondation `core.tests.test_wir50_security_beat
+# -> authentication.tasks` n'atteint plus aucun domaine.
 # NTEXT21 — l'onglet custom « objet_custom_lie » (points d'extension UI
 # déclaratifs, ``core.ui_extensions``) est une FONDATION pure : ``cible`` est
 # une CHAÎNE opaque, et le contenu réel est résolu par un gestionnaire

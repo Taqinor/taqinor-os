@@ -20,12 +20,12 @@ import copy
 
 from django.db import transaction
 from rest_framework import status
-from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
+from ..serializers import corps_obligatoire
 from ..services.layout import (
     DocumentModifie, LayoutRefuse, _relire_sous_verrou, enregistrer_layout,
 )
@@ -42,6 +42,32 @@ __all__ = ['suggestions_pente']
 
 OPERATIONS = ('proposer', 'accepter', 'refuser')
 LIBELLE = 'pente du terrain'
+
+
+class _ZoneIntrouvable(LayoutRefuse):
+    """``zone_id`` ne désigne aucun pan de la conception : 404."""
+
+
+class _AucuneSuggestion(LayoutRefuse):
+    """Le pan n'a pas de suggestion à décider : conflit d'état, 409."""
+
+
+#: ERR-ENF11-FUZZ-CALEPINAGE — le corps RÉEL : ``base_empreinte`` non vide
+#: toujours, ``zone_id`` non vide pour accepter / refuser.
+_CORPS_SUGGESTIONS = {
+    'type': 'object',
+    'properties': {
+        'operation': {'type': 'string', 'enum': list(OPERATIONS)},
+        'base_empreinte': {'type': 'string', 'minLength': 1},
+        'zone_id': {'type': 'string'},
+    },
+    'required': ['operation', 'base_empreinte'],
+    'anyOf': [
+        {'properties': {'operation': {'enum': ['proposer']}}},
+        {'properties': {'zone_id': {'type': 'string', 'minLength': 1}},
+         'required': ['zone_id']},
+    ],
+}
 
 
 def _zone(document, zone_id):
@@ -71,7 +97,7 @@ def _proposer(calepinage, base, zone_id, user):
     if zone_id not in (None, ''):
         zone = _zone(cible, zone_id)
         if zone is None:
-            raise LayoutRefuse(
+            raise _ZoneIntrouvable(
                 f"Zone introuvable dans la conception : {zone_id}.",
                 champ='zone_id')
         cible['zones'] = [zone]
@@ -102,12 +128,12 @@ def _decider(calepinage, base, zone_id, operation, user):
         document = copy.deepcopy(courant) if isinstance(courant, dict) else {}
         pan = _zone(document, zone_id)
         if pan is None:
-            raise LayoutRefuse(
+            raise _ZoneIntrouvable(
                 f"Zone introuvable dans la conception : {zone_id}.",
                 champ='zone_id')
         trace = pan.get(CLE_SUGGESTION)
         if not isinstance(trace, dict):
-            raise LayoutRefuse(
+            raise _AucuneSuggestion(
                 "Aucune suggestion de pente à décider sur ce pan : "
                 "proposez-la d'abord.", champ='zone_id')
         if operation == 'accepter':
@@ -118,13 +144,9 @@ def _decider(calepinage, base, zone_id, operation, user):
                                   base_empreinte=base)
 
 
-@extend_schema(request=inline_serializer(
-    'CalepinageSuggestionsPenteRequete', {
-        'operation': drf_serializers.ChoiceField(
-            choices=['proposer', 'accepter', 'refuser']),
-        'base_empreinte': drf_serializers.CharField(),
-        'zone_id': drf_serializers.CharField(required=False),
-    }), responses=_FORME_ECRITURE_LAYOUT)
+@extend_schema(request={'application/json': _CORPS_SUGGESTIONS},
+               responses=_FORME_ECRITURE_LAYOUT)
+@corps_obligatoire
 @action(detail=True, methods=['post'], url_path='suggestions-pente',
         permission_classes=[PeutGererCalepinage])
 def suggestions_pente(self, request, pk=None):
@@ -157,6 +179,12 @@ def suggestions_pente(self, request, pk=None):
             status=status.HTTP_403_FORBIDDEN)
     except DocumentModifie as conflit:
         return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
+    except _ZoneIntrouvable as refus:
+        return Response({refus.champ: str(refus)},
+                        status=status.HTTP_404_NOT_FOUND)
+    except _AucuneSuggestion as refus:
+        return Response({refus.champ: str(refus)},
+                        status=status.HTTP_409_CONFLICT)
     except LayoutRefuse as refus:
         return Response({refus.champ or 'roof_layout': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)

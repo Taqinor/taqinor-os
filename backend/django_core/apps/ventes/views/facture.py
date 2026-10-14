@@ -1,11 +1,10 @@
-from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import ENTITE, qint, qstr
 from datetime import date as _date
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from . import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers as drf_serializers
@@ -19,10 +18,11 @@ from ..models import (
 from ..serializers_facturation import (
     FactureSerializer, FactureWriteSerializer, PaiementSerializer,
     AvoirSerializer, NoteDebitSerializer, RelanceLogSerializer,
+    FactureActivitySerializer, RelancerFactureSerializer,
 )
-from ..serializers_facturation import FactureActivitySerializer, RelancerFactureSerializer
 from ..serializers import EmailLogSerializer
 from ..utils.corps import valider_corps, valider_corps_lignes
+from .facture_montant_tranche import FactureMontantTrancheMixin
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -130,44 +130,28 @@ def _montants_ligne_corrective(i, ligne):
 #: la garde destructive est désormais ``perform_destroy`` (brouillon seul).
 PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
-# NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
-# (un module par ressource). Comportement et symboles inchangés : le
-# package __init__ ré-exporte toutes les vues publiques.
-
 
 @extend_schema_view(list=extend_schema(
     parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]),
     # VNT14 — seul un « BROUILLON-<id> » se supprime : 409 sinon (ENF11).
     destroy=extend_schema(
         responses={204: None, 409: D.ErreurSuppressionFacture}))
-class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
+class FactureViewSet(FactureMontantTrancheMixin, EntiteScopeMixin,
+                     CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
     # get_permissions SURCHARGENT la base : scoping société et matrice 401/403/404
     # IDENTIQUES (règle #4 : aucun statut/sérialisation Facture touché ; la facture
     # garde son PDF légacy séparé, hors périmètre du moteur devis).
-    # AUD157 (FAC-14) — LE PRÉFETCH DIT CE QUE LE SÉRIALISEUR LIT. Il ne
-    # portait que `lignes`, alors que `FactureSerializer` sérialise pour CHAQUE
-    # facture les paiements imbriqués, les avoirs, `montant_paye` (→ paiements
-    # + affectations_paiement), `montant_du` (→ + notes_debit + retenues_subies)
-    # et `mentions_manquantes` — soit ≈6 requêtes par facture. Le viewset Devis
-    # avait reçu le correctif équivalent (YOPSB13) ; la liste des factures
-    # jamais.
-    #
-    # AUD157 (résidu) — LE SÉRIALISEUR IMBRIQUÉ COMPTE AUSSI. Le préfetch
-    # s'arrêtait à la facture, mais `PaiementSerializer` — imbriqué dans
-    # `FactureSerializer` — expose `montant_disponible`, qui interroge
-    # `Paiement.affectations` (`.exists()`, puis `montant_affecte`). Une
-    # requête PAR PAIEMENT sérialisé : le budget de la liste restait indexé
-    # sur le portefeuille (+1 par ligne), le N+1 s'était juste déplacé d'un
-    # cran. Le gestionnaire de relation sert `.all()` ET `.exists()` depuis
-    # `_prefetched_objects_cache` — préfetcher la relation suffit, aucune
-    # propriété modèle n'a à être réécrite.
-    #
-    # Même raison pour `avoirs__lignes` / `notes_debit__lignes` : `get_avoirs`
-    # et `notes_debit_total` lisent le `total_ttc` de chaque document, qui
-    # retombe sur SES lignes dès que ses montants ne sont pas figés.
+    # AUD157 (FAC-14) — LE PRÉFETCH DIT CE QUE LE SÉRIALISEUR LIT :
+    # `FactureSerializer` lit, par facture, paiements imbriqués, avoirs,
+    # `montant_paye` / `montant_du` (paiements, affectations, notes de débit,
+    # retenues) et `mentions_manquantes` (≈6 requêtes par facture sans lui).
+    # Résidu : `PaiementSerializer` imbriqué expose `montant_disponible`
+    # (`Paiement.affectations`) — préfetcher la relation sert `.all()` ET
+    # `.exists()` depuis le cache. `avoirs__lignes` / `notes_debit__lignes` :
+    # le `total_ttc` d'un document non figé retombe sur SES lignes.
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande', 'devis', 'updated_by',
         'company', 'devis__bon_commande',

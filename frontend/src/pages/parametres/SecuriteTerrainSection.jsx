@@ -8,6 +8,8 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import toutesLesPages from './toutesLesPages'
+import api from '../../api/axios'
 import { apiErrorMessage } from '../../lib/apiError'
 import parametresApi from '../../api/parametresApi'
 import {
@@ -35,10 +37,10 @@ export default function SecuriteTerrainSection() {
   const [deleting, setDeleting] = useState(false)
 
   const load = () => Promise.all([
-    installationsApi.getConsignesSecurite(),
+    toutesLesPages((params) => api.get('/installations/consignes-securite/', { params })),
     parametresApi.getProfile(),
-  ]).then(([cs, pr]) => {
-    setSlots(cs.data.results ?? cs.data)
+  ]).then(([consignes, pr]) => {
+    setSlots(consignes)
     setProfile(pr.data)
     setLoadError(false)
   }).catch(() => setLoadError(true)).finally(() => setLoading(false))

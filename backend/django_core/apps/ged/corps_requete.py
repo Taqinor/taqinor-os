@@ -198,7 +198,7 @@ class GedDemandeDispositionCorps(drf_serializers.Serializer):
     action = drf_serializers.ChoiceField(
         choices=['detruire', 'archiver'], required=False)
     documents = drf_serializers.ListField(
-        child=_id_corps(), allow_empty=False)
+        child=_id_corps(), allow_empty=False, min_length=1)
 
 
 class _ParamsTag(drf_serializers.Serializer):
@@ -223,8 +223,10 @@ _PARAMS_PAR_OPERATION = {
 
 
 class GedOperationsLotCorps(drf_serializers.Serializer):
+    # ERR-ENF11-FUZZ-GED : ``min_length`` publie ``minItems: 1`` (``[]``
+    # était « conforme » puis refusé « liste vide »).
     documents = drf_serializers.ListField(
-        child=_id_corps(), allow_empty=False)
+        child=_id_corps(), allow_empty=False, min_length=1)
     operation = drf_serializers.ChoiceField(choices=[
         'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
         'partager', 'demander_signature', 'demander_revue'])
@@ -266,3 +268,17 @@ def lignes_csv_invalides(lignes):
             continue
         ligne['nom'] = ''
     return invalides
+
+
+def refus_cycle_vie(exc, cible):
+    """ERR-ENF11-FUZZ-GED — refus de ``change_lifecycle_status`` : 400 si
+    ``cible`` n'est pas un statut du cycle (entrée invalide), 409 sinon (la
+    transition est refusée par l'ÉTAT du document : déjà à ce statut,
+    transition non permise)."""
+    from rest_framework import status
+    from rest_framework.response import Response
+
+    from .models import LIFECYCLE_CHOICES
+    connu = cible in {code for code, _ in LIFECYCLE_CHOICES}
+    return Response({'detail': str(exc)}, status=(
+        status.HTTP_409_CONFLICT if connu else status.HTTP_400_BAD_REQUEST))

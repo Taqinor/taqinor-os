@@ -503,8 +503,8 @@ export default function ApiWebhooksSection() {
 
   const loadAll = () => {
     Promise.all([
-      publicapiApi.getKeys().then(r => setKeys(r.data.results ?? r.data)).catch(() => {}),
-      publicapiApi.getWebhooks().then(r => setWebhooks(r.data.results ?? r.data)).catch(() => {}),
+      toutesLesPages((params) => publicapiApi.getKeys(params)).then(setKeys).catch(() => {}),
+      toutesLesPages((params) => publicapiApi.getWebhooks(params)).then(setWebhooks).catch(() => {}),
     ]).finally(() => setLoading(false))
   }
 
@@ -552,7 +552,7 @@ export default function ApiWebhooksSection() {
     }
     try {
       const r = await publicapiApi.getWebhookDeliveries(webhookId)
-      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data.results ?? r.data }))
+      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data }))
     } catch { toast.error('Historique indisponible.') }
   }
   const replay = async (webhookId, deliveryId) => {
@@ -560,7 +560,7 @@ export default function ApiWebhooksSection() {
       await publicapiApi.replayDelivery(webhookId, deliveryId)
       toast.success('Livraison rejouée.')
       const r = await publicapiApi.getWebhookDeliveries(webhookId)
-      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data.results ?? r.data }))
+      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data }))
     } catch { toast.error('Rejeu impossible.') }
   }
   const sendTestPing = async (webhookId) => {
@@ -568,7 +568,7 @@ export default function ApiWebhooksSection() {
       await publicapiApi.testPingWebhook(webhookId)
       toast.success('Ping de test envoyé.')
       const r = await publicapiApi.getWebhookDeliveries(webhookId)
-      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data.results ?? r.data }))
+      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data }))
     } catch { toast.error('Envoi du ping impossible.') }
   }
   const revokeKey = (k) => setPendingAction({

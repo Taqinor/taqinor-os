@@ -147,6 +147,42 @@ class TestClasseurApi(ClasseurBase):
             f'/api/django/reporting/classeurs/{classeur_id}/rafraichir/')
         self.assertEqual(resp3.status_code, 200)
 
+    def test_cellules_liens_objets_non_nuls_et_schema_publie(self):
+        """ERR-ENF11-FUZZ-REPORTING — ``cellules``/``liens`` nuls ou listes =
+        400 ; le schéma les publie en objets (plus ``{}`` qui admettait null)."""
+        from drf_spectacular.drainage import get_override
+
+        from apps.reporting.classeur import ClasseurSerializer
+        url = '/api/django/reporting/classeurs/'
+        for corps in ({'titre': 'T', 'cellules': None},
+                      {'titre': 'T', 'liens': []},
+                      {'titre': 'T', 'cellules': 'x'}):
+            with self.subTest(corps=corps):
+                self.assertEqual(
+                    self.api.post(url, corps, format='json').status_code, 400)
+        ok = self.api.post(url, {'titre': 'T', 'cellules': {}}, format='json')
+        self.assertEqual(ok.status_code, 201)
+        champs = ClasseurSerializer().fields
+        for nom in ('cellules', 'liens'):
+            self.assertEqual(get_override(champs[nom], 'field')['type'],
+                             'object')
+
+    def test_partage_booleen_strict(self):
+        """CI #993 (api-fuzz-pr) — ``partage: 0`` ou ``"true"`` = 400 (le
+        schéma publie un booléen) sur POST comme sur PATCH ; ``true`` passe."""
+        url = '/api/django/reporting/classeurs/'
+        for valeur in (0, 1, 'true'):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(self.api.post(
+                    url, {'titre': 'T', 'partage': valeur},
+                    format='json').status_code, 400)
+        ok = self.api.post(url, {'titre': 'T', 'partage': True}, format='json')
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertIs(ok.data['partage'], True)
+        patch = self.api.patch(url + str(ok.data['id']) + '/',
+                               {'partage': 0}, format='json')
+        self.assertEqual(patch.status_code, 400)
+
     def test_other_company_classeurs_not_visible(self):
         Classeur.objects.create(
             company=self.other_company, titre='Autre société', cellules={})

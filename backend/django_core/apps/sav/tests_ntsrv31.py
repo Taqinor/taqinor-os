@@ -138,8 +138,8 @@ class NTSRV31CreerDepuisRegroupementTest(TestCase):
             'titre': 'Tentative',
             'ticket_ids': [self.tickets[0].pk, etranger.pk],
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('ticket_ids', resp.json())
+        # ERR-ENF11-FUZZ-SAV : id inconnu pour la société = 404.
+        self.assertEqual(resp.status_code, 404)
         # TOUT OU RIEN : aucun problème, aucun rattachement.
         self.assertEqual(Probleme.objects.count(), 0)
         self.assertEqual(ProblemeIncident.objects.count(), 0)

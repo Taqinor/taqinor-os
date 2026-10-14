@@ -68,6 +68,31 @@ class TestDevisAcceptesSansChantier(IntegrityBase):
         result = controle_integrite(self.company)
         self.assertEqual(result['devis_acceptes_sans_chantier']['ids'], [])
 
+    def test_vnt85_v1_remplacee_par_v2_acceptee_non_signalee(self):
+        """VNT85 : chantier rattaché à la V2 ⇒ la V1 (remplacée) n'est pas
+        un « accepté sans chantier » ; la V2 non plus."""
+        v2 = Devis.objects.create(
+            company=self.company, reference='DEV-V2', client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE)
+        v1 = Devis.objects.create(
+            company=self.company, reference='DEV-V1', client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE, is_active=False, superseded_by=v2)
+        self._installation(devis=v2)
+        result = controle_integrite(self.company)
+        self.assertNotIn(v1.id, result['devis_acceptes_sans_chantier']['ids'])
+        self.assertEqual(result['devis_acceptes_sans_chantier']['ids'], [])
+
+    def test_vnt85_v2_non_acceptee_garde_la_v1_signalee(self):
+        v2 = Devis.objects.create(
+            company=self.company, reference='DEV-V2B', client=self.client_obj,
+            statut=Devis.Statut.BROUILLON)
+        v1 = Devis.objects.create(
+            company=self.company, reference='DEV-V1B', client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE, is_active=False, superseded_by=v2)
+        result = controle_integrite(self.company)
+        self.assertEqual(
+            result['devis_acceptes_sans_chantier']['ids'], [v1.id])
+
 
 class TestChantiersSansParc(IntegrityBase):
     def test_detects_constructed_case(self):

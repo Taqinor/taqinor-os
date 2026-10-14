@@ -145,6 +145,30 @@ class FiltreListeSansBaseTest(SimpleTestCase):
         self.assertEqual({refus.exception.champ: str(refus.exception)},
                          attendu)
 
+    def test_exposant_refuse_nomme_jamais_500(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE — ``'²'.isdigit()`` est vrai mais
+        ``int('²')`` lève : le filtre refuse NOMMÉ, il ne plante plus."""
+        for brut in ('²', '١', '1²'):
+            with self.subTest(brut=brut):
+                with self.assertRaises(EtiquetteRefusee):
+                    filtrer_par_etiquette(object(), [brut])
+
+    def test_le_motif_publie_suit_la_regle_du_filtre(self):
+        """Le motif OpenAPI de ``?etiquette=`` accepte exactement ce que le
+        filtre accepte (api-fuzz : « conforme refusée » sur un texte libre)."""
+        import re
+
+        from apps.calepinage.views.calepinages import _MOTIF_ETIQUETTES
+
+        for admis in ('', '1', '12,3', ' 4 , 5 ', '6,,7', '007'):
+            with self.subTest(admis=admis):
+                self.assertTrue(re.search(_MOTIF_ETIQUETTES, admis))
+        for refuse in ('0', 'abc', '²', '1 2', '-1', '1;2'):
+            with self.subTest(refuse=refuse):
+                self.assertIsNone(re.search(_MOTIF_ETIQUETTES, refuse))
+                with self.assertRaises(EtiquetteRefusee):
+                    filtrer_par_etiquette(object(), [refuse])
+
     def test_le_contrat_documente_un_filtre_repetable_en_et(self):
         filtre = _contrat()['filtre_liste']
         self.assertEqual(filtre['parametre'], 'etiquette')

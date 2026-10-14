@@ -133,6 +133,15 @@ class PortesFacturationTests(TestCase):
                     r3 = self.api.post(
                         f"/api/django/ventes/factures/{r1.data['id']}/"
                         'emettre/', {}, format='json')
+                    if porte_b == 'complete':
+                        # VNT65 — facturer-complet = facturer_vente(complete,
+                        # remplacer_brouillons=True) : le brouillon de BC est
+                        # REMPLACÉ (annulé, jamais supprimé), il ne s'émet plus.
+                        self.assertEqual(r3.status_code, 409, r3.data)
+                        self.assertEqual(
+                            [f.statut for f in self._actives(devis)
+                             if f.statut != 'brouillon'], ['emise'])
+                        continue
                     self.assertEqual(r3.status_code, 400, r3.data)
                     self.assertIn('avoir', str(r3.data))
                     emises = [f for f in self._actives(devis)

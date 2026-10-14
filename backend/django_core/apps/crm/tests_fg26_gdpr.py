@@ -64,7 +64,8 @@ class FG26GdprTest(TestCase):
             f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')
         r = self.api.post(
             f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')
-        self.assertEqual(r.status_code, 400, r.content)
+        # ERR-ENF11-FUZZ-CRM : refus d'état = 409 (plus 400).
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_anonymize_requires_admin(self):
         comm = User.objects.create_user(

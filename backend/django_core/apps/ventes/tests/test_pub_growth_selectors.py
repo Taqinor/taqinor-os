@@ -258,3 +258,49 @@ class SignatureVelocityByMonthAndModeTests(TestCase):
             date_acceptation=date(2025, 1, 1))
         result = signature_velocity_by_month_and_mode(self.company)
         self.assertEqual(result['par_mode'], {})
+
+
+class VentesEnVigueurPubliciteTests(TestCase):
+    """VNT84 — ticket moyen, vélocité et cross-sell lisent les ventes EN
+    VIGUEUR (``devis_signes_en_vigueur``) : ni la V1 remplacée par sa
+    révision acceptée, ni un devis archivé (cas du lead 1594 : 152 500 ⇒
+    49 000)."""
+
+    def setUp(self):
+        from datetime import date
+
+        from apps.ventes.models import LigneDevis
+        self.company = Company.objects.create(nom='VNT84 Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Vigueur', prenom='C',
+            email='vigueur@ex.ma')
+        self.lead = Lead.objects.create(company=self.company, nom='Lead VNT84')
+
+        def devis(suffixe, montant, **kw):
+            d = Devis.objects.create(
+                company=self.company, reference=f'DEV-{MONTH}-{suffixe}',
+                client=self.client_obj, lead=self.lead, taux_tva=Decimal('0'),
+                statut=Devis.Statut.ACCEPTE, mode_installation='residentiel',
+                date_acceptation=date(2026, 5, 1), **kw)
+            LigneDevis.objects.create(
+                devis=d, designation='Kit', quantite=Decimal('1'),
+                prix_unitaire=Decimal(montant), remise=Decimal('0'))
+            return d
+        v1 = devis('8410', '54500', is_active=False)  # la plus ancienne
+        v2 = devis('8420', '49000',
+                   option_acceptee=Devis.OptionAcceptee.AVEC_BATTERIE)
+        Devis.objects.filter(pk=v1.pk).update(superseded_by=v2)
+        devis('8430', '49000', is_active=False)
+
+    def test_ticket_moyen_vente_en_vigueur(self):
+        totals = devis_accepted_totals_by_lead(self.company, [self.lead.id])
+        self.assertEqual(totals, {self.lead.id: Decimal('49000')})
+
+    def test_velocite_vente_en_vigueur(self):
+        result = signature_velocity_by_month_and_mode(self.company)
+        self.assertEqual(result['par_mode'], {'residentiel': {5: 1}})
+
+    def test_cross_sell_origine_vente_en_vigueur(self):
+        # La V1 remplacée (sans batterie) n'est plus le devis d'origine.
+        result = signed_clients_cross_sell_segments(self.company)
+        self.assertEqual(result['sans_batterie'], [])

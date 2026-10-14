@@ -89,8 +89,10 @@ def restaurer_corbeille(self, request, pk=None):
     try:
         restaurer(calepinage, user=request.user)
     except ArchivageInvalide as refus:
+        # ERR-ENF11-FUZZ-CALEPINAGE — « pas archivé : rien à restaurer » est
+        # un conflit d'ÉTAT (409), pas une requête mal formée.
         return Response({refus.champ or 'detail': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     return Response({'calepinage': calepinage.pk, 'archive': False})
 
 

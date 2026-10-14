@@ -450,3 +450,99 @@ class TestChampsApiEnf11(TestCase):
         strict = AutoSchema()._map_serializer_field(
             serializers.EmailField(), 'response')
         self.assertEqual(strict.get('format'), 'email')
+
+
+# ── ERR-ENF11-FUZZ-CRM (2e tour, nocturne 13/10) — 500, 409, entrées typées ──
+class TestFuzzCrmTour2(TestCase):
+    def setUp(self):
+        self.company = make_company('fuzz2-co', 'Fuzz2 Co')
+        self.user = User.objects.create_user(
+            username='fuzz2_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_reservation_publique_minute_impossible_400_pas_500(self):
+        resp = self.api.post(
+            '/api/django/crm/public/booking/jeton-inconnu/reserve/',
+            {'scheduled_at': '2024-01-01T12:99:00Z'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_objectifs_metric_hors_enum_400_pas_500(self):
+        url = '/api/django/crm/objectifs/'
+        for brut in ('$\x00Q', 'inconnue'):
+            resp = self.api.get(url, {'metric': brut})
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+            self.assertIn('metric', resp.data)
+        resp = self.api.get(url, {'period_type': 'semaine'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.get(url, {'metric': 'nb_leads', 'period_type': 'month'})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_point_contact_ordre_au_plafond_ne_deborde_plus(self):
+        from django.utils import timezone
+
+        from apps.crm.models import PointContact
+        lead = Lead.objects.create(company=self.company, nom='Plafond')
+        PointContact.objects.create(
+            company=self.company, lead=lead, canal='autre',
+            date_contact=timezone.now(), ordre=2147483647)
+        resp = self.api.post('/api/django/crm/points-contact/',
+                             {'canal': 'autre', 'lead': lead.pk},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['ordre'], 2147483647)
+
+    def test_doublon_client_409_unique_conflict(self):
+        corps = {'nom': 'Doublon', 'email': 'doublon@exemple.ma'}
+        premier = self.api.post('/api/django/crm/clients/', corps,
+                                format='json')
+        self.assertEqual(premier.status_code, 201, premier.content)
+        second = self.api.post('/api/django/crm/clients/', corps,
+                               format='json')
+        self.assertEqual(second.status_code, 409, second.content)
+        self.assertEqual(second.data['error']['code'], 'unique_conflict')
+
+    def test_pagination_ignoree_reste_validee(self):
+        resp = self.api.get('/api/django/crm/leads/doublons/',
+                            {'page_size': 'null'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.get('/api/django/crm/leads/doublons/',
+                            {'page_size': 10})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_dates_vides_acceptees_comme_publiees(self):
+        resp = self.api.get('/api/django/crm/leads/roi-sources/', {'to': ''})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        resp = self.api.get('/api/django/crm/leads/roi-sources/',
+                            {'canal': 'a\x00b'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_corps_null_refuse(self):
+        resp = self.api.post('/api/django/crm/leads/placement-cadences/',
+                             {'apply': False, 'limite': None}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('limite', resp.data)
+        resp = self.api.post('/api/django/crm/leads/ville-statut/',
+                             {'ville': '', 'proches': None}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
+                             {'appareil_id': '', 'navigateur': None},
+                             format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_texte_strict_sur_les_etiquettes(self):
+        resp = self.api.post('/api/django/crm/tags/',
+                             {'nom': 'Chaud', 'couleur': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post('/api/django/crm/tags/',
+                             {'nom': 'Chaud', 'couleur': '#ff0000'},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_fusion_ids_inconnus_404(self):
+        lead = Lead.objects.create(company=self.company, nom='Survivant')
+        resp = self.api.post(f'/api/django/crm/leads/{lead.pk}/merge/',
+                             {'others': [987654321]}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)

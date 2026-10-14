@@ -814,6 +814,7 @@ def _coordonnees_gazetier(ville):
     try:
         from apps.parametres.villes_maroc import coordonnees_ville
     except Exception:  # noqa: BLE001 — gazetier indisponible → chaîne inchangée
+        logger.warning("_coordonnees_gazetier : erreur absorbée, repli dégradé", exc_info=True)
         return None
     try:
         return coordonnees_ville(ville)
@@ -930,6 +931,7 @@ def _cache_lire(cle):
         from core import cache as tenant_cache
         return tenant_cache.get(None, cle)
     except Exception:  # noqa: BLE001 — pas de Django/cache dispo → pas de cache
+        logger.debug("_cache_lire : erreur absorbée, repli dégradé", exc_info=True)
         return None
 
 

@@ -55,3 +55,17 @@ enabled = false
 [[operations]]
 include-path-regex = '^/api/v1/'
 enabled = false
+
+# ── 3. Précondition requise : 428 est un REJET (ACAL316) ────────────────────
+# `POST …/calepinages/{id}/layout/` exige l'en-tête `If-Match` (déclaré
+# `required`) : absent, la vue répond 428 Precondition Required (RFC 6585) et
+# n'écrit rien — le code sémantiquement exact, à ne pas changer. Le check
+# `missing_required_header` de Schemathesis 4.28 n'admet par défaut que
+# 400/401/403/406/415/422 (`MISSING_REQUIRED_HEADER_EXPECTED_STATUSES`) : CI
+# #993 (cas KAogBl) a pris le 428 pour « en-tête manquant non rejeté ». On
+# AJOUTE 428 aux statuts attendus de CE check pour CETTE seule opération
+# (`include-name` = libellé exact « MÉTHODE chemin » — un seul filtre, car deux
+# filtres include se combinent en OU) ; le check reste actif, partout.
+[[operations]]
+include-name = 'POST /api/django/calepinage/calepinages/{id}/layout/'
+checks.missing_required_header.expected-statuses = [400, 401, 403, 406, 415, 422, 428]

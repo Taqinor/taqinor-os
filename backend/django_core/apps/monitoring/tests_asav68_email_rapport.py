@@ -72,3 +72,36 @@ class EmailRapportTests(TestCase):
         self.assertTrue(r.data['sent'])
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(self._notifs(), 1)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_corps_invalide_400_nomme(self):
+        """CI #993 api-fuzz-pr (cas JNK86P) : ``{"period": null, "recipient":
+        "0"}`` faisait une 500 (``html.escape(None)`` dans le gabarit) → 400
+        nommant chaque champ ; rien n'est envoyé ni notifié."""
+        cas = [
+            ({'period': None, 'recipient': '0'}, {'period', 'recipient'}),
+            ({'period': 'annual'}, {'period'}),
+            ({'recipient': 'pas-un-email'}, {'recipient'}),
+            ({'recipient': ['a@example.com']}, {'recipient'}),
+        ]
+        for corps, champs in cas:
+            with self.subTest(corps=corps):
+                r = self.api.post(self.url, corps, format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                for champ in champs:
+                    self.assertIn(champ, r.content.decode())
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(self._notifs(), 0)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_periode_trimestrielle_et_destinataire_explicite(self):
+        with mock.patch('apps.monitoring.report.render_om_report_pdf',
+                        return_value=b'%PDF-1.4'):
+            r = self.api.post(self.url, {
+                'period': 'quarterly', 'recipient': 'autre@example.com',
+            }, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(mail.outbox[0].to, ['autre@example.com'])
+        self.assertIn('trimestriel', mail.outbox[0].subject)

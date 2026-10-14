@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4804, operations: 7556, components: 3480}
+counts: {paths: 4814, operations: 7566, components: 3485}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1252,6 +1252,7 @@ operations:
 - post /api/django/facturation/factures/{id}/liberer-retenue/ -> django_facturation_factures_liberer_retenue_create
 - post /api/django/facturation/factures/{id}/lien-paiement/ -> django_facturation_factures_lien_paiement_create
 - post /api/django/facturation/factures/{id}/marquer-payee/ -> django_facturation_factures_marquer_payee_create
+- post /api/django/facturation/factures/{id}/montant-tranche/ -> django_facturation_factures_montant_tranche_create
 - get /api/django/facturation/factures/{id}/paiements/ -> django_facturation_factures_paiements_list
 - get /api/django/facturation/factures/{id}/relance-apercu/ -> django_facturation_factures_relance_apercu_retrieve
 - post /api/django/facturation/factures/{id}/relancer/ -> django_facturation_factures_relancer_create
@@ -3526,6 +3527,7 @@ operations:
 - post /api/django/ventes/devis/{id}/acquitter-derive/ -> django_ventes_devis_acquitter_derive_create
 - post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
+- post /api/django/ventes/devis/{id}/avenant/demander-signature/ -> django_ventes_devis_avenant_demander_signature_create
 - get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
 - post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
 - post /api/django/ventes/devis/{id}/contacter-superieur/ -> django_ventes_devis_contacter_superieur_create
@@ -3535,6 +3537,7 @@ operations:
 - post /api/django/ventes/devis/{id}/dupliquer-variante-gamme/ -> django_ventes_devis_dupliquer_variante_gamme_create
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
+- put /api/django/ventes/devis/{id}/echeancier/ -> django_ventes_devis_echeancier_update
 - get /api/django/ventes/devis/{id}/economie-ci/ -> django_ventes_devis_economie_ci_retrieve
 - get /api/django/ventes/devis/{id}/economie-pompage/ -> django_ventes_devis_economie_pompage_retrieve
 - get /api/django/ventes/devis/{id}/economie/ -> django_ventes_devis_economie_retrieve
@@ -3563,6 +3566,7 @@ operations:
 - get /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_retrieve
 - patch /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_partial_update
 - post /api/django/ventes/devis/{id}/pdf-partage/ -> django_ventes_devis_pdf_partage_create
+- post /api/django/ventes/devis/{id}/prix-negocie/ -> django_ventes_devis_prix_negocie_create
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
 - post /api/django/ventes/devis/{id}/reappliquer-lead/ -> django_ventes_devis_reappliquer_lead_create
@@ -3648,6 +3652,7 @@ operations:
 - post /api/django/ventes/factures/{id}/liberer-retenue/ -> django_ventes_factures_liberer_retenue_create
 - post /api/django/ventes/factures/{id}/lien-paiement/ -> django_ventes_factures_lien_paiement_create
 - post /api/django/ventes/factures/{id}/marquer-payee/ -> django_ventes_factures_marquer_payee_create
+- post /api/django/ventes/factures/{id}/montant-tranche/ -> django_ventes_factures_montant_tranche_create
 - get /api/django/ventes/factures/{id}/paiements/ -> django_ventes_factures_paiements_list
 - get /api/django/ventes/factures/{id}/relance-apercu/ -> django_ventes_factures_relance_apercu_retrieve
 - post /api/django/ventes/factures/{id}/relancer/ -> django_ventes_factures_relancer_create
@@ -5069,6 +5074,7 @@ operations:
 - post /api/v1/facturation/factures/{id}/liberer-retenue/ -> v1_facturation_factures_liberer_retenue_create
 - post /api/v1/facturation/factures/{id}/lien-paiement/ -> v1_facturation_factures_lien_paiement_create
 - post /api/v1/facturation/factures/{id}/marquer-payee/ -> v1_facturation_factures_marquer_payee_create
+- post /api/v1/facturation/factures/{id}/montant-tranche/ -> v1_facturation_factures_montant_tranche_create
 - get /api/v1/facturation/factures/{id}/paiements/ -> v1_facturation_factures_paiements_list
 - get /api/v1/facturation/factures/{id}/relance-apercu/ -> v1_facturation_factures_relance_apercu_retrieve
 - post /api/v1/facturation/factures/{id}/relancer/ -> v1_facturation_factures_relancer_create
@@ -7307,6 +7313,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/acquitter-derive/ -> v1_ventes_devis_acquitter_derive_create
 - post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
+- post /api/v1/ventes/devis/{id}/avenant/demander-signature/ -> v1_ventes_devis_avenant_demander_signature_create
 - get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
 - post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
 - post /api/v1/ventes/devis/{id}/contacter-superieur/ -> v1_ventes_devis_contacter_superieur_create
@@ -7316,6 +7323,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/dupliquer-variante-gamme/ -> v1_ventes_devis_dupliquer_variante_gamme_create
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
+- put /api/v1/ventes/devis/{id}/echeancier/ -> v1_ventes_devis_echeancier_update
 - get /api/v1/ventes/devis/{id}/economie-ci/ -> v1_ventes_devis_economie_ci_retrieve
 - get /api/v1/ventes/devis/{id}/economie-pompage/ -> v1_ventes_devis_economie_pompage_retrieve
 - get /api/v1/ventes/devis/{id}/economie/ -> v1_ventes_devis_economie_retrieve
@@ -7344,6 +7352,7 @@ operations:
 - get /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_retrieve
 - patch /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_partial_update
 - post /api/v1/ventes/devis/{id}/pdf-partage/ -> v1_ventes_devis_pdf_partage_create
+- post /api/v1/ventes/devis/{id}/prix-negocie/ -> v1_ventes_devis_prix_negocie_create
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
 - post /api/v1/ventes/devis/{id}/reappliquer-lead/ -> v1_ventes_devis_reappliquer_lead_create
@@ -7429,6 +7438,7 @@ operations:
 - post /api/v1/ventes/factures/{id}/liberer-retenue/ -> v1_ventes_factures_liberer_retenue_create
 - post /api/v1/ventes/factures/{id}/lien-paiement/ -> v1_ventes_factures_lien_paiement_create
 - post /api/v1/ventes/factures/{id}/marquer-payee/ -> v1_ventes_factures_marquer_payee_create
+- post /api/v1/ventes/factures/{id}/montant-tranche/ -> v1_ventes_factures_montant_tranche_create
 - get /api/v1/ventes/factures/{id}/paiements/ -> v1_ventes_factures_paiements_list
 - get /api/v1/ventes/factures/{id}/relance-apercu/ -> v1_ventes_factures_relance_apercu_retrieve
 - post /api/v1/ventes/factures/{id}/relancer/ -> v1_ventes_factures_relancer_create
@@ -9587,6 +9597,7 @@ components:
 - CalepinageImportProjet
 - CalepinageImportProjetCorpsRequest
 - CalepinageImporterPlanCorpsRequest
+- CalepinageJetonManquant
 - CalepinageJoindrePiece
 - CalepinageJoindrePieceCorpsParDossierRequest
 - CalepinageJoindrePieceCorpsParGabaritRequest
@@ -9599,7 +9610,6 @@ components:
 - CalepinageMasseLestage
 - CalepinageMeteoFichier
 - CalepinageMeteoFichierCorpsRequest
-- CalepinageMeteoFichierRetenu
 - CalepinageModeleBascule
 - CalepinageModulesDisponibles
 - CalepinageMoteurAccuseTravailLong
@@ -9621,7 +9631,6 @@ components:
 - CalepinagePompageCorpsRequest
 - CalepinagePompageReponse
 - CalepinagePoseReelle
-- CalepinagePoseReelleCorpsRequest
 - CalepinagePublicationDevis
 - CalepinageRaccordement
 - CalepinageRaccordementCorpsRequest
@@ -9645,8 +9654,6 @@ components:
 - CalepinageSuggestionPenteDemandeRequest
 - CalepinageSuggestionPenteDocumentRequest
 - CalepinageSuggestionPenteReponse
-- CalepinageSuggestionsPenteRequeteOperationEnum
-- CalepinageSuggestionsPenteRequeteRequest
 - CalepinageSyncDevis
 - CalepinageSyncDevisCorpsRequest
 - CalepinageTroncons
@@ -9663,6 +9670,7 @@ components:
 - CanalRequest
 - CanalResolutionEnum
 - CapaciteEtatEnum
+- CardsEnum
 - CashFlowBucketAuDela
 - CashFlowBucketCeMois
 - CashFlowBucketCetteSemaine
@@ -10014,6 +10022,7 @@ components:
 - DevisAtomicRequest
 - DevisAutoRequestRequest
 - DevisAutoResponse
+- DevisAvenantSignatureReponse
 - DevisCompositionResponse
 - DevisConceptionElectriqueRequestRequest
 - DevisConceptionElectriqueResponse
@@ -10026,6 +10035,7 @@ components:
 - DevisDupliquerVarianteGammeRequestRequest
 - DevisDupliquerVarianteGammeResponse
 - DevisDupliquerVarianteRequestRequest
+- DevisEcheancierPutRequest
 - DevisEconomie
 - DevisEconomieCi
 - DevisEconomiePompage
@@ -10070,6 +10080,8 @@ components:
 - DevisPdfPartageResponse
 - DevisPrefillSiteResponse
 - DevisPreset
+- DevisPrixNegocieReponse
+- DevisPrixNegocieRequestRequest
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
 - DevisRequest
@@ -10298,6 +10310,7 @@ components:
 - FactureLigneAvoirCorrectiveRequest
 - FactureLigneRetourRequest
 - FactureMarquerPayeeRequestRequest
+- FactureMontantTrancheRequest
 - FactureRelanceApercu
 - FactureRelancee
 - FactureReprendreAbandonRequestRequest
@@ -11586,6 +11599,7 @@ components:
 - PaysEnum
 - PdfModeEnum
 - PdfTaskResponse
+- PeriodEnum
 - PeriodTypeEnum
 - PermissionCatalogue
 - PermissionsDisponibles
@@ -12548,6 +12562,7 @@ components:
 - VisiteRenvoiRequest
 - VisiteTerrain
 - VisiteTerrainContexte
+- VisiteTerrainLigne
 - VisiteTerrainRequest
 - VisiteTerrainStatutEnum
 - VisitesLeadsRecherche

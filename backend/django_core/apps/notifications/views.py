@@ -8,6 +8,7 @@ import re as _re
 
 from django.utils import timezone
 
+from drf_spectacular.extensions import OpenApiSerializerExtension
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
@@ -92,21 +93,46 @@ _PREFERENCE_ID = OpenApiParameter(
     'id', OpenApiTypes.STR, OpenApiParameter.PATH,
     enum=list(EventType.values), description="Clé du type d'événement.")
 _BOOL_01 = ['0', '1', 'true', 'false']
+
+
 # Corps d'écriture d'une règle de routage : seuls les événements ROUTABLES
 # (APAR21) sont acceptés ; le schéma de la réponse garde l'énumération complète
 # (d'anciennes règles peuvent viser un événement devenu non routable).
-_REGLE_ROUTAGE_ECRITURE = inline_serializer('RegleRoutageEcriture', {
-    'event_type': serializers.ChoiceField(
-        choices=EVENEMENTS_ROUTABLES_CHOIX),
-    'target_role': serializers.ChoiceField(
+class RegleRoutageEcritureSerializer(serializers.Serializer):
+    event_type = serializers.ChoiceField(choices=EVENEMENTS_ROUTABLES_CHOIX)
+    target_role = serializers.ChoiceField(
         choices=[r for r, _ in NotificationRoutingRule.ROLE_CHOICES],
         required=False, allow_null=True,
-        help_text='Rôle ciblé — ou ``target_user`` : au moins un des deux.'),
-    'target_user': serializers.IntegerField(
+        help_text='Rôle ciblé — ou ``target_user`` : au moins un des deux.')
+    target_user = serializers.IntegerField(
         required=False, allow_null=True,
-        help_text='Utilisateur ciblé — ou ``target_role``.'),
-    'enabled': serializers.BooleanField(required=False),
-})
+        help_text='Utilisateur ciblé — ou ``target_role``.')
+    enabled = serializers.BooleanField(required=False)
+
+
+class _RegleRoutageCiblePubliee(OpenApiSerializerExtension):
+    """ERR-ENF11-FUZZ-NOTIFICATIONS — « cibler soit un rôle, soit un
+    utilisateur » (``NotificationRoutingRuleSerializer.validate``) PUBLIÉ au
+    corps de création / remplacement : ``{event_type}`` seul passait pour
+    conforme et répondait 400. Le PATCH (partiel) garde le schéma brut.
+    Aucune énumération dans les branches (le post-traitement des enums ne
+    renomme rien)."""
+    target_class = RegleRoutageEcritureSerializer
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request' or auto_schema.method == 'PATCH':
+            return schema
+        return {**schema, 'anyOf': [
+            {'properties': {'target_role': {'type': 'string'}},
+             'required': ['target_role']},
+            {'properties': {'target_user': {'type': 'integer'}},
+             'required': ['target_user']},
+        ]}
+
+
+_REGLE_ROUTAGE_ECRITURE = RegleRoutageEcritureSerializer
 _UNREAD_VALEURS = ['1', 'true', 'True']
 # Le cloche de l'écran envoie ``unread=0`` pour « toutes » : valeurs « non »
 # publiées au schéma, sans filtre (au lieu d'un 400 qui casserait l'écran).
@@ -667,8 +693,12 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
 # FG5 — Endpoint de vérification des helpers de calendrier.
 
 @extend_schema(
-    parameters=[_q('date', OpenApiTypes.DATE,
-                   "Date AAAA-MM-JJ (défaut : aujourd'hui).")],
+    # ERR-ENF11-FUZZ-NOTIFICATIONS — ``?date=`` vide vaut « aujourd'hui » (la
+    # vue le lit ainsi) : le schéma publie « date ou vide », pas ``date`` seul.
+    parameters=[_q('date', {'anyOf': [
+        {'type': 'string', 'format': 'date'},
+        {'type': 'string', 'maxLength': 0}]},
+        "Date AAAA-MM-JJ, ou vide (défaut : aujourd'hui).")],
     responses=inline_serializer('CalendrierOuvre', {
         'date': serializers.DateField(),
         'is_jour_ouvre': serializers.BooleanField(),

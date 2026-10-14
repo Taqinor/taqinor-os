@@ -12,7 +12,8 @@ Ce qui est prouvé ici :
   la géométrie), sur une COPIE — le document du devis ou du modèle reste
   intact, et l'empreinte du calepinage créé est recalculée ;
 * ``POST calepinages/depuis-modele/`` : un modèle d'une autre société ⇒ 404,
-  un jeu inconnu ⇒ 400 nommant ``preset_id``, la réponse est le DÉTAIL
+  un jeu inconnu ⇒ 404 nommant ``preset_id`` (CI #993 api-fuzz : bien formé
+  mais introuvable ; non-texte ⇒ 400), la réponse est le DÉTAIL
   agrégé dont les clés sont celles de ``calepinage_detail.json`` ; sans
   modèle, la porte ordinaire du rattachement crée (lead/client/devis).
 
@@ -87,10 +88,12 @@ class JeuDeReglagesTest(SimpleTestCase):
 
     def test_inconnu_refuse_en_nommant_preset_id(self):
         with reglages():
-            with self.assertRaises(creation.CreationRefusee) as refus:
+            with self.assertRaises(creation.JeuDeReglagesInconnu) as refus:
                 creation._jeu_de_reglages(object(), 'tuile_romane')
         self.assertEqual(refus.exception.champ, 'preset_id')
-        self.assertIn('tuile_romane', str(refus.exception))
+        self.assertEqual(refus.exception.statut_http, 404)
+        # CI #993 api-fuzz — la valeur reçue n'est jamais recopiée.
+        self.assertNotIn('tuile_romane', str(refus.exception))
 
     def test_les_deux_formes_de_jeux_sont_offertes(self):
         with reglages():
@@ -241,13 +244,32 @@ class DepuisModeleEnBase(BaseApiCalepinage):
             format='json')
         self.assertEqual(reponse.status_code, 404)
 
-    def test_jeu_inconnu_400_nommant_le_champ(self):
+    def test_jeu_inconnu_404_nommant_le_champ(self):
+        # CI #993 api-fuzz (cas v4QwmD) — un `preset_id` texte inconnu, même
+        # `{}` envoyé en multipart, est INTROUVABLE (404) ; un non-texte JSON
+        # est mal formé (400) ; rien n'est créé, la valeur n'est pas recopiée.
         avant = Calepinage.objects.count()
         reponse = self.api.post(URL_DEPUIS_MODELE, {
             'modele_id': self.modele.pk, 'lead_id': self.lead_2.pk,
             'preset_id': 'hangar'}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404, reponse.data)
         self.assertIn('preset_id', reponse.data)
+        self.assertNotIn('hangar', str(reponse.data['preset_id']))
+        reponse = self.api.post(URL_DEPUIS_MODELE, {
+            'modele_id': self.modele.pk, 'lead_id': self.lead_2.pk,
+            'preset_id': '{}'}, format='multipart')
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        self.assertIn('preset_id', reponse.data)
+        for brut in ({}, [], 0):
+            reponse = self.api.post(URL_DEPUIS_MODELE, {
+                'modele_id': self.modele.pk, 'lead_id': self.lead_2.pk,
+                'preset_id': brut}, format='json')
+            self.assertEqual(reponse.status_code, 400, (brut, reponse.data))
+            self.assertIn('preset_id', reponse.data)
+        reponse = self.api.post(URL_DEPUIS_MODELE, {
+            'modele_id': 999999, 'lead_id': self.lead_2.pk}, format='json')
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        self.assertIn('modele_id', reponse.data)
         self.assertEqual(Calepinage.objects.count(), avant)
 
     def test_sans_modele_la_porte_du_rattachement_cree(self):

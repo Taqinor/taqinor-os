@@ -486,10 +486,16 @@ def decider_approbation(request):
     journalise (le journal reste porté par l'app source, ex. TicketActivity /
     AutomationApproval.decided_at — pas de duplication ici)."""
     company = _co(request.user)
-    source = request.data.get('source')
-    obj_id = request.data.get('id')
-    decision = request.data.get('decision')
-    motif = (request.data.get('motif') or '').strip()
+    # ERR-ENF11-FUZZ-REPORTING — corps validé par le serializer publié : un
+    # corps non-objet (liste…) cassait `.get` en 500 ; source/décision/id hors
+    # schéma = 400 nommant le champ.
+    entree = DeciderApprobationSerializer(data=request.data)
+    if not entree.is_valid():
+        return Response(entree.errors, status=400)
+    source = entree.validated_data['source']
+    obj_id = entree.validated_data['id']
+    decision = entree.validated_data['decision']
+    motif = (entree.validated_data.get('motif') or '').strip()
 
     status_code, body = _decider_approbation_core(
         company, request.user, source, obj_id, decision, motif)

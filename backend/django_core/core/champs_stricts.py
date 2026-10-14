@@ -6,6 +6,9 @@ OpenAPI déclare invalide (constat api-fuzz « accepted schema-violating
 request »). ``ChaineStricte`` répond 400 tant que la valeur n'est pas déjà une
 chaîne ; le comportement d'une requête valide est inchangé.
 """
+import re
+from datetime import date
+
 from django.db import models
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
@@ -34,6 +37,41 @@ def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
     if mini is not None and n < mini:
         raise serializers.ValidationError({nom: ['Valeur hors plage.']})
     return n if maxi is None else min(n, maxi)
+
+
+_DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}\Z')
+
+
+def date_ou_400(valeur, nom):
+    """Date de requête ``AAAA-MM-JJ`` STRICTE : absent/vide -> ``None`` ;
+    toute autre forme (``2026-1-5``, ``abc``, jour inexistant) -> 400 nommant
+    le paramètre, comme le schéma ``format: date`` le déclare."""
+    if valeur is None or str(valeur).strip() == '':
+        return None
+    brut = str(valeur).strip()
+    if _DATE_ISO.match(brut):
+        try:
+            return date.fromisoformat(brut)
+        except ValueError:
+            pass
+    raise serializers.ValidationError(
+        {nom: ['Date attendue au format AAAA-MM-JJ.']})
+
+
+def nombre_ou_400(valeur, nom, defaut=None, mini=None):
+    """Nombre de requête STRICT (``float``) : absent/vide -> ``defaut`` ;
+    illisible, ``nan``/``inf`` ou inférieur à ``mini`` -> 400 nommant le
+    paramètre (il retombait en silence sur le défaut)."""
+    if valeur is None or str(valeur).strip() == '':
+        return defaut
+    try:
+        n = float(str(valeur).strip())
+    except ValueError:
+        n = None
+    if n is None or n != n or n in (float('inf'), float('-inf')) or (
+            mini is not None and n < mini):
+        raise serializers.ValidationError({nom: ['Nombre attendu.']})
+    return n
 
 
 class DecimalStricte(serializers.DecimalField):
@@ -160,6 +198,21 @@ class ChampsStrictsMixin:
         models.TextField: ChaineStricte,
         models.BooleanField: BooleenStrict,
         models.DecimalField: DecimalStricte,
+    }
+
+
+class ChampsStrictsEntiersMixin:
+    """``ChampsStrictsMixin`` + ENTIERS stricts (api-fuzz « accepted
+    schema-violating request » sur ``PATCH installations/chantiers/{id}/``) :
+    texte, booléen, décimal-chaîne et entier de modèle n'acceptent que leur
+    type JSON déclaré (``0`` pour un texte, ``"5"`` pour un entier → 400)."""
+
+    serializer_field_mapping = {
+        **ChampsStrictsMixin.serializer_field_mapping,
+        models.IntegerField: EntierStrict,
+        models.PositiveIntegerField: EntierStrict,
+        models.SmallIntegerField: EntierStrict,
+        models.PositiveSmallIntegerField: EntierStrict,
     }
 
 

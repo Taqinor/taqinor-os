@@ -220,6 +220,29 @@ class RefusTest(BaseGabarits):
         self.assertFalse(GabaritDossierReglementaire.objects
                          .filter(pk=libre).exists())
 
+    def test_bornes_de_colonne_400_nomme_jamais_500(self):
+        # CI #993 api-fuzz-pr (Qay0Hc) : un intitulé de 201 caractères en
+        # JSON (``fichier`` vide) cassait à l'INSERT (500) — 400 nommé.
+        corps = {'fichier': '', 'pays': 'AA', 'code': '0', 'genre': '0',
+                 'intitule': '0' * 201, 'version': '', 'actif': False,
+                 'pieces_attendues': [], 'champs': []}
+        reponse = self.api.post(URL, corps, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('intitule', reponse.data)
+        for champ, valeur in (('pays', 123), ('code', 'pas un slug'),
+                              ('intitule', {'a': 1})):
+            fautif = dict(corps, intitule='Dossier')
+            fautif[champ] = valeur
+            refus = self.api.post(URL, fautif, format='json')
+            self.assertEqual(refus.status_code, 400, (champ, refus.data))
+            self.assertIn(champ, refus.data)
+        self.assertFalse(GabaritDossierReglementaire.objects.exists())
+        # Le même corps à intitulé borné passe (``fichier`` vide = absent).
+        ok = self.api.post(URL, dict(corps, intitule='0' * 200),
+                           format='json')
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertIsNone(ok.data['gabarit']['fichiers'])
+
     def test_403_sans_calepinage_gerer(self):
         lecteur = Role.objects.create(
             company=self.company, nom='Lecteur calepinage',

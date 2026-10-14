@@ -10,6 +10,11 @@ frontend/src/pages/admin/SecuriteIdentitePage.jsx::load  identity/break-glass/  
 frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadEnRetard  stock/bons-commande-fournisseur/en-retard/  @action(pagination_class=None), liste complète des BCF en retard @backend/django_core/apps/stock/views/bon_commande_fournisseur.py:641
 
 frontend/src/pages/ia/AgentActions.jsx::load  agent/logs/  vue APIView, journal plafonné aux 200 plus récents (réponse {count, results}) @backend/django_core/apps/agent/views.py:146
-frontend/src/pages/ventes/DevisList.jsx::chargerVariantes  ventes/devis/<id>/variantes/  @action(pagination_class=None), liste complète des variantes du devis @backend/django_core/apps/ventes/views/devis_cycle.py:340
+frontend/src/pages/ventes/DevisList.jsx::chargerVariantes  ventes/devis/<id>/variantes/  @action(pagination_class=None), liste complète des variantes du devis @backend/django_core/apps/ventes/views/devis_cycle.py:376
 frontend/src/pages/ventes/DevisPresetPanel.jsx::ApplySection  ventes/presets/  ViewSet pagination_class=None, list() renvoie une liste brute @backend/django_core/apps/ventes/views/preset.py:33
 frontend/src/pages/Journal.jsx::run  audit/security/  vue @api_view à plafond explicite ?limit= (défaut 100, max 500), réponse {count, results} volontairement bornée @backend/django_core/apps/audit/views.py:306
+frontend/src/pages/parametres/EmailSection.jsx::EmailSection  parametres/email-templates/effective/  @action(pagination_class=None), liste effective complète (une ligne par clé connue) dans {results} @backend/django_core/apps/parametres/views_email.py:118
+frontend/src/pages/parametres/EmailSection.jsx::saveTemplate  parametres/email-templates/bulk/  @action PUT (pagination_class=None), renvoie la liste effective complète {results} @backend/django_core/apps/parametres/views_email.py:126
+frontend/src/pages/parametres/EmailSection.jsx::resetTemplate  parametres/email-templates/bulk/  @action PUT (pagination_class=None), renvoie la liste effective complète {results} @backend/django_core/apps/parametres/views_email.py:126
+frontend/src/pages/parametres/StatutsSection.jsx::DomaineList  parametres/statuts/effective/  @action(pagination_class=None), statuts canoniques complets d'un domaine dans {domaine, results} @backend/django_core/apps/parametres/views_statuses.py:138
+frontend/src/pages/parametres/StatutsSection.jsx::save  parametres/statuts/bulk/  @action PUT (pagination_class=None), renvoie les statuts effectifs complets du domaine {results} @backend/django_core/apps/parametres/views_statuses.py:158

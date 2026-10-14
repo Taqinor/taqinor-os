@@ -116,6 +116,16 @@ class TestRegimeSuggestionEndpoint(TestCase):
         r3 = self.api.get(url, {'kwc': '5000'})
         self.assertEqual(r3.data['code'], 'autorisation_anre')
 
+    def test_endpoint_kwc_illisible_400(self):
+        """ERR-ENF11-FUZZ-INSTALLATIONS — ``kwc``/``kw_ac`` non numériques :
+        400 nommant le paramètre (ils étaient lus comme « inconnu »)."""
+        url = '/api/django/installations/chantiers/regime-suggestion/'
+        for params, champ in (({'kwc': 'abc'}, 'kwc'),
+                              ({'kwc': '5', 'kw_ac': 'x'}, 'kw_ac')):
+            r = self.api.get(url, params)
+            self.assertEqual(r.status_code, 400, r.data)
+            self.assertIn(champ, r.data)
+
     def test_endpoint_kw_ac_et_type(self):
         url = '/api/django/installations/chantiers/regime-suggestion/'
         r = self.api.get(url, {'kwc': '12', 'kw_ac': '10'})

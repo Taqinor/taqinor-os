@@ -177,3 +177,66 @@ class TestExemplaireSigneCleDediee(TestCase):
             for variante in (None, *VARIANTES_PDF):
                 cle = _pdf_key(devis, watermark=filigrane, variante=variante)
                 self.assertNotIn('__signe', cle)
+
+
+class TestAvenantSigneParLeClient(TestCase):
+    """VNT61 — un avenant (V2 acceptée en interne d'une vente signée) se
+    signe par le lien public : UNE DevisSignature, statut inchangé, aucun
+    ``devis_accepted``, aucun CAPI, aucun webhook ; 2e soumission ⇒ rien."""
+
+    def setUp(self):
+        self.company = make_company('test-vnt61-co')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.v2 = make_devis(self.company, self.user, self.client_obj,
+                             'DEV-VNT61-20')
+        v1 = make_devis(self.company, self.user, self.client_obj,
+                        'DEV-VNT61-10')
+        Devis.objects.filter(pk=v1.pk).update(
+            statut='accepte', is_active=False, superseded_by=self.v2)
+        Devis.objects.filter(pk=self.v2.pk).update(statut='accepte')
+        self.v2.refresh_from_db()
+        self.link = ShareLink.objects.create(
+            company=self.company, devis=self.v2, token=str(uuid.uuid4()),
+            niveau=ShareLink.NIVEAU_CONFIANCE)
+
+    def _signer(self):
+        from apps.ventes.public.signature_views import empreinte_contenu
+        return DjangoClient().post(
+            f'/api/django/public/proposal/{self.link.token}/accept/',
+            {'nom': 'Client Avenant', 'consent_esign': True,
+             'empreinte_contenu': empreinte_contenu(self.v2)},
+            content_type='application/json')
+
+    @patch('apps.publicapi.signals.delivery.dispatch_event')
+    @patch('apps.ventes.domain.cycle_vie._fire_capi_signed_quote')
+    @patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
+    def test_signature_seule_sans_statut_ni_evenement(
+            self, store_pdf, capi, webhook):
+        from core.events import devis_accepted
+        evenements = []
+
+        def _ecoute(sender, **kwargs):
+            evenements.append(kwargs.get('devis'))
+
+        devis_accepted.connect(_ecoute, dispatch_uid='vnt61', weak=False)
+        self.addCleanup(devis_accepted.disconnect, dispatch_uid='vnt61')
+
+        r = self._signer()
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('avenant_signe', r.json())
+        self.assertEqual(
+            DevisSignature.objects.filter(devis=self.v2).count(), 1)
+        store_pdf.assert_called_once()
+        self.v2.refresh_from_db()
+        self.assertEqual(self.v2.statut, 'accepte')
+
+        r = self._signer()  # 2e soumission : rien n'est écrit.
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertNotIn('avenant_signe', r.json())
+        self.assertEqual(
+            DevisSignature.objects.filter(devis=self.v2).count(), 1)
+        store_pdf.assert_called_once()
+        self.assertEqual(evenements, [])
+        capi.assert_not_called()
+        webhook.assert_not_called()

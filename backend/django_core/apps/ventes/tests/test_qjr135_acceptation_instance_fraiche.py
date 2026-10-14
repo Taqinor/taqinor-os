@@ -33,7 +33,7 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.domain.lignes import creer_ligne
 from apps.ventes.models import Devis, EmailLog, ShareLink
-from apps.ventes.utils.echeancier import next_tranche
+from apps.ventes.public.payload_conditions import acompte_prevu
 from apps.ventes.utils.options import (
     AVEC_BATTERIE, SANS_BATTERIE, option_totaux,
 )
@@ -157,7 +157,10 @@ class LEcranPublicAnnonceCeQuiAEteSigne(_BaseDeuxOptions):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.option_acceptee, SANS_BATTERIE)
 
-        attendu = Decimal(str(next_tranche(self.devis)['ttc']))
+        # VNT62/VNT63 — l'acompte SIGNÉ est la 1re tranche du plan
+        # (``acompte_prevu``) : depuis le brouillon d'acompte automatique de
+        # l'acceptation, ``next_tranche`` désigne déjà la tranche suivante.
+        attendu = Decimal(str(acompte_prevu(self.devis)['ttc']))
         ecran = Decimal(resp.data['paiement']['acompte_ttc'])
         self.assertEqual(ecran, attendu)
         self.assertIn(_montant_email(attendu), self._corps_email(self.devis))
@@ -165,17 +168,26 @@ class LEcranPublicAnnonceCeQuiAEteSigne(_BaseDeuxOptions):
     def test_l_acompte_annonce_n_est_pas_celui_de_l_instance_perimee(self):
         """La preuve du dommage, chiffrée : on recompose EXACTEMENT ce que
         l'instance périmée (``option_acceptee`` vide) aurait servi, et on
-        vérifie que l'écran ne l'annonce plus."""
+        vérifie que l'écran ne l'annonce plus.
+
+        VNT62 — l'acceptation crée le brouillon d'acompte : la 1re tranche du
+        plan vaut alors ce brouillon, quelle que soit l'option lue. L'acompte
+        périmé se recompose donc au MÊME taux sur le prix de l'option que
+        l'instance périmée lisait (``option_effective`` → AVEC_BATTERIE)."""
         resp = self._signer_sans_batterie()
         ecran = Decimal(resp.data['paiement']['acompte_ttc'])
 
         self.devis.refresh_from_db()
-        signe = Decimal(str(next_tranche(self.devis)['ttc']))
+        tranche = acompte_prevu(self.devis)
+        signe = Decimal(str(tranche['ttc']))
         perime = Devis.objects.get(pk=self.devis.pk)
         # L'état EXACT de l'objet que l'appelant gardait en main : accepté en
         # base, mais sans l'option — donc ``option_effective`` → AVEC_BATTERIE.
         perime.option_acceptee = ''
-        acompte_perime = Decimal(str(next_tranche(perime)['ttc']))
+        acompte_perime = (
+            Decimal(str(option_totaux(perime)['ttc']))
+            * Decimal(str(tranche['pourcentage'])) / 100
+        ).quantize(Decimal('0.01'))
 
         self.assertEqual(ecran, signe)
         self.assertNotEqual(

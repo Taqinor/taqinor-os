@@ -52,6 +52,7 @@ def _ids_existants(model, ids_bruts):
         try:
             convertibles[champ_pk.to_python(brut)] = brut
         except Exception:  # noqa: BLE001 — id non convertible = orphelin
+            logger.warning("_ids_existants : erreur absorbée, repli dégradé", exc_info=True)
             continue
     if not convertibles:
         return set()
@@ -97,6 +98,7 @@ def _orphelines_de_la_societe(company, compteurs=None):
             content_type = ContentType.objects.get_for_id(ct_id)
             modele = content_type.model_class()
         except Exception:  # noqa: BLE001 — content type introuvable
+            logger.warning("_orphelines_de_la_societe : erreur absorbée, repli dégradé", exc_info=True)
             content_type, modele = None, None
         if modele is None:
             nombre = sum(len(pks) for pks in par_objet.values())
@@ -216,12 +218,14 @@ def _destinataires_localisation(company):
                 PERMISSION_LOCALISATION_GERER)
         ]
     except Exception:  # noqa: BLE001 — défensif
+        logger.warning("_destinataires_localisation : erreur absorbée, repli dégradé", exc_info=True)
         candidats = []
     if candidats:
         return candidats
     try:
         return list(CustomUser.admins_actifs_qs(company))
     except Exception:  # noqa: BLE001 — défensif
+        logger.warning("_destinataires_localisation : erreur absorbée, repli dégradé", exc_info=True)
         return []
 
 

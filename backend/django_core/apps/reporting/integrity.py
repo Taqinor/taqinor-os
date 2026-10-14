@@ -16,10 +16,12 @@ def devis_acceptes_sans_chantier(company):
     """Devis `accepte` sans aucune `Installation` liée (receiver M6
     `devis_accepted` -> `crm`/`installations` raté). Renvoie une liste
     d'ids de devis."""
-    from apps.ventes.models import Devis
+    from apps.ventes.selectors import devis_signes_en_vigueur
 
+    # VNT85 : seule la vente en vigueur compte — une V1 acceptée remplacée par
+    # une V2 acceptée (chantier rattaché à la V2) n'est pas un orphelin.
     return list(
-        Devis.objects.filter(company=company, statut=Devis.Statut.ACCEPTE)
+        devis_signes_en_vigueur(company)
         .filter(installations__isnull=True)
         .values_list('id', flat=True)
     )

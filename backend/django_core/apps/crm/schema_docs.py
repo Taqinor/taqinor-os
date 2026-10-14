@@ -76,7 +76,20 @@ P_ARCHIVED = param('archived', enum=['only', 'all'],
                    description='only = archivés seulement, all = tous.')
 P_ARCHIVED_FLAG = param(
     'archived', description="1/true pour inclure les éléments archivés.")
-P_DEBUT = param('debut', OpenApiTypes.DATE, description='Début (AAAA-MM-JJ).')
-P_FIN = param('fin', OpenApiTypes.DATE, description='Fin (AAAA-MM-JJ).')
+#: ERR-ENF11-FUZZ-CRM — date de requête facultative : ``params_requete.
+#: date_param`` lit une valeur VIDE (``?fin=``) comme « non renseignée ». Le
+#: schéma publie donc « date OU chaîne vide », ce que le serveur accepte.
+DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+
+def param_date(nom, description=None):
+    """Paramètre de requête date facultatif (vide = non renseigné)."""
+    return OpenApiParameter(nom, DATE_OU_VIDE, OpenApiParameter.QUERY,
+                            required=False, description=description)
+
+
+P_DEBUT = param_date('debut', description='Début (AAAA-MM-JJ).')
+P_FIN = param_date('fin', description='Fin (AAAA-MM-JJ).')
 P_ENTITE = param('entite', OpenApiTypes.INT,
                  description="Filtre par entité (société juridique).")

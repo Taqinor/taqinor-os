@@ -116,7 +116,8 @@ class EventCatalogCoverageTests(SimpleTestCase):
         # posé sur ``conge_approuve`` (rh/services.py), dont l'émetteur est
         # parti avec le module RH. ``devis_accepted`` est émis par ventes avec
         # devis/user/ancien_statut — même rôle de témoin « le scanner voit de
-        # vrais kwargs », sur une app qui reste dans le MVP solaire.
+        # vrais kwargs », sur une app qui reste dans le MVP solaire. VNT51 —
+        # l'émetteur ajoute ``avenant_de`` (prédécesseur accepté ou None).
         self.assertEqual(
             emitted.get("devis_accepted"),
-            {"devis", "user", "ancien_statut"})
+            {"devis", "user", "ancien_statut", "avenant_de"})

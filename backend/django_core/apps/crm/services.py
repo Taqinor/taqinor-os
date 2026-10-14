@@ -145,6 +145,8 @@ from .fiche_api_publique import (  # noqa: F401 — façade
     update_lead_from_public_api,
 )
 
+from .receivers_cadence import poser_tache_avenant  # noqa: F401 — façade
+
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
 # (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des

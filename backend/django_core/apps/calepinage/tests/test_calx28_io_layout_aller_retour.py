@@ -108,3 +108,19 @@ class AllerRetourHttpTest(TestCase):
         # Rien n'est écrasé par un refus : l'empreinte reste celle d'avant.
         self.calepinage.refresh_from_db()
         self.assertIsNone(self.calepinage.layout_hash or None)
+
+    def test_import_sans_corps_refuse_sans_rien_ecraser(self):
+        """CI #993 (api-fuzz-pr) — POST import-layout/ SANS corps : 400, et
+        la conception enregistrée n'est pas remplacée par un document vide
+        (le corps vide passait le schéma v2 et répondait 200)."""
+        premier = self.api.post(self.url + 'import-layout/', _DOCUMENT_VALIDE,
+                                format='json')
+        self.assertEqual(premier.status_code, 200, premier.data)
+        self.calepinage.refresh_from_db()
+        hash_avant = self.calepinage.layout_hash
+
+        reponse = self.api.post(self.url + 'import-layout/')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('roof_layout', reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.layout_hash, hash_avant)

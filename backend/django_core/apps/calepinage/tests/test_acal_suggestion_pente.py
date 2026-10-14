@@ -162,3 +162,19 @@ class SuggestionPenteApiTest(BaseApiCalepinage):
         base = self._lire()['empreinte_document']
         reponse = self._poster('proposer', base, api=self.api_autre)
         self.assertEqual(reponse.status_code, 404)
+
+    def test_zone_inconnue_404_et_sans_suggestion_409(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE — un ``zone_id`` qui ne désigne aucun pan
+        est une sous-ressource absente (404) ; décider un pan SANS suggestion
+        est un conflit d'état (409). Avant : 400 sur un corps conforme."""
+        avant = self._lire()
+        base = avant['empreinte_document']
+        for operation in ('proposer', 'accepter'):
+            with self.subTest(operation=operation):
+                reponse = self._poster(operation, base, zone_id='#absente')
+                self.assertEqual(reponse.status_code, 404, reponse.data)
+                self.assertIn('zone_id', reponse.data)
+        reponse = self._poster('refuser', base, zone_id='z1')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('zone_id', reponse.data)
+        self.assertEqual(self._lire()['roof_layout'], avant['roof_layout'])

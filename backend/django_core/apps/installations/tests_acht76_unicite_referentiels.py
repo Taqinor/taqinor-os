@@ -100,3 +100,21 @@ class UniciteReferentielsTests(TestCase):
         r = self.api.patch(f'{BASE}/equipes/{equipe.id}/',
                            {'nom': 'E1', 'description': 'ok'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    # ERR-ENF11-FUZZ-INSTALLATIONS — texte et booléens des référentiels sont
+    # STRICTS : ``0`` pour une chaîne ou un booléen = 400 nommant le champ (le
+    # schéma les déclare ``string`` / ``boolean``, DRF les convertissait).
+    def test_nombre_pour_texte_ou_booleen_400(self):
+        for url, corps, champ in (
+                ('equipes/', {'nom': 'E strict', 'description': 0},
+                 'description'),
+                ('shotlist-slots/',
+                 {'cle': 'k-strict', 'libelle': 'L', 'actif': 0}, 'actif'),
+                ('sous-traitants/',
+                 {'raison_sociale': 'ST strict', 'note': 0}, 'note'),
+                ('sous-traitants/',
+                 {'raison_sociale': 'ST strict', 'actif': 1}, 'actif')):
+            with self.subTest(url=url, champ=champ):
+                r = self.api.post(f'{BASE}/{url}', corps, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertIn(champ, r.data)

@@ -32,10 +32,18 @@ const VUE_FORMULAIRE = {
   ],
 }
 
-function mockSchemas({ liste = VUE_LISTE, formulaire = VUE_FORMULAIRE } = {}) {
-  get.mockImplementation((url) => {
+// ENF15 — les lignes viennent de TOUTES les pages de records/ (vue-liste ne sert
+// que la page 1) : `pages` = lignes par page, par défaut celles de vue-liste.
+function mockSchemas({ liste = VUE_LISTE, formulaire = VUE_FORMULAIRE, pages } = {}) {
+  const pagesRecords = pages ?? [liste.results]
+  const total = pagesRecords.reduce((n, lignes) => n + lignes.length, 0)
+  get.mockImplementation((url, config) => {
     if (url.endsWith('/vue-liste/')) return Promise.resolve({ data: liste })
     if (url.endsWith('/vue-formulaire/')) return Promise.resolve({ data: formulaire })
+    if (url.endsWith('/records/')) {
+      const page = config?.params?.page ?? 1
+      return Promise.resolve({ data: { count: total, results: pagesRecords[page - 1] ?? [] } })
+    }
     return Promise.reject(new Error(`URL inattendue : ${url}`))
   })
 }
@@ -124,6 +132,20 @@ describe('CustomObjectRecordsPage (PACT140)', () => {
 
     expect(await screen.findByText('Aucun champ défini pour cet objet'))
       .toBeInTheDocument()
+  })
+
+  it('affiche les enregistrements de toutes les pages, pas seulement la première', async () => {
+    mockSchemas({
+      pages: [
+        [{ id: 21, objet: 3, data: { nom: 'Clé bureau 2', rendue: true } }],
+        [{ id: 22, objet: 3, data: { nom: 'Clé garage', rendue: false } }],
+      ],
+    })
+    afficher()
+
+    expect(await screen.findByTestId('enregistrement-22')).toBeInTheDocument()
+    expect(screen.getByTestId('enregistrement-21')).toBeInTheDocument()
+    expect(get).toHaveBeenCalledWith('/custom-fields/custom-objects/cles/records/', { params: { page: 2 } })
   })
 
   it('affiche un état clair quand l\'objet est introuvable, sans planter', async () => {

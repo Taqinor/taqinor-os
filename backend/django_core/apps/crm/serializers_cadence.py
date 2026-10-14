@@ -41,7 +41,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # ne les servait : l'écran « Suivi des relances » montrait une touche
     # « faite » sans pouvoir dire par qui ni à quelle heure — une traçabilité
     # écrite en base et invisible ne trace rien.
-    traite_le = serializers.DateTimeField(read_only=True)
+    # ERR-ENF11-FUZZ-CRM : ``null`` tant que la touche n'est pas traitée.
+    traite_le = serializers.DateTimeField(read_only=True, allow_null=True)
     traite_par_nom = serializers.SerializerMethodField()
     # CKP1 — le LIBELLÉ du statut, servi par le serveur : le badge « Sautée »
     # nu ne distinguait pas la décision HUMAINE de l'annulation MOTEUR, et
@@ -249,7 +250,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
                 ).values_list('nom', flat=True)}
         return motif in cache[lead.company_id]
 
-    @extend_schema_field(serializers.IntegerField())
+    # ERR-ENF11-FUZZ-CRM : un lead jamais noté a un score ``null``.
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_lead_score(self, obj):
         return getattr(obj.lead, 'score', None)
 

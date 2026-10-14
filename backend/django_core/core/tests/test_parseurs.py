@@ -82,3 +82,33 @@ class JsonTypeTests(SimpleTestCase):
         self.assertTrue(self._valide(ObjetJSON(), {'a': 1})[0])
         for valeur in (None, [], 'x'):
             self.assertFalse(self._valide(ObjetJSON(), valeur)[0], valeur)
+
+
+class ParametresRequeteStrictsTests(SimpleTestCase):
+    """ERR-ENF11-FUZZ-INSTALLATIONS — ``date_ou_400`` / ``nombre_ou_400`` :
+    absent ou vide = valeur par défaut, toute autre forme illisible = 400."""
+
+    def test_date_ou_400(self):
+        from datetime import date
+
+        from core.champs_stricts import date_ou_400
+        self.assertIsNone(date_ou_400(None, 'd'))
+        self.assertIsNone(date_ou_400('  ', 'd'))
+        self.assertEqual(date_ou_400('2026-06-01', 'd'), date(2026, 6, 1))
+        for mauvais in ('abc', '2026-6-1', '2026-02-30', '20260601'):
+            with self.subTest(valeur=mauvais), self.assertRaises(
+                    ValidationError) as ctx:
+                date_ou_400(mauvais, 'debut')
+            self.assertIn('debut', ctx.exception.detail)
+
+    def test_nombre_ou_400(self):
+        from core.champs_stricts import nombre_ou_400
+        self.assertEqual(nombre_ou_400(None, 'h', defaut=8.0), 8.0)
+        self.assertEqual(nombre_ou_400('', 'h', defaut=8.0), 8.0)
+        self.assertEqual(nombre_ou_400('7.5', 'h'), 7.5)
+        for mauvais in ('abc', 'nan', 'inf', '-inf'):
+            with self.subTest(valeur=mauvais), self.assertRaises(
+                    ValidationError):
+                nombre_ou_400(mauvais, 'h')
+        with self.assertRaises(ValidationError):
+            nombre_ou_400('-1', 'h', mini=0)

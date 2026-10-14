@@ -194,9 +194,10 @@ def simuler(self, request, pk=None):
       ``nature`` = ``simulation``), à suivre sur ``moteur/resultat/<job_id>/`` ;
     * **200** — ``forcer`` absent et empreinte inchangée : aucun recalcul, la
       date du calcul existant est rendue ;
-    * **400** — refus NOMMANT le réglage ou le champ fautif (règle fondateur :
+    * **409** — refus NOMMANT le réglage ou le champ fautif (règle fondateur :
       jamais un « non enregistré » générique) : mode météo, pan équipé,
-      épingle du site, températures saisies (ACAL126).
+      épingle du site, températures saisies (ACAL126), variante sans
+      conception.
     """
     from core.jobs import submit
 
@@ -233,7 +234,7 @@ def simuler(self, request, pk=None):
             return Response(
                 {'variante': ["La variante n'a pas de conception : "
                               "dessinez-la avant de la simuler."]},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
     # ACAL126 — LES REFUS NOMMÉS D'ABORD, par les MÊMES fonctions que la
     # simulation (mode météo, pan équipé, épingle, températures saisies) :
@@ -247,8 +248,11 @@ def simuler(self, request, pk=None):
         verifier_simulable(contexte, meta,
                            fichier_depose=fichier_meteo_depose(calepinage))
     except SimulationRefusee as refus:
+        # ERR-ENF11-FUZZ-CALEPINAGE — réglage ou conception pas prêts (mode
+        # météo, pan équipé, épingle, températures) : le corps est bien formé,
+        # c'est l'ÉTAT du calepinage qui empêche — 409, même corps nommé.
         return Response({refus.champ or 'simulation': [refus.motif]},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     porteur = variante if variante is not None else calepinage
     entete = (porteur.resultat or {}).get(CLE_ENTETE_SIMULATION) \
         if isinstance(porteur.resultat, dict) else None

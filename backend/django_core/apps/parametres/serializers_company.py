@@ -10,6 +10,9 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import CompanyProfile
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _valider_jalons(mode, jalons):
@@ -610,6 +613,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 ExpiresIn=3600,
             )
         except Exception:
+            logger.warning("_presign : erreur absorbée, repli dégradé", exc_info=True)
             return None
 
     @extend_schema_field({'type': 'string', 'nullable': True})

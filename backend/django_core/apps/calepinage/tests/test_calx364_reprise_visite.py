@@ -432,7 +432,7 @@ class RepriseVisiteEnBase(SocleRepriseVisite):
 
         self._visite(VisiteTerrain.Statut.TERMINEE)
         reponse = self.api.post(url_reprise(self.calepinage.pk))
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.data, {'visite_id': MOTIF_VISITE_NON_VALIDEE})
         self.assertFalse(self._releves().exists())
 

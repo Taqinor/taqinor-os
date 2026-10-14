@@ -4,6 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldError
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from core.mixins import SameCompanyFKSerializerMixin
 
@@ -147,7 +148,7 @@ class FavoriUtilisateurSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """AANA15 — la cible DOIT appartenir à la société de l'appelant : un
-        favori vers un client d'une autre société est refusé (400), jamais
+        favori vers un client d'une autre société est refusé (404), jamais
         créé (son libellé exposait le nom du client de l'autre société)."""
         attrs = super().validate(attrs)
         content_type = getattr(self, '_content_type', None)
@@ -163,9 +164,9 @@ class FavoriUtilisateurSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
         if cible_de_la_societe(content_type, object_id, company) is None:
-            raise serializers.ValidationError({
-                'object_id': "Enregistrement introuvable dans votre "
-                             "société."})
+            # ERR-ENF11-FUZZ-UXVIEWS : identifiant bien formé mais inconnu
+            # (ou d'une autre société) = ressource introuvable, 404.
+            raise NotFound("Enregistrement introuvable dans votre société.")
         return attrs
 
     def _appliquer_content_type(self, validated_data):

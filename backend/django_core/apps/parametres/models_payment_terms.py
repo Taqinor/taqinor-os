@@ -18,6 +18,9 @@ Gardé dans un fichier dédié (indépendance de lane) ; enregistré via
 from django.db import models
 
 from core.models import TenantModel
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ConditionPaiement(TenantModel):
@@ -69,6 +72,7 @@ class ConditionPaiement(TenantModel):
         try:
             esc = Decimal(str(escompte_pct or 0))
         except Exception:
+            logger.warning("libelle_pour : erreur absorbée, repli dégradé", exc_info=True)
             esc = Decimal('0')
         if esc > 0:
             base += f' — escompte {esc.normalize()} %'
@@ -85,6 +89,7 @@ class ConditionPaiement(TenantModel):
         try:
             esc = Decimal(str(escompte_pct or 0))
         except Exception:
+            logger.warning("from_triplet : erreur absorbée, repli dégradé", exc_info=True)
             esc = Decimal('0')
         obj, _ = cls.objects.get_or_create(
             company=company,

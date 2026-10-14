@@ -87,7 +87,9 @@ def _identifiant(brut):
     if isinstance(brut, int):
         return brut if brut > 0 else None
     texte = str(brut).strip()
-    if texte.isdigit() and int(texte) > 0:
+    # Chiffres ASCII seuls : ``'²'.isdigit()`` est vrai mais ``int('²')``
+    # lève — un exposant dans ``?etiquette=`` finissait en 500.
+    if texte.isascii() and texte.isdigit() and int(texte) > 0:
         return int(texte)
     return None
 

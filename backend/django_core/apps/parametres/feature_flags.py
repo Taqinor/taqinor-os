@@ -25,6 +25,9 @@ par un plan : jamais une couche de fondation (roles, parametres, core…), ni un
 clé sans manifeste.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _plan_effectif(profile):
@@ -80,6 +83,7 @@ def _modules_installables():
     try:
         manifests = modules_infra.collect_manifests()
     except Exception:  # noqa: BLE001 — jamais enfermer un tenant
+        logger.warning("_modules_installables : erreur absorbée, repli dégradé", exc_info=True)
         return set()
     return {
         key for key, manifest in manifests.items()

@@ -17,7 +17,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from core.champs_stricts import BooleenStrict
 from core.mixins import TenantMixin
+from core.parseurs import ObjetJSON
 
 from .models import Classeur, ClasseurPartageInterne
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -164,6 +166,14 @@ def evaluate_formula(classeur, formule, *, user, _visiting=None):
 
 
 class ClasseurSerializer(serializers.ModelSerializer):
+    # ERR-ENF11-FUZZ-REPORTING — OBJETS JSON non nuls : ``null`` était conforme
+    # au schéma ``{}`` publié puis refusé par le champ de modèle (400).
+    cellules = ObjetJSON(required=False)
+    liens = ObjetJSON(required=False)
+    # CI #993 — vrai booléen JSON seul (``0``/``"true"`` étaient convertis en
+    # silence : « accepted schema-violating request » sur POST/PATCH).
+    partage = BooleenStrict(required=False)
+
     class Meta:
         model = Classeur
         fields = [

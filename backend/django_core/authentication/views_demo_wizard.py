@@ -18,6 +18,7 @@ from rest_framework import serializers as drf_serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .tasks import _progress_key, _run_wizard, set_progress
 from .views_console import IsSuperuserConsole
 
 
@@ -40,28 +41,6 @@ _WIZARD_STATUT_RESPONSE = inline_serializer('DemoWizardStatut', {
     'statut': drf_serializers.CharField(),
     'pourcentage': drf_serializers.IntegerField(required=False),
 })
-
-
-_CACHE_PREFIX = 'demo_wizard_progress:'
-_CACHE_TTL = 3600
-
-
-def _progress_key(slug):
-    return f'{_CACHE_PREFIX}{slug}'
-
-
-def set_progress(slug, pourcentage, statut='en_cours'):
-    cache.set(_progress_key(slug), {'pourcentage': pourcentage,
-                                    'statut': statut}, _CACHE_TTL)
-
-
-def _run_wizard(slug, profil, densite):
-    """Exécute la commande + trace la progression (0 → 50 → 100)."""
-    from django.core.management import call_command
-    set_progress(slug, 10, 'en_cours')
-    call_command('seed_demo_company', slug=slug, profil=profil,
-                 densite=densite, force=True, verbosity=0)
-    set_progress(slug, 100, 'termine')
 
 
 class DemoWizardCreateView(APIView):

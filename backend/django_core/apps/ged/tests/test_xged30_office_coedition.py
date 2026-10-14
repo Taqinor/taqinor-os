@@ -74,12 +74,13 @@ class ServiceTests(XGed30Base):
 
 
 class ViewTests(XGed30Base):
-    def test_endpoint_sans_url_400(self):
+    def test_endpoint_sans_url_404(self):
+        # ERR-ENF11-FUZZ-GED : fonction à clé non configurée = 404 (GATED).
         with override_settings(GED_OFFICE_URL=''):
             api = auth(self.admin_a)
             resp = api.post(
                 f'/api/django/ged/documents/{self.doc.pk}/office-ouvrir/')
-            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.status_code, 404)
 
     def test_endpoint_cycle_complet(self):
         with override_settings(GED_OFFICE_URL='https://office.example.com'):

@@ -1,9 +1,9 @@
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema_serializer
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from apps.records.champs_stricts import (
-    ChampsStrictsBornesMixin, ChampsStrictsLitterauxMixin,
+    ChampsStrictsBornesMixin, ChampsStrictsLitterauxMixin, DecimalLitteral,
 )
 
 from .models import (
@@ -38,6 +38,9 @@ class MonitoringConfigSerializer(ChampsStrictsBornesMixin,
     def get_provider_label(self, obj):
         return dict(available_providers()).get(obj.provider, obj.provider)
 
+    # CI #993 — booléen publié (SerializerMethodField sans type = chaîne :
+    # `false` servi était « hors schéma » sur configs/ et configs/{id}/).
+    @extend_schema_field(serializers.BooleanField())
     def get_has_credentials(self, obj):
         return bool(obj.credentials)
 
@@ -141,11 +144,27 @@ class ProductionWarrantySerializer(ChampsStrictsBornesMixin,
         return value
 
 
+#: ERR-ENF11-FUZZ-MONITORING — la forme que ``DecimalLitteral`` accepte
+#: (``-?[0-9]+(.[0-9]+)?``), bornée par le champ (5 chiffres dont 2
+#: décimales). Le motif générique publiait aussi ``-.3`` / ``12.``, refusés
+#: en 400 (« conforme refusée », PUT settings/{id} du 13/10/2026).
+MOTIF_SEUIL_POURCENT = r'^-?0*[0-9]{1,3}(\.[0-9]{1,2})?$'
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_SEUIL_POURCENT})
+class _SeuilPourcentLitteral(DecimalLitteral):
+    """``DecimalLitteral`` dont le motif publié est celui qu'il accepte."""
+
+
 # ENF11 — `list` renvoie UN objet (singleton société), pas un tableau : sans
 # `many=False` drf-spectacular l'enveloppait en tableau (réponse hors schéma).
 @extend_schema_serializer(many=False)
 class MonitoringSettingsSerializer(ChampsStrictsLitterauxMixin,
                                    serializers.ModelSerializer):
+    underperf_threshold_pct = _SeuilPourcentLitteral(
+        max_digits=5, decimal_places=2, required=False)
+
     class Meta:
         model = MonitoringSettings
         fields = [

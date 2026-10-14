@@ -64,7 +64,20 @@ def _erreur(champ, message, code=status.HTTP_400_BAD_REQUEST):
 # moteur ``apps.offlinesync``. Deux copies seraient deux vérités.
 
 
-_LISTE_OBJETS = {'type': 'array', 'items': {'type': 'object'}}
+#: ERR-ENF11-FUZZ-VISITES — UNE ligne de la liste
+#: (``selectors.ligne_visite_terrain``). drf-spectacular enveloppe lui-même la
+#: réponse d'un ``list`` dans un tableau : publier un tableau ici donnait un
+#: tableau DE tableaux (« réponse hors schéma » du 13/10/2026).
+_VISITE_LIGNE = inline_serializer('VisiteTerrainLigne', {
+    'id': serializers.IntegerField(),
+    'lead': serializers.IntegerField(),
+    'lead_nom': serializers.CharField(allow_blank=True),
+    'ville': serializers.CharField(allow_blank=True),
+    'statut': serializers.CharField(),
+    'date_prevue': serializers.CharField(allow_null=True),
+    'complet': serializers.BooleanField(),
+    'manquants_count': serializers.IntegerField(),
+})
 
 _VISITE_CONTEXTE = inline_serializer('VisiteTerrainContexte', {
     'id': serializers.IntegerField(),
@@ -280,7 +293,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
                 'lead', OpenApiTypes.INT, required=False,
                 description="Identifiant du lead : seulement ses visites."),
         ],
-        responses={200: _LISTE_OBJETS})
+        responses={200: _VISITE_LIGNE})
     def list(self, request, *args, **kwargs):
         lignes = [selectors.ligne_visite_terrain(visite)
                   for visite in self.filter_queryset(self.get_queryset())]
@@ -331,7 +344,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             {'erreurs': {'statut': visite.raison_lecture_seule}},
             status=status.HTTP_400_BAD_REQUEST)
 
-    @extend_schema(request=NotesVisiteSerializer, responses=_VISITE_CONTEXTE)
+    # ERR-ENF11-FUZZ-VISITES — le PUT rend l'ENTÊTE écrite par le sérialiseur
+    # (``super().update``), pas l'agrégat : la réponse publiée le dit.
+    @extend_schema(request=NotesVisiteSerializer,
+                   responses=VisiteTerrainSerializer)
     def update(self, request, *args, **kwargs):
         visite = self.get_object()
         refus = self._refus_si_gelee(visite)
@@ -580,12 +596,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return self._agregat(visite)
         manquants = selectors.visite_terrain_manquants(visite)
         if manquants:
+            # ERR-ENF11-FUZZ-VISITES — la requête est bien formée, c'est
+            # l'ÉTAT de la visite (complétude) qui empêche : 409, même corps.
             return Response({
                 'manquants': manquants,
                 'message': (
                     'La visite ne peut pas être terminée : '
                     f'{len(manquants)} élément(s) manquent encore.'),
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_409_CONFLICT)
         visite.statut = VisiteTerrain.Statut.TERMINEE
         visite.date_realisee = timezone.now()
         visite.save(update_fields=['statut', 'date_realisee'])
@@ -611,7 +629,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         # visite TERMINÉE et COMPLÈTE reçoit le feu vert.
         refus = services.refus_transition(visite, 'valider')
         if refus is not None:
-            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
+            # ERR-ENF11-FUZZ-VISITES — transition hors table : conflit d'état.
+            return Response(refus, status=status.HTTP_409_CONFLICT)
         services.valider_visite(visite, request.user)
         return self._agregat(visite)
 
@@ -628,7 +647,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         # renvoie pas : seule une visite terminée ou validée a été revue.
         refus = services.refus_transition(visite, 'renvoyer')
         if refus is not None:
-            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
+            # ERR-ENF11-FUZZ-VISITES — transition hors table : conflit d'état.
+            return Response(refus, status=status.HTTP_409_CONFLICT)
         donnees = serializer.validated_data
         message = services.renvoyer_visite(
             visite, request.user,

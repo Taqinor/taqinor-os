@@ -94,12 +94,10 @@ class PdfFactureRtlTests(TestCase):
         self.assertIn('700.00', texte)
 
     def test_francais_inchange(self):
-        from apps.ventes.utils.pdf import generate_facture_pdf  # noqa: F401
         texte = _texte(self._pdf(self._facture(self.client_fr)))
         self.assertIn('Total TTC 1200.00 MAD', texte)
         self.assertIn('Reste à payer 700.00 MAD', texte)
         # Le bloc AFAC57 n'existe que dans la page arabe.
-        from django.template.loader import get_template  # noqa: F401
         from pathlib import Path
         gabarit = (Path(__file__).resolve().parents[3] / 'templates' / 'pdf'
                    / 'facture.html').read_text(encoding='utf-8')

@@ -195,6 +195,31 @@ class TestStatusAndMES(TestCase):
                            {'statut': 'en_orbite'}, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_patch_types_stricts_et_cles_servies(self):
+        # CI #993 api-fuzz (PATCH chantiers/{id}/) — un `0` pour un texte, un
+        # booléen, un décimal-chaîne ou un entier mal typé est refusé (400
+        # nommé, rien d'écrit) ; la réponse d'un PATCH sur un chantier sans
+        # devis sert `devis_reference` et les libellés de choix à null.
+        nu = Installation.objects.create(
+            company=self.company, reference='CH-FUZZ-993')
+        url = f'/api/django/installations/chantiers/{nu.id}/'
+        for corps in ({'acces_instructions': 0}, {'parc_actif': 0},
+                      {'puissance_installee_kwc': 7},
+                      {'duree_pose_jours': '3'}):
+            r = self.api.patch(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+            self.assertIn(next(iter(corps)), r.data)
+        nu.refresh_from_db()
+        self.assertFalse(nu.acces_instructions)
+        r = self.api.patch(url, {'acces_instructions': 'Portail bleu',
+                                 'puissance_installee_kwc': '6.5'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        for cle in ('devis_reference', 'raccordement_display',
+                    'type_installation_display', 'niveau_tension_display'):
+            self.assertIn(cle, r.data)
+            self.assertIsNone(r.data[cle], cle)
+
     def test_mise_en_service_sets_status(self):
         # ACHT2 — la mise en service suit « Installé » (un pas à la fois).
         Installation.objects.filter(pk=self.inst.pk).update(statut='installe')

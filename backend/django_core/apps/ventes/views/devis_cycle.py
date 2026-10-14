@@ -11,7 +11,7 @@ n'interceptent qu'ainsi).
 from ..openapi_params import qint
 from django.db import transaction
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 from . import openapi_docs as D
 from ..utils.corps import valider_corps
 from rest_framework import status
@@ -26,6 +26,7 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    IsAdminOrResponsableTier,
     HasPermissionOrLegacy,
 )
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
@@ -62,6 +63,41 @@ class _LotCreationSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'nom_lot': 'Nom de lot requis.'})
         return attrs
+
+
+#: VNT60 — palier des gestes d'argent de la vente (arbitrage 5 du Groupe
+#: VNT) : un Commercial porte ``ventes_valider`` et passerait
+#: ``IsResponsableOrAdmin`` seul ; le palier ``IsAdminOrResponsableTier``
+#: l'écarte (comme ``peut_gerer_la_vente``).
+PALIER_VENTE = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
+
+#: VNT60 — formes OpenAPI du contrat ``devis_prix_negocie.json``.
+_PRIX_NEGOCIE_REQUETE = inline_serializer('DevisPrixNegocieRequest', {
+    'prix_ttc': serializers.CharField(required=False, allow_null=True,
+                                      allow_blank=True),
+    'remise_pct': serializers.CharField(required=False, allow_null=True,
+                                        allow_blank=True),
+    # Texte libre ('apercu' | 'appliquer') : pas d'enum, pas de composant.
+    'mode': serializers.CharField(required=False),
+    'confirmer_avoir': serializers.BooleanField(required=False),
+})
+_PRIX_NEGOCIE_REPONSE = inline_serializer('DevisPrixNegocieReponse', {
+    'devis_v2': serializers.DictField(),
+    'remise_pct': serializers.CharField(),
+    'total_ttc': serializers.CharField(),
+    'factures_annulees': serializers.ListField(
+        child=serializers.DictField()),
+    'factures_reprises': serializers.ListField(
+        child=serializers.DictField()),
+    'ecart_ttc': serializers.CharField(),
+    'regularisation': serializers.DictField(),
+    'reste_a_facturer': serializers.CharField(),
+})
+_AVENANT_SIGNATURE_REPONSE = inline_serializer(
+    'DevisAvenantSignatureReponse', {
+        'share_link': serializers.CharField(),
+        'tache_id': serializers.IntegerField(allow_null=True),
+    })
 
 
 class DevisCycleActionsMixin:
@@ -433,6 +469,74 @@ class DevisCycleActionsMixin:
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    # api-only: l'écran « Prix négocié » arrive avec le panneau de vente (VNT75/VNT79).
+    @extend_schema(request=_PRIX_NEGOCIE_REQUETE,
+                   responses={200: _PRIX_NEGOCIE_REPONSE,
+                              201: _PRIX_NEGOCIE_REPONSE,
+                              400: D.ErreurDevisFige, 409: D.ErreurDevisFige})
+    @action(detail=True, methods=['post'], url_path='prix-negocie',
+            permission_classes=PALIER_VENTE)
+    def prix_negocie(self, request, pk=None):
+        """VNT60 — « Prix négocié » d'une vente acceptée (contrat
+        ``devis_prix_negocie.json``) : ``mode='apercu'`` (défaut, aucun
+        effet, 200) ou ``'appliquer'`` (V2 créée ET acceptée, 201). Refus au
+        format du contrat (400 / 409 ``{detail, code, …}``)."""
+        from ..domain.negociation import (
+            PrixNegocieRefuse, apercu_prix_negocie, appliquer_prix_negocie)
+        devis = self.get_object()
+        mode = request.data.get('mode') or 'apercu'
+        if mode not in ('apercu', 'appliquer'):
+            return Response(
+                {'detail': "mode attendu : 'apercu' ou 'appliquer'."},
+                status=status.HTTP_400_BAD_REQUEST)
+        saisie = {'prix_ttc': request.data.get('prix_ttc'),
+                  'remise_pct': request.data.get('remise_pct'),
+                  'user': request.user}
+        try:
+            if mode == 'apercu':
+                corps = apercu_prix_negocie(devis, **saisie)
+                corps = {k: v for k, v in corps.items()
+                         if not k.startswith('_')}
+                return Response(corps)
+            corps = appliquer_prix_negocie(
+                devis, confirmer_avoir=bool(request.data.get(
+                    'confirmer_avoir')), **saisie)
+        except PrixNegocieRefuse as exc:
+            return Response(exc.corps(), status=exc.statut_http)
+        return Response(corps, status=status.HTTP_201_CREATED)
+
+    # api-only: l'écran « Faire signer l'avenant » arrive avec le panneau de vente (VNT75/VNT79).
+    @extend_schema(request=None,
+                   responses={200: _AVENANT_SIGNATURE_REPONSE,
+                              409: D.ErreurDevisFige})
+    @action(detail=True, methods=['post'],
+            url_path='avenant/demander-signature',
+            permission_classes=PALIER_VENTE)
+    def avenant_demander_signature(self, request, pk=None):
+        """VNT60 (D-ADEV-6) — demander au client de signer l'avenant
+        (V2 acceptée d'une vente déjà signée) : le lien public de la V2
+        (réutilisé, jamais régénéré) et UNE tâche « Faire signer l'avenant »
+        sur le lead (``apps.crm.services.poser_tache_avenant``, idempotente).
+        Aucun statut n'est écrit (règle #4)."""
+        from ..models import ShareLink
+        from ..selectors import predecesseur_accepte
+        from ..utils.client_links import url_proposition
+        devis = self.get_object()
+        if (devis.statut != Devis.Statut.ACCEPTE
+                or predecesseur_accepte(devis) is None):
+            return Response(
+                {'detail': "Ce devis n'est pas un avenant accepté à faire "
+                           'signer.', 'code': 'pas_un_avenant'},
+                status=status.HTTP_409_CONFLICT)
+        lien = ShareLink.for_devis(devis)
+        tache = None
+        if devis.lead_id:
+            from apps.crm.services import poser_tache_avenant
+            tache = poser_tache_avenant(devis.lead, devis, request.user)
+        return Response({
+            'share_link': url_proposition(devis, lien.token),
+            'tache_id': getattr(tache, 'pk', None)})
+
     @extend_schema(parameters=[qint('a'), qint('b')],
                    responses={200: D.HistoriqueConfigurationResponse,
                               404: D.ErreurDetail})
@@ -644,6 +748,8 @@ class DevisCycleActionsMixin:
             corps = {'detail': exc.message}
             if exc.code:
                 corps['code'] = exc.code
+            if getattr(exc, 'vente_active', None):  # VNT54 — {id, reference}
+                corps['vente_active'] = exc.vente_active
             return Response(
                 corps,
                 status=(status.HTTP_409_CONFLICT if exc.conflict
@@ -722,6 +828,9 @@ class DevisCycleActionsMixin:
         devis.save(update_fields=['statut', 'date_refus', 'motif_refus'])
         activity.log_devis_refusal(devis, request.user, motif, date_ref,
                                    note=note)
+        # VNT56 (D-ADEV-1) — une révision V2 refusée réactive la V1 acceptée.
+        from ..domain.revision import abandonner_revision
+        abandonner_revision(devis, request.user)
 
         # M6 — événement découplé : ventes émet, crm réagit
         # (marque le lead perdu si demandé et lead_id présent).

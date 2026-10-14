@@ -360,9 +360,10 @@ class TestDevisAutoEndpoint(TestCase):
         lead_id = lead_id or self.lead.id
         return api.post(f'/api/django/crm/leads/{lead_id}/devis-auto/')
 
-    def test_400_with_exact_french_message(self):
+    def test_409_with_exact_french_message(self):
         resp = self._post()
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ERR-ENF11-FUZZ-CRM : champs manquants = refus d'état, 409.
+        self.assertEqual(resp.status_code, 409, resp.data)
         # EXACTEMENT les champs manquants, même message que le sérialiseur.
         self.assertEqual(resp.data['detail'], MSG_AGRICOLE)
         ser = self.api.get(f'/api/django/crm/leads/{self.lead.id}/').data
@@ -405,8 +406,8 @@ class TestDevisAutoEndpoint(TestCase):
             role=role, company=self.company,
         )
         resp = self._post(api=make_api(commerciale))
-        # Autorisée (la règle métier répond 400 « manquants », pas 403).
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # Autorisée (la règle métier répond 409 « manquants », pas 403).
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data['detail'], MSG_AGRICOLE)
 
 

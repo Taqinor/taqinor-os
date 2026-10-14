@@ -114,7 +114,9 @@ class ViewTests(ZGed4Base):
         resp = api.post('/api/django/ged/types-champ-signature/', {
             'code': 'fonction', 'libelle': 'Fonction bis',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-GED : doublon = 409 unique_conflict (plus 400).
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data['error']['code'], 'unique_conflict')
 
     def test_isolation_societe(self):
         type_a = TypeChampSignature.objects.create(

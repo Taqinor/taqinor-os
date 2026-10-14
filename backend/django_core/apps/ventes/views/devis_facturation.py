@@ -7,19 +7,20 @@ reserver_stock_devis_facture…``, ``from ..utils.echeancier import
 creer_facture_tranche``, ``from ..utils.pdf import generate_proforma_pdf``,
 ``from .. import activity``) restent dans les corps.
 """
-from django.db import transaction
 from django.http import HttpResponse
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from . import openapi_docs as D
 from ..models import Devis
+from ..serializers import DevisSerializer
 from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsResponsableOrAdmin,
 )
+from rest_framework import serializers
 from ..utils.references import create_with_reference
 from ..utils.corps import valider_corps
 import logging
@@ -89,6 +90,13 @@ def refus_avant_facturer(vue, request, devis, corps):
     return None
 
 
+#: VNT66 — corps du ``PUT devis/<id>/echeancier/`` (contrat
+#: ``devis_echeancier.json``) : ``{tranches: [{cle, libelle, unite, valeur}]}``.
+_ECHEANCIER_REQUETE = inline_serializer('DevisEcheancierPut', {
+    'tranches': serializers.ListField(child=serializers.DictField()),
+})
+
+
 class DevisFacturationActionsMixin:
     """SPL141 — actions de facturation de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -131,20 +139,18 @@ class DevisFacturationActionsMixin:
         permission_classes=[IsResponsableOrAdmin],
     )
     def generer_facture(self, request, pk=None):
-        """Génère la PROCHAINE facture de tranche de l'échéancier du devis.
-
-        1er appel → facture d'acompte (30 % ou 50 % selon le mode) ; appels
-        suivants → tranche matériel puis solde. Chaque facture est numérotée
-        sans collision et créée « Émise » (postée). L'échéancier vient de
-        l'unique mapping PAYMENT_TERMS_BY_MODE.
-        """
+        """Émet la PROCHAINE facture de tranche de la vente (acompte, puis
+        matériel, puis solde) — VNT65 : enveloppe de « Facturer la vente »
+        (``creer_facture_tranche`` → ``facturation_vente``), refus en 400 ;
+        la sortie de stock suit l'ÉMISSION (VNT21), jamais la création.
+        Retrait programmé dès que le panneau de vente (VNT75/VNT79) la
+        remplace."""
         devis = self.get_object()
         # ENF11 — corps validé par son sérialiseur déclaré : un corps non
         # objet (liste, scalaire) ou un drapeau mal typé → 400, jamais 500.
         corps = valider_corps(request, D.GenererFactureRequest)
         from ..utils.echeancier import creer_facture_tranche
         from ..services import (
-            reserver_stock_devis_facture, StockInsuffisantError,
             verifier_credit_hold, CreditHoldError,
             verifier_sale_warnings, SaleWarningError,
         )
@@ -178,23 +184,12 @@ class DevisFacturationActionsMixin:
                  'sale_warning': True},
                 status=status.HTTP_403_FORBIDDEN)
         try:
-            # U9 — la facturation directe par échéancier court-circuite le bon
-            # de commande : on réserve/consomme ici le stock matériel du devis,
-            # comme le ferait la livraison d'un BC, dans la MÊME transaction que
-            # la facture (rollback atomique si la réservation échoue). La garde
-            # anti-double-comptage du service évite de re-décompter quand un BC
-            # livré existe déjà ou qu'une tranche antérieure a déjà réservé.
-            with transaction.atomic():
-                reserver_stock_devis_facture(
-                    devis=devis, user=request.user, company=company)
-                facture = creer_facture_tranche(
-                    devis, request.user, company,
-                    create_with_reference,
-                )
-        except StockInsuffisantError as exc:
+            facture = creer_facture_tranche(
+                devis, request.user, company, create_with_reference)
+        except CreditHoldError as exc:
             return Response(
-                {'detail': exc.message}, status=status.HTTP_400_BAD_REQUEST,
-            )
+                {'detail': f'Client en blocage crédit : {exc.motif}.',
+                 'credit_hold': True}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST,
@@ -355,6 +350,40 @@ class DevisFacturationActionsMixin:
                         'nature': facture.type_facture},
             'vente': {cle: etat[cle] for cle in CLES_VENTE_FACTURER},
         }, status=status.HTTP_201_CREATED)
+
+    # api-only: l'écran d'échéancier d'une vente arrive avec le panneau de vente (VNT75/VNT79).
+    @extend_schema(request=_ECHEANCIER_REQUETE,
+                   responses={200: DevisSerializer, 400: D.ErreurDevisFige,
+                              409: D.ErreurDevisFige})
+    @action(
+        detail=True,
+        methods=['put'],
+        url_path='echeancier',
+        # Arbitrage 5 : un Commercial porte ``ventes_valider`` et passerait
+        # ``IsResponsableOrAdmin`` seul ; le palier l'écarte.
+        permission_classes=[IsAdminOrResponsableTier, IsResponsableOrAdmin],
+    )
+    def echeancier_vente(self, request, pk=None):
+        """VNT66 — réécrit l'échéancier du devis, accepté compris
+        (``facturation_vente.modifier_echeancier_vente``) ; 200 = le devis
+        avec son ``echeancier`` ; refus au format du contrat."""
+        from ..domain.facturation_vente import (
+            FacturationVenteRefusee, modifier_echeancier_vente)
+        devis = self.get_object()
+        tranches = request.data.get('tranches') if isinstance(
+            request.data, dict) else None
+        if not isinstance(tranches, list) or not tranches:
+            return Response(
+                {'detail': 'Indiquez les tranches de l’échéancier.',
+                 'code': 'echeancier_invalide'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            devis = modifier_echeancier_vente(devis, tranches,
+                                              user=request.user)
+        except FacturationVenteRefusee as exc:
+            return Response(exc.corps, status=exc.status)
+        return Response(
+            DevisSerializer(devis, context={'request': request}).data)
 
     @extend_schema(request=None, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(

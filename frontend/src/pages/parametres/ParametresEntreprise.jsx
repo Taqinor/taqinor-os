@@ -18,6 +18,7 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
+import toutesLesPages from './toutesLesPages'
 import { CheckCircle2, AlertCircle, Save, Search, X, Info } from 'lucide-react'
 import {
   Button, Spinner, TooltipProvider, Input,
@@ -244,16 +245,16 @@ export default function ParametresEntreprise() {
   const [numberingNext, setNumberingNext] = useState(null)
   const loadNumberingPreview = () => ventesApi.numerotationPreview()
     .then(r => setNumberingNext(r.data)).catch(() => setNumberingNext(null))
-  const loadCanaux = () => crmApi.getCanaux()
-    .then(r => setCanaux(r.data.results ?? r.data)).catch(() => {})
+  const loadCanaux = () => toutesLesPages((params) => crmApi.getCanaux(params))
+    .then(setCanaux).catch(() => {})
     .finally(() => setRefDone('canaux'))
-  const loadTypesItv = () => installationsApi.getTypesIntervention()
-    .then(r => setTypesItv(r.data.results ?? r.data)).catch(() => {})
+  const loadTypesItv = () => toutesLesPages((params) => installationsApi.getTypesIntervention(params))
+    .then(setTypesItv).catch(() => {})
     .finally(() => setRefDone('typesItv'))
-  const loadChecklistEtapes = () => installationsApi.getChecklistEtapes()
-    .then(r => setChecklistEtapes(r.data.results ?? r.data)).catch(() => {})
-  const loadMarques = () => stockApi.getMarques()
-    .then(r => setMarques(r.data.results ?? r.data)).catch(() => {})
+  const loadChecklistEtapes = () => toutesLesPages((params) => installationsApi.getChecklistEtapes(undefined, params))
+    .then(setChecklistEtapes).catch(() => {})
+  const loadMarques = () => toutesLesPages((params) => stockApi.getMarques(params))
+    .then(setMarques).catch(() => {})
   // Champs personnalisés (T11) — module choisi (lead/client/produit).
   const [cfModule, setCfModule] = useState('lead')
   const [cfDefs, setCfDefs] = useState([])
@@ -264,8 +265,8 @@ export default function ParametresEntreprise() {
   // L809 — édition inline d'un champ existant : id en cours + brouillon.
   const [cfEditId, setCfEditId] = useState(null)
   const [cfEdit, setCfEdit] = useState(null)
-  const loadCfDefs = (mod) => customFieldsApi.getDefs(mod)
-    .then(r => setCfDefs(r.data.results ?? r.data)).catch(() => {})
+  const loadCfDefs = (mod) => toutesLesPages((params) => customFieldsApi.getDefs(mod, params))
+    .then(setCfDefs).catch(() => {})
   const slugifyCode = (s) => s.trim().toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
@@ -348,14 +349,14 @@ export default function ParametresEntreprise() {
   const slugify = (s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 
   const loadNiveaux = () => {
-    ventesApi.getNiveauxRelance()
-      .then(r => setNiveaux(r.data.results ?? r.data)).catch(() => {})
+    toutesLesPages((params) => ventesApi.getNiveauxRelance(params))
+      .then(setNiveaux).catch(() => {})
   }
-  const loadTags = () => crmApi.getTags()
-    .then(r => setTags(r.data.results ?? r.data)).catch(() => {})
+  const loadTags = () => toutesLesPages((params) => crmApi.getTags(params))
+    .then(setTags).catch(() => {})
     .finally(() => setRefDone('tags'))
-  const loadMotifs = () => crmApi.getMotifsPerte()
-    .then(r => setMotifs(r.data.results ?? r.data)).catch(() => {})
+  const loadMotifs = () => toutesLesPages((params) => crmApi.getMotifsPerte(params))
+    .then(setMotifs).catch(() => {})
     .finally(() => setRefDone('motifs'))
   const loadMessages = () => parametresApi.getMessages()
     .then(r => setMessages(r.data)).catch(() => {})
@@ -365,7 +366,7 @@ export default function ParametresEntreprise() {
     dispatch(fetchCategories())
     dispatch(fetchFournisseurs())
     crmApi.getAssignableUsers()
-      .then(r => setAssignables(r.data.results ?? r.data)).catch(() => {})
+      .then(r => setAssignables(r.data)).catch(() => {})
     loadNiveaux()
     loadTags()
     loadMotifs()

@@ -118,3 +118,26 @@ class BrandedTemplateViewSetTests(TestCase):
         resp = BrandedTemplateViewSet.as_view({'get': 'list'})(req)
         noms = {row['nom'] for row in resp.data}
         self.assertNotIn('Secret', noms)
+
+
+class ChampsStrictsSerializersCoreTests(TestCase):
+    """ERR-ENF11-FUZZ-CORE — texte et booléens des sérialiseurs de core sont
+    STRICTS : un nombre JSON pour une chaîne ou un booléen = 400 nommant le
+    champ (DRF les convertissait : `0` -> "0" / False)."""
+
+    def test_nombre_pour_texte_ou_booleen_refuse(self):
+        from core import serializers as cs
+        for classe, donnees, champ in (
+                (cs.BrandedTemplateSerializer,
+                 {'kind': 'email', 'code': 'b', 'nom': 0}, 'nom'),
+                (cs.ConsentRecordSerializer,
+                 {'subject_identifier': 5, 'purpose': 'x'},
+                 'subject_identifier'),
+                (cs.RegistreTraitementSerializer,
+                 {'code': 'c', 'finalite': 'f', 'actif': 0}, 'actif'),
+                (cs.ApiUsagePlanSerializer,
+                 {'code': 'gratuit', 'actif': 1}, 'actif')):
+            with self.subTest(classe=classe.__name__, champ=champ):
+                ser = classe(data=donnees)
+                self.assertFalse(ser.is_valid())
+                self.assertIn(champ, ser.errors)

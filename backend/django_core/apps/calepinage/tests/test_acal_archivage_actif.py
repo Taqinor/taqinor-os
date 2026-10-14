@@ -88,6 +88,15 @@ class ArchivageActifTest(BaseApiCalepinage):
         self.assertEqual(selectors.calepinages_ouverts_du_lead(
             self.company, self.lead.pk), [self.calepinage])
 
+    def test_restaurer_un_non_archive_409_nomme(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE — « rien à restaurer » est un conflit
+        d'ÉTAT (409), plus un 400 sur une requête bien formée."""
+        reponse = self.api.post(
+            f'{URL}{self.calepinage.pk}/restaurer-corbeille/')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('calepinage', reponse.data)
+        self.assertFalse(est_archive(self.calepinage))
+
     def test_archive_survit_a_la_purge(self):
         marquer_modele(self.calepinage, user=self.user)
         reponse = self._archiver_http(self.calepinage)

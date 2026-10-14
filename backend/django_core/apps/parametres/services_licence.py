@@ -8,6 +8,9 @@ founder, jamais un endpoint tenant-facing) : journalise le changement
 sortant ``plan.changed`` (``apps.publicapi``, NTADM41). Best-effort, jamais
 bloquant pour l'enregistrement du profil."""
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def notifier_changement_plan(profile, *, ancien_plan_id, user=None):
@@ -29,7 +32,7 @@ def notifier_changement_plan(profile, *, ancien_plan_id, user=None):
             new=nouveau.nom if nouveau else None,
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
-        pass
+        logger.warning("notifier_changement_plan : erreur absorbée, repli dégradé", exc_info=True)
 
     if profile.company_id is None:
         return
@@ -43,7 +46,7 @@ def notifier_changement_plan(profile, *, ancien_plan_id, user=None):
             'nouveau_plan': nouveau.code if nouveau else None,
         })
     except Exception:  # noqa: BLE001 — jamais bloquant
-        pass
+        logger.warning("notifier_changement_plan : erreur absorbée, repli dégradé", exc_info=True)
 
 
 def journaliser_modification_palier(plan, avant, user=None):

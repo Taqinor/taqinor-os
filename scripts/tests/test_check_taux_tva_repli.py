@@ -52,14 +52,19 @@ class DepotTests(unittest.TestCase):
         self.assertEqual(code, 0, sortie)
 
     def test_test_du_test_motif_reintroduit_nomme(self):
-        sauve = dict(garde.A_CORRIGER)
-        try:
-            garde.A_CORRIGER.clear()
+        # AMOT77 — le site moteur est corrigé : le motif est réintroduit
+        # dans un arbre temporaire, la garde doit le nommer.
+        import tempfile
+        from unittest import mock
+        tmp = Path(tempfile.mkdtemp())
+        ventes = tmp / "apps" / "ventes"
+        ventes.mkdir(parents=True)
+        (ventes / "moteur.py").write_text(
+            "T = float(data.get('taux_tva', 20) or 20)\n", encoding="utf-8")
+        with mock.patch.object(garde, "ROOT", tmp), mock.patch.object(garde, "VENTES", ventes):
             code, sortie = self._lancer()
-        finally:
-            garde.A_CORRIGER.update(sauve)
         self.assertEqual(code, 1)
-        self.assertIn("generate_devis_premium.py", sortie)
+        self.assertIn("moteur.py", sortie)
 
 
 if __name__ == "__main__":

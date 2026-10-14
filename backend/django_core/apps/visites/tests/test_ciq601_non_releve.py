@@ -60,7 +60,7 @@ class NonReleveTests(VisiteTerrainBase):
 
     def test_une_mesure_requise_non_relevee_avec_motif_laisse_terminer(self):
         visite_id = self._visite_sans_calibre()
-        self.assertEqual(self._terminer(visite_id).status_code, 400)
+        self.assertEqual(self._terminer(visite_id).status_code, 409)
         resp = self._mesures(visite_id, 'tableau_general',
                              {'_non_releves': {'calibre_a': 'dangereux'}})
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -115,7 +115,7 @@ class NonReleveTests(VisiteTerrainBase):
         self._mesures(visite_id, 'tableau_general', {'calibre_a': 100})
         self._mesures(visite_id, 'cheminement', {'trajets': [
             {'libelle': 'a', 'longueur_dc_m': 45}]})
-        self.assertEqual(self._terminer(visite_id).status_code, 400)
+        self.assertEqual(self._terminer(visite_id).status_code, 409)
         resp = self._mesures(
             visite_id, 'cheminement',
             {'_non_releves': {'trajets.longueur_ac_m': 'acces_refuse'}})

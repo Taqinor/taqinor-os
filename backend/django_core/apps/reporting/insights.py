@@ -21,6 +21,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
+from core.champs_stricts import entier_ou_400
 from apps.crm.exports import build_xlsx_response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -242,11 +243,10 @@ def audit_log(request):
             since = datetime.strptime(since_raw, '%Y-%m-%d').date()
         except ValueError:
             since = None
-    try:
-        limit = int(request.query_params.get('limit', 200))
-    except (TypeError, ValueError):
-        limit = 200
-    limit = max(1, min(limit, 1000))
+    # ERR-ENF11-FUZZ-REPORTING — ``limit`` est un entier au schéma : une valeur
+    # illisible = 400 (elle retombait silencieusement sur 200).
+    limit = max(1, min(entier_ou_400(
+        request.query_params.get('limit'), 'limit', defaut=200), 1000))
 
     def _user_match(user_obj):
         """Filtre utilisateur tolérant : id numérique OU username."""
@@ -834,6 +834,10 @@ def sales_leaderboard(request):
 
 
 # ── FG94 — Reporting des champs personnalisés ─────────────────────────────────
+# ERR-ENF11-FUZZ-REPORTING — ``module``/``code`` vides = 400 : le schéma le dit
+# (au moins un caractère non blanc) au lieu de l'annoncer comme une chaîne libre.
+_TEXTE_NON_VIDE = {'type': 'string', 'minLength': 1, 'pattern': r'\S'}
+
 _INSIGHTS_CF_GROUP_BY_REPONSE = inline_serializer('InsightsCfGroupByReponse', {
     'module': drf_serializers.JSONField(allow_null=True),
     'code': drf_serializers.JSONField(allow_null=True),
@@ -845,8 +849,8 @@ _INSIGHTS_CF_GROUP_BY_REPONSE = inline_serializer('InsightsCfGroupByReponse', {
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('module', OpenApiTypes.STR, required=True),
-        OpenApiParameter('code', OpenApiTypes.STR, required=True),
+        OpenApiParameter('module', _TEXTE_NON_VIDE, required=True),
+        OpenApiParameter('code', _TEXTE_NON_VIDE, required=True),
         OpenApiParameter(
             'export', OpenApiTypes.STR, required=False,
             description="'xlsx' : télécharge la répartition en .xlsx."),

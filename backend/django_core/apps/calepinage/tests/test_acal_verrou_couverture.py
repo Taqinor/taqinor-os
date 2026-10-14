@@ -113,13 +113,16 @@ class VerrouCouvertureTest(BaseApiCalepinage):
     def test_simulation_et_pose_reelle_restent_permises(self):
         self._statut(Devis.Statut.ACCEPTE)
         base = url_detail(self.calepinage.pk)
+        # Pas le refus du VERROU : un refus d'état propre à la route (mode
+        # météo absent, aucun pan relevé) répond 409 lui aussi (ERR-ENF11),
+        # c'est donc le MOTIF du verrou qui doit manquer.
         reponse = self.api.post(f'{base}simuler/', {}, format='json')
-        self.assertNotEqual(reponse.status_code, 409, reponse.data)
+        self.assertNotIn(MOTIF, str(reponse.data), reponse.data)
         reponse = self.api.get(f'{base}pose-reelle/')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         reponse = self.api.post(f'{base}pose-reelle/',
                                 {'creer_version': True}, format='json')
-        self.assertNotEqual(reponse.status_code, 409, reponse.data)
+        self.assertNotIn(MOTIF, str(reponse.data), reponse.data)
 
     def test_envoye_pertes_journalisees(self):
         Calepinage.objects.filter(pk=self.calepinage.pk).update(

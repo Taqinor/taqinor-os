@@ -13,6 +13,8 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import installationsApi from '../../api/installationsApi'
+import toutesLesPages from './toutesLesPages'
+import api from '../../api/axios'
 import { apiErrorMessage } from '../../lib/apiError'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -54,8 +56,8 @@ export default function ChecklistSection() {
   const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState(null)
   const [deletingTemplate, setDeletingTemplate] = useState(false)
 
-  const load = () => installationsApi.getChecklistTemplates()
-    .then(r => { setTemplates(r.data.results ?? r.data); setLoadError(false) })
+  const load = () => toutesLesPages((params) => api.get('/installations/checklist-templates/', { params }))
+    .then(rows => { setTemplates(rows); setLoadError(false) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
   useEffect(() => { load() }, [])

@@ -15,6 +15,7 @@ français qui NOMME le champ fautif (règle maison).
 import re
 
 from rest_framework.exceptions import ValidationError
+from rest_framework.fields import empty
 
 _ENTIER = re.compile(r'^[+-]?\d+$')
 
@@ -64,13 +65,40 @@ def date_param(request, nom):
             {nom: 'Date invalide (AAAA-MM-JJ attendu).'})
 
 
-def booleen_param(donnees, nom):
+def texte_param(request, nom):
+    """Texte du paramètre de requête ``nom`` (``None`` si absent).
+
+    ERR-ENF11-FUZZ-CRM — un octet NUL est refusé en 400 nommant le
+    paramètre : Postgres le refuse dans tout littéral (ValueError → 500)."""
+    brut = request.query_params.get(nom)
+    if brut is not None and '\x00' in brut:
+        raise ValidationError({nom: 'Caractère nul interdit.'})
+    return brut
+
+
+def valider_pagination(request):
+    """ERR-ENF11-FUZZ-CRM — ``page``/``page_size`` d'une action qui rend un
+    tableau NU (sans pagination) mais que le schéma publie entiers (actions de
+    liste du viewset) : même contrôle que ``core.pagination`` (400 si non
+    entier ou répété) au lieu d'un 200 qui les ignore."""
+    from core.pagination import valider_parametre_entier
+
+    for nom in ('page', 'page_size'):
+        valider_parametre_entier(request, nom)
+
+
+def booleen_param(donnees, nom, *, nul_refuse=False):
     """Booléen JSON STRICT du corps (``true``/``false``) ; absent → ``False``.
 
     Avant, ``bool({})`` ou ``bool("x")`` valaient ``False``/``True`` sans
-    erreur : le contrat dit ``boolean``, le serveur disait « n'importe quoi »."""
+    erreur : le contrat dit ``boolean``, le serveur disait « n'importe quoi ».
+
+    ``nul_refuse=True`` (ERR-ENF11-FUZZ-CRM) : un ``null`` EXPLICITE est
+    refusé — le schéma publie un booléen non nullable."""
     valeur = donnees.get(nom)
     if valeur is None:
+        if nul_refuse and nom in donnees:
+            raise ValidationError({nom: 'Un booléen est attendu.'})
         return False
     if not isinstance(valeur, bool):
         raise ValidationError({nom: 'Un booléen est attendu.'})
@@ -123,3 +151,35 @@ class CorpsTexteMixin:
         super().initial(request, *args, **kwargs)
         if request.method in ('POST', 'PUT', 'PATCH'):
             verifier_corps_texte(request, self.champs_texte)
+
+
+def _codes_unicite(codes):
+    """Vrai si ``codes`` (``ValidationError.get_codes()``) ne porte QUE des
+    refus d'unicité (``unique``) — jamais mêlés à une autre erreur."""
+    if not isinstance(codes, dict) or not codes:
+        return False
+    return all(isinstance(v, list) and v and all(c == 'unique' for c in v)
+               for v in codes.values())
+
+
+class UniciteEn409Mixin:
+    """ERR-ENF11-FUZZ-CRM — mixin de SÉRIALISEUR : un DOUBLON refusé par les
+    validateurs d'unicité de DRF (``UniqueValidator`` /
+    ``UniqueTogetherValidator``) répond 409 ``unique_conflict``
+    (``core.unicite.ConflitUnicite``), pas 400 : le corps était conforme au
+    schéma, c'est l'état des données qui s'y oppose. Une requête qui porte
+    AUSSI une autre erreur reste un 400. Posé sur le sérialiseur (et non sur
+    le viewset) pour que la forme de la vue reste lisible par
+    ``check_api_shapes``."""
+
+    def run_validation(self, data=empty):
+        from core.unicite import ConflitUnicite
+
+        try:
+            return super().run_validation(data)
+        except ValidationError as exc:
+            if not _codes_unicite(exc.get_codes()):
+                raise
+            champs = [c for c in exc.detail if c != 'non_field_errors']
+            premier = next(iter(exc.detail.values()))[0]
+            raise ConflitUnicite(detail=str(premier), champs=champs) from exc

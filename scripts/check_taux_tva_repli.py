@@ -32,12 +32,7 @@ NOMS_TVA = {"taux_tva", "tva"}
 #: proprietaire = ventes ; jamais corrigee depuis cette garde). Cle de CONTENU
 #: ``fichier::expression`` (pas de ligne) ; une entree sans site est perimee et
 #: fait echouer la garde. A retirer en corrigeant le site (`is None`).
-A_CORRIGER = {
-    "backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py"
-    "::data.get('taux_tva', 20) or 20":
-        "A CORRIGER (session ventes/moteur) : un taux_tva = 0 transmis au "
-        "moteur de rendu devient 20 % (data.get(..., 20) or 20)",
-}
+A_CORRIGER: dict = {}
 
 
 def _nomme_tva(node: ast.AST) -> bool:
