@@ -28,6 +28,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+from apps.ventes.domain.noyau_totaux import remise_pour_ttc
 from apps.ventes.selectors import _canonical_totaux
 
 User = get_user_model()
@@ -177,6 +178,67 @@ class NoyauArrondiTests(SimpleTestCase):
                 # 10 % peut, lui, descendre d'un palier — test dédié).
                 if any(li.taux_tva_effectif == 20 for li in lignes):
                     self.assertLess(exact['ttc'] - t['ttc'], 100)
+
+
+class SolveurRemisePourTtcTests(SimpleTestCase):
+    """VNT49 — « TTC négocié → remise » : la remise la plus RONDE qui rend la
+    cible exacte par la chaîne canonique (palier ARRONDI-100 compris)."""
+
+    def _solve(self, lignes, cible):
+        return remise_pour_ttc(lignes, cible, fallback_taux=Decimal('20'),
+                               arrondi_pas=PAS_ARRONDI_DEVIS)
+
+    def test_v1_reelle_54500_vers_49000_rend_dix_pour_cent(self):
+        # V1 réelle 54 500 : la plus PETITE remise (9,97 %) déplace les bases ;
+        # la plus RONDE (10,00 %) est la vente au centime.
+        r = self._solve([_ligne(1, '9600.00', 10), _ligne(1, '36643.50', 20)],
+                        Decimal('49000'))
+        self.assertTrue(r['atteint'])
+        self.assertEqual(r['remise_pct'], Decimal('10.00'))
+        t = r['totaux']
+        self.assertEqual([b['ht_net'] for b in t['tva_par_taux']],
+                         [Decimal('8640.00'), Decimal('32913.33')])
+        self.assertEqual(t['remise'], Decimal('4624.35'))
+        self.assertEqual(t['arrondi'], Decimal('65.82'))
+        self.assertEqual(t['ttc'], Decimal('49000.00'))
+        self.assertIsNone(r['voisin_bas'])
+        self.assertIsNone(r['voisin_haut'])
+
+    def test_intervalle_sans_entier_rend_la_plus_petite_a_une_decimale(self):
+        lignes = [_ligne(1, '30000.00', 10), _ligne(1, '15333.33', 20)]
+        atteignables = [
+            Decimal(c) / 100 for c in range(440, 480)
+            if _totaux(lignes, remise=str(Decimal(c) / 100))['ttc']
+            == Decimal('49000.00')]
+        self.assertEqual((atteignables[0], atteignables[-1]),
+                         (Decimal('4.48'), Decimal('4.66')))
+        r = self._solve(lignes, Decimal('49000'))
+        self.assertEqual(r['remise_pct'], Decimal('4.50'))
+        self.assertEqual([b['ht_net'] for b in r['totaux']['tva_par_taux']],
+                         [Decimal('28650.00'), Decimal('14570.83')])
+
+    def test_toute_cible_ronde_sous_900k_atteinte_exactement(self):
+        for k in (1, 3, 7, 15):
+            lignes = [_ligne(k, '9600.00', 10), _ligne(k, '36643.50', 20)]
+            haut = int(_totaux(lignes)['ttc'])
+            for i in range(0, 400, 7):
+                cible = Decimal(haut - i * 100)
+                r = self._solve(lignes, cible)
+                self.assertTrue(r['atteint'], (k, cible))
+                self.assertEqual(_totaux(
+                    lignes, remise=str(r['remise_pct']))['ttc'], cible)
+
+    def test_a_trois_millions_cible_inatteignable_rend_les_voisins(self):
+        lignes = [_ligne(1, '600000.00', 10), _ligne(1, '1900000.00', 20)]
+        r = self._solve(lignes, Decimal('2900100'))
+        self.assertFalse(r['atteint'])
+        self.assertIsNone(r['remise_pct'])
+        bas, haut = r['voisin_bas'], r['voisin_haut']
+        self.assertLess(bas['ttc'], Decimal('2900100'))
+        self.assertLess(Decimal('2900100'), haut['ttc'])
+        for v in (bas, haut):
+            self.assertEqual(_totaux(lignes, remise=str(v['remise_pct']))[
+                'ttc'], v['ttc'])
 
 
 class AuditeurCoherenceArrondiTests(SimpleTestCase):
