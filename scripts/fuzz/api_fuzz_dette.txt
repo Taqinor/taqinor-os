@@ -564,6 +564,7 @@ API rejected schema-compliant request|POST /api/django/facturation/paiements/fac
 API rejected schema-compliant request|POST /api/django/ged/annotations/
 API rejected schema-compliant request|POST /api/django/ged/coffres/
 API rejected schema-compliant request|POST /api/django/ged/demandes-document/
+API rejected schema-compliant request|PUT /api/django/ged/demandes-document/{id}/
 API rejected schema-compliant request|POST /api/django/ged/demandes-signature/
 API rejected schema-compliant request|POST /api/django/ged/demandes-signature/creer-multi/
 API rejected schema-compliant request|POST /api/django/ged/depots-publics/

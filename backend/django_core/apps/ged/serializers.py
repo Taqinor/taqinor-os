@@ -168,8 +168,30 @@ class CoffreSerializer(ChampsStrictsSansDecimalMixin,
     def get_document_count(self, obj):
         return obj.documents.count()
 
+    def get_fields(self):
+        """CI #998 api-fuzz — le contrat publié dit ce que la garde applique :
+        un propriétaire ne se VIDE pas (``null`` ⇒ 400 « non nullable »), il
+        se REMPLACE — fournir ``client`` sur un coffre d'employé (ou
+        ``proprietaire`` sur un coffre de client) transfère la propriété,
+        l'autre champ étant effacé par ``validate``. Sans ce verrou, le schéma
+        annonçait deux champs nullables et le corps conforme
+        ``{"proprietaire": null}`` recevait un 400 de règle métier."""
+        fields = super().get_fields()
+        for nom in ('proprietaire', 'client'):
+            champ = fields.get(nom)
+            if champ is not None:
+                champ.allow_null = False
+        return fields
+
     def validate(self, attrs):
         request = self.context.get('request')
+        # Mise à jour : l'owner fourni remplace l'autre (un seul propriétaire,
+        # jamais les deux — sans obliger le client à envoyer ``null``).
+        if self.instance is not None:
+            if 'proprietaire' in attrs and 'client' not in attrs:
+                attrs['client'] = None
+            elif 'client' in attrs and 'proprietaire' not in attrs:
+                attrs['proprietaire'] = None
         proprietaire = attrs.get(
             'proprietaire', getattr(self.instance, 'proprietaire', None))
         client = attrs.get('client', getattr(self.instance, 'client', None))

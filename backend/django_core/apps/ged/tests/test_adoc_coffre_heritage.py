@@ -142,3 +142,66 @@ class CoffreHeritageTests(TestCase):
             company=self.co, nom='Vide', proprietaire=self.u1)
         resp = auth(self.admin).delete(f'{BASE}coffres/{vide.pk}/')
         self.assertEqual(resp.status_code, 204, resp.content)
+
+
+class CoffreProprietaireContratTests(TestCase):
+    """CI #998 api-fuzz — PUT /coffres/{id}/ : le propriétaire se REMPLACE,
+    il ne se vide pas (``null`` ⇒ 400 « non nullable », le schéma l'annonce) ;
+    un corps sans owner garde l'owner en place ; les deux owners ⇒ 400."""
+
+    def setUp(self):
+        from apps.crm.models import Client
+        self.co = Company.objects.get_or_create(
+            slug='adoc4b', defaults={'nom': 'ADOC4b'})[0]
+        self.admin = User.objects.create_user(
+            username='adoc4b-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.u1 = User.objects.create_user(
+            username='adoc4b-u1', password='x', company=self.co,
+            role_legacy='normal')
+        self.client_crm = Client.objects.create(
+            company=self.co, nom='Client coffre', email='coffre@example.com')
+        self.coffre = Coffre.objects.create(
+            company=self.co, nom='Coffre U1', proprietaire=self.u1)
+        self.api = auth(self.admin)
+        self.url = f'{BASE}coffres/{self.coffre.pk}/'
+
+    def test_put_sans_owner_garde_le_proprietaire(self):
+        resp = self.api.put(self.url, {'nom': 'Renommé'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.coffre.refresh_from_db()
+        self.assertEqual(self.coffre.nom, 'Renommé')
+        self.assertEqual(self.coffre.proprietaire_id, self.u1.pk)
+        self.assertIsNone(self.coffre.client_id)
+
+    def test_put_client_transfere_la_propriete(self):
+        resp = self.api.put(
+            self.url, {'nom': 'Coffre client', 'client': self.client_crm.pk},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.coffre.refresh_from_db()
+        self.assertEqual(self.coffre.client_id, self.client_crm.pk)
+        self.assertIsNone(self.coffre.proprietaire_id)
+        # Retour vers un employé : le client est effacé.
+        resp = self.api.put(
+            self.url, {'nom': 'Coffre U1', 'proprietaire': self.u1.pk},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.coffre.refresh_from_db()
+        self.assertEqual(self.coffre.proprietaire_id, self.u1.pk)
+        self.assertIsNone(self.coffre.client_id)
+
+    def test_put_owner_nul_ou_double_400(self):
+        for corps in ({'nom': 'x', 'proprietaire': None},
+                      {'nom': 'x', 'client': None},
+                      {'nom': 'x', 'proprietaire': self.u1.pk,
+                       'client': self.client_crm.pk}):
+            resp = self.api.put(self.url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        self.coffre.refresh_from_db()
+        self.assertEqual(self.coffre.proprietaire_id, self.u1.pk)
+
+    def test_post_sans_owner_reste_400(self):
+        resp = self.api.post(f'{BASE}coffres/', {'nom': 'Orphelin'},
+                             format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
