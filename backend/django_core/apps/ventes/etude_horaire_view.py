@@ -424,13 +424,16 @@ def etude_horaire_preview(request):
     etude = None
     kwc = _num(corps.get('kwc'))
     if kwc and kwc > 0:
-        etude = calculer_etude_horaire(
-            kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat, lon=lon,
-            occupation=occupation, equipements=equipements,
-            source_conso=source, detail_conso=detail,
-            tranches=tranches, charges_fixes_mad=charges_fixes,
-            jour_reference=jour_reference,
-            **_batterie_de_l_apercu(devis, _num(corps.get('batterie_kwh'))))
+        batterie = _batterie_de_l_apercu(devis, _num(corps.get('batterie_kwh')))
+        etude = _bloc_enregistre_du_devis(devis, corps, kwc, occupation,
+                                          batterie)
+        if etude is None:
+            etude = calculer_etude_horaire(
+                kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
+                lon=lon, occupation=occupation, equipements=equipements,
+                source_conso=source, detail_conso=detail,
+                tranches=tranches, charges_fixes_mad=charges_fixes,
+                jour_reference=jour_reference, **batterie)
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '
@@ -511,23 +514,81 @@ def _batterie_de_l_apercu(devis, batterie_kwh_corps):
         return {'batterie_kwh_utile': batterie_kwh_corps}
 
 
+def _meme_ville(ville_corps, ville_chantier):
+    """La ville envoyée par l'écran désigne-t-elle le chantier (vide = oui) ?"""
+    tapee = (ville_corps or '').strip().casefold()
+    return not tapee or tapee == (ville_chantier or '').strip().casefold()
+
+
 def _localisation(corps, devis, lead=None):
-    """(ville, lat, lon) — corps d'abord, puis le chantier du devis/lead."""
+    """(ville, lat, lon) — corps d'abord, puis le chantier du devis/lead.
+
+    ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — l'écran envoie TOUJOURS la
+    ville de calcul du lead : le GPS du chantier n'était donc jamais lu, et
+    l'aperçu chiffrait la table PVGIS de la ville pendant que le bloc du devis
+    (``etude_horaire._etude_horaire_pour_devis`` : ville du chantier + GPS du
+    lead) chiffrait le point exact. Le GPS du chantier est désormais repris
+    dès que la ville envoyée EST celle du chantier ; une autre ville tapée
+    (simulation) garde le comportement d'avant, sans GPS emprunté.
+    """
     ville = (corps.get('ville') or '').strip() or None
     lat = _num(corps.get('lat'))
     lon = _num(corps.get('lon'))
     source_localisation = devis if devis is not None else (
         _DevisDepuisLead(lead) if lead is not None else None)
-    if source_localisation is not None and not (ville or (lat and lon)):
+    if source_localisation is not None and not (lat and lon):
         try:
             from apps.crm.selectors import site_location_for_devis
             loc = site_location_for_devis(source_localisation) or {}
+            if not _meme_ville(ville, loc.get('site_ville')):
+                return ville, lat, lon
             ville = ville or loc.get('site_ville')
             lat = lat if lat is not None else loc.get('gps_lat')
             lon = lon if lon is not None else loc.get('gps_lng')
         except Exception:  # noqa: BLE001 — lead illisible ⇒ pas de localisation
             logger.warning("etude_horaire_view._localisation : erreur ignorée (mode dégradé)", exc_info=True)
     return ville, lat, lon
+
+
+def _bloc_enregistre_du_devis(devis, corps, kwc, occupation, batterie):
+    """ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — le bloc RANGÉ du devis,
+    servi TEL QUEL quand l'écran décrit ce que le document chiffre.
+
+    L'« Édition complète » recalculait l'étude en direct pendant que le PDF,
+    l'API et la proposition lisent le bloc rangé : deux calculs, et chaque
+    argument qui diverge (localisation, batterie, occupation) ou chaque
+    caprice de PVGIS rendait deux chiffres. Tant que l'écran n'explore rien
+    — même kWc et même batterie que le devis, ni GPS ni autre ville ni autre
+    occupation demandés — l'aperçu rend le bloc que
+    ``domain.etudes.bloc_horaire_enregistre_pour`` juge frais ET que le moteur
+    accepte : écran et document lisent alors la MÊME étude. Sinon ``None`` et
+    l'aperçu recalcule comme avant. Ne lève jamais.
+    """
+    if (devis is None or corps.get('lat') not in (None, '')
+            or corps.get('lon') not in (None, '')):
+        return None
+    try:
+        from apps.crm.selectors import site_location_for_devis
+        from apps.ventes.domain.etudes import bloc_horaire_enregistre_pour
+        bloc = bloc_horaire_enregistre_pour(devis, kwc)
+        if bloc is None or bloc.get('occupation') != occupation:
+            return None
+        loc = site_location_for_devis(devis) or {}
+        if not _meme_ville(corps.get('ville'), loc.get('site_ville')):
+            return None
+        capacite = batterie.get('batterie_kwh_utile')
+        if capacite and 'batterie_rendement' not in batterie:
+            return None  # une AUTRE batterie essayée à l'écran
+        rangee = bloc.get('batterie_kwh_utile')
+        if bool(capacite) != bool(rangee) or (
+                capacite and abs(float(capacite) - float(rangee)) > 0.05):
+            return None
+        return {cle: valeur for cle, valeur in bloc.items()
+                if not str(cle).startswith('_')}
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais : recalcul
+        logger.warning("bloc enregistré illisible pour l'aperçu",
+                       exc_info=True)
+        return None
 
 
 def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
