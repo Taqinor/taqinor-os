@@ -40,5 +40,14 @@
     "description": "Les dix gestes pour chiffrer un pompage solaire dans le générateur de devis : cas de pompe, besoin en eau, point d’eau, hauteur, résultat du serveur, taille et options, économie déclarée, enregistrement et document client.",
     "cabinet": "Documentation",
     "dossier": "Guides"
+  },
+  {
+    "fichier": "Guide_messagerie_M365.pdf",
+    "titre": "Guide — Ta messagerie TAQINOR sur Microsoft 365",
+    "version": "1.0",
+    "description": "Activer le compte meryem.hida@taqinor.ma, lire et envoyer les mails sur PC (Outlook web) et sur téléphone, utiliser les boîtes partagées contact@ et stages@, les applications incluses (Word, Excel, OneDrive, OneNote, To Do, Planner) et les règles de sécurité.",
+    "cabinet": "Documentation",
+    "dossier": "Guides — Responsables",
+    "acces": "responsable"
   }
 ]
