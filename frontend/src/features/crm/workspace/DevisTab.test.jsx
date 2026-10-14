@@ -316,6 +316,66 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
   })
 })
 
+// VNT74 — le panneau de vente lit `d.vente` (exemples COMMITTÉS de
+// vente_etat.json) ; absent ⇒ rien ; une réponse sans la clé garde l'état.
+describe('VNT74 — panneau de vente (lecture seule)', () => {
+  const carteVente = (variante, extra = {}) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    return {
+      id: ex.id, reference: ex.reference, statut: 'accepte', total_ttc: '49000.00',
+      date_creation: '2026-10-10', chantier: null, is_active: ex.vente.est_tete,
+      vente: ex.vente, ...extra,
+    }
+  }
+
+  it('acompte en brouillon : pastille « Brouillon », bilan lu du serveur', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple_acompte_brouillon')] }) })
+    const panneau = screen.getByTestId('panneau-vente')
+    const ligne = within(panneau).getByTestId('facture-vente-117')
+    expect(within(ligne).getByText('BROUILLON-117')).toBeInTheDocument()
+    expect(within(ligne).getByText('Brouillon')).toBeInTheDocument()
+    expect(within(ligne).queryByText('Émise')).toBeNull()
+    expect(within(panneau).getByText('Prix convenu')).toBeInTheDocument()
+    expect(within(panneau).getByText("L'acompte est en brouillon : émettez-le.")).toBeInTheDocument()
+  })
+
+  it('facture émise : pastille « Émise » et payé', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('facture-vente-118')
+    expect(within(ligne).getByText('Émise')).toBeInTheDocument()
+    expect(within(ligne).getByText(/Payé/)).toBeInTheDocument()
+  })
+
+  it('version remplacée : « Remplacé par » la tête, aucun bouton dans le panneau', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple_version_remplacee')] }) })
+    const panneau = screen.getByTestId('panneau-vente')
+    expect(within(panneau).getByText(/Remplacé par DEV-202610-0021/)).toBeInTheDocument()
+    expect(within(panneau).queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('sans `vente` ⇒ rien', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple', { vente: null })] }) })
+    expect(screen.queryByTestId('panneau-vente')).toBeNull()
+  })
+
+  it('une réponse sans la clé `vente` (PATCH / refresh) garde l’état du dernier GET détail', () => {
+    const avec = carteVente('exemple_acompte_brouillon')
+    const { rerender, onAction } = renderTab({ state: leadState({ devis: [avec] }) })
+    expect(screen.getByTestId('panneau-vente')).toBeInTheDocument()
+    const sansCle = { ...avec }
+    delete sansCle.vente
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [sansCle] })} onAction={onAction} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(within(screen.getByTestId('panneau-vente')).getByText('BROUILLON-117')).toBeInTheDocument()
+  })
+})
+
 describe('LW22 — WhatsApp multi-devis', () => {
   const devis1 = {
     id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
