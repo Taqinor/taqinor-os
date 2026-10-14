@@ -3,7 +3,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin)
+    ChaineStricte, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
+    MotifUrlPublie)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import ConflitUnicite
 
@@ -354,8 +355,12 @@ class DocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     # ERR-ENF11-FUZZ-GED — ``URLField(blank=True)`` publiait ``format: uri`` :
     # la valeur vide servie pour un document ordinaire violait son propre
     # schéma. Champ texte (vide permis) ; l'URL non vide reste validée.
+    # CI #997 : le motif http(s) est PUBLIÉ (le fuzz envoyait 2000 « 0 » conformes
+    # au schéma, refusés « URL invalide ») ; l'acceptation reste celle de
+    # ``URLValidator`` (validate_url_externe), le motif n'est qu'un sous-ensemble.
     url_externe = ChaineStricte(
-        max_length=2000, required=False, allow_blank=True)
+        max_length=2000, required=False, allow_blank=True,
+        validators=[MotifUrlPublie()])
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('folder', 'coffre')
@@ -1405,6 +1410,10 @@ class RegleDossierSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True, allow_null=True)
     condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
+    # CI #997 api-fuzz : un JSONField publie « n'importe quoi » (null compris) et
+    # DRF refuse null — la liste d'étapes est déclarée (liste d'objets).
+    actions = serializers.ListField(
+        child=serializers.DictField(), required=False)
 
     class Meta:
         model = RegleDossier
@@ -1438,6 +1447,9 @@ class RegleApprobationGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalM
                                     serializers.ModelSerializer):
     """XGED20 — Routage conditionnel des approbations par métadonnées."""
     condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
+    # CI #997 api-fuzz : chaîne d'ids utilisateur déclarée (jamais null).
+    approbateurs = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False)
 
     class Meta:
         model = RegleApprobationGed
