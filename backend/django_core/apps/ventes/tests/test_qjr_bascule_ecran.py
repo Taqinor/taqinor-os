@@ -607,5 +607,5 @@ class BasculePerformUpdate(_BaseEcran):
         reponse = self.api.patch(
             '/api/django/ventes/devis/%s/' % devis.id,
             {'note': 'interdit'}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(reponse.status_code, 409, reponse.content)
         self.assertEqual(journal, [])

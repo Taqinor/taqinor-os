@@ -10,7 +10,7 @@ justifiée.
   ``test_toute_action_ecriture_classee`` ;
 * chaque action gardée est APPELÉE pour de vrai sur un devis ACCEPTÉ et doit
   répondre 409 (exécution, pas lecture du source) ; chaque refus historique
-  en 400 (contrats QJR588 / QJR557 / en-tête figé) est rejoué et doit
+  en 400 (contrats QJR588 / QJR557) est rejoué et doit
   répondre 400 ; dans tous les cas le devis relu est identique.
 
 Test-du-test : retirer la garde de ``conception_electrique`` (POST) ⇒
@@ -51,6 +51,10 @@ GARDEES_409 = {
     'offres_tailles_regenerer': [('post', {})],
     'overrides': [('patch', {}), ('delete', {})],
     'destroy': [('delete', {})],
+    # CI #997 — en-tête figé : garde ``_gardes_mise_a_jour`` (même prédicat
+    # ENTETE), refus d'état 409 {statut} — plus 400.
+    'partial_update': [('patch', {'note': 'Retouche'})],
+    'update': [('put', {'note': 'Retouche'})],
 }
 
 #: Refus HISTORIQUES en 400 (même prédicat, code conservé par contrat) :
@@ -59,8 +63,6 @@ REFUS_400 = {
     'reappliquer_lead': [('post', {})],   # QJR588 400 devis_fige
     'acquitter_derive': [('post', {})],   # QJR588 400 devis_fige
     'offres_tailles_appliquer': [('post', {'cle': 'recommande'})],  # QJR557
-    'partial_update': [('patch', {'note': 'Retouche'})],  # 400 {statut}
-    'update': [('put', {'note': 'Retouche'})],  # 400 (validation / figé)
 }
 
 #: Écritures LÉGITIMES sur un devis accepté (elles ne modifient pas son
