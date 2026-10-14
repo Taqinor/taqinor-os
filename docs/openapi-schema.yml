@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4804, operations: 7556, components: 3480}
+counts: {paths: 4808, operations: 7560, components: 3483}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3526,6 +3526,7 @@ operations:
 - post /api/django/ventes/devis/{id}/acquitter-derive/ -> django_ventes_devis_acquitter_derive_create
 - post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
+- post /api/django/ventes/devis/{id}/avenant/demander-signature/ -> django_ventes_devis_avenant_demander_signature_create
 - get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
 - post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
 - post /api/django/ventes/devis/{id}/contacter-superieur/ -> django_ventes_devis_contacter_superieur_create
@@ -3563,6 +3564,7 @@ operations:
 - get /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_retrieve
 - patch /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_partial_update
 - post /api/django/ventes/devis/{id}/pdf-partage/ -> django_ventes_devis_pdf_partage_create
+- post /api/django/ventes/devis/{id}/prix-negocie/ -> django_ventes_devis_prix_negocie_create
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
 - post /api/django/ventes/devis/{id}/reappliquer-lead/ -> django_ventes_devis_reappliquer_lead_create
@@ -7307,6 +7309,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/acquitter-derive/ -> v1_ventes_devis_acquitter_derive_create
 - post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
+- post /api/v1/ventes/devis/{id}/avenant/demander-signature/ -> v1_ventes_devis_avenant_demander_signature_create
 - get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
 - post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
 - post /api/v1/ventes/devis/{id}/contacter-superieur/ -> v1_ventes_devis_contacter_superieur_create
@@ -7344,6 +7347,7 @@ operations:
 - get /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_retrieve
 - patch /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_partial_update
 - post /api/v1/ventes/devis/{id}/pdf-partage/ -> v1_ventes_devis_pdf_partage_create
+- post /api/v1/ventes/devis/{id}/prix-negocie/ -> v1_ventes_devis_prix_negocie_create
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
 - post /api/v1/ventes/devis/{id}/reappliquer-lead/ -> v1_ventes_devis_reappliquer_lead_create
@@ -10014,6 +10018,7 @@ components:
 - DevisAtomicRequest
 - DevisAutoRequestRequest
 - DevisAutoResponse
+- DevisAvenantSignatureReponse
 - DevisCompositionResponse
 - DevisConceptionElectriqueRequestRequest
 - DevisConceptionElectriqueResponse
@@ -10070,6 +10075,8 @@ components:
 - DevisPdfPartageResponse
 - DevisPrefillSiteResponse
 - DevisPreset
+- DevisPrixNegocieReponse
+- DevisPrixNegocieRequestRequest
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
 - DevisRequest

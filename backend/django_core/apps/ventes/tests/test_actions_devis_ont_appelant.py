@@ -32,8 +32,9 @@ MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
 #: ``economie`` (views/economie.py) + ``economie_pompage``
 #: (views/economie_pompage.py, AGR206) + ``economie_ci``
 #: (views/economie_ci.py, CIQ210) + ``facturer`` (VNT31, api-only jusqu'à
-#: l'écran VNT45).
-NB_ACTIONS = 60
+#: l'écran VNT45) + ``prix-negocie`` et ``avenant/demander-signature``
+#: (VNT60, api-only jusqu'au panneau de vente VNT75/VNT79).
+NB_ACTIONS = 62
 
 
 def _vues_devis():

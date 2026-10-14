@@ -260,3 +260,75 @@ class ReviserDevisService(TestCase):
         v2.refresh_from_db()
         self.assertEqual(v2.statut, Devis.Statut.EXPIRE)
         self._assert_v1_reactivee(v1, bc)
+
+    # ── VNT60 — POST prix-negocie / avenant/demander-signature ─────────────
+
+    def _api_role(self, nom, permissions):
+        role = Role.objects.create(
+            company=self.company, nom=nom, permissions=list(permissions))
+        return _api(User.objects.create_user(
+            username=f'vnt60_{nom.split()[0].lower()}', password='x',
+            role=role, role_legacy='normal', company=self.company))
+
+    def _prix_negocie(self, devis, api=None, **corps):
+        return (api or self.api).post(
+            f'/api/django/ventes/devis/{devis.id}/prix-negocie/', corps,
+            format='json')
+
+    def test_vnt60_commercial_et_technicien_responsable_403(self):
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS)
+        v1 = self._devis(Devis.Statut.ACCEPTE)
+        for nom, perms in (('Commercial VNT60', COMMERCIAL_PERMISSIONS),
+                           ('Technicien responsable VNT60',
+                            TECHNICIEN_RESP_PERMISSIONS)):
+            with self.subTest(role=nom):
+                r = self._prix_negocie(v1, api=self._api_role(nom, perms),
+                                       prix_ttc='10800', mode='apercu')
+                self.assertEqual(r.status_code, 403, r.content)
+        v1.refresh_from_db()
+        self.assertTrue(v1.is_active)
+
+    def test_vnt60_responsable_apercu_200_appliquer_201(self):
+        v1 = self._devis(Devis.Statut.ACCEPTE)
+        r = self._prix_negocie(v1, prix_ttc='10800', mode='apercu')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['remise_pct'], '10.00')
+        self.assertEqual(r.data['devis_v2']['id'], None)
+        self.assertNotIn('_remise', r.data)
+        self.assertFalse(self._v2_de(v1).exists())
+        r = self._prix_negocie(v1, prix_ttc='10800', mode='appliquer')
+        self.assertEqual(r.status_code, 201, r.content)
+        v2 = Devis.objects.get(pk=r.data['devis_v2']['id'])
+        self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+        self.assertEqual(v2.remise_globale, Decimal('10.00'))
+        # Double clic : 409 au format de VNT24 (successeur).
+        r = self._prix_negocie(v1, prix_ttc='10800', mode='appliquer')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.data['code'], 'version_remplacee')
+        self.assertEqual(r.data['successeur']['id'], v2.pk)
+
+    def test_vnt60_demander_signature_deux_fois_une_tache_meme_lien(self):
+        from apps.crm.models import Lead
+        from apps.crm.receivers_cadence import LIBELLE_FAIRE_SIGNER_AVENANT
+        lead = Lead.objects.create(company=self.company, nom='Lead VNT60')
+        v1 = self._devis(Devis.Statut.ACCEPTE)
+        Devis.objects.filter(pk=v1.pk).update(lead=lead)
+        r = self._prix_negocie(v1, prix_ttc='10800', mode='appliquer')
+        self.assertEqual(r.status_code, 201, r.content)
+        url = (f"/api/django/ventes/devis/{r.data['devis_v2']['id']}/"
+               'avenant/demander-signature/')
+        r1 = self.api.post(url, {}, format='json')
+        r2 = self.api.post(url, {}, format='json')
+        self.assertEqual(r1.status_code, 200, r1.content)
+        self.assertEqual(r2.status_code, 200, r2.content)
+        self.assertEqual(r1.data['share_link'], r2.data['share_link'])
+        self.assertIn('/proposition/', r1.data['share_link'])
+        self.assertEqual(r1.data['tache_id'], r2.data['tache_id'])
+        self.assertEqual(lead.relance_etapes.filter(
+            libelle=LIBELLE_FAIRE_SIGNER_AVENANT).count(), 1)
+        # Un devis qui n'est pas un avenant : 409, aucune tâche.
+        r = self.api.post(
+            f'/api/django/ventes/devis/{v1.id}/avenant/demander-signature/',
+            {}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)

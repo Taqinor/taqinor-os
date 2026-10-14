@@ -65,6 +65,15 @@
       ]
     },
     {
+      "nom": "avenant_demander_signature",
+      "url_path": "avenant/demander-signature",
+      "url_name": "avenant-demander-signature",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
       "nom": "composition",
       "url_path": "composition",
       "url_name": "composition",
@@ -360,6 +369,15 @@
       ]
     },
     {
+      "nom": "prix_negocie",
+      "url_path": "prix-negocie",
+      "url_name": "prix-negocie",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
       "nom": "proforma_pdf",
       "url_path": "proforma-pdf",
       "url_name": "proforma-pdf",
@@ -571,6 +589,7 @@
     "atomic",
     "authentication_classes",
     "auto",
+    "avenant_demander_signature",
     "check_object_permissions",
     "check_permissions",
     "check_throttles",
@@ -661,6 +680,7 @@
     "permission_classes",
     "permission_denied",
     "prefill_site",
+    "prix_negocie",
     "proforma_pdf",
     "proposal",
     "queryset",
