@@ -539,6 +539,96 @@ def _fichiers_valides(case):
                     corps[champ] = nouveau
 
 
+# ── 5b. Un fichier de formulaire porte TOUJOURS un nom de fichier ───────
+# CI #997 (3) — Schemathesis 4.28 (``prepare_multipart_v3``) ne joint le nom de
+# fichier d'un champ ``format: binary`` que si le schéma du corps est EN LIGNE.
+# Dès que ce schéma référence un composant (``$ref`` vers une énumération :
+# ``model`` de records/attachments, ``type_document`` du portail), le
+# regroupeur le range sous ``x-bundled`` et le corps devient ``{'$ref': …}`` :
+# plus de ``properties`` lues, le fichier part SANS nom — Django le lit alors
+# comme un champ texte (« Aucun fichier fourni » / « n'est pas un fichier »)
+# alors que la requête est conforme au schéma. Le nom manquait donc au HARNAIS,
+# pas au serveur : on rend au dépôt le nom (= celui du champ) que le transport
+# aurait posé pour un schéma en ligne, après avoir résolu ce ``$ref`` racine.
+def _schema_corps_resolu(schema):
+    reference = schema.get('$ref') if isinstance(schema, dict) else None
+    if isinstance(reference, str):
+        return (schema.get('x-bundled') or {}).get(
+            reference.rsplit('/', 1)[-1], schema)
+    return schema
+
+
+def _noms_de_fichiers(operation):
+    """Champs ``format: binary`` (ou listes de) du corps multipart déclaré."""
+    for corps in getattr(operation, 'body', None) or ():
+        if not str(getattr(corps, 'media_type', '')).lower().startswith(
+                'multipart/'):
+            continue
+        schema = _schema_corps_resolu(corps.definition.get('schema'))
+        proprietes = schema.get('properties') if isinstance(schema, dict) else None
+        noms = set()
+        for nom, propriete in (proprietes or {}).items():
+            cible = propriete.get('items') if (
+                isinstance(propriete, dict)
+                and isinstance(propriete.get('items'), dict)) else propriete
+            if isinstance(cible, dict) and cible.get('format') in (
+                    'binary', 'base64'):
+                noms.add(nom)
+        return noms
+    return set()
+
+
+def _avec_noms_de_fichier(preparer):
+    """``prepare_multipart`` de Schemathesis, dont les parts d'OCTETS d'un champ
+    binaire déclaré reçoivent leur nom de fichier (``(None, octets)`` →
+    ``(champ, octets)``). Les autres parts sont rendues telles quelles."""
+    if getattr(preparer, '_noms_de_fichier', False):
+        return preparer
+
+    def preparation(operation, form_data, selected_content_types=None):
+        fichiers, donnees = preparer(
+            operation, form_data, selected_content_types)
+        noms = _noms_de_fichiers(operation) if fichiers else set()
+        if not noms:
+            return fichiers, donnees
+        corriges = []
+        for nom, partie in fichiers:
+            if (nom in noms and isinstance(partie, tuple) and len(partie) >= 2
+                    and partie[0] is None and isinstance(partie[1], bytes)):
+                partie = (nom,) + partie[1:]
+            corriges.append((nom, partie))
+        return corriges, donnees
+
+    preparation._noms_de_fichier = True
+    return preparation
+
+
+def _installer_noms_de_fichier():
+    """Pose le correctif sur chaque adaptateur OpenAPI 3.x ; rend le nombre
+    d'adaptateurs corrigés (0 sans Schemathesis réel : tests du harnais)."""
+    try:
+        import importlib
+        formdata = importlib.import_module(
+            'schemathesis.specs.openapi.adapter.formdata')
+    except ImportError:
+        return 0
+    installes = 0
+    for version in ('v3_0', 'v3_1', 'v3_2'):
+        try:
+            adaptateur = importlib.import_module(
+                f'schemathesis.specs.openapi.adapter.{version}')
+        except ImportError:
+            continue
+        courant = getattr(adaptateur, 'prepare_multipart', None)
+        if courant is getattr(formdata, 'prepare_multipart_v3', None):
+            adaptateur.prepare_multipart = _avec_noms_de_fichier(courant)
+            installes += 1
+    return installes
+
+
+_ADAPTATEURS_CORRIGES = _installer_noms_de_fichier()
+
+
 # ── 6. Un corps à fichier reste POSITIF après nos substitutions ─────────
 # Schemathesis revalide tout conteneur modifié par un crochet, et déclare
 # INVALIDE tout corps qui porte des octets (``_contains_bytes`` : ``Binary``
