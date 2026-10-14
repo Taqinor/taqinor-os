@@ -240,12 +240,12 @@ class FkViewsSerializersTests(TestCase):
             (CatalogueAchatSerializer, {'categorie': self.cat_b.pk}),
         )
         for cls, corps in cas:
-            with self.subTest(serializer=cls.__name__):
-                self.assertTrue(issubclass(cls, CompanyScopedRelationsMixin))
-                ser = cls(data=corps, partial=True, context=ctx)
-                self.assertTrue(ser.is_valid(), ser.errors)
-                for champ in corps:
-                    self.assertNotIn(champ, ser.validated_data)
+            nom = cls.__name__
+            self.assertTrue(issubclass(cls, CompanyScopedRelationsMixin), nom)
+            ser = cls(data=corps, partial=True, context=ctx)
+            self.assertTrue(ser.is_valid(), (nom, ser.errors))
+            for champ in corps:
+                self.assertNotIn(champ, ser.validated_data, (nom, champ))
 
 
 class CorpsFuzzTests(TestCase):
@@ -286,9 +286,8 @@ class CorpsFuzzTests(TestCase):
                 'kits/remplacer-composant/')] + [
             (m, f'{BASE}/emplacements/{self.emp.id}/') for m in ('put', 'patch')]
         for methode, url in cas:
-            with self.subTest(url=url, methode=methode):
-                r = getattr(self.api, methode)(url, [None, None], format='json')
-                self.assertEqual(r.status_code, 400, r.content)
+            r = getattr(self.api, methode)(url, [None, None], format='json')
+            self.assertEqual(r.status_code, 400, (methode, url, r.content))
 
     def test_fuzz_ids_non_entiers_400(self):
         cas = (
@@ -305,16 +304,14 @@ class CorpsFuzzTests(TestCase):
                                     'quantite_consommee': 1, 'quantite_produite': 1}),
         )
         for fin, corps in cas:
-            with self.subTest(url=fin):
-                r = self.api.post(f'{BASE}/{fin}', corps, format='json')
-                self.assertEqual(r.status_code, 400, r.content)
+            r = self.api.post(f'{BASE}/{fin}', corps, format='json')
+            self.assertEqual(r.status_code, 400, (fin, corps, r.content))
 
     def test_fuzz_modele_bcf_lignes_et_note(self):
         url = f'{BASE}/modeles-bcf/{self.modele.id}/'
         for lignes in ([{'quantite': 0}], [{'produit': self.pa.id}, {'produit': self.pa.id}]):
-            with self.subTest(lignes=lignes):
-                r = self.api.patch(url, {'lignes': lignes}, format='json')
-                self.assertEqual(r.status_code, 400, r.content)
+            r = self.api.patch(url, {'lignes': lignes}, format='json')
+            self.assertEqual(r.status_code, 400, (lignes, r.content))
         r = self.api.put(url, {'nom': 'M', 'note': 0, 'lignes': []}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(f'{BASE}/modeles-bcf/', {
@@ -335,9 +332,8 @@ class CorpsFuzzTests(TestCase):
         r = self.api.put(url, {'nom': 'K', 'sku': 0, 'composants': []}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         for facteur, attendu in (('0', 400), (0.00001, 400), (2, 201)):
-            with self.subTest(facteur=facteur):
-                r = self.api.post(f'{url}dupliquer/', {'facteur_echelle': facteur}, format='json')
-                self.assertEqual(r.status_code, attendu, r.content)
+            r = self.api.post(f'{url}dupliquer/', {'facteur_echelle': facteur}, format='json')
+            self.assertEqual(r.status_code, attendu, (facteur, r.content))
 
     def test_fuzz_prix_fournisseur_texte_strict(self):
         r = self.api.post(f'{BASE}/prix-fournisseurs/', {
@@ -448,16 +444,14 @@ class CorpsFuzzTests(TestCase):
             'mouvements/agregation/?date_max=abc', 'mouvements/?produit=null',
         )
         for fin in refuses:
-            with self.subTest(url=fin):
-                self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 400)
+            self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 400, fin)
         acceptes = (
             'produits/?entite=', 'profils-saisonniers/?actif=true', f'blocages-qualite/?produit={self.pa.id}',
             'budgets-departement/?annee=2026&mois=0&actif=false', 'quais/?actif=1',
             'catalogue-b2b/?offset=0&limite=10', 'mouvements/?date_min=', 'mouvements/agregation/?date_min=',
         )
         for fin in acceptes:
-            with self.subTest(url=fin):
-                self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 200)
+            self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 200, fin)
         r = api.post(f'{BASE}/mouvements/export-xlsx/?date_min=')
         self.assertEqual(r.status_code, 200, r.content)
 
