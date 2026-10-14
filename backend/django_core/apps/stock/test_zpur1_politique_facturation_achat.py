@@ -95,7 +95,7 @@ class TestFacturationDirecteSurCommande(Zpur1Base):
         bc = self._bcf([(self.produit_reception, 5, Decimal('200'))])
         resp = self.api.post(
             f'/api/django/stock/bons-commande-fournisseur/{bc.id}/facturer/')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_idempotence_pas_de_double_facturation(self):
         bc = self._bcf([(self.produit_commande, 10, Decimal('100'))])

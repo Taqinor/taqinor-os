@@ -3958,7 +3958,7 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
         == Produit.PolitiqueFacturationAchat.SUR_COMMANDE
     ]
     if not lignes_eligibles:
-        raise ValueError(
+        raise EtatIncompatible(
             "Aucune ligne « sur commande » sur ce bon de commande — "
             'utilisez la facturation depuis la réception (FG56).')
 
@@ -3966,7 +3966,7 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     if FactureFournisseur.objects.filter(
             company=company, bon_commande=bon_commande,
             note__startswith=marqueur).exists():
-        raise ValueError(
+        raise EtatIncompatible(
             f'Ce bon de commande ({bon_commande.reference}) est déjà '
             'facturé sur commande.')
 
@@ -7280,7 +7280,7 @@ def reviser_bcf(
             BonCommandeFournisseur.Statut.ENVOYE,
             BonCommandeFournisseur.Statut.RECU,
         ):
-            raise ValueError(
+            raise EtatIncompatible(
                 'Seul un BCF envoyé (ou partiellement reçu) peut être '
                 'révisé.')
 
