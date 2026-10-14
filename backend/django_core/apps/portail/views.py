@@ -292,6 +292,16 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     # de collection répond 405 (exclu du schéma).
     http_method_names = ['get', 'post', 'head', 'options']
 
+    @property
+    def allowed_methods(self):
+        # CI #997 fuzz (« Invalid Allow header ») : sur la liste, POST (= ``create``,
+        # 405, exclu du schéma) n'est pas annoncé ; il reste servi pour
+        # l'action de détail ``rapprocher``.
+        methodes = super().allowed_methods
+        if (self.action_map or {}).get('post') == 'create':
+            return [m for m in methodes if m != 'POST']
+        return methodes
+
     def get_queryset(self):
         """AUD146 — Honore `?statut=` : la file « À rapprocher » était fausse.
 
