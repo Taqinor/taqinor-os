@@ -158,7 +158,7 @@ class FG50AcompteAnnulation(TestCase):
 
         r = self._annuler(source, {
             'acompte': {'action': 'transferer', 'facture_cible': cible.id}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('même devis', r.data['detail'])
         # Rien n'a bougé : facture toujours émise, acompte intact.
         source.refresh_from_db()
@@ -181,7 +181,7 @@ class FG50AcompteAnnulation(TestCase):
         )
         r = self._annuler(source, {
             'acompte': {'action': 'transferer', 'facture_cible': cible.id}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('inconnue', r.data['detail'].lower())
         source.refresh_from_db()
         self.assertEqual(source.statut, Facture.Statut.EMISE)
@@ -191,14 +191,14 @@ class FG50AcompteAnnulation(TestCase):
         self._pay(source, '2000')
         r = self._annuler(source, {
             'acompte': {'action': 'transferer', 'facture_cible': source.id}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_transfer_without_acompte_rejected(self):
         source = self._facture()  # pas de paiement
         cible = self._facture(type_f='intermediaire')
         r = self._annuler(source, {
             'acompte': {'action': 'transferer', 'facture_cible': cible.id}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Aucun acompte', r.data['detail'])
 
     # ── 1bis. AUD125 — ce que la cible peut ABSORBER ──
@@ -214,7 +214,7 @@ class FG50AcompteAnnulation(TestCase):
 
         r = self._annuler(source, {
             'acompte': {'action': 'transferer', 'facture_cible': cible.id}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('dépasse le reste à payer', r.data['detail'])
         # RIEN n'a bougé : la source reste émise avec son acompte.
         source.refresh_from_db()
@@ -267,7 +267,7 @@ class FG50AcompteAnnulation(TestCase):
     def test_refund_without_acompte_rejected(self):
         source = self._facture()
         r = self._annuler(source, {'acompte': {'action': 'rembourser'}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Aucun acompte', r.data['detail'])
 
     # ── 3. Comportement historique préservé ──
@@ -289,7 +289,7 @@ class FG50AcompteAnnulation(TestCase):
         self._pay(source, '2000')
         statut_avant = Facture.objects.get(pk=source.pk).statut
         r = self._annuler(source)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'directive_acompte_requise')
         self.assertEqual(r.data['argent_rattache']['paiements'], '2000.00')
         source.refresh_from_db()
@@ -307,12 +307,12 @@ class FG50AcompteAnnulation(TestCase):
     def test_paid_facture_cannot_be_cancelled(self):
         source = self._facture(statut=Facture.Statut.PAYEE)
         r = self._annuler(source, {'acompte': {'action': 'rembourser'}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_already_cancelled_rejected(self):
         source = self._facture(statut=Facture.Statut.ANNULEE)
         r = self._annuler(source, {'acompte': {'action': 'rembourser'}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     # ── VNT10 — le corps vit dans le service du domaine (sans HTTP) ──
     def test_vnt10_service_annuler_facture_sans_http(self):
@@ -529,13 +529,13 @@ class VNT12GarderEnAvance(TestCase):
             date_paiement=timezone.now().date(), mode='virement',
             created_by=self.admin)
         r = self._annuler(f)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'directive_acompte_requise')
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.PAYEE)
         # Rembourser une PAYÉE reste refusé : seule la garde en avance passe.
         r = self._annuler(f, {'acompte': {'action': 'rembourser'}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_affectation_ventilee_defaite(self):
         from apps.ventes.domain.encaissements import (
@@ -562,6 +562,6 @@ class VNT12GarderEnAvance(TestCase):
     def test_garder_sans_argent_refuse(self):
         f = self._facture(f'FAC-{MONTH}-0037')
         r = self._annuler(f, {'acompte': {'action': 'garder_en_avance'}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.EMISE)

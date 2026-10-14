@@ -162,9 +162,12 @@ class SubventionDossierSerializer(ChampsStrictsMixin,
         ]
 
 
-class Regularisation8221Serializer(SameCompanyFKSerializerMixin,
+class Regularisation8221Serializer(ChampsStrictsMixin,
+                                   SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
     """FG271 — régularisation Article 33 (installation existante).
+
+    ENF11 (api-fuzz) — champs STRICTS (``"notes": 0`` converti en silence).
 
     ASEC26 — même borne que le dossier réglementaire sur ``chantier`` ;
     ENF17 — et sur ``devis``."""

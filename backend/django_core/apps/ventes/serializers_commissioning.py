@@ -10,6 +10,7 @@ société reçoit la réponse d'un id absent (400 « objet inexistant »).
 """
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
@@ -37,9 +38,13 @@ class IVCurveCaptureSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class CommissioningTestSerializer(SameCompanyFKSerializerMixin,
+class CommissioningTestSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):
-    """FG274 — fiche de recette IEC 62446 ; ``resultat`` calculé serveur."""
+    """FG274 — fiche de recette IEC 62446 ; ``resultat`` calculé serveur.
+
+    ENF11 (api-fuzz) — ici comme sur la PR de réception et l'attestation RE :
+    champs texte, booléens et décimaux-chaînes STRICTS (``"observations": 0``
+    était converti en ``"0"`` en silence)."""
     same_company_fields = ('chantier', 'devis')
     iv_curves = IVCurveCaptureSerializer(many=True, read_only=True)
     resultat_label = serializers.CharField(
@@ -96,7 +101,7 @@ class AttestationConformiteSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class TestPerformanceReceptionSerializer(SameCompanyFKSerializerMixin,
+class TestPerformanceReceptionSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                          serializers.ModelSerializer):
     """FG278 — PR de réception ; pr_mesure/ecart/verdict dérivés serveur."""
     same_company_fields = ('chantier', 'recette')
@@ -119,7 +124,7 @@ class TestPerformanceReceptionSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class AttestationRESerializer(SameCompanyFKSerializerMixin,
+class AttestationRESerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                               serializers.ModelSerializer):
     """FG287 — attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
     same_company_fields = ('chantier',)

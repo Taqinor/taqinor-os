@@ -92,3 +92,15 @@ class ChargeToitureEndpointTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['verdict'], VERDICT_NON_DECLAREE)
         self.assertNotIn('prix', str(r.data))
+
+    def test_corps_mal_type_400_et_json_seul(self):
+        # ENF11 — un nombre saisi en texte (« None », « abc ») était ignoré
+        # en silence ; un corps non JSON (multipart) est refusé (415).
+        for corps in ({'coefficient_securite': 'None'},
+                      {'charge_admissible_kg_m2': True},
+                      {'couverture': 12}, [1]):
+            with self.subTest(corps=corps):
+                r = self.api.post(URL, corps, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(URL, {'couverture': 'tuile'}, format='multipart')
+        self.assertEqual(r.status_code, 415)

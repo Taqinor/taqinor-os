@@ -5,11 +5,11 @@
     "pourquoi": "VNT4 (PACT10, Groupe VNT, P0) — annulation EN 1 CLIC : une facture à référence LÉGALE est annulée en émettant AUTOMATIQUEMENT son avoir de contre-passation (jamais l'écran qui orchestre). Contrat posé SEUL avant la vue.",
     "regle_reference_legale": "référence LÉGALE (émise, en retard, PAYÉE, ou brouillon REMIS en brouillon / antérieur ATOT27 — 1 en prod) ⇒ avoir de contre-passation de type CORRECTION émis + statut ANNULÉE + liens fermés + événement `facture_annulee`.",
     "regle_brouillon": "référence `BROUILLON-<id>` ⇒ ANNULÉE sans avoir (réponse `avoir: null`).",
-    "payee": "une facture PAYÉE est annulable AVEC une directive `acompte` ; `directive_acompte_requise` (400) reste servi sans directive tant qu'elle porte de l'argent.",
+    "payee": "une facture PAYÉE est annulable AVEC une directive `acompte` ; `directive_acompte_requise` (409) reste servi sans directive tant qu'elle porte de l'argent.",
     "directive_garder_en_avance": "`acompte.action = garder_en_avance` : les paiements détachés sont gardés en avance client (XFAC1) et les affectations ventilées sont défaites ; à côté de `transferer` et `rembourser`.",
     "reponse": "le corps rendu porte `avoir {id, reference, montant}` (montant en texte décimal) ou `null` pour un brouillon ; aucun statut nouveau (la facture passe à `annulee`)."
   },
-  "pourquoi": "AFAC1 (C-AFAC-002, D-AFAC-C5 option a) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`. Une facture qui porte de l'argent (paiements directs, avances ventilées, retenues subies, note de débit ou avoir actifs) ne s'annule JAMAIS sans dire où va cet argent : sans directive `acompte`, le serveur refuse en 400 avec `code: \"directive_acompte_requise\"` et nomme l'argent rattaché ; l'écran impose alors le choix « transférer » (vers une autre facture du même devis) ou « rembourser » (contre-passation). La directive FG50 existe déjà côté serveur ; l'écran ne l'envoyait jamais. Montants en texte décimal.",
+  "pourquoi": "AFAC1 (C-AFAC-002, D-AFAC-C5 option a) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`. Une facture qui porte de l'argent (paiements directs, avances ventilées, retenues subies, note de débit ou avoir actifs) ne s'annule JAMAIS sans dire où va cet argent : sans directive `acompte`, le serveur refuse en 409 (ENF11 : refus d'état ; 400 avant) avec `code: \"directive_acompte_requise\"` et nomme l'argent rattaché ; l'écran impose alors le choix « transférer » (vers une autre facture du même devis) ou « rembourser » (contre-passation). La directive FG50 existe déjà côté serveur ; l'écran ne l'envoyait jamais. Montants en texte décimal.",
   "requete": {
     "acompte": {
       "action": "transferer",

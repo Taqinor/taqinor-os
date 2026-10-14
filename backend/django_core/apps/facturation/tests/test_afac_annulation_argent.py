@@ -111,7 +111,7 @@ class AnnulationArgentTests(TestCase):
         statut = acompte.statut
         self._payer(acompte, '20000')
         r = self._annuler(acompte)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'directive_acompte_requise')
         self.assertIn('detail', r.data)
         self.assertEqual(r.data['argent_rattache']['paiements'], '20000.00')
@@ -140,7 +140,7 @@ class AnnulationArgentTests(TestCase):
         statut = facture.statut
         paiement = self._payer(facture, '50000')
         r = self._annuler(facture)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'directive_acompte_requise')
         # CLAUSE PERSISTANCE — relu en base.
         facture = self._relire(facture)
@@ -164,7 +164,7 @@ class AnnulationArgentTests(TestCase):
         materiel = self._tranche(devis)
         self._avance_ventilee(acompte, '10000')
         r = self._annuler(acompte)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['argent_rattache']['affectations'],
                          '10000.00')
         r = self._annuler(acompte, {'acompte': {
@@ -205,7 +205,7 @@ class AnnulationArgentTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         avoir_id = r.data['id']
         r = self._annuler(acompte)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'avoir_actif')
         self.assertEqual(self._relire(acompte).statut, statut)
         r = self.api.post(f'{BASE}/avoirs/{avoir_id}/annuler/', {},

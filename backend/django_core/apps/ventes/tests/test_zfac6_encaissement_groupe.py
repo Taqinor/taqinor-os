@@ -3,7 +3,7 @@ ZFAC6 — Encaissement groupé : un paiement couvrant plusieurs factures d'un
 même client (Group Payments).
 
 Un montant réparti sur plusieurs factures (FIFO par échéance) crée un
-``Paiement`` par facture, factures d'un autre client refusées (400),
+``Paiement`` par facture, factures d'un autre client refusées (409),
 atomicité (échec → rollback total).
 
 Run :
@@ -136,7 +136,7 @@ class TestEncaissementGroupe(TestCase):
              'mode': 'virement', 'date': str(timezone.now().date()),
              'factures': [self.f1.id, other_facture.id]},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertEqual(Paiement.objects.filter(facture=self.f1).count(), 0)
 
     def test_atomic_rollback_on_invalid_facture_id(self):

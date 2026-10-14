@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import (
-    CompanyScopedPrimaryKeyRelatedField, request_company_id,
+    ChampsStrictsMixin, CompanyScopedPrimaryKeyRelatedField, request_company_id,
 )
 from .models import (
     Devis, LigneDevis, BonCommande, DevisActivity, DevisPreset,
@@ -1507,7 +1507,7 @@ class OffreTailleRegenerationSerializer(serializers.Serializer):
         return value
 
 
-class PlanCommissionSerializer(SameCompanyFKSerializerMixin,
+class PlanCommissionSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
     """WIR281/XSAL6 - plan de commission d'un commercial (ou plan PAR DEFAUT
     de la societe quand ``owner`` est nul).
@@ -1525,8 +1525,8 @@ class PlanCommissionSerializer(SameCompanyFKSerializerMixin,
     ENF17 — ``owner`` d'une AUTRE societe = id absent (400 « objet
     inexistant »), avant la garde de la vue (« Commercial inconnu. »)."""
     same_company_fields = ('owner',)
-    owner_nom = serializers.CharField(
-        source='owner.username', read_only=True, allow_null=True, default=None)
+    owner_nom = serializers.CharField(  # ENF11 : sans default, PATCH la rend
+        source='owner.username', read_only=True, allow_null=True)
     base_display = serializers.CharField(
         source='get_base_display', read_only=True, allow_null=True, default=None)
 

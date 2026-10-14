@@ -101,14 +101,14 @@ class TestAud136CreationDuLien(_Base):
         self.facture.statut = Facture.Statut.ANNULEE
         self.facture.save(update_fields=['statut'])
         resp = self.api.post(self._url(), {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertFalse(PaymentLink.objects.exists())
 
     def test_une_facture_payee_n_obtient_pas_de_lien(self):
         self.facture.statut = Facture.Statut.PAYEE
         self.facture.save(update_fields=['statut'])
         resp = self.api.post(self._url(), {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertFalse(PaymentLink.objects.exists())
 
     def test_un_lien_perime_est_ferme_et_un_neuf_est_emis(self):

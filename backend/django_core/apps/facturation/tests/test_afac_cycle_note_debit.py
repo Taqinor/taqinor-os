@@ -122,7 +122,7 @@ class CycleNoteDebitTests(TestCase):
         refus = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/annuler/', {},
             format='json')
-        self.assertEqual(refus.status_code, 400, refus.data)
+        self.assertEqual(refus.status_code, 409, refus.data)
         self.assertEqual(refus.data['code'], 'note_debit_active')
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, Facture.Statut.EMISE)

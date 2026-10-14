@@ -220,13 +220,14 @@ class FactureCycleActionsMixin:
         activity.log_facture_marquee_payee(facture, request.user, motif)
         return Response(FactureSerializer(facture).data)
 
-    @extend_schema(request=D.FactureAnnulerRequest, responses=D.FactureAnnulee)
+    @extend_schema(request=D.FactureAnnulerRequest, responses=D.FactureAnnulee,
+                   extensions=D.CORPS_ANNULER_CIBLE_SI_TRANSFERT)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=PEUT_ANNULER)
     def annuler(self, request, pk=None):
         """Annule une facture — délégué mince (VNT10) : le corps vit dans
         ``domain/annulation_facture.annuler_facture`` (FG50, AFAC12, AFAC23,
-        YEVNT6) ; un refus y lève ``AnnulationRefusee`` → 400, corps inchangé.
+        YEVNT6) ; un refus y lève ``AnnulationRefusee`` → 409, corps inchangé.
         ENF11 : corps validé par son sérialiseur déclaré (400, jamais 500) ;
         réponse = facture + ``avoir`` (contrat ``facture_annulation.json``).
         """
@@ -234,12 +235,23 @@ class FactureCycleActionsMixin:
             AnnulationRefusee, annuler_facture, avoir_annulation_corps,
         )
         facture = self.get_object()
+        directive = valider_corps(request, D.FactureAnnulerRequest).get(
+            'acompte')
+        # ENF11 — la seule règle d'ENTRÉE d'une directive que le sérialiseur
+        # ne porte pas (publiée en ``anyOf``) : « transferer » exige sa cible.
+        if directive and directive.get('action') == 'transferer' and not (
+                directive.get('facture_cible')):
+            return Response({'detail': 'La facture cible est requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             facture = annuler_facture(
-                facture, user=request.user, directive=valider_corps(
-                    request, D.FactureAnnulerRequest).get('acompte'))
+                facture, user=request.user, directive=directive)
         except AnnulationRefusee as refus:
-            return Response(refus.corps, status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 — le corps est valide : le refus vient de l'ÉTAT (payée,
+            # déjà annulée, note de débit / avoir actif, argent rattaché sans
+            # directive, cible d'un autre devis ou soldée, rien à rendre)
+            # → 409, corps inchangé (``code`` lu par l'écran).
+            return Response(refus.corps, status=status.HTTP_409_CONFLICT)
         return Response({**FactureSerializer(facture).data,
                          'avoir': avoir_annulation_corps(facture)})
 

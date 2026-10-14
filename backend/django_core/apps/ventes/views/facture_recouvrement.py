@@ -59,8 +59,10 @@ class FactureRecouvrementActionsMixin:
         # AUD131 — garde d'état AVANT toute écriture.
         ok, motif = facture_relancable(facture)
         if not ok:
+            # ENF11 — payée, annulée, brouillon ou rien d'exigible : l'ÉTAT
+            # de la facture s'oppose à la relance → 409.
             return Response({'detail': motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # Fondateur 05/10/2026 — les 3 niveaux par défaut existent toujours
         # (créés seulement si la société n'en a aucun) : le `niveau` posté
         # (ORDRE, cf. RelancerFactureSerializer) se résout donc toujours.

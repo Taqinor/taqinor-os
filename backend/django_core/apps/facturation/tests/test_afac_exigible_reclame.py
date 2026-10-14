@@ -85,7 +85,7 @@ class ExigibleReclameTests(TestCase):
         from apps.ventes.models import PaymentLink
         self._payer('90000')
         r = self._lien()
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn("Rien d'exigible maintenant", r.data['detail'])
         self.assertFalse(PaymentLink.objects.filter(
             facture=self.facture).exists())
@@ -101,7 +101,7 @@ class ExigibleReclameTests(TestCase):
         self.assertIn('90000.00 MAD', html)
         self.assertNotIn('100000.00 MAD', html)
 
-    def test_lettre_relance_facture_payee_400(self):
+    def test_lettre_relance_facture_payee_409(self):
         from apps.ventes.models import Facture
         Facture.objects.filter(pk=self.facture.pk).update(statut='payee')
         with patch('apps.ventes.utils.pdf._html_to_pdf',
@@ -109,7 +109,7 @@ class ExigibleReclameTests(TestCase):
             r = self.api.get(
                 f'/api/django/ventes/factures/{self.facture.id}/'
                 'lettre-relance-pdf/')
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))
         self.assertIn('relance', r.data['detail'])
         self.assertFalse(rendu.called)
 

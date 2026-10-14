@@ -20,6 +20,21 @@ from ..serializers_facturation import FactureSerializer
 
 logger = logging.getLogger('apps.ventes.views.facture')
 
+#: Refus de ``consolider_factures`` qui signifie « ressource introuvable ».
+_DEVIS_INTROUVABLES = 'Un ou plusieurs devis introuvables.'
+
+
+def _statut_refus_consolidation(detail):
+    """404 pour des devis inconnus de la société ; les autres refus restent
+    des 400 — la consolidation est l'une des quatre PORTES de facturation,
+    dont les refus partagent un seul statut (ATOT, VNT65)."""
+    motif = detail.get('devis_ids') if isinstance(detail, dict) else None
+    if isinstance(motif, (list, tuple)):
+        motif = motif[0] if motif else None
+    if str(motif or '') == _DEVIS_INTROUVABLES:
+        return status.HTTP_404_NOT_FOUND
+    return status.HTTP_400_BAD_REQUEST
+
 
 class FactureLotActionsMixin:
     """Les actions qui portent sur plusieurs factures à la fois."""
@@ -54,7 +69,8 @@ class FactureLotActionsMixin:
             self.get_queryset())))
 
     @extend_schema(request=D.ConsoliderRequest,
-                   responses={201: FactureSerializer})
+                   responses={201: FactureSerializer},
+                   extensions=D.CORPS_DEVIS_IDS_UNIQUES)
     @action(detail=False, methods=['post'], url_path='consolider',
             permission_classes=[IsResponsableOrAdmin])
     def consolider(self, request):
@@ -70,13 +86,24 @@ class FactureLotActionsMixin:
         except (TypeError, ValueError):
             return Response({'detail': 'devis_ids invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 — ids publiés uniques et positifs : un doublon (consolidait
+        # deux fois le même devis) ou un id < 1 est une erreur d'ENTRÉE.
+        if len(set(devis_ids)) != len(devis_ids) or any(
+                i < 1 for i in devis_ids):
+            return Response(
+                {'devis_ids': 'Identifiants de devis distincts et '
+                              'positifs attendus.'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             facture = consolider_factures(
                 company=request.user.company, devis_ids=devis_ids,
                 user=request.user, created_by=request.user,
             )
         except ValidationError as exc:
-            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 — devis inconnus de la société : 404 (un id inconnu
+            # n'est pas une donnée invalide).
+            return Response(exc.detail, status=_statut_refus_consolidation(
+                exc.detail))
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
 

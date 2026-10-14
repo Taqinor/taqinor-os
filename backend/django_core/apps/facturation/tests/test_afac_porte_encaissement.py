@@ -86,7 +86,7 @@ class PorteEncaissementTests(TestCase):
         from apps.ventes.models import Facture
         f = self._facture(Facture.Statut.BROUILLON)
         r = self._payer(f)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('non émise', r.data['detail'])
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.BROUILLON)
@@ -95,13 +95,13 @@ class PorteEncaissementTests(TestCase):
     def test_annulee_enregistrer_paiement_refuse(self):
         from apps.ventes.models import Facture
         f = self._facture(Facture.Statut.ANNULEE)
-        self.assertEqual(self._payer(f).status_code, 400)
+        self.assertEqual(self._payer(f).status_code, 409)
         self.assertEqual(self._nb_paiements(f), 0)
 
     def test_acompte_j0_enregistrer_paiement_refuse(self):
         f = self._acompte_domicile_signe_aujourdhui()
         r = self._payer(f)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         seuil = (timezone.localdate() + timedelta(days=7)).strftime('%d/%m/%Y')
         self.assertIn(f'Acompte non encaissable avant le {seuil}',
                       r.data['detail'])
@@ -147,7 +147,7 @@ class PorteEncaissementTests(TestCase):
         for f in (self._facture(Facture.Statut.BROUILLON),
                   self._acompte_domicile_signe_aujourdhui()):
             r = self.api.post(f'{BASE}{f.id}/lien-paiement/')
-            self.assertEqual(r.status_code, 400, r.data)
+            self.assertEqual(r.status_code, 409, r.data)
             self.assertFalse(PaymentLink.objects.filter(facture=f).exists())
 
     # ── abandonner-solde ────────────────────────────────────────────────

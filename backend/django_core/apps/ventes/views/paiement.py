@@ -347,7 +347,10 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         parameters=[OpenApiParameter('facture_id', OpenApiTypes.INT,
                                      OpenApiParameter.PATH)],
         request=PaiementAvecRetenueEntreeSerializer,
-        responses={201: D.PaiementAvecRetenueResponse})
+        responses={201: D.PaiementAvecRetenueResponse},
+        # ENF11 — montant publié strictement positif (« Le montant doit être
+        # positif. »), comme le sérialiseur d'entrée le valide (min 0.01).
+        extensions=D.CORPS_MONTANT_POSITIF)
     @action(detail=False, methods=['post'],
             url_path=r'factures/(?P<facture_id>[^/.]+)/paiement-avec-retenue',
             permission_classes=[IsResponsableOrAdmin])

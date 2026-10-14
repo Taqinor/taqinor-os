@@ -67,6 +67,26 @@ class ExportFinInclusiveTests(TestCase):
             period_bounds({'start': '2026-09-01', 'end': '2026-09-30'}),
             (date(2026, 9, 1), date(2026, 10, 1)))
 
+    def test_period_bounds_parametre_renseigne_mal_forme_refuse(self):
+        # ENF11 — vide = non renseigné ; renseigné, il a la forme publiée,
+        # même quand un autre paramètre l'emporte (``start`` seul ignoré).
+        from apps.ventes.exports import period_bounds
+        self.assertEqual(period_bounds({'start': '', 'end': ''}),
+                         period_bounds({}))
+        for params in ({'start': 'abc'}, {'end': '2026-9-1'},
+                       {'month': '2026-13'}, {'quarter': '2026-Q5'},
+                       {'start': '2026-09-01', 'end': '2026-09-30',
+                        'month': 'x'}):
+            with self.subTest(params=params):
+                with self.assertRaises(ValueError):
+                    period_bounds(params)
+        r = self.api.get('/api/django/ventes/etats/analyse-facturation/'
+                         '?start=')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.get('/api/django/ventes/etats/analyse-facturation/'
+                         '?debut=abc&start=2026-09-01&end=2026-09-30')
+        self.assertEqual(r.status_code, 400, r.data)
+
     def test_analyse_facturation_fin_incluse(self):
         r = self.api.get('/api/django/ventes/etats/analyse-facturation/'
                          '?debut=2026-09-01&fin=2026-09-30')

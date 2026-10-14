@@ -125,6 +125,30 @@ class TestParametrageRelanceClientAPI(TestCase):
         param = ParametrageRelanceClient.objects.get(client=self.client_a)
         self.assertEqual(param.company_id, self.company.id)
 
+    def test_client_deja_parametre_409(self):
+        # ENF11 — doublon refusé par l'unicité DRF : 409 unique_conflict.
+        url = '/api/django/ventes/parametrages-relance-client/'
+        api = self._api(self.resp)
+        corps = {'client': self.client_a.id, 'mode': 'auto'}
+        self.assertEqual(api.post(url, corps, format='json').status_code, 201)
+        resp = api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(ParametrageRelanceClient.objects.filter(
+            client=self.client_a).count(), 1)
+
+    def test_patch_rend_responsable_username_meme_sans_responsable(self):
+        # ENF11 (api-fuzz « Response violates schema ») — un PATCH partiel
+        # sautait ``responsable_username`` (source pointillée + default) ;
+        # la clé est servie, nulle, comme sur le GET.
+        param = ParametrageRelanceClient.objects.create(
+            company=self.company, client=self.client_a, mode='auto')
+        resp = self._api(self.resp).patch(
+            f'/api/django/ventes/parametrages-relance-client/{param.id}/',
+            {'mode': 'auto'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('responsable_username', resp.data)
+        self.assertIsNone(resp.data['responsable_username'])
+
     def test_mes_relances_filters_by_responsable(self):
         ParametrageRelanceClient.objects.create(
             company=self.company, client=self.client_a,

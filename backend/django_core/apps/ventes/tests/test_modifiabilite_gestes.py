@@ -278,7 +278,7 @@ class UneLigneNeChangePasDeDevis(_Base):
         ligne = a.lignes.get()
         r = self.api.patch(f'/api/django/ventes/devis-lignes/{ligne.id}/',
                            {'devis': b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('devis', r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.devis_id, a.id)
@@ -288,7 +288,7 @@ class UneLigneNeChangePasDeDevis(_Base):
         ligne = devis.lignes.get()
         r = self.api.patch(f'/api/django/ventes/devis-lignes/{ligne.id}/',
                            {'quantite': '2'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('devis', r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.quantite, Decimal('10'))

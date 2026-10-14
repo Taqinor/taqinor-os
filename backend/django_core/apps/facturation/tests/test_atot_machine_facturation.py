@@ -235,7 +235,7 @@ class MachineFacturation(RuleBasedStateMachine):
         f = actives[rang % len(actives)]
         r = self.api.post(f'{BASE}/factures/{f.id}/annuler/', {},
                           format='json')
-        self._verifier_reponse(r, (200, 400))
+        self._verifier_reponse(r, (200, 400, 409))
 
     @rule(rang=st.integers(min_value=0, max_value=5))
     def avoir_total(self, rang):

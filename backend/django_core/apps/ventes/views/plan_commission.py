@@ -31,10 +31,11 @@ from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
+from core.champs_stricts import entier_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import PlanCommission
@@ -47,8 +48,23 @@ VRAI = {'1', 'true', 'True', 'oui', 'vrai'}
 FAUX = {'0', 'false', 'False', 'non', 'faux'}
 
 
+#: ENF11 — le barème suit la base (``PlanCommissionSerializer.validate``) :
+#: « par_kwc » exige ``montant_par_kwc``, les bases au pourcentage exigent
+#: ``taux_pct`` (non nuls, non vides) — publié sur la création et le PUT.
+_BAREME_SELON_BASE = D.corps_resserre({'anyOf': [
+    {'properties': {'base': {'enum': ['par_kwc']},
+                    'montant_par_kwc': {'type': 'string', 'minLength': 1}},
+     'required': ['montant_par_kwc']},
+    {'properties': {'base': {'enum': ['ca_devis_signe', 'marge_interne']},
+                    'taux_pct': {'type': 'string', 'minLength': 1}},
+     'required': ['taux_pct']},
+]})
+
+
 @extend_schema_view(list=extend_schema(
-    parameters=[qstr('owner', desc='id du commercial ; vide = plans par défaut.'), qstr('actif', desc='1/0.')]))
+    parameters=[qstr('owner', desc='id du commercial ; vide = plans par défaut.'), qstr('actif', desc='1/0.')]),
+    create=extend_schema(extensions=_BAREME_SELON_BASE),
+    update=extend_schema(extensions=_BAREME_SELON_BASE))
 class PlanCommissionViewSet(CompanyScopedModelViewSet):
     """XSAL6 — CRUD des plans de commission de la société.
 
@@ -116,17 +132,20 @@ class PlanCommissionViewSet(CompanyScopedModelViewSet):
         from ..selectors import resoudre_plan_commission
 
         company = request.user.company
-        owner_id = request.query_params.get('owner') or None
+        # ENF11 — ``?owner=`` publié entier : illisible = 400 ; un id bien
+        # formé mais inconnu de la société (``0`` compris) = 404, comme
+        # n'importe quelle ressource introuvable — jamais un 400.
+        owner_id = entier_ou_400(request.query_params.get('owner'), 'owner')
         owner = None
-        if owner_id:
+        if owner_id is not None:
             # Le commercial est résolu DANS la société du demandeur : un id
-            # étranger se comporte comme « aucun commercial », jamais comme un
-            # accès à une autre société.
+            # étranger répond comme un id inexistant.
             from django.contrib.auth import get_user_model
             owner = get_user_model().objects.filter(
-                pk=owner_id, company=company).first()
+                pk=owner_id, company=company).first() if (
+                    0 < owner_id < 2 ** 31) else None
             if owner is None:
-                raise ValidationError({'owner': 'Commercial inconnu.'})
+                raise NotFound('Commercial inconnu.')
 
         plan = resoudre_plan_commission(company, owner)
         if plan is None:

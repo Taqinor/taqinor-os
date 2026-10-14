@@ -316,7 +316,7 @@ class TestSurPaiementGuard(TestCase):
 
     def test_overpayment_rejected(self):
         r = self._pay('6000')  # > 5 100
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
         self.assertIn('dépasse', r.data['detail'])
         self.assertEqual(Paiement.objects.count(), 0)
 
@@ -328,5 +328,12 @@ class TestSurPaiementGuard(TestCase):
     def test_partial_then_overpayment_rejected(self):
         self.assertEqual(self._pay('3000').status_code, 201)
         r = self._pay('3000')  # reste 2 100 → refusé
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
         self.assertEqual(Paiement.objects.count(), 1)
+
+    def test_montant_nul_est_une_erreur_d_entree_400(self):
+        # ENF11 — le montant est publié strictement positif : « 0 » est une
+        # donnée invalide (400), le sur-paiement un refus d'état (409).
+        r = self._pay('0')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(Paiement.objects.count(), 0)
