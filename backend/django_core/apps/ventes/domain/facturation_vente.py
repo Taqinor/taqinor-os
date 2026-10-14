@@ -475,7 +475,7 @@ def _facturer_complete(devis, plan, *, user, remplacer_brouillons, libelle):
             'deja_facture',
             'Cette vente est déjà facturée par '
             + ', '.join(f.reference for f in emises)
-            + ' : une facture complète ne peut plus être créée.')
+            + ' : une facture complète ne peut plus être créée (corrigez par un avoir).')
     brouillons = [f for f in factures if f.statut == STATUT_BROUILLON]
     if brouillons and not remplacer_brouillons:
         raise _conflit(
