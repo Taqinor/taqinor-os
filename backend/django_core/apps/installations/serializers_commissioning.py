@@ -136,6 +136,8 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         """CIQ626 — ``{essai: instrument_id}`` ; chaque instrument doit
         appartenir à l'outillage de la société (jamais une autre société)."""
         from apps.outillage.models import Outillage
+        if value is None:
+            return {}   # CI #997 : null publié = aucun instrument
         if not isinstance(value, dict):
             raise serializers.ValidationError(
                 "Format attendu : {essai: identifiant d'instrument}.")
