@@ -1,0 +1,42 @@
+---
+/**
+ * VNT72 — bandeau « Avenant à <V1> — nouveau prix » (à signer) ou confirmation
+ * (signé), sur la page publique /proposition. Ne lit que la clé `avenant` du
+ * contrat `proposal_data` via `lib/avenant.ts` ; absente → rien n'est rendu.
+ */
+import { resolveAvenant } from '../../lib/avenant';
+
+interface Props {
+  data: unknown;
+}
+
+const avenant = resolveAvenant(Astro.props.data);
+const ref = avenant?.reference ?? '';
+const frSigner = ref ? `Avenant à ${ref} — nouveau prix` : 'Avenant — nouveau prix';
+const enSigner = ref ? `Amendment to ${ref} — new price` : 'Amendment — new price';
+const arSigner = ref ? `ملحق للعرض ${ref} — سعر جديد` : 'ملحق — سعر جديد';
+const frSigne = `Avenant signé le ${avenant?.signeLe ?? ''} ✓`;
+const enSigne = `Amendment signed on ${avenant?.signeLe ?? ''} ✓`;
+const arSigne = `تم توقيع الملحق بتاريخ ${avenant?.signeLe ?? ''} ✓`;
+---
+
+{avenant && (
+  <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8" data-avenant={avenant.etat}
+    role={avenant.etat === 'signe' ? 'status' : 'region'} aria-label="Avenant">
+    <div class="cine-card rounded-xl p-5 sm:p-6" style="border-color: rgb(232 181 74 / 0.4)">
+      {avenant.etat === 'a_signer' ? (
+        <>
+          <p class="fig text-xl text-brass-300" data-i18n data-fr={frSigner} data-en={enSigner} data-ar={arSigner}>{frSigner}</p>
+          <p class="v2-body mt-1" data-i18n
+            data-fr="Le prix a été renégocié : signez cet avenant pour valider la nouvelle version."
+            data-en="The price has been renegotiated: sign this amendment to confirm the new version."
+            data-ar="تمت إعادة التفاوض على السعر: وقّعوا هذا الملحق لاعتماد النسخة الجديدة.">
+            Le prix a été renégocié : signez cet avenant pour valider la nouvelle version.
+          </p>
+        </>
+      ) : (
+        <p class="fig text-xl text-brass-300" data-i18n data-fr={frSigne} data-en={enSigne} data-ar={arSigne}>{frSigne}</p>
+      )}
+    </div>
+  </section>
+)}

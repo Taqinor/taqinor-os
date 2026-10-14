@@ -386,6 +386,9 @@ const LUES_HORS_RENOMMAGE: Readonly<Record<string, string>> = {
   'accepte_par_nom': 'Lue, mais l’échantillon porte la chaîne VIDE — que le lecteur rend `null`, exactement comme une clé absente : indiscernable par renommage.',
   'date_acceptation': 'Lue, mais l’échantillon porte la chaîne VIDE : `null` avant comme après un renommage, donc indiscernable par renommage.',
   'note_client': 'QJR627 — lue (`resolveNoteClient`, `noteClient` de `lireProposal`, bloc « Note de votre conseiller » de la page), mais l’échantillon porte la chaîne VIDE : indiscernable par renommage. Garde propre : `tests/propositionNoteClient.test.ts`.',
+  'avenant.a_signer': 'VNT72 — lue par `resolveAvenant` (lib/avenant.ts, composant BandeauAvenant de la page) : hors lecteur typé `lireProposal`, et l’échantillon exemple ne permet pas l’exercice par renommage — garde propre : src/lib/avenant.test.ts.',
+  'avenant.remplace.reference': 'VNT72 — lue par `resolveAvenant` (« Avenant à <V1> » du BandeauAvenant) : hors lecteur typé `lireProposal` ; garde propre : src/lib/avenant.test.ts.',
+  'avenant.signe_le': 'VNT72 — lue par `resolveAvenant` (date de la confirmation « Avenant signé le … ») : hors lecteur typé `lireProposal` ; garde propre : src/lib/avenant.test.ts.',
 };
 
 /**
@@ -418,10 +421,6 @@ const NON_LU: Readonly<Record<string, string>> = {
   'niveau_masque[]': 'Liste de ce que le niveau `standard` a retiré : servie au rendu serveur pour l’expliquer au client, hors périmètre du lecteur typé.',
   'resync_apres_envoi': 'Drapeau de resynchronisation après envoi : lu par le frontmatter pour son bandeau, pas par `lireProposal`.',
   // ── QJR536 (contrat QJR501) ──────────────────────────────────────────────
-  // ── VNT61 — l'avenant servi par le serveur, lu par la page avec VNT72 ──
-  'avenant.a_signer': 'VNT61 — vrai tant que le client n’a pas signé l’avenant (V2 acceptée en interne qui remplace une vente acceptée) : servi par le serveur, lu par le composant avenant de la page (VNT72, WEB_PLAN), jamais par le lecteur typé.',
-  'avenant.remplace.reference': 'VNT61 — référence de la version que l’avenant remplace : affichée « Avenant à <V1> » par le composant de VNT72, jamais par le lecteur typé.',
-  'avenant.signe_le': 'VNT61 — horodatage ISO de la signature de l’avenant (null tant que non signé) : lu par la confirmation de VNT72, jamais par le lecteur typé.',
   'remplace_par': 'Version qui remplace ce devis : lue par `resolveRemplacement` / `resolveOfferState` (état « retirée », plus de signature, lien vers la version en vigueur) dans le frontmatter — jamais par le lecteur typé du devis. Garde propre : `tests/propositionRemplacee.test.ts`.',
 
   // ── Les sept blocs à CONTRAT DÉDIÉ (voir `CONTRAT_DEDIE`) ────────────────

@@ -19,6 +19,7 @@ export const prerender = false;
 import Layout from '../../layouts/Layout.astro';
 import OtpLectureForm from '../../components/OtpLectureForm.astro';
 import ChainePrix from '../../components/proposition/ChainePrix.astro';
+import BandeauAvenant from '../../components/proposition/BandeauAvenant.astro';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -2704,6 +2705,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           que vous recevez ». Ce qui disparaît est la répétition, pas
           l'information. */}
 
+      {ok && <BandeauAvenant data={data} />}
       <!-- ── BANDEAU « déjà signé » (si accepté au chargement) ─────────────── -->
       {accepted && (
         <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8">
