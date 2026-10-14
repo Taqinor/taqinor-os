@@ -597,6 +597,13 @@ class SavSlaSettingsSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
             'date_modification',
         ]
         read_only_fields = ['date_modification']
+        # CI #997 (api-fuzz) — ces délais en jours alimentent des ``timedelta`` /
+        # échéances (SLA, alerte, auto-clôture, fenêtre de récidive, avance des
+        # visites) : un entier à 10 chiffres faisait déborder le calcul (500).
+        extra_kwargs = {cle: {'max_value': 3650} for cle in (
+            'sla_response_days', 'sla_resolution_days', 'sla_warning_days',
+            'auto_cloture_jours', 'recidive_fenetre_jours',
+            'visites_avance_jours')}
 
 
 # ── FG82 — Checklist templates ────────────────────────────────────────────────

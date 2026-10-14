@@ -11,6 +11,14 @@ from core.mixins import SameCompanyFKSerializerMixin
 from .models import ContratMaintenance, PrestationContrat
 
 
+#: Bornes publiées des entiers du contrat (CI #997) : 50 ans, 10 ans en jours,
+#: 1000 visites ou déplacements par an, un an en heures.
+DUREE_MOIS_MAX = 600
+JOURS_MAX = 3650
+QUOTA_AN_MAX = 1000
+HEURES_MAX = 8760
+
+
 class _DecimalSansVide(DecimalSouple):
     """Décimal nullable où ``""`` N'EST PAS « non renseigné » (seul ``null`` l'est).
 
@@ -105,6 +113,20 @@ class ContratMaintenanceSerializer(ListesStrictesMixin,
                   'prestations', 'delai_intervention_heures', 'origine',
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
+        # CI #997 (api-fuzz) — bornes PUBLIÉES : ``duree_mois: 2147483646``
+        # faisait déborder l'échéance (date_debut + durée → an > 9999, 500) ;
+        # les délais SLA en jours alimentent un ``timedelta`` (débordement
+        # au-delà de ~2,7 M d'années) ; ``pieces_couvertes_pct`` est un
+        # pourcentage (0-100, l'aide du champ le disait déjà).
+        extra_kwargs = {
+            'duree_mois': {'max_value': DUREE_MOIS_MAX},
+            'sla_response_days': {'max_value': JOURS_MAX},
+            'sla_resolution_days': {'max_value': JOURS_MAX},
+            'visites_incluses_an': {'max_value': QUOTA_AN_MAX},
+            'deplacements_inclus_an': {'max_value': QUOTA_AN_MAX},
+            'pieces_couvertes_pct': {'max_value': 100},
+            'delai_intervention_heures': {'max_value': HEURES_MAX},
+        }
 
     def get_origine(self, obj) -> dict:
         return {'devis_id': obj.origine_devis_id,

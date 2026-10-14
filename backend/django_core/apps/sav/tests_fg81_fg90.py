@@ -134,6 +134,21 @@ class TestSavSlaSettings(TestCase):
         self.assertEqual(sla.sla_resolution_days, 14)
         self.assertTrue(sla.sla_breach_enabled)
 
+    def test_api_delais_en_jours_bornes_400(self):
+        # CI #997 api-fuzz (3e passe) : ces délais alimentent des timedelta
+        # (SLA, alerte, auto-clôture, récidive, avance des visites) ; un entier
+        # à 10 chiffres faisait déborder le calcul. Le schéma publie maximum 3650.
+        for cle in ('sla_response_days', 'sla_resolution_days',
+                    'sla_warning_days', 'auto_cloture_jours',
+                    'recidive_fenetre_jours', 'visites_avance_jours'):
+            r = self.api.post('/api/django/sav/sla-settings/',
+                              {cle: 3651}, format='json')
+            self.assertEqual(r.status_code, 400, (cle, r.content))
+            self.assertIn(cle, r.data)
+            ok = self.api.post('/api/django/sav/sla-settings/',
+                               {cle: 3650}, format='json')
+            self.assertEqual(ok.status_code, 200, (cle, ok.content))
+
     def test_sla_due_at_computed_at_ticket_creation(self):
         """FG81 — sla_due_at = date_ouverture + resolution_days si breach activé."""
         sla = SavSlaSettings.get(self.co)
