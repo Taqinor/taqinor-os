@@ -72,7 +72,13 @@ def _exiger_transition_livraison(liv, cible):
         f"{_VERBES_LIVRAISON.get(cible, 'changer son statut')}.")})
 
 
-@oa.listing(p0=oa.qs('mode_acheminement'), p1=oa.qs('statut'), p2=oa.qd('date_prevue'), p3=oa.qi('depot'), p4=oa.qi('installation'))
+@oa.listing(
+    p0=oa.qs('mode_acheminement'),
+    p1=oa.qs('statut'),
+    p2=oa.qd('date_prevue'),
+    p3=oa.qi('depot'),
+    p4=oa.qi('installation'),
+)
 class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG329 — livraisons planifiées. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `installation`, `statut`, `depot`,
@@ -239,7 +245,10 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             pass
         return self._set_statut(request, Livraison.Statut.ANNULEE)
 
-    @oa.extend_schema(request=oa.body('GenererRetourLivraisonRequete', motif=oa.s()), responses={201: RetourLivraisonSerializer})
+    @oa.extend_schema(
+        request=oa.body('GenererRetourLivraisonRequete', motif=oa.s()),
+        responses={201: RetourLivraisonSerializer},
+    )
     @action(detail=True, methods=['post'], url_path='generer-retour',
             permission_classes=[IsResponsableOrAdmin])
     def generer_retour(self, request, pk=None):

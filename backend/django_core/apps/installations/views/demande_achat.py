@@ -456,7 +456,10 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)
 
-    @oa.extend_schema(request=oa.body('ImporterLignesCsvRequete', fichier=oa.serializers.FileField()), responses={(200, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()), (201, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst())})
+    @oa.extend_schema(
+        request=oa.body('ImporterLignesCsvRequete', fichier=oa.serializers.FileField()),
+        responses={(200, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()), (201, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst())},
+    )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='importer-lignes-csv')
     def importer_lignes_csv(self, request, pk=None):
         """NTP2P40 — Import CSV en masse de ``DemandeAchatLigne``.
