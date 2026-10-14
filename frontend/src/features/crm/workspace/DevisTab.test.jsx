@@ -512,6 +512,62 @@ describe('VNT77 — panneau : Annuler, Supprimer, Modifier le montant', () => {
   })
 })
 
+// VNT78 (D-VNT-2) — « Prix négocié » monté dans le panneau : tête acceptée
+// seulement ; le succès relit le lead, qui sert la V2 acceptée.
+describe('VNT78 — panneau : Prix négocié', () => {
+  const NEGO = documentContrat('ventes', 'devis_prix_negocie')
+  const enCarte = (variante, extra = {}) => ({
+    statut: 'accepte', date_creation: '2026-10-10', chantier: null, is_active: true,
+    vente: exempleContrat('ventes', 'vente_etat', variante).vente, ...extra,
+  })
+
+  it('tête 54 500 avec 15 000 facturés ⇒ aperçu, application, V2 affichée', async () => {
+    ventesApi.prixNegocie.mockImplementation((id, body) => Promise.resolve({
+      data: body.mode === 'apercu' ? NEGO.reponse_apercu_200 : NEGO.reponse_appliquer_201,
+    }))
+    const tete = enCarte('exemple_acompte_paye_solde_a_faire', { id: 318, reference: 'DEV-202610-0010', total_ttc: '54500.00' })
+    const user = userEvent.setup()
+    const { onAction, rerender } = renderTab({ state: leadState({ devis: [tete] }) })
+    await user.click(screen.getByRole('button', { name: 'Prix négocié' }))
+    await user.type(screen.getByLabelText(/Nouveau prix TTC/), '49000')
+    await user.click(screen.getByRole('button', { name: /Voir les effets/ }))
+    expect(await screen.findByLabelText(/Effets du prix négocié/)).toHaveTextContent('10,00 %')
+    await user.click(screen.getByRole('button', { name: /Appliquer le prix négocié/ }))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    expect(ventesApi.prixNegocie).toHaveBeenLastCalledWith(318, { prix_ttc: '49000', mode: 'appliquer' })
+    expect(await screen.findByText(/Version 2 créée/)).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    const v2 = NEGO.reponse_appliquer_201.devis_v2
+    const remplacee = enCarte('exemple_version_remplacee', { id: 318, reference: 'DEV-202610-0010', total_ttc: '54500.00', is_active: false })
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [remplacee, enCarte('exemple', { id: v2.id, reference: v2.reference, total_ttc: '49000.00' })] })}
+          onAction={onAction} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    const panneaux = screen.getAllByTestId('panneau-vente')
+    expect(within(panneaux[0]).getByText(new RegExp(`Remplacé par ${v2.reference}`))).toBeInTheDocument()
+    expect(within(panneaux[0]).queryByRole('button', { name: 'Prix négocié' })).toBeNull()
+    expect(within(panneaux[1]).getByRole('button', { name: 'Prix négocié' })).toBeInTheDocument()
+  })
+
+  it('jamais sur une version remplacée ni pendant une révision', () => {
+    renderTab({
+      state: leadState({
+        devis: [
+          enCarte('exemple_version_remplacee', { id: 1, reference: 'DEV-1', is_active: false }),
+          enCarte('exemple_revision_en_cours', { id: 2, reference: 'DEV-2' }),
+        ],
+      }),
+    })
+    expect(screen.queryByRole('button', { name: 'Prix négocié' })).toBeNull()
+  })
+})
+
 describe('LW22 — WhatsApp multi-devis', () => {
   const devis1 = {
     id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
