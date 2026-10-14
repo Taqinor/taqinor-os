@@ -50,12 +50,6 @@ API accepted schema-violating request|GET /api/django/custom-fields/definitions/
 API accepted schema-violating request|GET /api/django/custom-fields/objects/
 API accepted schema-violating request|GET /api/django/custom-fields/permissions-role/
 API accepted schema-violating request|GET /api/django/entites/entites/
-API accepted schema-violating request|GET /api/django/facturation/avoirs/
-API accepted schema-violating request|GET /api/django/facturation/factures-lignes/
-API accepted schema-violating request|GET /api/django/facturation/factures/
-API accepted schema-violating request|GET /api/django/facturation/niveaux-relance/
-API accepted schema-violating request|GET /api/django/facturation/notes-debit/
-API accepted schema-violating request|GET /api/django/facturation/paiements/
 API accepted schema-violating request|GET /api/django/ged/acls/
 API accepted schema-violating request|GET /api/django/ged/demandes-document/
 API accepted schema-violating request|GET /api/django/ged/depots-publics/
@@ -291,10 +285,6 @@ API accepted schema-violating request|POST /api/django/core/regles/valider/
 API accepted schema-violating request|POST /api/django/core/ui-boutons/
 API accepted schema-violating request|POST /api/django/core/ui-onglets/
 API accepted schema-violating request|POST /api/django/crm/leads/ville-statut/
-API accepted schema-violating request|POST /api/django/facturation/factures/{id}/annuler/
-API accepted schema-violating request|POST /api/django/facturation/factures/{id}/envoyer-email/
-API accepted schema-violating request|POST /api/django/facturation/factures/{id}/exclure-relance/
-API accepted schema-violating request|POST /api/django/facturation/factures/{id}/whatsapp/
 API accepted schema-violating request|POST /api/django/imports/export-object/
 API accepted schema-violating request|POST /api/django/imports/sauvegarde/
 API accepted schema-violating request|POST /api/django/installations/categories-stockage/
@@ -362,7 +352,6 @@ API accepted schema-violating request|PUT /api/django/parametres/unites-mesure/{
 API accepted schema-violating request|PUT /api/django/portail/demandes-ticket-portail/{id}/
 API accepted schema-violating request|PUT /api/django/records/activities/{id}/
 API accepted schema-violating request|PUT /api/django/records/tags/{id}/
-API rejected schema-compliant request|DELETE /api/django/facturation/factures-lignes/{id}/
 API rejected schema-compliant request|DELETE /api/django/stock/categories/{id}/
 API rejected schema-compliant request|DELETE /api/django/stock/emplacements/{id}/
 API rejected schema-compliant request|DELETE /api/django/stock/fournisseurs/{id}/force-delete/
@@ -410,7 +399,6 @@ API rejected schema-compliant request|GET /api/django/ventes/plans-commission/re
 API rejected schema-compliant request|PATCH /api/django/core/ui-boutons/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/vues/{id}/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
-API rejected schema-compliant request|PATCH /api/django/facturation/factures-lignes/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/checklist-etapes/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-tickets/{id}/
@@ -498,20 +486,15 @@ API rejected schema-compliant request|POST /api/django/facturation/factures-lign
 API rejected schema-compliant request|POST /api/django/facturation/factures/bulk/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
 API rejected schema-compliant request|POST /api/django/facturation/factures/encaissement-groupe/
-API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/abandonner-solde/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/annuler/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/creer-note-debit/
-API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/emettre/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/enregistrer-paiement/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/facturer-penalites/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/liberer-retenue/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/lien-paiement/
-API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/marquer-payee/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/
-API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/remettre-brouillon/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/reprendre-abandon/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/retour-client/
-API rejected schema-compliant request|POST /api/django/facturation/niveaux-relance/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/enregistrer-avance/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/
 API rejected schema-compliant request|POST /api/django/ged/annotations/
@@ -763,14 +746,6 @@ Response violates schema|GET /api/django/core/modules/
 Response violates schema|GET /api/django/core/modules/journal/
 Response violates schema|GET /api/django/core/status/
 Response violates schema|GET /api/django/core/vues/
-Response violates schema|GET /api/django/facturation/factures/{id}/arrondi-caisse/
-Response violates schema|GET /api/django/facturation/factures/{id}/emails/
-Response violates schema|GET /api/django/facturation/factures/{id}/historique/
-Response violates schema|GET /api/django/facturation/factures/{id}/paiements/
-Response violates schema|GET /api/django/facturation/factures/{id}/relance-apercu/
-Response violates schema|GET /api/django/facturation/factures/{id}/relances/
-Response violates schema|GET /api/django/facturation/paiements/attestations-ras-en-attente/
-Response violates schema|GET /api/django/facturation/paiements/avances-non-affectees/
 Response violates schema|GET /api/django/installations/chantiers/
 Response violates schema|GET /api/django/installations/chantiers/{id}/
 Response violates schema|GET /api/django/installations/chantiers/{id}/historique/
@@ -818,7 +793,6 @@ Response violates schema|GET /api/django/stock/produits/{id}/
 Response violates schema|GET /api/django/stock/produits/{id}/prix-fournisseurs/
 Response violates schema|PATCH /api/django/automation/approval-delegations/{id}/
 Response violates schema|PATCH /api/django/core/dossiers/{id}/
-Response violates schema|PATCH /api/django/facturation/factures/{id}/
 Response violates schema|PATCH /api/django/installations/chantiers/{id}/
 Response violates schema|PATCH /api/django/installations/checklist-templates/{id}/
 Response violates schema|PATCH /api/django/installations/dossiers-import/{id}/
@@ -838,7 +812,6 @@ Response violates schema|PATCH /api/django/stock/modeles-bcf/{id}/
 Response violates schema|PATCH /api/django/stock/plans-echantillonnage/{id}/
 Response violates schema|PATCH /api/django/stock/produits/{id}/
 Response violates schema|POST /api/django/automation/approval-delegations/
-Response violates schema|POST /api/django/facturation/factures/
 Response violates schema|POST /api/django/installations/chantiers/
 Response violates schema|POST /api/django/installations/chantiers/{id}/annuler/
 Response violates schema|POST /api/django/installations/chantiers/{id}/reactiver/
@@ -865,7 +838,6 @@ Response violates schema|POST /api/django/stock/avoirs-fournisseur/
 Response violates schema|POST /api/django/stock/avoirs-fournisseur/{id}/valider/
 Response violates schema|POST /api/django/stock/factures-fournisseur/
 Response violates schema|POST /api/django/stock/modeles-bcf/
-Response violates schema|PUT /api/django/facturation/factures/{id}/
 Response violates schema|PUT /api/django/installations/chantiers/{id}/
 Response violates schema|PUT /api/django/installations/checklist-templates/{id}/
 Response violates schema|PUT /api/django/installations/dossiers-import/{id}/
@@ -888,7 +860,6 @@ Server error|GET /api/django/stock/produits/analyse-achats/pdf/
 Server error|GET /api/django/stock/produits/expirant-bientot/
 Server error|GET /api/django/stock/produits/previsions-reappro/
 Server error|GET /api/django/ventes/devis/{id}/proposal/
-Server error|POST /api/django/facturation/paiements/enregistrer-avance/
 Server error|POST /api/django/installations/approbations-bcf/approuver/
 Server error|POST /api/django/installations/chantiers/creer-depuis-devis/
 Server error|POST /api/django/installations/lots-prelevement/
@@ -911,9 +882,6 @@ Server error|POST /api/django/stock/revalorisations-stock/
 Server error|POST /api/django/stock/unites-logistiques/
 Server error|POST /api/django/stock/vagues-picking/
 Undocumented Content-Type|GET /api/django/core/workflows/rapport-conformite/
-Undocumented Content-Type|GET /api/django/facturation/avoirs/{id}/telecharger-pdf/
-Undocumented Content-Type|GET /api/django/facturation/factures/{id}/telecharger-pdf/
-Undocumented Content-Type|GET /api/django/facturation/factures/{id}/ubl/
 Undocumented Content-Type|GET /api/django/roles/revue-acces/
 Undocumented Content-Type|GET /api/public/v1/calepinages/{id}/resultat/
 Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
@@ -927,8 +895,6 @@ Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/attestati
 Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/bon-livraison/
 Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/dossier-remise/
 Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/pv-reception/
-Undocumented HTTP status code|POST /api/django/facturation/factures/{id}/creer-avoir/
-Undocumented HTTP status code|POST /api/django/facturation/factures/{id}/envoyer-email/
 Undocumented HTTP status code|POST /api/public/v1/oauth/token/
 Unsupported methods|POST /api/django/core/module-toggles/
 Unsupported methods|TRACE /api/django/core/usage/couts/
@@ -940,14 +906,12 @@ API accepted schema-violating request|GET /api/django/ventes/etats/analyse-factu
 API accepted schema-violating request|GET /api/django/ventes/export-comptable/
 API accepted schema-violating request|GET /api/django/ventes/journal-ventes/
 API accepted schema-violating request|PATCH /api/django/custom-fields/objects/{id}/
-API accepted schema-violating request|PATCH /api/django/facturation/niveaux-relance/{id}/
 API accepted schema-violating request|PATCH /api/django/ventes/attestations-re/{id}/
 API accepted schema-violating request|PATCH /api/django/ventes/recettes-mes/{id}/
 API accepted schema-violating request|PATCH /api/django/ventes/regularisations-8221/{id}/
 API accepted schema-violating request|PATCH /api/django/ventes/tests-pr-reception/{id}/
 API accepted schema-violating request|POST /api/django/custom-fields/objects/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
-API accepted schema-violating request|POST /api/django/facturation/factures/bulk/
 API accepted schema-violating request|POST /api/django/ventes/attestations-re/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/conception-electrique/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/share-link/
@@ -957,13 +921,10 @@ API accepted schema-violating request|POST /api/django/ventes/regularisations-82
 API accepted schema-violating request|POST /api/django/ventes/tests-pr-reception/
 API accepted schema-violating request|POST /api/django/ventes/toiture/charge/
 API accepted schema-violating request|PUT /api/django/custom-fields/objects/{id}/
-API accepted schema-violating request|PUT /api/django/facturation/niveaux-relance/{id}/
 API rejected schema-compliant request|GET /api/django/stock/factures-fournisseur/suggestions-bcf/
 API rejected schema-compliant request|GET /api/django/stock/tache-retour/
 API rejected schema-compliant request|PATCH /api/django/stock/plans-comptage-tournant/{id}/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
-Server error|POST /api/django/facturation/factures/{id}/abandonner-solde/
-Server error|POST /api/django/facturation/factures/consolider/
 Server error|POST /api/django/imports/mapping/
 Server error|POST /api/django/publicapi/ocr-to-crm/
 Server error|POST /api/django/publicapi/webhooks/
@@ -974,7 +935,6 @@ API accepted schema-violating request|PATCH /api/django/core/dossiers/{id}/
 API accepted schema-violating request|PATCH /api/django/identity/service-accounts/{id}/
 API accepted schema-violating request|PATCH /api/django/stock/fournisseurs/{id}/
 API accepted schema-violating request|POST /api/django/core/dossiers/
-API accepted schema-violating request|POST /api/django/facturation/niveaux-relance/
 API accepted schema-violating request|POST /api/django/identity/service-accounts/
 API accepted schema-violating request|POST /api/django/publicapi/keys/
 API accepted schema-violating request|POST /api/django/publicapi/keys/{id}/rotate/
@@ -1009,12 +969,9 @@ API accepted schema-violating request|POST /api/django/stock/unites-logistiques/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/lien-paiement/
 API accepted schema-violating request|POST /api/django/roles/
 API rejected schema-compliant request|POST /api/django/stock/categories-fournisseur/
-Response violates schema|POST /api/django/facturation/factures/{id}/envoyer-email/
 API accepted schema-violating request|PATCH /api/django/records/activity-types/{id}/
 API accepted schema-violating request|PUT /api/django/roles/{id}/
 API accepted schema-violating request|PUT /api/django/stock/unites-logistiques/{id}/
-Server error|POST /api/django/facturation/factures/bulk/
-Server error|POST /api/django/facturation/factures/{id}/lien-paiement/
 Server error|POST /api/django/records/comments/
 API accepted schema-violating request|PATCH /api/django/roles/{id}/
 API accepted schema-violating request|PATCH /api/django/entites/entites/{id}/
@@ -1025,7 +982,6 @@ API accepted schema-violating request|POST /api/django/ventes/plans-commission/
 API accepted schema-violating request|PUT /api/django/entites/entites/{id}/
 API accepted schema-violating request|PUT /api/django/stock/plans-chargement/{id}/
 Server error|POST /api/django/agent/actions/automation-draft/
-Server error|POST /api/django/facturation/factures/{id}/creer-note-debit/
 Server error|POST /api/django/stock/blocages-qualite/lever-quarantaine/
 Server error|POST /api/django/stock/kits/remplacer-composant/
 Server error|POST /api/django/stock/produits/inventaire/
@@ -1077,7 +1033,6 @@ API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{i
 # PR #984, 3e tirage (12/10/2026) — 17 constats PRÉ-EXISTANTS (variance de couverture du job PR : 198 opérations revues au 3e tirage contre 154 au 1er),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
 API rejected schema-compliant request|PUT /api/django/calepinage/parametres/profils-types/
-Server error|POST /api/django/facturation/factures/{id}/retour-client/
 # PR #985, 1er tirage (12/10/2026) — 1 constat PRÉ-EXISTANT (ventes non touchée par la PR ; périmètre élargi par un test ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/ajouter-boq-electrique/
