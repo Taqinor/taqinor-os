@@ -296,7 +296,9 @@ class TestLeadWhatsAppEndpoint(TestCase):
             company=other, reference='DEV-X-1', client=oc)
         resp = self.api.post(
             self._url(), {'devis_ids': [foreign.id]}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-CRM : id bien formé mais hors société/hors lead =
+        # introuvable (404), indiscernable d'un id qui n'existe pas.
+        self.assertEqual(resp.status_code, 404)
 
 
 class TestFactureWhatsAppEndpoint(TestCase):
