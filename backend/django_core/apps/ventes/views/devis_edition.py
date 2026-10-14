@@ -82,7 +82,7 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
     """QJR544 — les gardes d'une mise à jour d'en-tête, en UN point (PATCH
     ``perform_update`` et ``replace-lines`` avec ``entete``) :
 
-    * QJR521 — un devis remplacé / archivé ne se réactive jamais ;
+    * QJR521 — un devis remplacé / archivé ne se réactive jamais (409) ;
     * QJR516 — prédicat de modifiabilité (geste ENTETE), {'statut'} et
       l'exception « désactivation seule » conservés — 409 (refus d'état,
       CI #997), plus 400 ;
@@ -94,9 +94,11 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
 
     Lit le statut, ne l'écrit jamais (règle #4)."""
     from rest_framework.exceptions import ValidationError
+    from core.conflit_etat import ConflitEtat
     if (instance.is_active is False
             and validated_data.get('is_active') is True):
-        raise ValidationError({
+        # CI #997 (3) — corps conforme, devis REMPLACÉ : refus d'état, 409.
+        raise ConflitEtat({
             'is_active': 'Un devis remplacé ou archivé ne se réactive pas.'})
     from ..domain.modifiabilite import ENTETE, verdict
     if not verdict(instance, ENTETE)['modifiable']:
@@ -109,7 +111,6 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
         if not only_deactivation:
             # CI #997 — refus d'ÉTAT (corps conforme, devis figé) : 409,
             # même corps {'statut'} qu'avant.
-            from core.conflit_etat import ConflitEtat
             raise ConflitEtat({
                 'statut': 'Devis figé — révisez-le (reviser) pour le '
                           'modifier.'})
