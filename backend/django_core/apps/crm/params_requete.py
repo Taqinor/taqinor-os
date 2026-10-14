@@ -121,6 +121,17 @@ def liste_ids(donnees, nom='ids'):
         raise ValidationError({nom: 'Une liste d\'identifiants entiers est attendue.'})
 
 
+def corps_objet(request):
+    """Corps de requête GARANTI objet JSON (``.get`` disponible).
+
+    CI #997 (fuzz) — un corps tableau (``[null, null]``) levait
+    ``AttributeError`` (500) dans les actions qui lisent ``request.data.get``
+    (leads/bulk, exports xlsx, réservation publique) : 400 à la place."""
+    if not hasattr(request.data, 'get'):
+        raise ValidationError({'detail': 'Un objet JSON est attendu.'})
+    return request.data
+
+
 def verifier_corps_texte(request, champs):
     """400 si le corps n'est pas un objet ou si l'un de ``champs`` n'est ni
     absent, ni ``null``, ni du texte.
@@ -189,8 +200,7 @@ def _corps_gps():
     """ERR-ENF11-FUZZ-CRM — corps PUBLIÉS et VALIDÉS de ``resoudre-gps`` et
     ``ville-statut`` (``(x or '').strip()`` levait sur un nombre : 500 ;
     ``gps_lat: "abc"`` était avalé). Mêmes noms de composants qu'avant."""
-    from rest_framework import serializers
-
+    from apps.parametres.requetes_strictes import FlottantStrict
     from core.champs_stricts import BooleenStrict, ChaineStricte
     from core.openapi_erreurs import MOTIF_NON_BLANC
 
@@ -203,8 +213,8 @@ def _corps_gps():
                         ville=texte())
     ville = sd.corps(
         'CrmVilleStatutRequest', ville=texte(),
-        gps_lat=serializers.FloatField(required=False),
-        gps_lng=serializers.FloatField(required=False),
+        gps_lat=FlottantStrict(required=False),
+        gps_lng=FlottantStrict(required=False),
         proches=BooleenStrict(required=False))
     #: Au moins un repère NON BLANC : un lien, une adresse ou une ville.
     regle = {'anyOf': [

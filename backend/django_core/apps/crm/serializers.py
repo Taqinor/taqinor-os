@@ -1574,7 +1574,8 @@ class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
 
-class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
+class PointContactSerializer(ChampsStrictsMixin, _LeadEnPorteeMixin,
+                             serializers.ModelSerializer):
     """FG204 — point de contact du parcours multi-touch d'un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -1649,7 +1650,8 @@ class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
 
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────
 
-class SavedViewSerializer(UniciteEn409Mixin, serializers.ModelSerializer):
+class SavedViewSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
+                          serializers.ModelSerializer):
     """LB48 — vue enregistrée personnelle (filtres + disposition d'une page).
 
     ``company`` n'est PAS exposé : toujours posé côté serveur

@@ -17,6 +17,7 @@ comportement réel divergeaient, relevés par le fuzz API (Schemathesis).
 """
 import datetime
 
+from django.core.validators import RegexValidator
 from django.db.models import BooleanField as ModelBooleanField
 from django.db.models import CharField as ModelCharField
 from django.db.models import TextField as ModelTextField
@@ -49,6 +50,22 @@ class DateHeureRfc3339(serializers.DateTimeField):
         return value
 
 
+class IcePublie(RegexValidator):
+    """CI #997 (fuzz « rejected schema-compliant request ») — PUBLIE le motif
+    d'un ICE valide (vide ou 15 chiffres) dans le schéma : sans lui, un texte
+    de 29 chiffres « conforme » (``maxLength`` 30) recevait 400. Ne valide
+    RIEN lui-même : ``ClientSerializer.validate_ice`` normalise la saisie
+    humaine (« ICE : 001 234 … ») puis contrôle les 15 chiffres ; le motif
+    publié n'en est qu'un sous-ensemble strict."""
+
+    def __init__(self):
+        super().__init__(regex=r'^(\d{15})?$', message='ICE invalide.',
+                         code='invalid')
+
+    def __call__(self, value):
+        return None
+
+
 #: ``ModelSerializer.serializer_field_mapping`` avec les booléens stricts.
 MAPPING_BOOLEEN_STRICT = {
     **serializers.ModelSerializer.serializer_field_mapping,
@@ -66,9 +83,10 @@ MAPPING_TEXTE_STRICT = {
     ModelTextField: ChaineStricte,
 }
 
-#: Idem, avec les dates-heures RFC 3339.
+#: Idem, avec les dates-heures RFC 3339. CI #997 (fuzz) — textes ET booléens
+#: stricts aussi (``notes: 0`` d'un rendez-vous devenait ``"0"``, 201).
 MAPPING_DATE_HEURE_RFC3339 = {
-    **serializers.ModelSerializer.serializer_field_mapping,
+    **MAPPING_TEXTE_STRICT,
     ModelDateTimeField: DateHeureRfc3339,
 }
 

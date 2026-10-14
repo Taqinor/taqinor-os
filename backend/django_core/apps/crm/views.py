@@ -18,7 +18,7 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
     CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, RESOUDRE_GPS_REPERE, booleen_param,
-    corps_lu, liste_ids)
+    corps_lu, corps_objet, liste_ids)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1488,7 +1488,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         l'acteur viennent du serveur ; la règle métier (funnel, garde-fous,
         Historique « en masse ») vit dans services.apply_bulk_action."""
         from .fiche_bulk import BULK_ACTIONS, BULK_ADMIN_ONLY, apply_bulk_action
-        op = request.data.get('action')
+        op = corps_objet(request).get('action')
         ids = request.data.get('ids') or []
         # ENF11 (api-fuzz) — `action: {}` (non hachable) levait TypeError (500).
         if not isinstance(op, str) or op not in BULK_ACTIONS:
@@ -1523,7 +1523,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         sélection). Borné à la société de l'utilisateur."""
         from .exports import export_leads_xlsx
         from .fiche_bulk import coerce_id_list
-        raw_ids = request.data.get('ids') or []
+        raw_ids = corps_objet(request).get('ids') or []
         if not isinstance(raw_ids, list) or not raw_ids:
             return Response({'detail': 'Sélectionnez au moins un lead.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -2062,9 +2062,9 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         pour cette page (autre page, autre utilisateur, id inconnu) sont
         silencieusement ignorés — jamais d'erreur pour un id étranger."""
         from django.db import transaction
-        page = request.data.get('page')
+        page = corps_objet(request).get('page')
         ids = liste_ids(request.data, 'ids')
-        if not page or not isinstance(page, str):
+        if not isinstance(page, str) or not page.strip():
             return Response(
                 {'detail': "Paramètres 'page' et 'ids' (liste) requis."},
                 status=status.HTTP_400_BAD_REQUEST)
