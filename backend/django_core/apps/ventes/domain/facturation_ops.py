@@ -180,7 +180,10 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         from .instantanes_facture import figer_a_l_emission
         figer_a_l_emission(facture)
         # VNT21 — sortie de stock U9 (reliquat, idempotente) à l'ÉMISSION : un brouillon ne sort rien.
-        if facture.devis_id and (not facture.bon_commande_id or (source == 'facturer_vente' and facture.type_facture == 'complete')):
+        if facture.devis_id and (
+            not facture.bon_commande_id
+            or (source == 'facturer_vente' and facture.type_facture == 'complete')
+        ):
             reserver_stock_devis_facture(devis=facture.devis, user=user, company=facture.company)
         facture.save()
 

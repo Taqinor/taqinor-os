@@ -1,4 +1,5 @@
-"""Paiement public : acompte de succès, virement déclaré, page et webhook de paiement (SPL252, déplacé de ``public_views.py``).
+"""Paiement public : acompte de succès, virement déclaré, page et webhook de paiement (SPL252, déplacé de
+``public_views.py``).
 
 RIB de la société, bloc d'acompte renvoyé à la signature, déclaration de
 virement (note chatter, aucun statut changé), page publique « Payer en ligne »

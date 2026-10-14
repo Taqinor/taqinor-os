@@ -674,7 +674,8 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
             'a_une_etiquette': bool(expedition.etiquette_pdf_key),
         })
 
-    @extend_schema(parameters=[P('unite_logistique', INT, True, 'Unité logistique (id)', mini=1, maxi=2147483647), P('destination', STR)],
+    @extend_schema(parameters=[P('unite_logistique', INT, True, 'Unité logistique (id)', mini=1, maxi=2147483647),
+                               P('destination', STR)],
                    responses=corps('ExpeditionTarifsReponse', unite_logistique=serializers.IntegerField(),
                                    offres=serializers.ListField(child=serializers.DictField())))
     @action(detail=False, methods=['get'], url_path='tarifs')

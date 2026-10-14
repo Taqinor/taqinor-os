@@ -102,45 +102,69 @@ CLES_SIMULATION = (
     ('sigma_biais_meteo_pct', 'Biais long terme de la source météo (σ)', '%', 'PVsyst — P50/P90 evaluations'),
     # CALX145
     ('sigma_meteo_saisi_pct', 'Variabilité interannuelle saisie (σ météo)', '%', 'PVsyst — P50/P90 evaluations'),
-    ('tolerance_validation_pct', "Tolérance d'écart admise face à PVGIS", '%', 'Décision fondateur 21/09/2026 — aucun verdict sans tolérance saisie'),  # CALX145
+    ('tolerance_validation_pct', "Tolérance d'écart admise face à PVGIS", '%',
+     'Décision fondateur 21/09/2026 — aucun verdict sans tolérance saisie'),  # CALX145
     ('resolution_minutes', 'Pas de temps de la simulation', 'minutes', 'PVGIS — seriescalc, pas horaire'),  # CALX145
     ('albedo_mensuel', 'Albédo du sol, mois par mois', '', 'PVsyst — Array and system losses'),  # CALX145
     ('annees_exploitation', "Durée d'exploitation simulée", 'années', 'PVsyst — Array and system losses'),  # CALX145
     # CALX145
     ('regle_qualite_module', 'Règle de qualité module (tolérance de puissance)', '', 'PVsyst — Module quality losses'),
-    ('lid_par_techno', 'Perte LID déclarée par technologie de cellule', '%', 'PVsyst — LID loss (aucune valeur par défaut proposée)'),  # CALX145
+    ('lid_par_techno', 'Perte LID déclarée par technologie de cellule', '%',
+     'PVsyst — LID loss (aucune valeur par défaut proposée)'),  # CALX145
     # CALX145
     ('mismatch_fabricant_pct', 'Mismatch de fabrication entre modules', '%', 'PVsyst — Array and system losses'),
     ('modele_degradation', 'Modèle de dégradation pluriannuelle', '', 'PVsyst — Array and system losses'),  # CALX145
-    ('thermique_par_pose', 'Coefficients Uc/Uv par type de pose', 'W/m²K et W/m³sK', 'PVsyst — Array thermal losses (Faiman)'),  # CALX145
+    ('thermique_par_pose', 'Coefficients Uc/Uv par type de pose', 'W/m²K et W/m³sK',
+     'PVsyst — Array thermal losses (Faiman)'),  # CALX145
     # CALX145
     ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),
-    ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%', 'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
-    ('indisponibilite_fenetres', "Fenêtres d'arrêt de l'installation (début, fin, motif)", '', 'PVsyst — Unavailability loss (des périodes d\'arrêt explicites, jamais un forfait annuel)'),  # CALX176
-    ('auxiliaires_w_constants', 'Auxiliaires — terme constant en marche', 'W', 'PVsyst — Auxiliaries consumption (terme constant au-dessus d\'un seuil)'),  # CALX175
-    ('auxiliaires_w_par_kw', 'Auxiliaires — terme proportionnel à la production', 'W/kW', 'PVsyst — Auxiliaries consumption (terme proportionnel en W/kW)'),  # CALX175
-    ('auxiliaires_w_nuit', 'Auxiliaires — consommation de nuit', 'W', 'PVsyst — Auxiliaries consumption (consommation de nuit, valeur fixe distincte)'),  # CALX175
-    ('bifacial_hauteur_pose_m', 'Hauteur de pose de la face arrière au-dessus du sol (repli quand le document ne la porte pas)', 'm', 'PVsyst — Bifacial systems (facteurs de vue : hauteur de pose)'),  # CALX177
-    ('bifacial_taux_occupation', "Taux d'occupation du sol (GCR) retenu pour la face arrière (repli quand le document ne le porte pas)", '', 'PVsyst — Bifacial systems (facteurs de vue : taux d\'occupation)'),  # CALX177
-    ('bifacial_pas_rangee_m', 'Pas entre rangées retenu pour la face arrière (repli quand le document ne le porte pas)', 'm', 'PVsyst — Bifacial systems (facteurs de vue : pas entre rangées)'),  # CALX177
-    ('bifacial_mismatch_arriere_pct', 'Mismatch de face arrière', '%', 'PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)'),  # CALX177
-    ('seuil_derivation_acces', "Seuil d'accès solaire sous lequel un module est dérivé de sa chaîne", '', 'PV*SOL — Shading due to nearby objects (la caractéristique du module s\'effondre selon le nombre de brins ombrés ; aucun seuil n\'est proposé par défaut)'),  # CALX168
-    ('plafond_modules_simules', 'Plafond de modules simulés un par un (au-delà, seul l\'agrégat est publié)', 'modules', 'Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389'),  # CALX182
+    ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%',
+     'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
+    ('indisponibilite_fenetres', "Fenêtres d'arrêt de l'installation (début, fin, motif)", '',
+     'PVsyst — Unavailability loss (des périodes d\'arrêt explicites, jamais un forfait annuel)'),  # CALX176
+    ('auxiliaires_w_constants', 'Auxiliaires — terme constant en marche', 'W',
+     'PVsyst — Auxiliaries consumption (terme constant au-dessus d\'un seuil)'),  # CALX175
+    ('auxiliaires_w_par_kw', 'Auxiliaires — terme proportionnel à la production', 'W/kW',
+     'PVsyst — Auxiliaries consumption (terme proportionnel en W/kW)'),  # CALX175
+    ('auxiliaires_w_nuit', 'Auxiliaires — consommation de nuit', 'W',
+     'PVsyst — Auxiliaries consumption (consommation de nuit, valeur fixe distincte)'),  # CALX175
+    ('bifacial_hauteur_pose_m',
+     'Hauteur de pose de la face arrière au-dessus du sol (repli quand le document ne la porte pas)', 'm',
+     'PVsyst — Bifacial systems (facteurs de vue : hauteur de pose)'),  # CALX177
+    ('bifacial_taux_occupation',
+     "Taux d'occupation du sol (GCR) retenu pour la face arrière (repli quand le document ne le porte pas)", '',
+     'PVsyst — Bifacial systems (facteurs de vue : taux d\'occupation)'),  # CALX177
+    ('bifacial_pas_rangee_m', 'Pas entre rangées retenu pour la face arrière (repli quand le document ne le porte pas)',
+     'm', 'PVsyst — Bifacial systems (facteurs de vue : pas entre rangées)'),  # CALX177
+    ('bifacial_mismatch_arriere_pct', 'Mismatch de face arrière', '%',
+     'PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)'),  # CALX177
+    ('seuil_derivation_acces', "Seuil d'accès solaire sous lequel un module est dérivé de sa chaîne", '',
+     'PV*SOL — Shading due to nearby objects '
+     '(la caractéristique du module s\'effondre selon le nombre de brins ombrés ; '
+     'aucun seuil n\'est proposé par défaut)'),  # CALX168
+    ('plafond_modules_simules', 'Plafond de modules simulés un par un (au-delà, seul l\'agrégat est publié)',
+     'modules', 'Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, '
+     'mesuré par CALX389'),  # CALX182
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
 #: discipline d'ajout que ci-dessus.
 CLES_ELECTRIQUE_SOCIETE = (
-    ('tolerance_polystring_acceptable_pct', 'Tolérance de polystring acceptable', '%', 'PV*SOL — Configuration check (valeur du logiciel citée en aide, jamais préremplie)'),  # CALX145
-    ('tolerance_polystring_bloquante_pct', 'Tolérance de polystring bloquante', '%', 'PV*SOL — Configuration check (valeur du logiciel citée en aide, jamais préremplie)'),  # CALX145
+    ('tolerance_polystring_acceptable_pct', 'Tolérance de polystring acceptable', '%',
+     'PV*SOL — Configuration check (valeur du logiciel citée en aide, jamais préremplie)'),  # CALX145
+    ('tolerance_polystring_bloquante_pct', 'Tolérance de polystring bloquante', '%',
+     'PV*SOL — Configuration check (valeur du logiciel citée en aide, jamais préremplie)'),  # CALX145
     ('seuil_desequilibre_pct', 'Seuil de déséquilibre entre chaînes', '%', 'PV*SOL — Configuration check'),  # CALX145
     ('borne_usuelle_dc_ac', 'Borne usuelle du rapport DC/AC', '', 'PV*SOL — Configuration check'),  # CALX145
     ('seuil_alerte_dc_ac', "Seuil d'alerte du rapport DC/AC", '', 'PV*SOL — Configuration check'),  # CALX145
-    ('correspondances_nomenclature', 'Correspondances de nomenclature du bordereau', '', 'Réglage société — aucun code article n\'est deviné'),  # CALX145
-    ('regle_bom_structure', 'Règle de sortie de la structure hors bordereau électrique', '', 'Décision fondateur 21/09/2026 — la structure sort du bordereau électrique'),  # CALX145
+    ('correspondances_nomenclature', 'Correspondances de nomenclature du bordereau', '',
+     'Réglage société — aucun code article n\'est deviné'),  # CALX145
+    ('regle_bom_structure', 'Règle de sortie de la structure hors bordereau électrique', '',
+     'Décision fondateur 21/09/2026 — la structure sort du bordereau électrique'),  # CALX145
     # CALX145
     ('cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n\'est supposée'),
-    ('seuil_bas_dc_ac', 'Seuil bas du rapport DC/AC (onduleur sous-utilisé)', '', 'OpenSolar — Inverter sizing and stringing recommendations'),  # CALX213
+    ('seuil_bas_dc_ac', 'Seuil bas du rapport DC/AC (onduleur sous-utilisé)', '',
+     'OpenSolar — Inverter sizing and stringing recommendations'),  # CALX213
 )
 
 #: ``{section: tuple de déclarations}`` — le SEUL point d'entrée des lecteurs.

@@ -1,4 +1,5 @@
-"""Retour de visite vers le lead (crochet visite, relevés, récapitulatif) (SPL7, extrait de crm/services.py : déplacement pur).
+"""Retour de visite vers le lead (crochet visite, relevés, récapitulatif) (SPL7, extrait de crm/services.py :
+déplacement pur).
 
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).

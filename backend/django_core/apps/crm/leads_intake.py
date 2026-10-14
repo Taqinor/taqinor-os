@@ -1,4 +1,5 @@
-"""Derniers points d'entrée d'arrivée de lead (OCR, carte de visite, WhatsApp, livechat, ticket, import) (SPL24, extrait de crm/services.py : déplacement pur).
+"""Derniers points d'entrée d'arrivée de lead (OCR, carte de visite, WhatsApp, livechat, ticket, import) (SPL24, extrait
+de crm/services.py : déplacement pur).
 
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).
