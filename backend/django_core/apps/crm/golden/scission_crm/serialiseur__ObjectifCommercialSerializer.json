@@ -67,7 +67,7 @@
    "required": true
   },
   {
-   "classe": "DecimalStricte",
+   "classe": "DecimalBornee",
    "nom": "cible",
    "read_only": false,
    "required": true

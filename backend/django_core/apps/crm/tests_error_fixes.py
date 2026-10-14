@@ -703,6 +703,10 @@ class TestFuzzCrmCi997(TestCase):
                            'period_year': 2026, 'cible': 0}, 'cible'),
             ('objectifs', {'metric': 'nb_leads', 'period_type': 'year',
                            'period_year': '2026', 'cible': '1'}, 'period_year'),
+            ('points-contact', {'lead': self.lead.pk, 'canal': 'autre',
+                                'ordre': '1'}, 'ordre'),
+            ('points-contact', {'lead': self.lead.pk, 'canal': 'autre',
+                                'cout': '-1'}, 'cout'),
             ('partenaires', {'nom': 'P', 'type_partenaire': 'apporteur',
                              'taux_commission': 0}, 'taux_commission'),
             ('partenaires', {'nom': 'P', 'type_partenaire': 'apporteur',
@@ -748,6 +752,9 @@ class TestFuzzCrmCi997(TestCase):
 
         motif = corps_de('/api/django/crm/concurrents-perte/')['properties'][
             'concurrent_prix']['anyOf'][0]['pattern']
+        self.assertFalse(motif.startswith('^-'), motif)
+        motif = corps_de('/api/django/crm/points-contact/')['properties'][
+            'cout']['anyOf'][0]['pattern']
         self.assertFalse(motif.startswith('^-'), motif)
         bulk = schema['paths']['/api/django/crm/leads/bulk/']['post'][
             'requestBody']['content']['application/json']['schema']

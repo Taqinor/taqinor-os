@@ -170,10 +170,10 @@ class DecimalStricte(serializers.DecimalField):
         return super().validate_empty_values(data)
 
 
-class DecimalPositive(DecimalStricte):
-    """CI #997 (2) — ``DecimalStricte`` d'une valeur JAMAIS négative (prix,
-    coût) : le motif publié n'a plus de signe ``-`` (``"-1"`` était
-    « conforme » au schéma puis refusé en 400 par ``min_value=0``)."""
+class DecimalBornee(DecimalStricte):
+    """CI #997 (2) — ``DecimalStricte`` dont le motif publié suit la borne
+    basse : avec ``min_value >= 0`` (prix, coût) il n'a plus de signe ``-``
+    (``"-1"`` était « conforme » au schéma puis refusé en 400)."""
 
 
 class DecimalSouple(serializers.DecimalField):
@@ -252,7 +252,8 @@ class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
         schema['pattern'] = (
             fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
             fr'|\.\d{{1,{decimales}}})$')
-        if isinstance(champ, DecimalPositive):
+        if (isinstance(champ, DecimalBornee) and champ.min_value is not None
+                and champ.min_value >= 0):
             schema['pattern'] = schema['pattern'].replace('^-?', '^', 1)
         if isinstance(champ, DecimalStricte) and champ.allow_null:
             motif = schema.pop('pattern')
@@ -381,6 +382,16 @@ class ChampsStrictsEntiersMixin:
         models.PositiveIntegerField: EntierStrict,
         models.SmallIntegerField: EntierStrict,
         models.PositiveSmallIntegerField: EntierStrict,
+    }
+
+
+class ChampsStrictsBornesMixin:
+    """``ChampsStrictsEntiersMixin`` avec des décimaux ``DecimalBornee`` (motif
+    publié sans signe quand le champ est borné à 0 ou plus)."""
+
+    serializer_field_mapping = {
+        **ChampsStrictsEntiersMixin.serializer_field_mapping,
+        models.DecimalField: DecimalBornee,
     }
 
 

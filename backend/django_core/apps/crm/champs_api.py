@@ -30,7 +30,7 @@ from django.db.models import SmallIntegerField as ModelSmallIntegerField
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte, DecimalStricte, EntierStrict
+from core.champs_stricts import ChaineStricte, DecimalBornee, EntierStrict
 
 
 class BooleenStrict(serializers.BooleanField):
@@ -89,14 +89,14 @@ MAPPING_TEXTE_STRICT = {
 }
 
 #: CI #997 (2e passe) — TOUT type JSON exact : textes, booléens, décimaux
-#: transportés en CHAÎNE (``DecimalStricte`` : un nombre JSON → 400, ``""`` =
+#: transportés en CHAÎNE (``DecimalBornee`` : un nombre JSON → 400, ``""`` =
 #: « non renseigné » publié pour un champ nullable) et entiers JSON réels
 #: (``"5"`` → 400). Pour les sérialiseurs dont AUCUN écran n'envoie un
 #: décimal en nombre : la première passe n'avait rendu stricts que les textes
 #: et le fuzz remontait le champ suivant de la même opération.
 MAPPING_STRICT_COMPLET = {
     **MAPPING_TEXTE_STRICT,
-    ModelDecimalField: DecimalStricte,
+    ModelDecimalField: DecimalBornee,
     ModelIntegerField: EntierStrict,
     ModelPositiveIntegerField: EntierStrict,
     ModelSmallIntegerField: EntierStrict,

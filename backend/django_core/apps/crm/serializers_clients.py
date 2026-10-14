@@ -5,14 +5,12 @@ plans de compte, playbooks), déplacés de
 ``serializers.py`` à l'identique (move only). Dépendance à sens unique : ce
 module importe ``.serializers``, jamais l'inverse.
 """
-from decimal import Decimal
-
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import RegexValidator
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte, DecimalPositive, IdInconnu404Mixin
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
 
 from .champs_api import MAPPING_STRICT_COMPLET, MAPPING_TEXTE_STRICT, IcePublie
 from .params_requete import UniciteEn409Mixin
@@ -606,10 +604,6 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
     """
     serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
-    concurrent_prix = DecimalPositive(
-        max_digits=12, decimal_places=2, min_value=Decimal('0'),
-        required=False, allow_null=True, label='Prix du concurrent',
-        help_text='Prix proposé par le concurrent. Vide si inconnu.')
     saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
     saisi_par_nom = serializers.SerializerMethodField()
     lead_nom = serializers.CharField(
