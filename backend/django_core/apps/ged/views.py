@@ -49,8 +49,9 @@ from . import openapi as oa, selectors, services
 from .corps_requete import (
     GedArchiverLegalementCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
-    GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
-    _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides, refus_cycle_vie,
+    GedMotifCorps, GedOperationsLotCorps, GedVerrouCorps, _date_iso,
+    _entier_borne, _id_filtre, _pk, _pks, _txt, conflit_archivage, corps_valide,
+    lignes_csv_invalides, refus_cycle_vie,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
@@ -1585,7 +1586,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
-    @extend_schema(request=GedMotifCorps, responses=DocumentSerializer)
+    @extend_schema(request=GedVerrouCorps, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='verrouiller')
     def verrouiller(self, request, pk=None):
         """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours
@@ -1593,10 +1594,14 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         lecture, affiche un bandeau à tous. Body optionnel :
         `{"motif": "..."}`. 409 si déjà posé par un autre utilisateur."""
         document = self.get_object()
+        # CI #997 (3) fuzz ged — motif validé par le corps publié : un caractère
+        # nul ou plus de 300 caractères (colonne `verrou_avertissement_motif`)
+        # étaient une `DataError` (500) ; un non-texte une 500 plus loin.
+        corps = corps_valide(GedVerrouCorps, request)
         try:
             services.assert_not_archive_legalement(document)  # ADOC22
             doc = services.verrouiller_avertissement(
-                document, request.user, motif=request.data.get('motif', ''))
+                document, request.user, motif=corps.get('motif', ''))
         except ArchivageLegalError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)

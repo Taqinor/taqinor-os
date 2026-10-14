@@ -1004,6 +1004,40 @@ class Ci997FuzzGedTour4Tests(TestCase):
         doc.refresh_from_db()
         self.assertIsNone(doc.proprietaire_id)
 
+    def test_verrouiller_motif_avec_nul_400_jamais_500(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': 'a\u0000b'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('motif', resp.json())
+        doc.refresh_from_db()
+        self.assertIsNone(doc.verrou_avertissement_par_id)
+
+    def test_verrouiller_motif_trop_long_400(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': 'x' * 301}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('motif', resp.json())
+
+    def test_verrouiller_motif_non_texte_400(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': ['x']}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_verrouiller_motif_conforme_pose_le_verrou(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': 'x' * 300}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        doc.refresh_from_db()
+        self.assertEqual(doc.verrou_avertissement_par_id, self.admin.pk)
+
     def test_cycle_vie_statut_liste_400_jamais_500(self):
         doc = self._doc()
         resp = self.api.post(
