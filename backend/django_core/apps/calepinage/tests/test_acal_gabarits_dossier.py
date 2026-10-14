@@ -247,7 +247,7 @@ class RefusTest(BaseGabarits):
         # CI #997 api-fuzz : ``genre`` vide est accepté par le serveur, le
         # motif publié doit donc l'admettre (sinon « accepted schema-violating »).
         from ..views.gabarits_dossier import _CORPS_GABARIT
-        champ = _CORPS_GABARIT().fields['genre']
+        champ = _CORPS_GABARIT.fields['genre']
         self.assertEqual(champ.run_validation(''), '')
         corps = {'pays': 'AA', 'code': 'g-vide', 'genre': '',
                  'intitule': 'Dossier', 'version': ''}
