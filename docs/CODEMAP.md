@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a253ea81f29262803e233fd0c0b7f9cc23ae17ace803562772a8e3e11afb1801
-Plan fingerprint: 3dde676e788775d812dd71d6a64ae02afdece67a71886b97b2de4cff29fae8af
+Plan fingerprint: 563d8f615c74df66e3803fabc6ed44421bdffd26c980bdb52e9b9ff46f735326
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1225)**
+**Done (1226)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1801,9 +1801,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT45` — Remplacer `FacturerDevisDialog` par `FacturerVenteDialog` (acompte MAD ou %, totalité…
 - `VNT46` — Liste des factures : Annuler = confirmation « un avoir sera créé, la facture reste…
 - `VNT47` — Commande `reparer_vente_active` (dry-run par défaut dans un `atomic()` annulé…
+- `VNT85` — Faire lire `devis_signes_en_vigueur` au contrôle d'intégrité « accepté sans chantier »
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (187)**
+**Open — to build (186)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1966,7 +1967,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT82` — Deux budgets de clics en CI depuis la fiche lead : acompte proposé ≤ 3 interactions (0…
 - `VNT83` — Acceptation en direct M2 (orchestrateur) : accepter → brouillon d'acompte automatique →…
 - `VNT84` — Faire lire `devis_signes_en_vigueur` à la publicité (ticket moyen par lead, vélocité…
-- `VNT85` — Faire lire `devis_signes_en_vigueur` au contrôle d'intégrité « accepté sans chantier »
 - `VNT86` — Faire lire `devis_signes_en_vigueur` à `lead_signe_sans_devis_actif` (retirer le filtre…
 - `VNT87` — Brouillons hors « facturé » et chaîne de versions dans `ca_devis_factures_par_clients`…
 - `VNT88` — `devis_a_facturer` et `carnet_commande_par_mois` lisent `devis_signes_en_vigueur` (une…
