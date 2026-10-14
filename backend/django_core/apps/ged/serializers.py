@@ -1220,6 +1220,9 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+        # CI #997 fuzz — `sections` est publié nullable (JSONField) :
+        # `validate_sections` lit déjà null comme « aucune section ».
+        extra_kwargs = {'sections': {'allow_null': True}}
 
     def validate_sections(self, valeur):
         """NTDOC21 — Valide la STRUCTURE des sections conditionnelles.
