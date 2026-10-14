@@ -1255,7 +1255,9 @@ jobs:
   #     Le harnais (`scripts/fuzz/`, `schemathesis.toml`) et la plateforme
   #     (`erp_agentique/`, requirements) fuzzent `core` + `authentication`.
   #   * PHASE : `coverage` seule (cas limites déterministes, positifs ET
-  #     négatifs), `--checks all`, plafond `--max-time 300` (~5 min de fuzz).
+  #     négatifs), `--checks all`, en 8 TRANCHES parallèles (matrice `shard`,
+  #     `api_fuzz_scope.py schema --shard i/8`) qui couvrent chacune TOUT leur
+  #     lot (plafond de sécurité `--max-time 1500`) — plus d'échantillon.
   #   * VERDICT : rouge sur tout constat (check|opération) ABSENT de la dette
   #     gelée `scripts/fuzz/api_fuzz_dette.txt` (nocturne du 11/10, run
   #     38129616897, 1 627 lignes, qui ne fait que rétrécir — chaque famille
@@ -1276,6 +1278,18 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # CI #997 (fondateur, 14/10/2026) — PLUS D'ÉCHANTILLON : 14 tours rouges
+    # pour 1-3 constats ALÉATOIRES par run (une PR touchant toutes les apps
+    # tirait, sous `--max-time 300`, une tranche différente des ~7 500
+    # opérations à chaque push). Le job est découpé en 8 tranches
+    # DÉTERMINISTES (`api_fuzz_scope.py schema --shard i/8` : chemin de rang k
+    # → tranche k % 8) : chaque tranche fuzze TOUT son lot, l'union = toute la
+    # surface, à chaque run, en parallèle — même patron que
+    # `backend-tests-shard`.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     permissions:
       contents: read
       packages: read
@@ -1416,8 +1430,9 @@ jobs:
           python ../../scripts/fuzz/api_fuzz_scope.py schema \
             --in "$GITHUB_WORKSPACE/openapi-brut.json" \
             --out "$GITHUB_WORKSPACE/openapi-fuzz.json" \
+            --shard "${{ matrix.shard }}/8" \
             --proprietaires ${{ steps.portee.outputs.proprietaires }}
-      - name: schemathesis run (phase coverage, tous les checks — ~5 min)
+      - name: schemathesis run (phase coverage, tous les checks — tranche entière)
         if: ${{ steps.portee.outputs.proprietaires != '' }}
         run: |
           set -uo pipefail
@@ -1431,7 +1446,7 @@ jobs:
             --checks all \
             --phases coverage \
             --mode all \
-            --max-time 300 \
+            --max-time 1500 \
             --report junit,json \
             --report-dir schemathesis-report \
             openapi-fuzz.json \
@@ -1448,7 +1463,7 @@ jobs:
         if: ${{ !cancelled() && steps.portee.outputs.proprietaires != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: schemathesis-report-pr
+          name: schemathesis-report-pr-${{ matrix.shard }}
           path: |
             schemathesis-report/
             schemathesis-output.log
