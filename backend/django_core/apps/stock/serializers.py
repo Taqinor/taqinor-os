@@ -2770,7 +2770,6 @@ class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
             'date_validation',
         ]
 
-
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if self.instance is not None:
