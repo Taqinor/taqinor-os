@@ -23,7 +23,9 @@ from django.test import TestCase
 from apps.crm.models import Lead
 from apps.facturation.models import Avoir, Facture
 from apps.ventes.domain.cycle_vie import accept_devis
-from apps.ventes.domain.revision import reviser_devis
+from apps.ventes.domain.revision import (
+    rattacher_aval_financier_revision, reviser_devis,
+)
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
@@ -88,7 +90,12 @@ class RevisionParTauxTests(TestCase):
     def test_avoir_revision_tva_de_l_ecart(self, *_):
         self.v1 = self._accepter(self.v1)
         self._facturer_tout(self.v1)
-        self._v2({A10: '30000'})
+        v2 = self._v2({A10: '30000'})
+        # VNT64 — jamais un avoir d'écart sans confirmation : l'acceptation
+        # le signale, le geste confirmé l'émet.
+        self.assertFalse(Avoir.objects.filter(company=self.company).exists())
+        rattacher_aval_financier_revision(v2, user=self.user,
+                                          confirmer_avoir=True)
         avoir = Avoir.objects.get(company=self.company)
         # CLAUSE PERSISTANCE — relu en base.
         avoir.refresh_from_db()
