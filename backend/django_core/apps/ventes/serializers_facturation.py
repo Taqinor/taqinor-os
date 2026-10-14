@@ -3,7 +3,6 @@ notes de débit, relances, remises, mandats) — déplacés tels quels de
 `serializers.py` par SPL148 (move only, sans ré-export)."""
 from decimal import Decimal
 
-from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -14,7 +13,9 @@ from .models import (
     MandatPaiement, RetenueSubie,
 )
 from .serializers import _fallback_taux_tva
-from core.champs_stricts import DecimalStricte
+from core.champs_stricts import (
+    ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
 from .domain.bornes import montant_saisi, pourcentage_saisi
@@ -74,8 +75,10 @@ class _BornesArgentMixin:
             'Le prix unitaire ne peut pas être négatif.')
 
 
-class BonCommandeSerializer(SameCompanyFKSerializerMixin,
+class BonCommandeSerializer(ChampsStrictsSansDecimalMixin,
+                            SameCompanyFKSerializerMixin,
                             serializers.ModelSerializer):
+    # CI #997 — texte/booléens stricts (``signe_au_domicile: 0`` converti).
     # ASEC28 (C-ASEC-005) — FK inscriptibles bornées à la société de la
     # requête : un id étranger = 400 « objet inexistant », en PATCH comme en
     # création (la garde ERR13 de perform_create ne couvrait que la création).
@@ -788,13 +791,11 @@ class RelancerFactureSerializer(serializers.Serializer):
         return value
 
 
-class FollowupLevelSerializer(serializers.ModelSerializer):
+class FollowupLevelSerializer(ChampsStrictsMixin,
+                              serializers.ModelSerializer):
     # ENF11 — taux et frais sont des décimaux transportés en CHAÎNE (le
     # schéma le déclare) : un nombre JSON est refusé en 400, plus converti.
-    serializer_field_mapping = {
-        **serializers.ModelSerializer.serializer_field_mapping,
-        models.DecimalField: DecimalStricte,
-    }
+    # CI #997 — texte et booléens aussi (``message: 0`` était converti).
 
     class Meta:
         from .models import FollowupLevel
@@ -893,8 +894,10 @@ class LigneRemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id']
 
 
-class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
+class RemiseEncaissementSerializer(ChampsStrictsSansDecimalMixin,
+                                   SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
+    # CI #997 — texte/booléens stricts (``note: 0`` était converti).
     # ASEC28 — le technicien d'une remise est un utilisateur de la société.
     same_company_fields = ('technicien',)
 

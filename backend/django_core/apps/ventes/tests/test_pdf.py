@@ -373,6 +373,23 @@ class TestPdfEndpoints(TestCase):
         self.assertNotIn('custom_acompte', called_options)
         self.assertNotIn('not_a_real_option', called_options)
 
+    @patch('apps.ventes.tasks.task_generate_devis_pdf')
+    def test_generer_pdf_devis_corps_hors_forme_400(self, mock_task):
+        """CI #997 — corps validé contre sa forme publiée : texte blanc,
+        drapeau non booléen, corps tableau → 400, aucune tâche lancée."""
+        devis = make_devis(self.user, self.client_obj, self.produit)
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        url = f'/api/django/ventes/devis/{devis.id}/generer-pdf/'
+        for corps in ({'langue_sortie': ''}, {'show_monthly': 'abc'},
+                      {'devis_final': 1}, [None, None]):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        mock_task.delay.assert_not_called()
+
     @patch('apps.ventes.tasks.task_generate_facture_pdf')
     def test_generer_pdf_facture_returns_202(self, mock_task):
         """POST generer-pdf on facture triggers task and returns 202."""

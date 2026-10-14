@@ -268,6 +268,20 @@ class TestApplyPresetSupprime(TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(devis.lignes.count(), 1)
 
+    def test_save_preset_description_non_textuelle_400(self):
+        # CI #997 — ``description: {}`` était lue « vide » (201) et un objet
+        # rempli levait AttributeError (500) : 400 nommant le champ.
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-QJ16-A02')
+        url = f'/api/django/ventes/devis/{devis.id}/save-preset/'
+        for description in ({}, {'a': 1}, 5):
+            r = self.api.post(url, {'nom': 'Modèle', 'description': description},
+                              format='json')
+            self.assertEqual(r.status_code, 400, (description, r.data))
+        self.assertFalse(DevisPreset.objects.exists())
+        r = self.api.post(url, {'nom': 'Modèle'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_service_supprime(self):
         from apps.ventes import services
         self.assertFalse(hasattr(services, 'apply_preset_to_devis'))

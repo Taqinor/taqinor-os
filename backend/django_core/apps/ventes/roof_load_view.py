@@ -46,7 +46,8 @@ def _corps_invalide(data):
     return None
 
 
-@extend_schema(request=SH.RoofLoadRequest, responses=SH.RoofLoadResponse)
+@extend_schema(request=SH.RoofLoadRequest, responses=SH.RoofLoadResponse,
+               extensions=SH.ROOF_LOAD_SOURCES)
 @api_view(['POST'])
 @parser_classes([JSONParser])  # ENF11/D2 : JSON seul, aucun envoi de fichier
 @permission_classes([IsAnyRole])

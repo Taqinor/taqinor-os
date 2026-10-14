@@ -6,7 +6,9 @@ viewsets, jamais désérialisés. Aucun prix exposé.
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import (
+    ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+)
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
@@ -31,7 +33,8 @@ class DossierChecklistItemSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class RegulatoryDossierSerializer(SameCompanyFKSerializerMixin,
+class RegulatoryDossierSerializer(ChampsStrictsSansDecimalMixin,
+                                  SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):
     """FG268 — dossier réglementaire de raccordement.
 

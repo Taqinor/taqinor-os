@@ -163,6 +163,17 @@ class TestFromLayoutEndpoint(TestCase):
             FROM_LAYOUT_URL, {'layout': SAMPLE_LAYOUT}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_corps_ou_ids_mal_types_400(self):
+        # CI #997 — un corps tableau (AttributeError) ou un ``client``
+        # tableau (TypeError du filtre ``pk=``) finissaient en 500.
+        resp = self.api.post(FROM_LAYOUT_URL, [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        resp = self.api.post(
+            FROM_LAYOUT_URL, {'layout': SAMPLE_LAYOUT, 'client': [None, None]},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(Devis.objects.count(), 0)
+
     def test_missing_layout_rejected(self):
         lead = self._lead()
         resp = self.api.post(

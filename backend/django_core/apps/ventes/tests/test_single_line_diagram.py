@@ -148,6 +148,18 @@ class SingleLineEndpointTest(TestCase):
         self.assertEqual(resp.data["params"]["n_panneaux"], 12)
         self.assertIn("<svg", resp.data["svg"])
 
+    def test_post_types_publies_stricts(self):
+        # CI #997 — en formulaire tout voyageait en chaîne (``etage_mt``
+        # « [''] » accepté) : JSON seul (415) et types JSON stricts (400).
+        url = "/api/django/ventes/schema-unifilaire/?format=json"
+        resp = self.client_api.post(url, {"n_panneaux": "12"},
+                                    format="multipart")
+        self.assertEqual(resp.status_code, 415)
+        for corps in ({"n_panneaux": "12"}, {"etage_mt": 0},
+                      {"has_battery": 1}, {"onduleur": 5}, [None, None]):
+            resp = self.client_api.post(url, corps, format="json")
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_get_by_devis_derives_from_lines(self):
         devis = self._make_devis(self.company)
         resp = self.client_api.get(

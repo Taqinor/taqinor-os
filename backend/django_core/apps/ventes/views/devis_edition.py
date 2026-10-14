@@ -243,6 +243,10 @@ class DevisEditionActionsMixin:
             return Response({'detail': 'Utilisateur sans société.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # CI #997 — corps non objet (``[null, null]``) : 400, plus 500.
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list) or not lignes_in:
             return Response({'detail': 'Au moins une ligne est requise.'},

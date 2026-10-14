@@ -40,7 +40,10 @@ import math
 from django.http import QueryDict
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
@@ -356,6 +359,10 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
 )
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
+# CI #997 (D2) — JSON seul, comme l'écran l'envoie : en formulaire,
+# ``equipements`` (objet publié) voyageait en chaîne « {} » et une requête
+# conforme était refusée. Un corps multipart reçoit 415.
+@parser_classes([JSONParser])
 def etude_horaire_preview(request):
     """CJ2a — Aperçu du moteur horaire + dimensionnement, SANS devis persisté.
 

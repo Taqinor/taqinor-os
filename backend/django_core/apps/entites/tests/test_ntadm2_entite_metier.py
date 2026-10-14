@@ -147,9 +147,12 @@ class Ntadm2FiltreApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(self._refs(resp, 'reference'), {'DEV-F-A'})
 
-    def test_parametre_entite_invalide_ignore(self):
-        """Une valeur non numérique vaut « pas de filtre » — jamais un 500."""
+    def test_parametre_entite_invalide_400(self):
+        """CI #997 — une valeur non entière répond 400 nommant ``entite``
+        (publiée ``integer``) — jamais un 500 ; vide = pas de filtre."""
         resp = self.api.get('/api/django/ventes/devis/?entite=abc')
+        self.assertEqual(resp.status_code, 400)
+        resp = self.api.get('/api/django/ventes/devis/?entite=')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data['results']), 3)
 

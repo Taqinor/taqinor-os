@@ -381,9 +381,17 @@ class FactureEncaissementActionsMixin:
 
         from apps.crm.selectors import get_company_client
 
+        from core.champs_stricts import entier_ou_400
+
         company = request.user.company
-        client_id = request.data.get('client')
-        client = get_company_client(company, client_id)
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 — ``client`` non entier (``[null, null]``) : 400 nommé, plus
+        # le TypeError du filtre ``pk=`` (500).
+        client_id = entier_ou_400(request.data.get('client'), 'client')
+        client = (get_company_client(company, client_id)
+                  if client_id is not None else None)
         if client is None:
             return Response(
                 {'detail': 'Client introuvable.'},

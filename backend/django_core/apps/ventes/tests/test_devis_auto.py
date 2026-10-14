@@ -395,6 +395,16 @@ class AutoEndpointTest(TestCase):
         self.assertEqual(
             Devis.objects.filter(company=self.company).count(), 0)
 
+    def test_corps_ou_ids_mal_types_400(self):
+        # CI #997 — ``client: [null, null]`` (TypeError du filtre ``pk=``) et
+        # un corps tableau (AttributeError) finissaient en 500.
+        for corps in ({'lead': None, 'client': [None, None]}, [None, None],
+                      {'lead': 'abc'}):
+            resp = self.api.post(AUTO_URL, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), 0)
+
     def test_non_residential_422(self):
         # AGR124 — un lead agricole sans donnée hydraulique : 422 nommant le
         # premier champ manquant (AGR403), plus « type_installation ».

@@ -10,7 +10,7 @@ société reçoit la réponse d'un id absent (400 « objet inexistant »).
 """
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
@@ -101,9 +101,12 @@ class AttestationConformiteSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class TestPerformanceReceptionSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class TestPerformanceReceptionSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                         SameCompanyFKSerializerMixin,
                                          serializers.ModelSerializer):
-    """FG278 — PR de réception ; pr_mesure/ecart/verdict dérivés serveur."""
+    """FG278 — PR de réception ; pr_mesure/ecart/verdict dérivés serveur.
+    CI #997 — ``chantier``/``recette`` bien formés mais inconnus (ou d'une
+    autre société, même corps) : 404, plus 400."""
     same_company_fields = ('chantier', 'recette')
     verdict_label = serializers.CharField(
         source='get_verdict_display', read_only=True)

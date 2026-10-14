@@ -174,10 +174,11 @@ class EtudeHoraireEquipementsTests(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
 
-    def test_equipements_chaine_multipart_400(self):
+    def test_equipements_chaine_multipart_415(self):
+        # CI #997 (D2) — la vue est JSON seul : le formulaire, où
+        # ``equipements`` voyage en chaîne, reçoit 415 (plus 400).
         response = self.api.post(URL, CORPS_FUZZ, format='multipart')
-        self.assertEqual(response.status_code, 400, response.content)
-        self.assertIn('equipements', response.json()['detail'])
+        self.assertEqual(response.status_code, 415, response.content)
 
     def test_equipements_chaine_json_400(self):
         response = self.api.post(URL, {'equipements': 'piscine'},
@@ -219,22 +220,16 @@ class EtudeHoraireEquipementsTests(TestCase):
                   'ete_differente': False}, format='json')
         self.assertEqual(response.status_code, 200, response.content)
         self.assertIsNone(response.data['dimensionnement'])
-        # Formulaire : tout voyage en chaîne, « false » reste un booléen lu.
+        # CI #997 (D2) — JSON seul : un formulaire reçoit 415.
         response = self.api.post(
             URL, {'facture_hiver': '900', 'dimensionner': 'false'},
             format='multipart')
-        self.assertEqual(response.status_code, 200, response.content)
-        self.assertIsNone(response.data['dimensionnement'])
+        self.assertEqual(response.status_code, 415, response.content)
 
     def test_serie_12_nombres_sinon_400(self):
         """CI #997 api-fuzz (cas CnCcjq) : ``conso_kwh_mensuelles=True`` en
         formulaire répondait 200. Les deux séries publiées « 12 nombres ou
         null » refusent toute autre forme en 400 nommant le champ."""
-        formulaire = {**CORPS_FUZZ, 'equipements': '',
-                      'conso_kwh_mensuelles': 'True'}
-        response = self.api.post(URL, formulaire, format='multipart')
-        self.assertEqual(response.status_code, 400, response.content)
-        self.assertIn('conso_kwh_mensuelles', response.json()['detail'])
         for nom in ('conso_kwh_mensuelles', 'factures_mensuelles'):
             for brut in (True, 'abc', [1] * 11, [True] * 12, ['1'] * 12, {}):
                 with self.subTest(nom=nom, brut=brut):
@@ -249,9 +244,7 @@ class EtudeHoraireEquipementsTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data['consommation']['source'],
                          'kwh_mensuels_saisis')
-        # Formulaire : 12 valeurs répétées, lues comme la liste.
+        # CI #997 (D2) — JSON seul : le formulaire reçoit 415.
         response = self.api.post(
             URL, {'conso_kwh_mensuelles': ['400'] * 12}, format='multipart')
-        self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.data['consommation']['source'],
-                         'kwh_mensuels_saisis')
+        self.assertEqual(response.status_code, 415, response.content)

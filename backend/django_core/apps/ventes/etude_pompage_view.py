@@ -94,7 +94,12 @@ def etude_pompage_preview(request):
     """POST /ventes/etude-pompage/preview/ — calcule, n'écrit rien."""
     from .domain.pompage import etudier_pompage
 
-    corps = request.data if isinstance(request.data, dict) else {}
+    # CI #997 — corps non objet (``[null, null]``) : 400, plus un calcul
+    # « omis » rendu 200 sur un corps hors schéma.
+    if not isinstance(request.data, dict):
+        from rest_framework.exceptions import ParseError
+        raise ParseError('Corps JSON objet attendu.')
+    corps = request.data
     company = getattr(request.user, 'company', None)
     devis = _devis_de_la_societe(company, corps.get('devis'), request.user)
     if corps.get('devis') not in (None, '') and devis is None:

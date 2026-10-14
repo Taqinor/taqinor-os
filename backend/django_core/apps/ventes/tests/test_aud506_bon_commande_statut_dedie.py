@@ -94,6 +94,14 @@ class PatchStatutIgnoreSansMouvementStock(TestCase):
         self.bc.refresh_from_db()
         self.assertEqual(self.bc.statut, BonCommande.Statut.EN_ATTENTE)
 
+    def test_booleen_strict_400(self):
+        # CI #997 — ``signe_au_domicile: 0`` était converti en ``False``.
+        resp = self.api.patch(
+            f'/api/django/ventes/bons-commande/{self.bc.id}/',
+            {'signe_au_domicile': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('signe_au_domicile', resp.data)
+
     def test_le_chemin_dedie_confirmer_fonctionne_toujours(self):
         resp = self.api.post(
             f'/api/django/ventes/bons-commande/{self.bc.id}/confirmer/')

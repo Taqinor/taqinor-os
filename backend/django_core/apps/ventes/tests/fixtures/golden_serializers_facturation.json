@@ -375,7 +375,7 @@
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -389,7 +389,7 @@
      false
     ],
     "reference": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
@@ -403,7 +403,7 @@
      false
     ],
     "signe_au_domicile": [
-     "BooleanField",
+     "BooleenStrict",
      false,
      false,
      null,
@@ -1497,14 +1497,14 @@
      false
     ],
     "message": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "nom": [
-     "CharField",
+     "ChaineStricte",
      false,
      true,
      null,
@@ -2606,7 +2606,7 @@
      false
     ],
     "fichier_pdf": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
@@ -2641,14 +2641,14 @@
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "reference": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,

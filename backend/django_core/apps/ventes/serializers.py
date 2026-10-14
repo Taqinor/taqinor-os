@@ -1,11 +1,14 @@
 from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema_field
-from django.db.models import Q
+from django.db.models import DecimalField, Q
 from rest_framework import serializers
 
-from core.champs_stricts import DecimalSoupleMixin
+from core.champs_stricts import (
+    ChampsStrictsSansDecimalMixin, DecimalSouple, DecimalSoupleMixin,
+)
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ListeJSON, ObjetJSON
 from core.serializers import (
     ChampsStrictsMixin, CompanyScopedPrimaryKeyRelatedField, request_company_id,
 )
@@ -1061,6 +1064,13 @@ class DevisWriteSerializer(DecimalSoupleMixin, SameCompanyFKSerializerMixin,
     CI #997 — décimaux en ``DecimalSouple`` : chaîne OU nombre JSON (le
     générateur envoie des nombres), publiés ``anyOf`` au schéma.
     """
+    # CI #997 — décimaux souples (générateur : chaîne OU nombre) + texte et
+    # booléens STRICTS (``reference_commande_client: 0`` était converti).
+    serializer_field_mapping = {
+        **ChampsStrictsSansDecimalMixin.serializer_field_mapping,
+        DecimalField: DecimalSouple,
+    }
+
     same_company_fields = ('client', 'lead', 'entite')
 
     # ENF11 — lecture seule (posée par ``/accepter/``) : DRF retire
@@ -1292,7 +1302,8 @@ class _BooleenStrict(serializers.BooleanField):
         self.fail('invalid', input=data)
 
 
-class ListePrixSerializer(serializers.ModelSerializer):
+class ListePrixSerializer(ChampsStrictsSansDecimalMixin,
+                          serializers.ModelSerializer):
     """XSAL1/XSAL2 — liste de prix clients + ses règles de paliers.
     `company` toujours forcée côté serveur (jamais acceptée du body — voir
     ListePrixViewSet.perform_create)."""
@@ -1312,6 +1323,40 @@ class ListePrixSerializer(serializers.ModelSerializer):
 
 # ── PVMRQ — Réglages « offre à deux gammes » par société (fondateur 18/08) ──
 
+class _MarquesParGamme(ObjetJSON):
+    """CI #997 — ``marques`` publié EXACT : objet non nul ``{slot: {rôle:
+    marque texte}}`` (``_erreurs_marques``) ; ``null`` était conforme au
+    schéma ``{}`` puis refusé « Ce champ ne peut être nul. »."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+        from .models import ROLES_AUTO_COMPOSITION
+
+        super().__init__(**kwargs)
+        roles = {'type': 'object', 'additionalProperties': False,
+                 'properties': {r: {'type': 'string'}
+                                for r in ROLES_AUTO_COMPOSITION}}
+        set_override(self, 'field', {
+            'type': 'object', 'additionalProperties': False,
+            'properties': {slot: roles for slot in ParametresGammes.SLOTS}})
+
+
+class _OrdreLignes(ListeJSON):
+    """CI #997 — ``ordre_lignes`` publié EXACT : liste de rôles connus,
+    uniques (``_erreurs_ordre_lignes``) ; ``{}`` était conforme au schéma
+    ``{}`` puis refusé."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+        from .models import ROLES_AUTO_COMPOSITION
+
+        super().__init__(element=str, **kwargs)
+        set_override(self, 'field', {
+            'type': 'array', 'uniqueItems': True,
+            'items': {'type': 'string',
+                      'enum': list(ROLES_AUTO_COMPOSITION)}})
+
+
 class ParametresGammesSerializer(serializers.ModelSerializer):
     """PVMRQ — réglages « gammes » de la société (singleton, GET/PATCH).
 
@@ -1326,6 +1371,8 @@ class ParametresGammesSerializer(serializers.ModelSerializer):
     ``ROLES_AUTO_COMPOSITION`` uniques. Liste vide = ordre canonique du
     simulateur (comportement historique).
     """
+    marques = _MarquesParGamme(required=False)
+    ordre_lignes = _OrdreLignes(required=False)
 
     class Meta:
         model = ParametresGammes
