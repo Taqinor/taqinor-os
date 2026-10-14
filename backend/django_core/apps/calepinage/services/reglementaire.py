@@ -1092,14 +1092,30 @@ def _premier_element_fautif(liste, cles, prefixe):
 
 
 def _valider(gabarit):
-    """``clean()`` du modèle, ses refus RE-NOMMÉS au chemin fautif."""
+    """``clean_fields()`` + ``clean()`` du modèle, refus RE-NOMMÉS au chemin
+    fautif.
+
+    ``clean_fields`` (bornés aux champs saisissables) porte les bornes de la
+    colonne — longueur max, slug : sans lui un intitulé de 201 caractères
+    n'échouait qu'à l'INSERT (``DataError`` → 500, CI #993 api-fuzz-pr) au
+    lieu d'un 400 nommé. ``clean()`` passe ensuite : son message, plus
+    précis, l'emporte sur le même champ."""
     from django.core.exceptions import ValidationError
 
+    bruts = {}
+    exclus = [f.name for f in gabarit._meta.fields
+              if f.name not in CHAMPS_GABARIT]
+    try:
+        gabarit.clean_fields(exclude=exclus)
+    except ValidationError as refus:
+        bruts.update(refus.message_dict)
     try:
         gabarit.clean()
     except ValidationError as refus:
+        bruts.update(refus.message_dict)
+    if bruts:
         erreurs = {}
-        for champ, messages in refus.message_dict.items():
+        for champ, messages in bruts.items():
             nom = champ
             if champ == 'pieces_attendues':
                 nom = _premier_element_fautif(gabarit.pieces_attendues,
@@ -1133,6 +1149,12 @@ def _appliquer(gabarit, donnees):
             valeur = _booleen(valeur)
         elif valeur is None:
             valeur = ''
+        elif not isinstance(valeur, str):
+            # Un texte se donne en texte : un nombre ou un objet JSON n'est
+            # jamais converti en silence (et ``clean()`` ne le lirait pas).
+            raise GabaritRefuse({champ: (
+                f"« {champ} » se donne en texte (reçu : "
+                f"{type(valeur).__name__}).")})
         setattr(gabarit, champ, valeur)
 
 
