@@ -653,5 +653,31 @@ class PorteePRTests(unittest.TestCase):
             self.assertIn('Server error|GET /a/', resume.read_text(encoding='utf-8'))
 
 
+class ConfigSchemathesisTests(unittest.TestCase):
+    """CI #993 (KAogBl) — le 428 d'ACAL316 est un REJET pour
+    ``missing_required_header``, sur la SEULE opération ``layout``."""
+
+    def test_428_admis_pour_l_en_tete_if_match_du_seul_layout(self):
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        visees = [op for op in config['operations']
+                  if 'missing_required_header' in op.get('checks', {})]
+        self.assertEqual(len(visees), 1)
+        op = visees[0]
+        # Un SEUL filtre (deux filtres include se combinent en OU).
+        self.assertEqual(
+            {k for k in op if k.startswith(('include-', 'exclude-'))},
+            {'include-name'})
+        self.assertEqual(op['include-name'],
+                         'POST /api/django/calepinage/calepinages/{id}/layout/')
+        self.assertNotIn('enabled', op)
+        attendus = op['checks']['missing_required_header']['expected-statuses']
+        # Les défauts de Schemathesis 4.28 gardés, 428 ajouté.
+        self.assertEqual(sorted(attendus),
+                         [400, 401, 403, 406, 415, 422, 428])
+
+
 if __name__ == '__main__':
     unittest.main()
