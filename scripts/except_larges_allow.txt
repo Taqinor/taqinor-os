@@ -34,7 +34,6 @@ backend/django_core/apps/calepinage/services/site.py::decalage_utc_minutes
 backend/django_core/apps/calepinage/views/calepinages.py::ActionIdempotenteMixin.executer_idempotent
 backend/django_core/apps/calepinage/views/calepinages.py::_notifier_la_note
 backend/django_core/apps/calepinage/views/pompage.py::_site
-backend/django_core/apps/contact/views.py::contact
 backend/django_core/apps/crm/attribution_selectors.py::attribution_comparaison_devis
 backend/django_core/apps/crm/attribution_selectors.py::attribution_leads._ca_signe_lead
 backend/django_core/apps/crm/attribution_selectors.py::revenu_attribue_campagne
