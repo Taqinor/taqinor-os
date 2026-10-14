@@ -49,8 +49,7 @@ from .corps_requete import (
     GedArchiverLegalementCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
     GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
-    _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides,
-    refus_cycle_vie,
+    _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides, refus_cycle_vie,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
