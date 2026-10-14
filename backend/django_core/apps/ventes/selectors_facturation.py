@@ -600,26 +600,32 @@ def analyse_facturation(company, debut, fin):
 def devis_a_facturer(company, *, jours=7, today=None):
     """ZFAC12 — ``Devis`` ``accepte`` d'une société, sans ``Facture`` liée
     depuis PLUS de ``jours`` jours (revenu bloqué en amont, backlog à
-    facturer). Un devis déjà facturé (au moins une ``Facture`` via
-    ``devis.factures``) est ignoré. Lecture seule."""
+    facturer). Un devis déjà facturé (au moins une ``Facture`` NON ANNULÉE
+    via ``devis.factures``) est ignoré. Lecture seule.
+
+    VNT88 — seules les VENTES EN VIGUEUR (``devis_signes_en_vigueur``) : une
+    version remplacée n'est jamais rappelée ; un devis dont la seule facture
+    est ANNULÉE l'est (il reste à facturer)."""
     from datetime import timedelta
 
     from django.utils import timezone
 
-    from .models import Devis
-
     today = today or timezone.now().date()
     seuil = today - timedelta(days=jours)
+    return list(_ventes_sans_facture_active(company).filter(
+        date_acceptation__isnull=False, date_acceptation__lte=seuil))
 
-    candidats = (
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                date_acceptation__isnull=False,
-                date_acceptation__lte=seuil)
-        .exclude(factures__isnull=False)
-        .distinct()
-    )
-    return list(candidats)
+
+def _ventes_sans_facture_active(company):
+    """VNT88 — les ventes en vigueur de ``company`` sans facture directe
+    non annulée (``devis_a_facturer``, ``carnet_commande_par_mois``)."""
+    from django.db.models import Exists, OuterRef
+
+    from .models import Facture
+    from .selectors import devis_signes_en_vigueur
+    actives = (Facture.objects.filter(devis=OuterRef('pk'))
+               .exclude(statut=Facture.Statut.ANNULEE))
+    return devis_signes_en_vigueur(company).exclude(Exists(actives))
 
 
 def tranche_facturee(devis, type_facture):
@@ -700,8 +706,9 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
     """NTFPA12 — revenu ENGAGÉ (carnet de commandes) par mois de facturation
     prévue, pour ``apps.fpa`` (driver revenu engagé).
 
-    Agrège les ``Devis`` ``accepte`` NON encore facturés (aucune ``Facture``
-    liée) dont la date de référence (``date_acceptation``) tombe dans
+    Agrège les ventes en vigueur NON encore facturées (aucune ``Facture``
+    non annulée liée — VNT88, ``devis_signes_en_vigueur`` : jamais une
+    version remplacée) dont la date de référence (``date_acceptation``) tombe dans
     ``[mois_debut, mois_fin]``. C'est du signé (100 % pondéré), distinct du
     pipeline probabiliste NTFPA11 — un devis accepté sort automatiquement du
     pipeline (son lead passe SIGNED), donc pas de double-compte. Lecture seule ;
@@ -709,17 +716,9 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
     """
     from decimal import Decimal
 
-    from .models import Devis
-
-    candidats = (
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                date_acceptation__isnull=False,
-                date_acceptation__gte=mois_debut,
-                date_acceptation__lte=mois_fin)
-        .exclude(factures__isnull=False)
-        .distinct()
-    )
+    candidats = _ventes_sans_facture_active(company).filter(
+        date_acceptation__isnull=False, date_acceptation__gte=mois_debut,
+        date_acceptation__lte=mois_fin)
     # APRF12 — `devis_avec_totaux` (APRF7) : `lignes__produit`, ce que lit
     # `Devis.total_ttc` (avec `lignes` seul : +1/+2 requêtes par devis).
     from .selectors import devis_avec_totaux
