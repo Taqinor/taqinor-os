@@ -69,3 +69,16 @@ class TestLeadDevisVersions(TestCase):
         self.assertTrue(ligne['is_active'])
         self.assertEqual(ligne['version'], 2)
         self.assertIsNone(ligne['superseded_by'])
+
+    def test_vnt69_lignes_servies_par_lead_devis_payload_cles_inchangees(self):
+        """VNT69 — ``get_devis`` délègue à ``lead_devis_payload`` : la ligne
+        servie par l'API est exactement celle du module, mêmes clés."""
+        from apps.crm.lead_devis_payload import lignes_devis_du_lead
+        v1 = self._devis('DEV-QJR535-C1')
+        ligne = self._lignes()[v1.id]
+        directe = lignes_devis_du_lead(Lead.objects.get(pk=self.lead.pk), {})
+        self.assertEqual(set(directe[0]), set(ligne))
+        self.assertEqual(set(ligne) >= {
+            'id', 'reference', 'statut', 'total_ttc', 'date_creation',
+            'option_acceptee', 'chantier', 'share_link', 'lecture',
+            'version', 'superseded_by', 'corrige_le', 'is_active'}, True)
