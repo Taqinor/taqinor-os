@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
-from core.champs_stricts import ChampsStrictsSansDecimalMixin
+from core.champs_stricts import ChampsStrictsSansDecimalMixin, TexteLie
 
 from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
@@ -117,7 +117,8 @@ class ActivitySerializer(ChampsStrictsSansDecimalMixin,
         source='activity_type.nom', read_only=True, allow_null=True)
     activity_type_icone = serializers.CharField(
         source='activity_type.icone', read_only=True, allow_null=True)
-    assigned_to_nom = serializers.CharField(
+    # ``TexteLie`` : un PATCH (partial) OMETTAIT la clé quand l'assigné est nul.
+    assigned_to_nom = TexteLie(
         source='assigned_to.username', read_only=True, default=None, allow_null=True)
     state = serializers.SerializerMethodField()
     # Cible lisible : "crm.lead" + id (pour les liens du cockpit).

@@ -56,6 +56,28 @@ class TestActivities(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['state'], 'today')
 
+    def test_creation_sans_corps_est_refusee_en_400(self):
+        # Le schéma déclare le corps obligatoire : une requête SANS corps ne
+        # crée plus d'à-faire vide ; ``{}`` reste un corps valide (à-faire perso).
+        avant = Activity.objects.count()
+        resp = self.api.post('/api/django/records/activities/')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(Activity.objects.count(), avant)
+        resp = self.api.post(
+            '/api/django/records/activities/', {}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_patch_sans_assigne_sert_assigned_to_nom(self):
+        act = Activity.objects.create(
+            company=self.company, summary='X', assigned_to=None,
+            created_by=self.user)
+        resp = self.api.patch(
+            f'/api/django/records/activities/{act.id}/',
+            {'summary': 'Y'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('assigned_to_nom', resp.data)
+        self.assertIsNone(resp.data['assigned_to_nom'])
+
     def test_mark_done_logs_historique_and_clears_open(self):
         act = Activity.objects.create(
             company=self.company,
