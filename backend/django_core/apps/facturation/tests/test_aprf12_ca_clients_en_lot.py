@@ -102,3 +102,29 @@ class CaClientsEnLotTests(TestCase):
                 pk__in=self.devis_ids, factures__isnull=True)),
             Decimal('0'))
         self.assertEqual(carnet.get('2026-09', Decimal('0')), non_factures)
+
+    def test_vnt87_chaine_comptee_une_fois_brouillon_hors_facture(self):
+        """VNT87 — une version REMPLACÉE n'est pas du CA devis (la chaîne
+        compte une fois) ; un brouillon n'est pas du CA facturé."""
+        from apps.ventes.models import Devis, Facture
+        from apps.ventes.selectors_facturation import (
+            ca_devis_factures_par_clients)
+        self._ajouter(2)  # k impair : une facture émise sur l'un des deux
+        v1, v2 = Devis.objects.filter(pk__in=self.devis_ids).order_by('pk')
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        Facture.objects.create(
+            company=self.company, reference=f'BROUILLON-APRF12-{_nxt()}',
+            client=self.client_obj, devis=v2,
+            statut=Facture.Statut.BROUILLON, montant_ht=Decimal('500'),
+            montant_tva=Decimal('100'), montant_ttc=Decimal('600'))
+        ca = ca_devis_factures_par_clients(
+            self.company, [self.client_obj.id])[self.client_obj.id]
+        self.assertEqual(ca['nb_devis'], 1)
+        self.assertEqual(ca['ca_devis'],
+                         Decimal(str(Devis.objects.get(pk=v2.pk).total_ttc)))
+        emises = Facture.objects.filter(
+            devis_id__in=self.devis_ids, statut=Facture.Statut.EMISE)
+        self.assertEqual(ca['nb_factures'], emises.count())
+        self.assertEqual(ca['ca_factures'], sum(
+            (Decimal(str(f.total_ttc)) for f in emises), Decimal('0')))
