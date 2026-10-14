@@ -32,7 +32,10 @@ class FactureCycleActionsMixin:
 
     @extend_schema(request=None,
                    responses={200: D.FactureEmise, 403: D.ErreurDetail})
-    @action(detail=True, methods=['post'], url_path='emettre')
+    # Garde explicite = celle du tiering de ``FactureViewSet.get_permissions``
+    # ('emettre' → IsResponsableOrAdmin), inchangée depuis le déplacement VNT97.
+    @action(detail=True, methods=['post'], url_path='emettre',
+            permission_classes=[IsResponsableOrAdmin])
     def emettre(self, request, pk=None):
         facture = self.get_object()
         if facture.statut != Facture.Statut.BROUILLON:
