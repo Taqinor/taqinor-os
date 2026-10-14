@@ -2547,13 +2547,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── XFSM2 — Assistant de planification (meilleur créneau + technicien) ──
     @oa.extend_schema(
-        request=oa.body(
-            'SuggererCreneauRequete',
-            chantier=oa.i(True),
-            type_intervention=oa.s(),
-            duree_jours=oa.i(),
-            date_cible=oa.d(null=True),
-        ),
+        request=oa.SuggererCreneauRequete,  # ERR-ENF11 : déclaration = validation
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['post'], url_path='suggerer-creneau',
@@ -2562,27 +2556,13 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """XFSM2 — les 3 meilleures propositions (technicien, date) pour un
         chantier/type/durée cible. Lecture seule, NE MUTE RIEN. Corps :
         {chantier, type_intervention, [duree_jours], [date_cible]}."""
-        from datetime import datetime
-        from rest_framework.exceptions import ValidationError
         from .. import selectors
 
-        chantier_id = request.data.get('chantier')
-        if not chantier_id:
-            raise ValidationError({'chantier': 'Chantier requis.'})
-        type_intervention = request.data.get('type_intervention') or ''
-        duree_jours = request.data.get('duree_jours') or 1
-        date_cible_raw = request.data.get('date_cible')
-        date_cible = None
-        if date_cible_raw:
-            try:
-                date_cible = datetime.strptime(
-                    date_cible_raw, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                raise ValidationError({'date_cible': 'Date invalide.'})
+        corps = oa.corps_valide(oa.SuggererCreneauRequete, request)
         data = selectors.suggerer_creneau(
-            request.user.company, chantier_id=chantier_id,
-            type_intervention=type_intervention, duree_jours=duree_jours,
-            date_cible=date_cible)
+            request.user.company, chantier_id=corps['chantier'],
+            type_intervention=corps['type_intervention'],
+            duree_jours=corps['duree_jours'], date_cible=corps.get('date_cible'))
         return Response(data)
 
     # ── XFSM3 — Replanification en masse d'une journée ──────────────────────

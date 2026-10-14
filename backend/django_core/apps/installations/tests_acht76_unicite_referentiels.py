@@ -74,13 +74,30 @@ class UniciteReferentielsTests(TestCase):
             ('equipes', {'nom': 'E1'}, 'nom'),
         ]
 
-    def test_doublons_400_sous_le_champ(self):
+    def test_doublons_409_sous_le_champ(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — un doublon est un CONFLIT de données
+        # (409 unique_conflict), plus un 400 « données invalides » : le corps
+        # reste rangé sous le champ (écrans inchangés).
         for route, corps, champ in self._cas(self.tpl.id):
             r = self.api.post(f'{BASE}/{route}/', corps, format='json')
-            self.assertEqual(r.status_code, 400, (route, r.data))
+            self.assertEqual(r.status_code, 409, (route, r.data))
             self.assertIn(champ, r.data, route)
+            self.assertEqual(r.data['error']['code'], 'unique_conflict', route)
         self.assertEqual(StageModele.objects.filter(company=self.co).count(), 1)
         self.assertEqual(Equipe.objects.filter(company=self.co).count(), 1)
+
+    def test_cle_protegee_409_sous_le_champ(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — renommer la clé d'une étape PROTÉGÉE
+        # est refusé par l'état de l'étape (409), corps sous `cle`.
+        etape = ChecklistEtapeModele.objects.create(
+            company=self.co, template=self.tpl, cle='systeme', libelle='S',
+            protege=True)
+        r = self.api.patch(f'{BASE}/checklist-etapes/{etape.id}/',
+                           {'cle': 'autre'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('cle', r.data)
+        etape.refresh_from_db()
+        self.assertEqual(etape.cle, 'systeme')
 
     def test_autre_societe_accepte(self):
         api_b = _api(self.admin_b)
@@ -118,3 +135,40 @@ class UniciteReferentielsTests(TestCase):
                 r = self.api.post(f'{BASE}/{url}', corps, format='json')
                 self.assertEqual(r.status_code, 400, r.data)
                 self.assertIn(champ, r.data)
+
+    def test_motif_texte_publie_egale_refus_drf(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `nom: " "` (rogné en vide puis
+        # refusé) était conforme au schéma : la règle partagée de
+        # core.champs_stricts publie, côté requête, un motif qui accepte
+        # EXACTEMENT ce que DRF accepte (NUL refusé ; blanc rogné refusé quand
+        # le champ est obligatoire non blanc).
+        import re
+
+        from rest_framework.exceptions import ValidationError
+
+        from core.champs_stricts import (
+            MOTIF_TEXTE_NON_BLANC, MOTIF_TEXTE_SANS_NUL, ChaineStricte,
+            _ChaineStricteRequetePubliee)
+        for valeur in ('ok', ' x ', ' ', '  ', '', 'a\x00b', '\x00',
+                       ' z', '\t\n'):
+            for champ, motif in ((ChaineStricte(), MOTIF_TEXTE_NON_BLANC),
+                                 (ChaineStricte(allow_blank=True),
+                                  MOTIF_TEXTE_SANS_NUL)):
+                try:
+                    champ.run_validation(valeur)
+                    accepte = True
+                except ValidationError:
+                    accepte = False
+                with self.subTest(valeur=valeur, motif=motif):
+                    self.assertEqual(bool(re.search(motif, valeur)), accepte)
+
+        class _Schema:
+            @staticmethod
+            def _map_serializer_field(champ, direction, bypass_extensions):
+                return {'type': 'string'}
+        ext = _ChaineStricteRequetePubliee(ChaineStricte())
+        self.assertEqual(
+            ext.map_serializer_field(_Schema, 'request')['pattern'],
+            MOTIF_TEXTE_NON_BLANC)
+        self.assertNotIn(
+            'pattern', ext.map_serializer_field(_Schema, 'response'))

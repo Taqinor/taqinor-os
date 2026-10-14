@@ -300,6 +300,14 @@ class ReplanifierEnMasseRequete(serializers.Serializer):
     motif = ChaineStricte(required=False, allow_blank=True)
 
 
+class SuggererCreneauRequete(serializers.Serializer):
+    """XFSM2 — {chantier, [type_intervention], [duree_jours], [date_cible]}."""
+    chantier = _id_strict()
+    type_intervention = ChaineStricte(required=False, allow_blank=True, default='')
+    duree_jours = EntierStrict(required=False, min_value=1, max_value=365, default=1)
+    date_cible = serializers.DateField(required=False, allow_null=True)
+
+
 #: Drapeau de requête publié booléen : ces valeurs, rien d'autre.
 _DRAPEAUX = {'true': True, '1': True, 'false': False, '0': False}
 

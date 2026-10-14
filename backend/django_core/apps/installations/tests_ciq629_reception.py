@@ -35,7 +35,7 @@ class ReceptionDefinitiveTests(TestCase):
         creer_reserve_chantier(self.inst, self.user, description='Coffret AC',
                                origine='reception')
         r = self.api.post(self.url, {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ERR-ENF11 : refus d'état = 409
         self.assertIn('Coffret AC', r.data['detail'])
         self.inst.refresh_from_db()
         self.assertIsNone(self.inst.date_reception_definitive)
@@ -44,7 +44,7 @@ class ReceptionDefinitiveTests(TestCase):
         self.inst.date_reception = None
         self.inst.save(update_fields=['date_reception'])
         r = self.api.post(self.url, {}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ERR-ENF11 : refus d'état = 409
         self.assertIn('provisoire', r.data['detail'])
 
     def test_toutes_levees_date_posee_et_journalisee(self):

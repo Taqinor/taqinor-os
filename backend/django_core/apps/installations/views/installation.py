@@ -509,11 +509,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             changer_statut_chantier(
                 inst, Installation.Statut.MISE_EN_SERVICE, request.user,
                 champs_supplementaires=champs)
-        except TransitionRefusee as exc:
+        except TransitionRefusee as exc:  # ERR-ENF11 : refus d'état = 409
             return Response(
                 {'detail': 'Étape bloquée par un gate.',
                  'raisons': exc.raisons},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # Note de chatter explicite incluant les valeurs mesurées (production /
         # tension) quand elles sont renseignées — pas seulement la date.
         mesures = []
@@ -664,9 +664,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ensure_checklist_items(inst)
         cle = request.data.get('cle')
         item = inst.checklist.filter(cle=cle).first()
-        if item is None:
+        if item is None:  # ERR-ENF11 : clé bien formée mais inconnue = 404
             return Response({'detail': 'Étape inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND)
         fait = bool(request.data.get('fait', True))
         item.fait = fait
         item.fait_par = request.user if fait else None
@@ -789,7 +789,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     @oa.extend_schema(
         request=oa.body(
             'ChecklistPhotoRequete',
-            attachment=oa.i(True),
+            attachment=oa.idf(True),
             cle=oa.s(null=True),
             latitude=oa.f(null=True),
             longitude=oa.f(null=True),
@@ -813,10 +813,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         "precision_m": <float, optionnel>}``.
         """
         inst = self.get_object()
-        attachment_id = request.data.get('attachment')
-        if not attachment_id:
-            return Response({'detail': 'attachment requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # ERR-ENF11 : id 1..ID_MAX strict (`0` était lu « absent »).
+        attachment_id = oa.id_entier(oa.corps_objet(request).get('attachment'), 'attachment')
 
         from apps.records.models import Attachment
         from apps.records.serializers import resolve_target
@@ -1027,7 +1025,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     'Aucun fournisseur indiqué et aucun fournisseur par '
                     'défaut sur les produits manquants.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état du chantier
         try:
             bon, nb = draft_bcf_for_shortfall(
                 inst, fournisseur, request.user, company)
@@ -1050,7 +1048,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             oa.qf('tarif', desc='Tarif (MAD/kWh).'),
             oa.qf('co2', desc='Facteur CO2 (kg/kWh).'),
         ],
-        responses=oa.PDF)
+        responses={**oa.PDF, 409: oa.OBJ})  # 409 : chantier sans puissance (état)
     @action(detail=True, methods=['get'], url_path='rapport-energie',
             permission_classes=[IsAnyRole])
     def rapport_energie(self, request, pk=None):
@@ -1072,9 +1070,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # champ, jamais un PDF à zéros, un 500 ou un défaut silencieux.
         params, erreurs = energy_report.valider_parametres_rapport(
             request.query_params, inst.puissance_installee_kwc)
-        if erreurs:
+        if erreurs:  # ERR-ENF11 : seule la puissance manquante (état) = 409
             return Response({champ: [msg] for champ, msg in erreurs.items()},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT if set(erreurs) == {
+                                'puissance_installee_kwc'} else status.HTTP_400_BAD_REQUEST)
         pdf_bytes = energy_report.render_energy_report_pdf(inst, params)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
@@ -1225,7 +1224,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         type_inst = inst.type_installation
         if not type_inst:
             return Response({'detail': "Le chantier n'a pas de type d'installation."},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état
         if type_inst == Installation.TypeInstallation.AGRICOLE:
             # AGR605 — plan agricole semé une seule fois (pose,
             # mise_en_service, controle ; jamais de raccordement).
@@ -1404,7 +1403,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 return Response(
                     {'detail': "La recette pompage est réservée à un "
                                "chantier agricole (pompage solaire)."},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état
             if recette is not None:
                 return Response(recette_pompage_envelope(inst, recette, ctx))
             recette = RecettePompage.objects.create(
@@ -1538,9 +1537,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         inst = self.get_object()
         try:
             prononcer_reception_definitive(inst, request.user)
-        except ReceptionDefinitiveRefusee as exc:
+        except ReceptionDefinitiveRefusee as exc:  # ERR-ENF11 : état = 409
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(reception_contrat(inst))
 
     # ── CH4 — pack de remise client (handover) ──────────────────────────────
@@ -1601,22 +1600,24 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         )
         inst = self.get_object()
         stages = stages_actifs(inst.company)
+        # ERR-ENF11 : états (aucune étape, dernière atteinte, gate) = 409 ;
+        # clé d'étape bien formée mais inconnue = 404.
         if not stages:
             return Response({'detail': 'Aucune étape configurée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         cle = request.data.get('etape')
         if cle:
             cible = next((s for s in stages if s.cle == cle), None)
             if cible is None:
                 return Response({'detail': 'Étape inconnue.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_404_NOT_FOUND)
         else:
             courante = etape_courante(inst)
             idx = next((k for k, s in enumerate(stages)
                         if courante is not None and s.id == courante.id), -1)
             if idx + 1 >= len(stages):
                 return Response({'detail': 'Dernière étape déjà atteinte.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
             cible = stages[idx + 1]
         # Gate propre à l'ÉTAPE demandée (le choix de la cible est la
         # responsabilité de cet adaptateur) ; la chaîne de gardes du STATUT est
@@ -1625,7 +1626,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if raisons:
             return Response(
                 {'detail': 'Étape bloquée par un gate.', 'raisons': raisons},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # ADAPTATEUR (AUD316) — ce chemin, l'écran de timeline poussé par le
         # produit, écrivait `statut` lui-même et ne tirait qu'une PARTIE de la
         # cascade : ni `verifier_gate_acompte_planification` (YSERV1), ni
@@ -1651,7 +1652,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Étape bloquée par un gate.',
                  'raisons': exc.raisons},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         activity.log_note(
             inst, request.user, f"Étape avancée : « {cible.libelle} ».")
         return Response(

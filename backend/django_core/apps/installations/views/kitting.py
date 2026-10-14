@@ -177,7 +177,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         qs = kit.revisions.select_related('user').order_by('-numero')
         return Response(RevisionKitSerializer(qs, many=True).data)
 
-    @oa.extend_schema(parameters=[oa.qd('date')], responses=RevisionKitSerializer)
+    @oa.extend_schema(parameters=[oa.qd('date', required=True)], responses=RevisionKitSerializer)
     @action(detail=True, methods=['get'], url_path='composition-au')
     def composition_au(self, request, pk=None):
         """XMFG18 — « composition au JJ/MM/AAAA » : la révision en vigueur

@@ -7,13 +7,15 @@ et `protege` sont posés/verrouillés côté serveur pour les étapes système.
 from rest_framework import serializers
 
 from core.champs_stricts import ChampsStrictsMixin
+from core.conflit_etat import ConflitEtat
+from core.unicite import ConflitUnicite
 
 from .models import StageModele
 
 
 def valider_unicite_societe(serializer, champ, valeur, message, **portee):
     """ACHT76 — unicité PAR SOCIÉTÉ d'un champ de référentiel (clé, type, nom)
-    avant l'écriture : 400 en français sous le champ au lieu d'un 500
+    avant l'écriture : 409 (conflit) en français sous le champ au lieu d'un 500
     (``IntegrityError`` — la société, posée côté serveur, n'est pas parmi les
     champs du sérialiseur, donc DRF ne génère aucun ``UniqueTogetherValidator``).
     Un PATCH qui garde sa propre valeur reste accepté (instance exclue)."""
@@ -26,8 +28,16 @@ def valider_unicite_societe(serializer, champ, valeur, message, **portee):
     if serializer.instance is not None:
         qs = qs.exclude(pk=serializer.instance.pk)
     if qs.exists():
-        raise serializers.ValidationError(message)
+        # ERR-ENF11 : doublon = CONFLIT (409 unique_conflict), corps toujours
+        # rangé sous le champ comme l'était le 400.
+        raise ConflitUnicite({champ: [message]}, champs=[champ])
     return valeur
+
+
+def refus_protege(champ, message):
+    """ERR-ENF11 — modifier la clé/le type d'un élément PROTÉGÉ est refusé par
+    l'ÉTAT de l'élément (409), corps rangé sous le champ comme le 400 d'avant."""
+    return ConflitEtat({champ: [message]})
 
 
 class StageModeleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
@@ -55,7 +65,6 @@ class StageModeleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         # pas (elle porte le mapping des effets de bord). Les étapes créées par
         # le Directeur gardent leur clé libre.
         if self.instance and self.instance.protege and value != self.instance.cle:
-            raise serializers.ValidationError(
-                "La clé d'une étape système ne peut pas être modifiée.")
+            raise refus_protege('cle', "La clé d'une étape système ne peut pas être modifiée.")
         return valider_unicite_societe(
             self, 'cle', value, "Cette clé d'étape existe déjà.")

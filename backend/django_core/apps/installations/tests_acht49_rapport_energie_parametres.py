@@ -76,6 +76,6 @@ class RapportEnergieParametresTests(TestCase):
 
     def test_chantier_sans_puissance_refuse(self):
         r = self._get(self.sans_puissance)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ERR-ENF11 : état du chantier
         self.assertIn('Puissance installée non renseignée',
                       str(r.data))

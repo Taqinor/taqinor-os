@@ -4,7 +4,7 @@ from rest_framework import serializers
 from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, TexteLie  # ENF11
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .serializers_stage import valider_unicite_societe
+from .serializers_stage import refus_protege, valider_unicite_societe
 
 from .models import (
     Equipe,
@@ -95,8 +95,8 @@ class ChecklistEtapeModeleSerializer(ChampsStrictsSansDecimalMixin, SameCompanyF
 
     def validate_cle(self, value):
         if self.instance and self.instance.protege and value != self.instance.cle:
-            raise serializers.ValidationError(
-                "La clé d'une étape protégée ne peut pas être modifiée.")
+            raise refus_protege('cle',
+                                "La clé d'une étape protégée ne peut pas être modifiée.")
         return value
 
     def validate(self, attrs):
@@ -133,8 +133,8 @@ class ChecklistTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.Mod
         # Le template « Défaut » (protégé, type vide) garde son type vide.
         if (self.instance and self.instance.protege
                 and value != self.instance.type_installation):
-            raise serializers.ValidationError(
-                "Le type du template « Défaut » ne peut pas être modifié.")
+            raise refus_protege('type_installation',
+                                "Le type du template « Défaut » ne peut pas être modifié.")
         return value or None
 
 
@@ -162,8 +162,8 @@ class FicheInterventionTemplateSerializer(ChampsStrictsSansDecimalMixin, seriali
     def validate_type_intervention(self, value):
         if (self.instance and self.instance.protege
                 and value != self.instance.type_intervention):
-            raise serializers.ValidationError(
-                "Le type d'un gabarit protégé ne peut pas être modifié.")
+            raise refus_protege('type_intervention',
+                                "Le type d'un gabarit protégé ne peut pas être modifié.")
         return valider_unicite_societe(
             self, 'type_intervention', value,
             "Un gabarit existe déjà pour ce type d'intervention.")
@@ -241,8 +241,8 @@ class TypeInterventionSerializer(ChampsStrictsSansDecimalMixin, serializers.Mode
 
     def validate_cle(self, value):
         if self.instance and self.instance.protege and value != self.instance.cle:
-            raise serializers.ValidationError(
-                "La clé d'un type protégé ne peut pas être modifiée.")
+            raise refus_protege('cle',
+                                "La clé d'un type protégé ne peut pas être modifiée.")
         return value
 
 
@@ -436,8 +436,8 @@ class ShotListSlotSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSer
 
     def validate_cle(self, value):
         if self.instance and self.instance.protege and value != self.instance.cle:
-            raise serializers.ValidationError(
-                "La clé d'un créneau protégé ne peut pas être modifiée.")
+            raise refus_protege('cle',
+                                "La clé d'un créneau protégé ne peut pas être modifiée.")
         return valider_unicite_societe(
             self, 'cle', value, 'Cette clé de créneau existe déjà.')
 
@@ -961,8 +961,8 @@ class SafetyChecklistSlotSerializer(ChampsStrictsSansDecimalMixin, serializers.M
 
     def validate_cle(self, value):
         if self.instance and self.instance.protege and value != self.instance.cle:
-            raise serializers.ValidationError(
-                "La clé d'une consigne protégée ne peut pas être modifiée.")
+            raise refus_protege('cle',
+                                "La clé d'une consigne protégée ne peut pas être modifiée.")
         return valider_unicite_societe(
             self, 'cle', value, 'Cette clé de consigne existe déjà.')
 

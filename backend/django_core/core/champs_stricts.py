@@ -243,3 +243,34 @@ class TypageStrictMixin:
         models.SmallIntegerField: EntierStrict,
         models.PositiveSmallIntegerField: EntierStrict,
     }
+
+
+#: ERR-ENF11-FUZZ-INSTALLATIONS — un texte de REQUÊTE n'a jamais d'octet NUL
+#: (DRF le refuse : « Le caractère nul n'est pas autorisé », Postgres aussi).
+MOTIF_TEXTE_SANS_NUL = r'^[^\x00]*$'
+#: … et un texte OBLIGATOIRE (non blanc, rogné) porte au moins un caractère
+#: visible : `" "` ou `"  "` sont rognés en vide puis refusés par DRF.
+MOTIF_TEXTE_NON_BLANC = r'^[^\x00]*[^\s\x00][^\x00]*$'
+
+
+class _ChaineStricteRequetePubliee(OpenApiSerializerFieldExtension):
+    """ERR-ENF11 (api-fuzz « rejected schema-compliant request ») — la règle
+    PARTAGÉE des textes stricts côté requête : le schéma dit ce que DRF refuse
+    déjà (NUL ; blanc après rognage quand le champ l'interdit). Un motif déjà
+    posé (validateur, format, énumération) n'est jamais écrasé ; la réponse
+    n'est pas touchée."""
+    target_class = 'core.champs_stricts.ChaineStricte'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        champ = self.target
+        schema = auto_schema._map_serializer_field(
+            champ, direction, bypass_extensions=True)
+        if (direction != 'request' or schema.get('type') != 'string'
+                or {'pattern', 'format', 'enum'} & set(schema)):
+            return schema
+        schema = dict(schema)
+        non_blanc = not champ.allow_blank and champ.trim_whitespace
+        schema['pattern'] = (
+            MOTIF_TEXTE_NON_BLANC if non_blanc else MOTIF_TEXTE_SANS_NUL)
+        return schema

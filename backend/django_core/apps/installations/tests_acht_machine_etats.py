@@ -120,7 +120,7 @@ class MachineEtatsChantierTests(TestCase):
         r = self.api.post(f'{BASE}{self.inst.id}/mise-en-service/',
                           {'date_mise_en_service': '2026-10-08'},
                           format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ERR-ENF11 : refus d'état = 409
         self.assertIn('un pas à la fois', str(r.data))
         self._assert_rien_ecrit(Installation.Statut.SIGNE, resas)
 
@@ -141,7 +141,7 @@ class MachineEtatsChantierTests(TestCase):
                       'statut', str(r.data))
         r = self.api.post(f'{BASE}{self.inst.id}/mise-en-service/', {},
                           format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ERR-ENF11 : refus d'état = 409
         self._assert_rien_ecrit(Installation.Statut.SIGNE, resas)
 
     def test_rappel_solde_muet_si_annule(self):
