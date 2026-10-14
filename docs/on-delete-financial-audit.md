@@ -294,13 +294,13 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/outillage/models.py::Outillage.company` | backend/django_core/apps/outillage/models.py:26 | authentication.Company | CASCADE |
 | `backend/django_core/apps/outillage/models.py::KitOutillage.company` | backend/django_core/apps/outillage/models.py:106 | authentication.Company | CASCADE |
 | `backend/django_core/apps/outillage/models.py::KitOutillageItem.company` | backend/django_core/apps/outillage/models.py:129 | authentication.Company | CASCADE |
-| `backend/django_core/apps/parametres/models_approvals.py::ApprovalPolicy.company` | backend/django_core/apps/parametres/models_approvals.py:35 | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_approvals.py::ApprovalPolicy.company` | backend/django_core/apps/parametres/models_approvals.py:38 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_audit.py::SettingsAuditLog.company` | backend/django_core/apps/parametres/models_audit.py:18 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_company.py::CompanyProfile.company` | backend/django_core/apps/parametres/models_company.py:20 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_documents.py::DocumentTemplates.company` | backend/django_core/apps/parametres/models_documents.py:48 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_email.py::EmailTemplate.company` | backend/django_core/apps/parametres/models_email.py:203 | authentication.Company | CASCADE |
-| `backend/django_core/apps/parametres/models_messages.py::MessageTemplate.company` | backend/django_core/apps/parametres/models_messages.py:616 | authentication.Company | CASCADE |
-| `backend/django_core/apps/parametres/models_payment_terms.py::ConditionPaiement.company` | backend/django_core/apps/parametres/models_payment_terms.py:26 | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_messages.py::MessageTemplate.company` | backend/django_core/apps/parametres/models_messages.py:749 | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_payment_terms.py::ConditionPaiement.company` | backend/django_core/apps/parametres/models_payment_terms.py:29 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py::ParametresPos.company` | backend/django_core/apps/parametres/models_pos.py:30 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py::BoutiquePos.company` | backend/django_core/apps/parametres/models_pos.py:82 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_realisations.py::Realisation.company` | backend/django_core/apps/parametres/models_realisations.py:45 | authentication.Company | CASCADE |

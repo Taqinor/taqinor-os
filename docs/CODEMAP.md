@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a253ea81f29262803e233fd0c0b7f9cc23ae17ace803562772a8e3e11afb1801
-Plan fingerprint: 3f21d28939b70f1ee2d9fb45487cb220a940aac489be41cc587c338487e82037
+Plan fingerprint: 24630eebf413c7c03227870e6b40f74b5ac5a746a6c57234749727c80a37f4eb
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1247)**
+**Done (1246)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1803,7 +1803,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT46` — Liste des factures : Annuler = confirmation « un avoir sera créé, la facture reste…
 - `VNT47` — Commande `reparer_vente_active` (dry-run par défaut dans un `atomic()` annulé…
 - `VNT49` — Solveur pur `remise_pour_ttc` dans `noyau_totaux.py` : parmi les remises à 2 décimales…
-- `VNT50` — Extraire `_fire_capi_signed_quote` (`cycle_vie.py:1224-1410`, 187 l.) vers…
 - `VNT51` — Publier `devis_accepted` avec `avenant_de` = prédécesseur de révision ACCEPTÉ…
 - `VNT52` — Ne pas émettre de CAPI SignedQuote pour un avenant
 - `VNT53` — Rendre muets sur un avenant les abonnés « nouvelle vente » (webhook `devis.accepted`…
@@ -1825,7 +1824,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT85` — Faire lire `devis_signes_en_vigueur` au contrôle d'intégrité « accepté sans chantier »
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (165)**
+**Open — to build (166)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1951,6 +1950,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG5` — [GATED: founder ops check, 10 minutes]
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
 - `VNT48` — Acceptation en direct M1 (orchestrateur) : réplique du lead 1594 en démo locale →…
+- `VNT50` — Extraire `_fire_capi_signed_quote` (`cycle_vie.py:1224-1410`, 187 l.) vers…
 - `VNT61` — Laisser le client signer un avenant déjà accepté en interne : la page publique sert…
 - `VNT68` — Servir `vente` dans `DevisSerializer` (liste et détail) par un lot par page ; `solde`…
 - `VNT70` — Servir `solde` et `vente` dans `Lead.devis[]` du DÉTAIL seulement (drapeau…
