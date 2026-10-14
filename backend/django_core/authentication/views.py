@@ -326,7 +326,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         # donnent le même 401 ; avec le bon mot de passe,
         # ``_refus_apres_mot_de_passe`` répond 403 ``sso_required``. Un compte
         # VERROUILLÉ reçoit le même 401, bon mot de passe ou non (ASEC14-revue).
-        raw_uname0 = str(request.data.get('username') or '').strip()  # ERR fuzz : liste → 400, pas 500
+        raw_uname0 = str((request.data.get('username') if hasattr(request.data, 'get') else '') or '').strip()  # ERR fuzz : liste/nul → 400, pas 500
         locked_user = CustomUser.objects.filter(
             username__iexact=raw_uname0).first() if raw_uname0 else None
         # ASEC4-revue — le plancher plateforme verrouille le couple
