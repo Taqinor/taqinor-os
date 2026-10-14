@@ -193,3 +193,44 @@ class ReviserDevisService(TestCase):
         r = self._post(self._devis(Devis.Statut.BROUILLON))
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(r.data['code'], 'brouillon')
+
+    # ── VNT55 (D-ADEV-1) — abandonner la révision réactive la V1 acceptée ──
+
+    def _v1_acceptee_et_v2(self):
+        from apps.ventes.models import BonCommande
+        v1 = self._devis(Devis.Statut.ACCEPTE)
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-{MONTH}-5210', devis=v1,
+            client=self.client_obj, statut=BonCommande.Statut.EN_ATTENTE)
+        r = self._post(v1)
+        self.assertEqual(r.status_code, 201, r.content)
+        return v1, Devis.objects.get(pk=r.data['id']), bc
+
+    def _assert_v1_reactivee(self, v1, bc):
+        v1.refresh_from_db()
+        self.assertTrue(v1.is_active)
+        self.assertIsNone(v1.superseded_by_id)
+        self.assertEqual(v1.statut, Devis.Statut.ACCEPTE)
+        bc.refresh_from_db()
+        self.assertEqual(bc.devis_id, v1.pk)
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=v1, body__contains='révision abandonnée').exists())
+        # Révisable à nouveau.
+        self.assertEqual(self._post(v1).status_code, 201)
+
+    def test_vnt55_suppression_du_brouillon_v2_reactive_v1(self):
+        admin = User.objects.create_user(
+            username='qjr521_admin', password='x', role_legacy='admin',
+            company=self.company)
+        v1, v2, bc = self._v1_acceptee_et_v2()
+        r = _api(admin).delete(f'/api/django/ventes/devis/{v2.id}/')
+        self.assertEqual(r.status_code, 204, r.content)
+        self.assertFalse(Devis.objects.filter(pk=v2.pk).exists())
+        self._assert_v1_reactivee(v1, bc)
+
+    def test_vnt55_archivage_de_la_v2_reactive_v1(self):
+        v1, v2, bc = self._v1_acceptee_et_v2()
+        r = self.api.patch(f'/api/django/ventes/devis/{v2.id}/',
+                           {'is_active': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self._assert_v1_reactivee(v1, bc)
