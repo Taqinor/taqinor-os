@@ -865,18 +865,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     # à l'écran (SignaturePad.jsx), complémentaire — ne remplace JAMAIS
     # l'e-signature légale loi 53-05 des contrats.
     @oa.extend_schema(
-        request=oa.body(
-            'SignerChantierRequete',
-            signature_client=oa.s(True),
-            signataire_nom=oa.s(),
-            motif_override_signature=oa.s(),
-            motif_override=oa.s(),
-            signataire_fonction=oa.s(),
-            signataire_societe=oa.s(),
-            cosignataire_nom=oa.s(),
-            cosignataire_fonction=oa.s(),
-            cosignataire_organisme=oa.s(),
-        ),
+        request=oa.SignerChantierRequete,  # ERR-ENF11 : déclaration = validation
         responses=InstallationSerializer,
     )
     @action(detail=True, methods=['post'], url_path='signer-client',
@@ -892,19 +881,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         reste possible avec un motif explicite (`motif_override_signature`,
         patron `motif_override_acompte`), journalisé au chatter. Les
         changements eux-mêmes sont désormais suivis (`TRACKED_FIELDS`)."""
-        from ..signature_validation import erreur_signature_client
         inst = self.get_object()
-        brut = request.data.get('signature_client')
-        sig = brut.strip() if isinstance(brut, str) else ''
-        nom = (request.data.get('signataire_nom') or '').strip()
-        motif = (request.data.get('motif_override_signature')
-                 or request.data.get('motif_override') or '').strip()
         # ADOC78 — data-URL PNG/JPEG base64 bornée seulement (plus aucune
-        # URL http/file injectée dans <img src> du PV/BL, ni « null »).
-        erreur = erreur_signature_client(sig)
-        if erreur:
-            return Response({'signature_client': erreur},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # URL http/file injectée dans <img src> du PV/BL, ni « null ») :
+        # ERR-ENF11, contrôlée par le sérialiseur qui la publie.
+        corps = oa.corps_valide(oa.SignerChantierRequete, request)
+        sig = corps['signature_client']
+        nom = (corps.get('signataire_nom') or '').strip()
+        motif = (corps.get('motif_override_signature')
+                 or corps.get('motif_override') or '').strip()
         if inst.signe_le and not motif:
             return Response(
                 {'detail': (
@@ -928,8 +913,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 ('signataire_fonction', 120), ('signataire_societe', 255),
                 ('cosignataire_nom', 120), ('cosignataire_fonction', 120),
                 ('cosignataire_organisme', 255)):
-            if champ in request.data:
-                valeur = (request.data.get(champ) or '').strip()[:longueur]
+            if champ in corps:
+                valeur = (corps.get(champ) or '').strip()[:longueur]
                 setattr(inst, champ, valeur or None)
                 fields.append(champ)
         client = inst.client

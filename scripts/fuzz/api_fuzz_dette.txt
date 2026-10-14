@@ -468,7 +468,6 @@ API rejected schema-compliant request|POST /api/django/installations/appels-comm
 API rejected schema-compliant request|POST /api/django/installations/bin-affectations/
 API rejected schema-compliant request|POST /api/django/installations/bin-locations/
 API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/ajouter-releve/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/signer-client/
 API rejected schema-compliant request|POST /api/django/installations/checklist-etapes/
 API rejected schema-compliant request|POST /api/django/installations/colis-lignes/
 API rejected schema-compliant request|POST /api/django/installations/colis/

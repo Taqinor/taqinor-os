@@ -12,8 +12,14 @@ import re
 # quelques dizaines de Kio.
 SIGNATURE_MAX_CARACTERES = 700_000
 
-_DATA_URL = re.compile(
-    r'^data:image/(?:png|jpeg|jpg);base64,[A-Za-z0-9+/]+={0,2}$')
+#: ERR-ENF11 — forme acceptée, publiée telle quelle au schéma OpenAPI de
+#: ``chantiers/{id}/signer-client`` (espaces de bord tolérés : la valeur est
+#: rognée avant contrôle).
+MOTIF_DATA_URL = r'^\s*data:image/(?:png|jpeg|jpg);base64,[A-Za-z0-9+/]+={0,2}\s*$'
+_DATA_URL = re.compile(MOTIF_DATA_URL)
+MESSAGE_SIGNATURE_INVALIDE = (
+    'Signature invalide : seule une image PNG ou JPEG tracée '
+    '(data-URL base64) est acceptée.')
 
 
 def erreur_signature_client(valeur):
@@ -25,8 +31,7 @@ def erreur_signature_client(valeur):
         return (f'Signature trop volumineuse (maximum '
                 f'{SIGNATURE_MAX_CARACTERES} caractères).')
     if not _DATA_URL.match(sig):
-        return ('Signature invalide : seule une image PNG ou JPEG tracée '
-                '(data-URL base64) est acceptée.')
+        return MESSAGE_SIGNATURE_INVALIDE
     return None
 
 

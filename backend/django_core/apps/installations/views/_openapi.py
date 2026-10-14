@@ -18,11 +18,16 @@ from drf_spectacular.utils import (  # noqa: F401  (ré-exportés)
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from drf_spectacular.utils import extend_schema_field
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict, date_ou_400
+
+from ..signature_validation import (
+    MESSAGE_SIGNATURE_INVALIDE, MOTIF_DATA_URL, SIGNATURE_MAX_CARACTERES,
+)
 
 UPLOAD_PARSERS = [MultiPartParser, FormParser]
 JSON_AND_UPLOAD_PARSERS = [JSONParser, MultiPartParser, FormParser]
@@ -306,6 +311,27 @@ class SuggererCreneauRequete(serializers.Serializer):
     type_intervention = ChaineStricte(required=False, allow_blank=True, default='')
     duree_jours = EntierStrict(required=False, min_value=1, max_value=365, default=1)
     date_cible = serializers.DateField(required=False, allow_null=True)
+
+
+def _texte_facultatif():
+    return ChaineStricte(required=False, allow_blank=True, allow_null=True)
+
+
+class SignerChantierRequete(serializers.Serializer):
+    """NTMOB16/CIQ631 — signature client du bon de livraison : la data-URL
+    acceptée est PUBLIÉE (motif + longueur), les autres champs sont des textes
+    facultatifs (``null`` toléré = vide, comme le lisait la vue)."""
+    signature_client = ChaineStricte(
+        max_length=SIGNATURE_MAX_CARACTERES, validators=[RegexValidator(
+            MOTIF_DATA_URL, message=MESSAGE_SIGNATURE_INVALIDE)])
+    signataire_nom = _texte_facultatif()
+    motif_override_signature = _texte_facultatif()
+    motif_override = _texte_facultatif()
+    signataire_fonction = _texte_facultatif()
+    signataire_societe = _texte_facultatif()
+    cosignataire_nom = _texte_facultatif()
+    cosignataire_fonction = _texte_facultatif()
+    cosignataire_organisme = _texte_facultatif()
 
 
 #: Drapeau de requête publié booléen : ces valeurs, rien d'autre.
