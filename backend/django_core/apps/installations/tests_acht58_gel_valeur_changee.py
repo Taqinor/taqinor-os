@@ -66,7 +66,7 @@ class GelValeurChangeeTests(TestCase):
 
     def test_puissance_modifiee_refusee(self):
         r = self.api.patch(f'{BASE}/{self.clos.id}/',
-                           {'puissance_installee_kwc': 7}, format='json')
+                           {'puissance_installee_kwc': '7'}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
         self.assertIn('Chantier clôturé', str(r.data))
         self.clos.refresh_from_db()
