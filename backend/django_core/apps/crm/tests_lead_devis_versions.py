@@ -138,6 +138,19 @@ class TestLeadDevisVersions(TestCase):
         self.assertIsNone(lignes[envoye.id]['solde'])
         self.assertIsNone(lignes[envoye.id]['vente'])
 
+    def test_get_devis_sert_le_solde(self):
+        """ATOT39 — devis accepté à facture COMPLÈTE émise : la ligne du
+        détail du lead porte ``solde.porte_facturation == 'aucune'`` et
+        ``facturation_terminee`` vrai (texte, contrat ``devis_solde.json``) :
+        l'onglet Devis masque « Facturer »."""
+        devis = self._devis('DEV-ATOT39-10')
+        Devis.objects.filter(pk=devis.pk).update(statut='accepte')
+        self._facture(devis, 1)
+        solde = self._lignes()[devis.id]['solde']
+        self.assertEqual(solde['porte_facturation'], 'aucune')
+        self.assertEqual(solde['facturation_terminee'], 'True')
+        self.assertEqual(solde['tranches_facturees'], '0')
+
     def test_vnt70_liste_des_leads_sans_solde_ni_vente(self):
         self._chaine_acceptee()
         r = self.api.get('/api/django/crm/leads/', {'page_size': 100})
