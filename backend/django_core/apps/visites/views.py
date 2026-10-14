@@ -335,7 +335,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             replanifier=True, date_requise=False,
             assigne_par_defaut=request.user)
         if erreurs:
-            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+            # CI #997 fuzz : une date déjà passée dépend de l'HORLOGE (état),
+            # pas de la forme du corps : 409, même corps ``{date_prevue: […]}``
+            # (l'écran l'affiche sous le champ). Toute autre erreur reste 400.
+            date_passee = erreurs == {
+                'date_prevue': [services.MESSAGE_DATE_PASSEE]}
+            return Response(erreurs, status=(
+                status.HTTP_409_CONFLICT if date_passee
+                else status.HTTP_400_BAD_REQUEST))
         return Response(selectors.contexte_visite_terrain(visite),
                         status=status.HTTP_201_CREATED)
 

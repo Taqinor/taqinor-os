@@ -280,7 +280,15 @@ def _remplacer_ids_fk(objet, table=None):
     for nom, valeur in list(objet.items()):
         entree = _entree(nom, table)
         if entree is not None and not isinstance(valeur, dict):
-            objet[nom] = _remplacer_valeur(valeur, entree)
+            nouvelle = _remplacer_valeur(valeur, entree)
+            # CI #997 : une clé réécrite — MÊME à l'identique — est revalidée
+            # sur sa valeur VIVANTE (chaîne du fil d'un corps formulaire contre
+            # ``type: integer``) : le cas positif basculait NÉGATIF et la
+            # réponse 201 devenait « API accepted schema-violating request »
+            # (POST portail/documents-client-portail/, client_id=0&lead_id=0).
+            # On n'écrit donc que lorsque l'id change réellement.
+            if nouvelle != valeur:
+                objet[nom] = nouvelle
         elif isinstance(valeur, dict):
             _remplacer_ids_fk(valeur, table)
         elif isinstance(valeur, list):
@@ -397,9 +405,96 @@ def _journal_couverture():
 atexit.register(_journal_couverture)
 
 
+# ── 5. Fichiers dont le FORMAT n'est pas exprimable au schéma ──────────
+# Un gabarit de dossier réglementaire se dépose en PDF SEULEMENT (règle
+# métier, « le fichier reçu n'en est pas un » sinon) ; OpenAPI ne dit que
+# ``format: binary``. Un cas POSITIF reçoit donc un PDF minimal valide
+# (octets ``%PDF-``) au lieu d'octets quelconques — même nature que les ids
+# réels : l'existence/le format d'une donnée que le schéma ne peut pas porter.
+_PDF_MINIMAL = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+_FICHIERS_PDF = re.compile(r'^/api/django/calepinage/gabarits-dossiers/')
+_METHODES_FICHIER = {'POST', 'PATCH'}
+
+
+def _meta_sans_revalidation(case):
+    """Métadonnées SANS déclencher la revalidation de ``case.meta`` : lire
+    ``case.meta`` après une substitution de FK revalide le corps (et, avec des
+    octets, le déclare invalide) avant que ``_rester_positif`` ait pu agir."""
+    meta = getattr(case, '_meta', None)
+    return meta if meta is not None else case.meta
+
+
+def _fichiers_pdf(case):
+    meta = _meta_sans_revalidation(case)
+    if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
+        return
+    if case.operation.method.upper() not in _METHODES_FICHIER:
+        return
+    if not _FICHIERS_PDF.match(case.operation.path):
+        return
+    corps = case.body
+    if isinstance(corps, dict) and corps.get('fichier') is not None:
+        origine = corps['fichier']
+        # Schemathesis range un binaire dans ``Binary`` (sous-classe de str
+        # portant ``.data``) : on change ses OCTETS en place, la clé du corps
+        # n'est pas réécrite (voir ``_rester_positif``).
+        if isinstance(getattr(origine, 'data', None), bytes):
+            origine.data = _PDF_MINIMAL
+        elif isinstance(origine, bytes):
+            corps['fichier'] = _PDF_MINIMAL
+        elif isinstance(origine, str):
+            corps['fichier'] = _PDF_MINIMAL.decode('latin-1')
+
+
+# ── 6. Un corps à fichier reste POSITIF après nos substitutions ─────────
+# Schemathesis revalide tout conteneur modifié par un crochet, et déclare
+# INVALIDE tout corps qui porte des octets (``_contains_bytes`` : ``Binary``
+# d'un champ ``format: binary``) : un cas positif dont une FK a été remplacée
+# par un id réel basculait donc NÉGATIF, et la réponse 201 devenait « API
+# accepted schema-violating request » sans aucune donnée invalide envoyée
+# (POST portail/documents-client-portail/). Le corps n'a reçu que des
+# substitutions voulues par ce fichier : on retire son drapeau « à revalider »
+# ET on réaligne son empreinte validée (Schemathesis détecte aussi une
+# modification en comparant les empreintes) ; les autres conteneurs — query,
+# chemin — restent revalidés.
+def _contient_binaire(valeur):
+    if isinstance(valeur, bytes) or isinstance(getattr(valeur, 'data', None),
+                                               bytes):
+        return True
+    if isinstance(valeur, dict):
+        return any(_contient_binaire(v) for v in valeur.values())
+    if isinstance(valeur, list):
+        return any(_contient_binaire(v) for v in valeur)
+    return False
+
+
+def _rester_positif(case, etait_positif):
+    meta = getattr(case, '_meta', None)
+    if not etait_positif or meta is None or not hasattr(meta, '_dirty'):
+        return
+    if not _contient_binaire(getattr(case, 'body', None)):
+        return
+    lieux = list(getattr(meta, 'components', None) or ()) + list(meta._dirty)
+    for lieu in lieux:
+        if getattr(lieu, 'value', lieu) != 'body':
+            continue
+        meta.clear_dirty(lieu)
+        empreinte = getattr(case, '_hash_container', None)
+        if empreinte is not None:
+            meta.update_validated_hash(lieu, empreinte(case.body))
+
+
+def _est_positif(case):
+    meta = case.meta
+    return meta is not None and meta.generation.mode == GenerationMode.POSITIVE
+
+
 @schemathesis.hook
 def before_call(context, case, kwargs):
+    etait_positif = _est_positif(case)
     _ids_chemin_reels(case)
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
+    _fichiers_pdf(case)
+    _rester_positif(case, etait_positif)

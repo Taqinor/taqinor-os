@@ -39,6 +39,8 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.parseurs import PARSEURS_JSON
+
 from ..permissions import PeutVoirCalepinage
 from ..serializers import forme_du_contrat
 from ..services.comparaison_projets import BORNE_PROJETS
@@ -55,7 +57,8 @@ __all__ = ['comparer_projets', 'comparatif_xlsx']
     responses=forme_du_contrat('CalepinageComparaisonProjets',
                                'calepinage_comparaison_projets.json'))
 @action(detail=False, methods=['post'], url_path='comparer-projets',
-        url_name='comparer-projets', permission_classes=[PeutVoirCalepinage])
+        url_name='comparer-projets', permission_classes=[PeutVoirCalepinage],
+        parser_classes=PARSEURS_JSON)  # fuzz CI #997 : liste d'ids = JSON, un multipart n'en porte que des chaînes
 def comparer_projets(self, request):
     """CALX341 — le comparatif de 1 à 5 calepinages de la société."""
     from ..services.comparaison_projets import (

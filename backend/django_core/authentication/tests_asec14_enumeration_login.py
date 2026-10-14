@@ -104,3 +104,16 @@ class EnumerationLoginTests(TestCase):
         r = self._login([None, None], '0')
         self.assertEqual(r.status_code, 400, r.data)
         self.assertNotIn('access_token', r.cookies)
+
+    def test_corps_non_objet_400_pas_500(self):
+        # api-fuzz (PR #997) : le CORPS entier `[null, null]` (liste JSON) faisait
+        # `request.data.get(...)` sur une liste -> AttributeError, 500. Seule la
+        # lecture du nom d'utilisateur change : 400 de validation, aucun jeton,
+        # et la règle d'authentification n'est pas touchée.
+        for corps in ([None, None], [], 'x', 5):
+            with self.subTest(corps=corps):
+                cache.clear()
+                r = APIClient().post('/api/django/token/', corps,
+                                     format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertNotIn('access_token', r.cookies)

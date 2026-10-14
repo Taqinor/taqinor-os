@@ -92,8 +92,10 @@ class NotificationRoutingRuleSerializer(ChampsStrictsBornesMixin,
     same_company_fields = ('target_user',)
     event_label = serializers.CharField(
         source='get_event_type_display', read_only=True)
+    # CI #997 fuzz : une règle ciblant un utilisateur n'a pas de rôle — le
+    # libellé est ``null`` (publié nullable, plus « string » seul).
     target_role_label = serializers.CharField(
-        source='get_target_role_display', read_only=True)
+        source='get_target_role_display', read_only=True, allow_null=True)
 
     class Meta:
         model = NotificationRoutingRule

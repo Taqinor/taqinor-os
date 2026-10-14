@@ -16,9 +16,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.mixins import TenantMixin
 
 from core.mixins import SameCompanyFKSerializerMixin
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ListeJSON
 
 from .models import (
@@ -27,13 +29,17 @@ from .models import (
     GLOBAL_DEFAULT_CARDS,
     ALL_DASHBOARD_CARDS,
 )
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
 
 
-class DashboardConfigSerializer(SameCompanyFKSerializerMixin,
+class DashboardConfigSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
+    """Configuration de tableau de bord : per-user XOR palier de rôle."""
     # AANA17 — une config ne peut viser qu'un utilisateur de LA société.
     same_company_fields = ('user',)
     # ERR-ENF11-FUZZ-REPORTING — liste de clés de cartes publiée comme telle
@@ -75,6 +81,22 @@ class DashboardConfigSerializer(SameCompanyFKSerializerMixin,
         return attrs
 
 
+#: CI #997 fuzz — la règle de ``validate`` (une config est PER-USER : ``user``
+#: posé et ``menu_tier`` vide, OU de PALIER : ``menu_tier`` non vide et ``user``
+#: nul/absent) est publiée à la création et au remplacement : un corps qui
+#: porte les deux, ou aucun, n'est plus « conforme au schéma ».
+USER_XOR_PALIER = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['user'], 'properties': {
+        'user': {'type': 'integer'},
+        'menu_tier': {'type': 'string', 'maxLength': 0}}},
+    {'required': ['menu_tier'], 'properties': {
+        'user': {'enum': [None]},
+        'menu_tier': {'type': 'string', 'minLength': 1, 'pattern': r'\S'}}},
+]}}
+
+
+@extend_schema_view(create=extend_schema(extensions=USER_XOR_PALIER),
+                    update=extend_schema(extensions=USER_XOR_PALIER))
 class DashboardConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """CRUD des configurations de tableau de bord, bornées à la société.
 

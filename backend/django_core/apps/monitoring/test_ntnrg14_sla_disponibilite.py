@@ -156,8 +156,8 @@ class TestAsav101SlaApi(TestCase):
         self.assertEqual(set(lst.data), set(attendu))
         self.assertEqual(set(lst.data['results'][0]),
                          set(attendu['results'][0]))
-        # Un seul SLA par système.
-        self.assertEqual(self._creer().status_code, 400)
+        # Un seul SLA par système : refus d'ÉTAT (corps conforme) = 409.
+        self.assertEqual(self._creer().status_code, 409)
 
     def test_taux_garanti_obligatoire(self):
         r = self.api.post(self.URL, {'installation': self.inst.id},

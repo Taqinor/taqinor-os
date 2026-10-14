@@ -212,6 +212,14 @@ class DecisionRefuseeSansEcritureTest(SimpleTestCase):
         self.assertIn('Décision inconnue', str(refus))
         self.assertEqual(list(refus.corps()), ['decision'])
 
+    def test_decision_non_texte(self):
+        # CI #997 fuzz : ``{"decision": {}}`` levait ``unhashable type`` (500).
+        for valeur in ({}, [], 5, True):
+            with self.subTest(decision=valeur):
+                refus = self._decider(faux_calepinage(), decision=valeur)
+                self.assertEqual(refus.champ, 'decision')
+                self.assertEqual(list(refus.corps()), ['decision'])
+
     def test_refus_sans_motif(self):
         refus = self._decider(faux_calepinage(), decision='refuse',
                               motif='   ')
@@ -386,6 +394,18 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         self.assertEqual(self.calepinage.approbation['etat'], 'approuve')
         self.assertNotIn('approbation', self.calepinage.resultat or {})
         self.assertEqual(self._notes().count(), avant + 1)
+
+    def test_decision_non_texte_400_et_non_500(self):
+        # CI #997 fuzz : un objet/une liste en ``decision`` n'est pas un 500.
+        for valeur in ({}, [], 5):
+            with self.subTest(decision=valeur):
+                reponse = self.api.post(
+                    url_approbation(self.calepinage.pk),
+                    {'decision': valeur, 'motif': '0'}, format='json')
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertIn('decision', reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertIsNone(self.calepinage.approbation)
 
     def test_refus_sans_motif_nomme_le_champ(self):
         reponse = self.api.post(url_approbation(self.calepinage.pk),

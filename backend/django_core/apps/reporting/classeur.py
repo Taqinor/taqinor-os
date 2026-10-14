@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
 from core.mixins import TenantMixin
 from core.parseurs import ObjetJSON
 
@@ -171,7 +171,7 @@ def evaluate_formula(classeur, formule, *, user, _visiting=None):
     return evaluer_formule(translated, context)
 
 
-class ClasseurSerializer(serializers.ModelSerializer):
+class ClasseurSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     # ERR-ENF11-FUZZ-REPORTING — OBJETS JSON non nuls : ``null`` était conforme
     # au schéma ``{}`` publié puis refusé par le champ de modèle (400).
     cellules = ObjetJSON(required=False)

@@ -1357,3 +1357,71 @@ class MonitoringConfigSchemaTests(TestCase):
         composant = schema['components']['schemas']['MonitoringConfig']
         self.assertEqual(
             composant['properties']['has_credentials']['type'], 'boolean')
+
+
+class TestFuzz997TypesEtRegles(TestCase):
+    """CI #997 (api-fuzz) — décimaux en chaîne seulement, montant d'abonnement
+    et taux garanti PUBLIÉS dans leur motif (le serveur refuse 0), refus
+    d'état en 409."""
+
+    def setUp(self):
+        self.company = make_company('fuzz997', 'Fuzz 997')
+        self.resp = User.objects.create_user(
+            username='fuzz997_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.resp)
+        self.inst, _ = make_installation(self.company, ref='CHT-F997')
+
+    def test_garantie_decimaux_en_chaine_seulement(self):
+        corps = {'installation': self.inst.id, 'guaranteed_year1_kwh': '0',
+                 'degradation_pct_per_year': '0', 'start_year': 0,
+                 'compensation_mad_per_kwh': '0', 'tolerance_pct': '0',
+                 'note': ''}
+        for champ in ('tolerance_pct', 'guaranteed_year1_kwh'):
+            with self.subTest(champ=champ):
+                r = self.api.post('/api/django/monitoring/warranties/',
+                                  {**corps, champ: 0}, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertIn(champ, r.data)
+        r = self.api.post('/api/django/monitoring/warranties/', corps,
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_motifs_publies_disent_ce_que_le_serveur_accepte(self):
+        from apps.monitoring import serializers as ms
+
+        regles = (
+            (ms.MOTIF_MONTANT_POSITIF,
+             ('1', '0.01', '150.00', '0.5', '9999999999.99'),
+             ('0', '0.0', '0.00', '-1', '.5', '1e1', '')),
+            (ms.MOTIF_TAUX_GARANTI,
+             ('98', '100', '100.00', '0.01', '99.99', '1.5'),
+             ('0', '0.00', '100.01', '101', '-1', '')),
+            (ms.MOTIF_COMPENSATION,
+             ('0', '50', '0.00', '12345678.99'),
+             ('-1', '1e1', '', '123456789')),
+        )
+        for motif, bons, mauvais in regles:
+            for v in bons:
+                self.assertRegex(v, motif)
+            for v in mauvais:
+                self.assertNotRegex(v, motif)
+
+    def test_abonnement_et_sla_refusent_les_valeurs_publiees_hors_motif(self):
+        r = self.api.post('/api/django/monitoring/abonnements/', {
+            'installation_id': self.inst.id, 'periodicite': 'mensuel',
+            'montant': '0', 'date_debut': None}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('montant', r.data)
+        r = self.api.post('/api/django/monitoring/sla-disponibilite/', {
+            'installation': self.inst.id, 'disponibilite_garantie_pct': '0',
+            'compensation_mad_par_jour_indispo': '0', 'note': ''},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('disponibilite_garantie_pct', r.data)
+        r = self.api.post('/api/django/monitoring/sla-disponibilite/', {
+            'installation': self.inst.id, 'disponibilite_garantie_pct': '98',
+            'compensation_mad_par_jour_indispo': 0, 'note': ''},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('compensation_mad_par_jour_indispo', r.data)

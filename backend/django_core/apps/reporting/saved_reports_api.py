@@ -9,6 +9,7 @@ from rest_framework import serializers, viewsets
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
+from core.champs_stricts import ChampsStrictsEntiersMixin
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ObjetJSON
 
@@ -18,7 +19,8 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema
 from rest_framework.parsers import JSONParser
 
 
-class SavedReportSerializer(serializers.ModelSerializer):
+class SavedReportSerializer(ChampsStrictsEntiersMixin,
+                            serializers.ModelSerializer):
     target_kind_label = serializers.CharField(
         source='get_target_kind_display', read_only=True)
     schedule_label = serializers.CharField(
