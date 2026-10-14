@@ -55,7 +55,14 @@ class TestDevisFreezeOnUpdate(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
+        # CI #997 — refus d'ÉTAT (corps conforme) : 409, corps {statut} gardé.
+        self.assertIn('Devis figé', str(r.data['statut']))
+        r = self.api.put(
+            f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('statut', r.data)
         devis.refresh_from_db()
         self.assertNotEqual(devis.note, 'edit')
 
@@ -64,14 +71,14 @@ class TestDevisFreezeOnUpdate(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_patch_expired_devis_rejected(self):
         devis = self._devis(3, Devis.Statut.EXPIRE)
         r = self.api.patch(
             f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_patch_draft_devis_still_editable(self):
         devis = self._devis(4, Devis.Statut.BROUILLON)

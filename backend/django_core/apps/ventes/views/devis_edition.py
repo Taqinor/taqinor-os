@@ -83,8 +83,9 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
     ``perform_update`` et ``replace-lines`` avec ``entete``) :
 
     * QJR521 — un devis remplacé / archivé ne se réactive jamais ;
-    * QJR516 — prédicat de modifiabilité (geste ENTETE), 400 {'statut'} et
-      l'exception « désactivation seule » conservés ;
+    * QJR516 — prédicat de modifiabilité (geste ENTETE), {'statut'} et
+      l'exception « désactivation seule » conservés — 409 (refus d'état,
+      CI #997), plus 400 ;
     * ERR8 — lead / client d'une autre société refusés ;
     * QJR539 (``t17``) — correction d'un ENVOYÉ : une remise globale ENTRANTE
       plus profonde au-dessus du seuil n'est plus couverte par l'approbation
@@ -106,7 +107,10 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
             and set(validated_data.keys()) <= {'is_active'}
         )
         if not only_deactivation:
-            raise ValidationError({
+            # CI #997 — refus d'ÉTAT (corps conforme, devis figé) : 409,
+            # même corps {'statut'} qu'avant.
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({
                 'statut': 'Devis figé — révisez-le (reviser) pour le '
                           'modifier.'})
     company = getattr(user, 'company', None)

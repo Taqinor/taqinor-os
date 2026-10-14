@@ -170,6 +170,62 @@ class DecimalStricte(serializers.DecimalField):
         return super().validate_empty_values(data)
 
 
+class DecimalSouple(serializers.DecimalField):
+    """CI #997 api-fuzz (``POST ventes/devis/ {"taux_tva": 0}``) — décimal
+    accepté en CHAÎNE **ou** en NOMBRE JSON, et PUBLIÉ ainsi (``anyOf`` motif
+    | nombre borné, voir ``_DecimalChaineNonVide``) : des clients envoient des
+    nombres (générateur de devis), le serveur ne les refuse pas. Un nombre
+    hors bornes ou un booléen → 400 ; un nombre dans les bornes est arrondi
+    au demi supérieur à ``decimal_places`` (bruit flottant ``0.1 + 0.2``)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            self.fail('invalid')
+        if isinstance(data, (int, float)):
+            from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+            try:
+                valeur = Decimal(repr(data))
+            except (InvalidOperation, ValueError):
+                self.fail('invalid')
+            if not valeur.is_finite():
+                self.fail('invalid')
+            borne = borne_decimal(self)
+            if borne is not None and valeur > borne:
+                self.fail('max_value', max_value=borne)
+            if borne is not None and valeur < -borne:
+                self.fail('min_value', min_value=-borne)
+            if self.decimal_places is not None:
+                try:
+                    valeur = valeur.quantize(
+                        Decimal(1).scaleb(-self.decimal_places),
+                        ROUND_HALF_UP)
+                except InvalidOperation:
+                    self.fail('invalid')
+            data = format(valeur, 'f')
+        return super().to_internal_value(data)
+
+
+def borne_decimal(champ):
+    """Plus grande valeur absolue qu'un ``DecimalField`` accepte (``None`` si
+    le champ ne la borne pas) : ``999.99`` pour ``max_digits=5, places=2``."""
+    from decimal import Decimal
+    if not champ.max_whole_digits or champ.decimal_places is None:
+        return None
+    return Decimal(10) ** champ.max_whole_digits - Decimal(1).scaleb(
+        -champ.decimal_places)
+
+
+class DecimalSoupleMixin:
+    """Mixin de ``ModelSerializer`` : les décimaux de modèle deviennent des
+    ``DecimalSouple`` (chaîne ou nombre, publiés comme tels). À placer AVANT
+    ``serializers.ModelSerializer`` dans les bases."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.DecimalField: DecimalSouple,
+    }
+
+
 class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
     r"""ENF11 (api-fuzz « rejected schema-compliant request ») — le motif que
     drf-spectacular publie pour un décimal-chaîne (``^-?\d{0,N}(?:\.\d{0,M})?$``)
@@ -193,7 +249,31 @@ class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
         if isinstance(champ, DecimalStricte) and champ.allow_null:
             motif = schema.pop('pattern')
             schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
+        if isinstance(champ, DecimalSouple) and direction == 'request':
+            schema = _chaine_ou_nombre(schema, champ)
         return schema
+
+
+def _chaine_ou_nombre(schema, champ):
+    """``anyOf`` [décimal-chaîne au motif, nombre JSON borné] d'une
+    ``DecimalSouple`` (``nullable`` porté par chaque branche, OpenAPI 3.0)."""
+    from decimal import Decimal
+    branche = {k: schema.pop(k) for k in ('type', 'format', 'pattern')
+               if k in schema}
+    nombre = {'type': 'number'}
+    borne = borne_decimal(champ)
+    bornes = {'minimum': [champ.min_value], 'maximum': [champ.max_value]}
+    if borne is not None:
+        bornes['minimum'].append(-borne)
+        bornes['maximum'].append(borne)
+    for cle, choix in (('minimum', max), ('maximum', min)):
+        valeurs = [Decimal(str(v)) for v in bornes[cle] if v is not None]
+        if valeurs:
+            nombre[cle] = float(choix(valeurs))
+    if schema.pop('nullable', False):
+        branche['nullable'] = nombre['nullable'] = True
+    schema['anyOf'] = [branche, nombre]
+    return schema
 
 
 class TexteLie(serializers.CharField):
