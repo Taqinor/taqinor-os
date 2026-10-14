@@ -46,6 +46,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
+from apps.records.openapi import ParsersParActionMixin
 from apps.records.serializers import ChatterActivitySerializer
 from apps.records.views import ChatterViewSetMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -315,7 +316,7 @@ class _OrdreStatutDerive(filters.OrderingFilter):
                          description="Identifiant(s) d'étiquette, séparés par des virgules (ET logique)."),
     ]),
 )
-class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
+class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
                         ElectriqueActionsMixin, SortiesMixin,
                         SchemaUnifilaireMixin, CompanyScopedModelViewSet):
@@ -338,6 +339,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                        'statut_derive']
 
     read_permission = CAL_VOIR
+
+    # Fuzz CI #997 : le corps de création est un objet JSON (responsable/custom_data
+    # typés) ; un multipart n'en porte que des chaînes → JSON seul, sans toucher aux uploads.
+    parsers_par_action = {'create': [JSONParser]}
 
     #: CALX347 — la décision d'approbation exige ``calepinage_approuver``, pas
     #: ``calepinage_gerer`` : un porteur de GÉRER seul n'y a pas droit, et un
