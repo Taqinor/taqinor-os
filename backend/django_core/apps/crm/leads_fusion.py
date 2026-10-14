@@ -176,7 +176,7 @@ def merge_leads(survivor, others, user):
                 )
                 update_installation_lead(absorbed, survivor)
             except Exception:
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', 'merge_leads', exc_info=True)
             # 2 bis) ACAL177 — les CALEPINAGES suivent le dossier (D06-T04).
             # Savepoint : un transfert qui échoue ne casse jamais la fusion,
             # mais il est tracé (journal + note au chatter du survivant).
@@ -191,7 +191,7 @@ def merge_leads(survivor, others, user):
                     content_type=ct, object_id=absorbed.id).update(
                     object_id=survivor.id)
             except Exception:
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', 'merge_leads', exc_info=True)
             # 4) Historique chatter → survivant.
             LeadActivity.objects.filter(lead=absorbed).update(lead=survivor)
             # 4 bis) CAD106 — les RELANCES suivent le dossier : les touches

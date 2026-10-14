@@ -11,6 +11,9 @@ from core.dates import aujourd_hui_local
 from . import activity
 from .leads_socle import lead_notification_recipients
 from .models import LeadActivity
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 _appt_logger = _logging.getLogger(__name__)
@@ -55,6 +58,7 @@ def _ramadan_pacing_enabled(company) -> bool:
         return horaires.est_en_ramadan(
             aujourd_hui_local(), company, profil=profile)
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', '_ramadan_pacing_enabled', exc_info=True)
         return False
 
 
@@ -65,6 +69,7 @@ def _is_ramadan_iftar_window(dt_utc) -> bool:
         from . import horaires
         return horaires.dans_plage_iftar(dt_utc)
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', '_is_ramadan_iftar_window', exc_info=True)
         return False
 
 
@@ -102,6 +107,7 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
         local = scheduled_at.astimezone(zoneinfo.ZoneInfo(RAMADAN_TZ))
         date_str = local.strftime('%d/%m/%Y à %H:%M')
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', 'book_appointment', exc_info=True)
         date_str = str(scheduled_at)
     activity.log_note(
         lead, user,
@@ -136,6 +142,7 @@ def build_appointment_confirmation_whatsapp(request, appointment):
             zoneinfo.ZoneInfo(RAMADAN_TZ))
         date_str = local_dt.strftime('%d/%m/%Y à %H:%M')
     except Exception:  # pragma: no cover - défensif
+        logger.warning('%s : échec ignoré (dégradé)', 'build_appointment_confirmation_whatsapp', exc_info=True)
         date_str = str(appointment.scheduled_at)
 
     ics_url = request.build_absolute_uri(
@@ -189,6 +196,7 @@ def resoudre_lien_rdv(text, lead, *, request=None) -> str:
     try:
         url = public_booking_url(lead, request=request)
     except Exception:  # noqa: BLE001 — jamais bloquer l'envoi d'un message
+        logger.warning('%s : échec ignoré (dégradé)', 'resoudre_lien_rdv', exc_info=True)
         url = ''
     return text.replace('{lien_rdv}', url)
 

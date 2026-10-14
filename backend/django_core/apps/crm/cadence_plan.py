@@ -120,7 +120,7 @@ def sync_relance_activity(lead, user):
                 act.done_by = user
                 act.save(update_fields=['done', 'done_at', 'done_by'])
     except Exception:
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'sync_relance_activity', exc_info=True)
 
 
 # ── RELANCE FOUNDATION — plan de relance structuré (multi-touches) ──────────
@@ -838,7 +838,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                     body=(f'Validité de la proposition posée au '
                           f'{derniere:%d/%m/%Y} — {motif}.'))
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'initialiser_plan_relance', exc_info=True)
     return resultats
 
 

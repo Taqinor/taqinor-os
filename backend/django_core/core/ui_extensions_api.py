@@ -24,6 +24,9 @@ from authentication.permissions import IsAdminRole, IsAnyRole
 from . import ui_extensions
 from .models import UiActionBouton, UiOngletCustom
 from .viewsets import CompanyScopedModelViewSet
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _applicable_queryset(qs, request):
@@ -47,6 +50,7 @@ def _resolve_generic(target_model, target_id, company):
             lookup['company'] = company
         return model.objects.filter(**lookup).first()
     except Exception:  # pragma: no cover - défensif
+        logger.warning('%s : échec ignoré (dégradé)', '_resolve_generic', exc_info=True)
         return None
 
 
@@ -63,9 +67,10 @@ def _instance_field_context(instance):
             try:
                 out[f.attname] = getattr(instance, f.attname)
             except Exception:  # pragma: no cover - défensif
+                logger.warning('%s : échec ignoré (dégradé)', '_instance_field_context', exc_info=True)
                 continue
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_instance_field_context', exc_info=True)
     return out
 
 

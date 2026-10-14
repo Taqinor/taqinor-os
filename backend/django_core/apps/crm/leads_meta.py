@@ -786,7 +786,7 @@ def create_lead_from_meta_lead_ads(
     try:
         notify_new_lead(lead)
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'create_lead_from_meta_lead_ads', exc_info=True)
 
     # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
     # une cadence en échec ne fait JAMAIS échouer la création du lead.
@@ -895,7 +895,7 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
     try:
         notify_new_lead(lead)
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'create_minimal_lead_from_ctwa', exc_info=True)
     # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
     # une cadence en échec ne fait JAMAIS échouer la création du lead.
     demarrer_cadence_contact(lead, origine='ctwa')

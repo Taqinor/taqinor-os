@@ -215,6 +215,7 @@ def _nom_affiche_marque(lead):
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.objects.filter(company=company).first()
     except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais l'envoi
+        logger.warning('%s : échec ignoré (dégradé)', '_nom_affiche_marque', exc_info=True)
         profile = None
     nom = (getattr(profile, 'nom', '') or '').strip()
     if nom:

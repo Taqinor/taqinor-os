@@ -6,6 +6,9 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 import re as _re
 
 from .models import Lead
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
@@ -106,6 +109,7 @@ def _est_vide(instance, champ, valeur):
             from django.db import models as dj_models
             champ_modele = type(instance)._meta.get_field(champ)
         except Exception:  # noqa: BLE001 — champ inconnu : jamais « vide »
+            logger.warning('%s : échec ignoré (dégradé)', '_est_vide', exc_info=True)
             return False
         return (isinstance(champ_modele, dj_models.BooleanField)
                 and not champ_modele.null)

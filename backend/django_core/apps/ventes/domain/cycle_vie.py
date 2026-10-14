@@ -749,6 +749,7 @@ def signature_entreprise(devis):
     try:
         sig = devis.signature
     except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist
+        logger.warning('%s : échec ignoré (dégradé)', 'signature_entreprise', exc_info=True)
         return None
     if sig is None or not (sig.raison_sociale or sig.signataire_qualite
                            or sig.ice_declare):
@@ -857,6 +858,7 @@ def _acceptance_deposit_block(devis, lignes=None):
                 "espace proposition pour informer votre conseiller.")
         return '\n'.join(lignes) + '\n\n'
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('%s : échec ignoré (dégradé)', '_acceptance_deposit_block', exc_info=True)
         return ''
 
 
@@ -902,6 +904,7 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
             from apps.ventes.models import DevisSignature
             preuve = DevisSignature.objects.filter(devis=devis).exists()
         except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien
+            logger.warning('%s : échec ignoré (dégradé)', '_send_acceptance_emails', exc_info=True)
             preuve = False
         bloc_signature = (
             "Votre signature électronique a été enregistrée conformément "
@@ -1340,6 +1343,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             with transaction.atomic():
                 lignes_devis = list(devis.lignes.select_related('produit').all())
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('%s : échec ignoré (dégradé)', 'accept_devis', exc_info=True)
             lignes_devis = None
 
         # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).

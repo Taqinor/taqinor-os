@@ -10,6 +10,9 @@ from core.dates import aujourd_hui_local
 from .cadence_plan import sync_relance_activity
 from .leads_socle import MOTIF_BULK_CADENCE_ACTIVE, leads_avec_cadence_active
 from .models import Lead, LeadActivity, PointContact
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def appliquer_plan_activite(*, lead, plan, user):
@@ -122,6 +125,7 @@ def appliquer_champ_automatique(lead, champ, valeur, user=None):
     try:
         champ_modele = Lead._meta.get_field(champ)
     except Exception:  # noqa: BLE001
+        logger.warning('%s : échec ignoré (dégradé)', 'appliquer_champ_automatique', exc_info=True)
         return CHAMP_AUTO_INVALIDE, f'Champ « {champ} » inconnu.'
     if champ == 'owner':
         from django.contrib.auth import get_user_model

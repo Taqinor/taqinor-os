@@ -174,6 +174,7 @@ def _playbook_correspond_au_lead(playbook, lead):
     try:
         return evaluate_condition_group(playbook.condition, criteres)
     except Exception:  # noqa: BLE001 — tolérant, jamais bloquant
+        logger.warning('%s : échec ignoré (dégradé)', '_playbook_correspond_au_lead', exc_info=True)
         return False
 
 

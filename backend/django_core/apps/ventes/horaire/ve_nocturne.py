@@ -56,6 +56,7 @@ def _couche_ve_nocturne(equipements):
         from ..courbes_journalieres import VE_CRENEAUX
         nuit = set(VE_CRENEAUX['nuit'])
     except Exception:  # noqa: BLE001 — sans fenêtre de référence, on s'abstient
+        logger.warning('%s : échec ignoré (dégradé)', '_couche_ve_nocturne', exc_info=True)
         return None
     return couche if set(heures) <= nuit else None
 

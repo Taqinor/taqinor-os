@@ -9,6 +9,9 @@ import datetime
 from .portee_selectors import (
     portee_leads, leads_visibles,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 #: MRY21 — la promesse mesurée : joindre le prospect dans les 5 jours OUVRÉS.
@@ -164,6 +167,7 @@ def kpi_cadences(company, *, jours=30):
         devis_envoyes = devis_envoyes_periode(
             company, date_debut=depuis.date()).count()
     except Exception:  # noqa: BLE001 — un KPI ne casse jamais sur ce point
+        logger.warning('%s : échec ignoré (dégradé)', 'kpi_cadences', exc_info=True)
         devis_envoyes = 0
 
     # Moyenne de tentatives des leads passés au FROID sur la période — la
@@ -554,6 +558,7 @@ def _assigne_de_la_visite(lead):
         lignes = [ligne for ligne in visites_pour_lead(lead)
                   if (ligne.get('date_prevue') or '') >= jour]
     except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning('%s : échec ignoré (dégradé)', '_assigne_de_la_visite', exc_info=True)
         return ''
     if not lignes:
         return ''

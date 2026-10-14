@@ -1391,6 +1391,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             try:
                 lien_rdv = public_booking_url(lead, request=request)
             except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
+                logger.warning('%s : échec ignoré (dégradé)', 'render_template', exc_info=True)
                 lien_rdv = ''
         return Response({'texte': tmpl.render(
             prenom=prenom, ville=ville, lien=lien, lien_rdv=lien_rdv)})

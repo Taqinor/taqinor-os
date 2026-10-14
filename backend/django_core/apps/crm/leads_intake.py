@@ -351,7 +351,7 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
         try:
             notify_new_lead(lead)
         except Exception:  # noqa: BLE001 — best-effort
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'create_lead_from_livechat', exc_info=True)
         # MRY6 — même démarrage explicite que les autres créateurs vivants.
         demarrer_cadence_contact(lead, origine='livechat')
     else:

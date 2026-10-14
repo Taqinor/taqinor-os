@@ -8,6 +8,9 @@ import re as _re
 
 from . import activity
 from .models import Lead, LeadActivity
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ── VT1 — CHATTER AUTOMATIQUE DE LA VISITE TECHNIQUE TERRAIN ─────────────────
@@ -44,6 +47,7 @@ def journaliser_visite(visite, user, moment, detail=''):
     try:
         return activity.log_note(visite.lead, user, corps)
     except Exception:  # pragma: no cover - défensif, jamais bloquant
+        logger.warning('%s : échec ignoré (dégradé)', 'journaliser_visite', exc_info=True)
         return None
 
 
