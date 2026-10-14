@@ -15,6 +15,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from core.champs_stricts import DecimalStricte
 from core.entite_scoping import EntiteScopeMixin
 from ..openapi_helpers import BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
 from ..utils.params import (
@@ -104,17 +105,29 @@ def _params_bulk(donnees):
     for cle, valeur in params.items():
         if isinstance(valeur, (dict, list, bool)):
             raise ValidationError({cle: ['Valeur simple attendue.']})
-    for cle in ('mode', 'marque'):
-        if params.get(cle) is not None and not isinstance(params[cle], str):
+    # CI #997 fuzz (2) — mode/valeur/marque : textes NON nuls (le schéma ne les
+    # déclare pas nullables) ; mode non blanc ; valeur = décimal-chaîne publié
+    # (un nombre JSON était lu) — contrôlés quelle que soit l'action.
+    for cle in ('mode', 'valeur', 'marque'):
+        if cle in params and not isinstance(params[cle], str):
             raise ValidationError({cle: ['Texte attendu.']})
+    if 'mode' in params and not params['mode'].strip():
+        raise ValidationError({'mode': ['Ce champ ne peut être vide.']})
+    if 'valeur' in params:
+        VALEUR_BULK.run_validation(params['valeur'])
     if len(params.get('marque') or '') > 100:
         raise ValidationError({'marque': ['100 caractères au plus.']})
     for cle in ('garantie_mois', 'garantie_production_mois'):
         if cle in params:
             params[cle] = entier_ou_400(params[cle], cle, mini=0, maxi=2147483647)
     if params.get('categorie_id') not in (None, '', 'null'):
-        params['categorie_id'] = entier_ou_400(params['categorie_id'], 'categorie_id')
+        params['categorie_id'] = entier_ou_400(params['categorie_id'], 'categorie_id', maxi=2147483647)
     return params
+
+
+#: Valeur d'une édition de prix en masse : décimal-chaîne (l'écran envoie le
+#: texte saisi), le MÊME champ publie le schéma et valide le corps.
+VALEUR_BULK = DecimalStricte(max_digits=12, decimal_places=2, required=False)
 
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
@@ -523,7 +536,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                                                                              'set_brand']),
                                  ids=serializers.ListField(child=serializers.IntegerField(), min_length=1),
                                  mode=serializers.CharField(required=False, help_text='percent ou fixed'),
-                                 valeur=serializers.DecimalField(max_digits=12, decimal_places=2, required=False),
+                                 valeur=VALEUR_BULK,
                                  garantie_mois=serializers.IntegerField(required=False, allow_null=True, min_value=0,
                                                                         max_value=2147483647),
                                  garantie_production_mois=serializers.IntegerField(
@@ -546,8 +559,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'Sélectionnez au moins un produit.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        # ERR fuzz : un id non entier ({}, liste…) levait TypeError (500).
-        ids = [entier_ou_400(i, 'ids') for i in ids]
+        # ERR fuzz : un id non entier ({}, liste…) levait TypeError (500) ;
+        # CI #997 fuzz (2) : entier JSON seulement (``null``/``"5"`` lus).
+        if any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
+            return Response({'ids': ['Identifiants entiers attendus.']},
+                            status=status.HTTP_400_BAD_REQUEST)
         # ASTK20 (D-ASTK-3) — la variation de prix en masse = écriture du prix
         # catalogue : même helper que ProduitSerializer (jumeau unique).
         from ..serializers import peut_modifier_prix_catalogue

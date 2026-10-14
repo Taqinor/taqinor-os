@@ -89,16 +89,22 @@ def id_corps(valeur):
     return n if 1 <= n <= ID_MAX else None
 
 
-def types_corps_ou_400(donnees, textes=(), entiers=(), ids=()):
+def types_corps_ou_400(donnees, textes=(), entiers=(), ids=(), nuls=None):
     """Corps libre lu À LA MAIN (sans sérialiseur) : chaque champ PRÉSENT et
     non nul doit avoir son type JSON déclaré — texte, entier (jamais un
     booléen ni un flottant), identifiant entier 1..ID_MAX — sinon 400 nommant les
-    champs (``note: {}`` était lu ``''``, ``produit: {}`` faisait un 500)."""
+    champs (``note: {}`` était lu ``''``, ``produit: {}`` faisait un 500).
+
+    ``nuls`` (CI #997 fuzz 2) : quand il est donné, seuls ces champs acceptent
+    un ``null`` explicite ; sur tout autre champ listé (non nullable au schéma)
+    ``null`` répond 400 au lieu d'être lu « vide »."""
     from rest_framework.exceptions import ValidationError
     erreurs = {}
     for nom in (*textes, *entiers, *ids):
         valeur = donnees.get(nom)
         if valeur is None:
+            if nuls is not None and nom in donnees and nom not in nuls:
+                erreurs[nom] = ['Ce champ ne peut être nul.']
             continue
         if nom in textes and not isinstance(valeur, str):
             erreurs[nom] = ['Texte attendu.']
@@ -109,6 +115,20 @@ def types_corps_ou_400(donnees, textes=(), entiers=(), ids=()):
             erreurs[nom] = ['Identifiant entier attendu.']
     if erreurs:
         raise ValidationError(erreurs)
+
+
+def booleen_formulaire_ou_400(donnees, nom):
+    """Booléen d'un corps MULTIPART (CI #997 fuzz 2) : absent -> ``False`` ;
+    ``true``/``false`` (toute casse — l'écran envoie ``'true'``, un client
+    Python ``'True'``) -> bool ; toute autre valeur (``0``, ``peut-etre``) ->
+    400 nommant le champ, au lieu d'être lue « non » en silence."""
+    from rest_framework.exceptions import ValidationError
+    valeur = donnees.get(nom)
+    if valeur is None:
+        return False
+    if str(valeur).lower() not in ('true', 'false'):
+        raise ValidationError({nom: ['Booléen attendu (true/false).']})
+    return str(valeur).lower() == 'true'
 
 
 #: Formes booléennes lues dans une query string (précédent ``kits``).

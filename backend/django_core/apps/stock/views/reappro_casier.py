@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import INT, P, STR
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -19,7 +19,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 class SeuilReapproCasierSerializer(CompanyScopedRelationsMixin,
-                                   serializers.ModelSerializer):
+                                   ChampsTexteBooleenStricts, serializers.ModelSerializer):
     bin_code = serializers.CharField(source='bin.code', read_only=True,
                                      default='')
 

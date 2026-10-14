@@ -354,14 +354,15 @@ class TestEndpointGardeFou(EcrasementTarifBase):
 
     def test_une_valeur_ambigue_n_active_jamais_l_ecrasement(self):
         """Seul un « vrai » explicite ouvre l'écrasement : un drapeau mal
-        formé laisse le garde-fou en place."""
+        formé laisse le garde-fou en place — CI #997 fuzz (2) : il est même
+        refusé (400 nommant le champ, rien d'écrit) au lieu d'être lu « non »."""
         tarif = self._tarif_reel()
         resp = self._post(
             [[self.produit.sku, self.produit.nom, 'REF-FICHIER', 1100,
               None, None, '']],
             ecraser='peut-etre')
-        self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertFalse(resp.data['ecraser'])
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('ecraser', resp.data)
         tarif.refresh_from_db()
         self.assertEqual(tarif.prix_achat, Decimal('1000.00'))
 

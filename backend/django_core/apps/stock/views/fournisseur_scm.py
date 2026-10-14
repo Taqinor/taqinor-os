@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin
 from ..openapi_helpers import BOOL, INT, NUM, P, STR
@@ -43,7 +44,7 @@ def _fenetre_mois_ou_400(valeur, valider):
 
 class IncidentQualiteFournisseurSerializer(MasqueMontantsAchatMixin,
                                            CompanyScopedRelationsMixin,
-                                           serializers.ModelSerializer):
+                                           ChampsStrictsMixin, serializers.ModelSerializer):
     champs_montants_achat = ('cout_impact_mad',)  # ERR-STK-PRIX-ACHAT-SUITE
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')

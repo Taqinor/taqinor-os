@@ -50,7 +50,9 @@ from __future__ import annotations
 import json
 import os
 import atexit
+import io
 import re
+import zipfile
 import zlib
 
 import requests
@@ -411,8 +413,47 @@ atexit.register(_journal_couverture)
 # ``format: binary``. Un cas POSITIF reçoit donc un PDF minimal valide
 # (octets ``%PDF-``) au lieu d'octets quelconques — même nature que les ids
 # réels : l'existence/le format d'une donnée que le schéma ne peut pas porter.
+# CI #997 fuzz (2) — même règle pour l'import d'un tarif fournisseur (un
+# classeur xlsx, ``_classeur_lisible``) et d'une fiche constructeur PVsyst
+# (``PVObject_=`` module/onduleur, ``parse_pan_ond_bytes``) : un classeur VIDE
+# (aucune ligne -> rapport d'erreurs 200, rien d'écrit) et un module sans clé.
 _PDF_MINIMAL = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
-_FICHIERS_PDF = re.compile(r'^/api/django/calepinage/gabarits-dossiers/')
+_NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+_NS_PKG = 'http://schemas.openxmlformats.org/package/2006/relationships'
+_NS_XLSX = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+_TYPE_OOXML = 'application/vnd.openxmlformats-officedocument.spreadsheetml'
+_XLSX_PARTIES = {
+    '[Content_Types].xml': (
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        f'<Override PartName="/xl/workbook.xml" ContentType="{_TYPE_OOXML}.sheet.main+xml"/>'
+        f'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="{_TYPE_OOXML}.worksheet+xml"/></Types>'),
+    '_rels/.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="{_NS_REL}/'
+                    'officeDocument" Target="xl/workbook.xml"/></Relationships>'),
+    'xl/workbook.xml': (f'<workbook xmlns="{_NS_XLSX}" xmlns:r="{_NS_REL}"><sheets>'
+                        '<sheet name="Tarif" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+    'xl/_rels/workbook.xml.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="'
+                                   f'{_NS_REL}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'),
+    'xl/worksheets/sheet1.xml': f'<worksheet xmlns="{_NS_XLSX}"><sheetData/></worksheet>',
+}
+
+
+def _xlsx_minimal():
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for nom, xml in _XLSX_PARTIES.items():
+            archive.writestr(nom, '<?xml version="1.0" encoding="UTF-8"?>' + xml)
+    return tampon.getvalue()
+
+
+#: (gabarit de chemin, champ fichier, octets valides minimaux)
+_FICHIERS_AU_FORMAT = (
+    (re.compile(r'^/api/django/calepinage/gabarits-dossiers/'), 'fichier', _PDF_MINIMAL),
+    (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), 'file', _xlsx_minimal()),
+    (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), 'file',
+     b'PVObject_=pvModule\n'),
+)
 _METHODES_FICHIER = {'POST', 'PATCH'}
 
 
@@ -424,26 +465,27 @@ def _meta_sans_revalidation(case):
     return meta if meta is not None else case.meta
 
 
-def _fichiers_pdf(case):
+def _fichiers_au_format(case):
     meta = _meta_sans_revalidation(case)
     if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
         return
     if case.operation.method.upper() not in _METHODES_FICHIER:
         return
-    if not _FICHIERS_PDF.match(case.operation.path):
-        return
+    regle = next((r for r in _FICHIERS_AU_FORMAT if r[0].match(case.operation.path)), None)
     corps = case.body
-    if isinstance(corps, dict) and corps.get('fichier') is not None:
-        origine = corps['fichier']
-        # Schemathesis range un binaire dans ``Binary`` (sous-classe de str
-        # portant ``.data``) : on change ses OCTETS en place, la clé du corps
-        # n'est pas réécrite (voir ``_rester_positif``).
-        if isinstance(getattr(origine, 'data', None), bytes):
-            origine.data = _PDF_MINIMAL
-        elif isinstance(origine, bytes):
-            corps['fichier'] = _PDF_MINIMAL
-        elif isinstance(origine, str):
-            corps['fichier'] = _PDF_MINIMAL.decode('latin-1')
+    if regle is None or not isinstance(corps, dict) or corps.get(regle[1]) is None:
+        return
+    _motif, champ, octets = regle
+    origine = corps[champ]
+    # Schemathesis range un binaire dans ``Binary`` (sous-classe de str
+    # portant ``.data``) : on change ses OCTETS en place, la clé du corps
+    # n'est pas réécrite (voir ``_rester_positif``).
+    if isinstance(getattr(origine, 'data', None), bytes):
+        origine.data = octets
+    elif isinstance(origine, bytes):
+        corps[champ] = octets
+    elif isinstance(origine, str):
+        corps[champ] = octets.decode('latin-1')
 
 
 # ── 6. Un corps à fichier reste POSITIF après nos substitutions ─────────
@@ -496,5 +538,5 @@ def before_call(context, case, kwargs):
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
-    _fichiers_pdf(case)
+    _fichiers_au_format(case)
     _rester_positif(case, etait_positif)

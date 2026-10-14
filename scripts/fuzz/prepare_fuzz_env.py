@@ -403,6 +403,17 @@ def _semer_emplacement_stock(company, user):
         company=company, nom='Dépôt fuzz', is_principal=True)
 
 
+def _semer_kit(company, user):
+    # CI #997 fuzz (2) — ``composant_kit`` (sous-kit d'un composant) vise un
+    # KitProduit : sans kit dans la société, le corps conforme ``{composant_kit:
+    # 1}`` répondait 400 « objet inexistant ».
+    existant = _premier('stock.KitProduit', company)
+    if existant is not None:
+        return existant
+    return _modele('stock.KitProduit').objects.create(
+        company=company, nom='Kit fuzz')
+
+
 def _semer_gabarit_dossier(company, user):
     existant = _premier('calepinage.GabaritDossierReglementaire', company)
     if existant is not None:
@@ -581,6 +592,7 @@ SEMEURS = (
     ('stock.CategorieFournisseur', _semer_categorie_fournisseur),
     ('parametres.ConditionPaiement', _semer_condition_paiement),
     ('stock.EmplacementStock', _semer_emplacement_stock),
+    ('stock.KitProduit', _semer_kit),
     ('ged (coffre, dossier, étiquette)', _semer_ged),
     ('achats.RetourFournisseur', _semer_retour_fournisseur),
     ('installations.BinLocation', _semer_casier),

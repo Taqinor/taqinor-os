@@ -12,6 +12,7 @@ from ..openapi_helpers import BINARY, INT, OBJET, P, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Fournisseur, PrixFournisseur
 from ..serializers import PrixFournisseurSerializer
+from ..utils.params import booleen_formulaire_ou_400
 from authentication.permissions import HasPermissionOrLegacy
 
 logger = logging.getLogger(__name__)
@@ -22,15 +23,6 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
-
-
-def _flag(valeur):
-    """Drapeau d'import STRICT : seul un « vrai » explicite active l'option.
-
-    Toute autre valeur (absente, vide, '0', 'false', un mot inattendu) laisse
-    l'option DÉSACTIVÉE — un écrasement du tarif réel ne peut donc jamais
-    résulter d'une valeur mal comprise (même règle que `dataimport.views`)."""
-    return str(valeur).strip().lower() in ('1', 'true', 'yes', 'on', 'oui')
 
 
 def _classeur_lisible(contenu):
@@ -102,9 +94,9 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'),
-                               P('fournisseur', INT, True, 'Fournisseur (id)'),
-                               P('quantite', INT, False, 'Quantité (défaut 1)')],
+    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)', mini=1, maxi=2147483647),
+                               P('fournisseur', INT, True, 'Fournisseur (id)', mini=1, maxi=2147483647),
+                               P('quantite', INT, False, 'Quantité (défaut 1)', mini=1, maxi=2147483647)],
                    responses=corps('PrixFournisseurEffectifReponse',
                                    prix_effectif=serializers.CharField(allow_null=True)))
     @action(detail=False, methods=['get'], url_path='effectif')
@@ -114,8 +106,12 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
         paliers existent, sinon le prix de base, ``None`` si tarif expiré/
         introuvable. Pré-remplit une ligne de BCF au bon prix — jamais un
         endpoint client-facing (INTERNE, même gate que la ressource)."""
-        produit_id = request.query_params.get('produit')
-        fournisseur_id = request.query_params.get('fournisseur')
+        # CI #997 fuzz (2) : ids et quantité STRICTS (``null``, ``0.5``,
+        # répétés -> 400 ; ils faisaient un 500 ORM ou retombaient sur 1).
+        from ..utils.params import entier_ou_400, id_requete_ou_400, valeur_unique_ou_400
+        produit_id = id_requete_ou_400(request, 'produit')
+        fournisseur_id = id_requete_ou_400(request, 'fournisseur')
+        quantite = entier_ou_400(valeur_unique_ou_400(request, 'quantite'), 'quantite', 1, 1, 2147483647)
         if not produit_id or not fournisseur_id:
             return Response(
                 {'detail': 'Les paramètres produit et fournisseur sont '
@@ -130,14 +126,12 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Produit ou fournisseur introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
-        try:
-            quantite = int(request.query_params.get('quantite') or 1)
-        except (TypeError, ValueError):
-            quantite = 1
         from ..services import prix_effectif_fournisseur
         prix = prix_effectif_fournisseur(
             produit, fournisseur, quantite=quantite)
-        return Response({'prix_effectif': prix})
+        # Décimal-CHAÎNE comme le schéma le déclare (un Decimal brut était
+        # rendu en nombre JSON : ``0.0``).
+        return Response({'prix_effectif': None if prix is None else str(prix)})
 
     @extend_schema(parameters=[P('fournisseur', INT, True, 'Fournisseur (id)')], responses={XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='export-xlsx')
@@ -203,7 +197,7 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         result = import_prix_fournisseur_xlsx(
             request.user.company, fournisseur, contenu,
-            apercu=_flag(request.data.get('apercu')),
-            ecraser=_flag(request.data.get('ecraser')),
+            apercu=booleen_formulaire_ou_400(request.data, 'apercu'),
+            ecraser=booleen_formulaire_ou_400(request.data, 'ecraser'),
             user=request.user, filename=getattr(upload, 'name', '') or '')
         return Response(result, status=status.HTTP_200_OK)

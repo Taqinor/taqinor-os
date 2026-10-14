@@ -16,7 +16,7 @@ from core.product_roles import (
 )
 
 from .erreurs_achats import ConflitEtat
-from .openapi_helpers import ChampsStrictsProduitMixin
+from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -213,7 +213,7 @@ class FournisseurSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
 
 
 class MouvementStockSerializer(CompanyScopedRelationsMixin,
-                               serializers.ModelSerializer):
+                               ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -270,7 +270,7 @@ def normaliser_sku(valeur):
 
 
 def verifier_sku_libre(modele, company, sku, instance=None):
-    """ASTK93 — refuse (400) un SKU déjà pris À LA CASSE PRÈS dans la société
+    """ASTK93 — refuse (409) un SKU déjà pris À LA CASSE PRÈS dans la société
     ('ref-1' / 'REF-1' sont le même article). Le message nomme l'existant."""
     if sku is None or company is None:
         return
@@ -278,9 +278,9 @@ def verifier_sku_libre(modele, company, sku, instance=None):
     if instance is not None and instance.pk:
         qs = qs.exclude(pk=instance.pk)
     existant = qs.first()
-    if existant is not None:
-        raise serializers.ValidationError(
-            f'Ce SKU existe déjà ({sku} ≈ {existant.sku}).')
+    if existant is not None:  # CI #997 fuzz (2) : doublon = état des données, 409
+        raise ConflitUnicite(
+            detail=f'Ce SKU existe déjà ({sku} ≈ {existant.sku}).', champs=['sku'])
 
 
 MSG_NOM_DOUBLON = 'Un produit actif de ce nom existe déjà.'
@@ -309,7 +309,7 @@ def valider_nom_sans_sku(company, nom, sku, archive, instance=None):
     """ASTK94 — garde d'unicité « produit ACTIF SANS SKU de ce nom » (contrainte
     DB ``stock_produit_company_nom_sans_sku_uniq``), à UN seul endroit : le
     serializer (create/update), ``unarchive`` et ``dupliquer`` l'appellent
-    tous — un homonyme répond 400 ``{nom: …}``, jamais une IntegrityError 500.
+    tous — un homonyme répond 409 (champ ``nom``), jamais une IntegrityError 500.
     ``archive`` = l'état archivé que le produit AURA après l'opération."""
     sku = (sku or '').strip()
     # MÊME périmètre que la contrainte : hors de ce périmètre, le doublon
@@ -321,8 +321,8 @@ def valider_nom_sans_sku(company, nom, sku, archive, instance=None):
     ).filter(models.Q(sku__isnull=True) | models.Q(sku=''))
     if instance is not None and instance.pk:
         qs = qs.exclude(pk=instance.pk)
-    if qs.exists():
-        raise serializers.ValidationError({'nom': [MSG_NOM_DOUBLON]})
+    if qs.exists():  # CI #997 fuzz (2) : homonyme = état des données, 409
+        raise ConflitUnicite(detail=MSG_NOM_DOUBLON, champs=['nom'])
 
 
 def _company_du_contexte(serializer):
@@ -477,13 +477,13 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
     # historique, champ nullable). L'unicité PROPRE (400, scopée société,
     # NULL/'' exclus) reste assurée par `validate_code_barres` ci-dessous —
     # DRF ne comprend pas la condition partielle de la contrainte DB.
-    code_barres = serializers.CharField(
+    code_barres = ChaineStricte(
         required=False, allow_null=True, allow_blank=True, max_length=64)
     # XSTK3 — `sku` a la MÊME contrainte partielle `(company, sku)` que
     # `code_barres` : DRF en dérive un UniqueTogetherValidator qui le force à
     # `required=True` à tort (champ nullable/optionnel au modèle). On le
     # déclare donc explicitement optionnel ici aussi.
-    sku = serializers.CharField(
+    sku = ChaineStricte(
         required=False, allow_null=True, allow_blank=True, max_length=50)
 
     # ── STKCAT20 — courbe de pompe : validation de FORME + garde
@@ -505,7 +505,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         400 explicite plutôt qu'une pompe qui redevient invisible en
         silence au dimensionnement.
         """
-        if not value:
+        if value in (None, {}):  # CI #997 fuzz (2) : 0/""/[]/false -> 400 (plus « vide »)
             if self.instance is not None and self.instance.courbe_pompe:
                 raise serializers.ValidationError(
                     "Vider ce champ est interdit : il porte une courbe de "
@@ -641,7 +641,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
 
     def _ecrire(self, ecriture):
         """Filet de course : entre la validation ci-dessus et l'INSERT, une
-        requête concurrente peut avoir pris le nom. On rend alors le MÊME 400
+        requête concurrente peut avoir pris le nom. On rend alors le MÊME 409
         que la validation plutôt qu'un 500. Toute autre IntegrityError remonte
         telle quelle — jamais avalée en silence."""
         try:
@@ -649,8 +649,8 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 return ecriture()
         except IntegrityError as exc:
             if 'stock_produit_company_nom_sans_sku_uniq' in str(exc):
-                raise serializers.ValidationError(
-                    {'nom': self.MSG_NOM_DOUBLON})
+                raise ConflitUnicite(
+                    detail=self.MSG_NOM_DOUBLON, champs=['nom'])
             raise
 
     REFERENCE_STOCK_INITIAL = 'Stock initial'
@@ -1120,15 +1120,15 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             raise serializers.ValidationError(
                 "`courbe_source` n'accepte que `document`, `date` et "
                 f"`page` (reçu en trop : {', '.join(sorted(inconnues))}).")
-        document = value.get('document') or ''
+        document = '' if value.get('document') is None else value.get('document')
         if not isinstance(document, str):
             raise serializers.ValidationError(
                 "`courbe_source.document` doit être un texte.")
-        date = value.get('date') or None
+        date = value.get('date')  # CI #997 fuzz (2) : 0/false/"" n'étaient pas « vides »
         if date is not None:
             try:
-                serializers.DateField().to_internal_value(str(date))
-            except serializers.ValidationError:
+                serializers.DateField().to_internal_value(date if isinstance(date, str) else None)
+            except (serializers.ValidationError, TypeError, ValueError):
                 raise serializers.ValidationError(
                     "`courbe_source.date` doit être une date ISO "
                     "(AAAA-MM-JJ).")
@@ -1388,7 +1388,7 @@ class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
 
 
 class RetourFournisseurSerializer(SameCompanyFKSerializerMixin,
-                                  serializers.ModelSerializer):
+                                  ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK2 — fournisseur et BCF d'origine bornés à la société, en création
     # ET en modification (remplace l'ancien `_validate_company`, création
     # seule et message propre = oracle d'existence).
@@ -1515,7 +1515,7 @@ CHAMPS_PRIX_ACHAT_LIGNE_BCF = (
 
 
 class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
-                                            serializers.ModelSerializer):
+                                            ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
@@ -1597,7 +1597,7 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
 
 class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
                                        CompanyScopedRelationsMixin,
-                                       ChampsTexteBooleenStricts, serializers.ModelSerializer):
+                                       ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     # Champs cross-app déclarés pour la garde CI check_fk_scoping
@@ -1788,7 +1788,7 @@ class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
 # ── G5 — Réception fournisseur (goods-in) ────────────────────────────────────
 
 class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
-                                          serializers.ModelSerializer):
+                                          ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
@@ -1835,7 +1835,7 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
 
 
 class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
-                                     serializers.ModelSerializer):
+                                     ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     lignes = LigneReceptionFournisseurSerializer(many=True)
@@ -1977,7 +1977,7 @@ class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
 
 
 class PaiementFournisseurSerializer(CompanyScopedRelationsMixin,
-                                    serializers.ModelSerializer):
+                                    ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     mode_display = serializers.CharField(
@@ -2349,7 +2349,7 @@ class InventaireSessionSerializer(ChampsTexteBooleenStricts, serializers.ModelSe
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
 class KitComposantSerializer(CompanyScopedRelationsMixin,
-                             serializers.ModelSerializer):
+                             ChampsStrictsMixin, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(
@@ -2593,7 +2593,7 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
 
 
 class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
-                                                serializers.ModelSerializer):
+                                                ChampsStrictsMixin, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     """NTP2P9 — grille éditable Paramètres → Achats (override par catégorie
@@ -2618,7 +2618,7 @@ class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
 
 class AcompteFournisseurSerializer(SameCompanyFKSerializerMixin,
                                    CompanyScopedRelationsMixin,
-                                   serializers.ModelSerializer):
+                                   ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     # Champs cross-app déclarés pour la garde CI check_fk_scoping
@@ -2676,7 +2676,7 @@ class ImputationAvoirFournisseurSerializer(CompanyScopedRelationsMixin,
 
 
 class AvoirFournisseurSerializer(CompanyScopedRelationsMixin,
-                                 serializers.ModelSerializer):
+                                 ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     fournisseur_nom = serializers.CharField(
@@ -2747,7 +2747,7 @@ class InventaireAnnuelSerializer(serializers.ModelSerializer):
 
 
 class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
-                                    serializers.ModelSerializer):
+                                    ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     """XSTK14 — revalorisation manuelle du stock (document tracé). Créée en
     BROUILLON via `produit`/`nouveau_cout`/`motif` ; verrouillée après
     validation (`valider/`).
