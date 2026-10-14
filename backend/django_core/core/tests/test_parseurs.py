@@ -128,10 +128,18 @@ class SchemaChampsStrictsTests(SimpleTestCase):
     def test_chaine_stricte_publie_un_motif_sans_nul(self):
         import re
 
-        from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte
+        from core.champs_stricts import (
+            MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, ChaineStricte)
+        # Blanc interdit (défaut DRF) : nul ET blanc refusés.
         schema = self._schema(ChaineStricte())
+        self.assertEqual(schema['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+        self.assertTrue(re.search(MOTIF_NON_BLANC_SANS_NUL, 'texte é\n'))
+        self.assertIsNone(re.search(MOTIF_NON_BLANC_SANS_NUL, 'a\x00b'))
+        self.assertIsNone(re.search(MOTIF_NON_BLANC_SANS_NUL, '   '))
+        # Blanc permis : seul le nul est refusé.
+        schema = self._schema(ChaineStricte(allow_blank=True))
         self.assertEqual(schema['pattern'], MOTIF_SANS_NUL)
-        self.assertTrue(re.search(MOTIF_SANS_NUL, 'texte é\n'))
+        self.assertTrue(re.search(MOTIF_SANS_NUL, ''))
         self.assertIsNone(re.search(MOTIF_SANS_NUL, 'a\x00b'))
         self.assertNotIn('pattern', self._schema(ChaineStricte(), 'response'))
 
