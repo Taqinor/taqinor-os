@@ -39,6 +39,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from core.champs_stricts import ChaineStricte
 from core.pompage.selection import selection_pompe, selection_variateur, tension_produit
 from core.pompage.volumes import couverture_besoin_eau
 
@@ -145,25 +146,35 @@ def _rendement_mppt(company, variateur_id):
     return None
 
 
-_CHAMPS_POMPAGE = {nom: serializers.FloatField(required=False, allow_null=True)
-                   for nom in (
+_NOMBRES_POMPAGE = (
     'hmt_saisie', 'debit_souhaite_m3h', 'heures_pompage',
     'volume_reservoir_m3', 'besoin_m3_jour', 'niveau_statique_m',
     'niveau_dynamique_m', 'coefficient_rabattement_m_par_m3h',
     'longueur_tuyauterie_m', 'coefficient_frottement',
     'hauteur_refoulement_m', 'denivele_m', 'diametre_interieur_mm',
     'c_hazen_williams', 'pertes_singulieres_m', 'pression_service_bar',
-    'kwc')}
+    'kwc')
+
+
+def _champs_corps():
+    """Les champs du corps — UNE déclaration pour le schéma ET la validation.
+
+    Les nombres restent ``null``-ables (un ``null`` vaut « non renseigné »,
+    comme l'absence) ; les trois choix texte sont des chaînes STRICTES : un
+    ``"type_pompe": 0`` est un 400 nommé, jamais un choix par défaut
+    silencieux (api-fuzz). Fabrique : un champ DRF ne se lie qu'une fois."""
+    return {
+        **{nom: serializers.FloatField(required=False, allow_null=True)
+           for nom in _NOMBRES_POMPAGE},
+        'type_pompe': ChaineStricte(required=False),
+        'alim': ChaineStricte(required=False),
+        'materiau_conduite': ChaineStricte(required=False),
+        'besoin_m3_mois': serializers.ListField(
+            child=serializers.FloatField(allow_null=True), required=False)}
 
 
 @extend_schema(
-    request=inline_serializer('CalepinagePompageCorps', {
-        **_CHAMPS_POMPAGE,
-        'type_pompe': serializers.CharField(required=False),
-        'alim': serializers.CharField(required=False),
-        'materiau_conduite': serializers.CharField(required=False),
-        'besoin_m3_mois': serializers.ListField(
-            child=serializers.FloatField(allow_null=True), required=False)}),
+    request=inline_serializer('CalepinagePompageCorps', _champs_corps()),
     responses=forme_du_contrat('CalepinagePompageReponse',
                                'calepinage_pompage.json'))
 @action(detail=True, methods=['post'], url_path='pompage',
@@ -177,6 +188,8 @@ def pompage(self, request, pk=None):
     from apps.stock.selectors import produits_par_type_equipement
 
     calepinage = self.get_object()
+    type('CalepinagePompageCorps', (serializers.Serializer,), _champs_corps())(
+        data=request.data).is_valid(raise_exception=True)
     corps = request.data if isinstance(request.data, dict) else {}
 
     type_pompe = str(corps.get('type_pompe') or _TYPE_POMPE_DEFAUT)

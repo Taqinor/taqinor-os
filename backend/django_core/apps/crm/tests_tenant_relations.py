@@ -23,6 +23,7 @@ from rest_framework.test import APIRequestFactory
 
 from authentication.models import Company
 from core.serializers import CompanyScopedPrimaryKeyRelatedField
+from core.unicite import ConflitUnicite
 
 from .models import (
     Apporteur, Client, DealEnregistre, EquipeCommerciale, ForecastEntry, Lead,
@@ -240,13 +241,17 @@ class ForecastRelationsTests(ScopedRelationsBase):
             "Le UniqueValidator de ForecastEntry.lead n'est pas scopé société.")
 
     def test_unique_within_company_still_enforced(self):
-        """Non-régression : deux entrées pour le MÊME lead restent refusées."""
-        errors = self._errors(
-            ForecastEntrySerializer,
-            {'lead': self.lead_a.pk,
-             'categorie': ForecastEntry.Categorie.COMMIT})
-        self.assertIn('lead', errors)
-        self.assertEqual(_codes(errors['lead']), {'unique'})
+        """Non-régression : deux entrées pour le MÊME lead restent refusées.
+
+        ERR-ENF11-FUZZ-CRM (``UniciteEn409Mixin``) : le doublon est un 409
+        ``unique_conflict`` qui nomme le champ, plus un 400 de champ."""
+        with self.assertRaises(ConflitUnicite) as ctx:
+            self._errors(
+                ForecastEntrySerializer,
+                {'lead': self.lead_a.pk,
+                 'categorie': ForecastEntry.Categorie.COMMIT})
+        self.assertEqual(ctx.exception.champs, ['lead'])
+        self.assertEqual(ctx.exception.get_codes(), 'unique_conflict')
 
 
 class PlanCompteRelationsTests(ScopedRelationsBase):
@@ -276,11 +281,13 @@ class PlanCompteRelationsTests(ScopedRelationsBase):
     def test_unique_client_toujours_refuse_dans_la_societe(self):
         """Non-régression : le re-scope CRX13 ne desserre pas l'unicité —
         un DEUXIÈME plan sur un client qui en a déjà un reste refusé."""
-        errors = self._errors(
-            PlanCompteSerializer,
-            {'client': self.client_a.pk, 'statut': 'brouillon'})
-        self.assertIn('client', errors)
-        self.assertEqual(_codes(errors['client']), {'unique'})
+        # ERR-ENF11-FUZZ-CRM (``UniciteEn409Mixin``) : 409 ``unique_conflict``.
+        with self.assertRaises(ConflitUnicite) as ctx:
+            self._errors(
+                PlanCompteSerializer,
+                {'client': self.client_a.pk, 'statut': 'brouillon'})
+        self.assertEqual(ctx.exception.champs, ['client'])
+        self.assertEqual(ctx.exception.get_codes(), 'unique_conflict')
 
     def test_plan_de_revue_scoped(self):
         """``RevueCompte.plan`` est la SEULE frontière société du modèle."""

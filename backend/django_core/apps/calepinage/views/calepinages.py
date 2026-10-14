@@ -191,6 +191,14 @@ _PUBLICATION_DEVIS = forme_du_contrat(
 _REFUS_VENTES = OpenApiResponse(
     description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
                 "charge, mot pour mot.")
+#: ACAL316 — le 428 que sert une écriture complète sans jeton If-Match :
+#: DOCUMENTÉ (api-fuzz du 14/10/2026 : « code HTTP non documenté »).
+_REPONSE_JETON_MANQUANT = OpenApiResponse(
+    response=inline_serializer('CalepinageJetonManquant', {
+        'detail': drf_serializers.CharField()}),
+    description="Jeton de version (If-Match) absent ou blanc : rien n'est "
+                "écrit ; recharger la conception (GET ``layout``) puis "
+                "renvoyer son ``empreinte_document``.")
 _PARAM_IF_MATCH = OpenApiParameter(
     'If-Match', OpenApiTypes.STR, OpenApiParameter.HEADER, required=False,
     description="Empreinte « document » lue avec la conception (GET "
@@ -584,7 +592,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         request=inline_serializer('CalepinageLayoutCorps', {
             'roof_layout': drf_serializers.JSONField(required=False),
             'layout': drf_serializers.JSONField(required=False)}),
-        responses=_FORME_ECRITURE_LAYOUT)
+        responses={200: _FORME_ECRITURE_LAYOUT,
+                   428: _REPONSE_JETON_MANQUANT})
     @action(detail=True, methods=['get', 'post'], url_path='layout',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def layout(self, request, pk=None):

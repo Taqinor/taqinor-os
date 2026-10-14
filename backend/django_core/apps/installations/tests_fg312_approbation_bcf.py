@@ -143,6 +143,22 @@ class TestApprobation(TestCase):
         self.assertEqual(
             ApprobationBCF.objects.filter(bcf_id=bcf.id).count(), 1)
 
+    def test_note_non_texte_refusee(self):
+        # api-fuzz — `note` est une chaîne : `{}`, `[]`, `0`, `null` ne sont
+        # plus avalés par un `or ''` (400 nommé, rien d'approuvé).
+        bcf = make_bcf_with_line(self.company, prix_unitaire=1000, quantite=1)
+        api = auth(self.admin)
+        for note in ({}, [], 0, None):
+            r = api.post(f'{BASE}/approbations-bcf/approuver/',
+                         {'bcf': bcf.id, 'note': note}, format='json')
+            self.assertEqual(r.status_code, 400, (note, r.data))
+            self.assertIn('note', r.data)
+        self.assertFalse(ApprobationBCF.objects.filter(bcf_id=bcf.id).exists())
+        r = api.post(f'{BASE}/approbations-bcf/approuver/',
+                     {'bcf': bcf.id, 'note': ' ok '}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['note'], 'ok')
+
 
 class TestNoSeuilDefaultsAdmin(TestCase):
     def setUp(self):
